@@ -771,6 +771,20 @@ def _validate_worker_manifests() -> None:
     if missing_factory_modules:
         raise ValueError(f"missing worker manifest factory modules: {missing_factory_modules}")
 
+    non_tuple_contract_fields = {
+        manifest.name: invalid_fields
+        for manifest in _WORKER_MANIFESTS
+        if (
+            invalid_fields := {
+                field_name: value
+                for field_name, value in _tuple_contract_field_values(manifest)
+                if type(value) is not tuple
+            }
+        )
+    }
+    if non_tuple_contract_fields:
+        raise ValueError(f"non-tuple worker manifest contract fields: {non_tuple_contract_fields}")
+
     missing_input_contracts = [manifest.name for manifest in _WORKER_MANIFESTS if not manifest.input_contract]
     if missing_input_contracts:
         raise ValueError(f"worker manifests missing input contracts: {missing_input_contracts}")
@@ -1136,6 +1150,24 @@ def _validate_worker_manifests() -> None:
 
 def _dedupe(values: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(values))
+
+
+def _tuple_contract_field_values(manifest: WorkerManifest) -> tuple[tuple[str, object], ...]:
+    return (
+        ("input_contract", manifest.input_contract),
+        ("ordering_keys", manifest.ordering_keys),
+        ("writes_input_observations", manifest.writes_input_observations),
+        ("writes_facts", manifest.writes_facts),
+        ("writes_read_models", manifest.writes_read_models),
+        ("writes_control_plane", manifest.writes_control_plane),
+        ("current_read_model_identities", manifest.current_read_model_identities),
+        ("idempotency_evidence", manifest.idempotency_evidence),
+        ("side_effect_ledgers", manifest.side_effect_ledgers),
+        ("dirty_target_tables", manifest.dirty_target_tables),
+        ("queue_health_tables", manifest.queue_health_tables),
+        ("wakes_on", manifest.wakes_on),
+        ("wakes_out", manifest.wakes_out),
+    )
 
 
 def _table_declaration_values(manifest: WorkerManifest) -> tuple[tuple[str, tuple[str, ...]], ...]:

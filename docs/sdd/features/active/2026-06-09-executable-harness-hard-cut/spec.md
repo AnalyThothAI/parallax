@@ -55,6 +55,7 @@ can both miss real process drift and block healthy refactors.
 | Idempotency evidence must be non-blank. | `WorkerManifest` validation rejects blank `idempotency_evidence` entries before lifecycle, ownership, or review harnesses consume them. |
 | Idempotency evidence must be unique. | `WorkerManifest` validation rejects duplicate `idempotency_evidence` entries before lifecycle, ownership, or review harnesses consume them. |
 | Provider I/O flags must be boolean. | `WorkerManifest` validation rejects non-boolean `uses_provider_io` values before provider-boundary or worker inventory harnesses consume them. |
+| Tuple-valued manifest contracts must be tuples. | `WorkerManifest` validation rejects list-shaped compatibility values for tuple contract fields before registry, factory, settings, or docs harnesses consume them. |
 | Input contracts must be non-empty. | `WorkerManifest` validation rejects empty `input_contract` declarations before registry, factory, settings, or docs harnesses consume them. |
 | Input contracts must be non-blank. | `WorkerManifest` validation rejects blank `input_contract` entries before registry, factory, settings, or docs harnesses consume them. |
 | Input contracts must be unique. | `WorkerManifest` validation rejects duplicate `input_contract` entries before registry, factory, settings, or docs harnesses consume them. |
@@ -218,6 +219,7 @@ can both miss real process drift and block healthy refactors.
 - G84. Worker domain declarations reject missing source directories, so registry and docs harnesses cannot preserve a worker owned by a non-existent bounded context.
 - G85. Worker classification declarations reject raw string values, so scheduler, docs, and lifecycle harnesses cannot silently accept compatibility-shaped values outside the manifest enum boundary.
 - G86. Provider I/O declarations reject truthy non-boolean values, so provider-boundary harnesses cannot silently accept compatibility-shaped flags.
+- G87. Tuple-valued manifest declarations reject list-shaped compatibility values, so registry and docs harnesses consume immutable source-truth contract fields.
 
 ## Non-goals
 
@@ -371,6 +373,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC106. WHEN a `WorkerManifest.domain` value does not name an existing `src/parallax/domains/<domain>` source directory THEN manifest validation SHALL raise before registry, factory, settings, or worker inventory harnesses consume the manifest.
 - AC107. WHEN a `WorkerManifest.lane`, `WorkerManifest.kind`, or `WorkerManifest.runtime_constraint` value is not the corresponding manifest enum type THEN manifest validation SHALL raise before scheduler, registry, factory, settings, or worker inventory harnesses consume the manifest.
 - AC108. WHEN a `WorkerManifest.uses_provider_io` value is not a boolean THEN manifest validation SHALL raise before provider-boundary, registry, settings, or worker inventory harnesses consume the manifest.
+- AC109. WHEN a tuple-valued `WorkerManifest` contract field is not a tuple THEN manifest validation SHALL raise before registry, factory, settings, or worker inventory harnesses consume the manifest.
 
 ## Risks
 

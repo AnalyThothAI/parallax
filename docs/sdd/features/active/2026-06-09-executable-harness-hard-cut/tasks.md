@@ -2287,6 +2287,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 109 — Tuple manifest contracts reject compatibility lists
+
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 108
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for tuple-valued manifest contract validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_tuple_contract_fields` — patch one manifest to declare list-shaped `input_contract` and assert manifest validation raises before registry, factory, settings, or docs consumers run.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: tuple-valued `WorkerManifest` contract fields must be strict tuples before registry, factory, settings, or worker inventory harnesses can treat contract declarations as immutable source truth.
+- **On-demand context**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, and Worker Inventory docs checks.
+- **Kill/defer criteria**: Stop if tuple-valued manifest contracts intentionally support list compatibility values, if validation only checks generated docs, or if the fix touches dirty worker runtime contract files.
+- **Eval/repair signal**: list-shaped manifest contract field, mutable contract drift, manifest validation drift, and SDD generated index drift.
+- **Implementation**: Add manifest validation rejecting non-tuple values for tuple-valued contract fields.
+- **Verification**: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_tuple_contract_fields -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -2397,4 +2418,5 @@
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_domain_directories -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_raw_classification_values -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_boolean_provider_io_flags -q`
+- [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_tuple_contract_fields -q`
 - [ ] `make check-all`

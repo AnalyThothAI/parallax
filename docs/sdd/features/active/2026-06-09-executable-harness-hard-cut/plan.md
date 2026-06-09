@@ -203,6 +203,7 @@ Known-failing baseline tests:
 - Reject `worker_class` declarations whose module path cannot be resolved before registry, factory, settings, or docs harnesses consume them.
 - Reject `worker_class` declarations whose class name is absent from the resolved module before registry, factory, settings, or docs harnesses consume them.
 - Reject non-boolean `uses_provider_io` declarations before provider-boundary, registry, settings, or docs harnesses consume them.
+- Reject non-tuple values for tuple-valued manifest contract fields before registry, factory, settings, or docs harnesses consume them.
 - Reject negative `start_priority` declarations before scheduler, registry, settings, or docs harnesses consume them.
 - Reject non-integer `start_priority` declarations before scheduler, registry, settings, or docs harnesses consume them.
 - Reject blank `idempotency_evidence` declarations before lifecycle, ownership, review, or worker inventory harnesses consume them.
@@ -331,6 +332,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Worker start priorities are non-negative. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares negative `start_priority`. |
 | Worker start priorities are integer bands. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares non-integer `start_priority`. |
 | Provider I/O flags are boolean. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares truthy non-boolean `uses_provider_io`. |
+| Tuple-valued manifest fields are tuples. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares list-shaped `input_contract`. |
 | Idempotency evidence is non-blank. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares blank `idempotency_evidence`. |
 | Idempotency evidence is unique. | Pass: `_validate_worker_manifests()` raises when a patched manifest repeats one `idempotency_evidence` entry. |
 | Input contracts are non-empty. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares an empty `input_contract`. |
@@ -498,6 +500,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC106: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_domain_directories -q`
 - AC107: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_raw_classification_values -q`
 - AC108: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_boolean_provider_io_flags -q`
+- AC109: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_tuple_contract_fields -q`
 
 ## Verification
 
