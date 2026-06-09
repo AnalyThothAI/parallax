@@ -749,6 +749,19 @@ def _validate_worker_manifests() -> None:
 
     read_model_writer_by_table()
 
+    duplicate_current_identities: dict[str, list[str]] = {}
+    for manifest in _WORKER_MANIFESTS:
+        seen_identity_tables: set[str] = set()
+        duplicate_identity_tables: set[str] = set()
+        for table_name, _identity_columns in manifest.current_read_model_identities:
+            if table_name in seen_identity_tables:
+                duplicate_identity_tables.add(table_name)
+            seen_identity_tables.add(table_name)
+        if duplicate_identity_tables:
+            duplicate_current_identities[manifest.name] = sorted(duplicate_identity_tables)
+    if duplicate_current_identities:
+        raise ValueError(f"duplicate current read model identity entries: {duplicate_current_identities}")
+
     missing_current_identities = {
         manifest.name: sorted(
             set(manifest.writes_read_models)
