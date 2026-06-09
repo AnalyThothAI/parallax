@@ -477,6 +477,17 @@ def _task_issues(feature: SddFeature) -> list[SddIssue]:
                 issues.append(
                     _issue("task-invalid-dependencies", tasks_artifact, f"{task.title} unresolved: {dependencies}")
                 )
+            elif task.fields.get("status", "").strip().lower() == "[x]":
+                incomplete_dependencies = task_incomplete_dependencies(feature, task)
+                if incomplete_dependencies:
+                    dependencies = ", ".join(f"Task {dependency}" for dependency in incomplete_dependencies)
+                    issues.append(
+                        _issue(
+                            "task-invalid-dependencies",
+                            tasks_artifact,
+                            f"{task.title} complete before dependencies: {dependencies}",
+                        )
+                    )
         missing_agent_fields = [
             field for field in TASK_AGENT_LOOP_FIELDS if _is_placeholder(task.fields.get(field, ""))
         ]

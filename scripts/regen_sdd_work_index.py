@@ -226,7 +226,9 @@ def _issue_meaning(code: str) -> str:
             "Task records contain non-path touch/file fields, non-command verification, invalid status, "
             "or malformed conflict rules."
         ),
-        "task-invalid-dependencies": "Task dependencies reference missing task numbers or unsupported syntax.",
+        "task-invalid-dependencies": (
+            "Task dependencies reference missing task numbers, unsupported syntax, or incomplete prerequisites."
+        ),
         "task-missing-agent-loop-fields": (
             "Task records lack factory lane, deterministic constraints, on-demand context, kill criteria, "
             "or eval signal."

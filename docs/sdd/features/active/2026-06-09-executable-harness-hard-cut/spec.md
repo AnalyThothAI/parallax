@@ -141,6 +141,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC19. WHEN one SDD feature has mixed `Status` values across `spec.md`, `plan.md`, `tasks.md`, and `verification.md` THEN the validator SHALL report `artifact-status-mismatch` before any lifecycle transition is trusted.
 - AC20. WHEN a `Superseded` artifact only mentions a successor in prose, omits `**Superseded by**`, names a non-path value, or names a missing path THEN the validator SHALL report `superseded-missing-successor`.
 - AC21. WHEN an SDD feature directory contains any file or subdirectory besides `spec.md`, `plan.md`, `tasks.md`, and `verification.md` THEN the validator SHALL report `unexpected-artifact`; historical screenshots, mockups, logs, and notes SHALL be removed from feature directories.
+- AC22. WHEN a task is marked `[x]` while any declared dependency task is missing or not `[x]` THEN the validator SHALL report `task-invalid-dependencies`; completion order is evidence, not prose.
 
 ## Risks
 

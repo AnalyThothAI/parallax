@@ -429,6 +429,19 @@ def test_tasks_reject_unresolved_dependencies(tmp_path: Path) -> None:
     assert "task-invalid-dependencies" in _issue_codes(issues)
 
 
+def test_completed_tasks_reject_incomplete_dependencies(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-complete-before-dependency")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(feature / "tasks.md", status="In Progress", task_status="[~]")
+    _append_valid_task(feature / "tasks.md", task_number=2, depends_on="Task 1", task_status="[x]")
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "task-invalid-dependencies" in _issue_codes(issues)
+
+
 def test_active_touch_sets_must_not_overlap_without_conflict_note(tmp_path: Path) -> None:
     first = _feature_dir(tmp_path, "active", "2026-06-09-first")
     second = _feature_dir(tmp_path, "active", "2026-06-09-second")
@@ -576,6 +589,40 @@ def _write_valid_tasks(
                 "- **On-demand context**: `docs/WORKFLOW.md`, `docs/sdd/_templates/`.",
                 "- **Kill/defer criteria**: Stop if validator cannot prove artifact truth.",
                 "- **Eval/repair signal**: Record harness failures and review defects.",
+                f"- **Status**: {task_status}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+def _append_valid_task(path: Path, *, task_number: int, depends_on: str, task_status: str) -> None:
+    path.write_text(
+        path.read_text(encoding="utf-8")
+        + "\n\n"
+        + "\n".join(
+            [
+                f"### Task {task_number} - Dependent",
+                "",
+                "- **File(s)**: `tests/architecture/test_sdd_artifact_validator.py`, "
+                "`scripts/validate_sdd_artifacts.py`",
+                "- **Owner**: parent",
+                f"- **Depends on**: {depends_on}",
+                "- **Touch set**: `scripts/validate_sdd_artifacts.py`",
+                "- **Conflict set**: `scripts/regen_sdd_work_index.py`",
+                "- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::"
+                "test_completed_tasks_reject_incomplete_dependencies` - asserts completion order.",
+                "- **Subagent handoff**: not delegated",
+                "- **Subagent report**: not delegated",
+                "- **Review result**: parent-reviewed",
+                "- **Implementation**: Validate dependency completion.",
+                "- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py -q`",
+                "- **Review owner**: parent",
+                "- **Factory lane**: Harness",
+                "- **Deterministic constraints**: Complete tasks cannot depend on incomplete tasks.",
+                "- **On-demand context**: `docs/sdd/README.md`, `scripts/validate_sdd_artifacts.py`.",
+                "- **Kill/defer criteria**: Stop if completion order cannot be proven.",
+                "- **Eval/repair signal**: `task-invalid-dependencies`.",
                 f"- **Status**: {task_status}",
             ]
         ),

@@ -698,7 +698,7 @@ def test_sdd_work_index_renders_task_dispatch_board(tmp_path: Path) -> None:
                     "status": "[x]",
                     "factory lane": "Docs/contracts",
                     "owner": "parent",
-                    "depends on": "Task 1",
+                    "depends on": "none",
                     "touch set": "docs/agent-playbook/context-packet-template.md",
                     "conflict set": "docs/agent-playbook/factory-operating-model.md",
                     "subagent report": "docs/generated/subagent-reports/task-2.md",
@@ -734,7 +734,7 @@ def test_sdd_work_index_renders_task_dispatch_board(tmp_path: Path) -> None:
         "`uv run pytest tests/architecture/test_agent_playbook_contracts.py -q` |"
     ) in text
     assert (
-        "| `fixture` | `Task 2 — Completed docs` | `[x]` | `complete` | `Docs/contracts` | parent | Task 1 | "
+        "| `fixture` | `Task 2 — Completed docs` | `[x]` | `complete` | `Docs/contracts` | parent | none | "
         "`docs/agent-playbook/context-packet-template.md` | "
         "`docs/agent-playbook/factory-operating-model.md` | "
         "`docs/generated/subagent-reports/task-2.md` | `accepted` | "
@@ -910,7 +910,7 @@ def _write_context_packet_fixture(root: Path) -> None:
 
             - **File(s)**: `docs/agent-playbook/context-packet-template.md`
             - **Owner**: parent
-            - **Depends on**: Task 1
+            - **Depends on**: none
             - **Touch set**: `docs/agent-playbook/context-packet-template.md`
             - **Conflict set**: coordinate with 2026-06-09-other-feature for context packet docs.
             - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli`
