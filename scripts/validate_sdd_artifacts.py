@@ -43,7 +43,7 @@ SECTION_REQUIREMENTS = {
 }
 METADATA_REQUIREMENTS = {
     "spec.md": ("status", "date", "owner", "approved by", "approved at"),
-    "plan.md": ("status", "date", "worktree", "branch", "approved by", "approved at"),
+    "plan.md": ("status", "date", "owning spec", "worktree", "branch", "approved by", "approved at"),
     "tasks.md": ("status", "owning plan", "worktree", "branch", "approved by", "approved at"),
     "verification.md": (
         "status",
@@ -94,6 +94,7 @@ KNOWN_ISSUE_CODES = (
     "missing-status",
     "missing-artifact",
     "unexpected-artifact",
+    "artifact-owning-link-mismatch",
     "missing-gate-section",
     "missing-approval-metadata",
     "task-missing-coordination-fields",
@@ -424,6 +425,7 @@ def _artifact_issues(feature: SddFeature, artifact: ArtifactRecord) -> list[SddI
         issues.append(
             _issue("missing-approval-metadata", artifact, f"missing metadata fields: {', '.join(missing_fields)}")
         )
+    issues.extend(_artifact_owning_link_issues(feature, artifact))
 
     if normalized_status == "superseded":
         return issues
@@ -431,6 +433,31 @@ def _artifact_issues(feature: SddFeature, artifact: ArtifactRecord) -> list[SddI
     missing_sections = [section for section in SECTION_REQUIREMENTS[artifact.name] if section not in artifact.text]
     if missing_sections:
         issues.append(_issue("missing-gate-section", artifact, f"missing sections: {', '.join(missing_sections)}"))
+    return issues
+
+
+def _artifact_owning_link_issues(feature: SddFeature, artifact: ArtifactRecord) -> list[SddIssue]:
+    expected_links = {
+        "plan.md": {"owning spec": f"{feature.relative_path}/spec.md"},
+        "tasks.md": {"owning plan": f"{feature.relative_path}/plan.md"},
+        "verification.md": {
+            "owning spec": f"{feature.relative_path}/spec.md",
+            "owning plan": f"{feature.relative_path}/plan.md",
+        },
+    }.get(artifact.name, {})
+    issues: list[SddIssue] = []
+    for field_name, expected_path in expected_links.items():
+        actual_path = artifact.fields.get(field_name, "")
+        if _is_placeholder(actual_path):
+            continue
+        if actual_path.replace("`", "").strip() != expected_path:
+            issues.append(
+                _issue(
+                    "artifact-owning-link-mismatch",
+                    artifact,
+                    f"{artifact.name} {field_name} must be `{expected_path}`, got {actual_path}",
+                )
+            )
     return issues
 
 

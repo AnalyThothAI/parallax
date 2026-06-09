@@ -45,6 +45,7 @@ claim is allowed without the corresponding output captured below.
 | AC26 — superseded records share one successor. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_one_successor -q` passed after first failing RED run. |
 | AC27 — completed tasks require review evidence. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_tasks_require_review_result_evidence -q` passed after first failing RED run. |
 | AC28 — task DAG numbers are unique and contiguous. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_require_unique_contiguous_numbers -q` passed after first failing RED run. |
+| AC29 — artifact owning links stay inside the feature. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_artifact_owning_links_must_point_to_same_feature -q` passed after first failing RED run. |
 
 Deviations from spec:
 
@@ -539,6 +540,30 @@ exit code: 0
 
 $ uv run pytest tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py -q
 47 passed in 0.64s
+exit code: 0
+
+$ uv run ruff check scripts/validate_sdd_artifacts.py scripts/regen_sdd_work_index.py tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py
+All checks passed!
+exit code: 0
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_artifact_owning_links_must_point_to_same_feature -q
+F                                                                        [100%]
+AssertionError: assert 'artifact-owning-link-mismatch' in set()
+exit code: 1
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_artifact_owning_links_must_point_to_same_feature -q
+1 passed in 0.03s
+exit code: 0
+
+$ uv run python scripts/validate_sdd_artifacts.py --check
+SDD artifact validation passed.
+exit code: 0
+
+$ uv run python scripts/regen_sdd_work_index.py --check
+exit code: 0
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py -q
+48 passed in 0.44s
 exit code: 0
 
 $ uv run ruff check scripts/validate_sdd_artifacts.py scripts/regen_sdd_work_index.py tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py

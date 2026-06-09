@@ -148,6 +148,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC26. WHEN artifacts in the same `Superseded` feature declare different `Superseded by` paths THEN the validator SHALL report `superseded-successor-mismatch`.
 - AC27. WHEN a task is marked `[x]` but `Review result` is not `parent-reviewed` or `accepted` THEN the validator SHALL report `task-complete-missing-review-evidence`; completion requires a review outcome, not just non-delegation.
 - AC28. WHEN structured task headings skip, duplicate, or omit machine-readable task numbers THEN the validator SHALL report `task-invalid-numbering`; dispatch dependency graphs require a unique contiguous `Task 1..N` sequence.
+- AC29. WHEN `plan.md`, `tasks.md`, or `verification.md` owning links point outside the same feature's canonical `spec.md` or `plan.md` THEN the validator SHALL report `artifact-owning-link-mismatch`; old feature links cannot satisfy current Spec→Plan→Tasks→Verification lineage.
 
 ## Risks
 

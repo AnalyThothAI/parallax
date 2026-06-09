@@ -607,6 +607,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 29 — Artifact owning-link lineage gate
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 28
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD lineage metadata and generated index.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_artifact_owning_links_must_point_to_same_feature` — asserts cross-feature owning links cannot pass.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `Owning spec` and `Owning plan` metadata must point at the same feature's canonical `spec.md` and `plan.md` files.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, active and completed SDD artifacts, generated SDD work index.
+- **Kill/defer criteria**: Stop if old feature links or arbitrary existing paths can satisfy current feature lineage metadata.
+- **Eval/repair signal**: `artifact-owning-link-mismatch`, stale generated index, and Spec→Plan→Tasks→Verification drift.
+- **Implementation**: Validate artifact owning-link metadata against the feature-relative canonical paths and expose the issue in lifecycle flags.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_artifact_owning_links_must_point_to_same_feature -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -636,4 +657,5 @@
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_one_successor -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_tasks_require_review_result_evidence -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_require_unique_contiguous_numbers -q`
+- [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_artifact_owning_links_must_point_to_same_feature -q`
 - [ ] `make check-all`

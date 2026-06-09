@@ -92,6 +92,31 @@ def test_feature_rejects_unexpected_artifact_files(tmp_path: Path) -> None:
     assert "unexpected-artifact" in _issue_codes(issues)
 
 
+def test_artifact_owning_links_must_point_to_same_feature(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-cross-linked-feature")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(feature / "tasks.md", status="In Progress", task_status="[~]")
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+    _replace_metadata_link(feature / "plan.md", "Owning spec", "docs/sdd/features/active/2026-06-09-other/spec.md")
+    _replace_metadata_link(feature / "tasks.md", "Owning plan", "docs/sdd/features/active/2026-06-09-other/plan.md")
+    _replace_metadata_link(
+        feature / "verification.md",
+        "Owning spec",
+        "docs/sdd/features/active/2026-06-09-other/spec.md",
+    )
+    _replace_metadata_link(
+        feature / "verification.md",
+        "Owning plan",
+        "docs/sdd/features/active/2026-06-09-other/plan.md",
+    )
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "artifact-owning-link-mismatch" in _issue_codes(issues)
+    assert sum(issue.code == "artifact-owning-link-mismatch" for issue in issues) == 4
+
+
 def test_superseded_feature_requires_machine_readable_successor(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "completed", "2026-06-09-prose-successor")
     _write_valid_spec(feature / "spec.md", status="Superseded")
@@ -609,6 +634,14 @@ def _feature_dir(root: Path, lane: str, slug: str) -> Path:
     return path
 
 
+def _feature_relative_dir(path: Path) -> str:
+    marker = "/docs/sdd/features/"
+    feature_dir = path.parent.as_posix()
+    if marker not in feature_dir:
+        raise AssertionError(f"test artifact is outside SDD features: {path}")
+    return "docs/sdd/features/" + feature_dir.split(marker, 1)[1]
+
+
 def _write_valid_spec(path: Path, *, status: str) -> None:
     path.write_text(
         "\n".join(
@@ -643,6 +676,7 @@ def _write_valid_spec(path: Path, *, status: str) -> None:
 
 
 def _write_valid_plan(path: Path, *, status: str, branch: str = "codex/harness") -> None:
+    feature_dir = _feature_relative_dir(path)
     path.write_text(
         "\n".join(
             [
@@ -650,6 +684,7 @@ def _write_valid_plan(path: Path, *, status: str, branch: str = "codex/harness")
                 "",
                 f"**Status**: {status}",
                 "**Date**: 2026-06-09",
+                f"**Owning spec**: `{feature_dir}/spec.md`",
                 "**Worktree**: `.worktrees/harness`",
                 f"**Branch**: `{branch}`",
                 "**Approved by**: qinghuan",
@@ -688,13 +723,14 @@ def _write_valid_tasks(
     verification: str = "uv run pytest tests/architecture/test_sdd_artifact_validator.py -q",
     task_status: str = "[x]",
 ) -> None:
+    feature_dir = _feature_relative_dir(path)
     path.write_text(
         "\n".join(
             [
                 "# Tasks - Valid",
                 "",
                 f"**Status**: {status}",
-                "**Owning plan**: `docs/sdd/features/active/2026-06-09-valid/plan.md`",
+                f"**Owning plan**: `{feature_dir}/plan.md`",
                 "**Worktree**: `.worktrees/harness`",
                 f"**Branch**: `{branch}`",
                 "**Approved by**: qinghuan",
@@ -811,6 +847,7 @@ def _write_valid_verification(
     skipped_count: str = "0",
     skipped_table_rows: tuple[str, ...] = (),
 ) -> None:
+    feature_dir = _feature_relative_dir(path)
     path.write_text(
         "\n".join(
             [
@@ -818,8 +855,8 @@ def _write_valid_verification(
                 "",
                 f"**Status**: {status}",
                 "**Date**: 2026-06-09",
-                "**Owning spec**: `docs/sdd/features/completed/2026-06-09-valid/spec.md`",
-                "**Owning plan**: `docs/sdd/features/completed/2026-06-09-valid/plan.md`",
+                f"**Owning spec**: `{feature_dir}/spec.md`",
+                f"**Owning plan**: `{feature_dir}/plan.md`",
                 f"**Branch**: `{branch}`",
                 "**Worktree**: `.worktrees/harness`",
                 "**Approved by**: qinghuan",
@@ -908,6 +945,17 @@ def _append_successor_reference(path: Path) -> None:
         + "\n\nSuperseded by: `docs/sdd/features/active/2026-06-09-successor/spec.md`\n",
         encoding="utf-8",
     )
+
+
+def _replace_metadata_link(path: Path, field_name: str, value: str) -> None:
+    needle = f"**{field_name}**:"
+    lines = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.startswith(needle):
+            lines.append(f"**{field_name}**: `{value}`")
+        else:
+            lines.append(line)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _append_machine_successor_reference(path: Path) -> None:
