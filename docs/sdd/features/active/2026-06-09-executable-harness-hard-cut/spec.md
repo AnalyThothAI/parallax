@@ -112,6 +112,7 @@ can both miss real process drift and block healthy refactors.
 | Publisher changed rows must contain identity columns. | `CurrentReadModelPublisher.changed_rows()` validates stable identity columns before payload hashing so query drift cannot surface as a payload `KeyError` or hash a row without serving identity. |
 | Publisher changed-row batches must have unique identities. | `CurrentReadModelPublisher.changed_rows()` rejects duplicate stable identities inside one batch before a current read-model row can be prepared twice. |
 | Publisher changed rows must be mappings. | `CurrentReadModelPublisher.changed_rows()` rejects list-shaped or scalar row values before column, identity, payload hash, or write-preparation validation can consume them. |
+| Publisher existing hashes must be mappings. | `CurrentReadModelPublisher.changed_rows()` rejects list-shaped or scalar existing-hash maps before row, identity, payload hash, hash-lookup, or write-preparation validation can consume them. |
 | Publisher changed rows must use string row columns. | `CurrentReadModelPublisher.changed_rows()` rejects non-string row keys before payload hashing or changed-row write preparation can preserve compatibility-shaped mapping keys. |
 | Publisher changed rows must have non-null identity values. | `CurrentReadModelPublisher.changed_rows()` rejects rows whose stable identity columns resolve to `None` before payload hashing or changed-row write preparation. |
 | Publisher changed rows must have non-blank identity values. | `CurrentReadModelPublisher.changed_rows()` rejects rows whose stable identity string values are blank before payload hashing or changed-row write preparation. |
@@ -292,6 +293,7 @@ can both miss real process drift and block healthy refactors.
 - G121. Current read-model changed-row publishing rejects blank stable identity string values before hashing or write preparation, so whitespace placeholders cannot become current serving identities.
 - G122. Current read-model publisher identity column declarations reject list-shaped compatibility values, so row identity checks consume immutable column tuples.
 - G123. Current read-model changed-row publishing rejects non-mapping row values before column, identity, hash, or write preparation checks consume compatibility-shaped row containers.
+- G124. Current read-model changed-row publishing rejects non-mapping existing-hash indexes before row validation, hash lookup, or write preparation can consume compatibility-shaped unchanged-row state.
 
 ## Non-goals
 
@@ -482,6 +484,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC143. WHEN `CurrentReadModelPublisher.changed_rows()` receives a row whose stable identity column value is a blank string THEN it SHALL raise a dedicated blank-identity validation error before payload hashing or changed-row write preparation.
 - AC144. WHEN `CurrentReadModelPublisher.identity_columns` is not a tuple THEN publisher construction SHALL raise before stable identity validation can consume list-shaped or scalar compatibility values.
 - AC145. WHEN `CurrentReadModelPublisher.changed_rows()` receives a row that is not a mapping THEN it SHALL raise a dedicated row-shape validation error before column, identity, payload hash, or changed-row write-preparation validation.
+- AC146. WHEN `CurrentReadModelPublisher.changed_rows()` receives `existing_hashes` that is not a mapping THEN it SHALL raise a dedicated existing-hash validation error before row, identity, payload hash, hash-lookup, or changed-row write-preparation validation.
 
 ## Risks
 

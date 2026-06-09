@@ -162,6 +162,7 @@ claim is allowed without the corresponding output captured below.
 | AC143 — Publisher changed rows reject blank identity values. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_blank_row_identity_values_before_hashing -q` failed RED when a blank string was accepted as a stable current-row identity value, then passed after adding blank identity-value validation. |
 | AC144 — Publisher identity columns reject list-shaped declarations. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_tuple_identity_columns -q` failed RED when list-shaped identity columns were accepted, then passed after adding tuple-shape validation. |
 | AC145 — Publisher changed rows reject non-mapping row containers. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_mapping_rows_before_column_validation -q` failed RED when a list-shaped row was reported as non-string columns, then passed after adding dedicated mapping validation. |
+| AC146 — Publisher changed rows reject non-mapping existing hashes. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_mapping_existing_hashes_before_hash_lookup -q` failed RED when list-shaped `existing_hashes` leaked as `AttributeError`, then passed after adding dedicated mapping validation. |
 
 Deviations from spec:
 
@@ -2548,6 +2549,45 @@ exit code: 0
 
 $ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
 61 passed in 0.58s
+exit code: 0
+
+$ git diff --check
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_mapping_existing_hashes_before_hash_lookup -q
+F                                                                        [100%]
+E           AttributeError: 'list' object has no attribute 'get'
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_mapping_existing_hashes_before_hash_lookup -q
+1 passed in 0.40s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py -q
+25 passed in 0.41s
+exit code: 0
+
+$ uv run python scripts/regen_sdd_work_index.py
+wrote docs/generated/sdd-work-index.md
+exit code: 0
+
+$ uv run python scripts/validate_sdd_artifacts.py --check
+SDD artifact validation passed.
+exit code: 0
+
+$ uv run python scripts/regen_sdd_work_index.py --check
+exit code: 0
+
+$ uv run ruff check src/parallax/app/runtime/current_read_model_publisher.py tests/architecture/test_worker_manifest_static_contracts.py
+All checks passed!
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py -q
+25 passed in 0.44s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
+61 passed in 0.51s
 exit code: 0
 
 $ git diff --check

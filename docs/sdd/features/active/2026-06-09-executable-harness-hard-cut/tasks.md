@@ -3064,6 +3064,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 146 — Publisher changed rows reject non-mapping existing hashes
+
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 145
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for changed-row existing-hash validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_mapping_existing_hashes_before_hash_lookup` — call `changed_rows()` with list-shaped `existing_hashes` and assert publisher validation raises a dedicated mapping error before hash lookup.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `CurrentReadModelPublisher.changed_rows()` existing-hash state must be a mapping from stable identity tuples to payload hashes before row validation, payload hashing, hash lookup, duplicate identity, unchanged-row skip, or write-preparation checks can consume it.
+- **On-demand context**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, and current read-model unchanged-row idempotency contracts.
+- **Kill/defer criteria**: Stop if list-shaped existing-hash indexes are an intentional API, if validation only belongs in concrete projection repositories, or if the fix requires compatibility coercion.
+- **Eval/repair signal**: list-shaped existing hash indexes, unchanged-row idempotency drift, opaque hash lookup errors, publisher changed-row write preparation drift, and SDD generated index drift.
+- **Implementation**: Add `existing_hashes` mapping validation at the start of `changed_rows()` before iterating rows or looking up payload hashes.
+- **Verification**: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_mapping_existing_hashes_before_hash_lookup -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`

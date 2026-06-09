@@ -121,6 +121,8 @@ class CurrentReadModelPublisher:
         *,
         existing_hashes: Mapping[tuple[Any, ...], str | None],
     ) -> list[dict[str, Any]]:
+        if not isinstance(existing_hashes, Mapping):
+            raise ValueError(f"current read model existing hashes must be mapping: {existing_hashes}")
         changed: list[dict[str, Any]] = []
         seen_identities: set[tuple[Any, ...]] = set()
         for row in rows:

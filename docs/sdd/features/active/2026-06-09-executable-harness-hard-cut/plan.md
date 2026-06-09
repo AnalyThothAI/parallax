@@ -261,6 +261,7 @@ Known-failing baseline tests:
 - Require every `CurrentReadModelPublisher.identity_columns` entry to exist in each changed row before payload hashing, so query drift fails as missing stable identity instead of payload `KeyError`.
 - Reject duplicate stable identity tuples inside one `CurrentReadModelPublisher.changed_rows()` batch before a projection can prepare multiple writes for the same current read-model row.
 - Reject list-shaped or scalar rows inside `CurrentReadModelPublisher.changed_rows()` before row-column validation can mask row-shape drift.
+- Reject list-shaped or scalar `existing_hashes` inside `CurrentReadModelPublisher.changed_rows()` before hash lookup can leak opaque mapping errors.
 - Reject non-string row keys inside `CurrentReadModelPublisher.changed_rows()` before payload hashing or write preparation can preserve compatibility-shaped mapping keys.
 - Reject `None` values for stable identity columns inside `CurrentReadModelPublisher.changed_rows()` before absent product/window keys can become current serving identities.
 - Reject blank string values for stable identity columns inside `CurrentReadModelPublisher.changed_rows()` before whitespace placeholders can become current serving identities.
@@ -426,6 +427,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Publisher changed rows contain identity columns. | Pass: `CurrentReadModelPublisher.changed_rows()` raises a dedicated missing-identity error before payload hashing when a row lacks a stable identity column. |
 | Publisher changed-row batches have unique identities. | Pass: `CurrentReadModelPublisher.changed_rows()` raises when two rows in one batch share the same stable identity tuple. |
 | Publisher changed rows are mappings. | Pass: `CurrentReadModelPublisher.changed_rows()` raises `current read model row must be mapping` before column validation when a row is list-shaped. |
+| Publisher existing hashes are mappings. | Pass: `CurrentReadModelPublisher.changed_rows()` raises `current read model existing hashes must be mapping` before hash lookup when `existing_hashes` is list-shaped. |
 | Publisher changed rows use string row columns. | Pass: `CurrentReadModelPublisher.changed_rows()` raises `current read model row has non-string columns` before write preparation when a row contains a non-string key. |
 | Publisher changed rows have non-null identity values. | Pass: `CurrentReadModelPublisher.changed_rows()` raises `current read model row has null identity values` before payload hashing when a stable identity value is `None`. |
 | Publisher changed rows have non-blank identity values. | Pass: `CurrentReadModelPublisher.changed_rows()` raises `current read model row has blank identity values` before payload hashing when a stable identity value is blank. |
@@ -608,6 +610,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC143: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_blank_row_identity_values_before_hashing -q`
 - AC144: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_tuple_identity_columns -q`
 - AC145: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_mapping_rows_before_column_validation -q`
+- AC146: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_mapping_existing_hashes_before_hash_lookup -q`
 
 ## Verification
 
