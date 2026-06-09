@@ -69,6 +69,33 @@ echo
 echo "== migration =="
 psql_cmd -Atc "SELECT version_num FROM alembic_version ORDER BY version_num DESC LIMIT 1;"
 
+echo "== postgres observability extensions =="
+observability_extensions="$(
+  psql_cmd -Atc "
+SELECT extname
+FROM pg_extension
+WHERE extname = ANY(
+  ARRAY[
+    'pg_stat_statements',
+    'pg_stat_kcache',
+    'pg_qualstats',
+    'pg_wait_sampling'
+  ]::name[]
+)
+ORDER BY extname;"
+)"
+printf '%s\n' "${observability_extensions}"
+for extension_name in pg_stat_statements pg_stat_kcache pg_qualstats pg_wait_sampling; do
+  if ! printf '%s\n' "${observability_extensions}" | grep -qx "${extension_name}"; then
+    record_failure "PostgreSQL extension ${extension_name} is not installed in ${DB_NAME}"
+  fi
+done
+
+if [[ "${failures}" -gt 0 ]]; then
+  echo "runtime performance root fix check failed: ${failures} hard gate(s) failed" >&2
+  exit 1
+fi
+
 echo "== token radar event-id bounded population calls =="
 token_radar_event_id_populate_calls="$(
   psql_cmd -Atc "

@@ -221,6 +221,12 @@ NEWS_AGENT_MARKET_ADMISSION_HARD_CUT_MIGRATION = Path(
 NEWS_MARKET_SCOPE_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260607_0152_news_market_scope_hard_cut.py"
 )
+POSTGRES_OBSERVABILITY_EXTENSIONS_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260609_0160_postgres_observability_extensions.py"
+)
+NEWS_AGENT_ADMISSION_CANDIDATE_INDEXES_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260609_0161_news_agent_admission_candidate_indexes.py"
+)
 TOKEN_PULSE_EQUITY_CPU_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260529_0124_token_pulse_equity_cpu_hard_cut.py"
 )
@@ -1951,6 +1957,52 @@ def test_news_page_search_document_migration_adds_search_text_and_index() -> Non
     assert "RESET lock_timeout" in text
     assert "RESET statement_timeout" in text
     assert "DROP INDEX CONCURRENTLY IF EXISTS idx_news_page_rows_search_text_trgm" in downgrade_text
+
+
+def test_postgres_observability_extensions_migration_installs_runtime_extensions() -> None:
+    assert POSTGRES_OBSERVABILITY_EXTENSIONS_MIGRATION.exists(), (
+        f"{POSTGRES_OBSERVABILITY_EXTENSIONS_MIGRATION} missing; create PostgreSQL observability extensions"
+    )
+    text = POSTGRES_OBSERVABILITY_EXTENSIONS_MIGRATION.read_text()
+    downgrade_text = text.split("def downgrade() -> None:", maxsplit=1)[1]
+
+    for statement in (
+        'revision = "20260609_0160"',
+        'down_revision = "20260609_0159"',
+        "CREATE EXTENSION IF NOT EXISTS pg_stat_statements",
+        "CREATE EXTENSION IF NOT EXISTS pg_stat_kcache",
+        "CREATE EXTENSION IF NOT EXISTS pg_qualstats",
+        "CREATE EXTENSION IF NOT EXISTS pg_wait_sampling",
+        "ANALYZE events",
+        "ANALYZE news_items",
+        "ANALYZE news_page_rows",
+    ):
+        assert statement in text
+
+    assert "DROP EXTENSION" not in downgrade_text
+    assert "pg_stat_statements_reset" not in text
+
+
+def test_news_agent_admission_candidate_indexes_support_identity_lookup() -> None:
+    assert NEWS_AGENT_ADMISSION_CANDIDATE_INDEXES_MIGRATION.exists(), (
+        f"{NEWS_AGENT_ADMISSION_CANDIDATE_INDEXES_MIGRATION} missing; add News admission candidate indexes"
+    )
+    text = NEWS_AGENT_ADMISSION_CANDIDATE_INDEXES_MIGRATION.read_text()
+
+    for statement in (
+        'revision = "20260609_0161"',
+        'down_revision = "20260609_0160"',
+        "CREATE INDEX IF NOT EXISTS ix_news_items_title_fingerprint_published",
+        "ON news_items(title_fingerprint, published_at_ms DESC, news_item_id)",
+        "WHERE title_fingerprint <> ''",
+        "CREATE INDEX IF NOT EXISTS ix_news_items_content_hash_published",
+        "ON news_items(content_hash, published_at_ms DESC, news_item_id)",
+        "CREATE INDEX IF NOT EXISTS ix_news_items_article_url_published",
+        "ON news_items(canonical_url, published_at_ms DESC, news_item_id)",
+        "url_identity_kind = 'article'",
+        "ANALYZE news_items",
+    ):
+        assert statement in text
 
 
 def test_news_agent_market_admission_migration_adds_agent_admission_columns_and_indexes() -> None:

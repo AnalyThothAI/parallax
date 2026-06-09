@@ -29,6 +29,12 @@ def test_powa_configure_script_sets_bounded_history_and_does_not_print_secrets()
 def test_runtime_performance_check_prints_read_only_lifecycle_report() -> None:
     script = (ROOT / "scripts" / "runtime_performance_root_fix_check.sh").read_text(encoding="utf-8")
 
+    assert "== postgres observability extensions ==" in script
+    assert "pg_extension" in script
+    assert "pg_stat_statements" in script
+    assert "pg_stat_kcache" in script
+    assert "pg_qualstats" in script
+    assert "pg_wait_sampling" in script
     assert "== postgres lifecycle report ==" in script
     assert "psql_cmd --csv -c" in script
     assert "pg_stat_user_tables" in script
@@ -86,3 +92,20 @@ def test_runtime_performance_check_hard_gates_runtime_sql_fingerprints() -> None
     assert "assert_zero_new_or_cumulative_calls" in script
     assert 'stale equity fetch runs" "${stale_equity_fetch_runs}"' not in script
     assert "top sql token radar share percent" not in script
+
+
+def test_testcontainers_use_observability_postgres_image() -> None:
+    helper = (ROOT / "tests" / "postgres_observability_container.py").read_text(encoding="utf-8")
+
+    assert "parallax-postgres-observability:18" in helper
+    assert "ops\" / \"postgres\" / \"Dockerfile" in helper
+    assert "shared_preload_libraries=pg_stat_statements,pg_stat_kcache,pg_qualstats,pg_wait_sampling" in helper
+
+    for path in (
+        ROOT / "tests" / "integration" / "conftest.py",
+        ROOT / "tests" / "e2e" / "conftest.py",
+        ROOT / "tests" / "golden" / "conftest.py",
+    ):
+        text = path.read_text(encoding="utf-8")
+        assert "observability_postgres_container(PostgresContainer)" in text
+        assert "postgres:16-alpine" not in text

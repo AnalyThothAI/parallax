@@ -79,6 +79,98 @@ _URL_USERINFO_RE = re.compile(r"([a-z][a-z0-9+.-]*://)[^/@\s]+@", re.IGNORECASE)
 _CHECK_QUOTED_VALUE_RE = re.compile(r"'((?:''|[^'])*)'(?:\s*::\s*[A-Za-z_][A-Za-z0-9_]*)?")
 _PUBLICATION_METADATA_FIELDS = {"computed_at_ms", "updated_at_ms", "projected_at_ms", "payload_hash"}
 _NEWS_PAGE_SIGNAL_SQL = "LOWER(signal_json -> 'display_signal' ->> 'direction') = %s"
+_NEWS_ITEM_WORKER_COLUMNS = (
+    "news_item_id",
+    "provider_item_id",
+    "source_id",
+    "source_domain",
+    "canonical_url",
+    "title",
+    "summary",
+    "body_text",
+    "language",
+    "published_at_ms",
+    "fetched_at_ms",
+    "content_hash",
+    "title_fingerprint",
+    "lifecycle_status",
+    "processing_attempts",
+    "processing_error",
+    "processed_at_ms",
+    "created_at_ms",
+    "updated_at_ms",
+    "content_class",
+    "content_tags_json",
+    "content_classification_json",
+    "provider_signal_json",
+    "provider_token_impacts_json",
+    "canonical_item_key",
+    "dedup_key_kind",
+    "dedup_key_confidence",
+    "url_identity_kind",
+    "canonical_policy_version",
+    "duplicate_observation_count",
+    "source_ids_json",
+    "source_domains_json",
+    "provider_article_keys_json",
+    "processing_lease_owner",
+    "processing_leased_until_ms",
+    "processing_next_due_at_ms",
+    "processing_terminal_error",
+    "story_key",
+    "story_identity_json",
+    "story_identity_version",
+    "agent_admission_status",
+    "agent_admission_reason",
+    "agent_admission_json",
+    "agent_admission_version",
+    "agent_representative_news_item_id",
+    "agent_admission_computed_at_ms",
+    "market_scope_json",
+)
+_NEWS_ITEM_WORKER_COLUMNS_SQL = ",\n".join(f"                items.{column}" for column in _NEWS_ITEM_WORKER_COLUMNS)
+_NEWS_ITEM_WORKER_JSON_SQL = (
+    "jsonb_build_object(\n"
+    + ",\n".join(f"                  '{column}', items.{column}" for column in _NEWS_ITEM_WORKER_COLUMNS)
+    + "\n                )"
+)
+_NEWS_ITEM_AGENT_RUN_COLUMNS = (
+    "run_id",
+    "news_item_id",
+    "provider",
+    "model",
+    "backend",
+    "execution_trace_id",
+    "workflow_name",
+    "agent_name",
+    "lane",
+    "artifact_version_hash",
+    "prompt_version",
+    "schema_version",
+    "validator_version",
+    "guardrail_version",
+    "input_hash",
+    "output_hash",
+    "execution_started",
+    "status",
+    "outcome",
+    "error_class",
+    "error",
+    "request_json",
+    "response_json",
+    "validation_errors_json",
+    "trace_metadata_json",
+    "usage_json",
+    "latency_ms",
+    "started_at_ms",
+    "finished_at_ms",
+    "created_at_ms",
+)
+_NEWS_ITEM_AGENT_RUN_JSON_SQL = (
+    "jsonb_build_object(\n"
+    + ",\n".join(f"                  '{column}', runs.{column}" for column in _NEWS_ITEM_AGENT_RUN_COLUMNS)
+    + "\n                )"
+)
 _MATERIAL_MATCH_WINDOW_MS = 600_000
 _STORY_PROJECTION_WINDOW_MS = 72 * 60 * 60 * 1000
 _CURRENT_NEWS_ITEM_BRIEF_CURRENT_BRIEF_SQL = current_news_item_brief_sql_predicate("current_brief")
@@ -2947,7 +3039,8 @@ class NewsRepository:
         rows = self.conn.execute(
             f"""
             WITH target_items AS (
-              SELECT items.*
+              SELECT
+{_NEWS_ITEM_WORKER_COLUMNS_SQL}
                 FROM news_items AS items
                WHERE items.news_item_id = ANY(%s::text[])
                  AND EXISTS (
@@ -2959,7 +3052,7 @@ class NewsRepository:
                  )
             )
             SELECT
-              to_jsonb(items.*)
+              {_NEWS_ITEM_WORKER_JSON_SQL}
                 || jsonb_build_object(
                   'provider_item_id', source_rep.provider_item_id,
                   'source_id', source_rep.source_id,
@@ -3087,12 +3180,14 @@ class NewsRepository:
                 FROM unnest(%s::text[]) WITH ORDINALITY AS ids(news_item_id, ordinal)
             ),
             target_items AS (
-              SELECT items.*, target_ids.ordinal
+              SELECT
+{_NEWS_ITEM_WORKER_COLUMNS_SQL},
+                target_ids.ordinal
                 FROM target_ids
                 JOIN news_items AS items ON items.news_item_id = target_ids.news_item_id
             )
             SELECT
-              to_jsonb(items.*)
+              {_NEWS_ITEM_WORKER_JSON_SQL}
                 || jsonb_build_object(
                   'source_name', sources.source_name,
                   'source_role', sources.source_role,
@@ -3215,7 +3310,47 @@ class NewsRepository:
                            WHEN 'low' THEN 10
                            ELSE 0
                          END AS trust_tier_rank
-                    FROM news_items AS duplicate_items
+                    FROM (
+                      SELECT candidate_ids.news_item_id
+                        FROM (
+                          SELECT duplicate_edges.news_item_id
+                            FROM jsonb_array_elements_text(
+                                   COALESCE(edge_summary.provider_article_keys_json, '[]'::jsonb)
+                                 ) AS item_keys(provider_article_key)
+                            JOIN news_item_observation_edges AS duplicate_edges
+                              ON duplicate_edges.provider_article_key = item_keys.provider_article_key
+                            JOIN news_sources AS duplicate_sources
+                              ON duplicate_sources.source_id = duplicate_edges.source_id
+                           WHERE duplicate_edges.provider_article_key <> ''
+                             AND duplicate_sources.enabled = true
+                          UNION
+                          SELECT url_items.news_item_id
+                            FROM news_items AS url_items
+                           WHERE COALESCE(NULLIF(items.canonical_url, ''), '') <> ''
+                             AND items.url_identity_kind = 'article'
+                             AND url_items.canonical_url <> ''
+                             AND url_items.url_identity_kind = 'article'
+                             AND url_items.canonical_url = items.canonical_url
+                          UNION
+                          SELECT canonical_key_items.news_item_id
+                            FROM news_items AS canonical_key_items
+                           WHERE COALESCE(NULLIF(items.canonical_item_key, ''), '') <> ''
+                             AND items.url_identity_kind = 'article'
+                             AND canonical_key_items.canonical_item_key <> ''
+                             AND canonical_key_items.url_identity_kind = 'article'
+                             AND canonical_key_items.canonical_item_key = items.canonical_item_key
+                          UNION
+                          SELECT content_hash_items.news_item_id
+                            FROM news_items AS content_hash_items
+                           WHERE COALESCE(NULLIF(items.content_hash, ''), '') <> ''
+                             AND content_hash_items.content_hash <> ''
+                             AND content_hash_items.content_hash = items.content_hash
+                        ) AS candidate_ids
+                       WHERE candidate_ids.news_item_id <> items.news_item_id
+                       GROUP BY candidate_ids.news_item_id
+                    ) AS duplicate_candidate_ids
+                    JOIN news_items AS duplicate_items
+                      ON duplicate_items.news_item_id = duplicate_candidate_ids.news_item_id
                     JOIN news_sources AS duplicate_item_sources
                       ON duplicate_item_sources.source_id = duplicate_items.source_id
                     LEFT JOIN news_item_agent_briefs AS duplicate_current_brief
@@ -3241,34 +3376,6 @@ class NewsRepository:
                     ) AS duplicate_edge_evidence ON true
                    WHERE duplicate_items.news_item_id <> items.news_item_id
                      AND duplicate_items.published_at_ms <= %s
-                     AND (
-                       EXISTS (
-                         SELECT 1
-                           FROM jsonb_array_elements_text(
-                                  COALESCE(edge_summary.provider_article_keys_json, '[]'::jsonb)
-                                ) AS item_keys(provider_article_key)
-                           JOIN jsonb_array_elements_text(
-                                  COALESCE(duplicate_edge_evidence.provider_article_keys_json, '[]'::jsonb)
-                                ) AS duplicate_keys(provider_article_key)
-                             ON duplicate_keys.provider_article_key = item_keys.provider_article_key
-                       )
-                       OR (
-                         COALESCE(NULLIF(items.canonical_url, ''), '') <> ''
-                         AND items.url_identity_kind = 'article'
-                         AND duplicate_items.url_identity_kind = 'article'
-                         AND duplicate_items.canonical_url = items.canonical_url
-                       )
-                       OR (
-                         COALESCE(NULLIF(items.canonical_item_key, ''), '') <> ''
-                         AND items.url_identity_kind = 'article'
-                         AND duplicate_items.url_identity_kind = 'article'
-                         AND duplicate_items.canonical_item_key = items.canonical_item_key
-                       )
-                       OR (
-                         COALESCE(NULLIF(items.content_hash, ''), '') <> ''
-                         AND duplicate_items.content_hash = items.content_hash
-                       )
-                     )
                      AND duplicate_item_sources.enabled = true
                      AND duplicate_items.lifecycle_status = 'processed'
                      AND (
@@ -3339,7 +3446,22 @@ class NewsRepository:
                            WHEN 'low' THEN 10
                            ELSE 0
                          END AS trust_tier_rank
-                    FROM news_items AS story_items
+                    FROM (
+                      SELECT story_key_items.news_item_id
+                       FROM news_items AS story_key_items
+                       WHERE COALESCE(NULLIF(items.story_key, ''), '') <> ''
+                         AND story_key_items.story_key <> ''
+                         AND story_key_items.story_key = items.story_key
+                      UNION
+                      SELECT title_fingerprint_items.news_item_id
+                        FROM news_items AS title_fingerprint_items
+                       WHERE COALESCE(NULLIF(items.story_key, ''), '') = ''
+                         AND COALESCE(NULLIF(items.title_fingerprint, ''), '') <> ''
+                         AND title_fingerprint_items.title_fingerprint <> ''
+                         AND title_fingerprint_items.title_fingerprint = items.title_fingerprint
+                    ) AS story_candidate_ids
+                    JOIN news_items AS story_items
+                      ON story_items.news_item_id = story_candidate_ids.news_item_id
                     JOIN news_sources AS story_item_sources
                       ON story_item_sources.source_id = story_items.source_id
                     LEFT JOIN news_item_agent_briefs AS story_current_brief
@@ -3371,17 +3493,6 @@ class NewsRepository:
                      AND story_items.published_at_ms BETWEEN
                          items.published_at_ms - {_STORY_PROJECTION_WINDOW_MS}
                          AND items.published_at_ms + {_STORY_PROJECTION_WINDOW_MS}
-                     AND (
-                       (
-                         COALESCE(NULLIF(items.story_key, ''), '') <> ''
-                         AND story_items.story_key = items.story_key
-                       )
-                       OR (
-                         COALESCE(NULLIF(items.story_key, ''), '') = ''
-                         AND COALESCE(NULLIF(items.title_fingerprint, ''), '') <> ''
-                         AND story_items.title_fingerprint = items.title_fingerprint
-                       )
-                     )
                      AND EXISTS (
                        SELECT 1
                          FROM news_item_observation_edges AS story_edges
@@ -3576,7 +3687,7 @@ class NewsRepository:
                 )
             )
             SELECT
-              to_jsonb(items.*)
+              {_NEWS_ITEM_WORKER_JSON_SQL}
                 || jsonb_build_object(
                   'source_name', sources.source_name,
                   'source_role', sources.source_role,
@@ -3590,7 +3701,7 @@ class NewsRepository:
                 WHEN current_brief.news_item_id IS NULL THEN NULL
                 ELSE to_jsonb(current_brief.*)
               END AS current_brief,
-              CASE WHEN latest_run.run_id IS NULL THEN NULL ELSE to_jsonb(latest_run.*) END AS latest_run,
+              latest_run.latest_run AS latest_run,
               candidates.source_updated_at_ms,
               COALESCE(entity_rows.rows, '[]'::jsonb) AS entities,
               COALESCE(token_rows.rows, '[]'::jsonb) AS token_mentions,
@@ -3621,7 +3732,7 @@ class NewsRepository:
                  AND edge_sources.enabled = true
             ) AS edge_summary ON true
             LEFT JOIN LATERAL (
-              SELECT *
+              SELECT {_NEWS_ITEM_AGENT_RUN_JSON_SQL} AS latest_run
                 FROM news_item_agent_runs AS runs
                WHERE runs.news_item_id = items.news_item_id
                ORDER BY runs.finished_at_ms DESC, runs.run_id DESC

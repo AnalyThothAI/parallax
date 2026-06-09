@@ -17,6 +17,8 @@ def test_page_projection_loader_reads_source_payload_for_claimed_targets() -> No
 
     assert rows == []
     assert "WHERE items.news_item_id = ANY(%s::text[])" in conn.sql
+    assert "SELECT items.*" not in conn.sql
+    assert "to_jsonb(items.*)" not in conn.sql
     assert "JOIN LATERAL" in conn.sql
     assert "edge_sources.enabled = true" in conn.sql
     assert "'provider_type', source_rep.provider_type" in conn.sql
@@ -33,6 +35,9 @@ def test_brief_target_loader_includes_provider_duplicate_aggregation() -> None:
     rows = repo.load_items_for_brief_targets(news_item_ids=["news-1"])
 
     assert rows == []
+    assert "SELECT items.*" not in conn.sql
+    assert "to_jsonb(items.*)" not in conn.sql
+    assert "SELECT *" not in conn.sql
     assert "edge_summary.duplicate_count" in conn.sql
     assert "'duplicate_count', COALESCE(edge_summary.duplicate_count, 1)" in conn.sql
     assert "'source_ids_json', COALESCE(edge_summary.source_ids_json, '[]'::jsonb)" in conn.sql
@@ -41,6 +46,32 @@ def test_brief_target_loader_includes_provider_duplicate_aggregation() -> None:
     assert "edge_sources.enabled = true" in conn.sql
     assert "story_member_rows" not in conn.sql
     assert "news_story_groups AS stories" not in conn.sql
+
+
+def test_agent_admission_context_loader_uses_narrow_news_item_payloads() -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+
+    rows = repo.load_agent_admission_contexts(news_item_ids=["news-1"], now_ms=1_000)
+
+    assert rows == []
+    assert "WITH target_ids(news_item_id, ordinal) AS" in conn.sql
+    assert "SELECT items.*" not in conn.sql
+    assert "to_jsonb(items.*)" not in conn.sql
+    assert "SELECT *" not in conn.sql
+    assert "'news_item_id', items.news_item_id" in conn.sql
+    assert "'content_classification_json', items.content_classification_json" in conn.sql
+    assert "'source_enabled', sources.enabled" in conn.sql
+    assert "duplicate_candidate_ids" in conn.sql
+    assert "story_candidate_ids" in conn.sql
+    assert "UNION" in conn.sql
+    assert "url_items.canonical_url <> ''" in conn.sql
+    assert "canonical_key_items.canonical_item_key <> ''" in conn.sql
+    assert "content_hash_items.content_hash <> ''" in conn.sql
+    assert "story_key_items.story_key <> ''" in conn.sql
+    assert "title_fingerprint_items.title_fingerprint <> ''" in conn.sql
+    assert "duplicate_items.canonical_url = items.canonical_url" not in conn.sql
+    assert "story_items.story_key = items.story_key" not in conn.sql
 
 
 def test_unprocessed_item_loader_selects_provider_article_keys_for_story_identity() -> None:

@@ -83,8 +83,9 @@ def _ensure_postgres_dsn() -> Iterator[None]:
     from testcontainers.postgres import PostgresContainer
 
     from parallax.platform.db.postgres_migrations import upgrade_head
+    from tests.postgres_observability_container import observability_postgres_container
 
-    with PostgresContainer("postgres:16-alpine") as pg:
+    with observability_postgres_container(PostgresContainer) as pg:
         dsn = pg.get_connection_url().replace("postgresql+psycopg2://", "postgresql://")
         try:
             upgrade_head(dsn)
