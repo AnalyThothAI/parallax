@@ -144,7 +144,7 @@ describe("Macro module pages", () => {
     expect(await screen.findByText("10%")).toBeInTheDocument();
   });
 
-  it("renders the asset landing page as a clear market dashboard first", () => {
+  it("renders the asset landing page as a daily read before the market tables", () => {
     renderWithProviders(
       <MacroModulePageRenderer
         module={macroAssetsModuleFixture({
@@ -158,10 +158,15 @@ describe("Macro module pages", () => {
     );
 
     expect(screen.getByRole("region", { name: "大类资产模块页面" })).toBeInTheDocument();
-    expectRegionsInOrder(["市场仪表盘", "今日判断", "60日相关性", "数据诊断"]);
+    expectRegionsInOrder(["今日判断", "核心资产行情", "60日相关性", "数据诊断"]);
     expect(screen.queryByRole("region", { name: "关键指标" })).not.toBeInTheDocument();
 
-    const dashboard = screen.getByRole("region", { name: "市场仪表盘" });
+    const judgment = screen.getByRole("region", { name: "今日判断" });
+    expect(within(judgment).getByText("今日判断：风险资产偏震荡")).toBeInTheDocument();
+    expect(within(judgment).getByText("最新覆盖")).toBeInTheDocument();
+    expect(within(judgment).getByText("历史覆盖")).toBeInTheDocument();
+
+    const dashboard = screen.getByRole("region", { name: "核心资产行情" });
     expect(within(dashboard).getByRole("table", { name: "美股" })).toBeInTheDocument();
     expect(within(dashboard).getByRole("table", { name: "债券" })).toBeInTheDocument();
     expect(within(dashboard).getByRole("table", { name: "商品" })).toBeInTheDocument();
@@ -171,14 +176,13 @@ describe("Macro module pages", () => {
       within(dashboard)
         .getAllByRole("columnheader")
         .map((header) => header.textContent),
-    ).toEqual(expect.arrayContaining(["代码", "名称", "最新", "日涨跌幅", "日期"]));
+    ).toEqual(expect.arrayContaining(["代码", "名称", "最新", "20日变化", "质量"]));
+    expect(within(dashboard).queryByText("暂无")).not.toBeInTheDocument();
     expect(within(dashboard).getByRole("link", { name: "查看美股详情" })).toHaveAttribute(
       "href",
       "/macro/assets/equities",
     );
 
-    const judgment = screen.getByRole("region", { name: "今日判断" });
-    expect(within(judgment).getByText("今日判断：风险资产偏震荡")).toBeInTheDocument();
     expect(screen.getByText("今日判断：风险资产偏震荡")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "数据诊断" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "数据来源" })).not.toBeInTheDocument();

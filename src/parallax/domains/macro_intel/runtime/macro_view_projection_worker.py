@@ -96,7 +96,7 @@ class MacroViewProjectionWorker(WorkerBase):
         projected_rows_written = int(refresh_result.get("rows_written") or 0)
         series_status = str(refresh_result.get("status") or "")
         source_signature = str(refresh_result.get("source_signature") or "")
-        if series_status == "unchanged":
+        if series_status == "unchanged" and not _claims_current_target(claimed):
             repos.macro_intel.mark_macro_projection_dirty_targets_done(claimed, now_ms=now, commit=True)
             return WorkerResult(
                 processed=1,
@@ -197,6 +197,10 @@ def _claimed_concept_keys(claimed: list[dict[str, Any]]) -> tuple[str, ...]:
         if str(target.get("target_kind") or "") == "current":
             concept_keys.extend(MACRO_CORE_CONCEPTS)
     return tuple(dict.fromkeys(concept_keys))
+
+
+def _claims_current_target(claimed: list[dict[str, Any]]) -> bool:
+    return any(str(target.get("target_kind") or "") == "current" for target in claimed)
 
 
 __all__ = ["MacroViewProjectionWorker"]

@@ -102,7 +102,7 @@ describe("MacroShell", () => {
     );
   });
 
-  it("renders a stale macro data alert before module content", () => {
+  it("renders a scoped freshness alert before module content", () => {
     const header: MacroShellHeaderModel = {
       breadcrumbs: [
         { label: "宏观", href: "/macro" },
@@ -120,9 +120,9 @@ describe("MacroShell", () => {
     renderWithProviders(
       <MacroShell
         freshnessAlert={{
-          detail: "截至 2026-01-16；宏观事实层尚未追上最新日期。",
+          detail: "截至 2026-01-16；页面已使用最新可用观测，少数指标仍有新鲜度缺口。",
           items: ["最新观测滞后 135 天"],
-          title: "宏观数据滞后",
+          title: "部分宏观序列滞后",
         }}
         header={header}
         pageKind="leaf"
@@ -133,10 +133,11 @@ describe("MacroShell", () => {
       { route: "/macro/assets/equities" },
     );
 
-    const alert = screen.getByRole("status", { name: "宏观数据滞后" });
+    const alert = screen.getByRole("status", { name: "部分宏观序列滞后" });
     const content = screen.getByText("Backend content slot");
 
     expect(alert).toHaveTextContent("截至 2026-01-16");
+    expect(alert).not.toHaveTextContent("事实层尚未追上最新日期");
     expect(alert).toHaveTextContent("最新观测滞后 135 天");
     expect(alert.compareDocumentPosition(content) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });

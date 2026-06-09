@@ -49,17 +49,6 @@ export function MacroAssetOverviewPage({ module, token }: MacroModulePageProps) 
   return (
     <MacroPageScaffold label="大类资产模块页面" pageKind="leaf">
       <MacroPanel
-        ariaLabel="市场仪表盘"
-        className="macro-assets-dashboard-panel"
-        meta={`${module.snapshot.asof_label ?? macroStatusLabel(module)} · ${
-          supportingTable.rows?.length ?? 0
-        } 项`}
-        span="full"
-        title="市场仪表盘"
-      >
-        <AssetMarketDashboard groups={assetGroups} />
-      </MacroPanel>
-      <MacroPanel
         ariaLabel="今日判断"
         className="macro-assets-judgment-panel"
         meta={dailyBrief?.status ?? macroStatusLabel(module)}
@@ -67,6 +56,17 @@ export function MacroAssetOverviewPage({ module, token }: MacroModulePageProps) 
         title="今日判断"
       >
         <AssetDailyBrief brief={dailyBrief} fallback={macroReadSummary(module)} />
+      </MacroPanel>
+      <MacroPanel
+        ariaLabel="核心资产行情"
+        className="macro-assets-dashboard-panel"
+        meta={`${module.snapshot.asof_label ?? macroStatusLabel(module)} · ${
+          supportingTable.rows?.length ?? 0
+        } 项`}
+        span="full"
+        title="核心资产行情"
+      >
+        <AssetMarketDashboard groups={assetGroups} />
       </MacroPanel>
       <MacroPanel
         ariaLabel="60日相关性"

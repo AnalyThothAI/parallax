@@ -65,12 +65,12 @@ export function normalizeDailyBrief(value: unknown): MacroDailyBrief | null {
 
 function assetMarketRow(row: MacroTableRowModel): AssetMarketRow {
   return {
-    date: observedAt(row),
     delta: dayDelta(row),
     deltaTone: deltaTone(row),
     id: row.id,
     latest: cell(row, "latest"),
     name: cell(row, "indicator"),
+    quality: qualityLabel(row),
     symbol: assetSymbol(row),
   };
 }
@@ -127,17 +127,15 @@ function dayDelta(row: MacroTableRowModel): string {
   return row.cells.delta_20d?.displayValue ?? "暂无";
 }
 
-function observedAt(row: MacroTableRowModel): string {
-  const observed = row.cells.observed_at?.displayValue;
-  if (observed && observed !== "暂无") return observed;
-  const latestObserved = row.cells.latest_observed_at?.displayValue;
-  if (latestObserved && latestObserved !== "暂无") return latestObserved;
-  return (
-    stringValue(row.raw.observed_at) ??
-    stringValue(row.raw.latest_observed_at) ??
-    stringValue(row.raw.asof_date) ??
-    "暂无"
-  );
+function qualityLabel(row: MacroTableRowModel): string {
+  const quality = row.cells.quality?.displayValue;
+  const source = row.cells.source?.displayValue;
+  if (quality && quality !== "暂无" && source && source !== "暂无" && quality !== source) {
+    return `${quality} · ${source}`;
+  }
+  if (quality && quality !== "暂无") return quality;
+  if (source && source !== "暂无") return source;
+  return "待确认";
 }
 
 function deltaTone(row: MacroTableRowModel): "up" | "down" | "flat" {

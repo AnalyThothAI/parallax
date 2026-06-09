@@ -66,7 +66,7 @@ describe("macroPageViewModel", () => {
     expect(macroFieldLabel("token_impact")).toBe("代币影响");
   });
 
-  it("builds a first-screen freshness alert from stale backend payloads", () => {
+  it("labels stale snapshots as whole-page macro data lag", () => {
     const module = macroModuleFixture({
       snapshot: {
         ...macroModuleFixture().snapshot,
@@ -87,10 +87,65 @@ describe("macroPageViewModel", () => {
     });
 
     expect(macroFreshnessAlert(module)).toEqual({
-      detail: "截至 2026-01-16；宏观事实层尚未追上最新日期。",
+      detail: "截至 2026-01-16；宏观快照整体处于滞后状态，请先确认同步与投影状态。",
       items: ["最新观测滞后 135 天"],
       title: "宏观数据滞后",
     });
+  });
+
+  it("labels stale gap payloads as partial sequence lag instead of fact-layer lag", () => {
+    const module = macroModuleFixture({
+      snapshot: {
+        ...macroModuleFixture().snapshot,
+        status: "partial",
+        status_label: "部分可用",
+        asof_date: "2026-06-09",
+        asof_label: "截至 2026-06-09",
+      },
+      data_health: {
+        ...macroModuleFixture().data_health,
+        summary_status: "missing",
+        module_gaps: [
+          {
+            code: "stale_latest_8d",
+            label: "最新观测已过期：8 天未更新",
+          },
+        ],
+      },
+    });
+
+    expect(macroFreshnessAlert(module)).toEqual({
+      detail: "截至 2026-06-09；页面已使用最新可用观测，少数指标仍有新鲜度缺口。",
+      items: ["最新观测已过期：8 天未更新"],
+      title: "部分宏观序列滞后",
+    });
+  });
+
+  it("keeps global reference stale gaps in diagnostics instead of the page freshness alert", () => {
+    const module = macroModuleFixture({
+      snapshot: {
+        ...macroModuleFixture().snapshot,
+        status: "partial",
+        status_label: "部分可用",
+        asof_date: "2026-06-09",
+        asof_label: "截至 2026-06-09",
+      },
+      data_health: {
+        ...macroModuleFixture().data_health,
+        summary_status: "ok",
+        module_gaps: [],
+        chart_gaps: [],
+        global_gaps: [
+          {
+            code: "stale_latest_455d",
+            label: "最新观测已过期：455 天未更新",
+            scope: "global_reference",
+          },
+        ],
+      },
+    });
+
+    expect(macroFreshnessAlert(module)).toBeNull();
   });
 
   it("does not show a freshness alert for fresh backend payloads", () => {

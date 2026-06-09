@@ -29,15 +29,15 @@ export function AssetDiagnosticsBoard({
         <SummaryItem label="缺口" value={String(summary.gapCount)} />
       </dl>
       <GapSection buckets={buckets} gapCount={summary.gapCount} />
-      <div className="macro-assets-diagnostics-section">
-        <h4>来源</h4>
+      <details className="macro-assets-diagnostics-section">
+        <summary>来源</summary>
         <MacroSourceTable caption="数据源" source={provenance} />
-      </div>
+      </details>
       {availabilityTable ? (
-        <div className="macro-assets-diagnostics-section">
-          <h4>覆盖</h4>
+        <details className="macro-assets-diagnostics-section">
+          <summary>覆盖</summary>
           <CompactAvailabilityTable table={availabilityTable} />
-        </div>
+        </details>
       ) : null}
     </div>
   );

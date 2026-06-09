@@ -9,6 +9,7 @@ from parallax.domains.macro_intel.repositories.macro_intel_repository import Mac
 from parallax.domains.macro_intel.services.macro_feature_engine import build_macro_features
 
 COMPUTED_AT_MS = int(datetime(2026, 5, 21, 12, tzinfo=UTC).timestamp() * 1000)
+JUNE_9_COMPUTED_AT_MS = int(datetime(2026, 6, 9, 12, tzinfo=UTC).timestamp() * 1000)
 
 
 def test_feature_engine_computes_latest_delta_zscore_and_percentile() -> None:
@@ -143,6 +144,50 @@ def test_feature_engine_marks_degraded_latest_data_quality_as_gap() -> None:
     } in dgs10["data_gaps"]
 
 
+def test_feature_engine_ages_periodic_observations_from_period_end_without_hiding_daily_staleness() -> None:
+    observations = [
+        _obs(
+            "inflation:cpi",
+            "2026-04-01",
+            value_numeric=3.1,
+            frequency="monthly",
+            series_key="fred:CPIAUCSL",
+        ),
+        _obs(
+            "economy:gdp_real",
+            "2026-01-01",
+            value_numeric=23_000,
+            frequency="quarterly",
+            series_key="fred:GDPC1",
+        ),
+        _obs(
+            "commodity:wti",
+            "2026-06-01",
+            value_numeric=74.0,
+            frequency="daily",
+            series_key="fred:DCOILWTICO",
+            unit="usd",
+        ),
+    ]
+
+    features = build_macro_features(observations, computed_at_ms=JUNE_9_COMPUTED_AT_MS)
+
+    cpi = features["inflation:cpi"]
+    assert cpi["freshness_days"] == 40
+    assert cpi["stale_after_days"] == 65
+    assert not any(gap["code"].startswith("stale_latest") for gap in cpi["data_gaps"])
+
+    gdp = features["economy:gdp_real"]
+    assert gdp["freshness_days"] == 70
+    assert gdp["stale_after_days"] == 140
+    assert not any(gap["code"].startswith("stale_latest") for gap in gdp["data_gaps"])
+
+    wti = features["commodity:wti"]
+    assert wti["freshness_days"] == 8
+    assert wti["stale_after_days"] == 7
+    assert any(gap["code"] == "stale_latest_8d" for gap in wti["data_gaps"])
+
+
 def test_repository_observations_for_concepts_reads_projected_bounded_history() -> None:
     rows = [
         {
@@ -238,16 +283,19 @@ def _obs(
     value_numeric: object | None = None,
     value: object | None = None,
     unit: str = "percent",
+    frequency: str = "daily",
+    series_key: str = "fred:DGS10",
     data_quality: str = "ok",
 ) -> dict[str, object]:
     observation: dict[str, object] = {
         "source_name": "fred",
         "concept_key": concept_key,
-        "series_key": "fred:DGS10",
+        "series_key": series_key,
         "source_priority": 100,
         "observed_at": observed_at,
         "unit": unit,
         "ingested_at_ms": 100,
+        "frequency": frequency,
         "data_quality": data_quality,
     }
     if value_numeric is not None:

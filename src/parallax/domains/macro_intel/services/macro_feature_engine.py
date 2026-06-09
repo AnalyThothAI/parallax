@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from calendar import monthrange
 from collections.abc import Mapping, Sequence
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -68,7 +69,11 @@ def _features_for_series(
     if not usable_observations:
         latest_observation = ordered_observations[0] if ordered_observations else {}
         latest_date = _date_value(latest_observation.get("observed_at")) if latest_observation else None
-        freshness_days = _freshness_days(latest_date=latest_date, computed_at_ms=computed_at_ms)
+        freshness_days = _freshness_days(
+            latest_date=latest_date,
+            computed_at_ms=computed_at_ms,
+            frequency=_frequency(latest_observation),
+        )
         if non_numeric_count:
             data_gaps.append(f"non_numeric_values:{non_numeric_count}")
         data_gaps.append("missing_numeric_history")
@@ -98,7 +103,11 @@ def _features_for_series(
 
     latest = usable_observations[0]
     stale_after_days = _stale_after_days(latest["raw"])
-    freshness_days = _freshness_days(latest_date=latest["observed_date"], computed_at_ms=computed_at_ms)
+    freshness_days = _freshness_days(
+        latest_date=latest["observed_date"],
+        computed_at_ms=computed_at_ms,
+        frequency=_frequency(latest["raw"]),
+    )
     if freshness_days is None:
         data_gaps.append("missing_latest_observed_at")
     elif freshness_days > stale_after_days:
@@ -243,16 +252,29 @@ def _percentile(values: Sequence[float]) -> float | None:
     return (less_than + 0.5 * equal_to) / len(values)
 
 
-def _freshness_days(*, latest_date: date | None, computed_at_ms: int) -> int | None:
+def _freshness_days(*, latest_date: date | None, computed_at_ms: int, frequency: str = "") -> int | None:
     if latest_date is None:
         return None
     computed_date = datetime.fromtimestamp(int(computed_at_ms) / 1000, tz=UTC).date()
-    return max(0, (computed_date - latest_date).days)
+    return max(0, (computed_date - _freshness_reference_date(latest_date, frequency=frequency)).days)
+
+
+def _freshness_reference_date(latest_date: date, *, frequency: str) -> date:
+    if frequency == "monthly":
+        return date(latest_date.year, latest_date.month, monthrange(latest_date.year, latest_date.month)[1])
+    if frequency == "quarterly":
+        quarter_end_month = ((latest_date.month - 1) // 3 + 1) * 3
+        return date(latest_date.year, quarter_end_month, monthrange(latest_date.year, quarter_end_month)[1])
+    return latest_date
 
 
 def _stale_after_days(observation: Mapping[str, Any]) -> int:
-    frequency = str(observation.get("frequency") or "").strip().lower()
+    frequency = _frequency(observation)
     return STALE_FRESHNESS_DAYS_BY_FREQUENCY.get(frequency, STALE_FRESHNESS_DAYS_BY_FREQUENCY["daily"])
+
+
+def _frequency(observation: Mapping[str, Any]) -> str:
+    return str(observation.get("frequency") or "").strip().lower()
 
 
 def _date_value(value: Any) -> date | None:

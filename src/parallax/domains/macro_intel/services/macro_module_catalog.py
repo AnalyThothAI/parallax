@@ -100,7 +100,7 @@ _MODULE_CONFIGS = {
         subtitle="股票、债券、商品、美元与加密资产总览",
         question="今天跨资产链条是在支持 risk-on，还是提示防守？",
         section="assets",
-        required_concepts=("asset:spx", "rates:dgs10", "fx:dxy", "commodity:wti", "crypto:btc"),
+        required_concepts=("asset:spx", "rates:dgs10", "fx:dxy", "commodity:wti_futures", "crypto:btc"),
         optional_concepts=(
             "asset:ndx",
             "asset:dji",
@@ -124,7 +124,7 @@ _MODULE_CONFIGS = {
         chart_specs=(
             MacroChartSpec(
                 "asset_cross_market_snapshot",
-                ("asset:spx", "asset:tlt", "commodity:gold_futures", "fx:dxy", "commodity:wti", "crypto:btc"),
+                ("asset:spx", "asset:tlt", "commodity:gold_futures", "fx:dxy", "commodity:wti_futures", "crypto:btc"),
             ),
         ),
         table_specs=(
@@ -140,7 +140,7 @@ _MODULE_CONFIGS = {
                     "asset:lqd",
                     "commodity:gold_futures",
                     "commodity:silver_futures",
-                    "commodity:wti",
+                    "commodity:wti_futures",
                     "commodity:natgas_futures",
                     "commodity:copper_futures",
                     "fx:dxy",
@@ -199,10 +199,14 @@ _MODULE_CONFIGS = {
         subtitle="原油、黄金与通胀脉冲",
         question="商品价格是在制造通胀压力，还是只是局部供需扰动？",
         section="assets",
-        required_concepts=("commodity:wti",),
+        required_concepts=("commodity:wti_futures",),
         optional_concepts=("asset:gld", "asset:uso"),
-        chart_specs=(MacroChartSpec("commodity_proxy_performance", ("commodity:wti", "asset:gld", "asset:uso")),),
-        table_specs=(MacroTableSpec("commodity_proxy_snapshot", ("commodity:wti", "asset:gld", "asset:uso")),),
+        chart_specs=(
+            MacroChartSpec("commodity_proxy_performance", ("commodity:wti_futures", "asset:gld", "asset:uso")),
+        ),
+        table_specs=(
+            MacroTableSpec("commodity_proxy_snapshot", ("commodity:wti_futures", "asset:gld", "asset:uso")),
+        ),
         gap_codes=(),
         related_routes=("/macro/assets/equities", "/macro/assets/fx"),
     ),

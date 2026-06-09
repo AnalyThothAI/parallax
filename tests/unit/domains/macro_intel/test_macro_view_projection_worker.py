@@ -148,6 +148,63 @@ def test_macro_view_projection_worker_unchanged_series_marks_done_without_snapsh
     assert wake_bus.macro_view_snapshot_updates == []
 
 
+def test_macro_view_projection_worker_current_target_rebuilds_snapshot_when_series_is_unchanged() -> None:
+    target = _dirty_target()
+    wake_bus = FakeWakeBus()
+    repo = FakeMacroIntelRepository(
+        dirty_targets=[target],
+        observations=[
+            {
+                "source_name": "yahoo",
+                "concept_key": "commodity:wti_futures",
+                "series_key": "yahoo:CL=F",
+                "source_priority": 100,
+                "observed_at": "2026-06-08",
+                "value_numeric": 91.3,
+                "unit": "usd",
+                "frequency": "daily",
+                "data_quality": "ok",
+                "source_ts": "2026-06-08",
+            }
+        ],
+        refresh_result={
+            "status": "unchanged",
+            "rows_written": 0,
+            "source_rows": 3,
+            "source_signature": "sig-same",
+        },
+    )
+    db = FakeDB(repo)
+    worker = _worker(db, wake_bus=wake_bus)
+
+    result = worker.run_once_sync()
+
+    assert result.processed == 1
+    assert result.notes["series_status"] == "unchanged"
+    assert result.notes["projected_rows_written"] == 0
+    assert result.notes["snapshot_rows_written"] == 1
+    assert result.notes["source_rows_scanned"] == 1
+    assert result.notes["targets_loaded"] == len(MACRO_CORE_CONCEPTS)
+    assert result.notes["rows_written"] == 1
+    assert repo.calls == [
+        "claim_macro_projection_dirty_targets",
+        "refresh_observation_series_rows_for_concepts",
+        "observations_for_concepts",
+        "insert_snapshot",
+        "mark_macro_projection_dirty_targets_done",
+    ]
+    assert repo.done_targets == [(target, NOW_MS, True)]
+    assert len(repo.snapshots) == 1
+    assert repo.snapshots[0]["snapshot_id"] == "macro-view:macro_regime_v4:current"
+    assert wake_bus.macro_view_snapshot_updates == [
+        {
+            "projection_version": repo.snapshots[0]["projection_version"],
+            "status": repo.snapshots[0]["status"],
+            "regime": repo.snapshots[0]["regime"],
+        }
+    ]
+
+
 def test_macro_view_projection_worker_unchanged_snapshot_does_not_notify() -> None:
     target = _concept_dirty_target("vol:vix")
     wake_bus = FakeWakeBus()

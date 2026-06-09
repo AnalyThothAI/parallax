@@ -27,14 +27,26 @@ export function macroStatusLabel(module?: MacroModuleView): string {
 export function macroFreshnessAlert(module?: MacroModuleView): MacroFreshnessAlertModel | null {
   const snapshotStatus = stringValue(module?.snapshot.status)?.toLowerCase() ?? null;
   const healthStatus = stringValue(module?.data_health?.summary_status)?.toLowerCase() ?? null;
-  const staleGaps = dataHealthGaps(module).filter(isStaleGap);
-  if (snapshotStatus !== "stale" && healthStatus !== "stale" && staleGaps.length === 0) {
+  const wholePageStale = snapshotStatus === "stale" || healthStatus === "stale";
+  const staleGaps = (wholePageStale ? dataHealthGaps(module) : blockingDataHealthGaps(module)).filter(
+    isStaleGap,
+  );
+  if (!wholePageStale && staleGaps.length === 0) {
     return null;
   }
+  const asOfLabel = macroAsOfLabel(module);
+  const items = uniqueLabels(staleGaps.map(staleGapLabel)).slice(0, 3);
+  if (wholePageStale) {
+    return {
+      detail: `${asOfLabel}；宏观快照整体处于滞后状态，请先确认同步与投影状态。`,
+      items,
+      title: "宏观数据滞后",
+    };
+  }
   return {
-    detail: `${macroAsOfLabel(module)}；宏观事实层尚未追上最新日期。`,
-    items: uniqueLabels(staleGaps.map(staleGapLabel)).slice(0, 3),
-    title: "宏观数据滞后",
+    detail: `${asOfLabel}；页面已使用最新可用观测，少数指标仍有新鲜度缺口。`,
+    items,
+    title: "部分宏观序列滞后",
   };
 }
 
@@ -106,6 +118,14 @@ function dataHealthGaps(module?: MacroModuleView): unknown[] {
     ...(dataHealth.global_gaps ?? []),
     ...(dataHealth.future_integration_gaps ?? []),
   ];
+}
+
+function blockingDataHealthGaps(module?: MacroModuleView): unknown[] {
+  const dataHealth = module?.data_health;
+  if (!dataHealth) {
+    return [];
+  }
+  return [...(dataHealth.module_gaps ?? []), ...(dataHealth.chart_gaps ?? [])];
 }
 
 function isStaleGap(gap: unknown): boolean {
