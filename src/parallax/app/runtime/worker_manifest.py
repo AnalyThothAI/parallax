@@ -759,6 +759,15 @@ def _validate_worker_manifests() -> None:
     if duplicate_table_declarations:
         raise ValueError(f"duplicate worker manifest table declarations: {duplicate_table_declarations}")
 
+    missing_dirty_targets = [
+        manifest.name
+        for manifest in _WORKER_MANIFESTS
+        if manifest.runtime_constraint == WorkerRuntimeConstraint.DIRTY_TARGET_CONSUMER
+        and not manifest.dirty_target_tables
+    ]
+    if missing_dirty_targets:
+        raise ValueError(f"dirty-target consumer manifests missing dirty target tables: {missing_dirty_targets}")
+
     missing_dirty_control_owner = {
         manifest.name: sorted(set(manifest.dirty_target_tables) - set(manifest.writes_control_plane))
         for manifest in _WORKER_MANIFESTS

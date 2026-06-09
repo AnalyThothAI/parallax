@@ -195,6 +195,7 @@ Known-failing baseline tests:
 ### `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`
 
 - Add `WorkerManifest.owned_tables` as the source-owned table ownership contract and use it inside manifest validation instead of rebuilding ownership tuples in harness checks.
+- Reject `DIRTY_TARGET_CONSUMER` manifests that omit `dirty_target_tables` before worker lifecycle harnesses trust runtime classification.
 - Add `read_model_writer_by_table()` as the source-owned read-model writer map and use it in Worker Inventory docs checks.
 - Run the read-model writer map inside manifest validation so duplicate read-model writers fail before downstream harness consumers trust the manifest.
 - Reject `current_read_model_identities` entries for tables absent from the same manifest's `writes_read_models`.
@@ -294,6 +295,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Spec background is source-backed. | Pass: Background claim blocks must cite existing repo `path:line` evidence or external `https://` sources. |
 | Spec background citations are semantically anchored. | Pass: validator rejects local Background citations whose cited lines do not mention backticked evidence tokens from the claim block. |
 | Worker runtime constraints are manifest-owned. | Pass: `WorkerManifest` carries the runtime constraint enum for every worker and architecture tests no longer define a separate worker classification map. |
+| Dirty-target consumers declare dirty targets. | Pass: `_validate_worker_manifests()` raises when a patched `DIRTY_TARGET_CONSUMER` manifest omits `dirty_target_tables`. |
 | Worker Inventory docs are manifest-owned. | Pass: worker inventory architecture tests import source manifest data directly and reject peer architecture-test imports. |
 | Worker table ownership is manifest-owned. | Pass: `WorkerManifest.owned_tables` exposes the deduped owned-table contract and queue-health validation consumes it. |
 | Read-model writer mapping is manifest-owned. | Pass: `read_model_writer_by_table()` exposes unique read-model ownership and Worker Inventory docs checks consume it. |
@@ -417,6 +419,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC79: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_table_declarations -q`
 - AC80: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_read_model_identity_columns tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_run_generation_identity_and_skips_unchanged -q`
 - AC81: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_read_model_identity_tables -q`
+- AC82: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_dirty_consumers_without_dirty_targets -q`
 
 ## Verification
 

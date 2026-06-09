@@ -11,7 +11,7 @@ import pytest
 
 from parallax.app.runtime import worker_manifest as worker_manifest_module
 from parallax.app.runtime.wake_bus import WakeBus
-from parallax.app.runtime.worker_manifest import all_worker_manifests, worker_class_by_name
+from parallax.app.runtime.worker_manifest import WorkerRuntimeConstraint, all_worker_manifests, worker_class_by_name
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCS_WORKERS = ROOT / "docs" / "WORKERS.md"
@@ -178,6 +178,23 @@ def test_worker_manifest_validation_rejects_blank_table_declarations(
     monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
 
     with pytest.raises(ValueError, match="blank worker manifest table declarations"):
+        worker_manifest_module._validate_worker_manifests()
+
+
+@pytest.mark.architecture
+def test_worker_manifest_validation_rejects_dirty_consumers_without_dirty_targets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifests = list(all_worker_manifests())
+    first_dirty_index = next(
+        index
+        for index, manifest in enumerate(manifests)
+        if manifest.runtime_constraint == WorkerRuntimeConstraint.DIRTY_TARGET_CONSUMER
+    )
+    manifests[first_dirty_index] = replace(manifests[first_dirty_index], dirty_target_tables=())
+    monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
+
+    with pytest.raises(ValueError, match="dirty-target consumer manifests missing dirty target tables"):
         worker_manifest_module._validate_worker_manifests()
 
 

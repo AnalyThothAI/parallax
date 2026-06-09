@@ -1720,6 +1720,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 82 — Dirty-target consumers declare dirty targets
+
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 81
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for runtime constraint validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_dirty_consumers_without_dirty_targets` — patch a `DIRTY_TARGET_CONSUMER` manifest to remove `dirty_target_tables` and assert manifest validation raises a dedicated dirty-target lifecycle error.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `DIRTY_TARGET_CONSUMER` manifests must declare at least one dirty target table before worker lifecycle, queue-health, or ownership harnesses can treat the runtime classification as source truth.
+- **On-demand context**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, and runtime constraint classification checks.
+- **Kill/defer criteria**: Stop if a dirty-target consumer can intentionally poll without a dirty target table, if validation only relies on later ownership checks, or if the fix touches dirty worker runtime contract files.
+- **Eval/repair signal**: dirty-target consumer without queue table, runtime classification drift, worker lifecycle masking, manifest validation drift, and SDD generated index drift.
+- **Implementation**: Add manifest validation requiring `dirty_target_tables` whenever `runtime_constraint` is `DIRTY_TARGET_CONSUMER`.
+- **Verification**: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_dirty_consumers_without_dirty_targets -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1803,4 +1824,5 @@
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_table_declarations -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_read_model_identity_columns tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_run_generation_identity_and_skips_unchanged -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_read_model_identity_tables -q`
+- [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_dirty_consumers_without_dirty_targets -q`
 - [ ] `make check-all`

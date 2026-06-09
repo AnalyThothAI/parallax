@@ -43,6 +43,7 @@ can both miss real process drift and block healthy refactors.
 | Active work must be coordinatable. | The generated SDD index includes owner, worktree, branch, factory lanes, touch set, conflict set, blocked state, and verification status. |
 | Test harness intent must be explicit. | Architecture tests classify permanent invariants, migration tripwires, behavior contracts, and generated hygiene. |
 | Worker runtime constraints must be manifest-owned. | `WorkerManifest` carries each worker's runtime constraint classification, so architecture tests do not maintain a second worker inventory. |
+| Dirty-target consumers must declare dirty targets. | `WorkerManifest` validation rejects `DIRTY_TARGET_CONSUMER` manifests that omit `dirty_target_tables`. |
 | Worker Inventory docs must be manifest-owned. | Architecture tests derive worker class and read-model writer expectations from `WorkerManifest`, not from peer architecture-test constants. |
 | Worker table ownership must be manifest-owned. | `WorkerManifest.owned_tables` exposes the canonical written-table set so harness checks do not reassemble ownership fields ad hoc. |
 | Read-model writer mapping must be manifest-owned. | `read_model_writer_by_table()` exposes the unique read-model writer map from `WorkerManifest`, so docs harnesses do not derive their own registry. |
@@ -164,6 +165,7 @@ can both miss real process drift and block healthy refactors.
 - G57. Worker table declarations reject blank table names before ownership, queue health, or docs harnesses consume them, so empty placeholders cannot satisfy source-manifest truth.
 - G58. Stable read-model identity column names reject blank strings at manifest validation and publisher construction time, so whitespace placeholders cannot become serving identity keys.
 - G59. Stable read-model identity table names reject blank strings before ownership checks, so whitespace placeholders cannot be normalized into missing or unowned identity drift.
+- G60. Dirty-target consumer runtime classification requires declared dirty target tables, so worker lifecycle semantics cannot drift away from queue ownership declarations.
 
 ## Non-goals
 
@@ -290,6 +292,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC79. WHEN any `WorkerManifest` table-declaration field or `queue_depth_table` contains a blank table name THEN manifest validation SHALL raise before the manifest can be treated as canonical source truth.
 - AC80. WHEN a current read-model identity declaration contains a blank identity column name THEN manifest validation and `CurrentReadModelPublisher` SHALL raise before the identity can be used as stable serving truth.
 - AC81. WHEN a `WorkerManifest.current_read_model_identities` entry contains a blank read-model table name THEN manifest validation SHALL raise before ownership, missing-identity, or downstream harness checks consume the manifest.
+- AC82. WHEN a `WorkerManifest` is classified as `DIRTY_TARGET_CONSUMER` and has no `dirty_target_tables` THEN manifest validation SHALL raise before worker lifecycle, ownership, or queue-health harnesses consume the manifest.
 
 ## Risks
 

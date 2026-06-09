@@ -98,6 +98,7 @@ claim is allowed without the corresponding output captured below.
 | AC79 — Worker table declarations are non-blank. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_table_declarations -q` failed RED when a patched blank `writes_control_plane` table declaration did not raise, then passed after adding blank table-declaration validation. |
 | AC80 — Read-model identity columns are non-blank. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_read_model_identity_columns -q` and `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_run_generation_identity_and_skips_unchanged -q` failed RED when blank stable identity columns did not raise, then passed after adding manifest and publisher blank-column validation. |
 | AC81 — Read-model identity tables are non-blank. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_read_model_identity_tables -q` failed RED when a patched blank `current_read_model_identities` table name was masked by a later missing-identity error, then passed after adding manifest blank identity-table validation. |
+| AC82 — Dirty-target consumers declare dirty targets. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_dirty_consumers_without_dirty_targets -q` failed RED when a patched `DIRTY_TARGET_CONSUMER` manifest with no `dirty_target_tables` did not raise, then passed after adding runtime-constraint validation. |
 
 Deviations from spec:
 
@@ -1318,6 +1319,15 @@ exit code: 1
 
 $ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_read_model_identity_tables -q
 1 passed in 0.03s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_dirty_consumers_without_dirty_targets -q
+F                                                                        [100%]
+Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_dirty_consumers_without_dirty_targets -q
+1 passed in 0.04s
 exit code: 0
 ```
 
