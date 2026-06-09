@@ -3190,6 +3190,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 152 — Stable payload hash rejects malformed payload containers
+
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 151
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for stable payload hash input-shape validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_non_mapping_payloads` — call `stable_current_payload_hash()` with scalar, list-of-pairs-shaped, and string-shaped payload values and assert hash validation raises before `dict(...)` coercion can preserve compatibility containers.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `stable_current_payload_hash()` payload input must be a mapping before JSON normalization or hash generation can consume it as current read-model serving payload truth.
+- **On-demand context**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, and current read-model payload hash idempotency contracts.
+- **Kill/defer criteria**: Stop if list-of-pairs or scalar payload hash inputs are an intentional API, if validation only belongs in caller-specific publishers, or if the fix requires compatibility coercion.
+- **Eval/repair signal**: malformed payload containers, `dict(...)` coercion drift, list-of-pairs payload compatibility, stable payload hash idempotency drift, and SDD generated index drift.
+- **Implementation**: Add stable payload hash input validation before `dict(payload)`, JSON normalization, or hash generation.
+- **Verification**: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_non_mapping_payloads -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -3332,4 +3353,5 @@
 - [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_missing_identity_column_before_payload_hashing -q`
 - [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_duplicate_row_identities_in_batch -q`
 - [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_sequence_row_batches_before_row_validation -q`
+- [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_non_mapping_payloads -q`
 - [ ] `make check-all`

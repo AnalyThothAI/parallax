@@ -7,6 +7,7 @@ import pytest
 from parallax.app.runtime.current_read_model_publisher import (
     FORBIDDEN_SERVING_IDENTITY_COLUMNS,
     CurrentReadModelPublisher,
+    stable_current_payload_hash,
 )
 from parallax.app.runtime.worker_manifest import WorkerKind, all_worker_manifests
 
@@ -97,6 +98,21 @@ def test_provider_io_manifest_workers_are_bounded_and_not_projection_claim_loade
 
     assert manifests["news_page_projection"].uses_provider_io is False
     assert manifests["macro_view_projection"].uses_provider_io is False
+
+
+@pytest.mark.architecture
+@pytest.mark.parametrize(
+    "payload",
+    [
+        123,
+        [("target_id", "asset-1"), ("score", 10)],
+        "legacy-payload",
+    ],
+    ids=["scalar", "pairs", "string"],
+)
+def test_stable_current_payload_hash_rejects_non_mapping_payloads(payload: object) -> None:
+    with pytest.raises(ValueError, match="current payload hash payload must be mapping"):
+        stable_current_payload_hash(payload)
 
 
 @pytest.mark.architecture

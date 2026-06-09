@@ -24,6 +24,8 @@ FORBIDDEN_SERVING_IDENTITY_COLUMNS = frozenset(
 
 
 def stable_current_payload_hash(payload: Mapping[str, Any]) -> str:
+    if not isinstance(payload, Mapping):
+        raise ValueError(f"current payload hash payload must be mapping: {payload}")
     encoded = json.dumps(
         _json_ready(dict(payload)),
         sort_keys=True,
