@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
 
 from parallax.app.runtime.current_read_model_publisher import FORBIDDEN_SERVING_IDENTITY_COLUMNS
+
+_WORKER_FACTORY_DIR = Path(__file__).resolve().parent / "worker_factories"
 
 
 class WorkerKind(StrEnum):
@@ -731,6 +734,14 @@ def _validate_worker_manifests() -> None:
     }
     if blank_identity_fields:
         raise ValueError(f"blank worker manifest identity fields: {blank_identity_fields}")
+
+    missing_factory_modules = {
+        manifest.name: manifest.factory
+        for manifest in _WORKER_MANIFESTS
+        if Path(manifest.factory).name != manifest.factory or not (_WORKER_FACTORY_DIR / manifest.factory).is_file()
+    }
+    if missing_factory_modules:
+        raise ValueError(f"missing worker manifest factory modules: {missing_factory_modules}")
 
     missing_input_contracts = [manifest.name for manifest in _WORKER_MANIFESTS if not manifest.input_contract]
     if missing_input_contracts:

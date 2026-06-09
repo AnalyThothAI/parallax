@@ -44,6 +44,7 @@ can both miss real process drift and block healthy refactors.
 | Test harness intent must be explicit. | Architecture tests classify permanent invariants, migration tripwires, behavior contracts, and generated hygiene. |
 | Worker runtime constraints must be manifest-owned. | `WorkerManifest` carries each worker's runtime constraint classification, so architecture tests do not maintain a second worker inventory. |
 | Worker identity fields must be non-blank. | `WorkerManifest` validation rejects blank `name`, `domain`, `factory`, and `worker_class` values before registries, settings, or docs harnesses consume them. |
+| Worker factory modules must be source files. | `WorkerManifest` validation rejects `factory` values that do not name an existing `worker_factories/*.py` source file. |
 | Worker runtime classes must be unique. | `WorkerManifest` validation rejects duplicate `worker_class` values before registry, factory, settings, or docs harnesses consume them. |
 | Worker start priorities must be non-negative. | `WorkerManifest` validation rejects negative `start_priority` values before scheduler, registry, settings, or docs harnesses consume them. |
 | Worker start priorities must be integer bands. | `WorkerManifest` validation rejects non-integer `start_priority` values before scheduler, registry, settings, or docs harnesses consume them. |
@@ -206,6 +207,7 @@ can both miss real process drift and block healthy refactors.
 - G78. Worker runtime class declarations reject duplicate classes, so registry, factory, settings, and docs harnesses cannot silently map two manifest workers onto one runtime implementation boundary.
 - G79. Worker start-priority declarations reject negative values, so scheduler ordering cannot silently place a worker before the manifest's non-negative runtime startup band.
 - G80. Worker start-priority declarations reject non-integer values, so scheduler ordering remains an explicit integer band rather than an implicit fractional convention.
+- G81. Worker factory declarations reject missing source files, so registry and docs harnesses cannot preserve a worker that no worker factory can instantiate.
 
 ## Non-goals
 
@@ -353,6 +355,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC100. WHEN two `WorkerManifest.worker_class` values are the same THEN manifest validation SHALL raise before registry, factory, settings, or worker inventory harnesses consume the manifest.
 - AC101. WHEN a `WorkerManifest.start_priority` value is negative THEN manifest validation SHALL raise before scheduler, registry, settings, or worker inventory harnesses consume the manifest.
 - AC102. WHEN a `WorkerManifest.start_priority` value is not an integer THEN manifest validation SHALL raise before scheduler, registry, settings, or worker inventory harnesses consume the manifest.
+- AC103. WHEN a `WorkerManifest.factory` value does not name an existing `src/parallax/app/runtime/worker_factories/*.py` source file THEN manifest validation SHALL raise before registry, factory, settings, or worker inventory harnesses consume the manifest.
 
 ## Risks
 

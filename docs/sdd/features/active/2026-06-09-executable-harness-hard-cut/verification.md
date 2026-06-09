@@ -119,6 +119,7 @@ claim is allowed without the corresponding output captured below.
 | AC100 — Worker runtime classes are unique. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_worker_classes -q` failed RED when a patched duplicate `worker_class` did not raise, then passed after adding worker-class duplicate validation. |
 | AC101 — Worker start priorities are non-negative. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_negative_start_priorities -q` failed RED when a patched negative `start_priority` did not raise, then passed after adding start-priority validation. |
 | AC102 — Worker start priorities are integer bands. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_integer_start_priorities -q` failed RED when a patched fractional `start_priority` did not raise, then passed after adding start-priority type validation. |
+| AC103 — Worker factories are real source files. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_factory_modules -q` failed RED when a patched missing `factory` did not raise, then passed after adding factory source-file validation. |
 
 Deviations from spec:
 
@@ -1528,6 +1529,15 @@ exit code: 1
 
 $ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_integer_start_priorities -q
 1 passed in 0.03s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_factory_modules -q
+F                                                                        [100%]
+Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_factory_modules -q
+1 passed in 0.04s
 exit code: 0
 ```
 

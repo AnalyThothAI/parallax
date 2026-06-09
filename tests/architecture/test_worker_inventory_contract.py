@@ -343,6 +343,18 @@ def test_worker_manifest_validation_rejects_blank_identity_fields(
 
 
 @pytest.mark.architecture
+def test_worker_manifest_validation_rejects_missing_factory_modules(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifests = list(all_worker_manifests())
+    manifests[0] = replace(manifests[0], factory="missing_factory.py")
+    monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
+
+    with pytest.raises(ValueError, match="missing worker manifest factory modules"):
+        worker_manifest_module._validate_worker_manifests()
+
+
+@pytest.mark.architecture
 def test_worker_manifest_validation_rejects_duplicate_worker_classes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
