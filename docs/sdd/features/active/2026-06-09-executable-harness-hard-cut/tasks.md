@@ -3295,6 +3295,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 157 — Stable payload hash rejects unordered payload containers
+
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 156
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for stable payload hash container validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_unordered_payload_containers` — call `stable_current_payload_hash()` with set and frozenset payload values and assert hash validation raises before JSON normalization can sort unordered compatibility containers into serving hashes.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `stable_current_payload_hash()` payload containers must be mapping, list, or tuple traversal shapes before `_json_ready()`, JSON normalization, or hash generation can consume them as current read-model payload truth; unordered set/frozenset values are rejected instead of sorted.
+- **On-demand context**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, and current read-model payload hash idempotency contracts.
+- **Kill/defer criteria**: Stop if unordered set/frozenset payload values are an intentional serving payload contract, if validation only belongs in concrete row publishers, or if the fix requires retaining set sorting in `_json_ready()`.
+- **Eval/repair signal**: unordered payload containers, set/frozenset sorting, stable payload hash idempotency drift, JSON normalization compatibility drift, and SDD generated index drift.
+- **Implementation**: Reject set and frozenset payload values during recursive payload validation, stop traversing them as key containers, and remove `_json_ready()` set/frozenset sorting.
+- **Verification**: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_unordered_payload_containers -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -3442,4 +3463,5 @@
 - [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_nested_non_string_payload_keys -q`
 - [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_generic_isoformat_payload_values -q`
 - [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_non_finite_payload_numbers -q`
+- [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_unordered_payload_containers -q`
 - [ ] `make check-all`

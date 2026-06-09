@@ -173,6 +173,7 @@ claim is allowed without the corresponding output captured below.
 | AC154 — Stable payload hash rejects nested non-string payload keys. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_nested_non_string_payload_keys -q` failed RED when nested numeric payload keys were stringified into a hash, then passed after adding recursive payload-key validation and removing mapping-key string coercion from `_json_ready()`. |
 | AC155 — Stable payload hash rejects generic isoformat payload values. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_generic_isoformat_payload_values -q` failed RED when an arbitrary `isoformat()` object was accepted into a hash, then passed after adding recursive payload-value validation and restricting ISO formatting to real date/time values. |
 | AC156 — Stable payload hash rejects non-finite payload numbers. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_non_finite_payload_numbers -q` failed RED when float NaN/Infinity leaked raw JSON errors and Decimal NaN/Infinity was accepted, then passed after adding recursive non-finite number validation. |
+| AC157 — Stable payload hash rejects unordered payload containers. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_unordered_payload_containers -q` failed RED when set/frozenset payload values were sorted into hashes, then passed after rejecting unordered containers and removing set/frozenset sorting from `_json_ready()`. |
 
 Deviations from spec:
 
@@ -2987,6 +2988,50 @@ exit code: 0
 $ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
 .............................................................            [100%]
 61 passed in 0.52s
+exit code: 0
+
+$ uv run ruff check src/parallax/app/runtime/current_read_model_publisher.py tests/architecture/test_worker_manifest_static_contracts.py
+All checks passed!
+exit code: 0
+
+$ git diff --check
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_unordered_payload_containers -q
+FF                                                                       [100%]
+E       Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_unordered_payload_containers -q
+..                                                                       [100%]
+2 passed in 0.40s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py -q
+............................................                             [100%]
+44 passed in 0.40s
+exit code: 0
+
+$ uv run python scripts/validate_sdd_artifacts.py --check
+SDD artifact validation passed.
+exit code: 0
+
+$ uv run python scripts/regen_sdd_work_index.py --check
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_unordered_payload_containers -q
+..                                                                       [100%]
+2 passed in 0.43s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py -q
+............................................                             [100%]
+44 passed in 0.43s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
+.............................................................            [100%]
+61 passed in 0.53s
 exit code: 0
 
 $ uv run ruff check src/parallax/app/runtime/current_read_model_publisher.py tests/architecture/test_worker_manifest_static_contracts.py

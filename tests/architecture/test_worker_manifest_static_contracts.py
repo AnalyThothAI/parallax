@@ -158,6 +158,20 @@ def test_stable_current_payload_hash_rejects_non_finite_payload_numbers(value: f
 
 
 @pytest.mark.architecture
+@pytest.mark.parametrize(
+    "value",
+    [
+        {"source-a", "source-b"},
+        frozenset(("source-a", "source-b")),
+    ],
+    ids=["set", "frozenset"],
+)
+def test_stable_current_payload_hash_rejects_unordered_payload_containers(value: set[str] | frozenset[str]) -> None:
+    with pytest.raises(ValueError, match="current payload hash payload has unsupported containers"):
+        stable_current_payload_hash({"target_id": "asset-1", "sources": value})
+
+
+@pytest.mark.architecture
 def test_current_read_model_publisher_rejects_non_string_payload_hash_column() -> None:
     with pytest.raises(ValueError, match="non-string current payload hash column"):
         CurrentReadModelPublisher(identity_columns=("target_id",), payload_hash_column=123)

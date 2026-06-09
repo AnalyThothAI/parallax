@@ -207,7 +207,7 @@ def _validate_payload_hash_keys(value: Any) -> None:
         for inner in value.values():
             _validate_payload_hash_keys(inner)
         return
-    if isinstance(value, tuple | list | set | frozenset):
+    if isinstance(value, tuple | list):
         for inner in value:
             _validate_payload_hash_keys(inner)
 
@@ -217,10 +217,12 @@ def _validate_payload_hash_values(value: Any) -> None:
         for inner in value.values():
             _validate_payload_hash_values(inner)
         return
-    if isinstance(value, tuple | list | set | frozenset):
+    if isinstance(value, tuple | list):
         for inner in value:
             _validate_payload_hash_values(inner)
         return
+    if isinstance(value, set | frozenset):
+        raise ValueError(f"current payload hash payload has unsupported containers: {value}")
     if isinstance(value, float) and not isfinite(value):
         raise ValueError(f"current payload hash payload has non-finite numbers: {value}")
     if isinstance(value, Decimal) and not value.is_finite():
@@ -235,8 +237,6 @@ def _json_ready(value: Any) -> Any:
         return {key: _json_ready(inner) for key, inner in value.items()}
     if isinstance(value, tuple | list):
         return [_json_ready(inner) for inner in value]
-    if isinstance(value, set | frozenset):
-        return sorted(_json_ready(inner) for inner in value)
     if isinstance(value, Decimal):
         return str(value.normalize())
     if isinstance(value, date | datetime | time):
