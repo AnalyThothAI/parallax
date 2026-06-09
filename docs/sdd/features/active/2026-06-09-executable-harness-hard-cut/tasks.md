@@ -943,6 +943,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 45 — Completed task failing-test evidence gate
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 44
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD validator semantics and generated index.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_complete_tasks_require_failing_test_reference_evidence` — asserts completed tasks cannot declare a failing-test reference that has no successful verification evidence.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Completed tasks must have successful command evidence covering every test file path declared in `Failing test first`; exact historical RED failure output is not required or fabricated.
+- **On-demand context**: TDD discipline, active SDD task records, `verification.md` canonical evidence sections, and generated SDD work index.
+- **Kill/defer criteria**: Stop if completed tasks can satisfy TDD metadata with unrelated commands or if the validator requires non-existent historical RED logs.
+- **Eval/repair signal**: `task-complete-missing-failing-test-evidence`, stale generated index, and review defects around unproven TDD claims.
+- **Implementation**: Parse test file paths from `Failing test first`, compare them to successful command evidence in `verification.md`, expose the issue code in the generated index, and record AC45 evidence.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_tasks_require_failing_test_reference_evidence -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -988,4 +1009,5 @@
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_report_mode_must_match_handoff_mode -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_invalid_factory_lane_values -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_analyze_gate_rejects_failed_results -q`
+- [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_tasks_require_failing_test_reference_evidence -q`
 - [ ] `make check-all`

@@ -22,6 +22,7 @@ STATUS_RE = re.compile(r"^\s*(?:\*\*)?Status(?:\*\*)?\s*:\s*(.+?)\s*$", re.IGNOR
 FIELD_RE = re.compile(r"^\s*\*\*(?P<name>[^*]+)\*\*\s*:\s*(?P<value>.+?)\s*$")
 TASK_RE = re.compile(r"^###\s+Task\b", re.IGNORECASE | re.MULTILINE)
 TASK_FIELD_RE = re.compile(r"^\s*-\s+\*\*(?P<name>[^*]+)\*\*\s*:\s*(?P<value>.*)$", re.MULTILINE)
+TEST_REFERENCE_RE = re.compile(r"(?P<path>(?:tests|web/tests)/[A-Za-z0-9._/\-]+\.(?:py|ts|tsx))(?:::[A-Za-z0-9_]+)?")
 FENCED_BLOCK_RE = re.compile(r"```(?:[A-Za-z0-9_-]+)?\n(?P<body>[\s\S]*?)```", re.MULTILINE)
 COMMAND_LINE_RE = re.compile(r"^\s*\$\s+(?P<command>.+?)\s*$")
 EXIT_CODE_RE = re.compile(r"exit code:\s*(?P<code>-?\d+)\b", re.IGNORECASE)
@@ -170,6 +171,7 @@ KNOWN_ISSUE_CODES = (
     "task-invalid-subagent-handoff-artifact",
     "task-missing-subagent-report-artifact",
     "task-invalid-subagent-report-artifact",
+    "task-complete-missing-failing-test-evidence",
     "task-complete-missing-verification-evidence",
     "task-incomplete-in-verified-feature",
     "verified-missing-check-all",
@@ -920,6 +922,7 @@ def _task_issues(feature: SddFeature) -> list[SddIssue]:
         issues.extend(_complete_task_review_issues(feature, task))
         issues.extend(_subagent_handoff_artifact_issues(feature, task))
         issues.extend(_subagent_report_artifact_issues(feature, task))
+        issues.extend(_complete_task_failing_test_evidence_issues(feature, task))
         issues.extend(_complete_task_verification_issues(feature, task))
         if feature.status.lower() == "verified" and task.fields.get("status", "").strip().lower() != "[x]":
             issues.append(
@@ -1219,6 +1222,41 @@ def _complete_task_verification_issues(feature: SddFeature, task: TaskRecord) ->
             )
         ]
     return []
+
+
+def _complete_task_failing_test_evidence_issues(feature: SddFeature, task: TaskRecord) -> list[SddIssue]:
+    if task.fields.get("status", "").strip().lower() != "[x]":
+        return []
+
+    expected_paths = _test_reference_paths(task.fields.get("failing test first", ""))
+    if not expected_paths:
+        return []
+
+    artifact = feature.artifacts["verification.md"]
+    missing_paths = [
+        path
+        for path in expected_paths
+        if artifact.missing or not _has_successful_test_path_evidence(artifact.text, path)
+    ]
+    if not missing_paths:
+        return []
+    return [
+        _issue(
+            "task-complete-missing-failing-test-evidence",
+            feature.artifacts["tasks.md"],
+            f"{task.title} lacks exit code 0 evidence covering failing-test paths: {', '.join(missing_paths)}",
+        )
+    ]
+
+
+def _test_reference_paths(value: str) -> tuple[str, ...]:
+    paths = [match.group("path") for match in TEST_REFERENCE_RE.finditer(value.replace("`", ""))]
+    return tuple(dict.fromkeys(paths))
+
+
+def _has_successful_test_path_evidence(text: str, expected_path: str) -> bool:
+    evidence = _command_evidence(_task_evidence_text(text))
+    return any(expected_path in command and 0 in exit_codes for command, exit_codes in evidence.items())
 
 
 def _has_successful_command_evidence(text: str, expected_command: str) -> bool:

@@ -51,6 +51,7 @@ Known-failing baseline tests:
 - Validate delegated subagent handoff artifacts against the owning feature/task/mode so stale handoff prompts cannot pass as current loop evidence.
 - Validate delegated subagent reports against the mode granted by the owning handoff artifact, not the mode claimed by the report itself.
 - Validate `Factory lane` values as one of the six development-agent lane tokens from the operating model.
+- Validate completed task `Failing test first` references by requiring successful verification evidence that covers each referenced test file path.
 - Validate `Superseded` artifact metadata before skipping content-section gates.
 - Validate `Superseded` tasks files retain structured `### Task` records instead of legacy checkbox lists.
 - Validate all artifacts in a `Superseded` feature point at the same successor record.
@@ -192,6 +193,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Delegated report mode matches handoff mode. | Pass: validator rejects report artifacts whose `Mode:` differs from the owning handoff mode. |
 | Factory lanes are bounded. | Pass: validator rejects task `Factory lane` values outside the six operating-model lanes. |
 | Analyze gate statuses are bounded. | Pass: validator rejects plan Analyze Gate results that do not begin with `Pass:` or `Blocked:`. |
+| Failing-test-first evidence is covered. | Pass: validator rejects completed tasks whose failing-test test file paths never appear in successful command evidence. |
 
 ## Acceptance test commands
 
@@ -239,6 +241,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC42: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_report_mode_must_match_handoff_mode -q`
 - AC43: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_invalid_factory_lane_values -q`
 - AC44: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_analyze_gate_rejects_failed_results -q`
+- AC45: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_tasks_require_failing_test_reference_evidence -q`
 
 ## Verification
 

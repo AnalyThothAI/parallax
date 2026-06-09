@@ -61,6 +61,7 @@ claim is allowed without the corresponding output captured below.
 | AC42 — Delegated subagent report mode matches handoff mode. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_report_mode_must_match_handoff_mode -q` passed after first failing RED run. |
 | AC43 — Factory lane values are bounded to the operating model. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_invalid_factory_lane_values -q` passed after first failing RED run. |
 | AC44 — Analyze Gate result statuses are machine-bounded. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_analyze_gate_rejects_failed_results -q` passed after first failing RED run. |
+| AC45 — Completed task failing-test references are evidenced. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_tasks_require_failing_test_reference_evidence -q` passed after first failing RED run. |
 
 Deviations from spec:
 
@@ -750,6 +751,15 @@ $ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_ana
 1 passed in 0.03s
 exit code: 0
 
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_tasks_require_failing_test_reference_evidence -q
+F                                                                        [100%]
+AssertionError: assert 'task-complete-missing-failing-test-evidence' in set()
+exit code: 1
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_tasks_require_failing_test_reference_evidence -q
+1 passed in 0.02s
+exit code: 0
+
 $ uv run python scripts/validate_sdd_artifacts.py --check
 SDD artifact validation passed.
 exit code: 0
@@ -758,7 +768,7 @@ $ uv run python scripts/regen_sdd_work_index.py --check
 exit code: 0
 
 $ uv run pytest tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py -q
-63 passed in 0.80s
+64 passed in 0.70s
 exit code: 0
 
 $ uv run ruff check scripts/validate_sdd_artifacts.py scripts/regen_sdd_work_index.py tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py

@@ -50,6 +50,7 @@ can both miss real process drift and block healthy refactors.
 | Parent review outcome must be visible. | Task records expose subagent report and review result fields, and the generated Task Board surfaces review state including `needs-repair`. |
 | Referenced report artifacts must be real. | Delegated task report paths are checked for existence and validated against the task-bound report contract by the SDD validator. |
 | Completed task status must be evidenced. | A `[x]` task requires matching `verification.md` command evidence with exit code 0. |
+| Failing-test-first metadata must be evidenced. | A `[x]` task requires successful verification evidence covering each test file path declared in `Failing test first`. |
 | Machine fields must be exact tokens. | `Subagent handoff` accepts only the exact `not delegated` token or a repo path, not prose suffixes. |
 | Delegated handoff artifacts must be real. | Delegated task handoff paths are checked for existence before dispatch or review. |
 | Delegated handoff artifacts must be task-bound. | Existing delegated handoff files must name the current feature, task, mode, context packet, and report validator command. |
@@ -88,6 +89,7 @@ can both miss real process drift and block healthy refactors.
 - G20. SDD validation uses delegated handoff mode as the expected report mode, preventing returned reports from loosening their own scope after dispatch.
 - G21. SDD validation rejects task `Factory lane` values outside the six development-agent lanes defined by the operating model.
 - G22. SDD validation rejects plan `Analyze Gate` result cells that are `Fail:` or freeform prose instead of `Pass:` or `Blocked:` machine statuses.
+- G23. SDD validation rejects `[x]` tasks whose `Failing test first` test file paths are absent from successful verification evidence.
 
 ## Non-goals
 
@@ -177,6 +179,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC42. WHEN a delegated task's handoff artifact declares one mode but the returned subagent report declares another mode THEN the SDD validator SHALL report `task-invalid-subagent-report-artifact`; report artifacts must not self-select broader execution scope than dispatch granted.
 - AC43. WHEN a task declares a `Factory lane` outside `Spec/plan`, `Domain implementation`, `Harness/tests`, `Docs/contracts`, `Risk radar`, or `Final integration` THEN the validator SHALL report `task-invalid-agent-loop-fields`; lane budgets are deterministic constraints, not freeform prose.
 - AC44. WHEN `plan.md` `Analyze Gate` rows use `Fail:`, `Pass.`, or any result that does not begin with `Pass:` or `Blocked:` THEN the validator SHALL report `plan-analyze-gate-invalid`; failed analysis must stop or block before implementation.
+- AC45. WHEN a task is marked `[x]` and its `Failing test first` field references a test file path absent from successful verification evidence THEN the validator SHALL report `task-complete-missing-failing-test-evidence`; TDD metadata cannot drift away from commands actually run.
 
 ## Risks
 

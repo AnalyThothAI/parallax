@@ -263,6 +263,9 @@ def _issue_meaning(code: str) -> str:
         "task-invalid-subagent-report-artifact": (
             "Delegated task report artifact fails the task-bound report validator."
         ),
+        "task-complete-missing-failing-test-evidence": (
+            "Completed task lacks successful verification evidence covering its failing-test-first references."
+        ),
         "task-complete-missing-verification-evidence": (
             "Completed task lacks matching verification command evidence with exit code 0."
         ),

@@ -520,6 +520,34 @@ def test_complete_tasks_require_matching_verification_evidence(tmp_path: Path) -
     assert "task-complete-missing-verification-evidence" in _issue_codes(issues)
 
 
+def test_complete_tasks_require_failing_test_reference_evidence(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-complete-task-without-red-coverage")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(
+        feature / "tasks.md",
+        status="In Progress",
+        failing_test_first=(
+            "tests/architecture/test_never_ran.py::test_missing_red - asserts missing RED coverage."
+        ),
+        verification="uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_expected_gate -q",
+        task_status="[x]",
+    )
+    _write_valid_verification(
+        feature / "verification.md",
+        status="In Progress",
+        other_command_lines=(
+            "$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_expected_gate -q",
+            "1 passed in 0.01s",
+            "exit code: 0",
+        ),
+    )
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "task-complete-missing-failing-test-evidence" in _issue_codes(issues)
+
+
 def test_complete_task_evidence_ignores_commands_outside_evidence_sections(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-complete-task-notes-evidence")
     expected_command = "uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_expected_gate -q"
