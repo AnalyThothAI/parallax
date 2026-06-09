@@ -2644,6 +2644,48 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 126 — Publisher payload hash columns are non-blank
+
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 125
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for publisher payload hash column blank validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_blank_payload_hash_column` — construct `CurrentReadModelPublisher` with a blank `payload_hash_column` and assert publisher validation raises before changed-row writes can add empty serving-row keys.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `CurrentReadModelPublisher.payload_hash_column` must be non-blank before row payload hashing, changed-row writes, or worker static harnesses consume it as the serving-row hash key.
+- **On-demand context**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, and stable current read-model publisher contracts.
+- **Kill/defer criteria**: Stop if blank publisher payload hash columns intentionally mean caller-owned hash writes, if validation only checks caller code, or if the fix touches projection worker runtime behavior.
+- **Eval/repair signal**: blank publisher payload hash column names, empty serving-row hash keys, changed-row write drift, publisher validation drift, and SDD generated index drift.
+- **Implementation**: Add publisher construction validation rejecting blank `payload_hash_column` values before row payload hashing and changed-row write checks.
+- **Verification**: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_blank_payload_hash_column -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 127 — Publisher payload column entries are unique
+
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 126
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for publisher payload column duplicate validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_duplicate_payload_columns` — construct `CurrentReadModelPublisher` with duplicate `payload_columns` entries and assert publisher validation raises before payload hashing silently collapses repeated payload keys.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `CurrentReadModelPublisher.payload_columns` entries must be unique before row payload hashing, changed-row writes, or worker static harnesses consume them as payload keys.
+- **On-demand context**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, and stable current read-model publisher contracts.
+- **Kill/defer criteria**: Stop if duplicate publisher payload column entries intentionally mean weighted payload hashing, if validation only checks caller code, or if the fix touches projection worker runtime behavior.
+- **Eval/repair signal**: duplicate publisher payload columns, silently collapsed payload keys, payload hash drift, publisher validation drift, and SDD generated index drift.
+- **Implementation**: Add publisher construction validation rejecting duplicate `payload_columns` entries before row payload hashing and changed-row write checks.
+- **Verification**: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_duplicate_payload_columns -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -2771,4 +2813,6 @@
 - [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_tuple_payload_columns -q`
 - [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_string_payload_columns -q`
 - [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_blank_payload_columns -q`
+- [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_blank_payload_hash_column -q`
+- [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_duplicate_payload_columns -q`
 - [ ] `make check-all`

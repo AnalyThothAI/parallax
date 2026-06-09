@@ -57,6 +57,8 @@ class CurrentReadModelPublisher:
             )
         if type(self.payload_hash_column) is not str:
             raise ValueError(f"non-string current payload hash column: {self.payload_hash_column}")
+        if not self.payload_hash_column.strip():
+            raise ValueError(f"blank current payload hash column: {self.payload_hash_column!r}")
         if self.payload_columns is not None and type(self.payload_columns) is not tuple:
             raise ValueError(f"non-tuple current payload columns: {self.payload_columns}")
         if self.payload_columns is not None:
@@ -66,6 +68,11 @@ class CurrentReadModelPublisher:
             blank_payload_columns = tuple(column for column in self.payload_columns if not column.strip())
             if blank_payload_columns:
                 raise ValueError(f"blank current payload columns: {blank_payload_columns}")
+            duplicate_payload_columns = sorted(
+                {column for column in self.payload_columns if self.payload_columns.count(column) > 1}
+            )
+            if duplicate_payload_columns:
+                raise ValueError(f"duplicate current payload columns: {duplicate_payload_columns}")
 
     def row_identity(self, row: Mapping[str, Any]) -> tuple[Any, ...]:
         return tuple(row[column] for column in self.identity_columns)

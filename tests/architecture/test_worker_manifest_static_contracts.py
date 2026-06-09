@@ -106,6 +106,12 @@ def test_current_read_model_publisher_rejects_non_string_payload_hash_column() -
 
 
 @pytest.mark.architecture
+def test_current_read_model_publisher_rejects_blank_payload_hash_column() -> None:
+    with pytest.raises(ValueError, match="blank current payload hash column"):
+        CurrentReadModelPublisher(identity_columns=("target_id",), payload_hash_column="   ")
+
+
+@pytest.mark.architecture
 def test_current_read_model_publisher_rejects_non_tuple_payload_columns() -> None:
     with pytest.raises(ValueError, match="non-tuple current payload columns"):
         CurrentReadModelPublisher(identity_columns=("target_id",), payload_columns=["target_id"])
@@ -121,6 +127,12 @@ def test_current_read_model_publisher_rejects_non_string_payload_columns() -> No
 def test_current_read_model_publisher_rejects_blank_payload_columns() -> None:
     with pytest.raises(ValueError, match="blank current payload columns"):
         CurrentReadModelPublisher(identity_columns=("target_id",), payload_columns=("target_id", "   "))
+
+
+@pytest.mark.architecture
+def test_current_read_model_publisher_rejects_duplicate_payload_columns() -> None:
+    with pytest.raises(ValueError, match="duplicate current payload columns"):
+        CurrentReadModelPublisher(identity_columns=("target_id",), payload_columns=("target_id", "score", "score"))
 
 
 @pytest.mark.architecture

@@ -92,9 +92,11 @@ can both miss real process drift and block healthy refactors.
 | Read-model identity columns must be strings. | `WorkerManifest` validation rejects non-string stable identity column names inside `current_read_model_identities` before blank, duplicate, forbidden-lifecycle, ownership, registry, settings, or worker inventory harnesses consume them. |
 | Publisher identity columns must be strings. | `CurrentReadModelPublisher` rejects non-string stable identity column names before blank, duplicate, lifecycle-column, row-identity, or changed-row hashing logic consumes them. |
 | Publisher payload hash columns must be strings. | `CurrentReadModelPublisher` rejects non-string payload hash column names before row hashing or changed-row writes can use them as serving-row keys. |
+| Publisher payload hash columns must be non-blank. | `CurrentReadModelPublisher` rejects blank payload hash column names before changed-row writes can add empty serving-row keys. |
 | Publisher payload columns must be tuples. | `CurrentReadModelPublisher` rejects list-shaped or scalar payload column declarations before row payload hashing can treat them as field lists. |
 | Publisher payload column entries must be strings. | `CurrentReadModelPublisher` rejects non-string payload column entries before row payload hashing can look up invalid payload keys. |
 | Publisher payload column entries must be non-blank. | `CurrentReadModelPublisher` rejects blank payload column entries before row payload hashing can look up empty payload keys. |
+| Publisher payload column entries must be unique. | `CurrentReadModelPublisher` rejects duplicate payload column entries before row payload hashing can silently collapse repeated keys. |
 | Worker manifest imports must be explicit. | `worker_manifest.py` imports `importlib.util` directly so clean-process manifest validation never depends on incidental package attribute side effects. |
 | Root visual artifacts must be absent. | Architecture harness rejects loose visual verification files at the repository root so screenshots live only under owned artifact directories. |
 | Worker table declarations must be unique. | `WorkerManifest` validation rejects duplicated table names inside each manifest table-declaration field before `owned_tables` dedupes them. |
@@ -252,6 +254,8 @@ can both miss real process drift and block healthy refactors.
 - G101. Current read-model publisher payload column declarations reject non-tuple values, so payload hashing cannot silently iterate compatibility lists or scalar strings.
 - G102. Current read-model publisher payload column entries reject non-string values, so payload hashing cannot silently look up invalid payload keys.
 - G103. Current read-model publisher payload column entries reject blank values, so payload hashing cannot silently look up empty payload keys.
+- G104. Current read-model publisher payload hash column declarations reject blank values, so changed-row writes cannot silently add empty serving-row keys.
+- G105. Current read-model publisher payload column entries reject duplicate values, so payload hashing cannot silently collapse repeated payload keys.
 
 ## Non-goals
 
@@ -422,6 +426,8 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC123. WHEN `CurrentReadModelPublisher.payload_columns` is neither `None` nor a tuple THEN publisher construction SHALL raise before row payload hashing, changed-row writes, or worker static harnesses consume it as the payload field list.
 - AC124. WHEN `CurrentReadModelPublisher.payload_columns` contains a non-string entry THEN publisher construction SHALL raise before row payload hashing, changed-row writes, or worker static harnesses consume it as a payload key.
 - AC125. WHEN `CurrentReadModelPublisher.payload_columns` contains a blank entry THEN publisher construction SHALL raise before row payload hashing, changed-row writes, or worker static harnesses consume it as a payload key.
+- AC126. WHEN `CurrentReadModelPublisher.payload_hash_column` is blank THEN publisher construction SHALL raise before row payload hashing, changed-row writes, or worker static harnesses consume it as the serving-row hash key.
+- AC127. WHEN `CurrentReadModelPublisher.payload_columns` contains a duplicate entry THEN publisher construction SHALL raise before row payload hashing, changed-row writes, or worker static harnesses collapse repeated payload keys.
 
 ## Risks
 
