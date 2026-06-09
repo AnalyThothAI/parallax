@@ -586,6 +586,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 28 — Task DAG numbering gate
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 27
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared task dependency and dispatch semantics.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_tasks_require_unique_contiguous_numbers` — asserts duplicate or skipped task numbers cannot pass.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Structured task headings must form one unique contiguous `Task 1..N` DAG before dispatch/dependency state is trusted.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, active and completed SDD task records, generated SDD work index.
+- **Kill/defer criteria**: Stop if duplicate, skipped, or unnumbered task headings can pass validation.
+- **Eval/repair signal**: `task-invalid-numbering`, stale generated index, and dispatch graph drift.
+- **Implementation**: Validate machine-readable task numbers before per-task dependency checks and expose the issue in the generated lifecycle flags.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_require_unique_contiguous_numbers -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -614,4 +635,5 @@
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_structured_tasks -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_one_successor -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_tasks_require_review_result_evidence -q`
+- [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_require_unique_contiguous_numbers -q`
 - [ ] `make check-all`

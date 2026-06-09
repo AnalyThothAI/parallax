@@ -538,6 +538,38 @@ def test_tasks_reject_unresolved_dependencies(tmp_path: Path) -> None:
     assert "task-invalid-dependencies" in _issue_codes(issues)
 
 
+def test_tasks_require_unique_contiguous_numbers(tmp_path: Path) -> None:
+    duplicate_feature = _feature_dir(tmp_path, "active", "2026-06-09-duplicate-task-number")
+    _write_valid_spec(duplicate_feature / "spec.md", status="In Progress")
+    _write_valid_plan(duplicate_feature / "plan.md", status="In Progress")
+    _write_valid_tasks(
+        duplicate_feature / "tasks.md",
+        status="In Progress",
+        conflict_set="coordinate with 2026-06-09-task-number-gap for numbering fixture.",
+    )
+    _append_valid_task(duplicate_feature / "tasks.md", task_number=1, depends_on="none", task_status="[x]")
+    _write_valid_verification(duplicate_feature / "verification.md", status="In Progress")
+
+    gap_feature = _feature_dir(tmp_path, "active", "2026-06-09-task-number-gap")
+    _write_valid_spec(gap_feature / "spec.md", status="In Progress")
+    _write_valid_plan(gap_feature / "plan.md", status="In Progress", branch="codex/task-number-gap")
+    _write_valid_tasks(
+        gap_feature / "tasks.md",
+        status="In Progress",
+        branch="codex/task-number-gap",
+        touch_set="tests/architecture/test_agent_playbook_contracts.py",
+        conflict_set="coordinate with 2026-06-09-duplicate-task-number for numbering fixture.",
+        task_status="[~]",
+    )
+    _append_valid_task(gap_feature / "tasks.md", task_number=3, depends_on="Task 1", task_status="[~]")
+    _write_valid_verification(gap_feature / "verification.md", status="In Progress", branch="codex/task-number-gap")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "task-invalid-numbering" in _issue_codes(issues)
+    assert sum(issue.code == "task-invalid-numbering" for issue in issues) == 2
+
+
 def test_completed_tasks_reject_incomplete_dependencies(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-complete-before-dependency")
     _write_valid_spec(feature / "spec.md", status="In Progress")

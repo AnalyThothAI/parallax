@@ -226,6 +226,7 @@ def _issue_meaning(code: str) -> str:
             "Task records contain non-path touch/file fields, non-command verification, invalid status, "
             "or malformed conflict rules."
         ),
+        "task-invalid-numbering": "Task headings are missing unique contiguous Task numbers.",
         "task-invalid-dependencies": (
             "Task dependencies reference missing task numbers, unsupported syntax, or incomplete prerequisites."
         ),

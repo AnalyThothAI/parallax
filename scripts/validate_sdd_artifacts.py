@@ -98,6 +98,7 @@ KNOWN_ISSUE_CODES = (
     "missing-approval-metadata",
     "task-missing-coordination-fields",
     "task-invalid-coordination-fields",
+    "task-invalid-numbering",
     "task-invalid-dependencies",
     "task-missing-agent-loop-fields",
     "task-missing-review-fields",
@@ -444,6 +445,7 @@ def _task_issues(feature: SddFeature) -> list[SddIssue]:
         ]
 
     issues: list[SddIssue] = []
+    issues.extend(_task_numbering_issues(feature))
     for task in feature.tasks:
         missing_fields = [field for field in TASK_REQUIRED_FIELDS if _is_placeholder(task.fields.get(field, ""))]
         if missing_fields:
@@ -528,6 +530,34 @@ def _task_issues(feature: SddFeature) -> list[SddIssue]:
                 _issue("task-incomplete-in-verified-feature", tasks_artifact, f"{task.title} is not complete")
             )
     return issues
+
+
+def _task_numbering_issues(feature: SddFeature) -> list[SddIssue]:
+    tasks_artifact = feature.artifacts["tasks.md"]
+    task_numbers = [task_number(task) for task in feature.tasks]
+    if any(number is None for number in task_numbers):
+        return [
+            _issue(
+                "task-invalid-numbering",
+                tasks_artifact,
+                "Task headings must start with a machine-readable Task number",
+            )
+        ]
+
+    present_numbers = [number for number in task_numbers if number is not None]
+    expected_numbers = list(range(1, len(present_numbers) + 1))
+    if sorted(present_numbers) == expected_numbers and len(set(present_numbers)) == len(present_numbers):
+        return []
+
+    present_summary = ", ".join(f"Task {number}" for number in present_numbers)
+    expected_summary = f"Task 1..{len(present_numbers)}"
+    return [
+        _issue(
+            "task-invalid-numbering",
+            tasks_artifact,
+            f"Task headings must be unique and contiguous: expected {expected_summary}, saw {present_summary}",
+        )
+    ]
 
 
 def _invalid_task_fields(task: TaskRecord) -> list[str]:
@@ -824,6 +854,8 @@ def _superseded_issues(feature: SddFeature) -> list[SddIssue]:
                 "Superseded tasks.md must retain structured Task sections",
             )
         )
+    if feature.tasks:
+        issues.extend(_task_numbering_issues(feature))
     return issues
 
 
