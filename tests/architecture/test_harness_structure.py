@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import os
 import re
 from pathlib import Path
@@ -139,6 +140,39 @@ def _tech_debt_table_rows() -> list[list[str]]:
     return rows
 
 
+def _is_type_get_call(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "get"
+        and bool(node.args)
+        and isinstance(node.args[0], ast.Constant)
+        and node.args[0].value == "type"
+    )
+
+
+def _websocket_type_literals() -> set[str]:
+    tree = ast.parse(_read(REPO_ROOT / "src/parallax/app/surfaces/api/ws.py"))
+    literals: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Dict):
+            for key, value in zip(node.keys, node.values, strict=True):
+                if (
+                    isinstance(key, ast.Constant)
+                    and key.value == "type"
+                    and isinstance(value, ast.Constant)
+                    and isinstance(value.value, str)
+                ):
+                    literals.add(value.value)
+        if isinstance(node, ast.Compare) and _is_type_get_call(node.left):
+            literals.update(
+                comparator.value
+                for comparator in node.comparators
+                if isinstance(comparator, ast.Constant) and isinstance(comparator.value, str)
+            )
+    return literals
+
+
 def _looks_like_unrooted_source_reference(reference: str) -> bool:
     if reference.startswith((*TECH_DEBT_ROOTED_PREFIXES, "~", "/")):
         return False
@@ -274,6 +308,16 @@ def test_generated_readme_source_map_points_to_existing_paths() -> None:
                 continue
             source_path = REPO_ROOT / token.rstrip("/")
             assert source_path.exists(), f"generated README source path does not exist: {token}"
+
+
+def test_generated_ws_protocol_documents_current_type_literals() -> None:
+    expected = _websocket_type_literals()
+    protocol = _read(DOCS / "generated" / "ws-protocol.md")
+    missing = sorted(type_literal for type_literal in expected if f"`{type_literal}`" not in protocol)
+
+    assert expected, "src/parallax/app/surfaces/api/ws.py must expose WebSocket type literals"
+    assert "Message type literal" in protocol
+    assert missing == [], f"docs/generated/ws-protocol.md omits WebSocket type literals: {missing}"
 
 
 def test_architecture_doc_test_references_are_path_qualified_and_existing() -> None:

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import ast
+from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -21,18 +22,92 @@ def _collect_classes(tree: ast.AST) -> list[tuple[str, str]]:
     return names
 
 
+def _is_type_get_call(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "get"
+        and bool(node.args)
+        and isinstance(node.args[0], ast.Constant)
+        and node.args[0].value == "type"
+    )
+
+
+class _TypeLiteralVisitor(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.stack: list[str] = []
+        self.type_contexts: dict[str, set[str]] = defaultdict(set)
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self.stack.append(node.name)
+        self.generic_visit(node)
+        self.stack.pop()
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self.stack.append(node.name)
+        self.generic_visit(node)
+        self.stack.pop()
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self.stack.append(node.name)
+        self.generic_visit(node)
+        self.stack.pop()
+
+    def visit_Dict(self, node: ast.Dict) -> None:
+        for key, value in zip(node.keys, node.values, strict=True):
+            if (
+                isinstance(key, ast.Constant)
+                and key.value == "type"
+                and isinstance(value, ast.Constant)
+                and isinstance(value.value, str)
+            ):
+                self._record(value.value)
+        self.generic_visit(node)
+
+    def visit_Compare(self, node: ast.Compare) -> None:
+        if _is_type_get_call(node.left):
+            for comparator in node.comparators:
+                if isinstance(comparator, ast.Constant) and isinstance(comparator.value, str):
+                    self._record(comparator.value)
+        self.generic_visit(node)
+
+    def _record(self, value: str) -> None:
+        self.type_contexts[value].add(".".join(self.stack) or "<module>")
+
+
+def _collect_type_literals(tree: ast.AST) -> dict[str, set[str]]:
+    visitor = _TypeLiteralVisitor()
+    visitor.visit(tree)
+    return dict(visitor.type_contexts)
+
+
 def main() -> None:
     tree = ast.parse(WS_FILE.read_text(encoding="utf-8"))
-    rows = _collect_classes(tree)
+    class_rows = _collect_classes(tree)
+    type_rows = _collect_type_literals(tree)
     body = [
         "# WebSocket Protocol",
         "",
         f"Source: `{WS_FILE.relative_to(ROOT).as_posix()}`",
         "",
-        "| Message class | Doc |",
-        "|---------------|-----|",
+        "## Message Type Literals",
+        "",
+        "| Message type literal | Source context |",
+        "|----------------------|----------------|",
     ]
-    for name, doc in sorted(rows):
+    for type_literal, contexts in sorted(type_rows.items()):
+        joined_contexts = ", ".join(f"`{context}`" for context in sorted(contexts))
+        body.append(f"| `{type_literal}` | {joined_contexts} |")
+    body.extend(
+        [
+            "",
+            "## Source Classes",
+            "",
+            "| Message class | Doc |",
+            "|---------------|-----|",
+        ]
+    )
+    for name, doc in sorted(class_rows):
         body.append(f"| `{name}` | {doc} |")
     OUTPUT.write_text(HEADER + "\n".join(body) + "\n", encoding="utf-8")
 

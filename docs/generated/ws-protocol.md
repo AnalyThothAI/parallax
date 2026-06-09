@@ -4,6 +4,21 @@
 
 Source: `src/parallax/app/surfaces/api/ws.py`
 
+## Message Type Literals
+
+| Message type literal | Source context |
+|----------------------|----------------|
+| `auth` | `PublicWebSocketHub._authenticate` |
+| `error` | `PublicWebSocketHub._handle_client_message` |
+| `event` | `PublicWebSocketHub._payload_for_event` |
+| `live_market_update` | `PublicWebSocketHub._payload_matches_subscription` |
+| `market_update` | `PublicWebSocketHub._payload_matches_subscription` |
+| `notification` | `PublicWebSocketHub._payload_matches_subscription` |
+| `ready` | `PublicWebSocketHub.handle` |
+| `subscribe` | `PublicWebSocketHub._handle_client_message` |
+
+## Source Classes
+
 | Message class | Doc |
 |---------------|-----|
 | `ClientSubscription` | Client filters for replay events and material live market target updates. |

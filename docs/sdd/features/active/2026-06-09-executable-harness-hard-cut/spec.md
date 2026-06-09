@@ -61,6 +61,7 @@ can both miss real process drift and block healthy refactors.
 | Spec background must be source-backed. | Each `spec.md` Background claim block must cite an existing repo `path:line` or an external `https://` source. |
 | Public contracts must be source-bound. | Architecture tests compare `docs/CONTRACTS.md` runtime lists and routes against manifest/settings/API source. |
 | Generated README source maps must be real. | Architecture tests require `docs/generated/README.md` rows to name existing generated files, generator scripts, and source paths. |
+| Generated WebSocket docs must expose source message kinds. | Architecture tests compare `docs/generated/ws-protocol.md` against current `type` literals in `src/parallax/app/surfaces/api/ws.py`. |
 | Active touch conflicts must catch nested paths. | The SDD validator treats parent/child touch paths as overlaps and requires coordination that names the overlapping feature or path. |
 | Frontend docs and skills must be harness-bound. | Frontend architecture tests compare `docs/FRONTEND.md` and the frontend verification skill against current CSS and navigation harness source. |
 | Frontend feature-boundary scans must follow source roots. | Frontend architecture tests derive feature root names from `web/src/features` instead of a stale hard-coded subset. |
@@ -124,6 +125,7 @@ can both miss real process drift and block healthy refactors.
 - G38. Domain `types/` modules are enforced as leaf value-object modules, so thin re-export shims from services cannot hide upward dependencies.
 - G39. Domain `interfaces.py` modules remain cross-domain contracts and cannot re-export runtime orchestration modules.
 - G40. Open `docs/TECH_DEBT.md` duplicate-symbol claims are checked against current source content, so resolved duplicated constants do not remain as active debt.
+- G41. `docs/generated/ws-protocol.md` includes the current WebSocket message `type` literals from `src/parallax/app/surfaces/api/ws.py`, so generated public-surface docs do not stay class-only while runtime payloads are dict-shaped.
 
 ## Non-goals
 
@@ -231,6 +233,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC60. WHEN any `src/parallax/domains/*/types/*.py` module imports services, repositories, queries, read models, or runtime modules THEN architecture tests SHALL fail.
 - AC61. WHEN any `src/parallax/domains/*/interfaces.py` module imports a runtime module THEN architecture tests SHALL fail.
 - AC62. WHEN an open `docs/TECH_DEBT.md` row claims a backticked symbol is duplicated in one or more backticked `src/**/*.py` files but a cited file no longer contains that symbol THEN architecture tests SHALL fail.
+- AC63. WHEN `docs/generated/ws-protocol.md` omits a WebSocket message `type` literal currently present in `src/parallax/app/surfaces/api/ws.py` THEN architecture tests SHALL fail.
 
 ## Risks
 

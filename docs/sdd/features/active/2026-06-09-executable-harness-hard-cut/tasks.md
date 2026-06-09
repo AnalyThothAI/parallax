@@ -1321,6 +1321,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 63 — Generated WebSocket protocol type-literal gate
+
+- **File(s)**: `scripts/regen_ws_protocol.py`, `docs/generated/ws-protocol.md`, `docs/generated/README.md`, `docs/TECH_DEBT.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 62
+- **Touch set**: `scripts/regen_ws_protocol.py`, `docs/generated/ws-protocol.md`, `docs/generated/README.md`, `docs/TECH_DEBT.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `docs/generated/README.md` for generated-doc source-map semantics.
+- **Failing test first**: `tests/architecture/test_harness_structure.py::test_generated_ws_protocol_documents_current_type_literals` — asserts generated WebSocket protocol docs include current source `type` literals.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Docs/contracts
+- **Deterministic constraints**: Generated WebSocket docs must be source-derived; current JSON `type` literals must be listed even before typed payload classes exist; generated README wording and TECH_DEBT wording must describe the current generator behavior rather than the old class-only output.
+- **On-demand context**: `src/parallax/app/surfaces/api/ws.py`, `scripts/regen_ws_protocol.py`, `docs/generated/ws-protocol.md`, `docs/generated/README.md`, and the existing generated-doc source-map harness.
+- **Kill/defer criteria**: Stop if the generator hand-maintains message types, removes the class table without replacing source-derived coverage, weakens generated README path checks, or edits unrelated generated docs that require Postgres regeneration.
+- **Eval/repair signal**: missing WebSocket type literal in generated docs, stale generated README source-map description, stale TECH_DEBT row about sparse class-only output, and SDD generated index drift.
+- **Implementation**: Add an AST-based type-literal architecture gate, teach `scripts/regen_ws_protocol.py` to emit type-literal and source-class sections, regenerate `docs/generated/ws-protocol.md`, update generated README and TECH_DEBT wording, then regenerate the SDD work index.
+- **Verification**: `uv run pytest tests/architecture/test_harness_structure.py::test_generated_ws_protocol_documents_current_type_literals -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1385,4 +1406,5 @@
 - [ ] `uv run pytest tests/architecture/test_src_domain_architecture.py::test_domain_types_do_not_import_upward_layers -q`
 - [ ] `uv run pytest tests/architecture/test_src_domain_architecture.py::test_domain_interfaces_do_not_import_runtime_modules -q`
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_open_tech_debt_duplicate_symbol_claims_match_current_sources -q`
+- [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_generated_ws_protocol_documents_current_type_literals -q`
 - [ ] `make check-all`
