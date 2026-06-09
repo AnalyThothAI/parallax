@@ -78,6 +78,7 @@ can both miss real process drift and block healthy refactors.
 | Read-model writer uniqueness must be import-time validated. | `WorkerManifest` validation rejects duplicate read-model writers before docs or worker harnesses consume the manifest. |
 | Read-model identity ownership must be import-time validated. | `WorkerManifest` validation rejects stable identity declarations for read models the worker does not write. |
 | Read-model identity declarations must be unique. | `WorkerManifest` validation rejects duplicate stable identity entries for the same read model table in one worker. |
+| Read-model identity entries must be tuples. | `WorkerManifest` validation rejects list-shaped current read-model identity entries before ownership or docs harnesses consume them. |
 | Read-model identity tables must be non-blank. | `WorkerManifest` validation rejects blank table names inside `current_read_model_identities` before ownership checks. |
 | Read-model identity columns must be unique. | `WorkerManifest` validation and `CurrentReadModelPublisher` reject duplicate stable identity columns inside one read-model identity declaration. |
 | Read-model identity columns must be non-empty. | `WorkerManifest` validation rejects current read-model identity declarations whose stable identity column list is empty. |
@@ -224,6 +225,7 @@ can both miss real process drift and block healthy refactors.
 - G87. Tuple-valued manifest declarations reject list-shaped compatibility values, so registry and docs harnesses consume immutable source-truth contract fields.
 - G88. Tuple-valued string manifest declarations reject non-string entries, so blank, duplicate, ownership, and wake-channel checks fail with manifest errors instead of implementation-detail attribute errors.
 - G89. Stable read-model identity column declarations reject list-shaped compatibility values, so serving identity checks consume immutable column tuples.
+- G90. Stable read-model identity entries reject list-shaped compatibility values, so serving identity table/column pairs remain immutable manifest source truth.
 
 ## Non-goals
 
@@ -380,6 +382,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC109. WHEN a tuple-valued `WorkerManifest` contract field is not a tuple THEN manifest validation SHALL raise before registry, factory, settings, or worker inventory harnesses consume the manifest.
 - AC110. WHEN a tuple-valued string `WorkerManifest` contract field contains a non-string entry THEN manifest validation SHALL raise before registry, factory, settings, or worker inventory harnesses consume the manifest.
 - AC111. WHEN a `WorkerManifest.current_read_model_identities` entry declares identity columns that are not a tuple THEN manifest validation SHALL raise before ownership, registry, factory, settings, or worker inventory harnesses consume the manifest.
+- AC112. WHEN a `WorkerManifest.current_read_model_identities` entry is not a tuple THEN manifest validation SHALL raise before ownership, registry, factory, settings, or worker inventory harnesses consume the manifest.
 
 ## Risks
 

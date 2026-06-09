@@ -1055,6 +1055,21 @@ def _validate_worker_manifests() -> None:
 
     read_model_writer_by_table()
 
+    non_tuple_current_identity_entries = {
+        manifest.name: tuple(
+            identity_entry
+            for identity_entry in manifest.current_read_model_identities
+            if type(identity_entry) is not tuple
+        )
+        for manifest in _WORKER_MANIFESTS
+        if any(
+            type(identity_entry) is not tuple
+            for identity_entry in manifest.current_read_model_identities
+        )
+    }
+    if non_tuple_current_identity_entries:
+        raise ValueError(f"non-tuple current read model identity entries: {non_tuple_current_identity_entries}")
+
     non_tuple_current_identity_columns = {
         manifest.name: {
             table_name: identity_columns
