@@ -202,6 +202,7 @@ Diagnostic commands:
 
 - `uv run python scripts/regen_sdd_work_index.py --check`
 - `uv run python scripts/build_agent_context_packet.py --feature <slug> --task <number> --mode read-only`
+- `uv run python scripts/dispatch_sdd_task.py --feature <slug> --task <number> --mode read-only`
 - `uv run pytest tests/architecture/test_agent_playbook_contracts.py`
 - `uv run pytest tests/architecture/test_harness_structure.py tests/architecture/test_completion_gates.py`
 

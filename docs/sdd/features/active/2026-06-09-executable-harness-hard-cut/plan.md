@@ -38,12 +38,19 @@ Known-failing baseline tests:
 - Keep it development-harness only; do not create a product LLM task queue, persistent runtime state, or compatibility
   path for old planning records.
 
+### `scripts/dispatch_sdd_task.py`
+
+- Add a pure filesystem dry-run dispatcher that validates SDD records, selects one active feature task, refuses
+  completed or non-dispatchable task statuses, and renders a subagent handoff containing the generated context packet.
+- Keep dispatch non-persistent for this slice; no task claiming table, product agent queue, or runtime side effect.
+
 ### `tests/architecture/test_agent_playbook_contracts.py`
 
 - Update generated-index assertions from string counters to semantic coordination-board requirements.
 - Require the SDD validator to pass as part of the architecture harness.
 - Require explicit development-agent factory and eval/repair loop playbook contracts.
 - Require the context-packet CLI to build a bounded packet from an active SDD task.
+- Require the dry-run dispatch CLI to emit a handoff for in-progress tasks and refuse completed tasks.
 
 ### `tests/architecture/test_test_lane_contracts.py`
 
@@ -55,6 +62,7 @@ Known-failing baseline tests:
 - Split deterministic constraints from on-demand context so subagents receive small, precise packets.
 - Define parent integrator ownership, maximum lane count, and kill/defer criteria.
 - Route subagent handoffs through `scripts/build_agent_context_packet.py` instead of hand-copying template prose.
+- Route dispatch prompts through `scripts/dispatch_sdd_task.py` so completed tasks are not handed off again.
 
 ### `docs/agent-playbook/eval-repair-loop.md`
 
@@ -111,6 +119,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Multi-agent coordination is represented as metadata. | Pass: owner/worktree/branch/touch/conflict/review fields are planned. |
 | Development-agent loops are separated from product agents. | Pass: factory/eval playbooks explicitly keep product LLM agents outside development-agent lanes. |
 | Context packets are executable, not prose-only. | Pass: a new CLI reads active SDD task metadata and emits a bounded handoff packet. |
+| Dispatch is dry-run and non-runtime. | Pass: dispatcher emits prompts only and refuses completed tasks without creating durable product state. |
 
 ## Acceptance test commands
 
@@ -121,6 +130,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC5: `make check-all`
 - AC6: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_development_agent_factory_model_is_explicit_and_bounded tests/architecture/test_agent_playbook_contracts.py::test_development_agent_eval_repair_loop_is_defined -q`
 - AC7: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q`
+- AC8: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_refuses_completed_task -q`
 
 ## Verification
 

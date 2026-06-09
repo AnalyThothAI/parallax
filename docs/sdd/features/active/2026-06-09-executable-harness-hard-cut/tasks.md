@@ -152,6 +152,25 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 8 — SDD dry-run dispatch CLI
+
+- **File(s)**: `scripts/dispatch_sdd_task.py`, `docs/agent-playbook/factory-operating-model.md`, `docs/agent-playbook/task-reading-matrix.md`, `docs/sdd/README.md`, `tests/architecture/test_agent_playbook_contracts.py`
+- **Owner**: parent
+- **Depends on**: Task 7
+- **Touch set**: `scripts/dispatch_sdd_task.py`, `docs/agent-playbook/factory-operating-model.md`, `docs/agent-playbook/task-reading-matrix.md`, `docs/sdd/README.md`, `tests/architecture/test_agent_playbook_contracts.py`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared agent playbook docs and tests.
+- **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_refuses_completed_task` — assert dry-run handoff generation and completed-task refusal.
+- **Subagent handoff**: not delegated; this task creates the dry-run handoff generator used before future delegation.
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: The dispatcher must validate SDD artifacts before output and must refuse `[x]` completed tasks.
+- **On-demand context**: `scripts/build_agent_context_packet.py`, `docs/agent-playbook/subagent-handoff-template.md`, active SDD task metadata.
+- **Kill/defer criteria**: Stop if dispatch writes durable task state, creates product LLM queues, or bypasses context-packet generation.
+- **Eval/repair signal**: dispatch CLI failure, completed-task dispatch attempt, review defect, or missing verification command.
+- **Implementation**: Add a filesystem-only dry-run dispatcher that emits a subagent handoff prompt containing the generated context packet.
+- **Verification**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_refuses_completed_task -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -160,4 +179,5 @@
 - [ ] `uv run pytest tests/unit/domains/macro_intel/test_macro_migration_contract.py -q`
 - [ ] `uv run pytest tests/architecture/test_agent_playbook_contracts.py tests/architecture/test_sdd_artifact_validator.py -q`
 - [ ] `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q`
+- [ ] `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_refuses_completed_task -q`
 - [ ] `make check-all`

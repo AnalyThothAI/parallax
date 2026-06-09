@@ -158,6 +158,7 @@ def test_development_agent_factory_model_is_explicit_and_bounded() -> None:
         "Product LLM agents are not development-agent lanes",
         "Subagent output is evidence, not authority",
         "scripts/build_agent_context_packet.py",
+        "scripts/dispatch_sdd_task.py",
     ):
         assert required_phrase in text
 
@@ -194,6 +195,7 @@ def test_context_packet_cli(tmp_path: Path) -> None:
         "Factory lane: Harness/tests",
         "Owned scope:",
         "Do not touch:",
+        "coordinate with active SDD tasks touching context packet generator, docs, and tests.",
         "Deterministic constraints:",
         "On-demand context:",
         "Kill/defer criteria:",
@@ -206,6 +208,74 @@ def test_context_packet_cli(tmp_path: Path) -> None:
 
     for forbidden_phrase in ("<task", "<path>", "<pending>", "~/.parallax/", "token=", "cookie=", "dsn="):
         assert forbidden_phrase not in result.stdout.lower()
+
+
+@pytest.mark.architecture
+def test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "dispatch_sdd_task.py"
+    assert script.exists()
+    _write_context_packet_fixture(tmp_path)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--task",
+            "1",
+            "--mode",
+            "read-only",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    for required_phrase in (
+        "# Subagent Handoff - 2026-06-09-context-packet-fixture / Task 1",
+        "Mode: read-only",
+        "Goal:",
+        "Owned scope:",
+        "Do not touch:",
+        "Context packet:",
+        "# Context Packet - 2026-06-09-context-packet-fixture / Task 1",
+        "Verification evidence:",
+    ):
+        assert required_phrase in result.stdout
+
+
+@pytest.mark.architecture
+def test_sdd_task_dispatch_cli_refuses_completed_task(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "dispatch_sdd_task.py"
+    assert script.exists()
+    _write_context_packet_fixture(tmp_path)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--task",
+            "2",
+            "--mode",
+            "read-only",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "already complete" in result.stderr
 
 
 @pytest.mark.architecture
@@ -473,7 +543,7 @@ def _write_context_packet_fixture(root: Path) -> None:
             - **Owner**: parent
             - **Depends on**: none
             - **Touch set**: `scripts/build_agent_context_packet.py`
-            - **Conflict set**: coordinate with active SDD tasks touching context packet generator.
+            - **Conflict set**: coordinate with active SDD tasks touching context packet generator, docs, and tests.
             - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli`
             - **Subagent handoff**: not delegated
             - **Factory lane**: Harness/tests
@@ -482,6 +552,25 @@ def _write_context_packet_fixture(root: Path) -> None:
             - **Kill/defer criteria**: Stop if inactive SDD records are accepted.
             - **Eval/repair signal**: context packet CLI failure and review defect.
             - **Implementation**: Emit a bounded packet from one active task.
+            - **Verification**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py -q`
+            - **Review owner**: parent
+            - **Status**: [~]
+
+            ### Task 2 — Completed packet
+
+            - **File(s)**: `docs/agent-playbook/context-packet-template.md`
+            - **Owner**: parent
+            - **Depends on**: Task 1
+            - **Touch set**: `docs/agent-playbook/context-packet-template.md`
+            - **Conflict set**: coordinate with active SDD tasks touching context packet docs.
+            - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli`
+            - **Subagent handoff**: not delegated
+            - **Factory lane**: Docs/contracts
+            - **Deterministic constraints**: Completed tasks are not dispatchable.
+            - **On-demand context**: `docs/agent-playbook/context-packet-template.md`
+            - **Kill/defer criteria**: Stop if dispatcher accepts completed tasks.
+            - **Eval/repair signal**: dispatch guard failure and review defect.
+            - **Implementation**: Exercise the completed-task dispatch guard.
             - **Verification**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py -q`
             - **Review owner**: parent
             - **Status**: [x]

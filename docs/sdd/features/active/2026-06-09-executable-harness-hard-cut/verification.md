@@ -24,6 +24,7 @@ claim is allowed without the corresponding output captured below.
 | AC5 — `make check-all` includes deterministic harness gates. | ⚠️ | `make check-all` started and ran the new SDD validator/index gates, then was stopped during integration per user instruction. |
 | AC6 — development-agent factory/eval loop is executable. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py tests/architecture/test_sdd_artifact_validator.py -q` passed. |
 | AC7 — SDD task context-packet CLI is executable. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py tests/architecture/test_sdd_artifact_validator.py -q` and `uv run python scripts/build_agent_context_packet.py --feature 2026-06-09-executable-harness-hard-cut --task 7 --mode read-only` passed. |
+| AC8 — SDD dry-run dispatcher emits handoff and refuses completed tasks. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_refuses_completed_task -q` passed; real Task 5 dispatch emitted a handoff and real Task 8 dispatch was refused. |
 
 Deviations from spec:
 
@@ -129,6 +130,19 @@ $ uv run python scripts/build_agent_context_packet.py --feature 2026-06-09-execu
 # Context Packet - 2026-06-09-executable-harness-hard-cut / Task 7
 ...
 exit code: 0
+
+$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_refuses_completed_task -q
+2 passed in 0.07s
+exit code: 0
+
+$ uv run python scripts/dispatch_sdd_task.py --feature 2026-06-09-executable-harness-hard-cut --task 5 --mode read-only
+# Subagent Handoff - 2026-06-09-executable-harness-hard-cut / Task 5
+...
+exit code: 0
+
+$ uv run python scripts/dispatch_sdd_task.py --feature 2026-06-09-executable-harness-hard-cut --task 8 --mode read-only
+error: task is already complete and cannot be dispatched: Task 8 — SDD dry-run dispatch CLI
+exit code: 1
 ```
 
 ## Diff summary

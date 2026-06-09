@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from scripts.build_agent_context_packet import VALID_MODES, render_context_packet  # noqa: E402
 from scripts.validate_sdd_artifacts import (  # noqa: E402
     SddFeature,
     SddIssue,
@@ -17,11 +18,11 @@ from scripts.validate_sdd_artifacts import (  # noqa: E402
     validate_sdd_root,
 )
 
-VALID_MODES = ("read-only", "write-allowed", "review-only")
+DISPATCHABLE_STATUSES = {"[ ]", "[~]"}
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Build a bounded subagent context packet from an SDD task")
+    parser = argparse.ArgumentParser(description="Build a dry-run subagent handoff from an active SDD task")
     parser.add_argument("--root", type=Path, default=ROOT, help="repository root")
     parser.add_argument("--feature", required=True, help="SDD feature slug")
     parser.add_argument("--task", required=True, help="task number or title substring")
@@ -34,13 +35,12 @@ def main(argv: list[str] | None = None) -> int:
         _print_issues(issues)
         return 1
 
-    features = scan_sdd_features(root)
-    feature = _find_feature(features, args.feature)
+    feature = _find_feature(scan_sdd_features(root), args.feature)
     if feature is None:
         print(f"error: SDD feature not found: {args.feature}", file=sys.stderr)
         return 1
     if feature.state != "active":
-        print(f"error: context packets can only be built from active features: {args.feature}", file=sys.stderr)
+        print(f"error: dispatch only accepts active SDD features: {args.feature}", file=sys.stderr)
         return 1
 
     task = _find_task(feature, args.task)
@@ -48,63 +48,59 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: task not found in {feature.slug}: {args.task}", file=sys.stderr)
         return 1
 
-    print(render_context_packet(feature, task, args.mode))
+    status = task.fields.get("status", "").strip().lower()
+    if status == "[x]":
+        print(f"error: task is already complete and cannot be dispatched: {task.title}", file=sys.stderr)
+        return 1
+    if status not in DISPATCHABLE_STATUSES:
+        print(f"error: task status is not dispatchable ({status or 'missing'}): {task.title}", file=sys.stderr)
+        return 1
+
+    print(render_handoff(feature, task, args.mode))
     return 0
 
 
-def render_context_packet(feature: SddFeature, task: TaskRecord, mode: str) -> str:
+def render_handoff(feature: SddFeature, task: TaskRecord, mode: str) -> str:
     task_anchor = _task_anchor(task.title)
-    touch_set = _split_list_field(task.fields.get("touch set", ""))
-    conflict_set = _split_list_field(task.fields.get("conflict set", ""), split_commas=False)
-
+    context_packet = render_context_packet(feature, task, mode)
     lines = [
-        f"# Context Packet - {feature.slug} / {task_anchor}",
+        f"# Subagent Handoff - {feature.slug} / {task_anchor}",
         "",
         f"Mode: {mode}",
-        f"Factory lane: {_field(task, 'factory lane')}",
         "",
-        "Current objective:",
-        f"- Execute `{task.title}` for `{feature.slug}` without expanding scope beyond the active SDD record.",
+        "Goal:",
+        f"- {_field(task, 'implementation')}",
         "",
         "Owned scope:",
-        *_bullet_lines(touch_set),
+        *_bullet_lines(_split_list_field(task.fields.get("touch set", ""))),
         "",
         "Do not touch:",
-        *_bullet_lines(conflict_set),
+        *_bullet_lines(_split_list_field(task.fields.get("conflict set", ""), split_commas=False)),
         "",
-        "Truth boundary:",
-        "- Facts: canonical source files and SDD artifacts listed in this packet.",
-        "- Read models: only the read-model paths explicitly named by the selected task.",
-        "- Control plane: active SDD records, generated SDD work index, and command exit status.",
-        "- Cache/fan-out: generated docs are rebuildable and must be refreshed by their generator.",
-        "- Provider raw inputs: omitted unless the selected task explicitly names a provider diagnostic.",
-        "- Product LLM agents are not development-agent lanes.",
-        "",
-        "Deterministic constraints:",
-        f"- {_field(task, 'deterministic constraints')}",
-        "",
-        "On-demand context:",
+        "Must read:",
+        "- `AGENTS.md`",
+        "- `docs/agent-playbook/task-reading-matrix.md`",
         f"- {_field(task, 'on-demand context')}",
         "",
-        "Kill/defer criteria:",
-        f"- {_field(task, 'kill/defer criteria')}",
+        "Context packet:",
         "",
-        "Eval/repair signal:",
-        f"- {_field(task, 'eval/repair signal')}",
+        "```md",
+        context_packet,
+        "```",
         "",
-        "Relevant active planning artefacts:",
-        f"- `{feature.relative_path}/tasks.md` - selected task and lane metadata.",
-        f"- `{feature.relative_path}/plan.md` - file-level edits and verification commands.",
-        f"- `{feature.relative_path}/spec.md` - approved goals and acceptance criteria.",
+        "Expected output:",
+        "- Findings first, with file paths and evidence.",
+        "- Changed files only when mode is write-allowed.",
+        "- Remaining risks and open questions.",
+        "- Verification evidence, including command and exit status.",
         "",
         "Verification evidence:",
         f"- {_field(task, 'verification')}",
         "",
-        "Unknowns:",
-        "- Re-check canonical docs and source before editing; SDD artifacts are execution records, not runtime truth.",
-        "",
-        "Redactions:",
-        "- Credentials and private runtime values are omitted.",
+        "Constraints:",
+        "- Work with existing user changes; never revert unrelated edits.",
+        "- Never print credentials or private runtime values.",
+        "- Treat subagent output as evidence, not authority.",
     ]
     return "\n".join(lines)
 
