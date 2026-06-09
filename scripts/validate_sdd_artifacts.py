@@ -148,6 +148,7 @@ KNOWN_ISSUE_CODES = (
     "spec-background-uncited",
     "worktree-metadata-invalid",
     "plan-preflight-metadata-mismatch",
+    "plan-analyze-gate-invalid",
     "artifact-owning-link-mismatch",
     "missing-gate-section",
     "gate-evidence-missing",
@@ -617,9 +618,35 @@ def _artifact_issues(feature: SddFeature, artifact: ArtifactRecord) -> list[SddI
     if missing_sections:
         issues.append(_issue("missing-gate-section", artifact, f"missing sections: {', '.join(missing_sections)}"))
     issues.extend(_gate_evidence_issues(artifact))
+    if artifact.name == "plan.md":
+        issues.extend(_plan_analyze_gate_issues(artifact))
     if artifact.name == "spec.md":
         issues.extend(_spec_background_issues(feature, artifact))
     return issues
+
+
+def _plan_analyze_gate_issues(artifact: ArtifactRecord) -> list[SddIssue]:
+    invalid_results: list[str] = []
+    for cells in _section_table_rows(artifact.text, "## Analyze Gate"):
+        if len(cells) < 2:
+            continue
+        result = _clean_value(cells[1])
+        if _is_placeholder_table_cell(result):
+            continue
+        if result.startswith(("Pass:", "Blocked:")):
+            continue
+        check = _clean_value(cells[0]) or "<unnamed check>"
+        invalid_results.append(f"{check} => {result}")
+
+    if not invalid_results:
+        return []
+    return [
+        _issue(
+            "plan-analyze-gate-invalid",
+            artifact,
+            "Analyze Gate results must start with `Pass:` or `Blocked:`: " + "; ".join(invalid_results),
+        )
+    ]
 
 
 def _acceptance_command_issues(feature: SddFeature) -> list[SddIssue]:

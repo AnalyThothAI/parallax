@@ -36,6 +36,7 @@ Known-failing baseline tests:
 - Validate `Verified` Spec compliance rows by requiring every command-shaped backticked command in completed rows to have exit code 0 evidence in canonical evidence sections.
 - Validate Worktree/Branch metadata as machine-readable execution-location state, rejecting template placeholders, prose values, slug mismatches, and cross-artifact disagreement.
 - Validate checked plan Pre-flight Worktree/Branch claims against the artifact metadata so stale setup evidence cannot remain checked.
+- Validate plan Analyze Gate result cells as machine-statused `Pass:` or `Blocked:` values; freeform `Pass.` or `Fail:` rows are invalid.
 - Validate spec Background paragraphs as source-backed claims with existing repo `path:line` citations or external `https://` references.
 - Validate task field semantics, not just presence: path-shaped file/touch values, structured conflict rules, command-shaped verification, test-shaped failing-test-first values, and known task status tokens.
 - Validate task headings form a unique contiguous `Task 1..N` sequence before dependency or dispatch state is trusted.
@@ -190,6 +191,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Delegated handoff artifacts are task-bound. | Pass: validator rejects existing delegated handoff files that name another feature/task/mode or stale report-validation command. |
 | Delegated report mode matches handoff mode. | Pass: validator rejects report artifacts whose `Mode:` differs from the owning handoff mode. |
 | Factory lanes are bounded. | Pass: validator rejects task `Factory lane` values outside the six operating-model lanes. |
+| Analyze gate statuses are bounded. | Pass: validator rejects plan Analyze Gate results that do not begin with `Pass:` or `Blocked:`. |
 
 ## Acceptance test commands
 
@@ -236,6 +238,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC41: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_validate_handoff_artifact_against_task -q`
 - AC42: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_report_mode_must_match_handoff_mode -q`
 - AC43: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_invalid_factory_lane_values -q`
+- AC44: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_analyze_gate_rejects_failed_results -q`
 
 ## Verification
 

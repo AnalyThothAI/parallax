@@ -922,6 +922,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 44 — Analyze gate result token gate
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/_templates/plan-template.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut/plan.md`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 43
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/_templates/plan-template.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut/plan.md`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared Analyze Gate status semantics.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_plan_analyze_gate_rejects_failed_results` — asserts `Fail:` Analyze Gate rows cannot pass as implementation-ready evidence.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `plan.md` Analyze Gate result cells must begin with `Pass:` or `Blocked:`; failed analysis must stop or block the feature before implementation.
+- **On-demand context**: GitHub Spec Kit analyze gate semantics, `docs/sdd/_templates/plan-template.md`, active plan records.
+- **Kill/defer criteria**: Stop if `Fail:`, `Pass.`, or other freeform Analyze Gate results can satisfy planning evidence.
+- **Eval/repair signal**: `plan-analyze-gate-invalid`, stale generated index, and analyze-gate drift.
+- **Implementation**: Validate Analyze Gate result tokens, update the plan template to show `Pass:` evidence, and migrate current active plans to machine-statused results.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_analyze_gate_rejects_failed_results -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -966,4 +987,5 @@
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_validate_handoff_artifact_against_task -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_report_mode_must_match_handoff_mode -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_invalid_factory_lane_values -q`
+- [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_analyze_gate_rejects_failed_results -q`
 - [ ] `make check-all`

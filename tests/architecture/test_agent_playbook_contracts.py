@@ -856,7 +856,7 @@ def _write_context_packet_fixture(root: Path) -> None:
 
             | Check | Result |
             |-------|--------|
-            | Product runtime untouched. | Pass. |
+            | Product runtime untouched. | Pass: fixture only exercises development-agent harness. |
 
             ## Acceptance test commands
 

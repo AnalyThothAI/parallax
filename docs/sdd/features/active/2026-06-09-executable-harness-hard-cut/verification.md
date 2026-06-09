@@ -60,6 +60,7 @@ claim is allowed without the corresponding output captured below.
 | AC41 — Delegated subagent handoff artifacts are task-bound. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_validate_handoff_artifact_against_task -q` passed after first failing RED run. |
 | AC42 — Delegated subagent report mode matches handoff mode. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_report_mode_must_match_handoff_mode -q` passed after first failing RED run. |
 | AC43 — Factory lane values are bounded to the operating model. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_invalid_factory_lane_values -q` passed after first failing RED run. |
+| AC44 — Analyze Gate result statuses are machine-bounded. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_analyze_gate_rejects_failed_results -q` passed after first failing RED run. |
 
 Deviations from spec:
 
@@ -740,6 +741,15 @@ $ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_re
 1 passed in 0.04s
 exit code: 0
 
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_analyze_gate_rejects_failed_results -q
+F                                                                        [100%]
+AssertionError: assert 'plan-analyze-gate-invalid' in set()
+exit code: 1
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_analyze_gate_rejects_failed_results -q
+1 passed in 0.03s
+exit code: 0
+
 $ uv run python scripts/validate_sdd_artifacts.py --check
 SDD artifact validation passed.
 exit code: 0
@@ -748,7 +758,7 @@ $ uv run python scripts/regen_sdd_work_index.py --check
 exit code: 0
 
 $ uv run pytest tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py -q
-62 passed in 0.67s
+63 passed in 0.80s
 exit code: 0
 
 $ uv run ruff check scripts/validate_sdd_artifacts.py scripts/regen_sdd_work_index.py tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py

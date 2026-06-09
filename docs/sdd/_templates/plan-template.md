@@ -60,10 +60,10 @@ One PR per logical, independently-reviewable slice. Each PR lists which file edi
 
 | Check | Result |
 |-------|--------|
-| Spec goals map to file-level edits. | Pass / fail |
-| Plan preserves canonical architecture boundaries. | Pass / fail |
-| Compatibility code or old files are not retained. | Pass / fail |
-| Parallel touch/conflict sets are explicit. | Pass / fail |
+| Spec goals map to file-level edits. | Pass: <evidence> |
+| Plan preserves canonical architecture boundaries. | Pass: <evidence> |
+| Compatibility code or old files are not retained. | Pass: <evidence> |
+| Parallel touch/conflict sets are explicit. | Pass: <evidence> |
 
 ## Rollout order
 

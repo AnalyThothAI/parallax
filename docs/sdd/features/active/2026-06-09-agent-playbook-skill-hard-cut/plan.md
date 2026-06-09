@@ -63,10 +63,10 @@ Known-failing baseline tests:
 
 | Check | Result |
 |-------|--------|
-| Spec goals map to file-level edits. | Pass. |
-| Plan preserves canonical architecture boundaries. | Pass. |
-| Compatibility code or old files are not retained. | Pass. |
-| Parallel touch/conflict sets are explicit. | Pass. |
+| Spec goals map to file-level edits. | Pass: goals map to playbook docs, skills, tests, macro repository, and generated index edits. |
+| Plan preserves canonical architecture boundaries. | Pass: development-agent playbooks stay separate from product runtime agents. |
+| Compatibility code or old files are not retained. | Pass: retired macro query filtering is removed rather than wrapped. |
+| Parallel touch/conflict sets are explicit. | Pass: shared generated index and harness tests are coordinated with the executable harness feature. |
 
 ## Rollout order
 
