@@ -28,6 +28,11 @@ EXIT_CODE_RE = re.compile(r"exit code:\s*(?P<code>-?\d+)\b", re.IGNORECASE)
 SKIPPED_RE = re.compile(r"Number of skipped tests in the run above:\s*(?P<count>\d+)", re.IGNORECASE)
 FEATURE_SLUG_RE = re.compile(r"^(?P<date>\d{4}-\d{2}-\d{2})-[a-z0-9]+(?:-[a-z0-9]+)*$")
 SPEC_AC_RE = re.compile(r"^\s*-\s+AC(?P<number>\d+)\.", re.IGNORECASE | re.MULTILINE)
+SPEC_AC_LINE_RE = re.compile(r"^\s*-\s+AC(?P<number>\d+)\..+$", re.IGNORECASE | re.MULTILINE)
+SPEC_AC_FORMAT_RE = re.compile(
+    r"^\s*-\s+AC\d+\.\s+WHEN\s+.+\s+THEN\s+.+\bSHALL\b.+$",
+    re.IGNORECASE,
+)
 PLAN_AC_COMMAND_RE = re.compile(
     r"^\s*-\s+AC(?P<number>\d+)\s*:\s*`(?P<command>[^`]+)`\s*$",
     re.IGNORECASE | re.MULTILINE,
@@ -111,6 +116,7 @@ KNOWN_ISSUE_CODES = (
     "missing-gate-section",
     "gate-evidence-missing",
     "acceptance-numbering-invalid",
+    "acceptance-criterion-format-invalid",
     "acceptance-command-invalid",
     "acceptance-command-mismatch",
     "missing-approval-metadata",
@@ -494,6 +500,16 @@ def _acceptance_command_issues(feature: SddFeature) -> list[SddIssue]:
     plan_commands = _plan_acceptance_commands(plan_artifact.text)
     plan_number_sequence = [number for number, _command in plan_commands]
     issues: list[SddIssue] = []
+    invalid_criteria = _invalid_acceptance_criterion_lines(spec_artifact.text)
+    if invalid_criteria:
+        issues.append(
+            _issue(
+                "acceptance-criterion-format-invalid",
+                spec_artifact,
+                "acceptance criteria must use WHEN ... THEN ... SHALL format: " + ", ".join(invalid_criteria),
+            )
+        )
+
     for artifact, label, numbers in (
         (spec_artifact, "spec acceptance criteria", spec_number_sequence),
         (plan_artifact, "plan acceptance commands", plan_number_sequence),
@@ -905,6 +921,14 @@ def _command_evidence(text: str) -> dict[str, tuple[int, ...]]:
 
 def _spec_acceptance_numbers(text: str) -> list[int]:
     return [int(match.group("number")) for match in SPEC_AC_RE.finditer(text)]
+
+
+def _invalid_acceptance_criterion_lines(text: str) -> list[str]:
+    return [
+        match.group(0).strip()
+        for match in SPEC_AC_LINE_RE.finditer(text)
+        if not SPEC_AC_FORMAT_RE.match(match.group(0))
+    ]
 
 
 def _plan_acceptance_commands(text: str) -> list[tuple[int, str]]:

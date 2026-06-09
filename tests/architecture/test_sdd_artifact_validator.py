@@ -208,6 +208,19 @@ def test_plan_acceptance_commands_must_cover_spec_acceptance_criteria(tmp_path: 
     )
 
 
+def test_acceptance_criteria_require_when_then_shall_format(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-vague-ac")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _replace_acceptance_criterion(feature / "spec.md", 1, "AC1. Improve the harness.")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(feature / "tasks.md", status="In Progress", task_status="[~]")
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "acceptance-criterion-format-invalid" in _issue_codes(issues)
+
+
 def test_acceptance_criteria_and_commands_require_contiguous_numbers(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-ac-number-gap")
     _write_valid_spec(feature / "spec.md", status="In Progress")
@@ -1115,6 +1128,21 @@ def _append_acceptance_criterion(path: Path, number: int) -> None:
         + f"\n- AC{number}. WHEN another behavior exists THEN the harness SHALL map it to a command.\n",
         encoding="utf-8",
     )
+
+
+def _replace_acceptance_criterion(path: Path, number: int, replacement: str) -> None:
+    target = f"- AC{number}."
+    lines = []
+    replaced = False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.startswith(target):
+            lines.append(f"- {replacement}")
+            replaced = True
+        else:
+            lines.append(line)
+    if not replaced:
+        raise AssertionError(f"missing AC{number} criterion in {path}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _append_acceptance_command(path: Path, number: int) -> None:

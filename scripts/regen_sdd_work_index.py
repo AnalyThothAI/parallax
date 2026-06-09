@@ -222,6 +222,7 @@ def _issue_meaning(code: str) -> str:
         ),
         "gate-evidence-missing": "Required SDD gate sections lack non-placeholder structured evidence rows.",
         "acceptance-numbering-invalid": "Spec or plan acceptance criteria are not unique contiguous AC numbers.",
+        "acceptance-criterion-format-invalid": "Spec acceptance criteria are not in executable WHEN/THEN/SHALL form.",
         "acceptance-command-invalid": "Plan acceptance entries are not command-shaped executable commands.",
         "acceptance-command-mismatch": "Plan acceptance commands do not exactly cover spec acceptance criteria.",
         "missing-approval-metadata": "Artifact lacks machine-readable approval or execution metadata.",

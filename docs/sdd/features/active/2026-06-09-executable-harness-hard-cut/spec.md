@@ -155,6 +155,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC33. WHEN `plan.md` acceptance test command bullets contain trailing prose, ranges, or non-AC command labels THEN the validator SHALL report `acceptance-command-invalid`; acceptance test commands must be exact AC-numbered command-only machine lines.
 - AC34. WHEN an SDD feature directory uses a freeform slug or an artifact `Date` does not match the slug date THEN the validator SHALL report `feature-slug-invalid`; executable SDD records must use `YYYY-MM-DD-kebab-slug` identity.
 - AC35. WHEN required clarify, checklist, analyze, or gate-compliance sections contain only empty template rows or placeholders THEN the validator SHALL report `gate-evidence-missing`; SDD gates require structured evidence, not headings alone.
+- AC36. WHEN a `spec.md` acceptance criterion omits the executable `WHEN ... THEN ... SHALL ...` structure THEN the validator SHALL report `acceptance-criterion-format-invalid`; vague acceptance prose cannot satisfy plan-command coverage.
 
 ## Risks
 

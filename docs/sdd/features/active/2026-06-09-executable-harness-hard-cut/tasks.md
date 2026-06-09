@@ -754,6 +754,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 36 — Acceptance criterion format gate
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 35
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD acceptance semantics and generated index.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_acceptance_criteria_require_when_then_shall_format` — asserts vague AC prose cannot pass.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Spec acceptance criteria must use machine-readable `WHEN ... THEN ... SHALL ...` structure before plan-command coverage is trusted.
+- **On-demand context**: `docs/sdd/_templates/spec-template.md`, Carver read-only audit, active SDD specs.
+- **Kill/defer criteria**: Stop if vague AC prose can be numbered and covered by a plan command.
+- **Eval/repair signal**: `acceptance-criterion-format-invalid`, stale generated index, and Spec→Plan coverage drift.
+- **Implementation**: Parse full AC lines and reject criteria that lack the executable WHEN/THEN/SHALL structure.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_acceptance_criteria_require_when_then_shall_format -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -790,4 +811,5 @@
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_acceptance_commands_reject_trailing_prose -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_feature_directory_name_and_date_metadata_are_machine_valid -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_sections_require_non_placeholder_evidence -q`
+- [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_acceptance_criteria_require_when_then_shall_format -q`
 - [ ] `make check-all`

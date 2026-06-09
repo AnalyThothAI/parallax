@@ -828,7 +828,7 @@ def _write_context_packet_fixture(root: Path) -> None:
 
             ## Acceptance criteria
 
-            - AC1. Context packet CLI emits a bounded packet.
+            - AC1. WHEN the context packet CLI reads an active task THEN it SHALL emit a bounded packet.
             """
         ).strip()
         + "\n",
