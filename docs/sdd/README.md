@@ -30,9 +30,10 @@ Historical one-off plans are not retained here. Canonical project truth lives in
 5. Write `tasks.md` for TDD-ordered execution.
 6. Analyze spec, plan, and tasks for contradictions before implementation.
 7. Generate a bounded context packet and dry-run handoff before any subagent handoff.
-8. Implement in an isolated `.worktrees/<slug>/` worktree.
-9. Fill `verification.md` with evidence, including `make check-all`.
-10. Move the feature directory from `active/` to `completed/`.
+8. Validate any returned subagent report before integrating findings or diffs.
+9. Implement in an isolated `.worktrees/<slug>/` worktree.
+10. Fill `verification.md` with evidence, including `make check-all`.
+11. Move the feature directory from `active/` to `completed/`.
 
 Run the executable harness after changing any SDD record:
 
@@ -41,6 +42,7 @@ uv run python scripts/validate_sdd_artifacts.py --check
 uv run python scripts/regen_sdd_work_index.py --check
 uv run python scripts/build_agent_context_packet.py --feature <slug> --task <number> --mode read-only
 uv run python scripts/dispatch_sdd_task.py --feature <slug> --task <number> --mode read-only
+uv run python scripts/validate_subagent_report.py --feature <slug> --task <number> --mode read-only --report <report.md>
 ```
 
 The validator rejects false `Verified` records, missing clarify/checklist/analyze

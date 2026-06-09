@@ -128,6 +128,8 @@ def test_subagent_handoff_templates_define_context_and_conflict_contracts() -> N
         "Owned scope",
         "Must read",
         "Do not touch",
+        "Report contract",
+        "validate_subagent_report.py",
         "Expected output",
         "Conflict set",
         "Verification evidence",
@@ -159,6 +161,7 @@ def test_development_agent_factory_model_is_explicit_and_bounded() -> None:
         "Subagent output is evidence, not authority",
         "scripts/build_agent_context_packet.py",
         "scripts/dispatch_sdd_task.py",
+        "scripts/validate_subagent_report.py",
     ):
         assert required_phrase in text
 
@@ -243,6 +246,10 @@ def test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task(tmp_path: Path
         "Owned scope:",
         "Do not touch:",
         "Context packet:",
+        "Report contract:",
+        "scripts/validate_subagent_report.py",
+        "--feature 2026-06-09-context-packet-fixture",
+        "--task 1",
         "# Context Packet - 2026-06-09-context-packet-fixture / Task 1",
         "Verification evidence:",
     ):
@@ -308,6 +315,193 @@ def test_sdd_task_dispatch_cli_refuses_unmet_dependencies(tmp_path: Path) -> Non
 
 
 @pytest.mark.architecture
+def test_subagent_report_validator_accepts_evidence_report(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "validate_subagent_report.py"
+    report = tmp_path / "subagent-report.md"
+    report.write_text(
+        dedent(
+            """
+            # Subagent Report
+
+            Mode: read-only
+
+            ## Findings
+
+            - No issues found in `scripts/dispatch_sdd_task.py`.
+
+            ## Scope Adherence
+
+            - Owned scope: pass
+            - Conflict set: pass
+
+            ## Changed Files
+
+            - none
+
+            ## Verification Evidence
+
+            ```text
+            $ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q
+            1 passed
+            exit code: 0
+            ```
+
+            ## Remaining Risks
+
+            - Integration/e2e gates were not run by instruction.
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [sys.executable, str(script), "--mode", "read-only", "--report", str(report)],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Subagent report validation passed." in result.stdout
+
+
+@pytest.mark.architecture
+def test_subagent_report_validator_rejects_unverifiable_or_out_of_scope_report(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "validate_subagent_report.py"
+    report = tmp_path / "subagent-report.md"
+    report.write_text(
+        dedent(
+            """
+            # Subagent Report
+
+            Mode: read-only
+
+            ## Findings
+
+            - Looks fine.
+
+            ## Scope Adherence
+
+            - Owned scope: pass
+            - Conflict set: pass
+
+            ## Changed Files
+
+            - `scripts/dispatch_sdd_task.py`
+
+            ## Verification Evidence
+
+            ```text
+            $ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q
+            passed
+            ```
+
+            ## Remaining Risks
+
+            - none
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [sys.executable, str(script), "--mode", "read-only", "--report", str(report)],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "read-only reports must not list changed files" in result.stderr
+    assert "verification evidence requires a command block with exit code" in result.stderr
+
+
+@pytest.mark.architecture
+def test_subagent_report_validator_accepts_task_bound_report(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "validate_subagent_report.py"
+    _write_context_packet_fixture(tmp_path)
+    report = tmp_path / "subagent-report.md"
+    report.write_text(
+        _subagent_report(
+            mode="read-only",
+            changed_files="- none",
+            command="uv run pytest tests/architecture/test_agent_playbook_contracts.py -q",
+            exit_code=0,
+        ),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--task",
+            "1",
+            "--mode",
+            "read-only",
+            "--report",
+            str(report),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.architecture
+def test_subagent_report_validator_rejects_task_bound_scope_and_command_drift(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "validate_subagent_report.py"
+    _write_context_packet_fixture(tmp_path)
+    report = tmp_path / "subagent-report.md"
+    report.write_text(
+        _subagent_report(
+            mode="write-allowed",
+            changed_files="- `scripts/dispatch_sdd_task.py`",
+            command="uv run pytest tests/architecture/test_sdd_artifact_validator.py -q",
+            exit_code=1,
+        ),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--task",
+            "1",
+            "--mode",
+            "write-allowed",
+            "--report",
+            str(report),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "changed files must stay within task touch set" in result.stderr
+    assert "verification command must match task verification" in result.stderr
+    assert "verification command exit code must be 0" in result.stderr
+
+
+@pytest.mark.architecture
 def test_development_agent_eval_repair_loop_is_defined() -> None:
     text = _read(PLAYBOOK / "eval-repair-loop.md")
     for required_phrase in (
@@ -319,6 +513,8 @@ def test_development_agent_eval_repair_loop_is_defined() -> None:
         "harness failure",
         "make check-all",
         "No production claim without verification evidence",
+        "validated subagent reports",
+        "scripts/validate_subagent_report.py",
     ):
         assert required_phrase in text
 
@@ -553,6 +749,44 @@ def _table_values(text: str, heading: str, *, column: int) -> set[str]:
         if len(cells) > column:
             values.add(cells[column])
     return values
+
+
+def _subagent_report(*, mode: str, changed_files: str, command: str, exit_code: int) -> str:
+    return (
+        dedent(
+            f"""
+            # Subagent Report
+
+            Mode: {mode}
+
+            ## Findings
+
+            - Findings are tied to the active SDD task.
+
+            ## Scope Adherence
+
+            - Owned scope: pass
+            - Conflict set: pass
+
+            ## Changed Files
+
+            {changed_files}
+
+            ## Verification Evidence
+
+            ```text
+            $ {command}
+            command output recorded
+            exit code: {exit_code}
+            ```
+
+            ## Remaining Risks
+
+            - Integration/e2e gates were not run by instruction.
+            """
+        ).strip()
+        + "\n"
+    )
 
 
 def _write_context_packet_fixture(root: Path) -> None:

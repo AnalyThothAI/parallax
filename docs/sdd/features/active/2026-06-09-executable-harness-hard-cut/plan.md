@@ -48,6 +48,13 @@ Known-failing baseline tests:
 - Add a pure filesystem dry-run dispatcher that validates SDD records, selects one active feature task, refuses
   completed, non-dispatchable, or dependency-blocked task statuses, and renders a subagent handoff containing the generated context packet.
 - Keep dispatch non-persistent for this slice; no task claiming table, product agent queue, or runtime side effect.
+- Include a report contract that routes returned subagent output through `scripts/validate_subagent_report.py`.
+
+### `scripts/validate_subagent_report.py`
+
+- Add a pure filesystem report validator for subagent return packets, with optional `--feature` and `--task` binding.
+- Require stable sections for findings, scope adherence, changed files, verification evidence, and remaining risks.
+- Reject read-only/review-only reports that list changed files, reject write-allowed reports outside the task touch set or inside the conflict set, reject verification sections without the task's expected command and exit status 0, and reject common secret-bearing fields.
 
 ### `tests/architecture/test_agent_playbook_contracts.py`
 
@@ -58,6 +65,7 @@ Known-failing baseline tests:
 - Require the dry-run dispatch CLI to emit a handoff for in-progress tasks and refuse completed tasks.
 - Require the generated SDD index to render task-level dispatch rows from `TaskRecord` metadata.
 - Require dependency-blocked tasks to be refused by dispatch and surfaced in the task board.
+- Require returned subagent reports to pass a machine-readable report contract before integration.
 
 ### `tests/architecture/test_sdd_artifact_validator.py`
 
@@ -136,6 +144,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Verified evidence is replayable. | Pass: validator reads the canonical command block and validates skipped-test table rows. |
 | Task dispatch state is visible. | Pass: generated index includes a `Task Board` with dispatchable/complete/blocked/closed task state. |
 | Task dependencies are executable. | Pass: validator checks dependency syntax/resolution and dispatcher/index block incomplete dependencies. |
+| Subagent return evidence is executable. | Pass: report validator checks scope adherence, changed files against task scope, verification command/exit code, and secret hygiene. |
 
 ## Acceptance test commands
 
@@ -151,6 +160,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC10: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_ignores_old_success_outside_verification_commands tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_skipped_table_to_match_skip_count -q`
 - AC11: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board -q`
 - AC12: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_unresolved_dependencies tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_refuses_unmet_dependencies tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board -q`
+- AC13: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_accepts_evidence_report tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_rejects_unverifiable_or_out_of_scope_report tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_accepts_task_bound_report tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_rejects_task_bound_scope_and_command_drift tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task -q`
 
 ## Verification
 

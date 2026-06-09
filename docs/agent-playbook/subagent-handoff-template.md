@@ -25,6 +25,11 @@ Must read:
 Context packet:
 - <paste or link the filled context-packet-template.md>
 
+Report contract:
+- Use headings: `## Findings`, `## Scope Adherence`, `## Changed Files`, `## Verification Evidence`, and `## Remaining Risks`.
+- Include `Owned scope: pass`, `Conflict set: pass`, and command output with `exit code:`.
+- Parent validates the report with `uv run python scripts/validate_subagent_report.py --feature <slug> --task <number> --mode <mode> --report <report.md>`.
+
 Conflict set:
 - <files or concerns owned by the parent agent or another subagent>
 
@@ -50,4 +55,5 @@ Parent agent review checklist:
 - Are findings tied to file paths, commands, or source lines?
 - If files changed, are they disjoint from other subagents' write scopes?
 - Is Verification evidence fresh and relevant?
+- Does `scripts/validate_subagent_report.py` pass for the subagent report?
 - Did the parent agent independently inspect the diff before integrating?

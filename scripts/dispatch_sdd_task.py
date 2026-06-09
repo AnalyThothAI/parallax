@@ -69,6 +69,7 @@ def main(argv: list[str] | None = None) -> int:
 
 def render_handoff(feature: SddFeature, task: TaskRecord, mode: str) -> str:
     task_anchor = _task_anchor(task.title)
+    task_selector = _task_selector(task.title)
     context_packet = render_context_packet(feature, task, mode)
     lines = [
         f"# Subagent Handoff - {feature.slug} / {task_anchor}",
@@ -94,6 +95,16 @@ def render_handoff(feature: SddFeature, task: TaskRecord, mode: str) -> str:
         "```md",
         context_packet,
         "```",
+        "",
+        "Report contract:",
+        "- Use headings: `## Findings`, `## Scope Adherence`, `## Changed Files`, "
+        "`## Verification Evidence`, and `## Remaining Risks`.",
+        "- Include `Owned scope: pass`, `Conflict set: pass`, and command output with `exit code:`.",
+        (
+            "- Parent validates the report with "
+            f"`uv run python scripts/validate_subagent_report.py --feature {feature.slug} "
+            f"--task {task_selector} --mode {mode} --report <report.md>`."
+        ),
         "",
         "Expected output:",
         "- Findings first, with file paths and evidence.",
@@ -135,6 +146,11 @@ def _find_task(feature: SddFeature, selector: str) -> TaskRecord | None:
 def _task_anchor(title: str) -> str:
     match = re.match(r"Task\s+\d+", title, re.IGNORECASE)
     return match.group(0) if match else title
+
+
+def _task_selector(title: str) -> str:
+    match = re.match(r"Task\s+(\d+)", title, re.IGNORECASE)
+    return match.group(1) if match else title
 
 
 def _field(task: TaskRecord, name: str) -> str:

@@ -22,7 +22,7 @@ Every non-trivial feature should leave enough evidence to replay the development
 - Commit diff and touched files.
 - Commands run, exit status, skipped tests, and stopped gates.
 - Review defect notes, if any.
-- Subagent handoffs and context packets when delegation happened.
+- Subagent handoffs, context packets, and validated subagent reports when delegation happened.
 
 Do not store secrets, provider credentials, private DSNs, cookies, or raw operator config. Use redacted paths, booleans, counts, and command outcomes.
 
@@ -48,9 +48,10 @@ Use this loop after a harness failure or review defect:
 1. Classify the issue as requirement gap, plan gap, task gap, implementation defect, harness defect, or verification gap.
 2. Add or update the smallest failing test or validator case.
 3. Fix the source of the failure, not the symptom.
-4. Re-run the targeted command that failed.
-5. Update the SDD verification record with the command and exit status.
-6. Re-run `make check-all` before claiming `Verified`.
+4. Validate any returned subagent report with `uv run python scripts/validate_subagent_report.py --feature <slug> --task <number> --mode <mode> --report <report.md>`.
+5. Re-run the targeted command that failed.
+6. Update the SDD verification record with the command and exit status.
+7. Re-run `make check-all` before claiming `Verified`.
 
 No production claim without verification evidence. If `make check-all` is intentionally stopped, keep the SDD record active and record who stopped it and why.
 
@@ -62,6 +63,7 @@ Each repair should produce at least one of:
 - A stricter SDD validator issue code.
 - A clearer task field in the template.
 - A generated index field that makes coordination visible.
+- A validated subagent report that proves scope adherence and verification evidence.
 - A short follow-up spec for work outside the approved scope.
 
 Avoid process folklore. If the same failure can recur, make it executable.
