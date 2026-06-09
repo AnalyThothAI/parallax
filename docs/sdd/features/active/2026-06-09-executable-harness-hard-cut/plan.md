@@ -195,6 +195,7 @@ Known-failing baseline tests:
 ### `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`
 
 - Add `WorkerManifest.owned_tables` as the source-owned table ownership contract and use it inside manifest validation instead of rebuilding ownership tuples in harness checks.
+- Reject raw `lane`, `kind`, and `runtime_constraint` declarations that are not manifest enum values before scheduler, registry, factory, settings, or docs harnesses consume them.
 - Reject blank `name`, `domain`, `factory`, and `worker_class` declarations before registry, factory, settings, or docs harnesses consume them.
 - Reject `domain` declarations that do not name an existing `src/parallax/domains/<domain>` source directory before registry, factory, settings, or docs harnesses consume them.
 - Reject `factory` declarations that do not name an existing `worker_factories/*.py` source file before registry, factory, settings, or docs harnesses consume them.
@@ -319,6 +320,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Spec background is source-backed. | Pass: Background claim blocks must cite existing repo `path:line` evidence or external `https://` sources. |
 | Spec background citations are semantically anchored. | Pass: validator rejects local Background citations whose cited lines do not mention backticked evidence tokens from the claim block. |
 | Worker runtime constraints are manifest-owned. | Pass: `WorkerManifest` carries the runtime constraint enum for every worker and architecture tests no longer define a separate worker classification map. |
+| Worker classification fields are enum-owned. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares raw string `lane`. |
 | Worker identity fields are non-blank. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares a blank `name`. |
 | Worker domains are real source directories. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares missing `domain`. |
 | Worker factory modules are real source files. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares missing `factory`. |
@@ -492,6 +494,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC104: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_worker_class_modules -q`
 - AC105: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_worker_class_names -q`
 - AC106: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_domain_directories -q`
+- AC107: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_raw_classification_values -q`
 
 ## Verification
 

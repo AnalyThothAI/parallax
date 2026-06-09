@@ -745,6 +745,24 @@ def _validate_worker_manifests() -> None:
     if missing_domain_directories:
         raise ValueError(f"missing worker manifest domain directories: {missing_domain_directories}")
 
+    invalid_classifications = {
+        manifest.name: invalid_fields
+        for manifest in _WORKER_MANIFESTS
+        if (
+            invalid_fields := {
+                field_name: value
+                for field_name, value, enum_type in (
+                    ("lane", manifest.lane, WorkerLane),
+                    ("kind", manifest.kind, WorkerKind),
+                    ("runtime_constraint", manifest.runtime_constraint, WorkerRuntimeConstraint),
+                )
+                if not isinstance(value, enum_type)
+            }
+        )
+    }
+    if invalid_classifications:
+        raise ValueError(f"invalid worker manifest classification fields: {invalid_classifications}")
+
     missing_factory_modules = {
         manifest.name: manifest.factory
         for manifest in _WORKER_MANIFESTS

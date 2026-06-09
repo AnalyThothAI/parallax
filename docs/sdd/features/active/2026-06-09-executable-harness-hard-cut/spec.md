@@ -43,6 +43,7 @@ can both miss real process drift and block healthy refactors.
 | Active work must be coordinatable. | The generated SDD index includes owner, worktree, branch, factory lanes, touch set, conflict set, blocked state, and verification status. |
 | Test harness intent must be explicit. | Architecture tests classify permanent invariants, migration tripwires, behavior contracts, and generated hygiene. |
 | Worker runtime constraints must be manifest-owned. | `WorkerManifest` carries each worker's runtime constraint classification, so architecture tests do not maintain a second worker inventory. |
+| Worker classification fields must be enum-owned. | `WorkerManifest` validation rejects raw `lane`, `kind`, and `runtime_constraint` values that are not manifest enum members. |
 | Worker identity fields must be non-blank. | `WorkerManifest` validation rejects blank `name`, `domain`, `factory`, and `worker_class` values before registries, settings, or docs harnesses consume them. |
 | Worker domains must be source directories. | `WorkerManifest` validation rejects `domain` values that do not name an existing `src/parallax/domains/<domain>` source directory. |
 | Worker factory modules must be source files. | `WorkerManifest` validation rejects `factory` values that do not name an existing `worker_factories/*.py` source file. |
@@ -214,6 +215,7 @@ can both miss real process drift and block healthy refactors.
 - G82. Worker runtime class declarations reject missing modules, so registry and docs harnesses cannot preserve a worker whose runtime implementation path cannot resolve.
 - G83. Worker runtime class declarations reject missing class names, so registry and docs harnesses cannot preserve stale symbols inside otherwise valid runtime modules.
 - G84. Worker domain declarations reject missing source directories, so registry and docs harnesses cannot preserve a worker owned by a non-existent bounded context.
+- G85. Worker classification declarations reject raw string values, so scheduler, docs, and lifecycle harnesses cannot silently accept compatibility-shaped values outside the manifest enum boundary.
 
 ## Non-goals
 
@@ -365,6 +367,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC104. WHEN a `WorkerManifest.worker_class` module path cannot be resolved THEN manifest validation SHALL raise before registry, factory, settings, or worker inventory harnesses consume the manifest.
 - AC105. WHEN a `WorkerManifest.worker_class` class name is absent from its resolved module THEN manifest validation SHALL raise before registry, factory, settings, or worker inventory harnesses consume the manifest.
 - AC106. WHEN a `WorkerManifest.domain` value does not name an existing `src/parallax/domains/<domain>` source directory THEN manifest validation SHALL raise before registry, factory, settings, or worker inventory harnesses consume the manifest.
+- AC107. WHEN a `WorkerManifest.lane`, `WorkerManifest.kind`, or `WorkerManifest.runtime_constraint` value is not the corresponding manifest enum type THEN manifest validation SHALL raise before scheduler, registry, factory, settings, or worker inventory harnesses consume the manifest.
 
 ## Risks
 

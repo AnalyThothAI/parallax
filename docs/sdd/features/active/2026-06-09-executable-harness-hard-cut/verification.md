@@ -123,6 +123,7 @@ claim is allowed without the corresponding output captured below.
 | AC104 — Worker class modules resolve. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_worker_class_modules -q` failed RED when a patched missing `worker_class` module did not raise, then passed after adding worker-class module validation. |
 | AC105 — Worker class names resolve. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_worker_class_names -q` failed RED when a patched missing `worker_class` class name did not raise, then passed after adding worker-class symbol validation. |
 | AC106 — Worker domains are real source directories. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_domain_directories -q` failed RED when a patched missing `domain` did not raise, then passed after adding domain source-directory validation. |
+| AC107 — Worker classifications are enum-owned. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_raw_classification_values -q` failed RED when a patched raw string `lane` did not raise, then passed after adding classification enum validation. |
 
 Deviations from spec:
 
@@ -1567,6 +1568,15 @@ Failed: DID NOT RAISE <class 'ValueError'>
 exit code: 1
 
 $ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_domain_directories -q
+1 passed in 0.37s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_raw_classification_values -q
+F                                                                        [100%]
+Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_raw_classification_values -q
 1 passed in 0.37s
 exit code: 0
 ```

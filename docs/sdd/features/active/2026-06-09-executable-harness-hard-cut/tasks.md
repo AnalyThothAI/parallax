@@ -2245,6 +2245,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 107 — Worker classifications are enum-owned
+
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 106
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for worker classification enum validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_raw_classification_values` — patch one manifest to declare raw string `lane` and assert manifest validation raises before scheduler, registry, factory, settings, or docs consumers run.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `WorkerManifest.lane`, `WorkerManifest.kind`, and `WorkerManifest.runtime_constraint` values must be enum members before scheduler ordering, runtime lifecycle, settings, or worker inventory harnesses can treat classifications as source truth.
+- **On-demand context**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, and Worker Inventory docs checks.
+- **Kill/defer criteria**: Stop if manifest classification intentionally supports raw string compatibility values, if validation only checks generated docs, or if the fix touches dirty worker runtime contract files.
+- **Eval/repair signal**: raw worker classification value, runtime constraint drift, scheduler classification drift, manifest validation drift, and SDD generated index drift.
+- **Implementation**: Add manifest validation rejecting `lane`, `kind`, or `runtime_constraint` values that are not their manifest enum types.
+- **Verification**: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_raw_classification_values -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -2353,4 +2374,5 @@
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_worker_class_modules -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_worker_class_names -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_domain_directories -q`
+- [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_raw_classification_values -q`
 - [ ] `make check-all`
