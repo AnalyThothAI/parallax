@@ -313,6 +313,9 @@ class NewsFetchWorker(WorkerBase):
             news_item_ids=dirty_news_item_ids,
             reason="news_item_written",
             now_ms=fetched_at_ms,
+            source_watermark_ms_by_news_item_id={
+                news_item_id: fetched_at_ms for news_item_id in dirty_news_item_ids
+            },
             commit=False,
         )
         return counts

@@ -223,6 +223,60 @@ def test_upsert_news_item_persists_provider_signal_without_public_detail_exposur
     assert "provider_token_impacts" not in loaded
 
 
+def test_provider_signal_update_requeues_processed_item_for_agent_admission(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(
+            repo,
+            source_id="opennews-reprocess",
+            source_domain="6551.io",
+            source_item_key="provider-rating-update",
+            title="Provider rating update",
+            provider_signal={"source": "provider", "provider": "opennews", "status": "ready", "score": 95},
+        )
+        repo.mark_item_processed(news_item_id=news_item_id, processed_at_ms=NOW_MS + 1)
+        provider_item_id = conn.execute(
+            "SELECT provider_item_id FROM news_items WHERE news_item_id = %s",
+            (news_item_id,),
+        ).fetchone()["provider_item_id"]
+
+        updated = repo.upsert_canonical_news_item(
+            provider_item_id=provider_item_id,
+            canonical_url="https://6551.io/news/provider-rating-update",
+            title="Provider rating update",
+            summary="Summary",
+            body_text="Body",
+            language="en",
+            published_at_ms=NOW_MS,
+            fetched_at_ms=NOW_MS + 10,
+            content_hash="content-provider-rating-update",
+            title_fingerprint="provider rating update",
+            now_ms=NOW_MS + 10,
+            provider_signal={"source": "provider", "provider": "opennews", "status": "ready", "score": 5},
+        )
+        current = conn.execute(
+            """
+            SELECT lifecycle_status, processing_lease_owner, processing_leased_until_ms,
+                   processing_next_due_at_ms, processing_error, processing_terminal_error
+              FROM news_items
+             WHERE news_item_id = %s
+            """,
+            (news_item_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert updated["status"] == "updated"
+    assert current["lifecycle_status"] == "raw"
+    assert current["processing_lease_owner"] is None
+    assert current["processing_leased_until_ms"] is None
+    assert current["processing_next_due_at_ms"] == 0
+    assert current["processing_error"] is None
+    assert current["processing_terminal_error"] is None
+
+
 def test_provider_and_news_item_upserts_are_idempotent_and_update_content(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:

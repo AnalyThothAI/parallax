@@ -273,8 +273,18 @@ def test_news_fetch_worker_enqueues_dirty_targets_for_all_affected_news_items() 
 
     news_item_written = next(batch for batch in db.dirty.enqueued if batch["reason"] == "news_item_written")
     assert news_item_written["rows"] == [
-        {"projection_name": "page", "target_kind": "news_item", "target_id": "news-old"},
-        {"projection_name": "page", "target_kind": "news_item", "target_id": "news-new"},
+        {
+            "projection_name": "page",
+            "target_kind": "news_item",
+            "target_id": "news-old",
+            "source_watermark_ms": NOW_MS,
+        },
+        {
+            "projection_name": "page",
+            "target_kind": "news_item",
+            "target_id": "news-new",
+            "source_watermark_ms": NOW_MS,
+        },
     ]
 
 
@@ -324,6 +334,7 @@ def test_news_fetch_worker_does_not_enqueue_brief_input_for_provider_signal_upda
         "projection_name": "page",
         "target_kind": "news_item",
         "target_id": "news-eligible",
+        "source_watermark_ms": NOW_MS,
     } in news_item_written_rows
     assert all(row["projection_name"] != "brief_input" for row in news_item_written_rows)
 
@@ -533,7 +544,14 @@ def test_news_item_process_provider_only_non_crypto_row_enqueues_page_and_brief(
     assert db.repo.agent_admission_updates[0]["admission"].status == "eligible"
     assert db.dirty.enqueued == [
         {
-            "rows": [{"projection_name": "page", "target_kind": "news_item", "target_id": "news-spacex"}],
+            "rows": [
+                {
+                    "projection_name": "page",
+                    "target_kind": "news_item",
+                    "target_id": "news-spacex",
+                    "source_watermark_ms": NOW_MS - 1_000,
+                }
+            ],
             "reason": "news_item_processed",
             "now_ms": NOW_MS,
             "commit": False,
@@ -544,6 +562,7 @@ def test_news_item_process_provider_only_non_crypto_row_enqueues_page_and_brief(
                     "projection_name": "brief_input",
                     "target_kind": "news_item",
                     "target_id": "news-spacex",
+                    "source_watermark_ms": NOW_MS - 1_000,
                     "priority": 100,
                 }
             ],
@@ -604,7 +623,14 @@ def test_news_item_process_admitted_crypto_row_enqueues_page_and_brief_with_stor
     assert db.repo.agent_admission_updates[0]["admission"].status == "eligible"
     assert db.dirty.enqueued == [
         {
-            "rows": [{"projection_name": "page", "target_kind": "news_item", "target_id": "news-zec"}],
+            "rows": [
+                {
+                    "projection_name": "page",
+                    "target_kind": "news_item",
+                    "target_id": "news-zec",
+                    "source_watermark_ms": NOW_MS - 1_000,
+                }
+            ],
             "reason": "news_item_processed",
             "now_ms": NOW_MS,
             "commit": False,
@@ -615,6 +641,7 @@ def test_news_item_process_admitted_crypto_row_enqueues_page_and_brief_with_stor
                     "projection_name": "brief_input",
                     "target_kind": "news_item",
                     "target_id": "news-zec",
+                    "source_watermark_ms": NOW_MS - 1_000,
                     "priority": 100,
                 }
             ],

@@ -168,12 +168,11 @@ def test_news_item_brief_input_has_no_provider_signal_field_aliases() -> None:
     assert offenders == []
 
 
-def test_opennews_provider_signal_is_not_news_agent_evidence_or_priority() -> None:
+def test_opennews_provider_signal_is_not_news_agent_prompt_evidence_or_priority() -> None:
     paths = [
         "src/parallax/domains/news_intel/types/news_item_brief.py",
         "src/parallax/domains/news_intel/services/news_item_brief_input.py",
         "src/parallax/domains/news_intel/services/news_item_agent_policy.py",
-        "src/parallax/domains/news_intel/services/news_item_agent_admission.py",
         "src/parallax/domains/news_intel/services/news_item_brief_validation.py",
         "src/parallax/domains/news_intel/services/news_item_brief_entity_support.py",
         "src/parallax/domains/news_intel/services/news_market_scope.py",
@@ -195,10 +194,14 @@ def test_opennews_provider_signal_is_not_news_agent_evidence_or_priority() -> No
     assert offenders == []
 
 
-def test_opennews_provider_signal_only_reaches_news_page_as_provider_rating_evidence() -> None:
+def test_opennews_provider_signal_only_reaches_agent_admission_and_page_as_provider_rating() -> None:
+    admission = _read("src/parallax/domains/news_intel/services/news_item_agent_admission.py")
     page_projection = _read("src/parallax/domains/news_intel/services/news_page_projection.py")
     notification_rules = _read("src/parallax/domains/notifications/services/notification_rules.py")
 
+    assert "provider_rating" in admission
+    assert "provider_signal_json" in admission
+    assert "provider_score" not in admission
     assert "provider_rating" in page_projection
     assert "provider_rating" not in notification_rules
 

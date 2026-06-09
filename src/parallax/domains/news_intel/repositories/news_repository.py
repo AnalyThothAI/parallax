@@ -1346,6 +1346,7 @@ class NewsRepository:
             status = "duplicate"
         if content_changed:
             self._clear_item_scoped_derived_facts(news_item_id=item_id)
+            self.mark_news_items_for_reprocessing(news_item_ids=[item_id], now_ms=now_ms, commit=False)
         if commit:
             self.conn.commit()
         return {
@@ -2605,9 +2606,14 @@ class NewsRepository:
             """
             UPDATE news_items
                SET lifecycle_status = 'raw',
+                   processing_lease_owner = NULL,
+                   processing_leased_until_ms = NULL,
+                   processing_next_due_at_ms = 0,
+                   processing_error = NULL,
+                   processing_terminal_error = NULL,
                    updated_at_ms = GREATEST(updated_at_ms, %s)
              WHERE news_item_id = ANY(%s::text[])
-               AND lifecycle_status = 'processed'
+               AND lifecycle_status IN ('processed', 'processing', 'process_retryable', 'process_terminal_failed')
             """,
             (int(now_ms), scoped_ids),
         )

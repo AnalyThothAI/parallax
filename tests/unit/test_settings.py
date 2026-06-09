@@ -825,8 +825,6 @@ def test_load_settings_accepts_notification_defaults_and_rule_overrides(tmp_path
                     "news_high_signal": {
                         "enabled": True,
                         "channels": ["in_app", "pushdeer"],
-                        "combined_score_min": 70,
-                        "external_score_min": 85,
                         "cooldown_seconds": 1800,
                     },
                 },
@@ -861,11 +859,31 @@ def test_load_settings_accepts_notification_defaults_and_rule_overrides(tmp_path
     assert pulse_rule.statuses == ("trade_candidate", "token_watch")
     assert pulse_rule.cooldown_seconds == 120
     news_rule = settings.notifications.rules["news_high_signal"]
-    assert news_rule.combined_score_min == 70
-    assert news_rule.external_score_min == 85
     assert news_rule.cooldown_seconds == 1800
     assert settings.notifications.channels["pushdeer"].provider == "pushdeer"
     assert settings.notifications.channels["pushdeer"].url == "pushdeer://pushKey"
+
+
+@pytest.mark.parametrize("threshold_key", ["combined_score_min", "external_score_min"])
+def test_news_high_signal_rejects_removed_score_thresholds(tmp_path, monkeypatch, threshold_key):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(
+        tmp_path,
+        {
+            "ws_token": "secret",
+            "handles": ["toly"],
+            "notifications": {
+                "rules": {
+                    "news_high_signal": {
+                        threshold_key: 85,
+                    },
+                },
+            },
+        },
+    )
+
+    with pytest.raises(ValidationError, match="only accepts delivery settings"):
+        load_settings()
 
 
 def test_notification_settings_reject_legacy_5min_token_rules(tmp_path, monkeypatch):

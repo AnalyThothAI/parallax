@@ -423,12 +423,10 @@ class NotificationRuleConfig(BaseModel):
 
     enabled: bool = True
     channels: tuple[str, ...] = ("in_app",)
-    combined_score_min: float | None = None
     cooldown_seconds: int = 0
     window: str | None = None
     scopes: tuple[str, ...] | None = None
     statuses: tuple[str, ...] | None = None
-    external_score_min: int | None = Field(default=None, ge=0, le=100)
 
     @field_validator("channels", mode="before")
     @classmethod
@@ -540,11 +538,11 @@ class NotificationsConfig(BaseModel):
                             f"unsupported Signal Pulse notification window: {parsed_window}; allowed: {allowed}"
                         )
             if key == "news_high_signal":
-                forbidden = {"statuses"}
+                forbidden = {"combined_score_min", "external_score_min", "statuses"}
                 present = sorted(forbidden.intersection(payload))
                 if present:
                     joined = ", ".join(present)
-                    raise ValueError(f"notifications.rules.{key} does not accept pulse settings: {joined}")
+                    raise ValueError(f"notifications.rules.{key} only accepts delivery settings: {joined}")
             merged[key] = {**merged[key], **dict(payload)}
         return merged
 
@@ -1729,8 +1727,6 @@ notifications:
     news_high_signal:
       enabled: true
       channels: ["in_app", "pushdeer"]
-      combined_score_min: 85
-      external_score_min: 85
       cooldown_seconds: 3600
   channels: {{}}
 """
@@ -2090,8 +2086,6 @@ def _default_notification_rule_payloads() -> dict[str, dict[str, Any]]:
         "news_high_signal": {
             "enabled": True,
             "channels": ("in_app", "pushdeer"),
-            "combined_score_min": 85,
-            "external_score_min": 85,
             "cooldown_seconds": 3600,
         },
     }

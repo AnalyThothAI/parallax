@@ -166,7 +166,7 @@ function normalizeNewsRow<T extends NewsRow>(row: T): T {
       marketScope,
     }),
     provider_rating: normalizeProviderRating(payload.provider_rating),
-    token_impacts: normalizeTokenLanes(payload.token_impacts, { dropProviderRows: true }),
+    token_impacts: normalizeTokenLanes(payload.token_impacts),
     token_lanes: normalizeTokenLanes(payload.token_lanes),
     fact_lanes: normalizeFactLanes(payload.fact_lanes),
     agent_brief: payload.agent_brief
@@ -345,23 +345,12 @@ function normalizeNewsSignalSummary(raw: unknown): NewsSignalSummary {
   };
 }
 
-function normalizeTokenLanes(
-  raw: unknown,
-  options: { dropProviderRows?: boolean } = {},
-): NewsTokenLane[] {
+function normalizeTokenLanes(raw: unknown): NewsTokenLane[] {
   if (!Array.isArray(raw)) {
     return [];
   }
   return raw.flatMap((lane) => {
     const payload = lane && typeof lane === "object" ? (lane as Record<string, unknown>) : {};
-    if (
-      options.dropProviderRows &&
-      (payload.provider_signal != null ||
-        payload.provider_score != null ||
-        payload.provider_grade != null)
-    ) {
-      return [];
-    }
     const targetId = stringOrNull(payload.target_id);
     const resolution = stringOrNull(payload.resolution_status);
     const normalized: NewsTokenLane = {

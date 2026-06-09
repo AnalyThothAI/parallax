@@ -152,6 +152,29 @@ def test_worker_manifest_validation_rejects_blank_read_model_identity_tables(
 
 
 @pytest.mark.architecture
+def test_worker_manifest_validation_rejects_non_tuple_read_model_identity_columns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifests = list(all_worker_manifests())
+    first_writer_index = next(
+        index for index, manifest in enumerate(manifests) if manifest.current_read_model_identities
+    )
+    first_writer = manifests[first_writer_index]
+    table_name, identity_columns = first_writer.current_read_model_identities[0]
+    manifests[first_writer_index] = replace(
+        first_writer,
+        current_read_model_identities=(
+            (table_name, list(identity_columns)),
+            *first_writer.current_read_model_identities[1:],
+        ),
+    )
+    monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
+
+    with pytest.raises(ValueError, match="non-tuple current read model identity columns"):
+        worker_manifest_module._validate_worker_manifests()
+
+
+@pytest.mark.architecture
 def test_worker_manifest_validation_rejects_duplicate_table_declarations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

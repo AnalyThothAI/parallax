@@ -38,7 +38,7 @@ def test_high_score_us_equity_page_only_item_is_eligible() -> None:
     assert admission.reason == "eligible"
 
 
-def test_low_score_market_news_is_not_filtered_by_provider_score() -> None:
+def test_low_provider_rating_market_news_is_not_agent_eligible() -> None:
     admission = decide_news_item_agent_admission(
         item=_item(
             title="Ford shares fall after supplier disruption",
@@ -51,10 +51,31 @@ def test_low_score_market_news_is_not_filtered_by_provider_score() -> None:
         now_ms=NOW_MS,
     )
 
-    assert admission.eligible is True
-    assert admission.status == "eligible"
-    assert admission.reason == "eligible"
-    assert "provider_score" not in admission.basis
+    assert admission.eligible is False
+    assert admission.status == "needs_review"
+    assert admission.reason == "provider_rating_below_threshold"
+    assert admission.basis["provider_rating"]["score"] == 42
+    assert admission.basis["provider_rating"]["min_score"] == 80
+
+
+def test_missing_provider_rating_market_news_is_not_agent_eligible() -> None:
+    admission = decide_news_item_agent_admission(
+        item=_item(
+            title="Ford shares fall after supplier disruption",
+            provider_signal_json={"source": "provider", "status": "partial"},
+        ),
+        entities=[{"entity_id": "entity-f", "raw_value": "Ford", "entity_type": "company", "symbol": "F"}],
+        token_mentions=[],
+        fact_candidates=[],
+        context=NewsItemAgentAdmissionContext.empty(),
+        now_ms=NOW_MS,
+    )
+
+    assert admission.eligible is False
+    assert admission.status == "needs_review"
+    assert admission.reason == "provider_rating_missing"
+    assert admission.basis["provider_rating"]["score"] is None
+    assert admission.basis["provider_rating"]["min_score"] == 80
 
 
 def test_high_score_old_item_is_not_filtered_by_agent_age_gate() -> None:

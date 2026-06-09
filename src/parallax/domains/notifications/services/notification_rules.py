@@ -318,7 +318,7 @@ class NotificationRuleEngine:
             external_push_eligible = False
             suppression_reason = None
             if not _has_external_channels(rule.channels):
-                suppression_reason = "external_threshold_or_channel"
+                suppression_reason = "external_channel_unavailable"
             elif not external_push_ready:
                 suppression_reason = readiness_suppression_reason
             else:

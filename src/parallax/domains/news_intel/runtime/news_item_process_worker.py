@@ -171,6 +171,9 @@ class NewsItemProcessWorker(WorkerBase):
                         news_item_ids=[news_item_id],
                         reason="news_item_processed",
                         now_ms=now,
+                        source_watermark_ms_by_news_item_id={
+                            news_item_id: _source_watermark_ms(processed_item, fallback_ms=now)
+                        },
                         commit=False,
                     )
                     context_payload = _agent_admission_context(
@@ -203,6 +206,9 @@ class NewsItemProcessWorker(WorkerBase):
                                 representative_news_item_id: news_item_agent_brief_priority(
                                     item=_json_dict(context_payload.get("item")) or processed_item
                                 )
+                            },
+                            source_watermark_ms_by_news_item_id={
+                                representative_news_item_id: _source_watermark_ms(processed_item, fallback_ms=now)
                             },
                             reason="news_item_processed",
                             now_ms=now,
@@ -357,6 +363,25 @@ def _processing_attempts(item: Mapping[str, Any]) -> int:
 
 def _processing_lease_owner(item: Mapping[str, Any]) -> str:
     return str(item.get("processing_lease_owner") or "").strip()
+
+
+def _source_watermark_ms(item: Mapping[str, Any], *, fallback_ms: int) -> int:
+    candidates = [
+        _optional_int(item.get("fetched_at_ms")),
+        _optional_int(item.get("published_at_ms")),
+    ]
+    source_values = [value for value in candidates if value is not None]
+    if source_values:
+        return max(source_values)
+    return int(fallback_ms)
+
+
+def _optional_int(value: object) -> int | None:
+    try:
+        parsed = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
 
 
 class _StaleClaimError(RuntimeError):

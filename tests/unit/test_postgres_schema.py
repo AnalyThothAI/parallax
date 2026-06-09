@@ -263,6 +263,12 @@ NEWS_PAGE_ROWS_SERVING_INVARIANTS_MIGRATION = Path(
 NEWS_PAGE_PROVIDER_RATING_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260609_0174_news_page_provider_rating.py"
 )
+NEWS_AGENT_PROVIDER_RATING_GATE_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260609_0175_news_agent_provider_rating_gate.py"
+)
+NEWS_PROVIDER_RATING_GATE_FINALIZE_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260609_0176_news_provider_rating_gate_finalize.py"
+)
 TOKEN_PULSE_EQUITY_CPU_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260529_0124_token_pulse_equity_cpu_hard_cut.py"
 )
@@ -2346,6 +2352,67 @@ def test_news_page_provider_rating_migration_adds_read_model_evidence_column() -
         "ANALYZE news_page_rows",
     ):
         assert statement in normalized_text or statement in text
+
+
+def test_news_agent_provider_rating_gate_migration_hard_cuts_low_rating_backlog() -> None:
+    assert NEWS_AGENT_PROVIDER_RATING_GATE_MIGRATION.exists(), (
+        f"{NEWS_AGENT_PROVIDER_RATING_GATE_MIGRATION} missing; "
+        "low provider-rating News items must not keep LLM backlog after the hard cut"
+    )
+    text = NEWS_AGENT_PROVIDER_RATING_GATE_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+
+    for statement in (
+        'revision = "20260609_0175"',
+        'down_revision = "20260609_0174"',
+        "agent_admission_status = 'needs_review'",
+        "provider_rating_below_threshold",
+        "provider_rating_missing",
+        "MIN_PROVIDER_RATING_SCORE = 80",
+        "'min_score'",
+        "DELETE FROM news_projection_dirty_targets AS targets",
+        "targets.projection_name = 'brief_input'",
+        "UPDATE news_projection_dirty_targets AS targets",
+        "targets.source_watermark_ms = 0",
+        "GREATEST( COALESCE(NULLIF(items.fetched_at_ms, 0), 0),",
+        "INSERT INTO news_projection_dirty_targets",
+        'projection_name, target_kind, target_id, "window"',
+        "'page'",
+        'ON CONFLICT (projection_name, target_kind, target_id, "window") DO UPDATE',
+        "ANALYZE news_items",
+        "ANALYZE news_projection_dirty_targets",
+    ):
+        assert statement in normalized_text or statement in text
+    assert "def downgrade() -> None:" in text
+    assert "pass" in text.split("def downgrade() -> None:", maxsplit=1)[1]
+
+
+def test_news_provider_rating_gate_finalize_cleans_race_backlog() -> None:
+    assert NEWS_PROVIDER_RATING_GATE_FINALIZE_MIGRATION.exists(), (
+        f"{NEWS_PROVIDER_RATING_GATE_FINALIZE_MIGRATION} missing; "
+        "provider-rating updates after the first hard cut must not leave stale LLM targets"
+    )
+    text = NEWS_PROVIDER_RATING_GATE_FINALIZE_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+
+    for statement in (
+        'revision = "20260609_0176"',
+        'down_revision = "20260609_0175"',
+        "CREATE TEMP TABLE _news_provider_rating_gate_finalize_items",
+        "agent_admission_status = 'needs_review'",
+        "provider_rating_below_threshold",
+        "provider_rating_missing",
+        "DELETE FROM news_projection_dirty_targets AS targets",
+        "items.agent_admission_status NOT IN ('eligible', 'eligible_refresh')",
+        "news_provider_rating_gate_finalize",
+        'ON CONFLICT (projection_name, target_kind, target_id, "window") DO UPDATE',
+        "targets.source_watermark_ms = 0",
+        "ANALYZE news_items",
+        "ANALYZE news_projection_dirty_targets",
+    ):
+        assert statement in normalized_text or statement in text
+    assert "def downgrade() -> None:" in text
+    assert "pass" in text.split("def downgrade() -> None:", maxsplit=1)[1]
 
 
 def test_news_agent_market_admission_migration_adds_agent_admission_columns_and_indexes() -> None:

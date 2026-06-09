@@ -77,6 +77,7 @@ def test_enqueue_item_brief_work_sets_priority_by_item_id() -> None:
         repos,
         news_item_ids=["news-1", "news-2"],
         priority_by_news_item_id={"news-1": 7},
+        source_watermark_ms_by_news_item_id={"news-1": NOW_MS - 1_000, "news-2": NOW_MS - 2_000},
         reason="news_item_processed",
         now_ms=NOW_MS,
         commit=False,
@@ -84,8 +85,19 @@ def test_enqueue_item_brief_work_sets_priority_by_item_id() -> None:
 
     assert count == 2
     assert repos.news_projection_dirty_targets.enqueued == [
-        {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-1", "priority": 7},
-        {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-2"},
+        {
+            "projection_name": "brief_input",
+            "target_kind": "news_item",
+            "target_id": "news-1",
+            "source_watermark_ms": NOW_MS - 1_000,
+            "priority": 7,
+        },
+        {
+            "projection_name": "brief_input",
+            "target_kind": "news_item",
+            "target_id": "news-2",
+            "source_watermark_ms": NOW_MS - 2_000,
+        },
     ]
 
 

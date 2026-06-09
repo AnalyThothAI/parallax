@@ -169,8 +169,18 @@ def test_fetch_worker_enqueues_news_item_and_source_quality_dirty_for_inserted_a
     assert repos.dirty.enqueued == [
         {
             "rows": [
-                {"projection_name": "page", "target_kind": "news_item", "target_id": "news-inserted"},
-                {"projection_name": "page", "target_kind": "news_item", "target_id": "news-updated"},
+                {
+                    "projection_name": "page",
+                    "target_kind": "news_item",
+                    "target_id": "news-inserted",
+                    "source_watermark_ms": NOW_MS,
+                },
+                {
+                    "projection_name": "page",
+                    "target_kind": "news_item",
+                    "target_id": "news-updated",
+                    "source_watermark_ms": NOW_MS,
+                },
             ],
             "reason": "news_item_written",
             "now_ms": NOW_MS,
@@ -337,7 +347,14 @@ def test_process_worker_enqueues_page_and_brief_dirty_in_same_transaction_after_
     assert repos.news.write_commits == [False, False, False, False, False, False, False]
     assert repos.dirty.enqueued == [
         {
-            "rows": [{"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"}],
+            "rows": [
+                {
+                    "projection_name": "page",
+                    "target_kind": "news_item",
+                    "target_id": "news-1",
+                    "source_watermark_ms": NOW_MS - 1_000,
+                }
+            ],
             "reason": "news_item_processed",
             "now_ms": NOW_MS,
             "commit": False,
@@ -348,6 +365,7 @@ def test_process_worker_enqueues_page_and_brief_dirty_in_same_transaction_after_
                     "projection_name": "brief_input",
                     "target_kind": "news_item",
                     "target_id": "news-1",
+                    "source_watermark_ms": NOW_MS - 1_000,
                     "priority": 100,
                 }
             ],

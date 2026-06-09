@@ -44,6 +44,13 @@ forced into a resolved asset.
   describe what happened, what market transmission may matter, whether an item
   is a fresh representative agent target versus duplicate/similar covered, and
   how it groups for the current serving projection.
+  OpenNews `provider_rating` is an LLM budget gate: only rows with a ready
+  provider rating score of at least 80 can become fresh item-brief targets.
+  The rating remains evidence for admission and display; it is not a
+  publishable agent brief and notification delivery must not use it directly.
+  Provider signal or provider impact changes invalidate item-scoped derived
+  facts and return processed items to `raw` so `NewsItemProcessWorker` recomputes
+  admission before any new brief work is enqueued.
   Story identity is rebuildable state over facts, not a separate material truth
   table.
 - Provider-native article ids, including OpenNews ids, are evidence only. They
@@ -92,7 +99,7 @@ news_fetch/source refresh -> news_source_quality_projection
 | Stage | Responsibility |
 |-------|----------------|
 | Fetch | Reconcile configured sources into `news_sources`, fetch due feeds, persist provider items and normalized news items, then enqueue semantic page/source-refresh work. It does not create agent brief work. |
-| Item processing | Read raw `news_items`, extract entities and token mentions deterministically, classify item content, write attention-safe observations and fact candidates, compute deterministic `market_scope_json`, compute deterministic story identity, compute market-wide `agent_admission`, and enqueue optional item-brief work only for eligible/refresh representative targets. |
+| Item processing | Read raw `news_items`, extract entities and token mentions deterministically, classify item content, write attention-safe observations and fact candidates, compute deterministic `market_scope_json`, compute deterministic story identity, compute market-wide `agent_admission`, and enqueue optional item-brief work only for provider-rating-gated eligible/refresh representative targets. |
 | Item brief | Build bounded item/entity/fact packets, reserve `news.item_brief`, execute through the shared `AgentExecutionGateway`, shape-validate the standard market-wide brief output, write the run ledger, upsert the current brief, and dirty page rows. Evidence refs and sparse source context are audit/quality metadata, not publication gates. |
 | Page projection | Claim item-scoped dirty targets, expand them to bounded story groups, and rebuild story-shaped News page rows from news facts, market scope, agent admission, story identity, provider-native signal, and the current item brief. |
 | Source quality projection | Own source-quality windows, expand source refresh intents into configured source/window work, rebuild source quality rows, and dirty page rows only when compact source quality status changes. It is an operational projection, not item hot-path fanout. |
@@ -130,10 +137,13 @@ alongside configured provider types and source hygiene warnings.
   domain code owns validation and persistence, not runner construction.
 - Unknown and ambiguous token mentions stay attention-visible until a later
   deterministic pass can resolve them.
-- Provider token impacts and provider scores are evidence, not product truth by
-  themselves. `market_scope` is metadata, not a rejection state. News item
-  brief and notification eligibility are market-wide. A bare ticker/common word
-  must not create a market impact without deterministic source-backed identity
-  or provider evidence.
+- Provider token impacts and provider ratings are evidence, not product truth by
+  themselves. A ready provider rating score below 80, or a missing provider
+  rating score, blocks LLM item-brief admission to protect budget and freshness.
+  `market_scope` is metadata, not a rejection state. Notification eligibility is
+  still market-wide and requires a ready, publishable agent brief; provider
+  rating alone never makes an external push publishable. A bare ticker/common
+  word must not create a market impact without deterministic source-backed
+  identity or provider evidence.
 - Retired News research tools are not runtime surfaces. Cleanup may keep their
   names only as purge markers for deleting old agent artifacts.

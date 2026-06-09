@@ -13,6 +13,8 @@ from parallax.domains.news_intel.types.news_item_agent_admission import (
     NewsItemAgentAdmissionStatus,
 )
 
+_PROVIDER_RATING_AGENT_MIN_SCORE = 80
+
 
 def decide_news_item_agent_admission(
     *,
@@ -42,6 +44,9 @@ def decide_news_item_agent_admission(
     )
     if base is not None:
         return base
+    provider_rating_gate = _provider_rating_gate(item=item, news_item_id=news_item_id, basis=base_basis)
+    if provider_rating_gate is not None:
+        return provider_rating_gate
 
     similarity = decide_news_story_similarity(
         item=item,
@@ -131,6 +136,34 @@ def _base_gate(
     if age_ms < 0:
         return _skip("needs_review", "published_in_future", news_item_id, basis)
     return None
+
+
+def _provider_rating_gate(
+    *,
+    item: Mapping[str, Any],
+    news_item_id: str,
+    basis: dict[str, Any],
+) -> NewsItemAgentAdmission | None:
+    rating = _provider_rating(item)
+    basis["provider_rating"] = rating
+    score = rating.get("score")
+    if score is None:
+        return _skip("needs_review", "provider_rating_missing", news_item_id, basis)
+    if int(score) < _PROVIDER_RATING_AGENT_MIN_SCORE:
+        return _skip("needs_review", "provider_rating_below_threshold", news_item_id, basis)
+    return None
+
+
+def _provider_rating(item: Mapping[str, Any]) -> dict[str, Any]:
+    signal = _mapping(item.get("provider_signal_json"))
+    score = _optional_int(signal.get("score"))
+    return {
+        "score": score,
+        "min_score": _PROVIDER_RATING_AGENT_MIN_SCORE,
+        "provider": str(signal.get("provider") or "").strip() or None,
+        "status": str(signal.get("status") or "").strip() or None,
+        "method": str(signal.get("method") or "").strip() or None,
+    }
 
 
 def _skip(

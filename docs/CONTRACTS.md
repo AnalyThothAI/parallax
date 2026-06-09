@@ -181,8 +181,9 @@ News Intel contract:
   `signal=bullish|bearish|neutral`, `status`, and `q`.
   News rows default to the full projected tape regardless of whether token
   lanes are present. High-signal visibility comes from persisted market scope,
-  agent admission, and agent brief state, not provider score thresholds. Signal
-  filtering reads persisted `signal_json`, and
+  provider-rating-gated agent admission, and agent brief state; provider rating
+  is displayed as evidence and is not a notification publishability signal.
+  Signal filtering reads persisted `signal_json`, and
   keyword search scans the deterministic projected `search_text` document on
   `news_page_rows`; it does not call Token Intel search, provider fetches,
   extraction, raw `news_items`, or scattered JSON fallback predicates. See
@@ -200,18 +201,19 @@ News Intel contract:
   provider/source metadata. `market_scope` describes likely market
   transmission (`crypto`, `us_equity`, `macro_rates`, `commodities`, `fx`,
   `ai_semiconductors`, `private_company`, `broad_risk`, or `unknown`); it is
-  metadata, not a rejection state. Processed market news is agent-eligible unless
-  deterministic duplicate, similar-story, source, or operational gates block it;
-  provider score is evidence for ranking and alert thresholds, not an admission
-  gate. `signal` is
+  metadata, not a rejection state. Processed market news becomes item-brief
+  agent-eligible only when its provider rating has a ready score of at least 80
+  and deterministic duplicate, similar-story, source, or operational gates do
+  not block it. Provider rating is an LLM budget/freshness gate, not product
+  truth and not a push-delivery gate. `signal` is
   an explicit envelope: `signal.display_signal` is the row-level display choice,
   `signal.agent_signal` is the current compact agent/admission signal, and
   `signal.alert_eligibility.in_app_eligible` can be true for in-app high-signal
   output only when the current market-wide agent brief is ready with
-  `decision_class=driver|watch` and score/source/dedup gates pass.
+  `decision_class=driver|watch` and source/dedup gates pass.
   `signal.alert_eligibility.external_push_ready` requires the same ready,
-  publishable current brief plus external channel, threshold, summary, and
-  cooldown checks, and
+  publishable current brief plus external channel, summary, semantic-signature,
+  and cooldown checks, and
   `external_push_block_reason` explains blocked push delivery. PushDeer
   delivery must not treat provider score alone as a publishable agent brief. A
   ready compact brief may include only sanitized product fields such as
