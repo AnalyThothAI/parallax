@@ -84,12 +84,14 @@ class CurrentReadModelPublisher:
                 raise ValueError(f"payload columns cannot include lifecycle columns: {forbidden_payload_columns}")
 
     def row_identity(self, row: Mapping[str, Any]) -> tuple[Any, ...]:
+        _validate_row_columns(row)
         missing_identity_columns = tuple(column for column in self.identity_columns if column not in row)
         if missing_identity_columns:
             raise ValueError(f"current read model row missing identity columns: {missing_identity_columns}")
         return tuple(row[column] for column in self.identity_columns)
 
     def row_payload_hash(self, row: Mapping[str, Any]) -> str:
+        _validate_row_columns(row)
         if self.payload_columns is None:
             payload = {
                 key: value
@@ -123,6 +125,12 @@ class CurrentReadModelPublisher:
             next_row[self.payload_hash_column] = row_hash
             changed.append(next_row)
         return changed
+
+
+def _validate_row_columns(row: Mapping[str, Any]) -> None:
+    non_string_columns = tuple(column for column in row if type(column) is not str)
+    if non_string_columns:
+        raise ValueError(f"current read model row has non-string columns: {non_string_columns}")
 
 
 def _json_ready(value: Any) -> Any:

@@ -190,6 +190,14 @@ def test_current_read_model_publisher_rejects_duplicate_row_identities_in_batch(
 
 
 @pytest.mark.architecture
+def test_current_read_model_publisher_rejects_non_string_row_columns_before_write_preparation() -> None:
+    publisher = CurrentReadModelPublisher(identity_columns=("target_id",), payload_columns=("target_id", "score"))
+
+    with pytest.raises(ValueError, match="current read model row has non-string columns"):
+        publisher.changed_rows([{"target_id": "asset-1", "score": 10, 123: "legacy"}], existing_hashes={})
+
+
+@pytest.mark.architecture
 def test_current_read_model_publisher_rejects_run_generation_identity_and_skips_unchanged() -> None:
     with pytest.raises(ValueError, match="non-string stable identity columns"):
         CurrentReadModelPublisher(identity_columns=("target_id", 123))

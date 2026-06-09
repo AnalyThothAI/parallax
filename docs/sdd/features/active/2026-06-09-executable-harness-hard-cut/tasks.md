@@ -2959,6 +2959,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 141 — Publisher changed rows reject non-string row columns
+
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 140
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for changed-row row-column validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_string_row_columns_before_write_preparation` — call `changed_rows()` with a row containing a non-string key and assert publisher validation raises before write preparation.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: current read-model changed-row inputs must have string top-level row columns before payload hashing, stable identity reads, or serving-row write preparation can consume them.
+- **On-demand context**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, and current read-model row-shape contracts.
+- **Kill/defer criteria**: Stop if non-string mapping keys are an intentional publisher API, if validation belongs only in database adapters, or if the fix requires projection worker runtime rewrites.
+- **Eval/repair signal**: non-string row keys, compatibility-shaped mapping payloads, row-column validation drift, publisher changed-row write preparation drift, and SDD generated index drift.
+- **Implementation**: Add top-level row-column validation before `row_identity()` and `row_payload_hash()` consume a row.
+- **Verification**: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_string_row_columns_before_write_preparation -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
