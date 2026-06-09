@@ -4,8 +4,8 @@
 **Date**: 2026-06-09
 **Owning spec**: `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut/spec.md`
 **Owning plan**: `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut/plan.md`
-**Branch**: `codex/executable-harness-hard-cut`
-**Worktree**: `.worktrees/executable-harness-hard-cut`
+**Branch**: `codex/agent-factory-eval-harness`
+**Worktree**: `.worktrees/agent-factory-eval-harness`
 **Approved by**: qinghuan
 **Approved at**: 2026-06-09
 **Diff**: Pending final diff.
@@ -22,6 +22,7 @@ claim is allowed without the corresponding output captured below.
 | AC3 — coordination board is generated and current. | ✅ | `uv run python scripts/regen_sdd_work_index.py --check` passed. |
 | AC4 — SQL helper supports semantic query contracts. | ✅ | `uv run pytest tests/unit/test_query_contract.py tests/unit/domains/macro_intel -q` passed. |
 | AC5 — `make check-all` includes deterministic harness gates. | ⚠️ | `make check-all` started and ran the new SDD validator/index gates, then was stopped during integration per user instruction. |
+| AC6 — development-agent factory/eval loop is executable. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py tests/architecture/test_sdd_artifact_validator.py -q` passed. |
 
 Deviations from spec:
 
@@ -95,6 +96,29 @@ $ uv run pytest tests/unit/domains/macro_intel tests/unit/test_query_contract.py
 $ make check
 2630 passed, 3 skipped in 24.03s
 exit code: 0
+
+$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_development_agent_factory_model_is_explicit_and_bounded tests/architecture/test_agent_playbook_contracts.py::test_development_agent_eval_repair_loop_is_defined tests/architecture/test_agent_playbook_contracts.py::test_tasks_template_has_parallel_subagent_contract_fields tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_is_generated_and_current tests/architecture/test_sdd_artifact_validator.py::test_tasks_require_filled_coordination_fields -q
+5 passed in 0.09s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_agent_playbook_contracts.py tests/architecture/test_sdd_artifact_validator.py -q
+12 passed in 0.15s
+exit code: 0
+
+$ uv run ruff check scripts/validate_sdd_artifacts.py scripts/regen_sdd_work_index.py tests/architecture/test_agent_playbook_contracts.py tests/architecture/test_sdd_artifact_validator.py
+All checks passed!
+exit code: 0
+
+$ uv run pytest tests/architecture -m architecture -q
+367 passed, 1 skipped in 32.73s
+exit code: 0
+
+$ uv run python scripts/validate_sdd_artifacts.py --check
+SDD artifact validation passed.
+exit code: 0
+
+$ uv run python scripts/regen_sdd_work_index.py --check
+exit code: 0
 ```
 
 ## Diff summary
@@ -102,6 +126,7 @@ exit code: 0
 Files changed:
 
 - SDD executable harness: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, SDD templates, `docs/generated/sdd-work-index.md`.
+- Development-agent factory/eval loop: `docs/agent-playbook/factory-operating-model.md`, `docs/agent-playbook/eval-repair-loop.md`, `docs/agent-playbook/task-reading-matrix.md`.
 - Test taxonomy and gate wiring: `docs/TESTING.md`, `docs/WORKFLOW.md`, `Makefile`, architecture tests.
 - SQL query-contract helper and macro request-path hard cut: `tests/support/query_contract.py`, macro repository/tests.
 - Mechanical frontend Prettier drift cleanup: macro pages, macro component test, `web/vite.config.ts`.

@@ -3,8 +3,8 @@
 **Status**: In Progress
 **Date**: 2026-06-09
 **Owning spec**: `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut/spec.md`
-**Worktree**: `.worktrees/executable-harness-hard-cut`
-**Branch**: `codex/executable-harness-hard-cut`
+**Worktree**: `.worktrees/agent-factory-eval-harness`
+**Branch**: `codex/agent-factory-eval-harness`
 **Approved by**: qinghuan
 **Approved at**: 2026-06-09
 
@@ -35,10 +35,22 @@ Known-failing baseline tests:
 
 - Update generated-index assertions from string counters to semantic coordination-board requirements.
 - Require the SDD validator to pass as part of the architecture harness.
+- Require explicit development-agent factory and eval/repair loop playbook contracts.
 
 ### `tests/architecture/test_test_lane_contracts.py`
 
 - Add taxonomy checks for permanent invariants, migration tripwires, behavior contracts, and generated hygiene.
+
+### `docs/agent-playbook/factory-operating-model.md`
+
+- Codify development-agent lanes as bounded factory lanes, separate from product LLM agents.
+- Split deterministic constraints from on-demand context so subagents receive small, precise packets.
+- Define parent integrator ownership, maximum lane count, and kill/defer criteria.
+
+### `docs/agent-playbook/eval-repair-loop.md`
+
+- Define trace datasets, review defects, harness failures, token cost, and repair-loop closeout evidence.
+- Require verification evidence before any production claim.
 
 ### `tests/support/query_contract.py`
 
@@ -59,6 +71,7 @@ Known-failing baseline tests:
 ### `docs/sdd/_templates/*.md`, `docs/WORKFLOW.md`, `docs/sdd/README.md`
 
 - Add machine-readable approval, gate, worktree, touch set, conflict set, analysis, and verification metadata expected by the validator.
+- Add factory lane, deterministic constraints, on-demand context, kill/defer criteria, and eval/repair signal fields to task records.
 
 ## PR breakdown
 
@@ -87,6 +100,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Product runtime boundary is untouched. | Pass: no product LLM runtime or queue changes planned. |
 | Compatibility paths are removed rather than wrapped. | Pass: no retired planning-lane support planned. |
 | Multi-agent coordination is represented as metadata. | Pass: owner/worktree/branch/touch/conflict/review fields are planned. |
+| Development-agent loops are separated from product agents. | Pass: factory/eval playbooks explicitly keep product LLM agents outside development-agent lanes. |
 
 ## Acceptance test commands
 
@@ -95,6 +109,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC3: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_is_generated_and_current -q`
 - AC4: `uv run pytest tests/unit/domains/macro_intel/test_macro_migration_contract.py::test_repository_concept_history_counts_reads_projected_rows -q`
 - AC5: `make check-all`
+- AC6: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_development_agent_factory_model_is_explicit_and_bounded tests/architecture/test_agent_playbook_contracts.py::test_development_agent_eval_repair_loop_is_defined -q`
 
 ## Verification
 

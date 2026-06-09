@@ -68,6 +68,38 @@ def test_subagent_handoff_templates_define_context_and_conflict_contracts() -> N
 
 
 @pytest.mark.architecture
+def test_development_agent_factory_model_is_explicit_and_bounded() -> None:
+    text = _read(PLAYBOOK / "factory-operating-model.md")
+    for required_phrase in (
+        "## Deterministic Constraints",
+        "## On-Demand Context",
+        "## Lane Budget",
+        "maximum of six active lanes",
+        "Parent integrator",
+        "Kill / Defer Criteria",
+        "Product LLM agents are not development-agent lanes",
+        "Subagent output is evidence, not authority",
+    ):
+        assert required_phrase in text
+
+
+@pytest.mark.architecture
+def test_development_agent_eval_repair_loop_is_defined() -> None:
+    text = _read(PLAYBOOK / "eval-repair-loop.md")
+    for required_phrase in (
+        "## Trace Dataset",
+        "## Metrics",
+        "## Repair Loop",
+        "review defect",
+        "token cost",
+        "harness failure",
+        "make check-all",
+        "No production claim without verification evidence",
+    ):
+        assert required_phrase in text
+
+
+@pytest.mark.architecture
 def test_agent_execution_doc_keeps_runtime_agent_boundary_explicit() -> None:
     text = _read(ROOT / "docs" / "AGENT_EXECUTION.md")
     for required_phrase in (
@@ -95,6 +127,11 @@ def test_tasks_template_has_parallel_subagent_contract_fields() -> None:
         "**Conflict set**",
         "**Subagent handoff**",
         "**Review owner**",
+        "**Factory lane**",
+        "**Deterministic constraints**",
+        "**On-demand context**",
+        "**Kill/defer criteria**",
+        "**Eval/repair signal**",
         "make check-all",
     ):
         assert required_phrase in text
@@ -114,6 +151,7 @@ def test_sdd_work_index_is_generated_and_current() -> None:
         "Owner",
         "Worktree",
         "Branch",
+        "Factory lanes",
         "Touch set",
         "Conflict set",
         "Blocked",
@@ -124,6 +162,7 @@ def test_sdd_work_index_is_generated_and_current() -> None:
     assert "| `missing-status` | 0 |" in text
     assert "| `verified-missing-check-all` | 0 |" in text
     assert "| `task-missing-coordination-fields` | 0 |" in text
+    assert "| `task-missing-agent-loop-fields` | 0 |" in text
     result = subprocess.run(
         [sys.executable, str(script), "--check"],
         cwd=ROOT,

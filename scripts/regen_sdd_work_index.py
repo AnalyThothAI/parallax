@@ -80,9 +80,9 @@ def render_index(features: list[SddFeature], issues: list[SddIssue]) -> str:
             "",
             "## Coordination Board",
             "",
-            "| Feature | State | Status | Owner | Worktree | Branch | Touch set | Conflict set | "
+            "| Feature | State | Status | Owner | Worktree | Branch | Factory lanes | Touch set | Conflict set | "
             "Blocked | Verification | Flags | Path |",
-            "|---------|-------|--------|-------|----------|--------|-----------|--------------|"
+            "|---------|-------|--------|-------|----------|--------|---------------|-----------|--------------|"
             "---------|--------------|-------|------|",
         ]
     )
@@ -97,6 +97,7 @@ def render_index(features: list[SddFeature], issues: list[SddIssue]) -> str:
             f"{markdown_escape(feature.owner)} | "
             f"`{markdown_escape(feature.worktree)}` | "
             f"`{markdown_escape(feature.branch)}` | "
+            f"{_set_cell(feature.factory_lanes)} | "
             f"{_set_cell(feature.touch_set)} | "
             f"{_set_cell(feature.conflict_set)} | "
             f"{markdown_escape(feature.blocked)} | "
@@ -149,6 +150,10 @@ def _issue_meaning(code: str) -> str:
         "missing-approval-metadata": "Artifact lacks machine-readable approval or execution metadata.",
         "task-missing-coordination-fields": (
             "Task records lack owner, touch set, conflict set, verification, review, or status fields."
+        ),
+        "task-missing-agent-loop-fields": (
+            "Task records lack factory lane, deterministic constraints, on-demand context, kill criteria, "
+            "or eval signal."
         ),
         "task-incomplete-in-verified-feature": "Verified feature contains incomplete task status.",
         "verified-missing-check-all": "Verified record lacks successful make check-all evidence.",

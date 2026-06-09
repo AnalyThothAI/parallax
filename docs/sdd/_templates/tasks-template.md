@@ -43,6 +43,11 @@ Tasks are TDD-ordered: write the failing test first, then the implementation, th
 - **Implementation**: <one-paragraph description of the code change>.
 - **Verification**: `uv run pytest tests/<area>/test_<file>.py::<test_name> -x`
 - **Review owner**: `<parent agent | person>`
+- **Factory lane**: `<Spec/plan | Domain implementation | Harness/tests | Docs/contracts | Risk radar | Final integration>`
+- **Deterministic constraints**: `<scripts/tests/docs gates that must always apply>`
+- **On-demand context**: `<docs/code/context packet this task should load only when needed>`
+- **Kill/defer criteria**: `<conditions that stop or defer this task>`
+- **Eval/repair signal**: `<review defect, harness failure, token cost, or repair-loop metric this task records>`
 - **Status**: [ ]
 
 ### Task 2 — `<title>` `[P]`
@@ -57,6 +62,11 @@ Tasks are TDD-ordered: write the failing test first, then the implementation, th
 - **Implementation**:
 - **Verification**:
 - **Review owner**:
+- **Factory lane**:
+- **Deterministic constraints**:
+- **On-demand context**:
+- **Kill/defer criteria**:
+- **Eval/repair signal**:
 - **Status**: [ ]
 
 ### Task 3 — `<title>`
@@ -71,6 +81,11 @@ Tasks are TDD-ordered: write the failing test first, then the implementation, th
 - **Implementation**:
 - **Verification**:
 - **Review owner**:
+- **Factory lane**:
+- **Deterministic constraints**:
+- **On-demand context**:
+- **Kill/defer criteria**:
+- **Eval/repair signal**:
 - **Status**: [ ]
 
 ## Final verification

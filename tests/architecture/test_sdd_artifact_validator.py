@@ -99,6 +99,7 @@ def test_tasks_require_filled_coordination_fields(tmp_path: Path) -> None:
     issues = validate_sdd_root(tmp_path)
 
     assert "task-missing-coordination-fields" in _issue_codes(issues)
+    assert "task-missing-agent-loop-fields" in _issue_codes(issues)
 
 
 def test_active_touch_sets_must_not_overlap_without_conflict_note(tmp_path: Path) -> None:
@@ -233,6 +234,11 @@ def _write_valid_tasks(
                 "- **Implementation**: Create validator.",
                 "- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py -q`",
                 "- **Review owner**: parent",
+                "- **Factory lane**: Harness",
+                "- **Deterministic constraints**: SDD validator, generated index, make check-all.",
+                "- **On-demand context**: `docs/WORKFLOW.md`, `docs/sdd/_templates/`.",
+                "- **Kill/defer criteria**: Stop if validator cannot prove artifact truth.",
+                "- **Eval/repair signal**: Record harness failures and review defects.",
                 "- **Status**: [x]",
             ]
         ),

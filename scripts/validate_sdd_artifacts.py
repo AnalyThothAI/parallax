@@ -60,6 +60,13 @@ TASK_REQUIRED_FIELDS = (
     "review owner",
     "status",
 )
+TASK_AGENT_LOOP_FIELDS = (
+    "factory lane",
+    "deterministic constraints",
+    "on-demand context",
+    "kill/defer criteria",
+    "eval/repair signal",
+)
 PLACEHOLDER_VALUES = {"", "...", "tbd", "todo", "pending", "<pending>", "<none>"}
 CONTRADICTION_PHRASES = (
     "not final evidence",
@@ -76,6 +83,7 @@ KNOWN_ISSUE_CODES = (
     "missing-gate-section",
     "missing-approval-metadata",
     "task-missing-coordination-fields",
+    "task-missing-agent-loop-fields",
     "task-incomplete-in-verified-feature",
     "verified-missing-check-all",
     "verified-contradicts-evidence",
@@ -158,6 +166,10 @@ class SddFeature:
     @property
     def conflict_set(self) -> tuple[str, ...]:
         return _task_set(self.tasks, "conflict set")
+
+    @property
+    def factory_lanes(self) -> tuple[str, ...]:
+        return _task_set(self.tasks, "factory lane")
 
     @property
     def blocked(self) -> str:
@@ -303,7 +315,10 @@ def _task_issues(feature: SddFeature) -> list[SddIssue]:
     if tasks_artifact.missing:
         return []
     if not feature.tasks:
-        return [_issue("task-missing-coordination-fields", tasks_artifact, "tasks.md has no structured Task sections")]
+        return [
+            _issue("task-missing-coordination-fields", tasks_artifact, "tasks.md has no structured Task sections"),
+            _issue("task-missing-agent-loop-fields", tasks_artifact, "tasks.md has no structured Task sections"),
+        ]
 
     issues: list[SddIssue] = []
     for task in feature.tasks:
@@ -314,6 +329,17 @@ def _task_issues(feature: SddFeature) -> list[SddIssue]:
                     "task-missing-coordination-fields",
                     tasks_artifact,
                     f"{task.title} missing fields: {', '.join(missing_fields)}",
+                )
+            )
+        missing_agent_fields = [
+            field for field in TASK_AGENT_LOOP_FIELDS if _is_placeholder(task.fields.get(field, ""))
+        ]
+        if missing_agent_fields:
+            issues.append(
+                _issue(
+                    "task-missing-agent-loop-fields",
+                    tasks_artifact,
+                    f"{task.title} missing fields: {', '.join(missing_agent_fields)}",
                 )
             )
         if feature.status.lower() == "verified" and task.fields.get("status", "").strip().lower() != "[x]":

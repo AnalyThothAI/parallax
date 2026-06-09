@@ -36,10 +36,11 @@ can both miss real process drift and block healthy refactors.
 | Requirement | Quality gate |
 |-------------|--------------|
 | SDD truth must be executable. | A script fails false `Verified` records, missing gate sections, missing approval metadata, and incomplete task coordination fields. |
-| Active work must be coordinatable. | The generated SDD index includes owner, worktree, branch, touch set, conflict set, blocked state, and verification status. |
+| Active work must be coordinatable. | The generated SDD index includes owner, worktree, branch, factory lanes, touch set, conflict set, blocked state, and verification status. |
 | Test harness intent must be explicit. | Architecture tests classify permanent invariants, migration tripwires, behavior contracts, and generated hygiene. |
 | SQL tests must avoid accidental alias/order coupling. | A query-contract helper checks tables, predicates, locks, params, and forbidden surfaces without pinning formatting. |
 | Completion gates must be deterministic. | `make check-all` runs the SDD validator and stale generated index check. |
+| Multi-agent development loops must be bounded. | Task records declare factory lane, deterministic constraints, on-demand context, kill/defer criteria, and eval/repair signal. |
 
 ## First principles
 
@@ -54,6 +55,7 @@ can both miss real process drift and block healthy refactors.
 - G3. `docs/generated/sdd-work-index.md` renders a coordination board with owner, worktree, branch, touch set, conflict set, blocked state, and verification status.
 - G4. Tests that rely on SQL shape can use a query-contract helper to assert semantic SQL contracts without exact alias or whitespace coupling.
 - G5. `make check-all` includes SDD artifact validation and generated index freshness so harness drift blocks completion.
+- G6. Development-agent work follows an explicit factory/eval loop that separates deterministic constraints from on-demand context, keeps product LLM agents outside development lanes, and records repair signals.
 
 ## Non-goals
 
@@ -65,8 +67,9 @@ can both miss real process drift and block healthy refactors.
 
 The SDD lane becomes an executable control plane for development work. A validator parses feature records,
 emits explicit issue codes, and exits non-zero when active/completed records violate gate semantics. The generated
-work index becomes a compact coordination board for parent agents and subagents. Test taxonomy is documented and
-enforced so string tripwires are deliberate, expiring safeguards rather than accidental design locks.
+work index becomes a compact coordination board for parent agents and subagents, including bounded factory lanes.
+Test taxonomy is documented and enforced so string tripwires are deliberate, expiring safeguards rather than
+accidental design locks.
 
 ## Conceptual data flow
 
@@ -82,7 +85,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 ## Core models
 
 - `SddFeature`: feature slug, lane, artifact paths, status values, owner, branch, worktree, approval metadata,
-  touch set, conflict set, verification status, blocked reason, and issue codes.
+  touch set, conflict set, factory lanes, verification status, blocked reason, and issue codes.
 - `SddIssue`: code, severity, path, and message for deterministic gate failures.
 - `SqlContract`: required tables, forbidden tables, required predicates, forbidden fragments, required locks, and
   expected params.
@@ -97,9 +100,10 @@ The new arrows are harness-only and do not affect runtime product data flow.
 
 - AC1. WHEN a completed feature is marked `Verified` without full successful `make check-all` evidence THEN the validator SHALL exit non-zero and report a `verified-missing-check-all` or `verified-contradicts-evidence` issue.
 - AC2. WHEN a feature task omits owner/touch/conflict/verification/review/status fields THEN the validator SHALL exit non-zero and report a task coordination issue.
-- AC3. WHEN the SDD index is regenerated THEN it SHALL include a coordination board with owner, worktree, branch, touch set, conflict set, blocked state, verification status, and flags.
+- AC3. WHEN the SDD index is regenerated THEN it SHALL include a coordination board with owner, worktree, branch, factory lanes, touch set, conflict set, blocked state, verification status, and flags.
 - AC4. WHEN a SQL unit test uses the query-contract helper THEN it SHALL be able to assert required/forbidden tables and predicates without depending on alias names or whitespace.
 - AC5. WHEN `make check-all` runs THEN SDD artifact validation and generated index freshness SHALL be part of the deterministic gate.
+- AC6. WHEN task records are created or updated THEN each task SHALL declare factory lane, deterministic constraints, on-demand context, kill/defer criteria, and eval/repair signal; missing fields SHALL report `task-missing-agent-loop-fields`.
 
 ## Risks
 

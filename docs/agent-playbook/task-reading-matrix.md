@@ -161,6 +161,8 @@ Required reading:
 
 - `docs/WORKFLOW.md`
 - `docs/DESIGN_DISCIPLINE.md`
+- `docs/agent-playbook/factory-operating-model.md`
+- `docs/agent-playbook/eval-repair-loop.md`
 - `docs/agent-playbook/subagent-handoff-template.md`
 - `docs/agent-playbook/context-packet-template.md`
 - `docs/sdd/_templates/`
