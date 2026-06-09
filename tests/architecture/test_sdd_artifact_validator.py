@@ -222,6 +222,27 @@ def test_tasks_allow_explicit_none_dependency_and_not_delegated_handoff(tmp_path
     assert "task-invalid-coordination-fields" not in _issue_codes(issues)
 
 
+def test_non_delegated_handoff_rejects_prose_suffix(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-prose-handoff")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(
+        feature / "tasks.md",
+        status="In Progress",
+        subagent_handoff="not delegated; parent handled the context inline",
+        subagent_report="not delegated",
+        review_result="parent-reviewed",
+        task_status="[~]",
+    )
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    invalid_issues = [issue for issue in issues if issue.code == "task-invalid-review-fields"]
+    assert invalid_issues
+    assert "subagent handoff" in " ".join(issue.message for issue in invalid_issues)
+
+
 def test_delegated_tasks_require_review_evidence_fields(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-delegated-review-evidence")
     _write_valid_spec(feature / "spec.md", status="In Progress")

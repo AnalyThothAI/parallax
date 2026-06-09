@@ -515,6 +515,10 @@ def _invalid_review_fields(task: TaskRecord) -> list[str]:
     if _is_placeholder(subagent_report) or _is_placeholder(review_result):
         return invalid
 
+    normalized_handoff = subagent_handoff.replace("`", "").strip().lower()
+    if normalized_handoff != "not delegated" and not _is_repo_path(subagent_handoff):
+        invalid.append("subagent handoff")
+
     delegated = not _is_not_delegated(subagent_handoff)
     normalized_report = subagent_report.replace("`", "").strip().lower()
     normalized_result = review_result.replace("`", "").strip().lower()
@@ -781,7 +785,7 @@ def _is_coordination_rule(value: str) -> bool:
 
 
 def _is_not_delegated(value: str) -> bool:
-    return value.replace("`", "").strip().lower().startswith("not delegated")
+    return value.replace("`", "").strip().lower() == "not delegated"
 
 
 def _is_repo_path(value: str) -> bool:
