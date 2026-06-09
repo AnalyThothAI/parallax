@@ -24,56 +24,54 @@ Order rows by severity (high first) then by date introduced (oldest first).
 | Docker `/readyz` remains red after the shadcn frontend rebuild because `market_tick_stream` reports `WorkerRunSoftTimeout` and OKX DEX WS is failed while DB/migrations and GMGN WS are healthy | pre-2026-05-22 runtime baseline, detected by `2026-05-22-shadcn-frontend-system-hardening` | pipeline | high | App container can serve `/healthz` and the frontend, but operator readiness stays false until the market tick stream / OKX provider runtime issue is isolated | unowned |
 | `watched_event_gate` is still biased toward English / explicit entity language, so some Chinese account posts without CA, symbol, or resolved target can miss social-event extraction before Watchlist handle summaries see them | 2026-05-14-watchlist-handle-intel | pipeline | medium | Watchlist summaries can underrepresent Chinese narrative-only posts until the watched-event gate gets a multilingual semantic pass | unowned |
 | `test_rule_uniqueness` should be split into `test_rule_ownership` + `test_routers_have_no_governance_phrases`; add comment explaining the `path.exists()` guard | 2026-05-09 (harness-restructure) | harness | low | Future failure messages would be more actionable | unowned |
-| `regen_ws_protocol.py` produces a sparse table because `app/surfaces/api/ws.py` uses JSON dicts not typed message classes | 2026-05-09 (harness-restructure) | api | low | The auto-generated `ws-protocol.md` doesn't fully document the wire protocol until message classes exist | unowned |
-| `RULE_PHRASES` strings in `tests/test_harness_structure.py` are tightly coupled to verbatim governance prose; rewording governance files breaks the test | 2026-05-09 (harness-restructure) | harness | low | Test brittleness; mitigate by re-anchoring on stable phrases or by relaxing to fuzzy match | unowned |
-| `TOKEN_RADAR_RESOLVER_POLICY_VERSION` is duplicated in `domains/token_intel/_constants.py` (canonical) and inlined with sync comments in `domains/asset_market/repositories/registry_repository.py` to break a circular import | 2026-05-10 (src-domain-package-restructure, Task 5) | architecture | medium | Drift risk if the canonical value changes; better long-term fix is to move runtime function re-exports out of `domains/token_intel/interfaces.py` so the cycle disappears, or to put the constant in a cross-domain leaf module | unowned |
-| `domains/token_intel/interfaces.py` imports from `runtime/token_resolution_refresh` to re-export `deferred_token_radar_projection`, `refresh_recent_token_state`, `reprocess_recent_token_intents`, `WINDOW_MS`. This couples the public interface to runtime and is what creates the asset_market↔token_intel cycle that drove the constant duplication above | 2026-05-10 (src-domain-package-restructure, Task 5) | architecture | medium | Removing these re-exports would let the duplicated constants be eliminated; callers in app/runtime can use deeper paths since composition root is exempt from cross-domain rules | unowned |
+| `scripts/regen_ws_protocol.py` produces a sparse table because `src/parallax/app/surfaces/api/ws.py` uses JSON dicts not typed message classes | 2026-05-09 (harness-restructure) | api | low | The auto-generated `docs/generated/ws-protocol.md` doesn't fully document the wire protocol until message classes exist | unowned |
+| `RULE_PHRASES` strings in `tests/architecture/test_harness_structure.py` are tightly coupled to verbatim governance prose; rewording governance files breaks the test | 2026-05-09 (harness-restructure) | harness | low | Test brittleness; mitigate by re-anchoring on stable phrases or by relaxing to fuzzy match | unowned |
+| `TOKEN_RADAR_RESOLVER_POLICY_VERSION` is duplicated in `src/parallax/domains/token_intel/_constants.py` (canonical) and inlined with sync comments in `src/parallax/domains/asset_market/repositories/registry_repository.py` to break a circular import | 2026-05-10 (src-domain-package-restructure, Task 5) | architecture | medium | Drift risk if the canonical value changes; better long-term fix is to move runtime function re-exports out of `src/parallax/domains/token_intel/interfaces.py` so the cycle disappears, or to put the constant in a cross-domain leaf module | unowned |
+| `src/parallax/domains/token_intel/interfaces.py` imports from `src/parallax/domains/token_intel/runtime/token_resolution_refresh.py` to re-export `deferred_token_radar_projection`, `refresh_recent_token_state`, `reprocess_recent_token_intents`, `WINDOW_MS`. This couples the public interface to runtime and is what creates the asset_market↔token_intel cycle that drove the constant duplication above | 2026-05-10 (src-domain-package-restructure, Task 5) | architecture | medium | Removing these re-exports would let the duplicated constants be eliminated; callers in app/runtime can use deeper paths since composition root is exempt from cross-domain rules | unowned |
 | Legacy `assets`, `asset_aliases`, `asset_venues`, `asset_market_snapshots` tables are unused by runtime after 2026-05-16 harness hard-cut but remain in the schema. Follow-up migration should `DROP TABLE` them along with orphan `current_market_field_facts` and `token_market_price_baselines` flagged by the same audit | 2026-05-16 (backend-architecture-audit P0 hard-cut) | storage | medium | Empty/unused tables consume cluster metadata, surface in db-schema docs, and risk being re-wired by future contributors. Architecture tests already ban writes from src/, but tables themselves still exist | unowned |
-| `domains/evidence/types/entity.py` is a thin re-export shim (`EVM_QUERY_CHAINS`, `ExtractedEntity`, `normalize_ca` from `services/entity_extractor.py`) added so evidence repositories can import these constants without importing from `services/`. Future work could split `entity_extractor.py` so the constants live in `types/` directly and the shim disappears | 2026-05-10 (src-domain-package-restructure, Task 3) | architecture | low | Mild indirection; not a correctness issue | unowned |
+| `src/parallax/domains/evidence/types/entity.py` is a thin re-export shim (`EVM_QUERY_CHAINS`, `ExtractedEntity`, `normalize_ca` from `src/parallax/domains/evidence/services/entity_extractor.py`) added so evidence repositories can import these constants without importing from `src/parallax/domains/evidence/services/`. Future work could split `src/parallax/domains/evidence/services/entity_extractor.py` so the constants live in `src/parallax/domains/evidence/types/` directly and the shim disappears | 2026-05-10 (src-domain-package-restructure, Task 3) | architecture | low | Mild indirection; not a correctness issue | unowned |
 | 6 FK columns lack leading indexes: `token_intent_resolutions.{asset_id,primary_venue_id}`, `token_intent_resolution_candidates.{asset_id,venue_id}`, `asset_signal_snapshots.{asset_id,primary_venue_id}`. The duplicate-token audit added them live (`idx_tir_*`, `idx_tirc_*`, `idx_asssnap_*`) via `CREATE INDEX CONCURRENTLY` because cascade `SET NULL` on bulk DELETE was scanning sequentially and blocking production INSERTs for 10+ min. Indexes are NOT in alembic migrations. The old `token_radar_rows` FK-index portion is resolved by the 2026-05-23 Token Radar storage hard cut, which drops that table. | 2026-05-12 (duplicate-token-audit) | storage | high | Any future bulk DELETE on `assets` / `asset_venues` will refuse to be fast on a fresh DB; add an alembic revision that creates these remaining indexes so testcontainers and prod re-init have them | unowned |
 
 ## Integration tests against pre-hard-cut asset registry（来自 spec 2026-05-10-tests-and-lint-production-grade, P6 pre-flight）
 
 P5 wired auto-testcontainers, which converted what were previously `OperationalError`-skipped
-integration tests into hard-fail surface. P6 pre-flight enumerated 23 failing tests that all
-predate either the `2026-05-10-token-identity-evidence-hard-cut` work, the `events`
-schema rename to `source_provider/source_transport`, or other API changes. 2 were Tier-A fixed
-in test files; the remaining 21 were skipped with this anchor in their `reason=` strings.
+integration tests into hard-fail surface. P6 pre-flight originally enumerated a broader set
+of failing tests that predated either the `2026-05-10-token-identity-evidence-hard-cut` work,
+the `events` schema rename to `source_provider/source_transport`, or other API changes. The
+table below keeps only open rows backed by tests that still exist in the current tree; deleted
+historical integration files are not retained as compatibility breadcrumbs.
 
-To unstick: rewrite each test against the current API surface — most need to seed
+To unstick: rewrite each listed test against the current API surface — most need to seed
 `asset_identity_evidence`/`asset_identity_current` instead of `registry_assets.symbol`,
-and price-observation tests need to use the full `events(source_provider, source_transport, …)`
-INSERT shape (cf. `src/parallax/domains/evidence/repositories/evidence_repository.py:60`).
+and any direct event insert needs to use the full `events(source_provider, source_transport, …)`
+shape (cf. `src/parallax/domains/evidence/repositories/evidence_repository.py:60`).
 
 | Test | Surface to rewrite against | Notes |
 |------|----------------------------|-------|
-| `tests/integration/test_resolution_refresh_worker.py::test_resolution_refresh_worker_resolves_recent_symbol_and_rebuilds_radar` | `asset_identity_evidence` / `asset_identity_current` | drop `registry_assets.symbol` reads |
+| `tests/integration/test_resolution_refresh_worker.py::test_resolution_refresh_worker_resolves_recent_symbol_and_emits_resolution_wake` | `asset_identity_evidence` / `asset_identity_current` | drop `registry_assets.symbol` reads |
 | `tests/integration/test_resolution_refresh_worker.py::test_dex_symbol_discovery_retains_top_three_per_chain` | same | symbol selector → identity-current |
-| `tests/integration/test_resolution_refresh_worker.py::test_dex_symbol_discovery_demotes_old_unretained_search_assets` | `RegistryRepository.upsert_chain_asset` (no symbol/name/decimals) | seed identity via evidence repo |
+| `tests/integration/test_resolution_refresh_worker.py::test_dex_symbol_discovery_excludes_stale_unretained_search_assets_from_result` | `RegistryRepository.upsert_chain_asset` (no symbol/name/decimals) | seed identity via evidence repo |
 | `tests/integration/test_resolution_refresh_worker.py::test_address_discovery_remains_uncapped` | same | SELECT via identity-current |
-| `tests/integration/test_price_observation_repository.py` (4 tests) | `events(source_provider, source_transport, …)` schema | helper `_insert_event_intent_resolution` insert is stale |
-| `tests/integration/test_enrichment_worker.py::test_enrichment_worker_times_out_hung_llm_job` | model_run audit row shape | likely shape change post hard-cut |
-| `tests/integration/test_enrichment_repository.py::test_complete_social_event_job_records_agents_sdk_run_audit` | agents_sdk run audit | NoneType subscript |
 | `tests/integration/test_api_http.py::test_api_exposes_recent_search_and_signal_read_models` | `CliRuntime` API | `tokens` attr removed |
 | `tests/integration/test_api_http.py::test_api_signal_pulse_reads_pulse_candidates_after_hard_cut` | `PulseRepository.upsert_candidate` signature | drop `thesis=` kwarg |
 | `tests/integration/test_api_http.py::test_api_asset_flow_scope_filters_watched_mentions` | identity-current seeding | empty result vs {BONK,PEPE} |
 | `tests/integration/test_api_http.py::test_api_target_posts_returns_full_post_pages_and_requires_target_identity` | identity API | IndexError |
 | `tests/integration/test_api_http.py::test_api_target_social_timeline_returns_buckets_authors_and_posts` | identity API | IndexError |
-| `tests/integration/test_cli.py::CliTests::test_recent_search_asset_flow_harness_and_alerts_use_postgres_runtime_store` | CLI runtime JSON output | Decimal serialization |
+| `tests/integration/test_cli.py::CliTests::test_recent_search_asset_flow_and_alerts_use_postgres_runtime_store` | CLI runtime JSON output | Decimal serialization |
 
 Suggested follow-up owner: `unowned` (whoever next picks up the hard-cut family of specs).
 
 ## CLI ops sync directory tests pinned to legacy config.yaml schema（来自 spec 2026-05-10-tests-and-lint-production-grade, P6 pre-flight）
 
 `tests/integration/test_cli.py::test_cli_ops_sync_gmgn_directory_dispatches_to_runner` and
-`::test_cli_ops_sync_gmgn_directory_emits_error_on_directory_failure` invoke `cli.main(...)`
+`tests/integration/test_cli.py::test_cli_ops_sync_gmgn_directory_emits_error_on_directory_failure` invoke `cli.main(...)`
 without isolating `HOME`, so `load_settings()` reads the developer's
 `~/.parallax/config.yaml`. The current dev environment has legacy
 `pulse_agent_trigger_min_rank_score`, `pulse_agent_gate_*` keys that `LlmConfig(extra='forbid')`
 rejects.
 
 To unstick: either (a) `monkeypatch.setenv("HOME", str(tmp_path))` and seed a minimal
-`config.yaml` per test, or (b) refactor the runner so the test never reaches `load_settings`.
+`~/.parallax/config.yaml` per test, or (b) refactor the runner so the test never reaches `load_settings`.
 
 ## mypy strict overrides（来自 spec 2026-05-10-tests-and-lint-production-grade）
 

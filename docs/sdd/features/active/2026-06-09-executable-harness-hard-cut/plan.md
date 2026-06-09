@@ -112,6 +112,7 @@ Known-failing baseline tests:
 
 - Assert `make check-all` includes the CLI help snapshot freshness check, so generated public CLI docs cannot drift outside integration-only docs tests.
 - Assert `docs/generated/README.md` source-map rows point at existing generated files, generator scripts, and source paths.
+- Assert open `docs/TECH_DEBT.md` source/test/doc references use self-contained repo-root paths, point at current files, and `::test_*` references point at existing Python test functions.
 
 ### `web/tests/architecture/frontendDocContract.test.ts`
 
@@ -273,6 +274,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Architecture docs reference executable tests. | Pass: `test_architecture_doc_test_references_are_path_qualified_and_existing` rejects bare or missing enforcement test references. |
 | Architecture module maps are source-complete. | Pass: `test_architecture_module_map_links_every_domain_architecture_doc` compares docs links against current domain architecture files. |
 | Test taxonomy inventory is exact. | Pass: `test_architecture_tests_declare_harness_taxonomy` compares `docs/TESTING.md` rows against `tests/architecture`. |
+| Open tech debt references are live. | Pass: `test_open_tech_debt_references_current_source_and_test_paths` checks open `docs/TECH_DEBT.md` source/test/doc repo-root paths and test functions against the current tree. |
 
 ## Acceptance test commands
 
@@ -333,6 +335,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC55: `uv run pytest tests/architecture/test_harness_structure.py::test_architecture_doc_test_references_are_path_qualified_and_existing -q`
 - AC56: `uv run pytest tests/architecture/test_harness_structure.py::test_architecture_module_map_links_every_domain_architecture_doc -q`
 - AC57: `uv run pytest tests/architecture/test_test_lane_contracts.py::test_architecture_tests_declare_harness_taxonomy -q`
+- AC58: `uv run pytest tests/architecture/test_harness_structure.py::test_open_tech_debt_references_current_source_and_test_paths -q`
 
 ## Verification
 

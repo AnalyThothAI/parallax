@@ -70,6 +70,7 @@ can both miss real process drift and block healthy refactors.
 | Architecture docs must reference executable tests. | Architecture tests reject bare or missing test references in `docs/ARCHITECTURE.md`. |
 | Architecture module maps must be complete links. | Architecture tests compare the global module map against domain `ARCHITECTURE.md` files. |
 | Test taxonomy inventory must be exact. | Architecture tests compare `docs/TESTING.md` architecture-test rows against the current `tests/architecture` files. |
+| Open tech debt references must be live. | Architecture tests require open `docs/TECH_DEBT.md` source/test/doc references to be self-contained repo-root paths and resolve to current files and test functions. |
 
 ## First principles
 
@@ -114,6 +115,7 @@ can both miss real process drift and block healthy refactors.
 - G33. `docs/ARCHITECTURE.md` enforcement references are path-qualified and checked against real architecture test files/functions.
 - G34. `docs/ARCHITECTURE.md` module map links every current domain `ARCHITECTURE.md` file and fails missing or stale links.
 - G35. `docs/TESTING.md` architecture taxonomy rows are an exact inventory of current `tests/architecture/test_*.py` files.
+- G36. Open `docs/TECH_DEBT.md` source/test/doc references are checked as self-contained repo-root paths against current files and test functions, so old follow-up breadcrumbs do not remain as active work.
 
 ## Non-goals
 
@@ -216,6 +218,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC55. WHEN `docs/ARCHITECTURE.md` references a test as a bare `test_*` name or references a missing `tests/architecture/...py::test_*` function THEN architecture tests SHALL fail.
 - AC56. WHEN a `src/parallax/domains/*/ARCHITECTURE.md` file lacks a markdown link in `docs/ARCHITECTURE.md`, or the module map links a removed domain architecture file, THEN architecture tests SHALL fail.
 - AC57. WHEN `docs/TESTING.md` omits a current `tests/architecture/test_*.py` file or lists a removed architecture test file THEN architecture tests SHALL fail.
+- AC58. WHEN the open section of `docs/TECH_DEBT.md` names an unrooted or missing source/test/doc file, uses a bare `::test_*` shorthand, or references a missing test function THEN architecture tests SHALL fail.
 
 ## Risks
 

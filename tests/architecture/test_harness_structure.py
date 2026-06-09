@@ -29,6 +29,16 @@ EXPECTED_GOVERNANCE = {
 ROUTER_FILES = ("AGENTS.md", "CLAUDE.md")
 LEGACY_SDD_TOKEN = "docs" + "/superpowers"
 SCANNED_SUFFIXES = {".md", ".py", ".toml", ".yaml", ".yml"}
+TECH_DEBT_ROOTED_PREFIXES = ("src/", "tests/", "web/", "scripts/", "docs/")
+TECH_DEBT_PARALLAX_PREFIXES = (
+    "app/",
+    "domains/",
+    "integrations/",
+    "platform/",
+    "runtime/",
+    "services/",
+    "types/",
+)
 SKIPPED_DIRS = {
     ".codex",
     ".git",
@@ -55,6 +65,11 @@ def _read(p: Path) -> str:
     return p.read_text(encoding="utf-8")
 
 
+def _tech_debt_open_section() -> str:
+    tech_debt = _read(DOCS / "TECH_DEBT.md")
+    return tech_debt.split("## Open", 1)[1].split("## Closed", 1)[0]
+
+
 def _scanned_files(root: Path) -> list[Path]:
     files: list[Path] = []
     for current_root, dirs, filenames in os.walk(root):
@@ -68,6 +83,33 @@ def _scanned_files(root: Path) -> list[Path]:
                 continue
             files.append(path)
     return files
+
+
+def _tech_debt_path_candidate(reference: str) -> tuple[Path, str]:
+    path_text = reference.split("::", 1)[0]
+    path_text = re.sub(r":\d+(?:-\d+)?$", "", path_text)
+
+    if path_text.startswith(TECH_DEBT_ROOTED_PREFIXES):
+        return REPO_ROOT / path_text, path_text
+
+    raise ValueError(f"not a source path reference: {reference}")
+
+
+def _tech_debt_referenced_test_name(reference: str) -> str:
+    parts = reference.split("::")
+    if len(parts) < 2:
+        return ""
+    return parts[-1]
+
+
+def _looks_like_unrooted_source_reference(reference: str) -> bool:
+    if reference.startswith((*TECH_DEBT_ROOTED_PREFIXES, "~", "/")):
+        return False
+    if " " in reference or "=" in reference:
+        return False
+    if reference.startswith(TECH_DEBT_PARALLAX_PREFIXES):
+        return True
+    return reference.endswith((".py", ".ts", ".tsx", ".md", ".yaml", ".yml", ".toml"))
 
 
 def test_routers_within_line_budget() -> None:
@@ -217,6 +259,49 @@ def test_architecture_module_map_links_every_domain_architecture_doc() -> None:
     )
 
     assert linked == expected
+
+
+def test_open_tech_debt_references_current_source_and_test_paths() -> None:
+    open_debt = _tech_debt_open_section()
+    backticked_references = re.findall(r"`([^`]+)`", open_debt)
+    references = [
+        token
+        for token in backticked_references
+        if token.startswith(TECH_DEBT_ROOTED_PREFIXES)
+    ]
+    bare_test_references = [token for token in backticked_references if token.startswith("::test")]
+    unrooted_source_references = [
+        token for token in backticked_references if _looks_like_unrooted_source_reference(token)
+    ]
+
+    assert references, "docs/TECH_DEBT.md open debt must keep source-backed references"
+    assert bare_test_references == [], (
+        "open TECH_DEBT test references must include their source file: "
+        f"{bare_test_references}"
+    )
+    assert unrooted_source_references == [], (
+        "open TECH_DEBT source/test/doc references must be repo-root paths: "
+        f"{unrooted_source_references}"
+    )
+
+    missing_paths: list[str] = []
+    missing_tests: list[str] = []
+    for reference in references:
+        path, path_text = _tech_debt_path_candidate(reference)
+        if not path.exists():
+            missing_paths.append(reference)
+            continue
+
+        test_name = _tech_debt_referenced_test_name(reference)
+        if test_name and path.suffix == ".py":
+            source = _read(path)
+            if not re.search(rf"^\s*def\s+{re.escape(test_name)}\(", source, re.MULTILINE):
+                missing_tests.append(reference)
+
+        assert path_text != "tests/test_harness_structure.py", "use the executable architecture harness path"
+
+    assert missing_paths == [], f"open TECH_DEBT references missing files: {missing_paths}"
+    assert missing_tests == [], f"open TECH_DEBT references missing test functions: {missing_tests}"
 
 
 def test_references_papers_present() -> None:

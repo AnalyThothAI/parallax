@@ -74,6 +74,7 @@ claim is allowed without the corresponding output captured below.
 | AC55 — Architecture docs reference executable tests. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_architecture_doc_test_references_are_path_qualified_and_existing -q` failed RED on bare `test_legacy_asset_repository_is_not_imported`, then passed after path qualification and parser tightening. |
 | AC56 — Architecture module map links current domain docs. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_architecture_module_map_links_every_domain_architecture_doc -q` failed RED on the non-linked Narrative row, then passed after converting it to a markdown link. |
 | AC57 — Architecture test taxonomy inventory is exact. | ✅ | `uv run pytest tests/architecture/test_test_lane_contracts.py::test_architecture_tests_declare_harness_taxonomy -q` failed RED on missing `test_public_contracts_doc_alignment.py`, then passed after exact-set validation and docs update. |
+| AC58 — Open tech debt source/test/doc references are live and self-contained. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_open_tech_debt_references_current_source_and_test_paths -q` failed RED on stale TECH_DEBT file/function references, bare `::test` shorthand, and unrooted source/doc paths, then passed after removing deleted historical integration rows and making references self-contained. |
 
 Deviations from spec:
 
@@ -914,6 +915,39 @@ $ uv run pytest tests/architecture/test_test_lane_contracts.py::test_architectur
 1 passed in 0.01s
 exit code: 0
 
+$ uv run pytest tests/architecture/test_harness_structure.py::test_open_tech_debt_references_current_source_and_test_paths -q
+F                                                                        [100%]
+AssertionError: open TECH_DEBT references missing files: ['tests/test_harness_structure.py', 'tests/integration/test_price_observation_repository.py', 'tests/integration/test_enrichment_worker.py::test_enrichment_worker_times_out_hung_llm_job', 'tests/integration/test_enrichment_repository.py::test_complete_social_event_job_records_agents_sdk_run_audit']
+exit code: 1
+
+$ uv run pytest tests/architecture/test_harness_structure.py::test_open_tech_debt_references_current_source_and_test_paths -q
+F                                                                        [100%]
+AssertionError: open TECH_DEBT references missing test functions: ['tests/integration/test_resolution_refresh_worker.py::test_resolution_refresh_worker_resolves_recent_symbol_and_rebuilds_radar', 'tests/integration/test_resolution_refresh_worker.py::test_dex_symbol_discovery_demotes_old_unretained_search_assets', 'tests/integration/test_cli.py::CliTests::test_recent_search_asset_flow_harness_and_alerts_use_postgres_runtime_store']
+exit code: 1
+
+$ uv run pytest tests/architecture/test_harness_structure.py::test_open_tech_debt_references_current_source_and_test_paths -q
+1 passed in 0.01s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_harness_structure.py::test_open_tech_debt_references_current_source_and_test_paths -q
+F                                                                        [100%]
+AssertionError: open TECH_DEBT test references must include their source file: ['::test_cli_ops_sync_gmgn_directory_emits_error_on_directory_failure']
+exit code: 1
+
+$ uv run pytest tests/architecture/test_harness_structure.py::test_open_tech_debt_references_current_source_and_test_paths -q
+F                                                                        [100%]
+AssertionError: open TECH_DEBT source/test references must be repo-root paths: ['regen_ws_protocol.py', 'app/surfaces/api/ws.py', 'ws-protocol.md', 'domains/token_intel/_constants.py', 'domains/asset_market/repositories/registry_repository.py', 'domains/token_intel/interfaces.py', 'domains/token_intel/interfaces.py', 'domains/evidence/types/entity.py', 'services/entity_extractor.py', 'entity_extractor.py', 'config.yaml']
+exit code: 1
+
+$ uv run pytest tests/architecture/test_harness_structure.py::test_open_tech_debt_references_current_source_and_test_paths -q
+F                                                                        [100%]
+AssertionError: open TECH_DEBT source/test references must be repo-root paths: ['docs/generated/ws-protocol.md']
+exit code: 1
+
+$ uv run pytest tests/architecture/test_harness_structure.py::test_open_tech_debt_references_current_source_and_test_paths -q
+1 passed in 0.02s
+exit code: 0
+
 $ uv run pytest tests/architecture/test_test_lane_contracts.py -q
 5 passed in 0.13s
 exit code: 0
@@ -923,7 +957,7 @@ All checks passed!
 exit code: 0
 
 $ uv run pytest tests/architecture/test_harness_structure.py -q
-14 passed in 0.16s
+15 passed in 0.18s
 exit code: 0
 
 $ uv run ruff check tests/architecture/test_harness_structure.py

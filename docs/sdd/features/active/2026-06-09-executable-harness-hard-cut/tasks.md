@@ -1216,6 +1216,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 58 — Tech debt reference source/test gate
+
+- **File(s)**: `docs/TECH_DEBT.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 57
+- **Touch set**: `docs/TECH_DEBT.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `docs/TECH_DEBT.md` for active debt reference hygiene.
+- **Failing test first**: `tests/architecture/test_harness_structure.py::test_open_tech_debt_references_current_source_and_test_paths` — asserts open `docs/TECH_DEBT.md` source/test/doc references use self-contained repo-root paths and point at current files and test functions.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Docs/contracts
+- **Deterministic constraints**: The gate must check only open debt rows, require source/test/doc references to start with `src/`, `tests/`, `web/`, `scripts/`, or `docs/`, resolve `path:line` and `file.py::Class::test_name` references, reject bare `::test_*` shorthand, and must not preserve deleted integration files as compatibility breadcrumbs.
+- **On-demand context**: `docs/TECH_DEBT.md`, `tests/architecture/test_harness_structure.py`, current files under `tests/integration`, and current evidence repository insert shape.
+- **Kill/defer criteria**: Stop if the gate expands into archived/generated/reference docs, if it reports intentionally retired-path examples outside open debt, or if fixing requires recreating deleted tests.
+- **Eval/repair signal**: missing source/test file, missing test function, stale open debt table row, and review defects around active technical-debt truthfulness.
+- **Implementation**: Add the open-tech-debt reference architecture test, update stale and unrooted paths, remove open rows for deleted historical integration files, reject bare `::test_*` shorthand, and rename remaining test references to current functions.
+- **Verification**: `uv run pytest tests/architecture/test_harness_structure.py::test_open_tech_debt_references_current_source_and_test_paths -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1275,4 +1296,5 @@
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_architecture_doc_test_references_are_path_qualified_and_existing -q`
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_architecture_module_map_links_every_domain_architecture_doc -q`
 - [ ] `uv run pytest tests/architecture/test_test_lane_contracts.py::test_architecture_tests_declare_harness_taxonomy -q`
+- [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_open_tech_debt_references_current_source_and_test_paths -q`
 - [ ] `make check-all`
