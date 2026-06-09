@@ -118,6 +118,14 @@ TASK_AGENT_LOOP_FIELDS = (
     "kill/defer criteria",
     "eval/repair signal",
 )
+VALID_FACTORY_LANES = {
+    "Spec/plan",
+    "Domain implementation",
+    "Harness/tests",
+    "Docs/contracts",
+    "Risk radar",
+    "Final integration",
+}
 TASK_REVIEW_FIELDS = ("subagent report", "review result")
 TASK_STATUSES = {"[ ]", "[~]", "[x]", "[!]"}
 TASK_REVIEW_RESULTS = {"not delegated", "parent-reviewed", "accepted", "needs-repair", "blocked"}
@@ -153,6 +161,7 @@ KNOWN_ISSUE_CODES = (
     "task-invalid-numbering",
     "task-invalid-dependencies",
     "task-missing-agent-loop-fields",
+    "task-invalid-agent-loop-fields",
     "task-missing-review-fields",
     "task-invalid-review-fields",
     "task-complete-missing-review-evidence",
@@ -854,6 +863,15 @@ def _task_issues(feature: SddFeature) -> list[SddIssue]:
                     f"{task.title} missing fields: {', '.join(missing_agent_fields)}",
                 )
             )
+        invalid_agent_fields = _invalid_agent_loop_fields(task)
+        if invalid_agent_fields:
+            issues.append(
+                _issue(
+                    "task-invalid-agent-loop-fields",
+                    tasks_artifact,
+                    f"{task.title} invalid fields: {', '.join(invalid_agent_fields)}",
+                )
+            )
         missing_review_fields = [field for field in TASK_REVIEW_FIELDS if _is_placeholder(task.fields.get(field, ""))]
         if missing_review_fields:
             issues.append(
@@ -935,6 +953,14 @@ def _invalid_task_fields(task: TaskRecord) -> list[str]:
     status = task.fields.get("status", "").strip().lower()
     if status and status not in TASK_STATUSES:
         invalid.append("status")
+    return invalid
+
+
+def _invalid_agent_loop_fields(task: TaskRecord) -> list[str]:
+    invalid: list[str] = []
+    factory_lane = task.fields.get("factory lane", "").replace("`", "").strip()
+    if factory_lane and factory_lane not in VALID_FACTORY_LANES:
+        invalid.append("factory lane")
     return invalid
 
 

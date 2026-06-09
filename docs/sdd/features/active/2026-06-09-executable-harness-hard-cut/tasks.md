@@ -378,10 +378,10 @@
 
 ### Task 18 — Delegated handoff artifact validation
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/agent-playbook/factory-operating-model.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 17
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/agent-playbook/factory-operating-model.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared generated index and delegated-task fixtures.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_handoff_artifact` — asserts delegated handoff paths must resolve to real artifacts.
 - **Subagent handoff**: not delegated
@@ -828,7 +828,7 @@
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated
 - **Review result**: parent-reviewed
-- **Factory lane**: Harness/docs
+- **Factory lane**: Harness/tests
 - **Deterministic constraints**: Each non-superseded spec Background claim block must cite an existing repo `path:line` or external `https://` source; local path citations must resolve to existing files and in-range line numbers.
 - **On-demand context**: GitHub Spec Kit, OpenAI agent eval/Codex guidance, Claude hooks/subagents docs, GitHub Copilot task best practices, active SDD specs.
 - **Kill/defer criteria**: Stop if a spec can describe current behavior or external methodology without auditable source evidence.
@@ -849,7 +849,7 @@
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated
 - **Review result**: parent-reviewed
-- **Factory lane**: Harness/docs
+- **Factory lane**: Harness/tests
 - **Deterministic constraints**: A checked `plan.md` Pre-flight row that claims Worktree/Branch verification must match the same artifact's machine-readable Worktree and Branch metadata.
 - **On-demand context**: `docs/WORKFLOW.md`, active SDD plan records, generated SDD work index.
 - **Kill/defer criteria**: Stop if stale checked setup evidence can survive after Worktree/Branch metadata changes.
@@ -901,6 +901,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 43 — Factory lane enum gate
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 42
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared factory-lane semantics.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_invalid_factory_lane_values` — asserts freeform or compatibility lane names cannot pass task validation.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `Factory lane` must be one of `Spec/plan`, `Domain implementation`, `Harness/tests`, `Docs/contracts`, `Risk radar`, or `Final integration`.
+- **On-demand context**: `docs/agent-playbook/factory-operating-model.md`, active `tasks.md` records, generated SDD work index.
+- **Kill/defer criteria**: Stop if old/freeform lane names such as `Harness/docs` or `Compatibility` can pass validation.
+- **Eval/repair signal**: `task-invalid-agent-loop-fields`, stale generated index, and lane-budget drift.
+- **Implementation**: Add a validator enum for factory lanes, report invalid agent-loop fields, migrate current active task records to table-defined lane tokens, and refresh the generated index.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_invalid_factory_lane_values -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -944,4 +965,5 @@
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_preflight_worktree_claims_must_match_metadata -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_validate_handoff_artifact_against_task -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_report_mode_must_match_handoff_mode -q`
+- [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_invalid_factory_lane_values -q`
 - [ ] `make check-all`

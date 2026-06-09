@@ -623,6 +623,25 @@ def test_tasks_allow_explicit_none_dependency_and_not_delegated_handoff(tmp_path
     assert "task-invalid-coordination-fields" not in _issue_codes(issues)
 
 
+def test_tasks_reject_invalid_factory_lane_values(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-invalid-factory-lane")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(
+        feature / "tasks.md",
+        status="In Progress",
+        factory_lane="Compatibility",
+        task_status="[~]",
+    )
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    invalid_issues = [issue for issue in issues if issue.code == "task-invalid-agent-loop-fields"]
+    assert invalid_issues
+    assert "factory lane" in " ".join(issue.message for issue in invalid_issues)
+
+
 def test_non_delegated_handoff_rejects_prose_suffix(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-prose-handoff")
     _write_valid_spec(feature / "spec.md", status="In Progress")
@@ -1020,6 +1039,7 @@ def _write_valid_tasks(
     subagent_report: str = "not delegated",
     review_result: str = "parent-reviewed",
     verification: str = "uv run pytest tests/architecture/test_sdd_artifact_validator.py -q",
+    factory_lane: str = "Harness/tests",
     task_status: str = "[x]",
 ) -> None:
     feature_dir = _feature_relative_dir(path)
@@ -1060,7 +1080,7 @@ def _write_valid_tasks(
                 "- **Implementation**: Create validator.",
                 f"- **Verification**: `{verification}`",
                 "- **Review owner**: parent",
-                "- **Factory lane**: Harness",
+                f"- **Factory lane**: {factory_lane}",
                 "- **Deterministic constraints**: SDD validator, generated index, make check-all.",
                 "- **On-demand context**: `docs/WORKFLOW.md`, `docs/sdd/_templates/`.",
                 "- **Kill/defer criteria**: Stop if validator cannot prove artifact truth.",

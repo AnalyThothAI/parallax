@@ -51,10 +51,10 @@ Use a maximum of six active lanes for a feature:
 
 | Lane | Purpose | Default owner |
 |------|---------|---------------|
-| Spec / plan | Clarify, checklist, analyze, and acceptance criteria. | Parent integrator |
+| Spec/plan | Clarify, checklist, analyze, and acceptance criteria. | Parent integrator |
 | Domain implementation | One bounded domain or file family. | Worker subagent or parent |
-| Harness / tests | Failing tests, validators, generated gates, and contract helpers. | Parent or reviewer |
-| Docs / contracts | Router, templates, generated docs, public contracts. | Parent or docs worker |
+| Harness/tests | Failing tests, validators, generated gates, and contract helpers. | Parent or reviewer |
+| Docs/contracts | Router, templates, generated docs, public contracts. | Parent or docs worker |
 | Risk radar | P0/P1 issues, flaky tests, conflict scan, stale work. | Read-only scout |
 | Final integration | Diff review, verification, merge, and completion record. | Parent integrator |
 

@@ -244,6 +244,7 @@ def _issue_meaning(code: str) -> str:
             "Task records lack factory lane, deterministic constraints, on-demand context, kill criteria, "
             "or eval signal."
         ),
+        "task-invalid-agent-loop-fields": "Task agent-loop fields use invalid lane tokens or semantics.",
         "task-missing-review-fields": "Task records lack subagent report or parent review result evidence.",
         "task-invalid-review-fields": "Task report/review evidence is inconsistent with delegation, scope, or status.",
         "task-complete-missing-review-evidence": (

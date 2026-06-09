@@ -43,6 +43,7 @@ can both miss real process drift and block healthy refactors.
 | SQL tests must avoid accidental alias/order coupling. | A query-contract helper checks tables, predicates, locks, params, and forbidden surfaces without pinning formatting. |
 | Completion gates must be deterministic. | `make check-all` runs the SDD validator and stale generated index check. |
 | Multi-agent development loops must be bounded. | Task records declare factory lane, deterministic constraints, on-demand context, kill/defer criteria, and eval/repair signal. |
+| Factory lanes must be deterministic tokens. | Task `Factory lane` values must match the six development-agent lane tokens from the operating model. |
 | Task dependencies must be executable. | Task dependency references are parsed, unresolved references fail validation, and unmet dependencies block dry-run dispatch. |
 | Subagent return evidence must be executable. | Subagent reports are validated against the owning SDD task for scope adherence, changed-file claims, expected verification command, exit status, and secret hygiene before parent integration. |
 | Parent review outcome must be visible. | Task records expose subagent report and review result fields, and the generated Task Board surfaces review state including `needs-repair`. |
@@ -84,6 +85,7 @@ can both miss real process drift and block healthy refactors.
 - G18. SDD validation follows delegated `Subagent handoff` paths and fails missing handoff artifacts.
 - G19. SDD validation rejects delegated `Subagent handoff` artifacts that are stale or bound to a different feature, task, mode, context packet, or report validator command.
 - G20. SDD validation uses delegated handoff mode as the expected report mode, preventing returned reports from loosening their own scope after dispatch.
+- G21. SDD validation rejects task `Factory lane` values outside the six development-agent lanes defined by the operating model.
 
 ## Non-goals
 
@@ -171,6 +173,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC40. WHEN a checked `plan.md` Pre-flight row claims a Worktree/Branch verification that disagrees with the artifact's Worktree/Branch metadata THEN the validator SHALL report `plan-preflight-metadata-mismatch`; checked setup evidence cannot preserve stale worktree names.
 - AC41. WHEN a delegated task references an existing `Subagent handoff` artifact whose title, embedded context packet, mode, or report-validation command is not bound to the same feature and task THEN the validator SHALL report `task-invalid-subagent-handoff-artifact`; stale handoff artifacts cannot satisfy the agent loop.
 - AC42. WHEN a delegated task's handoff artifact declares one mode but the returned subagent report declares another mode THEN the SDD validator SHALL report `task-invalid-subagent-report-artifact`; report artifacts must not self-select broader execution scope than dispatch granted.
+- AC43. WHEN a task declares a `Factory lane` outside `Spec/plan`, `Domain implementation`, `Harness/tests`, `Docs/contracts`, `Risk radar`, or `Final integration` THEN the validator SHALL report `task-invalid-agent-loop-fields`; lane budgets are deterministic constraints, not freeform prose.
 
 ## Risks
 
