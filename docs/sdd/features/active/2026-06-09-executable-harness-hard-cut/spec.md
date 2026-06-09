@@ -145,6 +145,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC23. WHEN a completed task's `Verification` command appears only outside `## Verification commands` and `## Other commands run` fenced blocks THEN the validator SHALL report `task-complete-missing-verification-evidence`.
 - AC24. WHEN an artifact is `Superseded` but lacks required approval/execution metadata THEN the validator SHALL still report `missing-approval-metadata`; superseded status only skips content-section gates, not metadata truth.
 - AC25. WHEN a `Superseded` feature has a legacy checkbox-only `tasks.md` with no structured `### Task` sections THEN the validator SHALL report `task-missing-coordination-fields`.
+- AC26. WHEN artifacts in the same `Superseded` feature declare different `Superseded by` paths THEN the validator SHALL report `superseded-successor-mismatch`.
 
 ## Risks
 

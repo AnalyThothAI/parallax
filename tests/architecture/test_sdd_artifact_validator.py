@@ -145,6 +145,32 @@ def test_superseded_feature_requires_structured_tasks(tmp_path: Path) -> None:
     assert "task-missing-coordination-fields" in _issue_codes(issues)
 
 
+def test_superseded_feature_requires_one_successor(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "completed", "2026-06-09-superseded-split-successor")
+    successor_a = _feature_dir(tmp_path, "active", "2026-06-09-successor-a")
+    successor_b = _feature_dir(tmp_path, "active", "2026-06-09-successor-b")
+    for successor, touch_set in (
+        (successor_a, "scripts/validate_sdd_artifacts.py"),
+        (successor_b, "tests/architecture/test_sdd_artifact_validator.py"),
+    ):
+        _write_valid_spec(successor / "spec.md", status="In Progress")
+        _write_valid_plan(successor / "plan.md", status="In Progress")
+        _write_valid_tasks(successor / "tasks.md", status="In Progress", touch_set=touch_set, task_status="[~]")
+        _write_valid_verification(successor / "verification.md", status="In Progress")
+
+    _write_valid_spec(feature / "spec.md", status="Superseded")
+    _write_valid_plan(feature / "plan.md", status="Superseded")
+    _write_valid_tasks(feature / "tasks.md", status="Superseded")
+    _write_valid_verification(feature / "verification.md", status="Superseded")
+    _insert_successor_reference(feature / "spec.md", "2026-06-09-successor-a")
+    for artifact_name in ("plan.md", "tasks.md", "verification.md"):
+        _insert_successor_reference(feature / artifact_name, "2026-06-09-successor-b")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "superseded-successor-mismatch" in _issue_codes(issues)
+
+
 def test_verified_feature_ignores_old_success_outside_verification_commands(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "completed", "2026-06-09-old-success")
     _write_valid_spec(feature / "spec.md", status="Verified")
@@ -841,6 +867,17 @@ def _append_machine_successor_reference(path: Path) -> None:
         + "\n\n**Superseded by**: `docs/sdd/features/active/2026-06-09-successor/`\n",
         encoding="utf-8",
     )
+
+
+def _insert_successor_reference(path: Path, successor_slug: str) -> None:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    for index, line in enumerate(lines):
+        if line.startswith("**Status**:"):
+            lines.insert(index + 1, f"**Superseded by**: `docs/sdd/features/active/{successor_slug}/`")
+            break
+    else:
+        lines.insert(0, f"**Superseded by**: `docs/sdd/features/active/{successor_slug}/`")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _append_prose_successor_reference(path: Path) -> None:

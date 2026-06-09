@@ -111,6 +111,7 @@ KNOWN_ISSUE_CODES = (
     "verified-contradicts-evidence",
     "verified-unexplained-skips",
     "superseded-missing-successor",
+    "superseded-successor-mismatch",
     "active-touch-conflict",
 )
 
@@ -749,6 +750,7 @@ def _verified_issues(feature: SddFeature) -> list[SddIssue]:
 
 def _superseded_issues(feature: SddFeature) -> list[SddIssue]:
     issues: list[SddIssue] = []
+    successor_paths: dict[str, list[str]] = defaultdict(list)
     for artifact in feature.artifacts.values():
         if artifact.missing:
             continue
@@ -780,6 +782,20 @@ def _superseded_issues(feature: SddFeature) -> list[SddIssue]:
                     f"Superseded successor path does not exist: {successor}",
                 )
             )
+            continue
+        successor_paths[successor.rstrip("/")].append(artifact.name)
+    if len(successor_paths) > 1:
+        summary = ", ".join(
+            f"{successor} ({', '.join(sorted(artifact_names))})"
+            for successor, artifact_names in sorted(successor_paths.items())
+        )
+        issues.append(
+            _issue(
+                "superseded-successor-mismatch",
+                feature.artifacts["verification.md"],
+                f"Superseded artifacts must share one successor: {summary}",
+            )
+        )
     tasks_artifact = feature.artifacts["tasks.md"]
     if not tasks_artifact.missing and not feature.tasks:
         issues.append(

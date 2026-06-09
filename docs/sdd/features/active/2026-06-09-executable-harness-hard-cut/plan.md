@@ -36,6 +36,7 @@ Known-failing baseline tests:
 - Validate delegated subagent handoff artifacts by following the handoff path before dispatch/review.
 - Validate `Superseded` artifact metadata before skipping content-section gates.
 - Validate `Superseded` tasks files retain structured `### Task` records instead of legacy checkbox lists.
+- Validate all artifacts in a `Superseded` feature point at the same successor record.
 - Parse `Verified` completion evidence from the `## Verification commands` fenced block and require final `make check-all` exit code 0 plus explained skipped-test rows.
 
 ### `scripts/regen_sdd_work_index.py`
@@ -189,6 +190,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC23: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_task_evidence_ignores_commands_outside_evidence_sections -q`
 - AC24: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_approval_metadata -q`
 - AC25: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_structured_tasks -q`
+- AC26: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_one_successor -q`
 
 ## Verification
 

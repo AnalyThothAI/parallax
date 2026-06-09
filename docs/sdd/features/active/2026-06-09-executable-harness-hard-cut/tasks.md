@@ -544,6 +544,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 26 — Superseded successor consistency gate
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 25
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD lifecycle semantics and generated index.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_one_successor` — asserts one `Superseded` feature cannot split successor paths.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Superseded artifacts in one feature must agree on one existing successor path.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, completed SDD feature records, generated SDD work index.
+- **Kill/defer criteria**: Stop if split successor paths can pass validation or if current completed records disagree on successors.
+- **Eval/repair signal**: `superseded-successor-mismatch`, stale generated index, and lifecycle drift.
+- **Implementation**: Collect valid successor paths across all superseded artifacts in a feature and reject multiple values.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_one_successor -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -570,4 +591,5 @@
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_task_evidence_ignores_commands_outside_evidence_sections -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_approval_metadata -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_structured_tasks -q`
+- [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_one_successor -q`
 - [ ] `make check-all`

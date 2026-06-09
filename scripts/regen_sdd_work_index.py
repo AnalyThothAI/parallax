@@ -254,6 +254,7 @@ def _issue_meaning(code: str) -> str:
         "superseded-missing-successor": (
             "Superseded record lacks a machine-readable existing successor path."
         ),
+        "superseded-successor-mismatch": "Superseded artifacts in one feature disagree on the successor.",
         "active-touch-conflict": "Active features share touch paths without an explicit coordination rule.",
     }
     return meanings[code]
