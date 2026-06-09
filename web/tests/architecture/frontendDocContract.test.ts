@@ -1,0 +1,86 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { describe, expect, it } from "vitest";
+
+import {
+  APP_NAVIGATION_GROUPS,
+  type AppNavigationItem,
+} from "../../src/features/cockpit/ui/appNavigation";
+
+const webRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
+const repoRoot = join(webRoot, "..");
+const frontendDoc = readFileSync(join(repoRoot, "docs/FRONTEND.md"), "utf8");
+const frontendVerificationSkill = readFileSync(
+  join(repoRoot, ".agents/skills/parallax-frontend-verification/SKILL.md"),
+  "utf8",
+);
+
+describe("frontend documentation contract", () => {
+  it("keeps CSS ownership docs aligned with the architecture harness", () => {
+    const cssHarness = readFileSync(
+      join(webRoot, "tests/architecture/cssArchitectureHarness.test.ts"),
+      "utf8",
+    );
+    const cssResponsiveHarness = readFileSync(
+      join(webRoot, "tests/architecture/cssResponsiveContract.test.ts"),
+      "utf8",
+    );
+
+    for (const bucket of stringSetValues(cssHarness, "retiredGlobalCssBuckets")) {
+      expect(frontendDoc).toContain(`\`${bucket}\``);
+      expect(frontendVerificationSkill).toContain(`\`${bucket}\``);
+    }
+
+    const budget = cssResponsiveHarness.match(/above the (?<budget>\d+)-line budget/)?.groups
+      ?.budget;
+    expect(budget).toBe("500");
+    expect(frontendDoc).toContain("above 500 lines");
+    expect(frontendDoc).not.toContain("above 700 lines");
+  });
+
+  it("keeps the frontend verification skill aligned with architecture commands", () => {
+    expect(frontendVerificationSkill).toContain("`cd web && npm run lint`");
+    expect(frontendVerificationSkill).toContain("`cd web && npm run test:architecture`");
+    expect(frontendVerificationSkill).toContain("`cd web && npm run typecheck`");
+  });
+
+  it("documents public feature barrels plus sanctioned shell entrypoints", () => {
+    expect(frontendDoc).toContain("`@features/<name>`");
+    expect(frontendDoc).toContain("`@features/<name>/shell`");
+  });
+
+  it("keeps drawer route docs aligned with the app navigation tree", () => {
+    const documentedRoutes = [
+      { term: "Radar", to: "/" },
+      { term: "Stocks", to: "/stocks" },
+      { term: "News", to: "/news" },
+      { term: "Macro", to: "/macro" },
+      { term: "Watchlist", to: "/watchlist" },
+      { term: "Signal Lab", to: "/signal-lab" },
+      { term: "Ops", to: "/ops" },
+    ];
+    const navigationItems = flattenNavigation(
+      APP_NAVIGATION_GROUPS.flatMap((group) => group.items),
+    );
+    const navigationTargets = navigationItems.map((item) => item.to);
+
+    for (const { term, to } of documentedRoutes) {
+      expect(frontendDoc).toContain(term);
+      expect(navigationTargets).toContain(to);
+    }
+  });
+});
+
+function flattenNavigation(items: AppNavigationItem[]): AppNavigationItem[] {
+  return items.flatMap((item) => [item, ...flattenNavigation(item.children ?? [])]);
+}
+
+function stringSetValues(source: string, variableName: string): string[] {
+  const match = source.match(
+    new RegExp(`const ${variableName} = new Set\\(\\[([\\s\\S]*?)\\]\\);`),
+  );
+  expect(match, `${variableName} must be declared as a string Set`).not.toBeNull();
+  return [...(match?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((item) => item[1]);
+}

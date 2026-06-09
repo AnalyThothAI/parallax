@@ -1048,6 +1048,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 50 — Frontend docs and skill source-alignment gate
+
+- **File(s)**: `docs/FRONTEND.md`, `.agents/skills/parallax-frontend-verification/SKILL.md`, `web/tests/architecture/frontendDocContract.test.ts`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 49
+- **Touch set**: `docs/FRONTEND.md`, `.agents/skills/parallax-frontend-verification/SKILL.md`, `web/tests/architecture/frontendDocContract.test.ts`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `docs/FRONTEND.md` for frontend architecture documentation and skill semantics.
+- **Failing test first**: `tests/architecture/frontendDocContract.test.ts::frontend documentation contract` — asserts frontend docs and skill cannot drift from CSS architecture constants, shell entrypoint policy, or app navigation source under the `web/` test command.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Docs/contracts
+- **Deterministic constraints**: Frontend docs and skill must name the retired CSS buckets from `cssArchitectureHarness.test.ts`, the 500-line side-effect CSS budget from `cssResponsiveContract.test.ts`, sanctioned `@features/<name>/shell` entrypoints, and drawer routes present in `APP_NAVIGATION_GROUPS`.
+- **On-demand context**: Frontend explorer report, `docs/FRONTEND.md`, `.agents/skills/parallax-frontend-verification/SKILL.md`, frontend architecture tests, and `web/src/features/cockpit/ui/appNavigation.ts`.
+- **Kill/defer criteria**: Stop if the gate freezes cosmetic prose rather than source-backed constants/routes, or if it requires browser/e2e execution.
+- **Eval/repair signal**: frontend doc-contract failures, stale retired CSS bucket wording, stale side-effect CSS budget, stale frontend skill commands, and route-shell review defects.
+- **Implementation**: Add a static frontend doc-contract architecture test and update FRONTEND docs plus the frontend verification skill to current harness/source truth.
+- **Verification**: `cd web && npm run test -- tests/architecture/frontendDocContract.test.ts`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1099,4 +1120,5 @@
 - [ ] `uv run pytest tests/architecture/test_public_contracts_doc_alignment.py -q`
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_generated_readme_source_map_points_to_existing_paths -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_active_touch_sets_reject_nested_or_misdirected_coordination -q`
+- [ ] `cd web && npm run test -- tests/architecture/frontendDocContract.test.ts`
 - [ ] `make check-all`

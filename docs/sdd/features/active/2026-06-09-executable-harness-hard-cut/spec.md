@@ -62,6 +62,7 @@ can both miss real process drift and block healthy refactors.
 | Public contracts must be source-bound. | Architecture tests compare `docs/CONTRACTS.md` runtime lists and routes against manifest/settings/API source. |
 | Generated README source maps must be real. | Architecture tests require `docs/generated/README.md` rows to name existing generated files, generator scripts, and source paths. |
 | Active touch conflicts must catch nested paths. | The SDD validator treats parent/child touch paths as overlaps and requires coordination that names the overlapping feature or path. |
+| Frontend docs and skills must be harness-bound. | Frontend architecture tests compare `docs/FRONTEND.md` and the frontend verification skill against current CSS and navigation harness source. |
 
 ## First principles
 
@@ -98,6 +99,7 @@ can both miss real process drift and block healthy refactors.
 - G25. `docs/CONTRACTS.md` runtime worker keys, agent runtime lanes, WebSocket payloads, and News item route are checked against current source.
 - G26. `docs/generated/README.md` source-map rows point at real generated files, generator scripts, and source paths.
 - G27. Active SDD touch-set conflicts detect exact and parent/child path overlaps, and unrelated `coordinate with ...` prose does not suppress them.
+- G28. `docs/FRONTEND.md` and `.agents/skills/parallax-frontend-verification/SKILL.md` are checked against current frontend CSS/navigation architecture source.
 
 ## Non-goals
 
@@ -192,6 +194,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC47. WHEN `docs/CONTRACTS.md` lists retired worker keys, stale agent runtime lanes, removed WebSocket payload keys, or the old News item detail route THEN architecture tests SHALL fail against `WorkerManifest`, `WorkersSettings`, `ws.py`, and `routes_news.py`.
 - AC48. WHEN `docs/generated/README.md` names a missing generated file, missing generator script, or stale backticked source path such as a retired WebSocket module path THEN architecture tests SHALL fail before generated-doc instructions are trusted.
 - AC49. WHEN two active SDD features touch exact or parent/child paths and a feature's conflict set only coordinates with an unrelated slug or path THEN the validator SHALL report `active-touch-conflict`.
+- AC50. WHEN `docs/FRONTEND.md` or `.agents/skills/parallax-frontend-verification/SKILL.md` omits current retired CSS buckets, names the old side-effect CSS line budget, omits sanctioned shell entrypoints, or documents drawer routes absent from `APP_NAVIGATION_GROUPS` THEN frontend architecture tests SHALL fail.
 
 ## Risks
 

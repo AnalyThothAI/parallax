@@ -113,6 +113,10 @@ Known-failing baseline tests:
 - Assert `make check-all` includes the CLI help snapshot freshness check, so generated public CLI docs cannot drift outside integration-only docs tests.
 - Assert `docs/generated/README.md` source-map rows point at existing generated files, generator scripts, and source paths.
 
+### `web/tests/architecture/frontendDocContract.test.ts`
+
+- Add a static Vitest gate that compares `docs/FRONTEND.md` and `.agents/skills/parallax-frontend-verification/SKILL.md` against current frontend CSS architecture constants and `APP_NAVIGATION_GROUPS`.
+
 ### `tests/architecture/test_public_contracts_doc_alignment.py`
 
 - Add source-bound checks that compare `docs/CONTRACTS.md` worker keys, agent runtime lanes, WebSocket payloads, and News item route against current runtime/API source.
@@ -161,6 +165,12 @@ Known-failing baseline tests:
 
 - Replace the stale `src/parallax/api/ws.py` generated-doc source pointer with the current public API WebSocket source path.
 - Keep the WebSocket protocol generator docstring aligned with its current source boundary.
+
+### `docs/FRONTEND.md`, `.agents/skills/parallax-frontend-verification/SKILL.md`
+
+- Align CSS retired-bucket and side-effect line-budget wording with current frontend architecture tests.
+- Document sanctioned `@features/<name>/shell` route-shell entrypoints and current feature-owned page/controller hook data ownership.
+- Keep the frontend verification skill's deterministic commands and retired CSS list aligned with the same architecture harness.
 
 ### `docs/sdd/_templates/*.md`, `docs/WORKFLOW.md`, `docs/sdd/README.md`
 
@@ -226,6 +236,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Public contracts are source-bound. | Pass: architecture tests compare CONTRACTS worker keys, agent lanes, WS payloads, and News route against current source. |
 | Generated README source map is real. | Pass: architecture tests fail any README source-map row that names a missing generated file, generator script, or source path. |
 | Active touch conflicts are path-aware. | Pass: validator rejects parent/child active touch overlaps when coordination names an unrelated target. |
+| Frontend docs and skill are harness-bound. | Pass: frontend architecture tests compare docs/skill wording against CSS architecture constants and app navigation source. |
 
 ## Acceptance test commands
 
@@ -278,6 +289,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC47: `uv run pytest tests/architecture/test_public_contracts_doc_alignment.py -q`
 - AC48: `uv run pytest tests/architecture/test_harness_structure.py::test_generated_readme_source_map_points_to_existing_paths -q`
 - AC49: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_active_touch_sets_reject_nested_or_misdirected_coordination -q`
+- AC50: `cd web && npm run test -- tests/architecture/frontendDocContract.test.ts`
 
 ## Verification
 
