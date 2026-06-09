@@ -187,6 +187,11 @@ Known-failing baseline tests:
 
 - Move worker runtime constraint classification into `WorkerManifest` and assert the architecture test no longer owns a parallel worker classification inventory.
 
+### `tests/architecture/test_worker_inventory_contract.py`
+
+- Replace peer architecture-test imports with source-derived `WorkerManifest` expectations for Worker Inventory worker keys and read-model writer rows.
+- Add a static architecture gate that rejects architecture tests importing other architecture tests as source registries.
+
 ### `tests/unit/domains/macro_intel/test_macro_migration_contract.py`
 
 - Replace the obsolete `concept_history_counts` raw-fact assertion with a projected-row request-path contract using the query-contract helper.
@@ -275,6 +280,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Spec background is source-backed. | Pass: Background claim blocks must cite existing repo `path:line` evidence or external `https://` sources. |
 | Spec background citations are semantically anchored. | Pass: validator rejects local Background citations whose cited lines do not mention backticked evidence tokens from the claim block. |
 | Worker runtime constraints are manifest-owned. | Pass: `WorkerManifest` carries the runtime constraint enum for every worker and architecture tests no longer define a separate worker classification map. |
+| Worker Inventory docs are manifest-owned. | Pass: worker inventory architecture tests import source manifest data directly and reject peer architecture-test imports. |
 | Delegated handoff artifacts are task-bound. | Pass: validator rejects existing delegated handoff files that name another feature/task/mode or stale report-validation command. |
 | Delegated report mode matches handoff mode. | Pass: validator rejects report artifacts whose `Mode:` differs from the owning handoff mode. |
 | Factory lanes are bounded. | Pass: validator rejects task `Factory lane` values outside the six operating-model lanes. |
@@ -374,6 +380,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC67: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_requires_task_classification_and_required_reading_evidence tests/architecture/test_agent_playbook_contracts.py::test_subagent_handoff_templates_define_context_and_conflict_contracts -q`
 - AC68: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_spec_background_rejects_stale_local_citation_lines -q`
 - AC69: `uv run pytest tests/architecture/test_runtime_worker_constraint_hard_cut.py::test_every_registered_worker_has_runtime_constraint_classification -q`
+- AC70: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_architecture_tests_do_not_import_peer_architecture_tests_as_sources -q`
 
 ## Verification
 

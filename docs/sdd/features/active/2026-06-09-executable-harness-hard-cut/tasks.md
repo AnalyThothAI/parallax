@@ -1468,6 +1468,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 70 — Worker Inventory architecture tests use source manifests
+
+- **File(s)**: `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 69
+- **Touch set**: `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `tests/architecture/test_worker_runtime_contracts.py` for worker runtime test constants.
+- **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_architecture_tests_do_not_import_peer_architecture_tests_as_sources` — asserts architecture tests cannot import peer architecture tests as source registries.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Worker Inventory architecture tests must derive worker keys, worker classes, and read-model writer rows from `WorkerManifest`; architecture tests must not import other architecture tests as hidden source registries; no compatibility alias for the old peer-test constants is allowed.
+- **On-demand context**: `tests/architecture/test_worker_inventory_contract.py`, `tests/architecture/test_worker_runtime_contracts.py`, `src/parallax/app/runtime/worker_manifest.py`, and `docs/WORKERS.md`.
+- **Kill/defer criteria**: Stop if the fix keeps a peer architecture-test import, moves the duplicated registry to another test file, or weakens Worker Inventory doc/source comparison.
+- **Eval/repair signal**: peer architecture-test imports, Worker Inventory doc drift, duplicate read-model writer rows in `WorkerManifest`, and SDD generated index drift.
+- **Implementation**: Add a peer-test import ban, replace `MANIFEST_WORKER_CLASSES` / `SINGLE_WRITER_READ_MODELS` imports with source-derived `WorkerManifest` data, and remove dead test-side read-model derivation helpers.
+- **Verification**: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_architecture_tests_do_not_import_peer_architecture_tests_as_sources -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1539,4 +1560,5 @@
 - [ ] `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_requires_task_classification_and_required_reading_evidence tests/architecture/test_agent_playbook_contracts.py::test_subagent_handoff_templates_define_context_and_conflict_contracts -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_spec_background_rejects_stale_local_citation_lines -q`
 - [ ] `uv run pytest tests/architecture/test_runtime_worker_constraint_hard_cut.py::test_every_registered_worker_has_runtime_constraint_classification -q`
+- [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_architecture_tests_do_not_import_peer_architecture_tests_as_sources -q`
 - [ ] `make check-all`

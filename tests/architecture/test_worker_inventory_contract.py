@@ -9,26 +9,24 @@ from pathlib import Path
 import pytest
 
 from parallax.app.runtime.wake_bus import WakeBus
-from tests.architecture.test_worker_runtime_contracts import MANIFEST_WORKER_CLASSES, SINGLE_WRITER_READ_MODELS
+from parallax.app.runtime.worker_manifest import all_worker_manifests, worker_class_by_name
 
 ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src" / "parallax"
 DOCS_WORKERS = ROOT / "docs" / "WORKERS.md"
-REPOSITORY_SESSION = SRC / "app" / "runtime" / "repository_session.py"
-WRITE_METHOD_PREFIXES = (
-    "clear",
-    "delete",
-    "demote",
-    "enqueue",
-    "finish",
-    "insert",
-    "mark",
-    "record",
-    "replace",
-    "set",
-    "upsert",
-    "update",
-)
+MANIFEST_WORKER_CLASSES = worker_class_by_name()
+
+
+@pytest.mark.architecture
+def test_architecture_tests_do_not_import_peer_architecture_tests_as_sources() -> None:
+    violations: list[str] = []
+    for path in sorted((ROOT / "tests" / "architecture").glob("test_*.py")):
+        for node in ast.walk(_parse(path)):
+            if not isinstance(node, ast.ImportFrom) or node.module is None:
+                continue
+            if node.module.startswith("tests.architecture.test_"):
+                violations.append(f"{_rel(path)} imports {node.module}")
+
+    assert violations == []
 
 
 @pytest.mark.architecture
@@ -81,179 +79,41 @@ def test_wake_bus_notify_channels_are_documented_as_wake_outputs() -> None:
 
 
 @pytest.mark.architecture
-def test_documented_single_writer_read_models_match_runtime_allowlist() -> None:
+def test_documented_single_writer_read_models_match_worker_manifest() -> None:
     inventory = _worker_inventory()
-    expected_by_table, derivation_problems = _derived_read_model_writer_rows()
-    documented_by_table: dict[str, list[str]] = {table: [] for table in SINGLE_WRITER_READ_MODELS}
+    expected_by_table = _manifest_read_model_writer_rows()
+    documented_by_table: dict[str, list[str]] = {table: [] for table in expected_by_table}
     for worker_key, row in inventory.items():
         writes = _cell_code_values(row["Writes"])
         for table, documented_workers in documented_by_table.items():
             if table in writes:
                 documented_workers.append(worker_key)
 
-    problems: list[str] = list(derivation_problems)
+    problems: list[str] = []
     for table, documented_workers in sorted(documented_by_table.items()):
         expected_workers = expected_by_table.get(table, [])
         if documented_workers != expected_workers:
             problems.append(
-                f"{table} should appear in exactly the derived writer Writes cells; "
+                f"{table} should appear in exactly the WorkerManifest writer Writes cells; "
                 f"expected={expected_workers}, documented={documented_workers}"
             )
 
     assert problems == []
 
 
-def _derived_read_model_writer_rows() -> tuple[dict[str, list[str]], list[str]]:
-    worker_paths = {key: _qualified_worker_module_path(qualified) for key, qualified in MANIFEST_WORKER_CLASSES.items()}
-    repository_attrs = _repository_attrs_by_path()
-    dependency_paths = {key: _local_dependency_closure(path) for key, path in worker_paths.items()}
-    attribute_calls = {key: _repository_write_calls(paths) for key, paths in dependency_paths.items()}
-
+def _manifest_read_model_writer_rows() -> dict[str, list[str]]:
     expected_by_table: dict[str, list[str]] = {}
-    problems: list[str] = []
-    for table, allowlist in SINGLE_WRITER_READ_MODELS.items():
-        owners = {
-            worker_key
-            for worker_key, worker_path in worker_paths.items()
-            if any(_is_runtime_owner_path(worker_path, path) for path in allowlist)
-        }
-        if not owners:
-            allowed_repository_attrs = {attr for path in allowlist for attr in repository_attrs.get(path, set())}
-            owners = {
-                worker_key
-                for worker_key, calls in attribute_calls.items()
-                if any(attr in calls for attr in allowed_repository_attrs)
-            }
+    for manifest in all_worker_manifests():
+        for table in manifest.writes_read_models:
+            expected_by_table.setdefault(table, []).append(manifest.name)
 
-        expected_by_table[table] = sorted(owners)
-        if not owners:
-            allowed = ", ".join(sorted(_rel(path) for path in allowlist))
-            problems.append(
-                f"{table} has no runtime worker owner derivable from SINGLE_WRITER_READ_MODELS. "
-                f"Add the writer runtime module to the table allowlist or ensure the worker makes a mutating "
-                f"RepositorySession call through one of its allowlisted repositories: {allowed}"
-            )
-        elif len(owners) != 1:
-            problems.append(
-                f"{table} has {len(owners)} derived runtime writer owners from SINGLE_WRITER_READ_MODELS: "
-                f"{sorted(owners)}"
-            )
-    return expected_by_table, problems
-
-
-def _qualified_worker_module_path(qualified_name: str) -> Path:
-    module_name = qualified_name.rpartition(".")[0]
-    relative = Path(*module_name.split(".")).relative_to("parallax").with_suffix(".py")
-    return SRC / relative
-
-
-def _is_runtime_owner_path(worker_path: Path, allowlist_path: Path) -> bool:
-    if _is_repository_path(allowlist_path) or _is_alembic_path(allowlist_path):
-        return False
-    return allowlist_path == worker_path
-
-
-def _repository_attrs_by_path() -> dict[Path, set[str]]:
-    class_paths = _class_paths()
-    attrs_by_path: dict[Path, set[str]] = {}
-    tree = _parse(REPOSITORY_SESSION)
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name) or node.func.id != "RepositorySession":
-            continue
-        for keyword in node.keywords:
-            if keyword.arg is None or not isinstance(keyword.value, ast.Call):
-                continue
-            repository_class = keyword.value.func
-            if not isinstance(repository_class, ast.Name):
-                continue
-            path = class_paths.get(repository_class.id)
-            if path is not None:
-                attrs_by_path.setdefault(path, set()).add(keyword.arg)
-    return attrs_by_path
-
-
-def _class_paths() -> dict[str, Path]:
-    paths: dict[str, Path] = {}
-    for path in SRC.rglob("*.py"):
-        if _is_alembic_path(path):
-            continue
-        tree = _parse(path)
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ClassDef):
-                paths.setdefault(node.name, path)
-    return paths
-
-
-def _local_dependency_closure(entry_path: Path) -> set[Path]:
-    seen: set[Path] = set()
-    pending = [entry_path]
-    while pending:
-        path = pending.pop()
-        if path in seen or not path.exists() or _is_alembic_path(path):
-            continue
-        seen.add(path)
-        pending.extend(imported for imported in _local_import_paths(path) if imported not in seen)
-    return seen
-
-
-def _local_import_paths(path: Path) -> set[Path]:
-    paths: set[Path] = set()
-    for node in ast.walk(_parse(path)):
-        module_names: list[str] = []
-        if isinstance(node, ast.Import):
-            module_names.extend(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module is not None:
-            module_names.append(node.module)
-        for module_name in module_names:
-            imported = _module_path(module_name)
-            if imported is not None:
-                paths.add(imported)
-    return paths
-
-
-def _module_path(module_name: str) -> Path | None:
-    prefix = "parallax."
-    if not module_name.startswith(prefix):
-        return None
-    relative = Path(*module_name[len(prefix) :].split("."))
-    module_path = (SRC / relative).with_suffix(".py")
-    if module_path.exists():
-        return module_path
-    package_path = SRC / relative / "__init__.py"
-    if package_path.exists():
-        return package_path
-    return None
-
-
-def _repository_write_calls(paths: set[Path]) -> set[str]:
-    attrs: set[str] = set()
-    for path in paths:
-        for node in ast.walk(_parse(path)):
-            if not isinstance(node, ast.Call):
-                continue
-            call = node.func
-            if not isinstance(call, ast.Attribute) or not _is_write_method(call.attr):
-                continue
-            receiver = call.value
-            if isinstance(receiver, ast.Attribute):
-                attrs.add(receiver.attr)
-    return attrs
-
-
-def _is_write_method(method_name: str) -> bool:
-    return method_name.startswith(WRITE_METHOD_PREFIXES)
+    duplicate_writers = {table: sorted(workers) for table, workers in expected_by_table.items() if len(workers) > 1}
+    assert duplicate_writers == {}, "WorkerManifest read models must have exactly one runtime writer"
+    return {table: sorted(workers) for table, workers in expected_by_table.items()}
 
 
 def _rel(path: Path) -> str:
     return str(path.relative_to(ROOT))
-
-
-def _is_repository_path(path: Path) -> bool:
-    return "repositories" in path.parts
-
-
-def _is_alembic_path(path: Path) -> bool:
-    return "alembic" in path.parts
 
 
 def _parse(path: Path) -> ast.Module:
