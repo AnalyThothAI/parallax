@@ -200,6 +200,7 @@ Known-failing baseline tests:
 - Reject empty `input_contract` declarations before registry, factory, settings, or docs harnesses consume them.
 - Reject blank `input_contract` entries before registry, factory, settings, or docs harnesses consume them.
 - Reject empty `ordering_keys` declarations before lifecycle, idempotency, registry, factory, settings, or docs harnesses consume them.
+- Reject blank `ordering_keys` entries before lifecycle, idempotency, registry, factory, settings, or docs harnesses consume them.
 - Reject `DIRTY_TARGET_CONSUMER` manifests that omit `dirty_target_tables` before worker lifecycle harnesses trust runtime classification.
 - Reject `LEASED_JOB_CONSUMER` manifests that omit `queue_depth_table` before queue-health harnesses trust runtime classification.
 - Reject `BOUNDED_PROVIDER_SCHEDULER` manifests that omit `uses_provider_io` before provider-boundary harnesses trust runtime classification.
@@ -313,6 +314,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Input contracts are non-empty. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares an empty `input_contract`. |
 | Input contracts are non-blank. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares a blank `input_contract` entry. |
 | Ordering keys are non-empty. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares empty `ordering_keys`. |
+| Ordering keys are non-blank. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares a blank `ordering_keys` entry. |
 | Dirty-target consumers declare dirty targets. | Pass: `_validate_worker_manifests()` raises when a patched `DIRTY_TARGET_CONSUMER` manifest omits `dirty_target_tables`. |
 | Leased-job consumers declare queue depth tables. | Pass: `_validate_worker_manifests()` raises when a patched `LEASED_JOB_CONSUMER` manifest omits `queue_depth_table`. |
 | Bounded provider schedulers declare provider I/O. | Pass: `_validate_worker_manifests()` raises when a patched `BOUNDED_PROVIDER_SCHEDULER` manifest clears `uses_provider_io`. |
@@ -459,6 +461,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC93: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_empty_input_contracts -q`
 - AC94: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_input_contracts -q`
 - AC95: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_empty_ordering_keys -q`
+- AC96: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_ordering_keys -q`
 
 ## Verification
 

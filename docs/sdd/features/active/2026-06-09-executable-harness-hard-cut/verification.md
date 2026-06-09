@@ -112,6 +112,7 @@ claim is allowed without the corresponding output captured below.
 | AC93 — Input contracts are non-empty. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_empty_input_contracts -q` failed RED when a patched empty `input_contract` did not raise, then passed after adding input-contract validation. |
 | AC94 — Input contracts are non-blank. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_input_contracts -q` failed RED when a patched blank `input_contract` entry did not raise, then passed after adding input-contract blank-entry validation. |
 | AC95 — Ordering keys are non-empty. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_empty_ordering_keys -q` failed RED when a patched empty `ordering_keys` declaration did not raise, then passed after adding ordering-key validation. |
+| AC96 — Ordering keys are non-blank. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_ordering_keys -q` failed RED when a patched blank `ordering_keys` entry did not raise, then passed after adding ordering-key blank-entry validation. |
 
 Deviations from spec:
 
@@ -1458,6 +1459,15 @@ exit code: 1
 
 $ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_empty_ordering_keys -q
 1 passed in 0.04s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_ordering_keys -q
+F                                                                        [100%]
+Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_ordering_keys -q
+1 passed in 0.03s
 exit code: 0
 ```
 

@@ -748,6 +748,14 @@ def _validate_worker_manifests() -> None:
     if missing_ordering_keys:
         raise ValueError(f"worker manifests missing ordering keys: {missing_ordering_keys}")
 
+    blank_ordering_keys = {
+        manifest.name: tuple(key for key in manifest.ordering_keys if not key.strip())
+        for manifest in _WORKER_MANIFESTS
+        if any(not key.strip() for key in manifest.ordering_keys)
+    }
+    if blank_ordering_keys:
+        raise ValueError(f"blank worker manifest ordering keys: {blank_ordering_keys}")
+
     names = [manifest.name for manifest in _WORKER_MANIFESTS]
     duplicate_names = sorted({name for name in names if names.count(name) > 1})
     if duplicate_names:
