@@ -1010,8 +1010,8 @@ def _subagent_report_artifact_issues(feature: SddFeature, task: TaskRecord) -> l
         ]
 
     report_text = report_path.read_text(encoding="utf-8")
-    mode = _extract_report_mode(report_text)
-    if mode is None:
+    report_mode = _extract_report_mode(report_text)
+    if report_mode is None:
         return [
             _issue(
                 "task-invalid-subagent-report-artifact",
@@ -1020,7 +1020,8 @@ def _subagent_report_artifact_issues(feature: SddFeature, task: TaskRecord) -> l
             )
         ]
 
-    report_issues = validate_subagent_report(report_text, mode=mode, task_fields=task.fields)
+    expected_mode = _subagent_handoff_mode(feature, task) or report_mode
+    report_issues = validate_subagent_report(report_text, mode=expected_mode, task_fields=task.fields)
     if report_issues:
         return [
             _issue(
@@ -1098,6 +1099,19 @@ def _subagent_handoff_contract_issues(feature: SddFeature, task: TaskRecord, tex
     if missing_tokens:
         issues.append("report validation command missing tokens: " + ", ".join(missing_tokens))
     return issues
+
+
+def _subagent_handoff_mode(feature: SddFeature, task: TaskRecord) -> str | None:
+    handoff_value = task.fields.get("subagent handoff", "")
+    if _is_not_delegated(handoff_value) or _is_placeholder(handoff_value) or not _is_repo_path(handoff_value):
+        return None
+
+    handoff_path = _repo_root(feature) / handoff_value.replace("`", "").strip()
+    if not handoff_path.exists():
+        return None
+
+    mode_match = HANDOFF_MODE_RE.search(handoff_path.read_text(encoding="utf-8"))
+    return mode_match.group("mode").lower() if mode_match else None
 
 
 def _append_handoff_binding_issues(

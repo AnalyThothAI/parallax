@@ -880,6 +880,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 42 — Subagent report mode binding gate
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 41
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared subagent report semantics.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_delegated_report_mode_must_match_handoff_mode` — asserts a report cannot claim `write-allowed` when the handoff granted `read-only`.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Delegated reports must be validated with the owning handoff mode; report-authored `Mode:` is evidence to check, not authority to choose scope.
+- **On-demand context**: `scripts/subagent_report_contract.py`, `scripts/validate_sdd_artifacts.py`, `docs/agent-playbook/factory-operating-model.md`.
+- **Kill/defer criteria**: Stop if a subagent report can broaden dispatch scope by changing its own `Mode:` line.
+- **Eval/repair signal**: `task-invalid-subagent-report-artifact`, scope-adherence failures, and parent review defects from mode drift.
+- **Implementation**: Parse delegated handoff mode and pass it to the existing subagent report validator instead of trusting the report's self-declared mode.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_report_mode_must_match_handoff_mode -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -922,4 +943,5 @@
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_spec_background_requires_source_citations -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_preflight_worktree_claims_must_match_metadata -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_validate_handoff_artifact_against_task -q`
+- [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_report_mode_must_match_handoff_mode -q`
 - [ ] `make check-all`

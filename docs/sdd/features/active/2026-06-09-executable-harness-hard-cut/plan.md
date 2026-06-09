@@ -48,6 +48,7 @@ Known-failing baseline tests:
 - Validate machine-token fields strictly so `not delegated` cannot carry prose suffixes.
 - Validate delegated subagent handoff artifacts by following the handoff path before dispatch/review.
 - Validate delegated subagent handoff artifacts against the owning feature/task/mode so stale handoff prompts cannot pass as current loop evidence.
+- Validate delegated subagent reports against the mode granted by the owning handoff artifact, not the mode claimed by the report itself.
 - Validate `Superseded` artifact metadata before skipping content-section gates.
 - Validate `Superseded` tasks files retain structured `### Task` records instead of legacy checkbox lists.
 - Validate all artifacts in a `Superseded` feature point at the same successor record.
@@ -186,6 +187,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Checked Pre-flight setup matches metadata. | Pass: validator rejects checked Worktree/Branch setup claims that disagree with plan metadata. |
 | Spec background is source-backed. | Pass: Background claim blocks must cite existing repo `path:line` evidence or external `https://` sources. |
 | Delegated handoff artifacts are task-bound. | Pass: validator rejects existing delegated handoff files that name another feature/task/mode or stale report-validation command. |
+| Delegated report mode matches handoff mode. | Pass: validator rejects report artifacts whose `Mode:` differs from the owning handoff mode. |
 
 ## Acceptance test commands
 
@@ -230,6 +232,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC39: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_spec_background_requires_source_citations -q`
 - AC40: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_preflight_worktree_claims_must_match_metadata -q`
 - AC41: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_validate_handoff_artifact_against_task -q`
+- AC42: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_report_mode_must_match_handoff_mode -q`
 
 ## Verification
 

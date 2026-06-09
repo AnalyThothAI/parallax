@@ -58,6 +58,7 @@ claim is allowed without the corresponding output captured below.
 | AC39 — Spec Background claim blocks are source-backed. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_spec_background_requires_source_citations -q` passed after first failing RED run. |
 | AC40 — Checked plan Pre-flight Worktree/Branch claims match metadata. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_preflight_worktree_claims_must_match_metadata -q` passed after first failing RED run. |
 | AC41 — Delegated subagent handoff artifacts are task-bound. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_validate_handoff_artifact_against_task -q` passed after first failing RED run. |
+| AC42 — Delegated subagent report mode matches handoff mode. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_report_mode_must_match_handoff_mode -q` passed after first failing RED run. |
 
 Deviations from spec:
 
@@ -720,6 +721,15 @@ $ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegate
 1 passed in 0.02s
 exit code: 0
 
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_report_mode_must_match_handoff_mode -q
+F                                                                        [100%]
+AssertionError: assert 'task-invalid-subagent-report-artifact' in set()
+exit code: 1
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_report_mode_must_match_handoff_mode -q
+1 passed in 0.06s
+exit code: 0
+
 $ uv run python scripts/validate_sdd_artifacts.py --check
 SDD artifact validation passed.
 exit code: 0
@@ -728,7 +738,7 @@ $ uv run python scripts/regen_sdd_work_index.py --check
 exit code: 0
 
 $ uv run pytest tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py -q
-60 passed in 0.62s
+61 passed in 0.69s
 exit code: 0
 
 $ uv run ruff check scripts/validate_sdd_artifacts.py scripts/regen_sdd_work_index.py tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py

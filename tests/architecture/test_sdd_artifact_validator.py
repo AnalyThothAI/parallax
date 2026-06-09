@@ -817,6 +817,30 @@ def test_delegated_tasks_validate_report_artifact_against_task(tmp_path: Path) -
     assert "task-invalid-subagent-report-artifact" in _issue_codes(issues)
 
 
+def test_delegated_report_mode_must_match_handoff_mode(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-report-mode-drift")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    handoff = tmp_path / "docs" / "generated" / "subagent-handoffs" / "valid.md"
+    _write_valid_subagent_handoff(handoff, feature_slug="2026-06-09-report-mode-drift", mode="read-only")
+    report = tmp_path / "docs" / "generated" / "subagent-reports" / "mode-drift.md"
+    _write_valid_subagent_report(report)
+    _write_valid_tasks(
+        feature / "tasks.md",
+        status="In Progress",
+        subagent_handoff="docs/generated/subagent-handoffs/valid.md",
+        subagent_report="docs/generated/subagent-reports/mode-drift.md",
+        review_result="accepted",
+        task_status="[~]",
+    )
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "task-invalid-subagent-report-artifact" in _issue_codes(issues)
+    assert "report mode must match handoff mode: read-only" in " ".join(issue.message for issue in issues)
+
+
 def test_tasks_reject_unresolved_dependencies(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-unresolved-dependency")
     _write_valid_spec(feature / "spec.md", status="In Progress")
@@ -1208,6 +1232,38 @@ def _write_valid_subagent_report(path: Path) -> None:
                 "",
                 "## Remaining Risks",
                 "- none",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_valid_subagent_handoff(
+    path: Path,
+    *,
+    feature_slug: str,
+    task_number: int = 1,
+    mode: str = "write-allowed",
+) -> None:
+    path.parent.mkdir(parents=True)
+    task_anchor = f"Task {task_number}"
+    path.write_text(
+        "\n".join(
+            [
+                f"# Subagent Handoff - {feature_slug} / {task_anchor}",
+                "",
+                f"Mode: {mode}",
+                "",
+                "Context packet:",
+                "",
+                "```md",
+                f"# Context Packet - {feature_slug} / {task_anchor}",
+                "```",
+                "",
+                "Report contract:",
+                "- Parent validates the report with "
+                f"`uv run python scripts/validate_subagent_report.py --feature {feature_slug} "
+                f"--task {task_number} --mode {mode} --report <report.md>`.",
             ]
         ),
         encoding="utf-8",
