@@ -782,6 +782,12 @@ def _validate_worker_manifests() -> None:
     if duplicate_worker_classes:
         raise ValueError(f"duplicate worker manifest classes: {duplicate_worker_classes}")
 
+    negative_start_priorities = {
+        manifest.name: manifest.start_priority for manifest in _WORKER_MANIFESTS if manifest.start_priority < 0
+    }
+    if negative_start_priorities:
+        raise ValueError(f"negative worker manifest start priorities: {negative_start_priorities}")
+
     missing_idempotency = [manifest.name for manifest in _WORKER_MANIFESTS if not manifest.idempotency_evidence]
     if missing_idempotency:
         raise ValueError(f"worker manifests missing idempotency evidence: {missing_idempotency}")

@@ -117,6 +117,7 @@ claim is allowed without the corresponding output captured below.
 | AC98 — Input contracts are unique. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_input_contracts -q` failed RED when a patched duplicate `input_contract` entry did not raise, then passed after adding input-contract duplicate validation. |
 | AC99 — Idempotency evidence is unique. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_idempotency_evidence -q` failed RED when a patched duplicate `idempotency_evidence` entry did not raise, then passed after adding idempotency-evidence duplicate validation. |
 | AC100 — Worker runtime classes are unique. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_worker_classes -q` failed RED when a patched duplicate `worker_class` did not raise, then passed after adding worker-class duplicate validation. |
+| AC101 — Worker start priorities are non-negative. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_negative_start_priorities -q` failed RED when a patched negative `start_priority` did not raise, then passed after adding start-priority validation. |
 
 Deviations from spec:
 
@@ -1507,6 +1508,15 @@ Failed: DID NOT RAISE <class 'ValueError'>
 exit code: 1
 
 $ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_worker_classes -q
+1 passed in 0.03s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_negative_start_priorities -q
+F                                                                        [100%]
+Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_negative_start_priorities -q
 1 passed in 0.03s
 exit code: 0
 ```

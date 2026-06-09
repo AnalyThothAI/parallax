@@ -45,6 +45,7 @@ can both miss real process drift and block healthy refactors.
 | Worker runtime constraints must be manifest-owned. | `WorkerManifest` carries each worker's runtime constraint classification, so architecture tests do not maintain a second worker inventory. |
 | Worker identity fields must be non-blank. | `WorkerManifest` validation rejects blank `name`, `domain`, `factory`, and `worker_class` values before registries, settings, or docs harnesses consume them. |
 | Worker runtime classes must be unique. | `WorkerManifest` validation rejects duplicate `worker_class` values before registry, factory, settings, or docs harnesses consume them. |
+| Worker start priorities must be non-negative. | `WorkerManifest` validation rejects negative `start_priority` values before scheduler, registry, settings, or docs harnesses consume them. |
 | Idempotency evidence must be non-blank. | `WorkerManifest` validation rejects blank `idempotency_evidence` entries before lifecycle, ownership, or review harnesses consume them. |
 | Idempotency evidence must be unique. | `WorkerManifest` validation rejects duplicate `idempotency_evidence` entries before lifecycle, ownership, or review harnesses consume them. |
 | Input contracts must be non-empty. | `WorkerManifest` validation rejects empty `input_contract` declarations before registry, factory, settings, or docs harnesses consume them. |
@@ -202,6 +203,7 @@ can both miss real process drift and block healthy refactors.
 - G76. Input contract declarations reject duplicate entries, so workers cannot satisfy input-boundary review with repeated placeholders.
 - G77. Idempotency evidence declarations reject duplicate entries, so workers cannot satisfy lifecycle and review gates with repeated evidence placeholders.
 - G78. Worker runtime class declarations reject duplicate classes, so registry, factory, settings, and docs harnesses cannot silently map two manifest workers onto one runtime implementation boundary.
+- G79. Worker start-priority declarations reject negative values, so scheduler ordering cannot silently place a worker before the manifest's non-negative runtime startup band.
 
 ## Non-goals
 
@@ -347,6 +349,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC98. WHEN a `WorkerManifest.input_contract` entry repeats within one manifest THEN manifest validation SHALL raise before registry, factory, settings, or worker inventory harnesses consume the manifest.
 - AC99. WHEN a `WorkerManifest.idempotency_evidence` entry repeats within one manifest THEN manifest validation SHALL raise before lifecycle, ownership, review, or worker inventory harnesses consume the manifest.
 - AC100. WHEN two `WorkerManifest.worker_class` values are the same THEN manifest validation SHALL raise before registry, factory, settings, or worker inventory harnesses consume the manifest.
+- AC101. WHEN a `WorkerManifest.start_priority` value is negative THEN manifest validation SHALL raise before scheduler, registry, settings, or worker inventory harnesses consume the manifest.
 
 ## Risks
 
