@@ -768,6 +768,15 @@ def _validate_worker_manifests() -> None:
     if missing_dirty_targets:
         raise ValueError(f"dirty-target consumer manifests missing dirty target tables: {missing_dirty_targets}")
 
+    missing_leased_queue_depth = [
+        manifest.name
+        for manifest in _WORKER_MANIFESTS
+        if manifest.runtime_constraint == WorkerRuntimeConstraint.LEASED_JOB_CONSUMER
+        and manifest.queue_depth_table is None
+    ]
+    if missing_leased_queue_depth:
+        raise ValueError(f"leased job consumer manifests missing queue depth tables: {missing_leased_queue_depth}")
+
     missing_dirty_control_owner = {
         manifest.name: sorted(set(manifest.dirty_target_tables) - set(manifest.writes_control_plane))
         for manifest in _WORKER_MANIFESTS

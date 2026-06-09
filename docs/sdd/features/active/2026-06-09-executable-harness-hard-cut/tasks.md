@@ -1741,6 +1741,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 83 — Leased-job consumers declare queue depth tables
+
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 82
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for runtime constraint validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_leased_consumers_without_queue_depth` — patch a `LEASED_JOB_CONSUMER` manifest to remove `queue_depth_table` and assert manifest validation raises a dedicated leased-job queue-depth error.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `LEASED_JOB_CONSUMER` manifests must declare a queue depth table before worker lifecycle, queue-health, or ownership harnesses can treat the runtime classification as source truth.
+- **On-demand context**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, and runtime constraint classification checks.
+- **Kill/defer criteria**: Stop if a leased-job consumer can intentionally run without a queue depth table, if validation only relies on later queue-health checks, or if the fix touches dirty worker runtime contract files.
+- **Eval/repair signal**: leased consumer without queue table, runtime classification drift, queue-health source masking, manifest validation drift, and SDD generated index drift.
+- **Implementation**: Add manifest validation requiring `queue_depth_table` whenever `runtime_constraint` is `LEASED_JOB_CONSUMER`.
+- **Verification**: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_leased_consumers_without_queue_depth -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1825,4 +1846,5 @@
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_read_model_identity_columns tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_run_generation_identity_and_skips_unchanged -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_read_model_identity_tables -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_dirty_consumers_without_dirty_targets -q`
+- [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_leased_consumers_without_queue_depth -q`
 - [ ] `make check-all`

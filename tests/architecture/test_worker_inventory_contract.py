@@ -199,6 +199,23 @@ def test_worker_manifest_validation_rejects_dirty_consumers_without_dirty_target
 
 
 @pytest.mark.architecture
+def test_worker_manifest_validation_rejects_leased_consumers_without_queue_depth(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifests = list(all_worker_manifests())
+    first_leased_index = next(
+        index
+        for index, manifest in enumerate(manifests)
+        if manifest.runtime_constraint == WorkerRuntimeConstraint.LEASED_JOB_CONSUMER
+    )
+    manifests[first_leased_index] = replace(manifests[first_leased_index], queue_depth_table=None)
+    monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
+
+    with pytest.raises(ValueError, match="leased job consumer manifests missing queue depth tables"):
+        worker_manifest_module._validate_worker_manifests()
+
+
+@pytest.mark.architecture
 def test_worker_manifest_validation_rejects_duplicate_read_model_identity_columns(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
