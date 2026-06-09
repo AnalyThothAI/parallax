@@ -785,6 +785,20 @@ def _validate_worker_manifests() -> None:
     if non_tuple_contract_fields:
         raise ValueError(f"non-tuple worker manifest contract fields: {non_tuple_contract_fields}")
 
+    non_string_tuple_entries = {
+        manifest.name: invalid_fields
+        for manifest in _WORKER_MANIFESTS
+        if (
+            invalid_fields := {
+                field_name: tuple(value for value in values if type(value) is not str)
+                for field_name, values in _string_tuple_contract_field_values(manifest)
+                if any(type(value) is not str for value in values)
+            }
+        )
+    }
+    if non_string_tuple_entries:
+        raise ValueError(f"non-string worker manifest tuple entries: {non_string_tuple_entries}")
+
     missing_input_contracts = [manifest.name for manifest in _WORKER_MANIFESTS if not manifest.input_contract]
     if missing_input_contracts:
         raise ValueError(f"worker manifests missing input contracts: {missing_input_contracts}")
@@ -1161,6 +1175,23 @@ def _tuple_contract_field_values(manifest: WorkerManifest) -> tuple[tuple[str, o
         ("writes_read_models", manifest.writes_read_models),
         ("writes_control_plane", manifest.writes_control_plane),
         ("current_read_model_identities", manifest.current_read_model_identities),
+        ("idempotency_evidence", manifest.idempotency_evidence),
+        ("side_effect_ledgers", manifest.side_effect_ledgers),
+        ("dirty_target_tables", manifest.dirty_target_tables),
+        ("queue_health_tables", manifest.queue_health_tables),
+        ("wakes_on", manifest.wakes_on),
+        ("wakes_out", manifest.wakes_out),
+    )
+
+
+def _string_tuple_contract_field_values(manifest: WorkerManifest) -> tuple[tuple[str, tuple[object, ...]], ...]:
+    return (
+        ("input_contract", manifest.input_contract),
+        ("ordering_keys", manifest.ordering_keys),
+        ("writes_input_observations", manifest.writes_input_observations),
+        ("writes_facts", manifest.writes_facts),
+        ("writes_read_models", manifest.writes_read_models),
+        ("writes_control_plane", manifest.writes_control_plane),
         ("idempotency_evidence", manifest.idempotency_evidence),
         ("side_effect_ledgers", manifest.side_effect_ledgers),
         ("dirty_target_tables", manifest.dirty_target_tables),

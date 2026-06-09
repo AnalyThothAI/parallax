@@ -510,6 +510,18 @@ def test_worker_manifest_validation_rejects_non_tuple_contract_fields(
 
 
 @pytest.mark.architecture
+def test_worker_manifest_validation_rejects_non_string_contract_entries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifests = list(all_worker_manifests())
+    manifests[0] = replace(manifests[0], input_contract=(123,))
+    monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
+
+    with pytest.raises(ValueError, match="non-string worker manifest tuple entries"):
+        worker_manifest_module._validate_worker_manifests()
+
+
+@pytest.mark.architecture
 def test_worker_manifest_validation_rejects_blank_input_contracts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
