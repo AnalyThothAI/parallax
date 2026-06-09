@@ -19,6 +19,8 @@ export function MacroDriverBoard({
   title: string;
   transmission: MacroTransmissionNode[];
 }) {
+  const evidenceGroups = drivers.evidenceGroups.filter((group) => group.items.length > 0);
+
   return (
     <MacroPanel
       ariaLabel={ariaLabel}
@@ -55,13 +57,13 @@ export function MacroDriverBoard({
             <span>{drivers.evidenceCount}</span>
           </div>
           <div className="macro-workbench-evidence-grid">
-            {drivers.evidenceGroups.map((group) => (
-              <article className="macro-workbench-evidence-group" key={group.key}>
-                <div className="macro-workbench-evidence-group-head">
-                  <h5>{group.label}</h5>
-                  <span>{group.items.length}</span>
-                </div>
-                {group.items.length > 0 ? (
+            {evidenceGroups.length > 0 ? (
+              evidenceGroups.map((group) => (
+                <article className="macro-workbench-evidence-group" key={group.key}>
+                  <div className="macro-workbench-evidence-group-head">
+                    <h5>{group.label}</h5>
+                    <span>{group.items.length}</span>
+                  </div>
                   <ul className="macro-workbench-evidence-list">
                     {group.items.map((item, index) => (
                       <li key={`${group.key}:${item.label}:${index}`}>
@@ -70,11 +72,11 @@ export function MacroDriverBoard({
                       </li>
                     ))}
                   </ul>
-                ) : (
-                  <p className="macro-workbench-empty">暂无</p>
-                )}
-              </article>
-            ))}
+                </article>
+              ))
+            ) : (
+              <p className="macro-workbench-empty">暂无可用证据</p>
+            )}
           </div>
         </section>
       </div>

@@ -11,13 +11,24 @@ export function AssetMarketDashboard({ groups }: { groups: AssetMarketGroup[] })
   }
   return (
     <div className="macro-assets-market-board">
+      <nav aria-label="资产类别" className="macro-assets-group-rail">
+        {groups.map((group) => (
+          <a href={`#macro-assets-${group.key}`} key={group.key}>
+            <span>{group.title}</span>
+            <b>{group.rows.length}</b>
+          </a>
+        ))}
+      </nav>
       {groups.map((group) => (
-        <article className="macro-assets-group" key={group.key}>
+        <article className="macro-assets-group" id={`macro-assets-${group.key}`} key={group.key}>
           <div className="macro-assets-group-head">
-            <h4>{group.title}</h4>
-            <Link to={group.route}>查看{group.title}详情</Link>
+            <div>
+              <h4>{group.title}</h4>
+              <span>{group.rows.length} 项</span>
+            </div>
+            <Link to={group.route}>{group.title}详情</Link>
           </div>
-          <MacroTableFrame caption={group.title} minWidth={340} stickyFirstColumn>
+          <MacroTableFrame caption={group.title} hint={null} minWidth={340} stickyFirstColumn>
             <table aria-label={group.title} className="macro-assets-market-table">
               <caption>{group.title}</caption>
               <thead>
@@ -26,7 +37,7 @@ export function AssetMarketDashboard({ groups }: { groups: AssetMarketGroup[] })
                   <th scope="col">名称</th>
                   <th scope="col">最新</th>
                   <th scope="col">20日变化</th>
-                  <th scope="col">质量</th>
+                  <th scope="col">日期</th>
                 </tr>
               </thead>
               <tbody>
@@ -40,7 +51,7 @@ export function AssetMarketDashboard({ groups }: { groups: AssetMarketGroup[] })
                       </td>
                       <td>{row.latest}</td>
                       <td data-tone={row.deltaTone}>{row.delta}</td>
-                      <td className="macro-assets-quality-cell">{row.quality}</td>
+                      <td className="macro-assets-date-cell">{row.asOf}</td>
                     </tr>
                   ))
                 ) : (

@@ -30,12 +30,16 @@
     display: grid;
     gap: 6px;
     min-width: 0;
-    padding: 6px 2px 8px;
+    padding: 5px 0 8px;
     border-bottom: 1px solid rgba(148, 163, 184, 0.18);
   }
 
-  .macro-shell-separator {
-    background: var(--border-subtle, rgba(148, 163, 184, 0.22));
+  .macro-shell-header-topline {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
   }
 
   .macro-shell-breadcrumb {
@@ -57,10 +61,10 @@
   }
 
   .macro-shell-heading-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(240px, auto);
-    align-items: end;
-    gap: 16px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
     min-width: 0;
   }
 
@@ -79,36 +83,33 @@
   .macro-shell-heading-row h1 {
     margin: 3px 0 0;
     color: var(--text-primary, #f8fafc);
-    font-size: 1.35rem;
+    font-size: 1.28rem;
     letter-spacing: 0;
-  }
-
-  .macro-shell-heading-row p {
-    max-width: 860px;
-    margin: 5px 0 0;
-    color: var(--text-secondary, #cbd5e1);
-    font-size: 0.86rem;
-    line-height: 1.45;
-    overflow-wrap: break-word;
+    line-height: 1.18;
   }
 
   .macro-shell-state {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(118px, max-content));
-    justify-content: end;
-    gap: 6px 12px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 5px;
     min-width: 0;
     margin: 0;
     color: var(--text-muted, #94a3b8);
-    font-size: 0.78rem;
-    text-align: right;
+    font-size: 0.72rem;
   }
 
   .macro-shell-state-item {
-    display: grid;
-    gap: 2px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     min-width: 0;
-    max-width: 180px;
+    max-width: 220px;
+    min-height: 24px;
+    padding: 3px 7px;
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    border-radius: 999px;
+    background: rgba(2, 6, 23, 0.22);
   }
 
   .macro-shell-state dt,
@@ -122,15 +123,8 @@
 
   .macro-shell-state dd {
     color: var(--text-primary, #f8fafc);
-    font-size: 0.88rem;
+    font-size: 0.74rem;
     font-weight: 700;
-  }
-
-  .macro-shell-status-actions {
-    display: grid;
-    justify-items: end;
-    gap: 8px;
-    min-width: 0;
   }
 
   .macro-shell-actions {
@@ -144,16 +138,19 @@
 
   .macro-shell-module-nav {
     display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
+    flex-wrap: nowrap;
+    gap: 5px;
     min-width: 0;
-    padding: 2px 0 8px;
+    overflow-x: auto;
+    padding: 1px 0 7px;
     border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+    scrollbar-width: thin;
   }
 
   .macro-shell-module-nav a {
+    flex: 0 0 auto;
     max-width: 100%;
-    padding: 5px 9px;
+    padding: 4px 8px;
     border: 1px solid rgba(148, 163, 184, 0.14);
     border-radius: 8px;
     color: var(--text-muted, #94a3b8);
@@ -257,18 +254,14 @@
       grid-template-columns: 1fr;
     }
 
+    .macro-shell-header-topline,
     .macro-shell-heading-row {
       align-items: flex-start;
-      grid-template-columns: 1fr;
-    }
-
-    .macro-shell-status-actions {
-      justify-items: stretch;
+      flex-direction: column;
     }
 
     .macro-shell-state {
       justify-content: start;
-      text-align: left;
     }
 
     .macro-shell-actions {
@@ -294,31 +287,27 @@
     }
 
     .macro-shell-header {
-      padding: 6px 0 8px;
+      padding: 4px 0 7px;
     }
 
     .macro-shell {
       grid-template-columns: 1fr;
     }
 
+    .macro-shell-header-topline,
     .macro-shell-heading-row {
       align-items: flex-start;
-      grid-template-columns: 1fr;
+      flex-direction: column;
+      gap: 7px;
     }
 
     .macro-shell-heading-row h1 {
       font-size: 1.12rem;
     }
 
-    .macro-shell-status-actions {
-      justify-items: stretch;
-    }
-
     .macro-shell-state {
-      grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
       justify-content: start;
       width: 100%;
-      text-align: left;
     }
 
     .macro-shell-state-item {
@@ -335,7 +324,7 @@
     }
 
     .macro-shell-module-nav a {
-      flex: 1 1 calc(50% - 6px);
+      flex: 0 0 auto;
       min-width: 0;
       text-align: center;
     }

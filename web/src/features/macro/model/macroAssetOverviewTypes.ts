@@ -6,6 +6,7 @@ export type AssetMarketGroup = {
 };
 
 export type AssetMarketRow = {
+  asOf: string;
   delta: string;
   deltaTone: "up" | "down" | "flat";
   id: string;

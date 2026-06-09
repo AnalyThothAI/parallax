@@ -16,27 +16,30 @@ export function MacroInsightBrief({
     <MacroPanel
       ariaLabel={ariaLabel}
       className="macro-workbench-brief-panel"
-      meta={brief.statusLabel ?? brief.asOfLabel}
+      meta={briefMeta(brief)}
       span="full"
       title={title}
     >
       <div className="macro-workbench-brief">
         <p className="macro-workbench-brief-summary">{brief.summary}</p>
-        <dl className="macro-workbench-brief-grid" aria-label={`${title}要点`}>
-          {brief.rows.map((row) => (
-            <div className="macro-workbench-brief-row" key={row.key}>
-              <dt>{row.label}</dt>
-              <dd>{row.value}</dd>
-            </div>
-          ))}
-          {brief.asOfLabel ? (
-            <div className="macro-workbench-brief-row">
-              <dt>截至</dt>
-              <dd>{brief.asOfLabel}</dd>
-            </div>
-          ) : null}
-        </dl>
+        {brief.rows.length > 0 ? (
+          <dl className="macro-workbench-brief-grid" aria-label={`${title}要点`}>
+            {brief.rows.map((row) => (
+              <div className="macro-workbench-brief-row" key={row.key}>
+                <dt>{row.label}</dt>
+                <dd>{row.value}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : null}
       </div>
     </MacroPanel>
   );
+}
+
+function briefMeta(brief: MacroWorkbenchBrief): string | null {
+  const parts = [brief.statusLabel, brief.asOfLabel?.replace(/^截至\s*/, "")]
+    .filter((part): part is string => Boolean(part && part.trim()))
+    .slice(0, 2);
+  return parts.length ? parts.join(" · ") : null;
 }

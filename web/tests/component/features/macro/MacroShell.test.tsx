@@ -8,7 +8,7 @@ afterEach(() => {
 });
 
 describe("MacroShell", () => {
-  it("renders explicit title, description, breadcrumbs, and meta items", () => {
+  it("renders a compact title bar, breadcrumbs, and meta items", () => {
     const header: MacroShellHeaderModel = {
       breadcrumbs: [
         { label: "宏观", href: "/macro" },
@@ -35,7 +35,7 @@ describe("MacroShell", () => {
     expect(screen.getByLabelText("宏观工作台")).toHaveAttribute("data-page-kind", "leaf");
     expect(screen.getByLabelText("宏观工作台")).toHaveAttribute("data-product-tier", "primary");
     expect(screen.getByRole("heading", { name: "美股风险" })).toBeInTheDocument();
-    expect(screen.getByText("美股风险偏好是否足以确认加密 beta？")).toBeInTheDocument();
+    expect(screen.queryByText("美股风险偏好是否足以确认加密 beta？")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "宏观" })).toHaveAttribute("href", "/macro");
     const breadcrumb = screen.getByRole("navigation", { name: "宏观面包屑" });
     expect(within(breadcrumb).getByRole("link", { name: "大类资产" })).toHaveAttribute(

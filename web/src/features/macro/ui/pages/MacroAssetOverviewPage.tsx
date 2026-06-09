@@ -18,7 +18,6 @@ import { AssetDailyBrief } from "../assets/AssetDailyBrief";
 import { AssetDiagnosticsBoard } from "../assets/AssetDiagnosticsBoard";
 import { AssetMarketDashboard } from "../assets/AssetMarketDashboard";
 import { MacroPageScaffold } from "../primitives/MacroPageScaffold";
-import { MacroPanel } from "../primitives/MacroPanel";
 
 import type { MacroModulePageProps } from "./MacroModulePageRenderer";
 import "./macroPages.css";
@@ -38,7 +37,11 @@ export function MacroAssetOverviewPage({ module, token }: MacroModulePageProps) 
     () => strongestCorrelationPairs(correlationData, "negative").slice(0, 3),
     [correlationData],
   );
-  const assetGroups = useMemo(() => buildAssetMarketGroups(supportingTable), [supportingTable]);
+  const assetGroups = useMemo(
+    () => buildAssetMarketGroups(supportingTable, module.snapshot.asof_date ?? ""),
+    [module.snapshot.asof_date, supportingTable],
+  );
+  const assetCount = assetGroups.reduce((count, group) => count + group.rows.length, 0);
   const diagnosticsSummary = buildAssetDiagnosticsSummary({
     buckets: dataHealthBuckets,
     moduleStatus: macroStatusLabel(module),
@@ -48,57 +51,62 @@ export function MacroAssetOverviewPage({ module, token }: MacroModulePageProps) 
 
   return (
     <MacroPageScaffold label="大类资产模块页面" pageKind="leaf">
-      <MacroPanel
-        ariaLabel="今日判断"
-        className="macro-assets-judgment-panel"
-        meta={dailyBrief?.status ?? macroStatusLabel(module)}
-        span="full"
-        title="今日判断"
-      >
-        <AssetDailyBrief brief={dailyBrief} fallback={macroReadSummary(module)} />
-      </MacroPanel>
-      <MacroPanel
-        ariaLabel="核心资产行情"
-        className="macro-assets-dashboard-panel"
-        meta={`${module.snapshot.asof_label ?? macroStatusLabel(module)} · ${
-          supportingTable.rows?.length ?? 0
-        } 项`}
-        span="full"
-        title="核心资产行情"
-      >
-        <AssetMarketDashboard groups={assetGroups} />
-      </MacroPanel>
-      <MacroPanel
-        ariaLabel="60日相关性"
-        className="macro-assets-correlation-panel"
-        meta={correlationMeta(correlationData, correlationQuery.isFetching)}
-        span="major"
-        title="60日相关性"
-      >
-        <AssetCorrelationPreview
-          data={correlationData}
-          errorLabel={correlationQuery.isError ? errorLabel(correlationQuery.error) : null}
-          isError={correlationQuery.isError}
-          isLoading={correlationQuery.isLoading}
-          negativePairs={negativePairs}
-          positivePairs={positivePairs}
-          titleByKey={titleByKey}
-        />
-      </MacroPanel>
-      <MacroPanel
-        ariaLabel="数据诊断"
-        className="macro-assets-diagnostics-panel"
-        meta={module.data_health.summary_label ?? module.data_health.summary_status}
-        span="minor"
-        title="数据诊断"
-      >
-        <AssetDiagnosticsBoard
-          availabilityTable={availabilityTable}
-          buckets={dataHealthBuckets}
-          provenance={module.provenance}
-          summary={diagnosticsSummary}
-        />
-      </MacroPanel>
+      <div className="macro-assets-terminal">
+        <section aria-label="核心资产行情" className="macro-assets-market-surface">
+          <div className="macro-assets-surface-head">
+            <div>
+              <h2>核心资产行情</h2>
+            </div>
+            <dl aria-label="资产行情状态">
+              <div>
+                <dt>截至</dt>
+                <dd>{module.snapshot.asof_date ?? module.snapshot.asof_label ?? "待确认"}</dd>
+              </div>
+              <div>
+                <dt>项目</dt>
+                <dd>{assetCount}</dd>
+              </div>
+            </dl>
+          </div>
+          <AssetMarketDashboard groups={assetGroups} />
+        </section>
+
+        <aside aria-label="资产辅助信息" className="macro-assets-support-rail">
+          <section aria-label="今日判断" className="macro-assets-side-section">
+            <AssetDailyBrief brief={dailyBrief} fallback={macroReadSummary(module)} />
+          </section>
+          <section aria-label="数据诊断" className="macro-assets-side-section">
+            <div className="macro-assets-side-title">
+              <span>数据诊断</span>
+              <b>{module.data_health.summary_label ?? module.data_health.summary_status}</b>
+            </div>
+            <AssetDiagnosticsBoard
+              availabilityTable={availabilityTable}
+              buckets={dataHealthBuckets}
+              provenance={module.provenance}
+              summary={diagnosticsSummary}
+            />
+          </section>
+        </aside>
+
+        <section aria-label="60日相关性" className="macro-assets-correlation-surface">
+          <div className="macro-assets-surface-head">
+            <div>
+              <span>{correlationMeta(correlationData, correlationQuery.isFetching)}</span>
+              <h2>60日相关性</h2>
+            </div>
+          </div>
+          <AssetCorrelationPreview
+            data={correlationData}
+            errorLabel={correlationQuery.isError ? errorLabel(correlationQuery.error) : null}
+            isError={correlationQuery.isError}
+            isLoading={correlationQuery.isLoading}
+            negativePairs={negativePairs}
+            positivePairs={positivePairs}
+            titleByKey={titleByKey}
+          />
+        </section>
+      </div>
     </MacroPageScaffold>
   );
 }

@@ -20,6 +20,10 @@ export function MacroDiagnosticsPanel({
   const hasBucketItems = diagnostics.buckets.some(
     (bucket) => bucket.items.length > 0 || (bucket.referenceCount ?? 0) > 0,
   );
+  const gapCount = diagnostics.buckets.reduce(
+    (count, bucket) => count + (bucket.referenceCount ?? bucket.items.length),
+    0,
+  );
 
   return (
     <MacroPanel
@@ -30,42 +34,62 @@ export function MacroDiagnosticsPanel({
       title={title}
     >
       <div className="macro-workbench-diagnostics">
-        <div className="macro-workbench-health-grid">
-          {hasBucketItems ? (
-            diagnostics.buckets.map((bucket) => (
-              <section className="macro-workbench-health-bucket" key={bucket.key}>
-                <div className="macro-workbench-section-head">
-                  <h4>{bucket.label}</h4>
-                  <span>{bucket.referenceCount ?? bucket.items.length}</span>
-                </div>
-                {bucket.referenceCount ? (
-                  <p className="macro-workbench-muted">总览级缺口，仅供参考</p>
-                ) : bucket.items.length > 0 ? (
-                  <div className="macro-workbench-chip-list">
-                    {bucket.items.map((item, index) => (
-                      <span className="macro-workbench-chip" key={`${bucket.key}:${item}:${index}`}>
-                        {item}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="macro-workbench-empty">暂无</p>
-                )}
-              </section>
-            ))
-          ) : (
-            <div className="macro-workbench-empty" role="status">
-              暂无数据缺口
-            </div>
-          )}
-        </div>
-        <div className="macro-workbench-source-block">
-          <div className="macro-workbench-section-head">
-            <h4>来源状态</h4>
-            <span>{diagnostics.sourceMeta}</span>
+        <dl className="macro-workbench-diagnostics-summary" aria-label="诊断摘要">
+          <div>
+            <dt>状态</dt>
+            <dd>{diagnostics.statusLabel ?? "正常"}</dd>
           </div>
+          <div>
+            <dt>来源</dt>
+            <dd>{diagnostics.sourceMeta}</dd>
+          </div>
+          <div>
+            <dt>缺口</dt>
+            <dd>{gapCount}</dd>
+          </div>
+        </dl>
+        <details className="macro-workbench-diagnostics-details">
+          <summary>缺口明细</summary>
+          <div className="macro-workbench-health-grid">
+            {hasBucketItems ? (
+              diagnostics.buckets.map((bucket) => (
+                <section className="macro-workbench-health-bucket" key={bucket.key}>
+                  <div className="macro-workbench-section-head">
+                    <h4>{bucket.label}</h4>
+                    <span>{bucket.referenceCount ?? bucket.items.length}</span>
+                  </div>
+                  {bucket.referenceCount ? (
+                    <p className="macro-workbench-muted">总览级缺口，仅供参考</p>
+                  ) : bucket.items.length > 0 ? (
+                    <div className="macro-workbench-chip-list">
+                      {bucket.items.map((item, index) => (
+                        <span
+                          className="macro-workbench-chip"
+                          key={`${bucket.key}:${item}:${index}`}
+                        >
+                          {item}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="macro-workbench-empty">暂无</p>
+                  )}
+                </section>
+              ))
+            ) : (
+              <div className="macro-workbench-empty" role="status">
+                暂无数据缺口
+              </div>
+            )}
+          </div>
+        </details>
+        <details className="macro-workbench-source-block">
+          <summary>
+            <span>来源状态</span>
+            <b>{diagnostics.sourceMeta}</b>
+          </summary>
           <MacroSourceTable caption="数据源" source={source} />
-        </div>
+        </details>
       </div>
     </MacroPanel>
   );

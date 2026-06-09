@@ -38,6 +38,24 @@ describe("MacroTableFrame", () => {
     expect(screen.getByText("横向滚动查看完整列")).toBeInTheDocument();
   });
 
+  it("allows dense tables to omit the visible scroll hint", () => {
+    render(
+      <MacroTableFrame caption="资产行情" hint={null} minWidth={340}>
+        <table>
+          <tbody>
+            <tr>
+              <td>SPX</td>
+            </tr>
+          </tbody>
+        </table>
+      </MacroTableFrame>,
+    );
+
+    const frame = screen.getByRole("region", { name: "资产行情，可横向滚动" });
+    expect(frame).not.toHaveAttribute("aria-describedby");
+    expect(screen.queryByText("横向滚动查看完整列")).not.toBeInTheDocument();
+  });
+
   it("scopes sticky first-column matching to the direct table only", () => {
     render(
       <MacroTableFrame caption="嵌套表格" stickyFirstColumn>

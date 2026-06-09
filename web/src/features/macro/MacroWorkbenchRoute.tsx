@@ -104,6 +104,16 @@ function macroModuleHeader({
   module: MacroModuleView;
   moduleId: MacroModuleId;
 }): MacroShellHeaderModel {
+  if (moduleId === "assets") {
+    return {
+      breadcrumbs: buildMacroBreadcrumbs(moduleId),
+      eyebrow: "Assets",
+      question: null,
+      statusItems: [{ label: "截至", value: macroAsOfLabel(module) }],
+      title: macroModuleTitle(moduleId, module),
+    };
+  }
+
   if (isRatesModuleId(moduleId)) {
     return {
       breadcrumbs: buildMacroBreadcrumbs(moduleId),

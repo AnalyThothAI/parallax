@@ -7,11 +7,13 @@ import "./macroTableFrame.css";
 export function MacroTableFrame({
   caption,
   children,
+  hint = "横向滚动查看完整列",
   minWidth = 420,
   stickyFirstColumn = false,
 }: {
   caption: string;
   children: ReactNode;
+  hint?: string | null;
   minWidth?: number;
   stickyFirstColumn?: boolean;
 }) {
@@ -22,11 +24,13 @@ export function MacroTableFrame({
       className="macro-table-frame"
       data-sticky-first-column={stickyFirstColumn ? "true" : "false"}
     >
-      <div className="macro-table-frame-hint" id={hintId}>
-        横向滚动查看完整列
-      </div>
+      {hint ? (
+        <div className="macro-table-frame-hint" id={hintId}>
+          {hint}
+        </div>
+      ) : null}
       <div
-        aria-describedby={hintId}
+        aria-describedby={hint ? hintId : undefined}
         aria-label={`${caption}，可横向滚动`}
         className="macro-table-frame-scroller"
         role="region"

@@ -20,12 +20,17 @@ export type {
   MacroDailyBriefBlock,
 } from "./macroAssetOverviewTypes";
 
-export function buildAssetMarketGroups(table: MacroModuleTable): AssetMarketGroup[] {
+export function buildAssetMarketGroups(
+  table: MacroModuleTable,
+  fallbackAsOf = "",
+): AssetMarketGroup[] {
   const model = buildMacroTableModel(table);
   return ASSET_GROUPS.map((group) => ({
     key: group.key,
     route: group.route,
-    rows: model.rows.filter((row) => group.match(rowKey(row))).map(assetMarketRow),
+    rows: model.rows
+      .filter((row) => group.match(rowKey(row)))
+      .map((row) => assetMarketRow(row, fallbackAsOf)),
     title: group.title,
   }));
 }
@@ -63,8 +68,9 @@ export function normalizeDailyBrief(value: unknown): MacroDailyBrief | null {
   };
 }
 
-function assetMarketRow(row: MacroTableRowModel): AssetMarketRow {
+function assetMarketRow(row: MacroTableRowModel, fallbackAsOf: string): AssetMarketRow {
   return {
+    asOf: asOfLabel(row, fallbackAsOf),
     delta: dayDelta(row),
     deltaTone: deltaTone(row),
     id: row.id,
@@ -125,6 +131,25 @@ function dayDelta(row: MacroTableRowModel): string {
   const oneDay = row.cells.delta_1d?.displayValue;
   if (oneDay && oneDay !== "暂无") return oneDay;
   return row.cells.delta_20d?.displayValue ?? "暂无";
+}
+
+function asOfLabel(row: MacroTableRowModel, fallbackAsOf: string): string {
+  return (
+    firstDisplayCell(row, ["observed_at", "latest_observed_at", "date", "asof_date"]) ??
+    stringValue(row.raw.latest_observed_at) ??
+    stringValue(row.raw.observed_at) ??
+    stringValue(row.raw.date) ??
+    stringValue(fallbackAsOf) ??
+    "待确认"
+  );
+}
+
+function firstDisplayCell(row: MacroTableRowModel, columnIds: string[]): string | null {
+  for (const columnId of columnIds) {
+    const value = row.cells[columnId]?.displayValue;
+    if (value && value !== "暂无") return value;
+  }
+  return null;
 }
 
 function qualityLabel(row: MacroTableRowModel): string {

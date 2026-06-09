@@ -36,18 +36,20 @@ export type MacroWorkbenchDrivers = {
 };
 
 export function buildMacroWorkbenchBrief(module: MacroModuleView): MacroWorkbenchBrief {
+  const rows = BRIEF_FIELDS.map((field) => ({
+    key: field.key,
+    label: field.label,
+    value: module.module_read[field.key],
+  }))
+    .filter((row) => hasMacroValue(row.value))
+    .map((row) => ({
+      ...row,
+      value: formatMacroScalar(row.value),
+    }));
+
   return {
     asOfLabel: stringValue(module.snapshot.asof_label) ?? stringValue(module.snapshot.asof_date),
-    rows: BRIEF_FIELDS.map((field) => ({
-      key: field.key,
-      label: field.label,
-      value: module.module_read[field.key],
-    }))
-      .filter((row) => hasMacroValue(row.value))
-      .map((row) => ({
-        ...row,
-        value: formatMacroScalar(row.value),
-      })),
+    rows: compactBriefRows(rows),
     statusLabel: stringValue(module.snapshot.status_label) ?? stringValue(module.snapshot.status),
     summary: macroReadSummary(module),
   };
@@ -108,6 +110,18 @@ const BRIEF_FIELDS = [
   { key: "confidence_label", label: "规则覆盖" },
   { key: "crypto_read", label: "加密影响" },
   { key: "token_impact", label: "代币影响" },
-  { key: "data_note", label: "数据说明" },
-  { key: "methodology_note", label: "方法说明" },
 ] as const;
+
+function compactBriefRows(rows: MacroWorkbenchBriefRow[]): MacroWorkbenchBriefRow[] {
+  const seen = new Set<string>();
+  return rows
+    .filter((row) => {
+      const signature = `${row.label}:${row.value}`;
+      if (seen.has(signature)) {
+        return false;
+      }
+      seen.add(signature);
+      return true;
+    })
+    .slice(0, 3);
+}

@@ -146,8 +146,14 @@ describe("macro route", () => {
     renderAppRoute("/macro/assets");
 
     expect(await screen.findByRole("heading", { name: "大类资产" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "核心资产行情" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "今日判断" })).toBeInTheDocument();
-    expect(screen.getByText("今日判断：风险资产偏震荡")).toBeInTheDocument();
+    expect(screen.getByText("风险资产偏震荡")).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "相关性详情" })).toHaveAttribute(
+      "href",
+      "/macro/assets/correlation",
+    );
+    expect(screen.getByText("矩阵").closest("details")).not.toHaveAttribute("open");
     await waitFor(() =>
       expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/modules/assets", {
         token: "secret",
@@ -177,11 +183,12 @@ describe("macro route", () => {
     expect(screen.getByRole("navigation", { name: "宏观面包屑" })).toHaveTextContent(
       "宏观/大类资产/相关性",
     );
-    expect(await screen.findByRole("table", { name: "60d 资产相关性矩阵" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "相关性简报" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "相关性简报" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "相关性矩阵" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "相关性证据" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "数据诊断" })).toBeInTheDocument();
+    expect(screen.getByText("查看完整矩阵").closest("details")).not.toHaveAttribute("open");
+    expect(screen.queryByRole("table", { name: "60d 资产相关性矩阵" })).not.toBeInTheDocument();
     expect(await screen.findByText("SPY / QQQ")).toBeInTheDocument();
     await waitFor(() =>
       expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/assets/correlation", {

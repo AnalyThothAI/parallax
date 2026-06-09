@@ -193,6 +193,57 @@
     white-space: nowrap;
   }
 
+  .macro-correlation-diagnostics-summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    min-width: 0;
+    margin: 0;
+  }
+
+  .macro-correlation-diagnostics-summary div {
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    border-radius: 8px;
+    background: rgba(10, 16, 27, 0.22);
+  }
+
+  .macro-correlation-diagnostics-summary dt {
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.72rem;
+  }
+
+  .macro-correlation-diagnostics-summary dd {
+    margin: 4px 0 0;
+    color: var(--text-primary, #f8fafc);
+    font-size: 0.9rem;
+    font-weight: 800;
+  }
+
+  .macro-correlation-detail-group,
+  .macro-correlation-matrix-details {
+    min-width: 0;
+  }
+
+  .macro-correlation-detail-group > summary,
+  .macro-correlation-matrix-details > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+    padding: 8px 0;
+    color: var(--text-secondary, #cbd5e1);
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 800;
+  }
+
+  .macro-correlation-matrix-details > summary {
+    padding: 10px 0 4px;
+  }
+
   .macro-correlation-lane-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -214,9 +265,22 @@
   }
 
   @media (max-width: 767px) {
-    .macro-correlation-read-facts,
+    .macro-correlation-diagnostics-summary,
     .macro-correlation-lane-grid {
       grid-template-columns: minmax(0, 1fr);
+    }
+
+    .macro-correlation-evidence-panel .macro-correlation-lane-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .macro-correlation-evidence-panel .macro-correlation-lane {
+      padding: 10px;
+    }
+
+    .macro-correlation-read-facts {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
 }

@@ -1,4 +1,5 @@
 import type { MacroAssetCorrelationData, MacroAssetCorrelationPair } from "@lib/types";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import {
@@ -25,6 +26,8 @@ export function AssetCorrelationPreview({
   positivePairs: MacroAssetCorrelationPair[];
   titleByKey: Record<string, string>;
 }) {
+  const [matrixOpen, setMatrixOpen] = useState(false);
+
   if (isLoading) {
     return <div className="macro-assets-inline-state">相关性加载中</div>;
   }
@@ -35,20 +38,30 @@ export function AssetCorrelationPreview({
     return <div className="macro-assets-inline-state">暂无相关性样本</div>;
   }
   return (
-    <div className="macro-assets-correlation-layout">
-      <MacroCorrelationMatrixTable
-        className="macro-assets-correlation-matrix"
-        data={data}
-        label="60日资产相关性矩阵"
-        minWidth={560}
-        titleByKey={titleByKey}
-      />
+    <div className="macro-assets-correlation-summary">
       <div className="macro-assets-correlation-pairs">
         <PairGroup emptyLabel="暂无" pairs={positivePairs} title="正相关" titleByKey={titleByKey} />
         <PairGroup emptyLabel="暂无" pairs={negativePairs} title="负相关" titleByKey={titleByKey} />
+      </div>
+      <div className="macro-assets-correlation-actions">
         <Link className="macro-assets-detail-link" to="/macro/assets/correlation">
-          打开相关性详情
+          相关性详情
         </Link>
+        <details
+          className="macro-assets-correlation-details"
+          onToggle={(event) => setMatrixOpen(event.currentTarget.open)}
+        >
+          <summary>矩阵</summary>
+          {matrixOpen ? (
+            <MacroCorrelationMatrixTable
+              className="macro-assets-correlation-matrix"
+              data={data}
+              label="60日资产相关性矩阵"
+              minWidth={560}
+              titleByKey={titleByKey}
+            />
+          ) : null}
+        </details>
       </div>
     </div>
   );

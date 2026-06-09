@@ -34,10 +34,14 @@ describe("MacroMatrixPage", () => {
     expect(screen.getByRole("navigation", { name: "宏观面包屑" })).toHaveTextContent(
       "宏观/大类资产/相关性",
     );
-    expect(await screen.findByRole("table", { name: "60d 资产相关性矩阵" })).toBeInTheDocument();
-    expectRegionsInOrder(["相关性简报", "相关性矩阵", "相关性证据", "数据诊断"]);
+    expect(await screen.findByRole("region", { name: "相关性简报" })).toBeInTheDocument();
+    expectRegionsInOrder(["相关性简报", "相关性证据", "数据诊断", "相关性矩阵"]);
     expect(screen.getByRole("button", { name: "20d" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "60d" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("查看完整矩阵").closest("details")).not.toHaveAttribute("open");
+    expect(screen.queryByRole("table", { name: "60d 资产相关性矩阵" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("查看完整矩阵"));
+    expect(await screen.findByRole("table", { name: "60d 资产相关性矩阵" })).toBeInTheDocument();
     expect(await screen.findByRole("columnheader", { name: "SPY" })).toBeInTheDocument();
     expect(await screen.findByRole("rowheader", { name: "QQQ" })).toBeInTheDocument();
     expect(screen.getByText("SPY / QQQ")).toBeInTheDocument();
@@ -68,6 +72,8 @@ describe("MacroMatrixPage", () => {
       route: "/macro/assets/correlation",
     });
 
+    expect(await screen.findByRole("region", { name: "相关性矩阵" })).toBeInTheDocument();
+    fireEvent.click(screen.getByText("查看完整矩阵"));
     expect(await screen.findByRole("table", { name: "60d 资产相关性矩阵" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "20d" }));

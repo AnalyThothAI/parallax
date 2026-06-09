@@ -9,20 +9,23 @@ export function AssetDailyBrief({
   brief: MacroDailyBrief | null;
   fallback: string;
 }) {
+  const blocks = brief?.blocks.slice(0, 3) ?? [];
   return (
     <div className="macro-daily-brief">
-      <strong>{brief?.headline ?? fallback}</strong>
+      <div className="macro-daily-brief-head">
+        <span>今日判断</span>
+        <strong>{cleanHeadline(brief?.headline ?? fallback)}</strong>
+      </div>
       {brief?.dataQuality ? <DailyBriefQuality quality={brief.dataQuality} /> : null}
-      {brief?.blocks.length ? (
-        <div className="macro-daily-brief-grid">
-          {brief.blocks.map((block) => (
-            <article className="macro-daily-brief-block" key={block.id}>
-              <span>{block.stance}</span>
-              <b>{block.title}</b>
-              <p>{block.body}</p>
-            </article>
+      {blocks.length ? (
+        <ul className="macro-daily-brief-signals" aria-label="今日判断信号">
+          {blocks.map((block) => (
+            <li key={block.id} title={block.body}>
+              <span>{block.title}</span>
+              <b>{stanceLabel(block.stance)}</b>
+            </li>
           ))}
-        </div>
+        </ul>
       ) : null}
     </div>
   );
@@ -50,4 +53,16 @@ function DailyBriefQuality({ quality }: { quality: NonNullable<MacroDailyBrief["
 function formatRatio(value: number | undefined): string {
   if (typeof value !== "number" || !Number.isFinite(value)) return "待确认";
   return `${Math.round(value * 100)}%`;
+}
+
+function cleanHeadline(value: string): string {
+  return value.replace(/^今日判断[：:]\s*/, "");
+}
+
+function stanceLabel(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  if (normalized.includes("risk") || normalized.includes("supported")) return "支持";
+  if (normalized.includes("watch") || normalized.includes("mixed")) return "观察";
+  if (normalized.includes("neutral")) return "中性";
+  return value;
 }

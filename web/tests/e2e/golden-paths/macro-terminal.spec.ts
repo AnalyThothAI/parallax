@@ -13,8 +13,8 @@ const CORE_PAGE_CONTRACTS = [
   },
   {
     route: "/macro/assets",
-    regions: ["今日判断", "核心资产行情", "60日相关性", "数据诊断"],
-    visibleText: "今日判断：风险资产偏震荡",
+    regions: ["核心资产行情", "今日判断", "数据诊断", "60日相关性"],
+    visibleText: "风险资产偏震荡",
   },
   {
     route: "/macro/rates/fed-funds",

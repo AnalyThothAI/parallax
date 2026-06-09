@@ -21,11 +21,14 @@ const WINDOWS: MacroAssetCorrelationWindow[] = ["20d", "60d", "120d"];
 
 export function MacroMatrixPage({ token }: { token: string }) {
   const [window, setWindow] = useState<MacroAssetCorrelationWindow>("60d");
+  const [matrixOpen, setMatrixOpen] = useState(false);
   const query = useMacroAssetCorrelationQuery({ token, window });
   const data = query.data ?? null;
   const titleByKey = useMemo(() => assetTitleByKey(data), [data]);
   const positivePairs = useMemo(() => strongestCorrelationPairs(data, "positive"), [data]);
   const negativePairs = useMemo(() => strongestCorrelationPairs(data, "negative"), [data]);
+  const visiblePositivePairs = positivePairs.slice(0, 5);
+  const visibleNegativePairs = negativePairs.slice(0, 5);
 
   return (
     <MacroShell
@@ -58,28 +61,30 @@ export function MacroMatrixPage({ token }: { token: string }) {
               />
             </MacroPanel>
             <MacroPanel
-              ariaLabel="相关性矩阵"
-              meta={data.asof_date ? `截至 ${data.asof_date}` : "暂无日期"}
-              span="full"
-              title={`${data.window} 矩阵`}
-            >
-              <MacroCorrelationMatrixTable data={data} titleByKey={titleByKey} />
-            </MacroPanel>
-            <MacroPanel
               ariaLabel="相关性证据"
               className="macro-correlation-evidence-panel"
-              meta={`${positivePairs.length + negativePairs.length} 个配对`}
+              meta={`Top ${visiblePositivePairs.length + visibleNegativePairs.length} / ${
+                positivePairs.length + negativePairs.length
+              }`}
               span="major"
               title="相关性证据"
             >
               <div className="macro-correlation-lane-grid">
                 <section className="macro-correlation-lane" aria-label="最强正相关" role="group">
                   <h4>最强正相关</h4>
-                  <MacroCorrelationPairList pairs={positivePairs} titleByKey={titleByKey} />
+                  <MacroCorrelationPairList
+                    pairs={visiblePositivePairs}
+                    titleByKey={titleByKey}
+                    variant="summary"
+                  />
                 </section>
                 <section className="macro-correlation-lane" aria-label="最强负相关" role="group">
                   <h4>最强负相关</h4>
-                  <MacroCorrelationPairList pairs={negativePairs} titleByKey={titleByKey} />
+                  <MacroCorrelationPairList
+                    pairs={visibleNegativePairs}
+                    titleByKey={titleByKey}
+                    variant="summary"
+                  />
                 </section>
               </div>
             </MacroPanel>
@@ -91,15 +96,42 @@ export function MacroMatrixPage({ token }: { token: string }) {
               title="数据诊断"
             >
               <div className="macro-correlation-diagnostics">
-                <section className="macro-correlation-lane" aria-label="覆盖状态" role="group">
-                  <h4>覆盖状态</h4>
+                <dl className="macro-correlation-diagnostics-summary" aria-label="相关性诊断摘要">
+                  <div>
+                    <dt>资产</dt>
+                    <dd>{data.assets.length}</dd>
+                  </div>
+                  <div>
+                    <dt>缺口</dt>
+                    <dd>{data.data_gaps.length}</dd>
+                  </div>
+                </dl>
+                <details className="macro-correlation-detail-group">
+                  <summary>覆盖状态</summary>
                   <MacroCorrelationAssetCoverage data={data} />
-                </section>
-                <section className="macro-correlation-lane" aria-label="样本缺口" role="group">
-                  <h4>样本缺口</h4>
+                </details>
+                <details className="macro-correlation-detail-group">
+                  <summary>样本缺口</summary>
                   <MacroCorrelationGaps data={data} titleByKey={titleByKey} />
-                </section>
+                </details>
               </div>
+            </MacroPanel>
+            <MacroPanel
+              ariaLabel="相关性矩阵"
+              className="macro-correlation-matrix-panel"
+              meta={data.asof_date ? `截至 ${data.asof_date}` : "暂无日期"}
+              span="full"
+              title={`${data.window} 矩阵`}
+            >
+              <details
+                className="macro-correlation-matrix-details"
+                onToggle={(event) => setMatrixOpen(event.currentTarget.open)}
+              >
+                <summary>查看完整矩阵</summary>
+                {matrixOpen ? (
+                  <MacroCorrelationMatrixTable data={data} titleByKey={titleByKey} />
+                ) : null}
+              </details>
             </MacroPanel>
           </>
         ) : null}
@@ -138,12 +170,12 @@ function matrixHeader({
       </>
     ),
     breadcrumbs: buildMacroBreadcrumbs("assets/correlation"),
-    eyebrow: "后端滚动收益",
-    question: "跨资产收益相关性矩阵",
+    eyebrow: "Correlation",
+    question: null,
     statusItems: [
       { label: "窗口", value: window },
       { label: "截至", value: data?.asof_date ?? "暂无日期" },
-      { label: "状态", value: isFetching ? "更新中" : "可用" },
+      ...(isFetching ? [{ label: "状态", value: "更新中" }] : []),
     ],
     title: "资产相关性",
   };
