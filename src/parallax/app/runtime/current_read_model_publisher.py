@@ -59,6 +59,10 @@ class CurrentReadModelPublisher:
             raise ValueError(f"non-string current payload hash column: {self.payload_hash_column}")
         if self.payload_columns is not None and type(self.payload_columns) is not tuple:
             raise ValueError(f"non-tuple current payload columns: {self.payload_columns}")
+        if self.payload_columns is not None:
+            non_string_payload_columns = tuple(column for column in self.payload_columns if type(column) is not str)
+            if non_string_payload_columns:
+                raise ValueError(f"non-string current payload columns: {non_string_payload_columns}")
 
     def row_identity(self, row: Mapping[str, Any]) -> tuple[Any, ...]:
         return tuple(row[column] for column in self.identity_columns)
