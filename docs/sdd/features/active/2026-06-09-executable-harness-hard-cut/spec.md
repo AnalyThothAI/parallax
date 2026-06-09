@@ -89,6 +89,7 @@ can both miss real process drift and block healthy refactors.
 | Read-model identity columns must be non-empty. | `WorkerManifest` validation rejects current read-model identity declarations whose stable identity column list is empty. |
 | Read-model identity columns must be non-blank. | `WorkerManifest` validation and `CurrentReadModelPublisher` reject blank stable identity column names. |
 | Read-model identity columns must be tuples. | `WorkerManifest` validation rejects list-shaped stable identity column declarations before ownership or docs harnesses consume them. |
+| Read-model identity columns must be strings. | `WorkerManifest` validation rejects non-string stable identity column names inside `current_read_model_identities` before blank, duplicate, forbidden-lifecycle, ownership, registry, settings, or worker inventory harnesses consume them. |
 | Worker manifest imports must be explicit. | `worker_manifest.py` imports `importlib.util` directly so clean-process manifest validation never depends on incidental package attribute side effects. |
 | Root visual artifacts must be absent. | Architecture harness rejects loose visual verification files at the repository root so screenshots live only under owned artifact directories. |
 | Worker table declarations must be unique. | `WorkerManifest` validation rejects duplicated table names inside each manifest table-declaration field before `owned_tables` dedupes them. |
@@ -240,6 +241,7 @@ can both miss real process drift and block healthy refactors.
 - G95. Advisory lock declarations reject non-string values, so lifecycle lock hygiene fails with manifest errors instead of implementation-detail attribute errors.
 - G96. Worker identity field declarations reject non-string values, so registry and source-path validation fail with manifest errors instead of implementation-detail attribute errors.
 - G97. Current read-model identity table declarations reject non-string values, so stable serving identity checks fail with manifest errors instead of implementation-detail attribute errors.
+- G98. Current read-model identity column declarations reject non-string values, so stable serving identity checks fail with manifest errors instead of implementation-detail attribute errors.
 
 ## Non-goals
 
@@ -404,6 +406,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC117. WHEN a `WorkerManifest.advisory_lock_key` value is neither `None` nor a string THEN manifest validation SHALL raise before advisory-lock blank checks, duplicate checks, lifecycle, registry, settings, or worker inventory harnesses consume it.
 - AC118. WHEN a `WorkerManifest.name`, `domain`, `factory`, or `worker_class` value is not a string THEN manifest validation SHALL raise before identity blank checks, source-path checks, class import checks, registry, settings, or worker inventory harnesses consume it.
 - AC119. WHEN a `WorkerManifest.current_read_model_identities` entry has a read-model table name that is not a string THEN manifest validation SHALL raise before identity table blank checks, duplicate checks, missing-identity checks, ownership checks, registry, settings, or worker inventory harnesses consume it.
+- AC120. WHEN a `WorkerManifest.current_read_model_identities` identity column value is not a string THEN manifest validation SHALL raise before identity column blank checks, duplicate checks, forbidden lifecycle-column checks, missing-identity checks, ownership checks, registry, settings, or worker inventory harnesses consume it.
 
 ## Risks
 

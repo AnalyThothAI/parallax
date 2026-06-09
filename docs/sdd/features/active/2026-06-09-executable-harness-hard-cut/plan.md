@@ -378,6 +378,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Read-model identity columns are non-empty. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares an empty stable identity column list. |
 | Read-model identity columns are non-blank. | Pass: `_validate_worker_manifests()` and `CurrentReadModelPublisher` raise when a read-model identity declares a blank stable identity column. |
 | Read-model identity columns are tuples. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares list-shaped stable identity columns. |
+| Read-model identity columns are strings. | Pass: `_validate_worker_manifests()` raises before blank column checks when a patched stable identity column is numeric. |
 | Worker manifest imports are explicit. | Pass: importing `parallax.app.runtime.worker_manifest` in a clean process succeeds even after removing an incidental `importlib.util` package attribute. |
 | Root visual artifacts are absent. | Pass: architecture harness rejects loose root-level PNG/JPG/WEBP/GIF verification artifacts. |
 | Worker table declarations are unique. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares the same table twice inside one table-declaration field. |
@@ -531,6 +532,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC117: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_advisory_lock_keys -q`
 - AC118: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_identity_fields -q`
 - AC119: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_read_model_identity_tables -q`
+- AC120: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_read_model_identity_columns -q`
 
 ## Verification
 

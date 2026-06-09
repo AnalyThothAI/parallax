@@ -1175,6 +1175,20 @@ def _validate_worker_manifests() -> None:
     if empty_current_identity_columns:
         raise ValueError(f"empty current read model identity columns: {empty_current_identity_columns}")
 
+    non_string_current_identity_columns = {
+        manifest.name: invalid_columns
+        for manifest in _WORKER_MANIFESTS
+        if (
+            invalid_columns := {
+                table_name: tuple(column for column in identity_columns if type(column) is not str)
+                for table_name, identity_columns in manifest.current_read_model_identities
+                if any(type(column) is not str for column in identity_columns)
+            }
+        )
+    }
+    if non_string_current_identity_columns:
+        raise ValueError(f"non-string current read model identity columns: {non_string_current_identity_columns}")
+
     blank_current_identity_columns = {
         manifest.name: blank_columns
         for manifest in _WORKER_MANIFESTS

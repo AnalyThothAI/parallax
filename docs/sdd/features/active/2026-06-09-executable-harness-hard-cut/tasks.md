@@ -2518,6 +2518,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 120 — Read-model identity columns are strings
+
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 119
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for stable read-model identity column type validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_read_model_identity_columns` — patch one `current_read_model_identities` identity column to a numeric value and assert manifest validation raises before column-name `.strip()` errors leak.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `WorkerManifest.current_read_model_identities` identity column names must be strict `str` before blank, duplicate, forbidden lifecycle-column, missing-identity, ownership, registry, settings, or worker inventory harnesses consume stable serving identity declarations.
+- **On-demand context**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, and current read-model writer/identity ownership checks.
+- **Kill/defer criteria**: Stop if stable read-model identity column names intentionally support compatibility objects, if validation only checks generated docs, or if the fix touches projection runtime behavior.
+- **Eval/repair signal**: non-string stable identity column names, implementation-detail column-name attribute errors, serving identity harness drift, and SDD generated index drift.
+- **Implementation**: Add manifest validation rejecting non-string identity column names inside `current_read_model_identities` before blank, duplicate, forbidden lifecycle-column, and ownership checks.
+- **Verification**: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_read_model_identity_columns -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -2639,4 +2660,5 @@
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_advisory_lock_keys -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_identity_fields -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_read_model_identity_tables -q`
+- [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_read_model_identity_columns -q`
 - [ ] `make check-all`
