@@ -1,17 +1,17 @@
 # Plan — Macro Intel Workbench Redesign
 
-**Status**: Draft
+**Status**: Verified
 **Date**: 2026-06-09
-**Owning spec**: `docs/sdd/features/active/2026-06-09-macro-intel-redesign/spec.md`
+**Owning spec**: `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/spec.md`
 **Worktree**: `.worktrees/macro-intel-redesign/`
 **Branch**: `codex/macro-intel-redesign`
 
 ## Pre-flight
 
 - [x] Worktree exists at `.worktrees/macro-intel-redesign/` and `git branch --show-current` returns `codex/macro-intel-redesign`.
-- [x] Visual mockup exists at `docs/sdd/features/active/2026-06-09-macro-intel-redesign/macro-visual-mockup.html`.
-- [ ] Spec reviewed against implementation before final verification.
-- [ ] Baseline frontend checks recorded.
+- [x] Visual mockup exists at `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/macro-visual-mockup.html`.
+- [x] Spec reviewed against implementation before final verification.
+- [x] Baseline frontend checks recorded.
 
 Baseline issue resolved in first implementation slice:
 
@@ -21,11 +21,11 @@ Baseline issue resolved in first implementation slice:
 
 ### SDD artifacts
 
-- `docs/sdd/features/active/2026-06-09-macro-intel-redesign/spec.md`: product architecture and acceptance criteria.
-- `docs/sdd/features/active/2026-06-09-macro-intel-redesign/macro-visual-mockup.html`: overall visual mockup for overview, asset dashboard, generic module, rates, and mobile.
-- `docs/sdd/features/active/2026-06-09-macro-intel-redesign/macro-visual-mockup.png`: rendered preview generated from the HTML mockup.
-- `docs/sdd/features/active/2026-06-09-macro-intel-redesign/timsun-assets-comparison.md`: reference-page product structure and gap comparison.
-- `docs/sdd/features/active/2026-06-09-macro-intel-redesign/verification.md`: final command output and manual UI evidence.
+- `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/spec.md`: product architecture and acceptance criteria.
+- `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/macro-visual-mockup.html`: overall visual mockup for overview, asset dashboard, generic module, rates, and mobile.
+- `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/macro-visual-mockup.png`: rendered preview generated from the HTML mockup.
+- `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/timsun-assets-comparison.txt`: reference-page product structure and gap comparison.
+- `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/verification.md`: final command output and manual UI evidence.
 
 ### `web/src/features/macro/ui/workbench/`
 
@@ -133,4 +133,4 @@ Rollback is a normal git revert of the frontend commits. Since no backend contra
 
 ## Verification
 
-Verification evidence lives in `docs/sdd/features/active/2026-06-09-macro-intel-redesign/verification.md`. The feature is not complete until that artifact contains command output, UI evidence, remaining risks, and the diff review against this plan.
+Verification evidence lives in `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/verification.md`. The feature is not complete until that artifact contains command output, UI evidence, remaining risks, and the diff review against this plan.

@@ -39,7 +39,13 @@ export async function expectNoMacroLabelFragmentation(page: Page) {
           style.wordBreak === "break-all";
 
         return fragmented
-          ? [{ text: element.textContent?.trim(), height: rect.height, rects: element.getClientRects().length }]
+          ? [
+              {
+                text: element.textContent?.trim(),
+                height: rect.height,
+                rects: element.getClientRects().length,
+              },
+            ]
           : [];
       });
   });

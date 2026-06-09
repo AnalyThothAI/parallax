@@ -62,7 +62,9 @@ export function buildMacroWorkbenchDiagnostics(
     buckets: buildMacroDataHealthBuckets(module.data_health, scope),
     sourceCount,
     sourceMeta: sourceCount > 0 ? `${sourceCount} 个来源` : "来源待接入",
-    statusLabel: stringValue(module.data_health.summary_label) ?? stringValue(module.data_health.summary_status),
+    statusLabel:
+      stringValue(module.data_health.summary_label) ??
+      stringValue(module.data_health.summary_status),
   };
 }
 

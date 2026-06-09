@@ -1,6 +1,4 @@
-import {
-  primarySupportingTable,
-} from "../../model/macroModulePresentation";
+import { primarySupportingTable } from "../../model/macroModulePresentation";
 import {
   buildMacroWorkbenchBrief,
   buildMacroWorkbenchDiagnostics,

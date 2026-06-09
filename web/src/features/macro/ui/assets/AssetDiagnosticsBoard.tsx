@@ -52,13 +52,7 @@ function SummaryItem({ label, value }: { label: string; value: string }) {
   );
 }
 
-function GapSection({
-  buckets,
-  gapCount,
-}: {
-  buckets: MacroDataHealthBucket[];
-  gapCount: number;
-}) {
+function GapSection({ buckets, gapCount }: { buckets: MacroDataHealthBucket[]; gapCount: number }) {
   return (
     <div className="macro-assets-diagnostics-section">
       <h4>缺口</h4>

@@ -41,7 +41,10 @@ export function RatesDiagnosticsPanel({
               ) : bucket.items.length > 0 ? (
                 <div className="macro-rates-health-chip-list">
                   {bucket.items.map((item, index) => (
-                    <span className="macro-rates-health-chip" key={`${bucket.key}:${item}:${index}`}>
+                    <span
+                      className="macro-rates-health-chip"
+                      key={`${bucket.key}:${item}:${index}`}
+                    >
                       {item}
                     </span>
                   ))}

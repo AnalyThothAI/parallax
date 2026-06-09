@@ -1,9 +1,9 @@
 # Spec — Macro Intel Workbench Redesign
 
-**Status**: Draft
+**Status**: Verified
 **Date**: 2026-06-09
 **Owner**: Codex
-**Related**: `docs/FRONTEND.md`, `docs/DESIGN_DISCIPLINE.md`, `src/parallax/domains/macro_intel/ARCHITECTURE.md`, `docs/sdd/features/active/2026-06-09-macro-intel-redesign/macro-visual-mockup.html`
+**Related**: `docs/FRONTEND.md`, `docs/DESIGN_DISCIPLINE.md`, `src/parallax/domains/macro_intel/ARCHITECTURE.md`, `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/macro-visual-mockup.html`
 
 ## Background
 

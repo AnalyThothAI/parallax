@@ -51,8 +51,15 @@ export const ASSET_GROUPS: Array<{
   {
     key: "equities",
     match: (key) =>
-      ["asset:spx", "asset:spy", "asset:qqq", "asset:ndx", "asset:dji", "asset:iwm", "asset:rut"]
-        .includes(key),
+      [
+        "asset:spx",
+        "asset:spy",
+        "asset:qqq",
+        "asset:ndx",
+        "asset:dji",
+        "asset:iwm",
+        "asset:rut",
+      ].includes(key),
     route: "/macro/assets/equities",
     title: "美股",
   },

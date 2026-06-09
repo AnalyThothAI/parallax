@@ -1,7 +1,4 @@
-import {
-  extraTables,
-  primarySupportingTable,
-} from "../../model/macroModulePresentation";
+import { extraTables, primarySupportingTable } from "../../model/macroModulePresentation";
 import { macroRouteLabel } from "../../model/macroRoutes";
 import {
   buildMacroWorkbenchBrief,

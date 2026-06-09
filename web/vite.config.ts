@@ -5,7 +5,8 @@ import { configDefaults, defineConfig } from "vitest/config";
 const srcPath = (path: string) => new URL(`./src/${path}`, import.meta.url).pathname;
 const testsPath = (path: string) => new URL(`./tests/${path}`, import.meta.url).pathname;
 const devApiProxyTarget = process.env.VITE_DEV_API_PROXY_TARGET ?? "http://127.0.0.1:8765";
-const devWsProxyTarget = process.env.VITE_DEV_WS_PROXY_TARGET ?? devApiProxyTarget.replace(/^http/, "ws");
+const devWsProxyTarget =
+  process.env.VITE_DEV_WS_PROXY_TARGET ?? devApiProxyTarget.replace(/^http/, "ws");
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],

@@ -6,10 +6,7 @@ import {
   buildAssetMarketGroups,
   normalizeDailyBrief,
 } from "../../model/macroAssetOverviewModel";
-import {
-  assetTitleByKey,
-  strongestCorrelationPairs,
-} from "../../model/macroCorrelationModel";
+import { assetTitleByKey, strongestCorrelationPairs } from "../../model/macroCorrelationModel";
 import {
   buildMacroDataHealthBuckets,
   macroReadSummary,

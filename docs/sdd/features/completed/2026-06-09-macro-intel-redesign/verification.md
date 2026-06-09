@@ -1,8 +1,9 @@
 # Verification — Macro Intel Workbench Redesign
 
+**Status**: Verified
 **Date**: 2026-06-09
-**Owning spec**: `docs/sdd/features/active/2026-06-09-macro-intel-redesign/spec.md`
-**Owning plan**: `docs/sdd/features/active/2026-06-09-macro-intel-redesign/plan.md`
+**Owning spec**: `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/spec.md`
+**Owning plan**: `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/plan.md`
 **Branch**: `codex/macro-intel-redesign`
 **Diff**: final implementation slice committed on `codex/macro-intel-redesign`
 
@@ -133,7 +134,23 @@ $ cd web && npx playwright test tests/e2e/golden-paths/macro-responsive-audit.sp
 
 ## Coverage
 
-Targeted macro component, route, unit, architecture, build, and Playwright coverage was exercised. Full repository `make check-all` was not run in this frontend slice.
+Targeted macro component, route, unit, architecture, build, and Playwright coverage was exercised. Final closeout uses repository `make check` only; per user instruction on 2026-06-09, integration tests and full `make check-all` were not continued because they were too time-consuming.
+
+Repository non-integration gate:
+
+```text
+$ PATH=/opt/homebrew/bin:$PATH make check
+Output: docs/sdd/features/completed/2026-06-09-macro-intel-redesign/make-check-output.txt
+exit code: 0
+```
+
+Full-gate note:
+
+```text
+$ PATH=/opt/homebrew/bin:$PATH make check-all
+Stopped during tests/integration after the user said: "不要跑集成测试了 太耗时了"
+No full `make check-all` pass is claimed.
+```
 
 ## Skipped tests
 
@@ -160,16 +177,16 @@ exit code: 0
 
 Rendered preview:
 
-- `docs/sdd/features/active/2026-06-09-macro-intel-redesign/macro-visual-mockup.html`
-- `docs/sdd/features/active/2026-06-09-macro-intel-redesign/macro-visual-mockup.png`
+- `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/macro-visual-mockup.html`
+- `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/macro-visual-mockup.png`
 
 Actual implementation screenshots:
 
-- `docs/sdd/features/active/2026-06-09-macro-intel-redesign/macro-actual-overview-desktop.png`
-- `docs/sdd/features/active/2026-06-09-macro-intel-redesign/macro-actual-assets-desktop.png`
-- `docs/sdd/features/active/2026-06-09-macro-intel-redesign/macro-actual-rates-desktop.png`
-- `docs/sdd/features/active/2026-06-09-macro-intel-redesign/macro-actual-correlation-desktop.png`
-- `docs/sdd/features/active/2026-06-09-macro-intel-redesign/macro-actual-assets-mobile.png`
+- `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/macro-actual-overview-desktop.png`
+- `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/macro-actual-assets-desktop.png`
+- `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/macro-actual-rates-desktop.png`
+- `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/macro-actual-correlation-desktop.png`
+- `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/macro-actual-assets-mobile.png`
 
 Manual visual review:
 
@@ -191,7 +208,7 @@ Observed asset groups, cross-asset correlation section, and cross-analysis prose
 
 Comparison notes:
 
-- `docs/sdd/features/active/2026-06-09-macro-intel-redesign/timsun-assets-comparison.md`
+- `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/timsun-assets-comparison.txt`
 
 Local browser tooling note:
 
@@ -202,12 +219,12 @@ Local browser tooling note:
 
 Design-stage files changed:
 
-- `docs/sdd/features/active/2026-06-09-macro-intel-redesign/spec.md`
-- `docs/sdd/features/active/2026-06-09-macro-intel-redesign/plan.md`
-- `docs/sdd/features/active/2026-06-09-macro-intel-redesign/tasks.md`
-- `docs/sdd/features/active/2026-06-09-macro-intel-redesign/verification.md`
-- `docs/sdd/features/active/2026-06-09-macro-intel-redesign/macro-visual-mockup.html`
-- `docs/sdd/features/active/2026-06-09-macro-intel-redesign/macro-visual-mockup.png`
+- `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/spec.md`
+- `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/plan.md`
+- `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/tasks.md`
+- `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/verification.md`
+- `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/macro-visual-mockup.html`
+- `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/macro-visual-mockup.png`
 
 Migrations applied in this slice:
 
@@ -238,10 +255,9 @@ Schema or contract changes that consumers must be aware of:
 
 - The visual companion server script did not emit a session directory in the Codex PTY, so the visual稿 was produced as a committed local HTML/PNG artifact instead.
 - `timsun.net/assets/` shows ETF/options/positioning depth that Parallax does not yet expose. Adding those surfaces requires backend/product scope beyond this frontend redesign.
-- `make check-all` was not run in this frontend slice.
+- Full `make check-all` was intentionally not completed per user instruction on 2026-06-09; integration, backend e2e, golden, and coverage gates are not used as final evidence for this closeout.
 
 ## Follow-ups
 
 - Consider a backend/product follow-up for ETF/options/positioning macro asset depth.
-- Run full repository `make check-all` before landing if required by the branch owner.
-- Move this SDD directory to `docs/sdd/features/completed/` when the branch is ready to land.
+- Re-run integration/golden only if explicitly needed later; skipped here by user request.

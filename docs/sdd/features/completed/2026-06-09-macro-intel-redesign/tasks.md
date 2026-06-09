@@ -1,6 +1,7 @@
 # Tasks — Macro Intel Workbench Redesign
 
-**Owning plan**: `docs/sdd/features/active/2026-06-09-macro-intel-redesign/plan.md`
+**Status**: Verified
+**Owning plan**: `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/plan.md`
 **Worktree**: `.worktrees/macro-intel-redesign/`
 
 Tasks are TDD-ordered. A task is complete only when its verification command produced the expected output.
@@ -9,7 +10,7 @@ Tasks are TDD-ordered. A task is complete only when its verification command pro
 
 ### Task 1 — Visual spec and mockup
 
-- **File(s)**: `docs/sdd/features/active/2026-06-09-macro-intel-redesign/spec.md`, `macro-visual-mockup.html`, `macro-visual-mockup.png`
+- **File(s)**: `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/spec.md`, `macro-visual-mockup.html`, `macro-visual-mockup.png`
 - **Owner**: parent
 - **Depends on**: current user goal
 - **Touch set**: SDD feature directory only
@@ -121,7 +122,7 @@ Tasks are TDD-ordered. A task is complete only when its verification command pro
 
 ### Task 9 — Golden path and full verification
 
-- **File(s)**: `web/tests/e2e/golden-paths/macro-terminal.spec.ts`, `docs/sdd/features/active/2026-06-09-macro-intel-redesign/verification.md`
+- **File(s)**: `web/tests/e2e/golden-paths/macro-terminal.spec.ts`, `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/verification.md`
 - **Owner**: parent
 - **Depends on**: Tasks 2-8
 - **Touch set**: macro e2e and verification artifact

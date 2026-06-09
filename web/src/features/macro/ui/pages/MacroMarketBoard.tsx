@@ -30,8 +30,8 @@ export function MacroMarketBoard({
   supportingTables?: MacroModuleTable[];
   title?: string;
 }) {
-  const tables = [supportingTable, ...supportingTables].filter(
-    (table): table is MacroModuleTable => Boolean(table && (table.rows?.length ?? 0) > 0),
+  const tables = [supportingTable, ...supportingTables].filter((table): table is MacroModuleTable =>
+    Boolean(table && (table.rows?.length ?? 0) > 0),
   );
 
   return (

@@ -9,7 +9,7 @@ This index makes the current SDD lane visible to coding agents. Feature artifact
 | State | Features | Artifacts |
 |-------|----------|-----------|
 | `active` | 0 | 0 |
-| `completed` | 1 | 4 |
+| `completed` | 2 | 8 |
 
 ## Lifecycle Flags
 
@@ -22,6 +22,10 @@ This index makes the current SDD lane visible to coding agents. Feature artifact
 
 | Feature | State | Artifact | Status | Flags | Path |
 |---------|-------|----------|--------|-------|------|
+| `2026-06-09-macro-intel-redesign` | `completed` | `spec.md` | Verified | - | `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/spec.md` |
+| `2026-06-09-macro-intel-redesign` | `completed` | `plan.md` | Verified | - | `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/plan.md` |
+| `2026-06-09-macro-intel-redesign` | `completed` | `tasks.md` | Verified | - | `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/tasks.md` |
+| `2026-06-09-macro-intel-redesign` | `completed` | `verification.md` | Verified | - | `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/verification.md` |
 | `2026-06-09-sdd-governance-hard-cut` | `completed` | `spec.md` | Verified | - | `docs/sdd/features/completed/2026-06-09-sdd-governance-hard-cut/spec.md` |
 | `2026-06-09-sdd-governance-hard-cut` | `completed` | `plan.md` | Verified | - | `docs/sdd/features/completed/2026-06-09-sdd-governance-hard-cut/plan.md` |
 | `2026-06-09-sdd-governance-hard-cut` | `completed` | `tasks.md` | Verified | - | `docs/sdd/features/completed/2026-06-09-sdd-governance-hard-cut/tasks.md` |

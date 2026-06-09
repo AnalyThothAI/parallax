@@ -244,11 +244,11 @@ def test_observation_series_readers_read_current_rows_directly() -> None:
         assert "FROM macro_observations" not in query
 
     history_query, history_params = conn.executions[2]
-    assert "FROM macro_observations AS observations" in history_query
-    assert "observations.value_numeric IS NOT NULL" in history_query
-    assert "FROM macro_observation_series_rows AS rows" not in history_query
-    assert "projection_version = %s" not in history_query
-    assert history_params == (["asset:spy"], 60)
+    assert "FROM macro_observation_series_rows AS rows" in history_query
+    assert "rows.value_numeric IS NOT NULL" in history_query
+    assert "FROM macro_observations" not in history_query
+    assert "projection_version = %s" in history_query
+    assert history_params == (["asset:spy"], "macro_regime_v4", 60)
 
 
 def _series_row(
