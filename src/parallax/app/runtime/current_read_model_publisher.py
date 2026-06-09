@@ -39,6 +39,9 @@ class CurrentReadModelPublisher:
     def __post_init__(self) -> None:
         if not self.identity_columns:
             raise ValueError("current read model publisher requires stable identity columns")
+        blank_identity = sorted({column for column in self.identity_columns if not column.strip()})
+        if blank_identity:
+            raise ValueError(f"blank stable identity columns: {blank_identity}")
         duplicate_identity = sorted(
             {column for column in self.identity_columns if self.identity_columns.count(column) > 1}
         )

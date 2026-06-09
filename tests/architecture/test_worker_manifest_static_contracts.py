@@ -107,6 +107,8 @@ def test_current_read_model_publisher_rejects_run_generation_identity_and_skips_
         CurrentReadModelPublisher(identity_columns=("generation_id", "target_id"))
     with pytest.raises(ValueError, match="duplicate stable identity columns"):
         CurrentReadModelPublisher(identity_columns=("target_id", "target_id"))
+    with pytest.raises(ValueError, match="blank stable identity columns"):
+        CurrentReadModelPublisher(identity_columns=("target_id", "   "))
 
     publisher = CurrentReadModelPublisher(
         identity_columns=("target_id",),
