@@ -56,32 +56,27 @@ export const queryKeys = {
   newsRows: ({
     cursor,
     limit,
-    min_score,
     q,
     signal,
     status,
   }: {
     cursor?: string | null;
     limit: number;
-    min_score?: number | null;
     q?: string | null;
     signal?: string | null;
     status?: string | null;
-  }) =>
-    ["news", limit, cursor ?? "", signal ?? "", min_score ?? "", status ?? "", q ?? ""] as const,
+  }) => ["news", limit, cursor ?? "", signal ?? "", status ?? "", q ?? ""] as const,
   newsRowsInfinite: ({
     limit,
-    min_score,
     q,
     signal,
     status,
   }: {
     limit: number;
-    min_score?: number | null;
     q?: string | null;
     signal?: string | null;
     status?: string | null;
-  }) => ["news", "infinite", limit, signal ?? "", min_score ?? "", status ?? "", q ?? ""] as const,
+  }) => ["news", "infinite", limit, signal ?? "", status ?? "", q ?? ""] as const,
   newsItem: (newsItemId: string) => ["news-item", newsItemId] as const,
   targetSocialTimeline: (targetKey: string | null, window: WindowKey, scope: ScopeKey) =>
     ["target-social-timeline", targetKey, window, scope] as const,

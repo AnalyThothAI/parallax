@@ -13,10 +13,8 @@ export const newsSignalTone = (signal: Pick<NewsSignalSummary, "direction">): st
       ? "is-short"
       : "is-neutral";
 
-export const newsSignalScoreLabel = (signal: Pick<NewsSignalSummary, "score" | "grade">): string =>
-  signal.score == null
-    ? "score --"
-    : [signal.grade, String(signal.score)].filter(Boolean).join(" · ");
+export const newsSignalStatusLabel = (signal: Pick<NewsSignalSummary, "status">): string =>
+  signal.status || "partial";
 
 export type NewsAgentReviewBadge = {
   label: string;

@@ -3522,17 +3522,6 @@
             ],
             "title": "Direction"
           },
-          "grade": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Grade"
-          },
           "label_zh": {
             "anyOf": [
               {
@@ -3565,17 +3554,6 @@
               }
             ],
             "title": "Provider"
-          },
-          "score": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Score"
           },
           "signal": {
             "anyOf": [
@@ -7172,22 +7150,6 @@
               "default": "",
               "title": "Signal",
               "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "min_score",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Min Score"
             }
           },
           {

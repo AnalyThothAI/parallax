@@ -96,7 +96,6 @@ export async function fetchNewsRows(
   params: {
     limit?: number;
     cursor?: string | null;
-    min_score?: number | null;
     q?: string | null;
     signal?: "bullish" | "bearish" | "neutral" | string | null;
     status?: string | null;
@@ -107,7 +106,6 @@ export async function fetchNewsRows(
     params: {
       cursor: params.cursor,
       limit: params.limit ?? 100,
-      min_score: params.min_score,
       q: params.q,
       signal: params.signal,
       status: params.status,
@@ -300,18 +298,19 @@ function normalizeAgentAdmission(raw: unknown): NewsAgentAdmission | null {
 
 function normalizeNewsSignalSummary(raw: unknown): NewsSignalSummary {
   const payload = objectOrNull(raw) ?? {};
+  const publicPayload = { ...payload };
+  delete publicPayload.score;
+  delete publicPayload.grade;
   const direction = stringOrNull(payload.direction) ?? "neutral";
   const status = stringOrNull(payload.status) ?? "partial";
   return {
-    ...(payload as Partial<NewsSignalSummary>),
+    ...(publicPayload as Partial<NewsSignalSummary>),
     source: stringOrNull(payload.source) ?? "partial",
     provider: stringOrNull(payload.provider),
     status,
     direction,
     label_zh: stringOrNull(payload.label_zh),
     signal: stringOrNull(payload.signal),
-    score: numberOrNull(payload.score),
-    grade: stringOrNull(payload.grade),
     title_zh: stringOrNull(payload.title_zh),
     summary_zh: stringOrNull(payload.summary_zh),
     summary_en: stringOrNull(payload.summary_en),

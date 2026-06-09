@@ -69,7 +69,6 @@ Accepted filters:
 - `cursor`
 - `limit`
 - `signal`
-- `min_score`
 - `status`
 
 Response ordering is always:

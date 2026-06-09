@@ -14,7 +14,7 @@ import type { ComponentType } from "react";
 
 import {
   newsSignalLabel,
-  newsSignalScoreLabel,
+  newsSignalStatusLabel,
   newsSignalTone,
 } from "../model/newsSignalViewModel";
 import "./NewsItemEvidencePage.css";
@@ -64,7 +64,7 @@ export function NewsItemEvidencePage({ item }: NewsItemEvidencePageProps) {
       <section className="news-evidence-metric-grid" aria-label="news item state">
         <EvidenceMetric
           label="Signal"
-          value={newsSignalScoreLabel(displaySignal)}
+          value={newsSignalLabel(displaySignal)}
           detail={displaySignal.method || displaySignal.provider || displaySignal.source}
         />
         <EvidenceMetric
@@ -275,8 +275,7 @@ function SignalEvidence({ item }: { item: NewsItemDetail }) {
         <FieldRow label="Method" value={displaySignal.method} />
         <FieldRow label="Direction" value={displaySignal.direction} />
         <FieldRow label="Signal" value={displaySignal.signal} />
-        <FieldRow label="Score" value={displaySignal.score} />
-        <FieldRow label="Grade" value={displaySignal.grade} />
+        <FieldRow label="Status" value={newsSignalStatusLabel(displaySignal)} />
       </dl>
       <p>
         {displaySignal.summary_zh || displaySignal.summary_en || "No signal summary is present."}

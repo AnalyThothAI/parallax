@@ -33,7 +33,6 @@ def test_news_api_lists_agent_signal_news_rows_without_postgres() -> None:
                 "limit": 1,
                 "cursor": "2000:row-old",
                 "signal": "bullish",
-                "min_score": "70",
                 "q": " btc ",
             },
             headers={"Authorization": "Bearer secret"},
@@ -44,7 +43,6 @@ def test_news_api_lists_agent_signal_news_rows_without_postgres() -> None:
         {
             "cursor": "2000:row-old",
             "limit": 2,
-            "min_score": 70,
             "q": "btc",
             "signal": "bullish",
             "status": None,
@@ -131,7 +129,6 @@ def test_news_api_returns_null_next_cursor_when_no_extra_row_without_postgres() 
         {
             "cursor": None,
             "limit": 3,
-            "min_score": None,
             "q": "zec",
             "signal": None,
             "status": None,
@@ -166,7 +163,6 @@ def test_news_api_paginates_zec_keyword_results_with_true_has_more_without_postg
         {
             "cursor": None,
             "limit": 6,
-            "min_score": None,
             "q": "zec",
             "signal": None,
             "status": None,
@@ -174,7 +170,6 @@ def test_news_api_paginates_zec_keyword_results_with_true_has_more_without_postg
         {
             "cursor": "9995:row-5",
             "limit": 6,
-            "min_score": None,
             "q": "zec",
             "signal": None,
             "status": None,
@@ -215,7 +210,6 @@ def test_news_api_ignores_retired_source_classification_filters_without_postgres
     assert news.calls[-1] == {
         "cursor": None,
         "limit": 101,
-        "min_score": None,
         "q": None,
         "signal": None,
         "status": None,
@@ -515,9 +509,13 @@ def test_news_openapi_schema_exposes_market_scope_not_legacy_admission() -> None
     detail_props = schemas["NewsObjectData"]["properties"]
     eligibility_props = schemas["NewsAlertEligibility"]["properties"]
     signal_props = schemas["NewsSignalEnvelope"]["properties"]
+    signal_summary_props = schemas["NewsSignalSummary"]["properties"]
     token_lane_props = schemas["NewsTokenLane"]["properties"]
     agent_brief_props = schemas["NewsAgentBrief"]["properties"]
     agent_run_props = schemas["NewsAgentRunSummary"]["properties"]
+    news_query_params = {
+        param["name"] for param in schema["paths"]["/api/news"]["get"]["parameters"]
+    }
 
     assert {"market_scope", "agent_admission", "agent_admission_status"} <= set(row_props)
     assert {"market_scope", "agent_admission", "agent_admission_status"} <= set(detail_props)
@@ -526,6 +524,9 @@ def test_news_openapi_schema_exposes_market_scope_not_legacy_admission() -> None
     assert "provider_signal" not in detail_props
     assert "provider_token_impacts" not in detail_props
     assert "provider_signal" not in signal_props
+    assert "score" not in signal_summary_props
+    assert "grade" not in signal_summary_props
+    assert "min_score" not in news_query_params
     assert "provider_score" not in eligibility_props
     assert "provider_score" not in token_lane_props
     assert "provider_signal" not in token_lane_props
@@ -573,14 +574,12 @@ class FakeNewsRepository:
         cursor: str | None = None,
         status: str | None = None,
         signal: str | None = None,
-        min_score: int | None = None,
         q: str | None = None,
     ):
         self.calls.append(
             {
                 "cursor": cursor,
                 "limit": limit,
-                "min_score": min_score,
                 "q": q,
                 "signal": signal,
                 "status": status,

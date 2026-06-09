@@ -1589,16 +1589,12 @@ export interface components {
         NewsSignalSummary: {
             /** Direction */
             direction?: string | null;
-            /** Grade */
-            grade?: string | null;
             /** Label Zh */
             label_zh?: string | null;
             /** Method */
             method?: string | null;
             /** Provider */
             provider?: string | null;
-            /** Score */
-            score?: number | null;
             /** Signal */
             signal?: string | null;
             /** Source */
@@ -2988,7 +2984,6 @@ export interface operations {
                 cursor?: string;
                 status?: string;
                 signal?: string;
-                min_score?: number | null;
                 q?: string;
             };
             header?: never;

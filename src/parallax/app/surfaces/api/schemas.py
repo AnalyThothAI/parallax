@@ -268,8 +268,6 @@ class NewsSignalSummary(ApiSchema):
     direction: str | None = None
     label_zh: str | None = None
     signal: str | None = None
-    score: int | None = None
-    grade: str | None = None
     title_zh: str | None = None
     summary_zh: str | None = None
     summary_en: str | None = None

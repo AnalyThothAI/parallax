@@ -24,7 +24,6 @@ def list_news(
     cursor: Annotated[str, Query()] = "",
     status: Annotated[str, Query()] = "",
     signal: Annotated[str, Query()] = "",
-    min_score: Annotated[int | None, Query()] = None,
     q: Annotated[str, Query()] = "",
 ) -> JSONResponse:
     runtime = _authenticated_runtime(request)
@@ -34,7 +33,6 @@ def list_news(
             cursor=cursor or None,
             status=status or None,
             signal=_signal(signal),
-            min_score=min_score,
             q=q.strip() or None,
         )
     return _json({"ok": True, "data": data})

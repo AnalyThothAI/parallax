@@ -11,7 +11,7 @@ describe("news API client normalization", () => {
       http.get(/.*\/api\/news$/, ({ request }) => {
         const searchParams = new URL(request.url).searchParams;
         observedKeys = [...searchParams.keys()].sort();
-        ["cursor", "limit", "min_score", "q", "signal"].forEach((key) => {
+        ["cursor", "limit", "q", "signal"].forEach((key) => {
           observedParams[key] = searchParams.get(key);
         });
         return HttpResponse.json({
@@ -30,8 +30,6 @@ describe("news API client normalization", () => {
                   status: "ready",
                   direction: "bullish",
                   label_zh: "利好",
-                  score: 82,
-                  grade: "A",
                 }),
                 token_lanes: {
                   bad: "shape",
@@ -60,13 +58,13 @@ describe("news API client normalization", () => {
                   version: "news_market_scope_v1",
                 },
                 agent_admission_status: "eligible",
-                agent_admission_reason: "provider_score_high",
+                agent_admission_reason: "agent_brief_ready",
                 agent_admission: {
                   eligible: true,
                   status: "eligible",
-                  reason: "provider_score_high",
+                  reason: "agent_brief_ready",
                   representative_news_item_id: "news-classified",
-                  basis: { provider_score: 82 },
+                  basis: { agent_status: "ready" },
                   version: "news_item_agent_admission_market_v1",
                 },
                 agent_representative_news_item_id: "news-classified",
@@ -89,7 +87,6 @@ describe("news API client normalization", () => {
       cursor: "cursor-1",
       has_token: true,
       limit: 25,
-      min_score: 70,
       q: "tokenized",
       signal: "bullish",
       token: "test-token",
@@ -97,12 +94,12 @@ describe("news API client normalization", () => {
 
     expect(observedParams.cursor).toBe("cursor-1");
     expect(observedParams.limit).toBe("25");
-    expect(observedParams.min_score).toBe("70");
     expect(observedParams.q).toBe("tokenized");
     expect(observedParams.signal).toBe("bullish");
-    expect(observedKeys).toEqual(["cursor", "limit", "min_score", "q", "signal"].sort());
+    expect(observedKeys).toEqual(["cursor", "limit", "q", "signal"].sort());
     expect(rows.items[0].signal.display_signal.label_zh).toBe("利好");
-    expect(rows.items[0].signal.display_signal.score).toBe(82);
+    expect(rows.items[0].signal.display_signal).not.toHaveProperty("score");
+    expect(rows.items[0].signal.display_signal).not.toHaveProperty("grade");
     expect(rows.items[0].token_lanes).toEqual([]);
     expect(rows.items[0].token_impacts).toEqual([]);
     expect(rows.items[0].signal).not.toHaveProperty("provider_signal");
@@ -115,7 +112,7 @@ describe("news API client normalization", () => {
     expect(rows.items[0].signal.alert_eligibility.market_scope?.primary).toBe("us_equity");
     expect(rows.items[0].signal.alert_eligibility.agent_admission_status).toBe("eligible");
     expect(rows.items[0].signal.alert_eligibility.agent_admission_reason).toBe(
-      "provider_score_high",
+      "agent_brief_ready",
     );
   });
 

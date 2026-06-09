@@ -4312,13 +4312,13 @@ def test_list_news_page_rows_filters_by_signal(tmp_path) -> None:
                     **_page_row("row-bullish", bullish_item_id, source_id="source-1"),
                     "agent_status": "ready",
                     "agent_brief": {"status": "ready", "direction": "bullish"},
-                    "signal": {"display_signal": {"direction": "bullish", "score": 80}},
+                    "signal": {"display_signal": {"direction": "bullish", "status": "ready"}},
                 },
                 {
                     **_page_row("row-bearish", bearish_item_id, source_id="source-1"),
                     "agent_status": "ready",
                     "agent_brief": {"status": "ready", "direction": "bearish"},
-                    "signal": {"display_signal": {"direction": "bearish", "score": 88}},
+                    "signal": {"display_signal": {"direction": "bearish", "status": "ready"}},
                 },
             ],
         )
@@ -5624,6 +5624,41 @@ def test_news_dedup_diagnostics_reports_disabled_rows_and_visible_duplicate_exce
     assert diagnostics["source_sync_diagnostics"][0]["watermark_lag_ms"] >= 0
 
 
+def test_news_dedup_diagnostics_ignores_retired_projection_versions(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo, source_id="source-1", source_item_key="shared")
+        repo.replace_page_rows_for_items(
+            news_item_ids=[news_item_id],
+            rows=[
+                _page_row(
+                    "row-current",
+                    news_item_id,
+                    source_id="source-1",
+                    projection_version=NEWS_PAGE_PROJECTION_VERSION,
+                ),
+                _page_row(
+                    "row-retired",
+                    news_item_id,
+                    source_id="source-1",
+                    projection_version="news_page_rows_v0",
+                ),
+            ],
+        )
+
+        diagnostics = repo.news_dedup_diagnostics()
+    finally:
+        conn.close()
+
+    assert diagnostics["enabled_serving_row_count"] == 1
+    assert diagnostics["enabled_exact_content_visible_duplicate_excess"] == 0
+    assert diagnostics["top_visible_content_duplicate_groups"] == []
+    assert diagnostics["top_visible_canonical_duplicate_groups"] == []
+    assert diagnostics["hard_public_url_visible_duplicate_excess"] == 0
+
+
 def test_news_dedup_diagnostics_reports_material_risk_without_repair_actions(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
@@ -6161,7 +6196,7 @@ def _page_row(
         "token_lanes": [],
         "fact_lanes": [],
         "source": {"source_id": source_id},
-        "signal": {"display_signal": {"direction": "neutral", "score": 0}},
+        "signal": {"display_signal": {"direction": "neutral", "status": "partial"}},
         "market_scope": {},
         "projection_version": projection_version,
         "computed_at_ms": computed_at_ms,

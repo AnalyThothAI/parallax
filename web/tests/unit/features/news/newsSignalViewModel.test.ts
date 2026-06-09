@@ -2,7 +2,6 @@ import {
   newsAgentReviewBadge,
   newsDisplayTokenLanes,
   newsSignalLabel,
-  newsSignalScoreLabel,
   newsSignalTone,
   tokenMarketLabel,
 } from "@features/news/model/newsSignalViewModel";
@@ -20,11 +19,6 @@ describe("newsSignalViewModel", () => {
     expect(newsSignalLabel({ source: "provider", status: "partial", direction: "neutral" })).toBe(
       "中性",
     );
-  });
-
-  it("formats total scores only for the signal pill", () => {
-    expect(newsSignalScoreLabel({ score: 82, grade: "A" })).toBe("A · 82");
-    expect(newsSignalScoreLabel({ score: null, grade: null })).toBe("score --");
   });
 
   it("labels canonical token market context without provider scores", () => {

@@ -16,7 +16,6 @@ class NewsPageQuery:
         cursor: str | None = None,
         status: str | None = None,
         signal: str | None = None,
-        min_score: int | None = None,
         q: str | None = None,
     ) -> dict[str, Any]:
         requested_limit = max(1, int(limit))
@@ -25,7 +24,6 @@ class NewsPageQuery:
             cursor=cursor,
             status=status,
             signal=signal,
-            min_score=min_score,
             q=q,
         )
         items = [_public_news_row(row) for row in rows[:requested_limit]]

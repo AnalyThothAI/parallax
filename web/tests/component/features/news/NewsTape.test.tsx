@@ -8,14 +8,15 @@ describe("NewsTape", () => {
     cleanup();
   });
 
-  it("renders compact rows without a duplicate score column", () => {
+  it("renders compact rows without provider score labels", () => {
     render(<NewsTape rows={[rowWithBtcEth]} onOpen={vi.fn()} />);
 
     expect(screen.getByText("利好")).toBeInTheDocument();
-    expect(screen.getByText("A · 82")).toBeInTheDocument();
+    expect(screen.getByText("ready")).toBeInTheDocument();
     expect(screen.getByText("BTC")).toBeInTheDocument();
     expect(screen.getByText("ETH")).toBeInTheDocument();
     expect(screen.getAllByText("CEX").length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText("A · 82")).not.toBeInTheDocument();
     expect(screen.queryByText("82 A")).not.toBeInTheDocument();
     expect(screen.queryByText("70 B+")).not.toBeInTheDocument();
     expect(screen.queryByText("score")).not.toBeInTheDocument();
@@ -69,8 +70,6 @@ const rowWithBtcEth: NewsRow = {
     direction: "bullish",
     label_zh: "利好",
     signal: "long",
-    score: 82,
-    grade: "A",
     summary_zh: "ETF 资金流持续增强。",
     method: "opennews.aiRating",
   }),
@@ -118,8 +117,6 @@ const rowWithInsufficientAgentBrief: NewsRow = {
       direction: "bullish",
       label_zh: "利好",
       signal: "long",
-      score: 90,
-      grade: "A",
       summary_zh: "Provider summary remains visible.",
       method: "opennews.aiRating",
     },
@@ -155,8 +152,6 @@ const rowWithReadyWatchAgentPushBlocked: NewsRow = {
       direction: "bullish",
       label_zh: "利好",
       signal: "long",
-      score: 91,
-      grade: "A",
       title_zh: "Provider title",
       summary_zh: "Agent summary remains visible.",
       method: "news_item_brief",

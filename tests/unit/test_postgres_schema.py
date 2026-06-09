@@ -233,8 +233,8 @@ NEWS_PAGE_MEMBER_LOOKUP_INDEX_MIGRATION = Path(
 NEWS_PAGE_ALERT_READY_INDEX_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260609_0163_news_page_alert_ready_index.py"
 )
-NEWS_PAGE_DISPLAY_SCORE_INDEX_MIGRATION = Path(
-    "src/parallax/platform/db/alembic/versions/20260609_0164_news_page_display_score_index.py"
+NEWS_PAGE_REMOVE_DISPLAY_SCORE_INDEX_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260609_0165_news_page_remove_display_score_index.py"
 )
 TOKEN_PULSE_EQUITY_CPU_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260529_0124_token_pulse_equity_cpu_hard_cut.py"
@@ -2051,22 +2051,22 @@ def test_news_page_alert_ready_index_supports_alert_list_reads() -> None:
         assert statement in normalized_text or statement in text
 
 
-def test_news_page_display_score_index_supports_default_news_reads() -> None:
-    assert NEWS_PAGE_DISPLAY_SCORE_INDEX_MIGRATION.exists(), (
-        f"{NEWS_PAGE_DISPLAY_SCORE_INDEX_MIGRATION} missing; add News page display-score read index"
+def test_news_page_display_score_index_is_removed_after_score_filter_hard_cut() -> None:
+    assert NEWS_PAGE_REMOVE_DISPLAY_SCORE_INDEX_MIGRATION.exists(), (
+        f"{NEWS_PAGE_REMOVE_DISPLAY_SCORE_INDEX_MIGRATION} missing; remove retired News page display-score index"
     )
-    text = NEWS_PAGE_DISPLAY_SCORE_INDEX_MIGRATION.read_text()
+    text = NEWS_PAGE_REMOVE_DISPLAY_SCORE_INDEX_MIGRATION.read_text()
     normalized_text = " ".join(text.split())
 
     for statement in (
-        'revision = "20260609_0164"',
-        'down_revision = "20260609_0163"',
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_page_rows_display_score80_latest",
-        "ON news_page_rows(projection_version, latest_at_ms DESC, row_id DESC)",
-        "COALESCE(NULLIF(signal_json -> 'display_signal' ->> 'score', '')::int, -1) >= 80",
+        'revision = "20260609_0165"',
+        'down_revision = "20260609_0164"',
+        "DROP INDEX CONCURRENTLY IF EXISTS ix_news_page_rows_display_score80_latest",
         "ANALYZE news_page_rows",
     ):
         assert statement in normalized_text or statement in text
+    assert "CREATE INDEX" not in normalized_text
+    assert "display_signal' ->> 'score" not in normalized_text
 
 
 def test_news_agent_market_admission_migration_adds_agent_admission_columns_and_indexes() -> None:

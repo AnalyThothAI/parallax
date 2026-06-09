@@ -6,7 +6,7 @@ import {
   newsAgentReviewBadge,
   newsDisplayTokenLanes,
   newsSignalLabel,
-  newsSignalScoreLabel,
+  newsSignalStatusLabel,
   newsSignalTone,
   tokenMarketLabel,
 } from "../model/newsSignalViewModel";
@@ -48,7 +48,7 @@ export function NewsTape({ rows, onOpen }: NewsTapeProps) {
               </span>
               <span className={`news-tape-signal ${newsSignalTone(displaySignal)}`}>
                 <b>{newsSignalLabel(displaySignal)}</b>
-                <small>{newsSignalScoreLabel(displaySignal)}</small>
+                <small>{newsSignalStatusLabel(displaySignal)}</small>
               </span>
               <span className="news-tape-copy">
                 <strong>{displayTitle}</strong>

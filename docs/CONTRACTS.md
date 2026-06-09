@@ -176,9 +176,11 @@ News Intel contract:
   agent run audit rows are detail evidence only and must not synthesize a
   public detail when the projection row is absent.
 - `/api/news` accepts optional product filters for the current page surface:
-  `signal=bullish|bearish|neutral`, `min_score`, `status`, and `q`.
+  `signal=bullish|bearish|neutral`, `status`, and `q`.
   News rows default to the full projected tape regardless of whether token
-  lanes are present. Signal filtering reads persisted `signal_json`, and
+  lanes are present. High-signal visibility comes from persisted market scope,
+  agent admission, and agent brief state, not provider score thresholds. Signal
+  filtering reads persisted `signal_json`, and
   keyword search scans the deterministic projected `search_text` document on
   `news_page_rows`; it does not call Token Intel search, provider fetches,
   extraction, raw `news_items`, or scattered JSON fallback predicates. See

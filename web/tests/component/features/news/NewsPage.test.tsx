@@ -26,7 +26,6 @@ const fetchNewsItemMock = vi.mocked(fetchNewsItem);
 type ObservedNewsParams = {
   cursor: string | null;
   limit: number;
-  min_score: number | null;
   q: string | null;
   signal: string | null;
   status: string | null;
@@ -36,7 +35,6 @@ type ObservedNewsParams = {
 const defaultNewsFetchParams: ObservedNewsParams = {
   cursor: null,
   limit: 100,
-  min_score: 80,
   q: null,
   signal: null,
   status: null,
@@ -63,7 +61,8 @@ describe("NewsPage", () => {
     expect(screen.queryByText("有 Token")).not.toBeInTheDocument();
     expect(screen.queryByText("无 Token")).not.toBeInTheDocument();
     expect(screen.getAllByText("利好").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("A · 82").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("ready").length).toBeGreaterThan(0);
+    expect(screen.queryByText("A · 82")).not.toBeInTheDocument();
     expect(screen.getAllByText("BTC").length).toBeGreaterThan(0);
     expect(screen.queryByLabelText("news inspector")).not.toBeInTheDocument();
     expect(screen.queryByText("Provider signal")).not.toBeInTheDocument();
@@ -80,7 +79,7 @@ describe("NewsPage", () => {
     expect(tableWrapRule).toContain("grid-auto-rows: max-content");
   });
 
-  it("requests backend hard-cut filters from signal, score, and search controls", async () => {
+  it("requests backend hard-cut filters from signal and search controls", async () => {
     mockNewsRows();
 
     renderNews(<NewsPage token="test-token" />);
@@ -95,20 +94,12 @@ describe("NewsPage", () => {
       }),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "≥80" }));
-    await waitFor(() =>
-      expect(fetchNewsRowsMock).toHaveBeenLastCalledWith({
-        ...defaultNewsFetchParams,
-        min_score: null,
-        signal: "bearish",
-      }),
-    );
+    expect(screen.queryByRole("button", { name: "≥80" })).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Search news"), { target: { value: "eth" } });
     await waitFor(() =>
       expect(fetchNewsRowsMock).toHaveBeenLastCalledWith({
         ...defaultNewsFetchParams,
-        min_score: null,
         q: "eth",
         signal: "bearish",
       }),
@@ -317,8 +308,6 @@ const providerRow: NewsRow = {
     direction: "bullish",
     label_zh: "利好",
     signal: "long",
-    score: 82,
-    grade: "A",
     summary_zh: "ETF 资金流持续增强。",
     method: "opennews.aiRating",
   }),

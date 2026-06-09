@@ -79,7 +79,6 @@ _URL_USERINFO_RE = re.compile(r"([a-z][a-z0-9+.-]*://)[^/@\s]+@", re.IGNORECASE)
 _CHECK_QUOTED_VALUE_RE = re.compile(r"'((?:''|[^'])*)'(?:\s*::\s*[A-Za-z_][A-Za-z0-9_]*)?")
 _PUBLICATION_METADATA_FIELDS = {"computed_at_ms", "updated_at_ms", "projected_at_ms", "payload_hash"}
 _NEWS_PAGE_SIGNAL_SQL = "LOWER(signal_json -> 'display_signal' ->> 'direction') = %s"
-_NEWS_PAGE_DISPLAY_SCORE_SQL = "COALESCE(NULLIF(signal_json -> 'display_signal' ->> 'score', '')::int, -1)"
 _NEWS_ITEM_WORKER_COLUMNS = (
     "news_item_id",
     "provider_item_id",
@@ -2137,7 +2136,6 @@ class NewsRepository:
         cursor: str | None = None,
         status: str | None = None,
         signal: str | None = None,
-        min_score: int | None = None,
         q: str | None = None,
     ) -> list[dict[str, Any]]:
         return self._list_projected_news_page_rows(
@@ -2145,7 +2143,6 @@ class NewsRepository:
             cursor=cursor,
             status=status,
             signal=signal,
-            min_score=min_score,
             q=q,
         )
 
@@ -2228,14 +2225,12 @@ class NewsRepository:
         cursor: str | None = None,
         status: str | None = None,
         signal: str | None = None,
-        min_score: int | None = None,
         q: str | None = None,
     ) -> list[dict[str, Any]]:
         cursor_time, cursor_id = _decode_page_cursor(cursor)
         filter_sql, filter_params = _news_page_row_filter_sql(
             status=status,
             signal=signal,
-            min_score=min_score,
             q=q,
         )
         rows = self.conn.execute(
@@ -4248,6 +4243,7 @@ class NewsRepository:
                      COUNT(DISTINCT rows.row_id)::int AS serving_row_count
                 FROM news_item_observation_edges AS edges
                 JOIN news_page_rows AS rows ON rows.news_item_id = edges.news_item_id
+               WHERE rows.projection_version = %(projection_version)s
                GROUP BY edges.source_id
             ),
             latest_fetch_run AS (
@@ -4333,7 +4329,8 @@ class NewsRepository:
               LEFT JOIN latest_fetch_run ON latest_fetch_run.source_id = sources.source_id
               LEFT JOIN latest_quality ON latest_quality.source_id = sources.source_id
              ORDER BY sources.enabled DESC, sources.source_domain ASC, sources.source_id ASC
-            """
+            """,
+            {"projection_version": NEWS_PAGE_PROJECTION_VERSION},
         ).fetchall()
         return [_source_status_payload(row) for row in rows]
 
@@ -4368,6 +4365,7 @@ class NewsRepository:
                      ) AS has_enabled_edge
                 FROM news_page_rows AS rows
                 JOIN news_items AS items ON items.news_item_id = rows.news_item_id
+               WHERE rows.projection_version = %(projection_version)s
             ),
             enabled_content_duplicates AS (
               SELECT content_hash, COUNT(*)::int AS row_count
@@ -4557,6 +4555,7 @@ class NewsRepository:
             {
                 "now_ms": resolved_now_ms,
                 "window_ms": max(0, int(window_ms)),
+                "projection_version": NEWS_PAGE_PROJECTION_VERSION,
             },
         ).fetchone()
         current_policy = self._news_dedup_current_policy_diagnostics(
@@ -4615,7 +4614,8 @@ class NewsRepository:
               FROM news_page_rows AS rows
               JOIN news_items AS items ON items.news_item_id = rows.news_item_id
               JOIN news_sources AS sources ON sources.source_id = items.source_id
-             WHERE EXISTS (
+             WHERE rows.projection_version = %(projection_version)s
+               AND EXISTS (
                      SELECT 1
                        FROM news_item_observation_edges AS edges
                        JOIN news_sources AS edge_sources ON edge_sources.source_id = edges.source_id
@@ -4623,7 +4623,8 @@ class NewsRepository:
                         AND edge_sources.enabled = true
                    )
              ORDER BY rows.news_item_id ASC, rows.row_id ASC
-            """
+            """,
+            {"projection_version": NEWS_PAGE_PROJECTION_VERSION},
         ).fetchall()
         fact_rows = self.conn.execute(
             """
@@ -5072,7 +5073,6 @@ def _news_page_row_filter_sql(
     *,
     status: str | None = None,
     signal: str | None = None,
-    min_score: int | None = None,
     q: str | None = None,
 ) -> tuple[str, list[Any]]:
     filters: list[str] = []
@@ -5083,8 +5083,6 @@ def _news_page_row_filter_sql(
     if signal:
         filters.append(_NEWS_PAGE_SIGNAL_SQL)
         filter_params.append(str(signal).strip().lower())
-    if min_score is not None:
-        filters.append(f"{_NEWS_PAGE_DISPLAY_SCORE_SQL} >= {int(min_score)}")
     query_text = str(q).strip() if q is not None else ""
     if query_text:
         filters.append("search_text ILIKE %s")

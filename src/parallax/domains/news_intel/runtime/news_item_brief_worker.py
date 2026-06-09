@@ -166,13 +166,28 @@ class NewsItemBriefWorker(WorkerBase):
                         skipped += 1
                         continue
 
-                    outcome = await self._process_candidate(
-                        candidate=candidate,
-                        packet=packet,
-                        agent_config=agent_config,
-                        now_ms=now,
-                        reservation=reservation,
-                    )
+                    completed_run = _fresh_completed_run(candidate, packet=packet, agent_config=agent_config)
+                    if completed_run is not None:
+                        await asyncio.to_thread(
+                            self._restore_current_from_completed_run,
+                            run=completed_run,
+                            packet=packet,
+                            agent_config=agent_config,
+                            now_ms=now,
+                        )
+                        status = str(completed_run.get("outcome") or "ready")
+                        outcome = _CandidateOutcome(
+                            notes={status: 1, "restored_from_completed_run": 1},
+                            current_updates=1,
+                        )
+                    else:
+                        outcome = await self._process_candidate(
+                            candidate=candidate,
+                            packet=packet,
+                            agent_config=agent_config,
+                            now_ms=now,
+                            reservation=reservation,
+                        )
                 except Exception as exc:
                     notes["failed"] += 1
                     await asyncio.to_thread(
@@ -658,6 +673,24 @@ class NewsItemBriefWorker(WorkerBase):
                 commit=False,
             )
 
+    def _restore_current_from_completed_run(
+        self,
+        *,
+        run: Mapping[str, Any],
+        packet: NewsItemBriefInputPacket,
+        agent_config: NewsItemBriefAgentConfig,
+        now_ms: int,
+    ) -> None:
+        payload = _dict(run.get("response_json"))
+        computed_at_ms = int(run.get("finished_at_ms") or now_ms)
+        self._upsert_current(
+            run_id=str(run.get("run_id") or ""),
+            packet=packet,
+            agent_config=agent_config,
+            payload=payload,
+            computed_at_ms=computed_at_ms,
+        )
+
     def _upsert_terminal_failed_current(
         self,
         *,
@@ -760,6 +793,40 @@ def _current_brief_is_fresh(
     if str(current.get("schema_version") or "") != agent_config.schema_version:
         return False
     return str(current.get("validator_version") or "") == agent_config.validator_version
+
+
+def _fresh_completed_run(
+    candidate: Mapping[str, Any],
+    *,
+    packet: NewsItemBriefInputPacket,
+    agent_config: NewsItemBriefAgentConfig,
+) -> dict[str, Any] | None:
+    run = _optional_dict(candidate.get("latest_run"))
+    if run is None:
+        return None
+    if str(run.get("status") or "") != "completed":
+        return None
+    outcome = str(run.get("outcome") or "")
+    if outcome not in {"ready", "insufficient"}:
+        return None
+    if str(run.get("input_hash") or "") != packet.input_hash:
+        return None
+    if str(run.get("artifact_version_hash") or "") != agent_config.artifact_version_hash:
+        return None
+    if str(run.get("prompt_version") or "") != agent_config.prompt_version:
+        return None
+    if str(run.get("schema_version") or "") != agent_config.schema_version:
+        return None
+    if str(run.get("validator_version") or "") != agent_config.validator_version:
+        return None
+    payload = _optional_dict(run.get("response_json"))
+    if payload is None:
+        return None
+    if str(payload.get("status") or "") != outcome:
+        return None
+    if not str(run.get("run_id") or ""):
+        return None
+    return run
 
 
 def _admission_from_candidate(candidate: Mapping[str, Any], *, now_ms: int) -> NewsItemAgentAdmission:

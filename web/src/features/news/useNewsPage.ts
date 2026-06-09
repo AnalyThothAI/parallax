@@ -8,7 +8,6 @@ export type NewsPageQueryParams = {
   cursor?: string | null;
   enabled?: boolean;
   limit?: number;
-  min_score?: number | null;
   q?: string | null;
   signal?: "bullish" | "bearish" | "neutral" | null;
   status?: string | null;
@@ -20,7 +19,6 @@ export const useNewsPageWithToken = (
     cursor = null,
     enabled = true,
     limit = NEWS_PAGE_SIZE,
-    min_score = null,
     q = null,
     signal = null,
     status = null,
@@ -28,8 +26,8 @@ export const useNewsPageWithToken = (
 ) =>
   useQuery({
     enabled: Boolean(token) && enabled,
-    queryKey: queryKeys.newsRows({ cursor, limit, min_score, q, signal, status }),
-    queryFn: () => fetchNewsRows({ cursor, limit, min_score, q, signal, status, token }),
+    queryKey: queryKeys.newsRows({ cursor, limit, q, signal, status }),
+    queryFn: () => fetchNewsRows({ cursor, limit, q, signal, status, token }),
     refetchInterval: 15_000,
     staleTime: 0,
   });
@@ -38,7 +36,6 @@ export const useInfiniteNewsPageWithToken = (
   token: string,
   {
     limit = NEWS_PAGE_SIZE,
-    min_score = null,
     q = null,
     signal = null,
     status = null,
@@ -47,9 +44,9 @@ export const useInfiniteNewsPageWithToken = (
   useInfiniteQuery({
     enabled: Boolean(token),
     initialPageParam: null as string | null,
-    queryKey: queryKeys.newsRowsInfinite({ limit, min_score, q, signal, status }),
+    queryKey: queryKeys.newsRowsInfinite({ limit, q, signal, status }),
     queryFn: ({ pageParam }: { pageParam: string | null }) =>
-      fetchNewsRows({ cursor: pageParam, limit, min_score, q, signal, status, token }),
+      fetchNewsRows({ cursor: pageParam, limit, q, signal, status, token }),
     getNextPageParam: (lastPage) => lastPage.next_cursor || undefined,
     refetchInterval: (query) => ((query.state.data?.pages.length ?? 0) > 1 ? false : 15_000),
     staleTime: 15_000,

@@ -35,8 +35,6 @@ export type NewsSignalSummary = {
   direction: "bullish" | "bearish" | "neutral" | string;
   label_zh?: string | null;
   signal?: "long" | "short" | "neutral" | string | null;
-  score?: number | null;
-  grade?: string | null;
   title_zh?: string | null;
   summary_zh?: string | null;
   summary_en?: string | null;
