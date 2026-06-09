@@ -741,6 +741,14 @@ def _validate_worker_manifests() -> None:
     if missing_idempotency:
         raise ValueError(f"worker manifests missing idempotency evidence: {missing_idempotency}")
 
+    blank_idempotency = {
+        manifest.name: tuple(evidence for evidence in manifest.idempotency_evidence if not evidence.strip())
+        for manifest in _WORKER_MANIFESTS
+        if any(not evidence.strip() for evidence in manifest.idempotency_evidence)
+    }
+    if blank_idempotency:
+        raise ValueError(f"blank worker manifest idempotency evidence: {blank_idempotency}")
+
     missing_side_effect_ledgers = [
         manifest.name
         for manifest in _WORKER_MANIFESTS

@@ -108,6 +108,7 @@ claim is allowed without the corresponding output captured below.
 | AC89 — Advisory lock keys are unique. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_advisory_lock_keys -q` failed RED when two patched manifests shared one `advisory_lock_key`, then passed after adding advisory-lock duplicate validation. |
 | AC90 — Advisory lock keys are non-blank. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_advisory_lock_keys -q` failed RED when a patched blank `advisory_lock_key` did not raise, then passed after adding advisory-lock blank-key validation. |
 | AC91 — Worker identity fields are non-blank. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_identity_fields -q` failed RED when a patched blank `name` did not raise, then passed after adding identity-field validation. |
+| AC92 — Idempotency evidence is non-blank. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_idempotency_evidence -q` failed RED when a patched blank `idempotency_evidence` did not raise, then passed after adding evidence validation. |
 
 Deviations from spec:
 
@@ -1418,6 +1419,15 @@ exit code: 1
 
 $ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_identity_fields -q
 1 passed in 0.03s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_idempotency_evidence -q
+F                                                                        [100%]
+Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_idempotency_evidence -q
+1 passed in 0.04s
 exit code: 0
 ```
 

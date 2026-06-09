@@ -44,6 +44,7 @@ can both miss real process drift and block healthy refactors.
 | Test harness intent must be explicit. | Architecture tests classify permanent invariants, migration tripwires, behavior contracts, and generated hygiene. |
 | Worker runtime constraints must be manifest-owned. | `WorkerManifest` carries each worker's runtime constraint classification, so architecture tests do not maintain a second worker inventory. |
 | Worker identity fields must be non-blank. | `WorkerManifest` validation rejects blank `name`, `domain`, `factory`, and `worker_class` values before registries, settings, or docs harnesses consume them. |
+| Idempotency evidence must be non-blank. | `WorkerManifest` validation rejects blank `idempotency_evidence` entries before lifecycle, ownership, or review harnesses consume them. |
 | Dirty-target consumers must declare dirty targets. | `WorkerManifest` validation rejects `DIRTY_TARGET_CONSUMER` manifests that omit `dirty_target_tables`. |
 | Leased-job consumers must declare queue depth tables. | `WorkerManifest` validation rejects `LEASED_JOB_CONSUMER` manifests that omit `queue_depth_table`. |
 | Bounded provider schedulers must declare provider I/O. | `WorkerManifest` validation rejects `BOUNDED_PROVIDER_SCHEDULER` manifests that do not set `uses_provider_io`. |
@@ -184,6 +185,7 @@ can both miss real process drift and block healthy refactors.
 - G67. Advisory lock declarations reject duplicate keys, so unrelated workers cannot silently share a long-lived single-writer lock boundary.
 - G68. Advisory lock declarations reject blank keys, so lifecycle code cannot inherit a whitespace placeholder as a lock boundary.
 - G69. Worker identity declarations reject blank fields, so registry, factory, settings, and docs harnesses cannot consume anonymous or unresolvable workers.
+- G70. Idempotency evidence declarations reject blank strings, so workers cannot satisfy review and lifecycle gates with placeholder evidence.
 
 ## Non-goals
 
@@ -320,6 +322,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC89. WHEN two `WorkerManifest` entries declare the same `advisory_lock_key` THEN manifest validation SHALL raise before runtime lifecycle, advisory-lock, or worker inventory harnesses consume the manifest.
 - AC90. WHEN a `WorkerManifest.advisory_lock_key` value is blank THEN manifest validation SHALL raise before runtime lifecycle, advisory-lock, or worker inventory harnesses consume the manifest.
 - AC91. WHEN a `WorkerManifest.name`, `domain`, `factory`, or `worker_class` value is blank THEN manifest validation SHALL raise before registry, factory, settings, or worker inventory harnesses consume the manifest.
+- AC92. WHEN a `WorkerManifest.idempotency_evidence` entry is blank THEN manifest validation SHALL raise before lifecycle, ownership, review, or worker inventory harnesses consume the manifest.
 
 ## Risks
 
