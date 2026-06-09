@@ -2203,6 +2203,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 105 — Worker class names resolve
+
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 104
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for worker class symbol validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_worker_class_names` — patch one manifest to declare missing class name inside an existing `worker_class` module and assert manifest validation raises before registry, factory, settings, or docs consumers run.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `WorkerManifest.worker_class` values must resolve to an existing class symbol before registries, settings, or worker inventory harnesses can treat worker runtime ownership as source truth.
+- **On-demand context**: `src/parallax/app/runtime/worker_manifest.py`, `src/parallax/domains/*/runtime`, `tests/architecture/test_worker_inventory_contract.py`, and Worker Inventory docs checks.
+- **Kill/defer criteria**: Stop if worker class declarations intentionally support generated, remote, or lazy missing symbols, if validation only checks generated docs, or if the fix touches dirty worker runtime contract files.
+- **Eval/repair signal**: missing worker class symbol, runtime implementation drift, registry drift, manifest validation drift, and SDD generated index drift.
+- **Implementation**: Add manifest validation rejecting `worker_class` values whose class name is absent from the resolved module.
+- **Verification**: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_worker_class_names -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -2309,4 +2330,5 @@
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_integer_start_priorities -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_factory_modules -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_worker_class_modules -q`
+- [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_worker_class_names -q`
 - [ ] `make check-all`

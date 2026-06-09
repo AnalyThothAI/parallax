@@ -47,6 +47,7 @@ can both miss real process drift and block healthy refactors.
 | Worker factory modules must be source files. | `WorkerManifest` validation rejects `factory` values that do not name an existing `worker_factories/*.py` source file. |
 | Worker runtime classes must be unique. | `WorkerManifest` validation rejects duplicate `worker_class` values before registry, factory, settings, or docs harnesses consume them. |
 | Worker runtime class modules must exist. | `WorkerManifest` validation rejects `worker_class` values whose module path cannot be resolved before registry, factory, settings, or docs harnesses consume them. |
+| Worker runtime class names must exist. | `WorkerManifest` validation rejects `worker_class` values whose class name is absent from the resolved module before registry, factory, settings, or docs harnesses consume them. |
 | Worker start priorities must be non-negative. | `WorkerManifest` validation rejects negative `start_priority` values before scheduler, registry, settings, or docs harnesses consume them. |
 | Worker start priorities must be integer bands. | `WorkerManifest` validation rejects non-integer `start_priority` values before scheduler, registry, settings, or docs harnesses consume them. |
 | Idempotency evidence must be non-blank. | `WorkerManifest` validation rejects blank `idempotency_evidence` entries before lifecycle, ownership, or review harnesses consume them. |
@@ -210,6 +211,7 @@ can both miss real process drift and block healthy refactors.
 - G80. Worker start-priority declarations reject non-integer values, so scheduler ordering remains an explicit integer band rather than an implicit fractional convention.
 - G81. Worker factory declarations reject missing source files, so registry and docs harnesses cannot preserve a worker that no worker factory can instantiate.
 - G82. Worker runtime class declarations reject missing modules, so registry and docs harnesses cannot preserve a worker whose runtime implementation path cannot resolve.
+- G83. Worker runtime class declarations reject missing class names, so registry and docs harnesses cannot preserve stale symbols inside otherwise valid runtime modules.
 
 ## Non-goals
 
@@ -359,6 +361,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC102. WHEN a `WorkerManifest.start_priority` value is not an integer THEN manifest validation SHALL raise before scheduler, registry, settings, or worker inventory harnesses consume the manifest.
 - AC103. WHEN a `WorkerManifest.factory` value does not name an existing `src/parallax/app/runtime/worker_factories/*.py` source file THEN manifest validation SHALL raise before registry, factory, settings, or worker inventory harnesses consume the manifest.
 - AC104. WHEN a `WorkerManifest.worker_class` module path cannot be resolved THEN manifest validation SHALL raise before registry, factory, settings, or worker inventory harnesses consume the manifest.
+- AC105. WHEN a `WorkerManifest.worker_class` class name is absent from its resolved module THEN manifest validation SHALL raise before registry, factory, settings, or worker inventory harnesses consume the manifest.
 
 ## Risks
 

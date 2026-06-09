@@ -199,6 +199,7 @@ Known-failing baseline tests:
 - Reject `factory` declarations that do not name an existing `worker_factories/*.py` source file before registry, factory, settings, or docs harnesses consume them.
 - Reject duplicate `worker_class` declarations before registry, factory, settings, or docs harnesses consume them.
 - Reject `worker_class` declarations whose module path cannot be resolved before registry, factory, settings, or docs harnesses consume them.
+- Reject `worker_class` declarations whose class name is absent from the resolved module before registry, factory, settings, or docs harnesses consume them.
 - Reject negative `start_priority` declarations before scheduler, registry, settings, or docs harnesses consume them.
 - Reject non-integer `start_priority` declarations before scheduler, registry, settings, or docs harnesses consume them.
 - Reject blank `idempotency_evidence` declarations before lifecycle, ownership, review, or worker inventory harnesses consume them.
@@ -321,6 +322,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Worker factory modules are real source files. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares missing `factory`. |
 | Worker runtime classes are unique. | Pass: `_validate_worker_manifests()` raises when a patched manifest reuses another manifest's `worker_class`. |
 | Worker runtime class modules resolve. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares missing `worker_class` module. |
+| Worker runtime class names resolve. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares missing `worker_class` class name. |
 | Worker start priorities are non-negative. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares negative `start_priority`. |
 | Worker start priorities are integer bands. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares non-integer `start_priority`. |
 | Idempotency evidence is non-blank. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares blank `idempotency_evidence`. |
@@ -486,6 +488,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC102: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_integer_start_priorities -q`
 - AC103: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_factory_modules -q`
 - AC104: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_worker_class_modules -q`
+- AC105: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_worker_class_names -q`
 
 ## Verification
 
