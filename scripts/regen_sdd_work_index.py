@@ -231,6 +231,9 @@ def _issue_meaning(code: str) -> str:
         ),
         "task-missing-review-fields": "Task records lack subagent report or parent review result evidence.",
         "task-invalid-review-fields": "Task report/review evidence is inconsistent with delegation, scope, or status.",
+        "task-missing-subagent-handoff-artifact": (
+            "Delegated task references a subagent handoff artifact that is missing."
+        ),
         "task-missing-subagent-report-artifact": (
             "Delegated task references a subagent report artifact that is missing."
         ),

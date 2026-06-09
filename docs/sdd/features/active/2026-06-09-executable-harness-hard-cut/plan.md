@@ -31,6 +31,7 @@ Known-failing baseline tests:
 - Validate delegated subagent report artifacts by following the report path and running the shared task-bound report contract.
 - Validate completed task evidence by requiring each `[x]` task's `Verification` command to appear in `verification.md` with exit code 0.
 - Validate machine-token fields strictly so `not delegated` cannot carry prose suffixes.
+- Validate delegated subagent handoff artifacts by following the handoff path before dispatch/review.
 - Parse `Verified` completion evidence from the `## Verification commands` fenced block and require final `make check-all` exit code 0 plus explained skipped-test rows.
 
 ### `scripts/regen_sdd_work_index.py`
@@ -155,6 +156,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Referenced report artifacts are verified. | Pass: SDD validator fails missing or invalid delegated report files. |
 | Completed task status is evidenced. | Pass: SDD validator fails `[x]` tasks without matching exit-code evidence. |
 | Machine-readable tokens are exact. | Pass: validator rejects `not delegated` values with prose suffixes. |
+| Referenced handoff artifacts are verified. | Pass: SDD validator fails missing delegated handoff files. |
 
 ## Acceptance test commands
 
@@ -175,6 +177,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC15: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_report_artifact tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_validate_report_artifact_against_task tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_accepts_task_bound_report -q`
 - AC16: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_tasks_require_matching_verification_evidence tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q`
 - AC17: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_non_delegated_handoff_rejects_prose_suffix tests/architecture/test_sdd_artifact_validator.py::test_tasks_allow_explicit_none_dependency_and_not_delegated_handoff tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_report_artifact -q`
+- AC18: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_handoff_artifact tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_report_artifact -q`
 
 ## Verification
 

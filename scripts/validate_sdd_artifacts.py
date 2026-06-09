@@ -100,6 +100,7 @@ KNOWN_ISSUE_CODES = (
     "task-missing-agent-loop-fields",
     "task-missing-review-fields",
     "task-invalid-review-fields",
+    "task-missing-subagent-handoff-artifact",
     "task-missing-subagent-report-artifact",
     "task-invalid-subagent-report-artifact",
     "task-complete-missing-verification-evidence",
@@ -471,6 +472,7 @@ def _task_issues(feature: SddFeature) -> list[SddIssue]:
                     f"{task.title} invalid fields: {', '.join(invalid_review_fields)}",
                 )
             )
+        issues.extend(_subagent_handoff_artifact_issues(feature, task))
         issues.extend(_subagent_report_artifact_issues(feature, task))
         issues.extend(_complete_task_verification_issues(feature, task))
         if feature.status.lower() == "verified" and task.fields.get("status", "").strip().lower() != "[x]":
@@ -582,6 +584,24 @@ def _subagent_report_artifact_issues(feature: SddFeature, task: TaskRecord) -> l
             )
         ]
     return []
+
+
+def _subagent_handoff_artifact_issues(feature: SddFeature, task: TaskRecord) -> list[SddIssue]:
+    handoff_value = task.fields.get("subagent handoff", "")
+    if _is_not_delegated(handoff_value) or _is_placeholder(handoff_value) or not _is_repo_path(handoff_value):
+        return []
+
+    tasks_artifact = feature.artifacts["tasks.md"]
+    handoff_path = _repo_root(feature) / handoff_value.replace("`", "").strip()
+    if handoff_path.exists():
+        return []
+    return [
+        _issue(
+            "task-missing-subagent-handoff-artifact",
+            tasks_artifact,
+            f"{task.title} missing subagent handoff artifact: {handoff_value}",
+        )
+    ]
 
 
 def _extract_report_mode(text: str) -> str | None:

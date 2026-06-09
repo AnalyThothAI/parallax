@@ -300,6 +300,27 @@ def test_delegated_tasks_require_report_artifact(tmp_path: Path) -> None:
     assert "task-missing-subagent-report-artifact" in _issue_codes(issues)
 
 
+def test_delegated_tasks_require_handoff_artifact(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-missing-subagent-handoff")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    report = tmp_path / "docs" / "generated" / "subagent-reports" / "valid.md"
+    _write_valid_subagent_report(report)
+    _write_valid_tasks(
+        feature / "tasks.md",
+        status="In Progress",
+        subagent_handoff="docs/generated/subagent-handoffs/missing.md",
+        subagent_report="docs/generated/subagent-reports/valid.md",
+        review_result="accepted",
+        task_status="[~]",
+    )
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "task-missing-subagent-handoff-artifact" in _issue_codes(issues)
+
+
 def test_delegated_tasks_validate_report_artifact_against_task(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-invalid-subagent-report")
     _write_valid_spec(feature / "spec.md", status="In Progress")
@@ -590,6 +611,40 @@ def _write_valid_verification(
                 "```text",
                 *other_command_lines,
                 "```",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_valid_subagent_report(path: Path) -> None:
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "\n".join(
+            [
+                "# Subagent Report",
+                "",
+                "Mode: write-allowed",
+                "",
+                "## Findings",
+                "- Task-bound report evidence.",
+                "",
+                "## Scope Adherence",
+                "- Owned scope: pass",
+                "- Conflict set: pass",
+                "",
+                "## Changed Files",
+                "- `scripts/validate_sdd_artifacts.py`",
+                "",
+                "## Verification Evidence",
+                "```text",
+                "$ uv run pytest tests/architecture/test_sdd_artifact_validator.py -q",
+                "passed",
+                "exit code: 0",
+                "```",
+                "",
+                "## Remaining Risks",
+                "- none",
             ]
         ),
         encoding="utf-8",
