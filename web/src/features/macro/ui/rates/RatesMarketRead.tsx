@@ -2,11 +2,15 @@ import type { RatesWorkbenchView } from "../../model/macroRatesWorkbenchModel";
 import { MacroPanel } from "../primitives/MacroPanel";
 
 export function RatesMarketRead({ view }: { view: RatesWorkbenchView }) {
+  const asOf = compactAsOfLabel(view.asOfLabel);
+  const gapCount = view.missingPrimaryItems.length;
+  const proxyNote = view.proxyNote && view.proxyNote !== view.marketHeadline ? view.proxyNote : null;
+
   return (
     <MacroPanel
       ariaLabel="利率简报"
       className="macro-rates-market-read-panel"
-      meta={view.readinessLabel}
+      meta={`${view.readinessLabel} · ${asOf}`}
       span="full"
       title="利率简报"
     >
@@ -18,24 +22,23 @@ export function RatesMarketRead({ view }: { view: RatesWorkbenchView }) {
           </div>
           <dl className="macro-rates-read-state" aria-label="利率模块状态">
             <div>
-              <dt>问题</dt>
-              <dd>{view.question}</dd>
-            </div>
-            <div>
-              <dt>准备度</dt>
+              <dt>状态</dt>
               <dd>{view.readinessLabel}</dd>
             </div>
             <div>
               <dt>截至</dt>
-              <dd>{compactAsOfLabel(view.asOfLabel)}</dd>
+              <dd>{asOf}</dd>
+            </div>
+            <div>
+              <dt>缺口</dt>
+              <dd>{gapCount > 0 ? `${gapCount} 项` : "0"}</dd>
             </div>
           </dl>
         </div>
-        <p className="macro-rates-market-copy">{view.marketExplanation}</p>
-        {view.proxyNote ? <p className="macro-rates-proxy-note">{view.proxyNote}</p> : null}
+        {proxyNote ? <p className="macro-rates-proxy-note">{proxyNote}</p> : null}
         {view.missingPrimaryItems.length > 0 ? (
           <div className="macro-rates-missing-primary">
-            <span>待补齐</span>
+            <span>明细</span>
             <ul>
               {view.missingPrimaryItems.map((item) => (
                 <li key={item}>{item}</li>

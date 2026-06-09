@@ -104,6 +104,17 @@ describe("Macro rates workbench", () => {
     },
   );
 
+  it("keeps the rates read compact and removes prompt-style copy", () => {
+    renderRatesModule(macroFedFundsModuleFixture(), "rates/fed-funds", "/macro/rates/fed-funds");
+
+    const marketRead = screen.getByRole("region", { name: "利率简报" });
+    expect(within(marketRead).getByText("状态")).toBeInTheDocument();
+    expect(within(marketRead).getByText("缺口")).toBeInTheDocument();
+    expect(within(marketRead).queryByText("问题")).not.toBeInTheDocument();
+    expect(marketRead).not.toHaveTextContent("政策走廊是否稳定");
+    expect(marketRead).not.toHaveTextContent("本页只展示");
+  });
+
   it("shows auction proxy copy without leaking raw auction codes", async () => {
     renderRatesModule(macroAuctionsProxyModuleFixture(), "rates/auctions", "/macro/rates/auctions");
 
