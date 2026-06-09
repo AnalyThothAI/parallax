@@ -71,6 +71,7 @@ claim is allowed without the corresponding output captured below.
 | AC52 — Frontend data ownership gate is executable. | ✅ | `cd web && npm run test -- tests/architecture/frontendDataOwnership.test.ts` failed RED on missing docs binding, then passed after the docs and static source gate were added. |
 | AC53 — Agent router frontend guardrails are source-aligned. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_agent_router_frontend_guardrails_match_css_harness -q` failed RED on missing `macro.css`, then passed after AGENTS/CLAUDE shared router updates. |
 | AC54 — Frontend verification skill carries data ownership. | ✅ | `cd web && npm run test -- tests/architecture/frontendDocContract.test.ts` failed RED on missing `frontendDataOwnership.test.ts` in the skill, then passed after the skill and doc-contract update. |
+| AC55 — Architecture docs reference executable tests. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_architecture_doc_test_references_are_path_qualified_and_existing -q` failed RED on bare `test_legacy_asset_repository_is_not_imported`, then passed after path qualification and parser tightening. |
 
 Deviations from spec:
 
@@ -882,6 +883,23 @@ exit code: 0
 
 $ cd web && npx prettier --check tests/architecture/frontendDocContract.test.ts && npx eslint tests/architecture/frontendDocContract.test.ts --max-warnings=0
 All matched files use Prettier code style!
+exit code: 0
+
+$ uv run pytest tests/architecture/test_harness_structure.py::test_architecture_doc_test_references_are_path_qualified_and_existing -q
+F                                                                        [100%]
+AssertionError: docs/ARCHITECTURE.md test references must be path-qualified: test_legacy_asset_repository_is_not_imported
+exit code: 1
+
+$ uv run pytest tests/architecture/test_harness_structure.py::test_architecture_doc_test_references_are_path_qualified_and_existing -q
+1 passed in 0.02s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_harness_structure.py -q
+13 passed in 0.19s
+exit code: 0
+
+$ uv run ruff check tests/architecture/test_harness_structure.py
+All checks passed!
 exit code: 0
 
 $ uv run pytest tests/architecture/test_agent_playbook_contracts.py -q

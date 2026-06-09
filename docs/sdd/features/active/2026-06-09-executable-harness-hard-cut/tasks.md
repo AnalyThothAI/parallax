@@ -1153,6 +1153,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 55 — Architecture doc test-reference gate
+
+- **File(s)**: `docs/ARCHITECTURE.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 54
+- **Touch set**: `docs/ARCHITECTURE.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `docs/ARCHITECTURE.md` for architecture enforcement-test references.
+- **Failing test first**: `tests/architecture/test_harness_structure.py::test_architecture_doc_test_references_are_path_qualified_and_existing` — asserts `docs/ARCHITECTURE.md` cannot use bare or missing architecture-test references.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Docs/contracts
+- **Deterministic constraints**: Architecture enforcement references in `docs/ARCHITECTURE.md` must be path-qualified `tests/architecture/...py::test_*` references whose file and function exist.
+- **On-demand context**: `docs/ARCHITECTURE.md`, `tests/architecture/test_harness_structure.py`, and current architecture test files.
+- **Kill/defer criteria**: Stop if the parser treats ordinary code identifiers as test references or if docs keep bare `test_*` names.
+- **Eval/repair signal**: bare architecture test reference, missing test file/function, stale enforcement-doc reference, and review defects around docs-as-router reliability.
+- **Implementation**: Add a source-bound architecture-doc test-reference gate and replace the bare legacy-asset repository test reference with a full architecture test path.
+- **Verification**: `uv run pytest tests/architecture/test_harness_structure.py::test_architecture_doc_test_references_are_path_qualified_and_existing -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1209,4 +1230,5 @@
 - [ ] `cd web && npm run test -- tests/architecture/frontendDataOwnership.test.ts`
 - [ ] `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_agent_router_frontend_guardrails_match_css_harness -q`
 - [ ] `cd web && npm run test -- tests/architecture/frontendDocContract.test.ts`
+- [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_architecture_doc_test_references_are_path_qualified_and_existing -q`
 - [ ] `make check-all`

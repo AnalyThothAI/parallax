@@ -180,6 +180,31 @@ def test_generated_readme_source_map_points_to_existing_paths() -> None:
             assert source_path.exists(), f"generated README source path does not exist: {token}"
 
 
+def test_architecture_doc_test_references_are_path_qualified_and_existing() -> None:
+    architecture = _read(DOCS / "ARCHITECTURE.md")
+    references = [
+        token
+        for token in re.findall(r"`([^`]+)`", architecture)
+        if token.startswith("test_") or token.startswith("tests/architecture/")
+    ]
+    assert references, "docs/ARCHITECTURE.md must name architecture tests for enforced boundaries"
+
+    for reference in references:
+        assert reference.startswith("tests/architecture/"), (
+            "docs/ARCHITECTURE.md test references must be path-qualified: "
+            f"{reference}"
+        )
+        test_path_text, _, test_name = reference.partition("::")
+        test_path = REPO_ROOT / test_path_text
+        assert test_path.is_file(), f"docs/ARCHITECTURE.md references missing test file: {reference}"
+        if test_name:
+            test_source = _read(test_path)
+            assert f"def {test_name}(" in test_source, (
+                "docs/ARCHITECTURE.md references missing test function: "
+                f"{reference}"
+            )
+
+
 def test_references_papers_present() -> None:
     papers_dir = DOCS / "references" / "papers"
     assert papers_dir.is_dir(), "docs/references/papers/ missing"

@@ -133,6 +133,11 @@ Known-failing baseline tests:
 - Keep the repo-scoped frontend verification skill aligned with the data-ownership harness, not only CSS and route-shell commands.
 - Require the skill to name `frontendDataOwnership.test.ts` and the route/UI forbidden server-state primitives from the harness.
 
+### `docs/ARCHITECTURE.md`, `tests/architecture/test_harness_structure.py`
+
+- Require architecture-document enforcement references to be path-qualified `tests/architecture/...py::test_*` references.
+- Check referenced architecture test files and functions exist so docs cannot point agents at stale or bare test names.
+
 ### `AGENTS.md`, `CLAUDE.md`, `tests/architecture/test_agent_playbook_contracts.py`
 
 - Keep the shared agent router blocks mirrored and short while checking their frontend guardrails against current CSS harness constants.
@@ -263,6 +268,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Frontend data ownership is executable. | Pass: `frontendDataOwnership.test.ts` blocks direct route/UI server-state references while keeping feature-owned hooks/controllers as the owning boundary. |
 | Agent routers are source-aligned. | Pass: `test_agent_router_frontend_guardrails_match_css_harness` compares AGENTS/CLAUDE frontend guardrails with the CSS architecture harness. |
 | Frontend verification skill carries data ownership. | Pass: `frontendDocContract.test.ts` compares the skill against `frontendDataOwnership.test.ts` primitives. |
+| Architecture docs reference executable tests. | Pass: `test_architecture_doc_test_references_are_path_qualified_and_existing` rejects bare or missing enforcement test references. |
 
 ## Acceptance test commands
 
@@ -320,6 +326,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC52: `cd web && npm run test -- tests/architecture/frontendDataOwnership.test.ts`
 - AC53: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_agent_router_frontend_guardrails_match_css_harness -q`
 - AC54: `cd web && npm run test -- tests/architecture/frontendDocContract.test.ts`
+- AC55: `uv run pytest tests/architecture/test_harness_structure.py::test_architecture_doc_test_references_are_path_qualified_and_existing -q`
 
 ## Verification
 
