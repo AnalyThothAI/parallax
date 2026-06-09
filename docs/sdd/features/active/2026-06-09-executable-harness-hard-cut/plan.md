@@ -200,6 +200,7 @@ Known-failing baseline tests:
 - Reject `current_read_model_identities` entries for tables absent from the same manifest's `writes_read_models`.
 - Reject duplicate `current_read_model_identities` entries for the same table within one worker manifest.
 - Reject duplicate stable identity columns inside each `current_read_model_identities` entry and inside `CurrentReadModelPublisher`.
+- Reject empty stable identity column lists inside each `current_read_model_identities` entry.
 - Reject duplicate table names inside each `WorkerManifest` table-declaration field before `owned_tables` dedupes them.
 
 ### `tests/unit/domains/macro_intel/test_macro_migration_contract.py`
@@ -297,6 +298,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Read-model identity ownership is import-time validated. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares a stable identity for an unowned read model table. |
 | Read-model identity entries are unique. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares two stable identity entries for one read model table. |
 | Read-model identity columns are unique. | Pass: `_validate_worker_manifests()` and `CurrentReadModelPublisher` raise when a read-model identity repeats the same stable identity column. |
+| Read-model identity columns are non-empty. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares an empty stable identity column list. |
 | Worker table declarations are unique. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares the same table twice inside one table-declaration field. |
 | Delegated handoff artifacts are task-bound. | Pass: validator rejects existing delegated handoff files that name another feature/task/mode or stale report-validation command. |
 | Delegated report mode matches handoff mode. | Pass: validator rejects report artifacts whose `Mode:` differs from the owning handoff mode. |
@@ -405,6 +407,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC75: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_read_model_identity_entries -q`
 - AC76: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_table_declarations -q`
 - AC77: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_read_model_identity_columns tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_run_generation_identity_and_skips_unchanged -q`
+- AC78: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_empty_read_model_identity_columns -q`
 
 ## Verification
 
