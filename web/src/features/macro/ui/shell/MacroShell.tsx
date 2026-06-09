@@ -110,7 +110,7 @@ function visibleHref(node: MacroNavigationNode): string | null {
   if (node.navHidden || node.productTier === "hiddenSupported") {
     return null;
   }
-  if (node.pageKind && node.productTier !== "hiddenSupported") {
+  if (node.pageKind) {
     return node.href;
   }
   const visibleChild = node.children?.find((child) => visibleHref(child));
