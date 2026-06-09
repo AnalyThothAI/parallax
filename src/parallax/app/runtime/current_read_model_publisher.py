@@ -134,6 +134,13 @@ class CurrentReadModelPublisher:
                 "current read model existing hash identity arity must match identity columns: "
                 f"{wrong_arity_hash_identities}"
             )
+        invalid_hash_values = tuple(
+            (identity, value)
+            for identity, value in existing_hashes.items()
+            if value is not None and type(value) is not str
+        )
+        if invalid_hash_values:
+            raise ValueError(f"current read model existing hash values must be strings or None: {invalid_hash_values}")
         changed: list[dict[str, Any]] = []
         seen_identities: set[tuple[Any, ...]] = set()
         for row in rows:

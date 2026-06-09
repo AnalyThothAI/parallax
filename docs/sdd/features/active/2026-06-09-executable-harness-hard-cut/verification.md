@@ -165,6 +165,7 @@ claim is allowed without the corresponding output captured below.
 | AC146 — Publisher changed rows reject non-mapping existing hashes. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_mapping_existing_hashes_before_hash_lookup -q` failed RED when list-shaped `existing_hashes` leaked as `AttributeError`, then passed after adding dedicated mapping validation. |
 | AC147 — Publisher changed rows reject non-tuple existing-hash identities. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_tuple_existing_hash_identity_keys_before_hash_lookup -q` failed RED when string-shaped `existing_hashes` keys were accepted, then passed after adding dedicated identity-key validation. |
 | AC148 — Publisher changed rows reject wrong-arity existing-hash identities. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_wrong_arity_existing_hash_identity_keys_before_hash_lookup -q` failed RED when wrong-arity tuple keys were accepted, then passed after adding dedicated identity-arity validation. |
+| AC149 — Publisher changed rows reject non-string existing-hash values. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_string_existing_hash_values_before_hash_lookup -q` failed RED when numeric existing-hash values were accepted, then passed after adding dedicated hash-value validation. |
 
 Deviations from spec:
 
@@ -2664,6 +2665,45 @@ exit code: 0
 
 $ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py -q
 27 passed in 0.43s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
+61 passed in 0.51s
+exit code: 0
+
+$ git diff --check
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_string_existing_hash_values_before_hash_lookup -q
+F                                                                        [100%]
+E       Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_string_existing_hash_values_before_hash_lookup -q
+1 passed in 0.25s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py -q
+28 passed in 0.25s
+exit code: 0
+
+$ uv run python scripts/regen_sdd_work_index.py
+wrote docs/generated/sdd-work-index.md
+exit code: 0
+
+$ uv run python scripts/validate_sdd_artifacts.py --check
+SDD artifact validation passed.
+exit code: 0
+
+$ uv run python scripts/regen_sdd_work_index.py --check
+exit code: 0
+
+$ uv run ruff check src/parallax/app/runtime/current_read_model_publisher.py tests/architecture/test_worker_manifest_static_contracts.py
+All checks passed!
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py -q
+28 passed in 0.43s
 exit code: 0
 
 $ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
