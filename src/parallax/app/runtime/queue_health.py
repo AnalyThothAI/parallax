@@ -42,25 +42,10 @@ STATUS_QUEUE_SPECS: dict[str, StatusQueueSpec] = {
         blocked_statuses=(),
         terminal_statuses=("failed", "expired"),
     ),
-    "token_mention_semantics": StatusQueueSpec(
-        table="token_mention_semantics",
-        due_column="next_retry_at_ms",
-        active_statuses=("queued", "retryable_error", "stale"),
-        due_statuses=("queued", "retryable_error", "stale"),
-        running_statuses=(),
-        failed_statuses=("retryable_error", "stale"),
-        blocked_statuses=(),
-        terminal_statuses=("semantic_unavailable",),
-        lease_column="leased_until_ms",
-        running_age_column="claimed_at_ms",
-    ),
 }
 
 QUEUE_HEALTH_ADAPTER_SPECS: dict[str, QueueHealthAdapterSpec] = {
     "asset_profile_refresh_targets": QueueHealthAdapterSpec(table="asset_profile_refresh_targets", kind="dirty_target"),
-    "discussion_digest_dirty_targets": QueueHealthAdapterSpec(
-        table="discussion_digest_dirty_targets", kind="dirty_target"
-    ),
     "event_anchor_backfill_jobs": QueueHealthAdapterSpec(
         table="event_anchor_backfill_jobs",
         kind="status_queue",
@@ -93,11 +78,6 @@ QUEUE_HEALTH_ADAPTER_SPECS: dict[str, QueueHealthAdapterSpec] = {
     ),
     "token_image_source_dirty_targets": QueueHealthAdapterSpec(
         table="token_image_source_dirty_targets", kind="dirty_target"
-    ),
-    "token_mention_semantics": QueueHealthAdapterSpec(
-        table="token_mention_semantics",
-        kind="status_queue",
-        status_queue=STATUS_QUEUE_SPECS["token_mention_semantics"],
     ),
     "token_profile_current_dirty_targets": QueueHealthAdapterSpec(
         table="token_profile_current_dirty_targets", kind="dirty_target"

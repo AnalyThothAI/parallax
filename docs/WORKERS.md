@@ -99,7 +99,7 @@ Review workers by separating four categories:
 |----------|---------|----------|------|
 | Facts | Business observations and decisions that should be replayable | `events`, `token_intent_resolutions`, `asset_identity_evidence`, `asset_identity_current`, `market_ticks`, `enriched_events`, Pulse audit rows | Facts are product truth. |
 | Read models | Rebuildable projections for reads and product workflows | `market_tick_current`, `token_radar_current_rows`, `token_radar_publication_state`, `token_radar_target_first_seen`, `token_profile_current`, `pulse_candidates`, `watchlist_handle_signal_stats`, watchlist summaries | Exactly one runtime writer. |
-| Control plane | Scheduling, retry, lease, budget, and queue state | `event_anchor_backfill_jobs`, `market_tick_current_dirty_targets`, `token_radar_dirty_targets`, `token_discovery_dirty_lookup_keys`, `macro_projection_dirty_targets`, projection dirty targets, `pulse_trigger_dirty_targets`, `narrative_admission_dirty_targets`, `discussion_digest_dirty_targets`, `token_profile_current_dirty_targets`, `token_image_source_dirty_targets`, `asset_profile_refresh_targets`, `token_capture_tier_dirty_targets`, `pulse_agent_jobs`, `notification_deliveries` | Never treat job state as product truth. |
+| Control plane | Scheduling, retry, lease, budget, and queue state | `event_anchor_backfill_jobs`, `market_tick_current_dirty_targets`, `token_radar_dirty_targets`, `token_discovery_dirty_lookup_keys`, `macro_projection_dirty_targets`, projection dirty targets, `pulse_trigger_dirty_targets`, `narrative_admission_dirty_targets`, `token_profile_current_dirty_targets`, `token_image_source_dirty_targets`, `asset_profile_refresh_targets`, `token_capture_tier_dirty_targets`, `pulse_agent_jobs`, `notification_deliveries` | Never treat job state as product truth. |
 | Cache/fan-out | Process-local convenience state | `LivePriceGateway` latest cache and WebSocket fan-out | Cache is presentation-only unless persisted as facts. |
 | Local media mirrors | Rebuildable local copies of provider media | `token_image_assets` plus files under `cache/token-images` | Public image URLs must come from ready local rows, never provider URLs. |
 
@@ -119,8 +119,7 @@ collector
   -> resolution_refresh and profile refresh lanes
   -> token_image_mirror
   -> token_radar_projection
-  -> narrative_admission (only when narrative bulk analysis gate is enabled)
-  -> mention_semantics / token_discussion_digest (same gate)
+  -> narrative_admission
   -> macro_sync / macro_view_projection / macro_daily_brief_projection
   -> pulse_candidate / notifications / API / WebSocket / CLI
 ```
@@ -136,13 +135,13 @@ When `macro_view_projection` publishes a changed current snapshot, it wakes
 writes the stable `assets_today` daily-brief read model for the operator console. The
 `macro import-bundle` CLI is offline replay/seed only.
 
-Narrative bulk analysis is all-or-nothing at runtime. The gate requires
-`narrative_admission`, `mention_semantics`, and `token_discussion_digest`
-to be enabled and the shared LLM model config to be present. When any part
-of that trio is disabled, Token Radar does not enqueue new
-`narrative_admission_dirty_targets`, and the narrative worker factory keeps
-the whole trio disabled. Existing rows remain inspectable operational state;
-they do not gate News high-signal notifications or Signal Pulse.
+Narrative bulk LLM analysis has been removed from the runtime inventory.
+`narrative_admission` remains as a deterministic, DB-backed admission read
+model writer. Token Radar may enqueue `narrative_admission_dirty_targets`
+when that worker is enabled. There is no `mention_semantics`,
+`token_discussion_digest`, narrative LLM provider, or narrative bulk gate in
+the active worker harness. Historical semantic/digest tables may still be read
+by public surfaces as legacy context, but no current worker writes them.
 
 ## Worker Inventory
 
@@ -150,7 +149,7 @@ they do not gate News high-signal notifications or Signal Pulse.
 collector, token_capture_tier, market_tick_stream, market_tick_poll, market_tick_current_projection,
 event_anchor_backfill, live_price_gateway, resolution_refresh,
 asset_profile_refresh, token_image_mirror, token_radar_projection, token_profile_current,
-narrative_admission, mention_semantics, token_discussion_digest,
+narrative_admission,
 news_fetch, news_item_process,
 news_item_brief, news_page_projection, news_source_quality_projection,
 cex_oi_radar_board, macro_sync, macro_view_projection, macro_daily_brief_projection,
@@ -172,9 +171,7 @@ notification_delivery
 | `token_image_mirror` (`TokenImageMirrorWorker`) | `asset_market` | `domains/asset_market/runtime/token_image_mirror_worker.py` | due `token_image_source_dirty_targets` only; it does not scan source tables | `token_image_assets`, local cache files, `token_profile_current_dirty_targets` on terminal image changes | poll | none | `interval_seconds` |
 | `token_radar_projection` (`TokenRadarProjectionWorker`) | `token_intel` | `domains/token_intel/runtime/token_radar_projection_worker.py` | `token_radar_dirty_targets`; compact `token_radar_rank_source_events` rank-source edges | `token_radar_rank_source_events`, `token_radar_target_features`, `token_radar_current_rows`, `token_radar_publication_state`, `token_radar_target_first_seen`, `projection_runs`, `projection_offsets`, `token_score_evaluations` | `market_tick_current_updated`, `resolution_updated` | `token_radar_updated` | `interval_seconds` |
 | `token_profile_current` (`TokenProfileCurrentWorker`) | `asset_market` | `domains/asset_market/runtime/token_profile_current_worker.py` | due profile dirty targets; exact profile/evidence sources, full `token_image_assets` states, existing image dirty targets | `token_profile_current`, `token_image_source_dirty_targets` | poll | none | `interval_seconds` |
-| `narrative_admission` (`NarrativeAdmissionWorker`) | `narrative_intel` | `domains/narrative_intel/runtime/narrative_admission_worker.py` | due `narrative_admission_dirty_targets`; target-scoped Radar rows, `events`, current `token_intent_resolutions` | `narrative_admissions`, `discussion_digest_dirty_targets` | `token_radar_updated`, `resolution_updated` | none | `interval_seconds` |
-| `mention_semantics` (`MentionSemanticsWorker`) | `narrative_intel` | `domains/narrative_intel/runtime/mention_semantics_worker.py` | leased due `token_mention_semantics` rows and exact source events | `token_mention_semantics`, `narrative_model_runs`, `discussion_digest_dirty_targets` on semantic completion | `token_radar_updated`, `resolution_updated` | `narrative_semantics_updated` | `interval_seconds` |
-| `token_discussion_digest` (`TokenDiscussionDigestWorker`) | `narrative_intel` | `domains/narrative_intel/runtime/token_discussion_digest_worker.py` | due `discussion_digest_dirty_targets`; exact `narrative_admissions`, `token_mention_semantics`, market/profile facts | `token_discussion_digests`, `narrative_model_runs`, digest dirty target backoff | `token_radar_updated`, `narrative_semantics_updated`, `market_tick_written` | none | `interval_seconds` |
+| `narrative_admission` (`NarrativeAdmissionWorker`) | `narrative_intel` | `domains/narrative_intel/runtime/narrative_admission_worker.py` | due `narrative_admission_dirty_targets`; target-scoped Radar rows, `events`, current `token_intent_resolutions` | `narrative_admissions` | `token_radar_updated`, `resolution_updated` | none | `interval_seconds` |
 | `news_fetch` (`NewsFetchWorker`) | `news_intel` | `domains/news_intel/runtime/news_fetch_worker.py` | configured `news_intel.sources` with source classification/policy, due `news_sources`, RSS/Atom/CryptoPanic feeds, OpenNews REST `/open/news_search` catch-up | `news_sources`, `news_fetch_runs`, `news_provider_items`, `news_items`; semantic page/source-refresh work | poll | `news_item_written` | `interval_seconds`; no agent admission |
 | `news_item_process` (`NewsItemProcessWorker`) | `news_intel` | `domains/news_intel/runtime/news_item_process_worker.py` | unprocessed `news_items`, token identity interfaces, bounded same-item/story admission context | `news_item_entities`, `news_token_mentions`, `news_fact_candidates`, `news_items.content_class/content_tags_json/content_classification_json`, `news_items.market_scope_json`, `news_items.story_identity_json`, `news_items.agent_admission_*`; semantic page work and optional item-brief work after market-wide agent admission | `news_item_written` | `news_item_processed` | `interval_seconds` |
 | `news_item_brief` (`NewsItemBriefWorker`) | `news_intel` | `domains/news_intel/runtime/news_item_brief_worker.py` | semantic item-brief work; processed `news_items`, entity/token/fact rows, current brief state, and current `agent_admission` after reserving `news.item_brief` | `news_item_agent_runs`, `news_item_agent_briefs`, refreshed `news_items.agent_admission_*`; semantic page work | `news_item_processed` | `news_item_brief_updated` | `interval_seconds`; no-start backpressure claims nothing and writes no run ledger |
@@ -240,36 +237,29 @@ Staged provider waves are:
 ## Narrative Intel Hard-Cut Ownership
 
 `narrative_admissions.source_event_ids_json` is the source-set truth for
-Narrative Intelligence. Health, digest completeness, public currentness, and
-semantics queue depth must expand admitted source sets first; existing
-`token_mention_semantics` rows cannot define source volume by themselves. The
-same event may count once per current admission/window/scope, but duplicate
-semantic fingerprints for one admission-source row still count as one covered
-source row.
+Narrative Intelligence. Current runtime health expands admitted source sets
+from that read model. Existing `token_mention_semantics` and
+`token_discussion_digests` rows are legacy read context only; they cannot define
+current source volume and no active worker refreshes them. The same event may
+count once per current admission/window/scope.
 
-Token Radar remains the scanner. Realtime Narrative Intelligence writes
-admissions and discussion digests only for `1h/all`; other Radar windows remain
-scanner surfaces and public reads return `unsupported_window` rather than
-reusing a `1h` digest or building an independent digest.
+Token Radar remains the scanner. Realtime Narrative Intelligence now writes
+only admissions. Public reads may compose historical digest context with the
+current admission frontier, but missing or stale legacy digest state must be
+reported explicitly instead of triggering an LLM repair path.
 
-Writer ownership remains narrow: `NarrativeAdmissionWorker` writes
-`narrative_admissions`, `MentionSemanticsWorker` writes
-`token_mention_semantics`, and `TokenDiscussionDigestWorker` writes
-`token_discussion_digests`. `ops rebuild-narrative-intel` has the only
-maintenance writer exception: while it holds the narrative worker advisory
-locks, it may run hard-cut cleanup that deletes obsolete queued/retryable/stale
-semantics and marks suppressed current digests stale. Fingerprint mismatch does
-not demote a ready digest by itself; public reads expose the last ready epoch as
-`updating` or `stale` with explicit delta metadata. HTTP routes and normal
-worker loops must not call that cleanup path.
+Writer ownership is narrow: `NarrativeAdmissionWorker` writes
+`narrative_admissions`. The former `MentionSemanticsWorker`,
+`TokenDiscussionDigestWorker`, narrative LLM provider, narrative prompt files,
+and `ops rebuild-narrative-intel` command are removed rather than retained as
+disabled compatibility surfaces. HTTP routes and normal worker loops must not
+call narrative cleanup or provider paths.
 
 This is a hard cut with no runtime compatibility. Removed settings, source-age
 prune behavior, stale digest fallbacks, and old public digest reasons are not
 kept as aliases. Public digest missing state is reported through
 `discussion_digest.currentness.display_status`: `current`, `updating`, `stale`,
-`not_ready`, `out_of_frontier`, or `unsupported_window`. LLM cycle backpressure
-is reported as `llm_cycle_budget_exhausted` or `llm_failure_budget_exhausted`;
-epoch-policy deferral is separate from provider capacity.
+`not_ready`, `out_of_frontier`, or `unsupported_window`.
 
 ## Token Radar And Watchlist Maintenance Ownership
 
@@ -361,8 +351,7 @@ worker lifecycle allowlists.
 | `market_tick_written` | `MarketTickStreamWorker`, `MarketTickPollWorker`, `EventAnchorBackfillWorker` | `MarketTickCurrentProjectionWorker` | `{target_type, target_id}` |
 | `market_tick_current_updated` | `MarketTickCurrentProjectionWorker` | `TokenRadarProjectionWorker` | `{target_type, target_id}` |
 | `resolution_updated` | `ResolutionRefreshWorker` | `TokenRadarProjectionWorker` | `{lookup_keys: [...]}` |
-| `token_radar_updated` | `TokenRadarProjectionWorker` | `MentionSemanticsWorker`, `TokenDiscussionDigestWorker`, `PulseCandidateWorker` | `{window, scope}` |
-| `narrative_semantics_updated` | `MentionSemanticsWorker` | `TokenDiscussionDigestWorker` | `{window, scope, target_count}` |
+| `token_radar_updated` | `TokenRadarProjectionWorker` | `NarrativeAdmissionWorker`, `PulseCandidateWorker` | `{window, scope}` |
 | `news_item_written` | `NewsFetchWorker` | `NewsItemProcessWorker`, `NewsPageProjectionWorker` | `{source_id, count}` |
 | `news_item_processed` | `NewsItemProcessWorker` | `NewsItemBriefWorker`, `NewsPageProjectionWorker` | `{count}` |
 | `news_item_brief_updated` | `NewsItemBriefWorker` | `NewsPageProjectionWorker` | `{count}` |
@@ -442,8 +431,7 @@ provider SDK clients or expose worker/stage execution limits.
 Current lanes are configured under `workers.agent_runtime` in
 `workers.yaml`. `agent_runtime.defaults.model` is the single global
 agent model default; any lane can override `model` locally and otherwise
-inherits that default. Current lanes are `pulse.decision`,
-`narrative.mention_semantics`, `narrative.discussion_digest`, and
+inherits that default. Current lanes are `pulse.decision` and
 `news.item_brief`. News fact candidates are deterministic outputs of
 `news_item_process`, not a separate LLM lane. Attempt-burning workers reserve
 capacity before claiming DB work:

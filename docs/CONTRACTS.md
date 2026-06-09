@@ -55,8 +55,7 @@ per manifest worker key, in manifest start-priority order:
 `market_tick_current_projection`, `event_anchor_backfill`,
 `token_capture_tier`, `live_price_gateway`, `resolution_refresh`,
 `asset_profile_refresh`, `token_image_mirror`, `token_profile_current`,
-`token_radar_projection`, `narrative_admission`, `mention_semantics`,
-`token_discussion_digest`, `news_fetch`, `news_item_process`,
+`token_radar_projection`, `narrative_admission`, `news_fetch`, `news_item_process`,
 `news_item_brief`, `news_page_projection`, `news_source_quality_projection`,
 `cex_oi_radar_board`,
 `macro_sync`, `macro_view_projection`, `pulse_candidate`, `enrichment`, `handle_summary`,
@@ -566,13 +565,10 @@ skipped result when no profile source is configured. `ops
 sync-binance-cex-profiles` refreshes the Binance CEX profile source cache for
 existing routed CEX tokens. `ops rebuild-token-profiles` rebuilds canonical
 `token_profile_current` rows from persisted source facts without wiring
-upstream providers. `ops rebuild-narrative-intel` is the formal current
-frontier rebuild/drain path for Narrative Intelligence: it runs admission,
-cleans stale current-backlog rows, labels semantics, refreshes digests, and
-returns `cleanup` plus `final_health` summaries without hand-written SQL or
-API-path side effects. Its cleanup phase is an ops maintenance writer
-exception that must run while holding the narrative worker advisory locks; it is
-not a runtime compatibility layer and is not callable from HTTP routes.
+upstream providers. Narrative Intelligence no longer exposes
+`ops rebuild-narrative-intel`; runtime LLM workers for mention semantics and
+discussion digests were hard-cut instead of kept as disabled maintenance
+surfaces.
 Runtime dirty-target consumers must self-heal from their material fact sources
 with bounded catch-up inside their own projection path. There is no generic
 runtime-worker repair CLI because such a surface blurs the boundary between

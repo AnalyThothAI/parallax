@@ -330,6 +330,8 @@ class LiteLLMPulseDecisionClient:
             workflow_name=self.workflow_name,
             agent_name=_stage_agent_name(spec.stage, route),
             group_id=_group_id(spec.input_payload.get("evidence_packet")) or str(run_id or ""),
+            knowledge_refs=spec.knowledge_refs,
+            read_only_tool_refs=spec.read_only_tool_refs,
             trace_metadata={
                 **dict(audit.get("trace_metadata") or {}),
                 "run_id": str(run_id or ""),

@@ -161,22 +161,6 @@ def _retry_event_anchor_job(
     return {"requeued": 1, "job": row}
 
 
-def _retry_mention_semantics(
-    repos: object,
-    event: dict[str, Any],
-    *,
-    now_ms: int,
-    reason: str,
-) -> dict[str, Any]:
-    repo = getattr(repos, "narratives", None)
-    retry = getattr(repo, "retry_terminal_mention_semantics_from_snapshot", None)
-    if not callable(retry):
-        raise ValueError("narrative_repository_required")
-    row = retry(_source_row(event), now_ms=int(now_ms), reason=reason)
-    _require_requeued(row, "mention_semantics_retry_not_requeued")
-    return {"requeued": 1, "semantic": row}
-
-
 def _retry_pulse_agent_job(
     repos: object,
     event: dict[str, Any],
@@ -227,7 +211,6 @@ def _require_requeued(row: object, code: str) -> None:
 QUEUE_RETRY_TRANSITIONS = {
     ("resolution_refresh", "token_discovery_dirty_lookup_keys"): _retry_discovery_lookup_key,
     ("event_anchor_backfill", "event_anchor_backfill_jobs"): _retry_event_anchor_job,
-    ("mention_semantics", "token_mention_semantics"): _retry_mention_semantics,
     ("pulse_candidate", "pulse_agent_jobs"): _retry_pulse_agent_job,
 }
 

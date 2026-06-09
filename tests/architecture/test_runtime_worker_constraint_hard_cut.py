@@ -47,21 +47,6 @@ RUNTIME_WORKER_CONTRACTS: tuple[RuntimeWorkerHardCutContract, ...] = (
         control_claim_markers=("narrative_admission_dirty_targets.claim_due",),
     ),
     RuntimeWorkerHardCutContract(
-        path=SRC / "domains/narrative_intel/runtime/mention_semantics_worker.py",
-        banned_calls=(
-            "_enqueue_missing_from_admissions_sync",
-            "_missing_source_rows_for_semantics",
-            "due_admissions_for_semantics",
-            "missing_source_rows_for_mention_semantics",
-        ),
-        control_claim_markers=("claim_due_mention_semantics",),
-    ),
-    RuntimeWorkerHardCutContract(
-        path=SRC / "domains/narrative_intel/runtime/token_discussion_digest_worker.py",
-        banned_calls=("due_digest_targets",),
-        control_claim_markers=("discussion_digest_dirty_targets.claim_due",),
-    ),
-    RuntimeWorkerHardCutContract(
         path=SRC / "domains/asset_market/runtime/token_profile_current_worker.py",
         banned_calls=("recent_profile_targets",),
         control_claim_markers=("token_profile_current_dirty_targets.claim_due",),
@@ -110,8 +95,6 @@ WORKER_CLASSIFICATION: dict[str, str] = {
     "token_profile_current": "dirty_target_consumer",
     "token_radar_projection": "dirty_target_consumer",
     "narrative_admission": "dirty_target_consumer",
-    "mention_semantics": "leased_job_consumer",
-    "token_discussion_digest": "dirty_target_consumer",
     "news_fetch": "bounded_provider_scheduler",
     "news_item_process": "target_scoped_expansion",
     "news_item_brief": "dirty_target_consumer",
@@ -140,7 +123,6 @@ CONTROL_PLANE_TABLES = frozenset(
     {
         "pulse_trigger_dirty_targets",
         "narrative_admission_dirty_targets",
-        "discussion_digest_dirty_targets",
         "token_profile_current_dirty_targets",
         "token_image_source_dirty_targets",
         "asset_profile_refresh_targets",
@@ -154,8 +136,6 @@ BUSINESS_OUTPUT_TABLES = frozenset(
         "pulse_agent_runs",
         "pulse_agent_run_steps",
         "narrative_admissions",
-        "token_mention_semantics",
-        "token_discussion_digests",
         "token_profile_current",
         "token_image_assets",
         "asset_profiles",

@@ -93,7 +93,7 @@ are wrong too.
    and `macro_observations` are
    the business fact tables. Control plane tables such as
    `event_anchor_backfill_jobs`, `pulse_trigger_dirty_targets`,
-   `narrative_admission_dirty_targets`, `discussion_digest_dirty_targets`,
+   `narrative_admission_dirty_targets`,
    `token_profile_current_dirty_targets`, `token_image_source_dirty_targets`,
    `asset_profile_refresh_targets`, `token_capture_tier_dirty_targets`, and
    `news_fetch_runs` own worker scheduling state and are not product truth.
@@ -145,10 +145,11 @@ are wrong too.
    `pulse_agent_runtime_versions`, `pulse_agent_eval_cases`,
    `pulse_agent_eval_results`, `pulse_candidates`, and
    `pulse_playbook_snapshots` are written only by `PulseCandidateWorker`.
-   `narrative_admissions` is written only by `NarrativeAdmissionWorker`;
-   `token_mention_semantics` is written only by `MentionSemanticsWorker`;
-   `token_discussion_digests` is written only by
-   `TokenDiscussionDigestWorker`. New
+   `narrative_admissions` is written only by `NarrativeAdmissionWorker`.
+   Former narrative LLM read models such as `token_mention_semantics` and
+   `token_discussion_digests` have no current runtime writer. Public surfaces
+   may read historical rows as legacy context, but current runtime work does
+   not refresh them. New
    read models must declare their single writer in the owning module's
    ARCHITECTURE.md. `token_profile_current` is written only by
    `TokenProfileCurrentWorker`; it may expose token logos only from ready
@@ -404,14 +405,15 @@ source. Signal Pulse public payloads expose `decision`, `factor_snapshot`,
 Narrative Intelligence sits upstream of Pulse decisioning and downstream of
 Token Radar discovery. API surfaces may compose Token Radar / Token Case rows
 with `NarrativeReadModel`, but they do not run providers, score rows, or write
-narrative read models. Narrative digest rows are sealed epochs: public reads
-compose the last ready epoch with the current `narrative_admissions` source
-frontier and expose the delta through `discussion_digest.currentness`.
-Fingerprint mismatch alone is not a reason to blank the narrative. Pulse may
-include a ready discussion digest in its sealed evidence packet as context, but
-stale/updating digest prose is not primary evidence; Pulse hidden/internal
-candidate state never triggers narrative workers and never writes
-`token_mention_semantics` or `token_discussion_digests`.
+narrative read models. The active runtime writes only `narrative_admissions`;
+former mention-semantic and discussion-digest LLM workers are removed. Public
+reads may compose historical ready digest rows with the current
+`narrative_admissions` source frontier and expose the delta through
+`discussion_digest.currentness`. Fingerprint mismatch alone is not a reason to
+blank legacy narrative context. Pulse may include a ready discussion digest in
+its sealed evidence packet as context, but stale/updating digest prose is not
+primary evidence; Pulse hidden/internal candidate state never triggers
+narrative workers and never writes legacy narrative semantic/digest tables.
 
 ## Asset Profile Facts
 

@@ -5,8 +5,8 @@ from contextlib import nullcontext
 from types import SimpleNamespace
 from typing import Any
 
-from parallax.app.surfaces.api import routes_radar, routes_search, routes_status
-from parallax.app.surfaces.api.schemas import NarrativeBacklogHealthData, TokenCaseData, TokenRadarData
+from parallax.app.surfaces.api import routes_radar, routes_search
+from parallax.app.surfaces.api.schemas import TokenCaseData, TokenRadarData
 
 NOW_MS = 1_778_562_000_000
 
@@ -155,101 +155,6 @@ def test_public_narrative_contract_requires_currentness_and_delta() -> None:
     assert radar.targets[0].discussion_digest.currentness.display_status == "unsupported_window"
 
 
-def test_narrative_health_route_uses_domain_owned_query(monkeypatch) -> None:
-    calls: list[dict[str, Any]] = []
-    runtime = _runtime()
-    monkeypatch.setattr(routes_status, "_authenticated_runtime", lambda _request: runtime)
-    monkeypatch.setattr(routes_status, "_now_ms", lambda: NOW_MS)
-    monkeypatch.setattr(
-        routes_status,
-        "NarrativeBacklogHealthQuery",
-        lambda conn, **kwargs: _NarrativeBacklogHealthQuery(conn=conn, calls=calls, kwargs=kwargs),
-        raising=False,
-    )
-
-    response = routes_status.narrative_health(_request(), since_hours=4)
-
-    body = _body(response)
-    assert body["ok"] is True
-    assert body["data"]["semantic_backlog"]["total_pending"] == 5
-    assert body["data"]["semantic_backlog"]["missing_semantic_rows"] == 4
-    assert body["data"]["semantic_backlog"]["current_source_rows"] == 12
-    assert body["data"]["pending_digest_count"] == 2
-    assert calls == [
-        {
-            "conn": runtime.conn,
-            "now_ms": NOW_MS,
-            "since_hours": 4,
-            "kwargs": {
-                "realtime_windows": ("1h",),
-                "realtime_scopes": ("all",),
-                "semantics_rows_per_cycle": 10,
-                "semantics_interval_seconds": 60,
-                "digest_calls_per_cycle": 3,
-                "digest_interval_seconds": 120,
-            },
-        }
-    ]
-
-
-def test_narrative_health_schema_exposes_source_set_backlog_fields() -> None:
-    data = NarrativeBacklogHealthData.model_validate(
-        {
-            "semantic_backlog": {
-                "total_pending": 9,
-                "current_source_rows": 12,
-                "semantic_rows_for_current_sources": 8,
-                "missing_semantic_rows": 4,
-                "admissions_with_missing_semantics": 2,
-                "pending_existing_rows": 5,
-                "queued": 3,
-                "retryable": 2,
-                "stale": 0,
-                "unavailable": 1,
-                "suppressed_current_digest_count": 1,
-                "stale_fingerprint_current_digest_count": 3,
-            },
-            "epoch": {
-                "epoch_policy_version": "token-narrative-epoch-v1",
-                "unsupported_window_admissions": 2,
-                "last_ready_digest_count": 5,
-                "updating_snapshot_count": 3,
-                "material_delta_due_count": 4,
-                "no_material_delta_deferred_count": 6,
-                "last_ready_p50_age_ms": 120_000,
-                "last_ready_p95_age_ms": 600_000,
-                "delta_source_rows": 9,
-                "delta_independent_authors": 3,
-                "digest_refresh_due_by_window": {"1h": 2, "24h": 2},
-                "digest_refresh_deferred_by_epoch_policy": {"no_material_delta": 6},
-            },
-            "realtime_scopes": ["all"],
-        }
-    )
-
-    assert data.realtime_scopes == ["all"]
-    assert data.semantic_backlog.total_pending == 9
-    assert data.semantic_backlog.missing_semantic_rows == 4
-    assert data.semantic_backlog.current_source_rows == 12
-    assert data.semantic_backlog.semantic_rows_for_current_sources == 8
-    assert data.semantic_backlog.admissions_with_missing_semantics == 2
-    assert data.semantic_backlog.pending_existing_rows == 5
-    assert data.semantic_backlog.suppressed_current_digest_count == 1
-    assert data.semantic_backlog.stale_fingerprint_current_digest_count == 3
-    assert data.epoch.epoch_policy_version == "token-narrative-epoch-v1"
-    assert data.epoch.unsupported_window_admissions == 2
-    assert data.epoch.last_ready_digest_count == 5
-    assert data.epoch.updating_snapshot_count == 3
-    assert data.epoch.material_delta_due_count == 4
-    assert data.epoch.no_material_delta_deferred_count == 6
-    assert data.epoch.last_ready_p50_age_ms == 120_000
-    assert data.epoch.last_ready_p95_age_ms == 600_000
-    assert data.epoch.delta_source_rows == 9
-    assert data.epoch.delta_independent_authors == 3
-    assert data.epoch.digest_refresh_due_by_window == {"1h": 2, "24h": 2}
-    assert data.epoch.digest_refresh_deferred_by_epoch_policy == {"no_material_delta": 6}
-
-
 class _NarrativeReadModel:
     def __init__(self, *, calls: list[dict[str, Any]], **_kwargs: Any) -> None:
         self.calls = calls
@@ -330,56 +235,11 @@ def _runtime() -> SimpleNamespace:
     )
     return SimpleNamespace(
         conn=conn,
-        settings=SimpleNamespace(
-            workers=SimpleNamespace(
-                mention_semantics=SimpleNamespace(
-                    batch_size=50,
-                    provider_batch_size=10,
-                    interval_seconds=60,
-                ),
-                token_discussion_digest=SimpleNamespace(
-                    windows=("1h",),
-                    max_llm_calls_per_cycle=3,
-                    interval_seconds=120,
-                ),
-            )
-        ),
+        settings=SimpleNamespace(),
         repositories=lambda: nullcontext(repos),
         providers=SimpleNamespace(asset_market=SimpleNamespace(cex_market=None, dex_candle_market=None)),
         workers={},
     )
-
-
-class _NarrativeBacklogHealthQuery:
-    def __init__(self, *, conn: Any, calls: list[dict[str, Any]], kwargs: dict[str, Any]) -> None:
-        self.conn = conn
-        self.calls = calls
-        self.kwargs = kwargs
-
-    def health(self, *, now_ms: int, since_hours: int) -> dict[str, Any]:
-        self.calls.append({"conn": self.conn, "now_ms": now_ms, "since_hours": since_hours, "kwargs": self.kwargs})
-        return {
-            "schema_version": "narrative_intel_v1",
-            "now_ms": now_ms,
-            "since_hours": since_hours,
-            "semantic_backlog": {
-                "total_pending": 5,
-                "current_source_rows": 12,
-                "semantic_rows_for_current_sources": 8,
-                "missing_semantic_rows": 4,
-                "admissions_with_missing_semantics": 2,
-                "pending_existing_rows": 5,
-                "queued": 3,
-                "retryable": 2,
-                "stale": 0,
-                "unavailable": 1,
-                "suppressed_current_digest_count": 1,
-                "stale_fingerprint_current_digest_count": 3,
-                "oldest_due_age_ms": 4_000,
-            },
-            "recent_runs": {},
-            "pending_digest_count": 2,
-        }
 
 
 def _request() -> SimpleNamespace:

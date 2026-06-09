@@ -2,13 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from parallax.app.runtime.narrative_bulk_analysis_gate import narrative_bulk_analysis_enabled
 from parallax.app.runtime.provider_wiring.types import (
     AssetMarketProviders,
     CexMarketIntelProviders,
     IngestionProviders,
     MacrodataProviders,
-    NarrativeIntelProviders,
     NewsIntelProviders,
     PulseLabProviders,
     WiredProviders,
@@ -38,14 +36,6 @@ def wire_providers(
         ),
         asset_market=asset_market.wire_asset_market(settings),
         cex_market_intel=cex_market_intel.wire_cex_market_intel(settings),
-        narrative_intel=NarrativeIntelProviders(
-            narrative_provider=model_execution.litellm_narrative_intel_provider(
-                settings,
-                agent_gateway=_require_agent_execution_gateway(agent_execution_gateway),
-            )
-            if narrative_bulk_analysis_enabled(settings)
-            else None,
-        ),
         news_intel=NewsIntelProviders(
             feed_client=news.news_feed_client(settings)
             if settings.news_intel.enabled and settings.workers.news_fetch.enabled
@@ -91,7 +81,6 @@ __all__ = [
     "CexMarketIntelProviders",
     "IngestionProviders",
     "MacrodataProviders",
-    "NarrativeIntelProviders",
     "NewsIntelProviders",
     "PulseLabProviders",
     "WiredProviders",

@@ -8,7 +8,6 @@ from parallax.domains.pulse_lab.services.pulse_decision_runtime import (
 )
 from parallax.domains.pulse_lab.types.agent_decision import DecisionRoute
 from parallax.integrations.model_execution.execution_gateway import AgentExecutionGateway
-from parallax.integrations.model_execution.narrative_intel_agent_client import LiteLLMNarrativeIntelClient
 from parallax.integrations.model_execution.news_item_brief_agent_client import (
     LiteLLMNewsItemBriefClient,
 )
@@ -18,41 +17,6 @@ from parallax.platform.agent_execution import (
     AgentRuntimePolicy,
 )
 from parallax.platform.config.settings import Settings
-
-
-class LiteLLMNarrativeIntelProvider:
-    def __init__(self, client: Any) -> None:
-        self._client = client
-
-    @property
-    def provider(self) -> str:
-        return self._client.provider
-
-    @property
-    def model(self) -> str:
-        return self._client.model
-
-    @property
-    def artifact_version_hash(self) -> str:
-        return self._client.artifact_version_hash
-
-    def try_reserve_execution(self, lane: str, *, rate_units: int = 1) -> AgentCapacityReservation:
-        return self._client.try_reserve_execution(lane, rate_units=rate_units)
-
-    def request_audit_for_label_mentions(self, **kwargs: Any) -> dict[str, Any]:
-        return self._client.request_audit_for_label_mentions(**kwargs)
-
-    async def label_mentions(self, **kwargs: Any) -> Any:
-        return await self._client.label_mentions(**kwargs)
-
-    def request_audit_for_summarize_discussion(self, **kwargs: Any) -> dict[str, Any]:
-        return self._client.request_audit_for_summarize_discussion(**kwargs)
-
-    async def summarize_discussion(self, **kwargs: Any) -> Any:
-        return await self._client.summarize_discussion(**kwargs)
-
-    async def aclose(self) -> None:
-        await self._client.aclose()
 
 
 class LiteLLMPulseDecisionProvider:
@@ -161,18 +125,6 @@ def litellm_pulse_decision_provider(
     )
 
 
-def litellm_narrative_intel_provider(
-    settings: Settings,
-    *,
-    agent_gateway: AgentExecutionGateway,
-) -> LiteLLMNarrativeIntelProvider:
-    return LiteLLMNarrativeIntelProvider(
-        LiteLLMNarrativeIntelClient(
-            agent_gateway=agent_gateway,
-        )
-    )
-
-
 def litellm_news_item_brief_provider(
     settings: Settings,
     *,
@@ -216,10 +168,8 @@ def _require_llm_gateway(llm_gateway: object | None) -> object:
 
 
 __all__ = [
-    "LiteLLMNarrativeIntelProvider",
     "LiteLLMPulseDecisionProvider",
     "build_agent_execution_gateway",
-    "litellm_narrative_intel_provider",
     "litellm_news_item_brief_provider",
     "litellm_pulse_decision_provider",
 ]

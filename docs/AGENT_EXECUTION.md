@@ -54,6 +54,47 @@ model.
 `news_item_agent_runs` and `news_item_agent_briefs`. It rechecks deterministic
 market-wide `agent_admission` state and `market_scope_json` after claiming work.
 
+## Read-Only Context Registry
+
+Parallax borrows the useful part of agent harness tool catalogs without adding
+a model-driven tool loop. `src/parallax/platform/agent_read_tools.py` declares
+read-only `AgentReadTool` metadata over current read models such as
+`news_item_agent_briefs`, `pulse_candidates`, and `token_radar_current_rows`.
+These tools are not passed to models as callable tools. They are a typed
+catalog for deterministic host-side context assembly, operator inspection, and
+future reviewed retrieval code.
+
+Tool SQL must be a single `SELECT`/`WITH` statement and the manifest must not
+expose raw SQL. Mutating verbs, multiple statements, and writable tool metadata
+fail validation. Product agents may reference tool ids through
+`AgentStageSpec.read_only_tool_refs`, but the owning domain still decides what
+data to load and remains responsible for all product writes.
+
+## Knowledge Catalog
+
+`src/parallax/platform/agent_knowledge.py` provides a small prompt knowledge
+catalog. The index exposes stable ids and summaries only; full markdown bodies
+load on demand and are appended to stage instructions through explicit
+`AgentStageSpec.knowledge_refs`. This mirrors the useful shape of Claude Code
+skills and lightweight prompt libraries while keeping prompt expansion
+deterministic and auditable.
+
+Knowledge refs must fail closed when unknown. Prompt text hashes include the
+loaded knowledge body so edits invalidate agent artifacts without relying on a
+manual version bump.
+
+## Hooks Decision
+
+Claude Code-style `PreToolUse` / `PostToolUse` hooks are not a product hot-path
+requirement because Parallax models do not execute tools. The runtime does not
+need shell-command guards, tool-permission callbacks, or generic post-tool
+mutation hooks inside `AgentExecutionGateway`.
+
+The justified hooks are typed observer seams that already match the service:
+worker status, queue health, wake hints, agent audit envelopes, telemetry, and
+domain ledgers. New hook-like extension points must be typed, read-only unless
+owned by the domain writer, and testable through the manifest/audit contract.
+
 ## Runtime Flow
 
 ```text

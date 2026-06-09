@@ -161,21 +161,6 @@ class CliTests(unittest.TestCase):
             ["ops", "audit-token-intent", "--event-id", "event-1"],
             ["ops", "rebuild-token-radar", "--window", "1h"],
             ["ops", "audit-token-radar", "--window", "5m", "--scope", "all"],
-            [
-                "ops",
-                "rebuild-narrative-intel",
-                "--window",
-                "1h",
-                "--scope",
-                "all",
-                "--semantic-limit",
-                "5",
-                "--digest-limit",
-                "5",
-                "--cycles",
-                "2",
-                "--drain",
-            ],
             ["ops", "factor-diagnostics", "--window", "1h", "--scope", "all", "--limit", "200"],
             [
                 "ops",
@@ -239,32 +224,32 @@ class CliTests(unittest.TestCase):
         self.assertEqual(parsed[16].ops_command, "audit-token-intent")
         self.assertEqual(parsed[17].ops_command, "rebuild-token-radar")
         self.assertEqual(parsed[18].ops_command, "audit-token-radar")
-        self.assertEqual(parsed[19].ops_command, "rebuild-narrative-intel")
-        self.assertEqual(parsed[19].window, "1h")
-        self.assertEqual(parsed[19].scope, "all")
-        self.assertEqual(parsed[19].semantic_limit, 5)
-        self.assertEqual(parsed[19].digest_limit, 5)
-        self.assertTrue(parsed[19].drain)
-        self.assertEqual(parsed[20].ops_command, "factor-diagnostics")
-        self.assertEqual(parsed[20].limit, 200)
-        self.assertEqual(parsed[21].ops_command, "settle-token-factors")
-        self.assertEqual(parsed[21].now_ms, 1_700_000_000_000)
-        self.assertEqual(parsed[22].ops_command, "sync-us-equity-symbols")
-        self.assertEqual(parsed[23].ops_command, "rebuild-token-profiles")
-        self.assertEqual(parsed[23].limit, 5)
-        self.assertEqual(parsed[24].ops_command, "rebuild-market-tick-current")
+        self.assertEqual(parsed[19].ops_command, "factor-diagnostics")
+        self.assertEqual(parsed[19].limit, 200)
+        self.assertEqual(parsed[20].ops_command, "settle-token-factors")
+        self.assertEqual(parsed[20].now_ms, 1_700_000_000_000)
+        self.assertEqual(parsed[21].ops_command, "sync-us-equity-symbols")
+        self.assertEqual(parsed[22].ops_command, "rebuild-token-profiles")
+        self.assertEqual(parsed[22].limit, 5)
+        self.assertEqual(parsed[23].ops_command, "rebuild-market-tick-current")
+        self.assertTrue(parsed[23].dry_run)
+        self.assertEqual(parsed[24].ops_command, "enqueue-token-radar-dirty-targets")
+        self.assertEqual(parsed[24].source, "events")
+        self.assertEqual(parsed[24].since_ms, 0)
+        self.assertEqual(parsed[24].limit, 5000)
         self.assertTrue(parsed[24].dry_run)
         self.assertEqual(parsed[25].ops_command, "enqueue-token-radar-dirty-targets")
-        self.assertEqual(parsed[25].source, "events")
-        self.assertEqual(parsed[25].since_ms, 0)
-        self.assertEqual(parsed[25].limit, 5000)
-        self.assertTrue(parsed[25].dry_run)
-        self.assertEqual(parsed[26].ops_command, "enqueue-token-radar-dirty-targets")
-        self.assertEqual(parsed[26].source, "market-current")
+        self.assertEqual(parsed[25].source, "market-current")
+        self.assertTrue(parsed[25].execute)
+        self.assertEqual(parsed[26].ops_command, "enqueue-token-capture-tier-rank-set")
+        self.assertEqual(parsed[26].window, "24h")
         self.assertTrue(parsed[26].execute)
-        self.assertEqual(parsed[27].ops_command, "enqueue-token-capture-tier-rank-set")
-        self.assertEqual(parsed[27].window, "24h")
-        self.assertTrue(parsed[27].execute)
+
+    def test_cli_ops_rebuild_narrative_intel_is_not_registered(self):
+        parser = build_parser()
+
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["ops", "rebuild-narrative-intel", "--window", "1h"])
 
     def test_cli_ops_cex_binance_hard_cut_cleanup_is_not_registered(self):
         parser = build_parser()
@@ -577,7 +562,8 @@ def test_rebuild_token_radar_one_shot_acquires_projection_advisory_lock(monkeypa
                 advisory_lock_key=configured_lock_key,
                 batch_size=100,
                 wakes_on=("market_tick_written",),
-            )
+            ),
+            narrative_admission=SimpleNamespace(enabled=True),
         )
     )
     monkeypatch.setattr(ops_module.DBPoolBundle, "create", staticmethod(lambda settings, telemetry: db))
@@ -654,7 +640,8 @@ def test_rebuild_token_radar_one_shot_skips_when_live_worker_holds_lock(monkeypa
                 advisory_lock_key=configured_lock_key,
                 batch_size=100,
                 wakes_on=("market_tick_written",),
-            )
+            ),
+            narrative_admission=SimpleNamespace(enabled=True),
         )
     )
     monkeypatch.setattr(ops_module.DBPoolBundle, "create", staticmethod(lambda settings, telemetry: db))

@@ -23,8 +23,9 @@ class NarrativeAdmissionWorker(WorkerBase):
         db: Any,
         telemetry: Any,
         wake_bus: Any | None = None,
+        wake_waiter: Any | None = None,
     ) -> None:
-        super().__init__(name=name, settings=settings, db=db, telemetry=telemetry)
+        super().__init__(name=name, settings=settings, db=db, telemetry=telemetry, wake_waiter=wake_waiter)
         self.wake_bus = wake_bus
         self.admission = NarrativeAdmissionService(
             hot_rank_limit=int(getattr(settings, "hot_rank_limit", 50) or 50),
@@ -53,7 +54,6 @@ class NarrativeAdmissionWorker(WorkerBase):
         source_limit = max(1, int(getattr(self.settings, "source_limit", 2000) or 2000))
         lease_ms = max(1, int(getattr(self.settings, "lease_seconds", 60) or 60)) * 1000
         retry_ms = max(1, int(getattr(self.settings, "error_retry_seconds", 60) or 60)) * 1000
-        model_version = str(getattr(self.settings, "model_version", "unknown") or "unknown")
         stats = {
             "claimed": 0,
             "queue_depth": 0,
@@ -63,11 +63,6 @@ class NarrativeAdmissionWorker(WorkerBase):
             "failed": 0,
             "admissions_upserted": 0,
             "admissions_staled": 0,
-            "digests_staled": 0,
-            "semantics_staled": 0,
-            "semantic_rows_enqueued": 0,
-            "semantic_rows_existing": 0,
-            "digest_targets_enqueued": 0,
         }
         with self._repository_session() as repos, repos.transaction():
             claims = repos.narrative_admission_dirty_targets.claim_due(
@@ -92,7 +87,6 @@ class NarrativeAdmissionWorker(WorkerBase):
                             claim,
                             now_ms=now_ms,
                             source_limit=source_limit,
-                            model_version=model_version,
                         )
                     _merge_stats(stats, claim_stats)
                     done_claims.append(dict(claim))
@@ -118,7 +112,6 @@ class NarrativeAdmissionWorker(WorkerBase):
         *,
         now_ms: int,
         source_limit: int,
-        model_version: str,
     ) -> dict[str, int]:
         target_type = _required_claim_text(claim, "target_type")
         target_id = _required_claim_text(claim, "target_id")
@@ -132,11 +125,6 @@ class NarrativeAdmissionWorker(WorkerBase):
             "rows_written": 0,
             "admissions_upserted": 0,
             "admissions_staled": 0,
-            "digests_staled": 0,
-            "semantics_staled": 0,
-            "semantic_rows_enqueued": 0,
-            "semantic_rows_existing": 0,
-            "digest_targets_enqueued": 0,
         }
         context = repos.narratives.load_radar_admission_target(
             target_type=target_type,
@@ -168,13 +156,7 @@ class NarrativeAdmissionWorker(WorkerBase):
                 commit=False,
             )
             stats["admissions_staled"] += int(staled.get("staled_admissions") or 0)
-            stats["digests_staled"] += int(staled.get("staled_digests") or 0)
-            stats["semantics_staled"] += int(staled.get("staled_semantics") or 0)
-            stats["rows_written"] += (
-                int(staled.get("staled_admissions") or 0)
-                + int(staled.get("staled_digests") or 0)
-                + int(staled.get("staled_semantics") or 0)
-            )
+            stats["rows_written"] += int(staled.get("staled_admissions") or 0)
             return stats
 
         for decision in decisions:
@@ -194,7 +176,7 @@ class NarrativeAdmissionWorker(WorkerBase):
                 watched_only=scope == "matched",
                 limit=source_limit,
             )
-            source_rows = list(source_set.pop("source_rows", []))
+            source_set.pop("source_rows", None)
             payload.update(source_set)
             payload["projection_computed_at_ms"] = projection_computed_at_ms
             payload["source_window_start_ms"] = source_start_ms
@@ -210,41 +192,6 @@ class NarrativeAdmissionWorker(WorkerBase):
             stats["admissions_upserted"] += upserted_count
             stats["rows_written"] += upserted_count
             stats["source_rows_scanned"] += int(source_set.get("source_event_count") or 0)
-            enqueued = repos.narratives.enqueue_missing_mention_semantics(
-                source_rows,
-                schema_version=schema_version,
-                model_version=model_version,
-                now_ms=now_ms,
-                commit=False,
-            )
-            semantic_inserted = int(enqueued.get("inserted") or 0)
-            stats["semantic_rows_enqueued"] += semantic_inserted
-            stats["semantic_rows_existing"] += int(enqueued.get("existing") or 0)
-            stats["rows_written"] += semantic_inserted
-            digest_targets = repos.discussion_digest_dirty_targets.enqueue_targets(
-                [
-                    {
-                        "target_type": decision.target_type,
-                        "target_id": decision.target_id,
-                        "window": window,
-                        "scope": scope,
-                        "projection_version": projection_version,
-                        "schema_version": schema_version,
-                        "source_watermark_ms": (
-                            decision.source_max_received_at_ms
-                            or source_set.get("source_max_received_at_ms")
-                            or source_end_ms
-                        ),
-                        "priority": decision.priority,
-                    }
-                ],
-                reason="narrative_admission_changed",
-                now_ms=now_ms,
-                commit=False,
-            )
-            digest_target_count = int(digest_targets.get("targets") or 0)
-            stats["digest_targets_enqueued"] += digest_target_count
-            stats["rows_written"] += digest_target_count
         return stats
 
     @contextmanager

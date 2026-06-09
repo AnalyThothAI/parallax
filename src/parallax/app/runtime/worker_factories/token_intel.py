@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from parallax.app.runtime.narrative_bulk_analysis_gate import narrative_bulk_analysis_enabled
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_factories import WorkerFactoryContext
 from parallax.app.runtime.worker_manifest import manifest_names_for_factory
@@ -22,6 +21,6 @@ def construct_token_intel_workers(ctx: WorkerFactoryContext) -> dict[str, Worker
             telemetry=ctx.telemetry,
             wake_bus=ctx.wake_bus,
             wake_waiter=ctx.db.wake_listener(worker_name, workers.token_radar_projection.wakes_on),
-            enqueue_narrative_admission=narrative_bulk_analysis_enabled(ctx.settings),
+            enqueue_narrative_admission=bool(workers.narrative_admission.enabled),
         )
     }

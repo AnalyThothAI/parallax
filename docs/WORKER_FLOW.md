@@ -77,11 +77,9 @@ The hot path from one public-stream frame to product output is:
 
 5. Narrative Intelligence read models
    - narrative_admission claims `narrative_admission_dirty_targets`, then reads exact Radar/material facts and writes current source-set admissions
-   - mention_semantics claims due semantic rows and labels only source events from current admissions
-   - token_discussion_digest claims `discussion_digest_dirty_targets` and evaluates the exact current admission against the last ready epoch with `NarrativeEpochPolicy`
-   - realtime narrative work is `1h/all` only; `5m`, `4h`, and `24h` Radar rows are scanner surfaces and return `unsupported_window`
-   - `1h/all` material delta, TTL expiry, or first ready work seals a new digest epoch; non-material delta leaves the last ready snapshot readable
-   - emits narrative_semantics_updated only as a wake hint for digest refresh
+   - the former mention semantics and discussion digest LLM workers are removed from the runtime harness
+   - historical semantic/digest tables may be read as legacy context, but no active worker refreshes them
+   - API routes expose missing/stale legacy narrative context explicitly instead of triggering LLM repair
 
 6. Consumers
    - Pulse claims `pulse_trigger_dirty_targets`, exact-loads Token Radar rows, gates candidates, runs the agent, and writes audit rows
@@ -241,12 +239,11 @@ These rows schedule work. They are not product facts by themselves.
 Product surfaces should not infer token quality from a queue status.
 
 Dirty-target queues such as `pulse_trigger_dirty_targets`,
-`narrative_admission_dirty_targets`, `discussion_digest_dirty_targets`,
-`token_profile_current_dirty_targets`, `token_image_source_dirty_targets`,
-`asset_profile_refresh_targets`, and `token_capture_tier_dirty_targets` are
-control-plane rows only. They are repaired through explicit ops commands that
-enqueue targets; normal worker loops do not fall back to historical scans when
-the queue is empty.
+`narrative_admission_dirty_targets`, `token_profile_current_dirty_targets`,
+`token_image_source_dirty_targets`, `asset_profile_refresh_targets`, and
+`token_capture_tier_dirty_targets` are control-plane rows only. They are
+repaired through explicit ops commands that enqueue targets; normal worker loops
+do not fall back to historical scans when the queue is empty.
 
 Worker identity and lane grouping come from `WorkerManifest v1` only.
 `workers.yaml` can tune a manifest worker's cadence, lease, timeout, attempt,
@@ -258,8 +255,8 @@ an old queue name.
 Narrative digest state answers: "What readable narrative epoch do we have, and
 how far is it from the current source frontier?"
 
-The current source frontier is `narrative_admissions`. A ready digest is a
-sealed epoch in `token_discussion_digests`. Public reads compose:
+The current source frontier is `narrative_admissions`. A historical ready
+digest may exist in `token_discussion_digests`. Public reads compose:
 
 ```text
 last-ready digest + current admission delta -> discussion_digest.currentness
@@ -267,9 +264,8 @@ last-ready digest + current admission delta -> discussion_digest.currentness
 
 `currentness.display_status` is one of `current`, `updating`, `stale`,
 `not_ready`, `out_of_frontier`, or `unsupported_window`. New source events do
-not blank the narrative. They first become delta; only material delta, epoch
-TTL, or first-ready work runs the digest LLM. The API route never calls the LLM
-or writes narrative tables.
+not blank the narrative. They first become delta. The API route never calls the
+LLM or writes narrative tables, and there is no active digest LLM worker.
 
 ### Projection Freshness State
 
@@ -282,8 +278,6 @@ Examples:
 - `projection_offsets`
 - projection coverage rows
 - `token_radar_current_rows.computed_at_ms`
-- `token_mention_semantics.computed_at_ms`
-- `token_discussion_digests.computed_at_ms`
 - status payload fields such as `last_result` and `last_error`
 
 Projection freshness is a read-model health signal. It should never

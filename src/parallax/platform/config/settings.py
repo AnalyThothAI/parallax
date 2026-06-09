@@ -807,8 +807,6 @@ def _default_agent_lanes() -> dict[str, AgentLaneSettings]:
             max_concurrency=1,
             timeout_seconds=240.0,
         ),
-        "narrative.mention_semantics": AgentLaneSettings(priority="bulk", max_concurrency=1, timeout_seconds=180.0),
-        "narrative.discussion_digest": AgentLaneSettings(priority="normal", max_concurrency=1, timeout_seconds=180.0),
         "news.item_brief": AgentLaneSettings(priority="low", max_concurrency=1, timeout_seconds=180.0),
     }
 
@@ -1154,77 +1152,6 @@ class NarrativeAdmissionWorkerSettings(PerWorkerSettings):
         return _validate_narrative_realtime_scopes("narrative_admission.scopes", value)
 
 
-class MentionSemanticsWorkerSettings(PerWorkerSettings):
-    interval_seconds: float = Field(default=60.0, ge=0)
-    soft_timeout_seconds: float = Field(default=240.0, ge=0)
-    hard_timeout_seconds: float = Field(default=300.0, ge=0)
-    batch_size: int = Field(default=50, ge=1)
-    provider_batch_size: int = Field(default=10, ge=1)
-    max_attempts: int = Field(default=3, ge=1)
-    advisory_lock_key: int = 2026051801
-    wakes_on: tuple[str, ...] = ("token_radar_updated", "resolution_updated")
-    admission_limit: int = Field(default=200, ge=1)
-    source_limit: int = Field(default=2000, ge=1)
-    max_semantic_rows_enqueued_per_cycle: int = Field(default=120, ge=1)
-    max_semantic_rows_enqueued_per_admission: int = Field(default=20, ge=1)
-    max_semantics_claimed_per_target_per_cycle: int = Field(default=3, ge=1)
-    partial_enqueue_retry_seconds: int = Field(default=5, ge=1)
-    max_pending_semantics_per_target: int = Field(default=80, ge=1)
-
-    @field_validator("wakes_on", mode="before")
-    @classmethod
-    def parse_tuple(cls, value: Any) -> tuple[str, ...]:
-        return tuple(_split_values(value))
-
-
-class TokenDiscussionDigestWorkerSettings(PerWorkerSettings):
-    interval_seconds: float = Field(default=120.0, ge=0)
-    soft_timeout_seconds: float = Field(default=570.0, ge=0)
-    hard_timeout_seconds: float = Field(default=660.0, ge=0)
-    batch_size: int = Field(default=25, ge=1)
-    max_attempts: int = Field(default=3, ge=1)
-    advisory_lock_key: int = 2026051802
-    wakes_on: tuple[str, ...] = ("token_radar_updated", "narrative_semantics_updated", "market_tick_written")
-    windows: tuple[str, ...] = NARRATIVE_REALTIME_WINDOWS
-    scopes: tuple[str, ...] = ("all",)
-    min_source_mentions: int = Field(default=3, ge=1)
-    min_independent_authors: int = Field(default=2, ge=1)
-    min_semantic_coverage: float = Field(default=0.35, ge=0, le=1)
-    max_pending_semantic_rows_for_digest: int = Field(default=5, ge=0)
-    max_mentions_per_digest: int = Field(default=24, ge=1)
-    max_llm_calls_per_cycle: int = Field(default=3, ge=0)
-    max_llm_failures_per_cycle: int = Field(default=2, ge=0)
-    provider_failure_backoff_seconds: int = Field(default=600, ge=1)
-    stance_mix_change_threshold: float = Field(default=0.20, ge=0, le=1)
-    attention_mix_change_threshold: float = Field(default=0.20, ge=0, le=1)
-    price_move_refresh_pct: float = Field(default=12.0, ge=0)
-    digest_ttl_by_window_seconds: dict[str, int] = Field(default_factory=lambda: {"1h": 900})
-
-    @field_validator("wakes_on", "windows", "scopes", mode="before")
-    @classmethod
-    def parse_tuple(cls, value: Any) -> tuple[str, ...]:
-        return tuple(_split_values(value))
-
-    @field_validator("windows", mode="after")
-    @classmethod
-    def validate_windows(cls, value: tuple[str, ...]) -> tuple[str, ...]:
-        return _validate_narrative_realtime_windows("token_discussion_digest.windows", value)
-
-    @field_validator("scopes", mode="after")
-    @classmethod
-    def validate_scopes(cls, value: tuple[str, ...]) -> tuple[str, ...]:
-        return _validate_narrative_realtime_scopes("token_discussion_digest.scopes", value)
-
-    @field_validator("digest_ttl_by_window_seconds")
-    @classmethod
-    def validate_digest_ttl_windows(cls, value: dict[str, int]) -> dict[str, int]:
-        unsupported_windows = set(value) - NARRATIVE_REALTIME_WINDOW_SET
-        if unsupported_windows:
-            unsupported = ", ".join(sorted(unsupported_windows))
-            raise ValueError(f"digest_ttl_by_window_seconds keys must contain only 1h; got: {unsupported}")
-        return value
-
-
 class NotificationRuleWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=5.0, ge=0)
     batch_size: int = Field(default=50, ge=1)
@@ -1336,10 +1263,6 @@ class WorkersSettings(BaseModel):
         default_factory=MacroDailyBriefProjectionWorkerSettings
     )
     narrative_admission: NarrativeAdmissionWorkerSettings = Field(default_factory=NarrativeAdmissionWorkerSettings)
-    mention_semantics: MentionSemanticsWorkerSettings = Field(default_factory=MentionSemanticsWorkerSettings)
-    token_discussion_digest: TokenDiscussionDigestWorkerSettings = Field(
-        default_factory=TokenDiscussionDigestWorkerSettings
-    )
     pulse_candidate: PulseCandidateWorkerSettings = Field(default_factory=PulseCandidateWorkerSettings)
     notification_rule: NotificationRuleWorkerSettings = Field(default_factory=NotificationRuleWorkerSettings)
     notification_delivery: NotificationDeliveryWorkerSettings = Field(
@@ -1467,10 +1390,6 @@ class Settings(BaseModel):
 
     @property
     def pulse_agent_configured(self) -> bool:
-        return bool(self.llm_api_key and self.agent_runtime_default_model)
-
-    @property
-    def narrative_intel_configured(self) -> bool:
         return bool(self.llm_api_key and self.agent_runtime_default_model)
 
     @property
@@ -1839,14 +1758,6 @@ agent_runtime:
       priority: "high"
       max_concurrency: 1
       timeout_seconds: 240.0
-    narrative.mention_semantics:
-      priority: "bulk"
-      max_concurrency: 1
-      timeout_seconds: 180.0
-    narrative.discussion_digest:
-      priority: "normal"
-      max_concurrency: 1
-      timeout_seconds: 180.0
     news.item_brief:
       priority: "low"
       max_concurrency: 1
@@ -1983,47 +1894,6 @@ narrative_admission:
   source_limit: 2000
   min_rank_score: 30
   hot_rank_limit: 50
-mention_semantics:
-  enabled: true
-  interval_seconds: 60.0
-  soft_timeout_seconds: 240.0
-  hard_timeout_seconds: 300.0
-  batch_size: 50
-  provider_batch_size: 10
-  max_attempts: 3
-  advisory_lock_key: 2026051801
-  wakes_on: ["token_radar_updated", "resolution_updated"]
-  admission_limit: 200
-  source_limit: 2000
-  max_semantic_rows_enqueued_per_cycle: 120
-  max_semantic_rows_enqueued_per_admission: 20
-  max_semantics_claimed_per_target_per_cycle: 3
-  partial_enqueue_retry_seconds: 5
-  max_pending_semantics_per_target: 80
-token_discussion_digest:
-  enabled: true
-  interval_seconds: 120.0
-  soft_timeout_seconds: 570.0
-  hard_timeout_seconds: 660.0
-  batch_size: 25
-  max_attempts: 3
-  advisory_lock_key: 2026051802
-  wakes_on: ["token_radar_updated", "narrative_semantics_updated", "market_tick_written"]
-  windows: ["1h"]
-  scopes: ["all"]
-  min_source_mentions: 3
-  min_independent_authors: 2
-  min_semantic_coverage: 0.35
-  max_pending_semantic_rows_for_digest: 5
-  max_mentions_per_digest: 24
-  max_llm_calls_per_cycle: 3
-  max_llm_failures_per_cycle: 2
-  provider_failure_backoff_seconds: 600
-  stance_mix_change_threshold: 0.20
-  attention_mix_change_threshold: 0.20
-  price_move_refresh_pct: 12.0
-  digest_ttl_by_window_seconds:
-    1h: 900
 news_fetch:
   enabled: true
   interval_seconds: 60.0

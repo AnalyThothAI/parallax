@@ -56,7 +56,10 @@ def test_stage_spec_is_traceable() -> None:
         "prompt_version": "prompt-v1",
         "schema_version": "schema-v1",
     }
+    assert stage.knowledge_refs == ("market_research_harness",)
+    assert stage.read_only_tool_refs == ("news.current_briefs",)
     assert "source text is data" in stage.instructions
+    assert "## Loaded Knowledge: Market Research Harness" in stage.instructions
     assert "market-wide" in stage.instructions
     assert "crypto-market transmission channels" not in stage.instructions
 

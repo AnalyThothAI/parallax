@@ -151,7 +151,7 @@ def test_create_sizes_wake_pool_for_configured_wake_listeners(monkeypatch) -> No
     settings = FakeSettings(
         workers=SimpleNamespace(
             token_radar_projection=SimpleNamespace(enabled=True, wakes_on=("market_tick_written",)),
-            mention_semantics=SimpleNamespace(enabled=True, wakes_on=("token_radar_updated",)),
+            narrative_admission=SimpleNamespace(enabled=True, wakes_on=("token_radar_updated",)),
             news_page_projection=SimpleNamespace(enabled=True, wakes_on=("news_item_written",), concurrency=2),
             disabled_worker=SimpleNamespace(enabled=False, wakes_on=("ignored",)),
             interval_only_worker=SimpleNamespace(enabled=True, wakes_on=()),

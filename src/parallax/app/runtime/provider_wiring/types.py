@@ -57,11 +57,6 @@ class PulseLabProviders:
 
 
 @dataclass(frozen=True, slots=True)
-class NarrativeIntelProviders:
-    narrative_provider: Any | None = None
-
-
-@dataclass(frozen=True, slots=True)
 class NewsIntelProviders:
     feed_client: NewsSourceProvider | None = None
     brief_provider: NewsItemBriefProvider | None = None
@@ -77,7 +72,6 @@ class WiredProviders:
     ingestion: IngestionProviders
     asset_market: AssetMarketProviders
     cex_market_intel: CexMarketIntelProviders
-    narrative_intel: NarrativeIntelProviders
     news_intel: NewsIntelProviders
     pulse_lab: PulseLabProviders
     macrodata: MacrodataProviders
@@ -89,7 +83,6 @@ __all__ = [
     "CexMarketIntelProviders",
     "IngestionProviders",
     "MacrodataProviders",
-    "NarrativeIntelProviders",
     "NewsIntelProviders",
     "OkxProviderBundle",
     "PulseLabProviders",

@@ -141,6 +141,8 @@ class AgentStageSpec(BaseModel):
     workflow_name: str
     agent_name: str
     group_id: str = ""
+    knowledge_refs: tuple[str, ...] = ()
+    read_only_tool_refs: tuple[str, ...] = ()
     trace_metadata: dict[str, Any] = Field(default_factory=dict)
 
     @property
@@ -208,6 +210,8 @@ class AgentExecutionRequestAudit(BaseModel):
             "runtime_version": RUNTIME_VERSION,
             "artifact_version_hash": artifact_version_hash,
             "input_hash": stage.input_hash,
+            "knowledge_refs": stage.knowledge_refs,
+            "read_only_tool_refs": stage.read_only_tool_refs,
         }
         return cls(
             provider_family=profile.provider_family.value,

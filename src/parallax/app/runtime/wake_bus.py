@@ -33,16 +33,6 @@ class WakeBus:
     def notify_token_radar_updated(self, *, window: str, scope: str) -> None:
         self._notify("token_radar_updated", {"window": str(window), "scope": str(scope)})
 
-    def notify_narrative_semantics_updated(self, *, window: str, scope: str, target_count: int) -> None:
-        self._notify(
-            "narrative_semantics_updated",
-            {
-                "window": str(window),
-                "scope": str(scope),
-                "target_count": int(target_count),
-            },
-        )
-
     def notify_news_item_written(self, *, source_id: str, count: int) -> None:
         self._notify("news_item_written", {"source_id": str(source_id), "count": int(count)})
 

@@ -9,7 +9,6 @@ from typing import Any
 
 from parallax.app.runtime.job_queue import JOB_QUEUE_DESCRIPTORS, JobQueueDescriptor
 from parallax.app.runtime.worker_status import effective_worker_status, workers_status_payload
-from parallax.domains.narrative_intel.queries import NarrativeBacklogHealthQuery
 from parallax.domains.pulse_lab.queries.pulse_freshness_health_queries import (
     fetch_pulse_health_candidates,
     fetch_pulse_health_clocks,
@@ -100,7 +99,6 @@ def ops_diagnostics_payload(
     domains = _domains_payload(
         runtime,
         now_ms=generated_at_ms,
-        since_hours=since_hours,
         since_ms=since_ms,
         window=window,
         scope=scope,
@@ -550,7 +548,6 @@ def _domains_payload(
     runtime: Any,
     *,
     now_ms: int,
-    since_hours: int,
     since_ms: int,
     window: str,
     scope: str,
@@ -561,10 +558,6 @@ def _domains_payload(
         "pulse": _section(
             "pulse",
             lambda: _pulse_domain(runtime, now_ms=now_ms, since_ms=since_ms, window=window, scope=scope),
-        ),
-        "narrative": _section(
-            "narrative",
-            lambda: _narrative_domain(runtime, now_ms=now_ms, since_hours=since_hours),
         ),
         "news": _section("news", lambda: _news_domain(runtime)),
         "watchlist": _section("watchlist", lambda: _watchlist_domain(runtime)),
@@ -601,15 +594,6 @@ def _pulse_domain(runtime: Any, *, now_ms: int, since_ms: int, window: str, scop
         payload.update(fetch_pulse_health_candidates(conn, window=window, scope=scope, since_ms=since_ms))
     status = "blocked" if int(payload.get("dead_jobs") or 0) > 0 else "ok"
     return {"status": status, **payload}
-
-
-def _narrative_domain(runtime: Any, *, now_ms: int, since_hours: int) -> dict[str, Any]:
-    with runtime.repositories() as repos:
-        payload = NarrativeBacklogHealthQuery(repos.conn).health(now_ms=now_ms, since_hours=since_hours)
-    total_pending = int((payload.get("semantic_backlog") or {}).get("total_pending") or 0)
-    status = "degraded" if total_pending > 0 else "ok"
-    return {"status": status, **payload}
-
 
 def _news_domain(runtime: Any) -> dict[str, Any]:
     with runtime.repositories() as repos:

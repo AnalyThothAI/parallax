@@ -13,6 +13,8 @@ from parallax.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSI
 from parallax.domains.token_intel.services.token_radar_projection import TokenRadarProjection
 from tests.integration.test_narrative_repository import (
     _insert_intent,
+    _insert_legacy_digest,
+    _insert_legacy_semantic,
     _insert_radar_publication_state,
     _insert_radar_row,
     make_event,
@@ -217,26 +219,19 @@ def test_stale_admission_target_only_removes_claimed_target_window_scope(tmp_pat
             ],
             now_ms=2_000,
         )
-        repo.enqueue_missing_mention_semantics(
-            [
-                {
-                    "event_id": "event-exited",
-                    "target_type": "chain_token",
-                    "target_id": "solana:Exited",
-                    "text_clean": "exited source",
-                    "source_received_at_ms": 2_000,
-                },
-                {
-                    "event_id": "event-other",
-                    "target_type": "chain_token",
-                    "target_id": "solana:Other",
-                    "text_clean": "other source",
-                    "source_received_at_ms": 2_000,
-                },
-            ],
-            schema_version=NARRATIVE_SCHEMA_VERSION,
-            model_version="gpt-test",
-            now_ms=2_100,
+        _insert_legacy_semantic(
+            conn,
+            event_id="event-exited",
+            target_id="solana:Exited",
+            status="labeled",
+            computed_at_ms=2_100,
+        )
+        _insert_legacy_semantic(
+            conn,
+            event_id="event-other",
+            target_id="solana:Other",
+            status="labeled",
+            computed_at_ms=2_100,
         )
         for target_id, event_id in [("solana:Exited", "event-exited"), ("solana:Other", "event-other")]:
             source_fingerprint = conn.execute(
@@ -247,24 +242,16 @@ def test_stale_admission_target_only_removes_claimed_target_window_scope(tmp_pat
                 """,
                 (target_id,),
             ).fetchone()["source_fingerprint"]
-            repo.replace_current_digest(
-                {
-                    "target_type": "chain_token",
-                    "target_id": target_id,
-                    "window": "1h",
-                    "scope": "matched",
-                    "schema_version": NARRATIVE_SCHEMA_VERSION,
-                    "model_version": "deterministic",
-                    "status": "ready",
-                    "source_event_ids": [event_id],
-                    "source_fingerprint": source_fingerprint,
-                    "label_fingerprint": f"labels:{target_id}",
-                    "semantic_coverage": 1.0,
-                    "source_event_count": 1,
-                    "labeled_event_count": 1,
-                    "independent_author_count": 1,
-                },
-                now_ms=2_200,
+            _insert_legacy_digest(
+                conn,
+                digest_id=f"digest:{target_id}",
+                target_id=target_id,
+                window="1h",
+                scope="matched",
+                source_event_ids=[event_id],
+                source_fingerprint=source_fingerprint,
+                headline=f"Ready digest {target_id}",
+                computed_at_ms=2_200,
             )
 
         result = repo.stale_admission_target(

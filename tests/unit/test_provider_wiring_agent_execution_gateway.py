@@ -97,28 +97,15 @@ def test_wire_providers_passes_one_agent_execution_gateway_to_model_execution_fa
                 "defaults": {"model": "gpt-social"},
                 "lanes": {
                     "pulse.decision": {"model": "gpt-pulse"},
-                    "narrative.mention_semantics": {"model": "gpt-narrative"},
                     "news.item_brief": {"model": "gpt-news"},
                 },
             },
             "pulse_candidate": {"enabled": True},
-            "mention_semantics": {"enabled": True},
-            "token_discussion_digest": {"enabled": True},
             "news_item_brief": {"enabled": True},
         },
     )
     agent_gateway = object()
     calls: list[tuple[str, str, object]] = []
-
-    def fake_narrative(
-        settings: Settings,
-        *,
-        agent_gateway: object,
-        **kwargs: Any,
-    ) -> object:
-        assert "llm_gateway" not in kwargs
-        calls.append(("narrative", settings.agent_runtime_model_for_lane("narrative.mention_semantics"), agent_gateway))
-        return object()
 
     def fake_pulse(
         settings: Settings,
@@ -141,7 +128,6 @@ def test_wire_providers_passes_one_agent_execution_gateway_to_model_execution_fa
         return object()
 
     db_pool_token = object()
-    monkeypatch.setattr(model_execution, "litellm_narrative_intel_provider", fake_narrative)
     monkeypatch.setattr(model_execution, "litellm_pulse_decision_provider", fake_pulse)
     monkeypatch.setattr(model_execution, "litellm_news_item_brief_provider", fake_news_item_brief)
 
@@ -154,7 +140,6 @@ def test_wire_providers_passes_one_agent_execution_gateway_to_model_execution_fa
 
     assert providers.agent_execution_gateway is agent_gateway
     assert calls == [
-        ("narrative", "gpt-narrative", agent_gateway),
         ("news_item_brief", "gpt-news", agent_gateway),
         ("pulse", "gpt-pulse", agent_gateway),
     ]

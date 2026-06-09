@@ -288,7 +288,7 @@ def test_ops_diagnostics_agent_execution_degraded_requires_recent_signal() -> No
             "global_max_concurrency": 4,
             "global_in_flight": 0,
             "lanes": {
-                "narrative.mention_semantics": {
+                "news.item_brief": {
                     "policy": {"priority": "standard", "max_concurrency": 2},
                     "capacity_denied_total": 17,
                     "timeout_total": 3,
@@ -307,7 +307,7 @@ def test_ops_diagnostics_agent_execution_degraded_requires_recent_signal() -> No
     assert stale_payload["agent_execution"]["status"] == "ok"
     assert stale_payload["overall"]["status"] == "ok"
 
-    runtime.agent_execution_gateway.snapshot["lanes"]["narrative.mention_semantics"]["last_rpm_wait_at_ms"] = 999_800
+    runtime.agent_execution_gateway.snapshot["lanes"]["news.item_brief"]["last_rpm_wait_at_ms"] = 999_800
     recent_payload = ops_diagnostics_payload(runtime, now_ms=1_000_000, since_hours=4, window="1h", scope="all")
 
     assert recent_payload["agent_execution"]["status"] == "degraded"

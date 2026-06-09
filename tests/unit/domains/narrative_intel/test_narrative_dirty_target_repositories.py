@@ -5,9 +5,6 @@ from typing import Any
 import pytest
 
 from parallax.app.runtime.repository_session import repositories_for_connection
-from parallax.domains.narrative_intel.repositories.discussion_digest_dirty_target_repository import (
-    DiscussionDigestDirtyTargetRepository,
-)
 from parallax.domains.narrative_intel.repositories.narrative_admission_dirty_target_repository import (
     NarrativeAdmissionDirtyTargetRepository,
 )
@@ -88,47 +85,6 @@ def test_enqueue_targets_rejects_incomplete_narrative_target() -> None:
     assert conn.sql == []
 
 
-def test_digest_claim_due_orders_by_priority_due_and_updated_and_increments_attempts() -> None:
-    conn = _ScriptedConnection(
-        [
-            [
-                {
-                    "target_type": "Asset",
-                    "target_id": "asset-1",
-                    "window": "1h",
-                    "scope": "all",
-                    "projection_version": "digest-v1",
-                    "schema_version": "schema-v1",
-                    "payload_hash": "payload-1",
-                    "lease_owner": "digest-a",
-                    "attempt_count": 1,
-                    "source_watermark_ms": 10,
-                    "dirty_reason": "admission_changed",
-                }
-            ]
-        ]
-    )
-
-    rows = DiscussionDigestDirtyTargetRepository(conn).claim_due(
-        now_ms=1_700_000_000_000,
-        limit=25,
-        lease_owner="digest-a",
-        lease_ms=60_000,
-        commit=False,
-    )
-
-    sql = conn.sql[-1]
-    assert rows[0]["projection_version"] == "digest-v1"
-    assert rows[0]["schema_version"] == "schema-v1"
-    assert "FOR UPDATE SKIP LOCKED" in sql
-    assert "ORDER BY priority ASC," in sql
-    assert "due_at_ms ASC," in sql
-    assert "updated_at_ms ASC" in sql
-    assert "attempt_count = discussion_digest_dirty_targets.attempt_count + 1" in sql
-    assert conn.params[-1]["leased_until_ms"] == 1_700_000_060_000
-    assert conn.params[-1]["lease_owner"] == "digest-a"
-
-
 def test_mark_done_requires_full_stale_completion_token_including_versions() -> None:
     conn = _ScriptedConnection([])
     conn.rowcount = 1
@@ -166,40 +122,6 @@ def test_mark_done_requires_full_stale_completion_token_including_versions() -> 
     assert conn.params[-1]["attempt_counts"] == [2]
 
 
-def test_mark_error_releases_digest_claim_and_schedules_retry() -> None:
-    conn = _ScriptedConnection([])
-    conn.rowcount = 1
-
-    updated = DiscussionDigestDirtyTargetRepository(conn).mark_error(
-        [
-            {
-                "target_type": "Asset",
-                "target_id": "asset-1",
-                "window": "1h",
-                "scope": "all",
-                "projection_version": "digest-v1",
-                "schema_version": "schema-v1",
-                "payload_hash": "payload-1",
-                "lease_owner": "digest-a",
-                "attempt_count": 3,
-            }
-        ],
-        error="x" * 3000,
-        now_ms=1_700_000_010_000,
-        retry_ms=30_000,
-        commit=False,
-    )
-
-    sql = conn.sql[-1]
-    assert updated == 1
-    assert "UPDATE discussion_digest_dirty_targets queue" in sql
-    assert "leased_until_ms = NULL" in sql
-    assert "lease_owner = NULL" in sql
-    assert "last_error = %(last_error)s" in sql
-    assert conn.params[-1]["due_at_ms"] == 1_700_000_040_000
-    assert len(conn.params[-1]["last_error"]) == 2048
-
-
 def test_reschedule_releases_admission_claim_without_overwriting_business_reason() -> None:
     conn = _ScriptedConnection([])
     conn.rowcount = 1
@@ -234,16 +156,6 @@ def test_reschedule_releases_admission_claim_without_overwriting_business_reason
     assert conn.params[-1]["due_at_ms"] == 1_700_000_120_000
 
 
-def test_queue_depth_counts_unleased_due_targets() -> None:
-    conn = _ScriptedConnection([[{"count": 7}]])
-
-    depth = DiscussionDigestDirtyTargetRepository(conn).queue_depth(now_ms=1_700_000_010_000)
-
-    assert depth == 7
-    assert "FROM discussion_digest_dirty_targets" in conn.sql[-1]
-    assert "(leased_until_ms IS NULL OR leased_until_ms <= %(now_ms)s)" in conn.sql[-1]
-
-
 def test_completion_rejects_claim_without_projection_version() -> None:
     conn = _ScriptedConnection([])
 
@@ -276,7 +188,6 @@ def test_repository_session_exposes_narrative_dirty_targets() -> None:
     session = repositories_for_connection(_ScriptedConnection([]))
 
     assert isinstance(session.narrative_admission_dirty_targets, NarrativeAdmissionDirtyTargetRepository)
-    assert isinstance(session.discussion_digest_dirty_targets, DiscussionDigestDirtyTargetRepository)
 
 
 class _ScriptedConnection:

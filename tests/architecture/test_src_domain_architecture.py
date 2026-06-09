@@ -24,14 +24,13 @@ DOMAINS = {
     "watchlist_intel",
     "account_quality",
 }
-PENDING_AGENT_A_DOMAINS = {"narrative_intel"}
+PENDING_AGENT_A_DOMAINS: set[str] = set()
 
 ALLOWED_ROOTS = {"app", "domains", "integrations", "platform"}
 PROVIDER_DOMAINS = {
     "ingestion",
     "asset_market",
     "cex_market_intel",
-    "narrative_intel",
     "news_intel",
     "pulse_lab",
 }
@@ -74,7 +73,6 @@ PROVIDER_WIRING_FACADE_PUBLIC_EXPORTS = {
     "CexMarketIntelProviders",
     "IngestionProviders",
     "MacrodataProviders",
-    "NarrativeIntelProviders",
     "NewsIntelProviders",
     "PulseLabProviders",
     "UpstreamClientFactory",
@@ -98,9 +96,7 @@ FACADE_CONCRETE_EXPORTS = {
     "OkxDexQuoteProvider",
     "OkxDexWebSocketMarketProviderAdapter",
     "OkxProviderBundle",
-    "LiteLLMNarrativeIntelProvider",
     "LiteLLMPulseDecisionProvider",
-    "litellm_narrative_intel_provider",
     "okx_chain_index",
     "okx_chain_indexes_to_chain_ids",
     "okx_index_to_chain_id",

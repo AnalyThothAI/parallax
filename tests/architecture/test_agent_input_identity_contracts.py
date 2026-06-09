@@ -13,7 +13,7 @@ def test_news_brief_input_builder_does_not_read_fetch_time() -> None:
     assert "fetched_at_ms" not in builder_text
 
 
-def test_narrative_mention_semantics_does_not_hash_claimed_rows_directly() -> None:
-    text = Path("src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py").read_text(encoding="utf-8")
-    assert "input_hash = _hash_json(rows)" not in text
-    assert "input_hash = _hash_json(_mention_semantics_input_rows(rows))" in text
+def test_deleted_narrative_llm_agents_do_not_reintroduce_input_hash_paths() -> None:
+    assert not Path("src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py").exists()
+    assert not Path("src/parallax/domains/narrative_intel/runtime/token_discussion_digest_worker.py").exists()
+    assert not Path("src/parallax/integrations/model_execution/narrative_intel_agent_client.py").exists()

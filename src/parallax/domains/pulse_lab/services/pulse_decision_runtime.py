@@ -18,6 +18,8 @@ from parallax.domains.pulse_lab.providers import (
 from parallax.domains.pulse_lab.services.agent_output_normalization import normalize_pulse_stage_output
 from parallax.domains.pulse_lab.services.agent_runtime import pulse_runtime_hash
 from parallax.domains.pulse_lab.services.prompt_loader import (
+    PULSE_DECISION_KNOWLEDGE_REFS,
+    PULSE_DECISION_READ_ONLY_TOOL_REFS,
     load_pulse_decision_prompt,
     pulse_decision_prompt_text_hash,
 )
@@ -57,6 +59,8 @@ class PulseDecisionRuntimeService:
                 "allowed_evidence_ref_ids": _sorted_ref_ids(_allowed_evidence_ref_ids(packet_payload)),
                 "evidence_ref_policy": _evidence_ref_policy(),
             },
+            knowledge_refs=PULSE_DECISION_KNOWLEDGE_REFS,
+            read_only_tool_refs=PULSE_DECISION_READ_ONLY_TOOL_REFS,
         )
 
     def validate_final_evidence_refs(

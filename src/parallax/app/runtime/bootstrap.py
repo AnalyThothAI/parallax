@@ -96,7 +96,6 @@ def bootstrap(settings: Settings, *, start_collector: bool = True) -> Runtime:
 
         if (
             settings.pulse_agent_configured
-            or settings.narrative_intel_configured
             or settings.news_item_brief_configured
         ):
             llm_gateway = LLMGateway.create(settings)

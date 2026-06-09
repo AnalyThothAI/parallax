@@ -23,11 +23,7 @@ from parallax.domains.asset_market.runtime.token_profile_current_worker import T
 from parallax.domains.macro_intel.runtime.macro_daily_brief_projection_worker import MacroDailyBriefProjectionWorker
 from parallax.domains.macro_intel.runtime.macro_sync_worker import MacroSyncWorker
 from parallax.domains.macro_intel.runtime.macro_view_projection_worker import MacroViewProjectionWorker
-from parallax.domains.narrative_intel.runtime.mention_semantics_worker import MentionSemanticsWorker
 from parallax.domains.narrative_intel.runtime.narrative_admission_worker import NarrativeAdmissionWorker
-from parallax.domains.narrative_intel.runtime.token_discussion_digest_worker import (
-    TokenDiscussionDigestWorker,
-)
 from parallax.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
 from parallax.domains.news_intel.runtime.news_item_brief_worker import NewsItemBriefWorker
 from parallax.domains.news_intel.runtime.news_item_process_worker import NewsItemProcessWorker
@@ -406,12 +402,12 @@ def test_macro_sync_skips_when_macrodata_provider_disabled() -> None:
     assert isinstance(workers["macro_view_projection"], MacroViewProjectionWorker)
 
 
-def test_worker_factory_wires_narrative_mention_and_digest_wake_waiters() -> None:
+def test_worker_factory_wires_narrative_admission_without_llm_siblings() -> None:
     db = FakeDB()
     providers = FakeProviders()
 
     workers = construct_workers(
-        settings=_settings(narrative_intel_configured=True),
+        settings=_settings(narrative_admission_enabled=True),
         db=db,
         telemetry=object(),
         providers=providers,
@@ -421,27 +417,21 @@ def test_worker_factory_wires_narrative_mention_and_digest_wake_waiters() -> Non
         wake_bus=db.wake,
     )
 
-    assert isinstance(workers["mention_semantics"], MentionSemanticsWorker)
-    assert workers["mention_semantics"].wake_waiter.worker_name == "mention_semantics"
-    assert workers["mention_semantics"].wake_waiter.channels == ("token_radar_updated", "resolution_updated")
-    assert isinstance(workers["token_discussion_digest"], TokenDiscussionDigestWorker)
-    assert workers["token_discussion_digest"].wake_waiter.worker_name == "token_discussion_digest"
-    assert workers["token_discussion_digest"].wake_waiter.channels == (
-        "token_radar_updated",
-        "narrative_semantics_updated",
-        "market_tick_written",
-    )
+    assert isinstance(workers["narrative_admission"], NarrativeAdmissionWorker)
+    assert workers["narrative_admission"].wake_waiter.worker_name == "narrative_admission"
+    assert workers["narrative_admission"].wake_waiter.channels == ("token_radar_updated", "resolution_updated")
+    assert "mention_semantics" not in workers
+    assert "token_discussion_digest" not in workers
 
 
-def test_worker_factory_hard_gates_narrative_bulk_queue_producers() -> None:
+def test_token_radar_enqueues_narrative_admission_when_admission_worker_enabled() -> None:
     db = FakeDB()
     providers = FakeProviders()
 
     workers = construct_workers(
         settings=_settings(
-            narrative_intel_configured=True,
             token_radar_projection_enabled=True,
-            mention_semantics_enabled=False,
+            narrative_admission_enabled=True,
         ),
         db=db,
         telemetry=object(),
@@ -453,21 +443,16 @@ def test_worker_factory_hard_gates_narrative_bulk_queue_producers() -> None:
     )
 
     assert isinstance(workers["token_radar_projection"], TokenRadarProjectionWorker)
-    assert workers["token_radar_projection"].enqueue_narrative_admission is False
-    assert not isinstance(workers["narrative_admission"], NarrativeAdmissionWorker)
-    assert not isinstance(workers["mention_semantics"], MentionSemanticsWorker)
-    assert not isinstance(workers["token_discussion_digest"], TokenDiscussionDigestWorker)
+    assert workers["token_radar_projection"].enqueue_narrative_admission is True
+    assert isinstance(workers["narrative_admission"], NarrativeAdmissionWorker)
 
 
-def test_narrative_bulk_siblings_disabled_by_worker_gate_are_not_provider_unavailable() -> None:
+def test_narrative_admission_disabled_is_not_provider_unavailable() -> None:
     db = FakeDB()
 
     workers = construct_workers(
         settings=_settings(
-            narrative_intel_configured=True,
-            narrative_admission_enabled=True,
-            mention_semantics_enabled=False,
-            token_discussion_digest_enabled=True,
+            narrative_admission_enabled=False,
         ),
         db=db,
         telemetry=object(),
@@ -480,8 +465,8 @@ def test_narrative_bulk_siblings_disabled_by_worker_gate_are_not_provider_unavai
 
     assert workers["narrative_admission"].status_payload()["effective_status"] == "disabled"
     assert workers["narrative_admission"].status_payload()["unavailable_reason"] is None
-    assert workers["mention_semantics"].status_payload()["effective_status"] == "disabled"
-    assert workers["token_discussion_digest"].status_payload()["effective_status"] == "disabled"
+    assert "mention_semantics" not in workers
+    assert "token_discussion_digest" not in workers
     assert not any(
         "missing_narrative_intel_provider" in reason
         for reason in WorkerScheduler(workers=workers, db=db).unhealthy_reasons()
@@ -544,19 +529,16 @@ def _settings(
     collector_enabled: bool = False,
     notifications_enabled: bool = False,
     notification_log_channel_enabled: bool = True,
-    narrative_intel_configured: bool = False,
     news_item_brief_configured: bool = False,
     macro_view_projection_enabled: bool = True,
     macrodata_enabled: bool = True,
     token_radar_projection_enabled: bool = False,
     narrative_admission_enabled: bool = True,
-    mention_semantics_enabled: bool = True,
-    token_discussion_digest_enabled: bool = True,
     cex_oi_radar_board_enabled: bool = False,
     market_tick_stream_enabled: bool = True,
     market_tick_poll_enabled: bool = True,
 ) -> Settings:
-    llm = {"api_key": "secret"} if narrative_intel_configured else {}
+    llm = {}
     agent_lanes = {}
     if news_item_brief_configured:
         llm = {**llm, "api_key": "secret"}
@@ -595,8 +577,6 @@ def _settings(
             "cex_oi_radar_board": {"enabled": cex_oi_radar_board_enabled},
             "macro_view_projection": {"enabled": macro_view_projection_enabled},
             "narrative_admission": {"enabled": narrative_admission_enabled},
-            "mention_semantics": {"enabled": mention_semantics_enabled},
-            "token_discussion_digest": {"enabled": token_discussion_digest_enabled},
             "pulse_candidate": {"enabled": False},
             "notification_rule": {"enabled": notifications_enabled},
             "notification_delivery": {"enabled": notifications_enabled},
@@ -625,7 +605,6 @@ class FakeProviders:
         self.ingestion = SimpleNamespace(upstream_client_factory=upstream_client_factory)
         self.macrodata = SimpleNamespace(stock_quote_provider=None)
         self.news_intel = SimpleNamespace(feed_client=object(), brief_provider=brief_provider)
-        self.narrative_intel = SimpleNamespace(narrative_provider=object())
 
 
 class FakeDB:

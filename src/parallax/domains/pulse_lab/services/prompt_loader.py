@@ -18,10 +18,13 @@ from pathlib import Path
 
 from parallax.domains.pulse_lab.types.agent_decision import DecisionRoute
 from parallax.platform.agent_hashing import json_sha256
+from parallax.platform.agent_knowledge import agent_knowledge_catalog, render_agent_instructions
 
 _PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 _ROUTE_HEADING_RE = re.compile(r"^##\s+Route:\s+(?P<route>\w+)\s*$", re.MULTILINE)
 _KNOWN_ROLES = ("pulse_decision",)
+PULSE_DECISION_KNOWLEDGE_REFS = ("market_research_harness",)
+PULSE_DECISION_READ_ONLY_TOOL_REFS = ("token_radar.current_rows", "pulse.current_candidates")
 
 
 @lru_cache(maxsize=8)
@@ -67,20 +70,33 @@ def load_prompt(role: str, route: DecisionRoute) -> str:
 
 
 def load_pulse_decision_prompt(route: DecisionRoute) -> str:
-    return load_prompt("pulse_decision", route)
+    return render_agent_instructions(
+        load_prompt("pulse_decision", route),
+        knowledge_refs=PULSE_DECISION_KNOWLEDGE_REFS,
+    )
 
 
 @lru_cache(maxsize=1)
 def pulse_decision_prompt_text_hash() -> str:
+    catalog = agent_knowledge_catalog()
     return json_sha256(
         {
-            role: _read_file(str(_PROMPTS_DIR / f"{role}.md"))
-            for role in _KNOWN_ROLES
+            "prompts": {
+                role: _read_file(str(_PROMPTS_DIR / f"{role}.md"))
+                for role in _KNOWN_ROLES
+            },
+            "knowledge_refs": PULSE_DECISION_KNOWLEDGE_REFS,
+            "knowledge": {
+                ref: catalog.load(ref)
+                for ref in PULSE_DECISION_KNOWLEDGE_REFS
+            },
         }
     )
 
 
 __all__ = [
+    "PULSE_DECISION_KNOWLEDGE_REFS",
+    "PULSE_DECISION_READ_ONLY_TOOL_REFS",
     "load_prompt",
     "load_pulse_decision_prompt",
     "pulse_decision_prompt_text_hash",

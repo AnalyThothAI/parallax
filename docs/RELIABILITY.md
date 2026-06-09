@@ -79,8 +79,8 @@ the escalation path; Python must not attempt to kill the thread directly.
 
 LLM-backed providers share one `AgentExecutionGateway` per process. The
 gateway owns provider-side execution mechanics: lane concurrency, RPM
-limits, circuit breakers, timeouts, usage capture, safety-net fallback,
-and request/result audit metadata. It does not own domain claims,
+limits, circuit breakers, timeouts, usage capture, and request/result audit
+metadata. It does not own domain claims,
 attempt counters, product audit tables, or read-model writes.
 
 Workers that burn attempts when claiming DB work must reserve agent capacity,
@@ -88,8 +88,7 @@ circuit, and RPM before claiming. Batch workers must pass explicit
 `rate_units` for the maximum provider calls they want to execute, then claim no
 more rows than the actual `reservation.rate_units` returned by the gateway; one
 reservation must not cover multiple unreserved model calls. This applies to
-`pulse_candidate`, `enrichment`, `handle_summary`, `mention_semantics`,
-`token_discussion_digest`, and `news_item_brief`. If a
+`pulse_candidate` and `news_item_brief`. If a
 reservation is denied, the worker returns an `agent_backpressure_*` note and
 leaves the job unclaimed. This preserves retry budgets during provider
 congestion and lets the next bounded catch-up cycle retry naturally. For Pulse,
@@ -241,12 +240,11 @@ source refresh/window targets and expands configured windows inside that worker;
 broad source/window coverage is an ops repair enqueue concern only.
 
 The same dirty-target rule applies to runtime agent/profile tails:
-`pulse_candidate`, `narrative_admission`, `token_discussion_digest`,
-`token_profile_current`, `token_image_mirror`, `asset_profile_refresh`, and
-`token_capture_tier` must claim their control-plane rows first.
-`mention_semantics` and `handle_summary` are leased-job consumers and must not discover missing
-jobs inside the runtime loop. `LivePriceGateway` reads the live target control
-set from `token_capture_tier`; it must not scan Token Radar current rows.
+`pulse_candidate`, `narrative_admission`, `token_profile_current`,
+`token_image_mirror`, `asset_profile_refresh`, and `token_capture_tier` must
+claim their control-plane rows first. `LivePriceGateway` reads the live target
+control set from `token_capture_tier`; it must not scan Token Radar current
+rows.
 Historical discovery is domain-owned. Token Radar uses
 `ops enqueue-token-radar-dirty-targets` for explicit bounded repair; other
 workers must expose similarly explicit domain repair paths instead of a generic

@@ -1,16 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 import json
-from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any
 
-from parallax.app.runtime.bootstrap import _cleanup_provider_roots_sync, bootstrap
+from parallax.app.runtime.bootstrap import bootstrap
 from parallax.app.runtime.db_pool_bundle import DBPoolBundle
-from parallax.app.runtime.llm_gateway import LLMGateway
-from parallax.app.runtime.narrative_bulk_analysis_gate import narrative_bulk_analysis_enabled
 from parallax.app.runtime.ops_cli_queries import (
     market_tick_current_rebuild_estimate,
     token_profile_image_repair_targets,
@@ -19,8 +15,7 @@ from parallax.app.runtime.ops_cli_queries import (
     token_radar_source_count,
 )
 from parallax.app.runtime.projection_dirty_targets import enqueue_projection_dirty_targets
-from parallax.app.runtime.provider_wiring.model_execution import build_agent_execution_gateway
-from parallax.app.runtime.providers_wiring import wire_asset_market_providers, wire_providers
+from parallax.app.runtime.providers_wiring import wire_asset_market_providers
 from parallax.app.runtime.telemetry import TelemetryRegistry
 from parallax.app.runtime.worker_status import workers_status_payload
 from parallax.app.surfaces.cli.commands import queue_ops
@@ -45,13 +40,6 @@ from parallax.domains.asset_market.services.market_tick_current_rebuild import (
 from parallax.domains.asset_market.services.us_equity_symbol_sync import (
     NasdaqTraderSymbolClient,
     sync_us_equity_symbols,
-)
-from parallax.domains.narrative_intel._constants import NARRATIVE_SCHEMA_VERSION
-from parallax.domains.narrative_intel.queries import NarrativeBacklogHealthQuery
-from parallax.domains.narrative_intel.runtime.mention_semantics_worker import MentionSemanticsWorker
-from parallax.domains.narrative_intel.runtime.narrative_admission_worker import NarrativeAdmissionWorker
-from parallax.domains.narrative_intel.runtime.token_discussion_digest_worker import (
-    TokenDiscussionDigestWorker,
 )
 from parallax.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
@@ -162,21 +150,6 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
             windows=(args.window,),
             scopes=(args.scope,),
             limit=args.limit,
-            now_ms=_now_ms(),
-        )
-        return 0, {"ok": True, "data": data}
-
-    if args.ops_command == "rebuild-narrative-intel":
-        if not settings.narrative_intel_configured:
-            return 1, {"ok": False, "error": "narrative_intel_not_configured"}
-        data = _run_narrative_intel_rebuild(
-            settings,
-            window=args.window,
-            scope=args.scope,
-            semantic_limit=max(1, int(args.semantic_limit)),
-            digest_limit=max(1, int(args.digest_limit)),
-            cycles=max(1, int(args.cycles)),
-            drain=bool(args.drain),
             now_ms=_now_ms(),
         )
         return 0, {"ok": True, "data": data}
@@ -855,7 +828,7 @@ def _run_token_radar_projection_worker_once(
             telemetry=telemetry,
             wake_bus=db.wake_emitter(),
             wake_waiter=db.wake_listener(worker_name, settings.workers.token_radar_projection.wakes_on),
-            enqueue_narrative_admission=narrative_bulk_analysis_enabled(settings),
+            enqueue_narrative_admission=bool(settings.workers.narrative_admission.enabled),
         )
         try:
             lock_key = _effective_worker_advisory_lock_key(worker)
@@ -890,237 +863,6 @@ def _run_token_radar_projection_worker_once(
             asyncio.run(worker.aclose())
         if db is not None:
             _close_db_bundle(db)
-
-
-def _run_narrative_intel_rebuild(
-    settings: object,
-    *,
-    window: str,
-    scope: str,
-    semantic_limit: int,
-    digest_limit: int,
-    cycles: int,
-    drain: bool,
-    now_ms: int,
-) -> dict:
-    telemetry = TelemetryRegistry()
-    db = None
-    llm_gateway = None
-    agent_execution_gateway = None
-    provider_resource = None
-    workers: list[object] = []
-    locks: list[object] = []
-    try:
-        db = DBPoolBundle.create(settings, telemetry=telemetry)
-        llm_gateway = LLMGateway.create(settings)
-        agent_execution_gateway = build_agent_execution_gateway(settings, llm_gateway=llm_gateway)
-        providers = wire_providers(
-            settings,
-            start_collector=False,
-            agent_execution_gateway=agent_execution_gateway,
-            db_pool=db.tool_pool,
-        )
-        provider = providers.narrative_intel.narrative_provider
-        provider_resource = provider
-        if provider is None:
-            return {"cycles": 0, "error": "narrative_provider_not_configured"}
-        admission = NarrativeAdmissionWorker(
-            name="narrative_admission",
-            settings=_worker_settings_with_overrides(
-                settings.workers.narrative_admission,
-                windows=(window,),
-                scopes=(scope,),
-            ),
-            db=db,
-            telemetry=telemetry,
-            wake_bus=db.wake_emitter(),
-        )
-        semantics = MentionSemanticsWorker(
-            name="mention_semantics",
-            settings=_worker_settings_with_overrides(
-                settings.workers.mention_semantics,
-                batch_size=semantic_limit,
-                provider_batch_size=semantic_limit,
-            ),
-            db=db,
-            telemetry=telemetry,
-            provider=provider,
-            wake_bus=db.wake_emitter(),
-        )
-        digest = TokenDiscussionDigestWorker(
-            name="token_discussion_digest",
-            settings=_worker_settings_with_overrides(settings.workers.token_discussion_digest, batch_size=digest_limit),
-            db=db,
-            telemetry=telemetry,
-            provider=provider,
-        )
-        workers = [admission, semantics, digest]
-        locks.extend(
-            [
-                db.acquire_advisory_lock_connection(
-                    str(getattr(worker, "name", worker.__class__.__name__)),
-                    _effective_worker_advisory_lock_key(worker),
-                )
-                for worker in workers
-            ]
-        )
-        results = []
-        cleanup_totals: dict[str, int] = {}
-        for cycle in range(max(1, int(cycles))):
-            cycle_now_ms = int(now_ms) + cycle
-            admission_result = asyncio.run(admission.run_once(now_ms=cycle_now_ms))
-            cleanup = _cleanup_narrative_backlog(
-                db,
-                window=window,
-                scope=scope,
-                now_ms=cycle_now_ms,
-                realtime_windows=tuple(getattr(settings.workers.token_discussion_digest, "windows", ("1h",))),
-                realtime_scopes=tuple(getattr(settings.workers.token_discussion_digest, "scopes", ("all",))),
-            )
-            _merge_int_counts(cleanup_totals, cleanup)
-            semantics_result = asyncio.run(semantics.run_once(now_ms=cycle_now_ms))
-            digest_result = asyncio.run(digest.run_once(now_ms=cycle_now_ms))
-            item = {
-                "cycle": cycle + 1,
-                "narrative_admission": _worker_result_payload(admission_result),
-                "cleanup": cleanup,
-                "mention_semantics": _worker_result_payload(semantics_result),
-                "token_discussion_digest": _worker_result_payload(digest_result),
-            }
-            results.append(item)
-            if not drain:
-                break
-            if admission_result.skipped and semantics_result.skipped and digest_result.skipped:
-                break
-        final_health = _narrative_backlog_health(
-            db,
-            now_ms=int(now_ms) + len(results),
-            since_hours=4,
-            worker_settings=settings.workers,
-        )
-        return {
-            "window": window,
-            "scope": scope,
-            "drain": bool(drain),
-            "cycles": len(results),
-            "cleanup": cleanup_totals,
-            "final_health": final_health,
-            "results": results,
-        }
-    finally:
-        for lock in reversed(locks):
-            _release_advisory_lock_connection(lock)
-        for worker in reversed(workers):
-            asyncio.run(worker.aclose())
-        _cleanup_provider_roots_sync(provider_resource, agent_execution_gateway, llm_gateway)
-        if db is not None:
-            _close_db_bundle(db)
-
-
-def _worker_result_payload(result: object) -> dict[str, Any]:
-    return {
-        "processed": int(getattr(result, "processed", 0) or 0),
-        "failed": int(getattr(result, "failed", 0) or 0),
-        "dead": int(getattr(result, "dead", 0) or 0),
-        "skipped": int(getattr(result, "skipped", 0) or 0),
-        "notes": dict(getattr(result, "notes", {}) or {}),
-    }
-
-
-def _cleanup_narrative_backlog(
-    db: object,
-    *,
-    window: str,
-    scope: str,
-    now_ms: int,
-    realtime_windows: tuple[str, ...] = ("1h",),
-    realtime_scopes: tuple[str, ...] = ("all",),
-) -> dict[str, int]:
-    with db.worker_session("rebuild_narrative_intel_cleanup") as repos:
-        return _object_dict(
-            _call_with_supported_kwargs(
-                repos.narratives.cleanup_narrative_current_hard_cut,
-                schema_version=NARRATIVE_SCHEMA_VERSION,
-                window=window,
-                scope=scope,
-                now_ms=now_ms,
-                realtime_windows=realtime_windows,
-                realtime_scopes=realtime_scopes,
-            )
-        )
-
-
-def _narrative_backlog_health(
-    db: object,
-    *,
-    now_ms: int,
-    since_hours: int,
-    worker_settings: object = None,
-) -> dict[str, Any]:
-    with db.worker_session("rebuild_narrative_intel_final_health") as repos:
-        return dict(
-            NarrativeBacklogHealthQuery(
-                repos.conn,
-                **_narrative_health_worker_kwargs(worker_settings),
-            ).health(now_ms=now_ms, since_hours=since_hours)
-        )
-
-
-def _merge_int_counts(total: dict[str, int], item: dict[str, Any]) -> None:
-    for key, value in item.items():
-        try:
-            total[key] = total.get(key, 0) + int(value or 0)
-        except (TypeError, ValueError):
-            continue
-
-
-def _call_with_supported_kwargs(method: Callable[..., object], **kwargs: object) -> object:
-    try:
-        signature = inspect.signature(method)
-    except (TypeError, ValueError):
-        return method(**kwargs)
-    parameters = signature.parameters.values()
-    if any(parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in parameters):
-        return method(**kwargs)
-    supported = {key: value for key, value in kwargs.items() if key in signature.parameters}
-    return method(**supported)
-
-
-def _object_dict(value: object) -> dict[str, Any]:
-    return dict(value) if isinstance(value, dict) else {}
-
-
-def _narrative_health_worker_kwargs(workers: object) -> dict[str, Any]:
-    mention = getattr(workers, "mention_semantics", None)
-    digest = getattr(workers, "token_discussion_digest", None)
-    return {
-        "realtime_windows": tuple(getattr(digest, "windows", ("1h",)) or ("1h",)),
-        "realtime_scopes": tuple(getattr(digest, "scopes", ("all",)) or ("all",)),
-        "semantics_rows_per_cycle": min(
-            _positive_int(getattr(mention, "batch_size", 10), default=10),
-            _positive_int(getattr(mention, "provider_batch_size", 10), default=10),
-        ),
-        "semantics_interval_seconds": _nonnegative_int(getattr(mention, "interval_seconds", 60), default=60),
-        "digest_calls_per_cycle": max(
-            1,
-            _nonnegative_int(getattr(digest, "max_llm_calls_per_cycle", 3), default=3),
-        ),
-        "digest_interval_seconds": _nonnegative_int(getattr(digest, "interval_seconds", 120), default=120),
-    }
-
-
-def _positive_int(value: Any, *, default: int) -> int:
-    try:
-        return max(1, int(value or default))
-    except (TypeError, ValueError):
-        return default
-
-
-def _nonnegative_int(value: Any, *, default: int) -> int:
-    try:
-        return max(0, int(value if value is not None else default))
-    except (TypeError, ValueError):
-        return default
 
 
 def _worker_settings_with_overrides(config: object, **overrides: object) -> SimpleNamespace:

@@ -44,13 +44,9 @@ def test_no_runtime_compatibility_fallbacks_for_agent_contracts() -> None:
     assert 'getattr(gateway, "model_for_lane", None)' not in pulse_provider_sources
     assert 'getattr(client, "model_for_lane", None)' not in pulse_provider_sources
 
-    agent_worker_sources = "\n".join(
-        (
-            (SRC / "domains/narrative_intel/runtime/mention_semantics_worker.py").read_text(),
-            (SRC / "domains/narrative_intel/runtime/token_discussion_digest_worker.py").read_text(),
-            (SRC / "domains/news_intel/runtime/news_item_brief_worker.py").read_text(),
-        )
-    )
+    assert not (SRC / "domains/narrative_intel/runtime/mention_semantics_worker.py").exists()
+    assert not (SRC / "domains/narrative_intel/runtime/token_discussion_digest_worker.py").exists()
+    agent_worker_sources = (SRC / "domains/news_intel/runtime/news_item_brief_worker.py").read_text()
     assert "_fallback_request_audit" not in agent_worker_sources
     assert '"_client"' not in agent_worker_sources
 

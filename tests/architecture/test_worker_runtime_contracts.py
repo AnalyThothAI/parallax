@@ -27,9 +27,6 @@ DOCS_CONTRACTS = ROOT / "docs" / "CONTRACTS.md"
 NARRATIVE_ARCHITECTURE = SRC / "domains" / "narrative_intel" / "ARCHITECTURE.md"
 NARRATIVE_REPOSITORY = SRC / "domains" / "narrative_intel" / "repositories" / "narrative_repository.py"
 NARRATIVE_READ_MODEL = SRC / "domains" / "narrative_intel" / "read_models" / "narrative_read_model.py"
-NARRATIVE_DIGEST_SERVICE = SRC / "domains" / "narrative_intel" / "services" / "discussion_digest_service.py"
-NARRATIVE_DIGEST_WORKER = SRC / "domains" / "narrative_intel" / "runtime" / "token_discussion_digest_worker.py"
-NARRATIVE_EPOCH_POLICY = SRC / "domains" / "narrative_intel" / "services" / "narrative_epoch_policy.py"
 API_ROUTES = SRC / "app" / "surfaces" / "api"
 WORKER_FACTORIES = SRC / "app" / "runtime" / "worker_factories"
 CEX_OI_RADAR_REPOSITORY = SRC / "domains" / "cex_market_intel" / "repositories" / "cex_oi_radar_repository.py"
@@ -108,21 +105,11 @@ SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
     "pulse_agent_run_steps": {
         SRC / "domains/pulse_lab/repositories/pulse_runs_repository.py",
     },
-    "token_mention_semantics": {
-        SRC / "domains/narrative_intel/repositories/narrative_repository.py",
-        SRC / "domains/narrative_intel/runtime/mention_semantics_worker.py",
-        SRC / "platform/db/alembic/versions/20260518_0063_narrative_intel_read_models.py",
-    },
     "narrative_admissions": {
         SRC / "domains/narrative_intel/repositories/narrative_repository.py",
         SRC / "domains/narrative_intel/runtime/narrative_admission_worker.py",
         SRC / "platform/db/alembic/versions/20260518_0063_narrative_intel_read_models.py",
         SRC / "platform/db/alembic/versions/20260519_0064_narrative_admission_source_sets.py",
-    },
-    "token_discussion_digests": {
-        SRC / "domains/narrative_intel/repositories/narrative_repository.py",
-        SRC / "domains/narrative_intel/runtime/token_discussion_digest_worker.py",
-        SRC / "platform/db/alembic/versions/20260518_0063_narrative_intel_read_models.py",
     },
     "news_page_rows": {
         SRC / "domains/news_intel/repositories/news_repository.py",
@@ -171,10 +158,6 @@ CONTROL_PLANE_TABLES: dict[str, set[Path]] = {
     },
     "narrative_admission_dirty_targets": {
         SRC / "domains/narrative_intel/repositories/narrative_admission_dirty_target_repository.py",
-        SRC / "platform/db/alembic/versions/20260525_0098_runtime_worker_dirty_targets.py",
-    },
-    "discussion_digest_dirty_targets": {
-        SRC / "domains/narrative_intel/repositories/discussion_digest_dirty_target_repository.py",
         SRC / "platform/db/alembic/versions/20260525_0098_runtime_worker_dirty_targets.py",
     },
     "token_profile_current_dirty_targets": {
@@ -433,7 +416,6 @@ def test_macro_sync_is_fact_ingest_and_projection_remains_read_model_writer() ->
 def test_worker_manifest_declares_dirty_target_consumers() -> None:
     expected_dirty_targets = {
         "asset_profile_refresh_targets",
-        "discussion_digest_dirty_targets",
         "market_tick_current_dirty_targets",
         "macro_projection_dirty_targets",
         "narrative_admission_dirty_targets",
@@ -757,13 +739,12 @@ def test_narrative_hard_cut_contracts_are_documented() -> None:
     for phrase in (
         "source_event_ids_json",
         "source-set truth",
-        "maintenance writer exception",
         "no runtime compatibility",
+        "NarrativeAdmissionWorker",
+        "were hard-cut",
+        "no active worker refreshes",
         "discussion_digest.currentness",
-        "unsupported_window",
-        "no_material_delta",
-        "llm_cycle_budget_exhausted",
-        "llm_failure_budget_exhausted",
+        "ops rebuild-narrative-intel",
     ):
         assert phrase in combined
 
@@ -920,14 +901,10 @@ def test_legacy_asset_tables_have_no_runtime_writers(table_name: str) -> None:
 
 
 @pytest.mark.architecture
-def test_token_discussion_digest_worker_uses_epoch_policy_for_refresh_decisions() -> None:
-    text = NARRATIVE_DIGEST_WORKER.read_text()
-    policy_text = NARRATIVE_EPOCH_POLICY.read_text()
-
-    assert "NarrativeEpochPolicy" in text
-    assert "self.epoch_policy.evaluate" in text
-    assert 'reason="unsupported_window"' in policy_text
-    assert "should_write_status_digest=False" in policy_text
+def test_deleted_narrative_llm_workers_are_not_runtime_contracts() -> None:
+    assert not (SRC / "domains/narrative_intel/runtime/mention_semantics_worker.py").exists()
+    assert not (SRC / "domains/narrative_intel/runtime/token_discussion_digest_worker.py").exists()
+    assert not (SRC / "integrations/model_execution/narrative_intel_agent_client.py").exists()
 
 
 @pytest.mark.architecture
@@ -944,19 +921,20 @@ def test_no_exact_fingerprint_only_public_narrative_hydration() -> None:
 
 
 @pytest.mark.architecture
-def test_narrative_cleanup_deletes_non_current_digest_state() -> None:
+def test_removed_narrative_llm_writer_methods_are_not_repository_contracts() -> None:
     text = NARRATIVE_REPOSITORY.read_text()
-    method = text.split("def cleanup_narrative_current_hard_cut", 1)[1].split(
-        "def record_narrative_model_run",
-        1,
-    )[0]
+    removed_methods = (
+        "cleanup_narrative_current_hard_cut",
+        "replace_current_digest",
+        "record_narrative_model_run",
+        "complete_mention_semantics_batch",
+        "enqueue_missing_mention_semantics",
+        "claim_due_mention_semantics",
+        "due_digest_targets",
+        "digest_context",
+    )
 
-    assert "DELETE FROM token_discussion_digests" in method
-    assert "deleted_old_digests" in method
-    assert "fingerprint_mismatch_digests_preserved" not in method
-    assert "active_admissions.source_fingerprint" not in method
-    assert "UPDATE token_discussion_digests" not in method
-    assert "SET status = 'stale'" not in method
+    assert all(f"def {name}" not in text for name in removed_methods)
 
 
 @pytest.mark.architecture
@@ -982,31 +960,11 @@ def test_narrative_runtime_does_not_keep_removed_digest_not_ready_reason() -> No
 
 
 @pytest.mark.architecture
-def test_ready_discussion_digest_service_does_not_synthesize_public_claims() -> None:
-    text = NARRATIVE_DIGEST_SERVICE.read_text()
-    publish_path = text.split("def publish_ready_digest", 1)[1].split("def _author_count", 1)[0]
-
-    forbidden = {
-        "_ensure_ready_public_claims",
-        "_fallback_summary",
-        "realtime-discussion",
-        "实时讨论达到发布阈值",
-        "达到实时叙事发布阈值",
-        "_compact_allowed_refs(list(context.get(\"allowed_refs\")",
-    }
-    offenders = sorted(token for token in forbidden if token in publish_path)
-    assert offenders == []
-
-
-@pytest.mark.architecture
-def test_token_discussion_digest_worker_does_not_write_unsupported_5m_digests() -> None:
-    text = NARRATIVE_EPOCH_POLICY.read_text()
-    unsupported_index = text.find('reason="unsupported_window"')
-    next_decision_index = text.find("if current_ready_digest is None", unsupported_index)
-
-    assert unsupported_index >= 0
-    assert "should_refresh=False" in text[unsupported_index:next_decision_index]
-    assert "should_write_status_digest=False" in text[unsupported_index:next_decision_index]
+def test_deleted_narrative_llm_service_modules_are_not_runtime_contracts() -> None:
+    assert not (SRC / "domains/narrative_intel/services/mention_semantics_service.py").exists()
+    assert not (SRC / "domains/narrative_intel/services/discussion_digest_service.py").exists()
+    assert not (SRC / "domains/narrative_intel/services/narrative_epoch_policy.py").exists()
+    assert not (SRC / "domains/narrative_intel/providers.py").exists()
 
 
 @pytest.mark.architecture

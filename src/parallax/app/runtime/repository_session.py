@@ -48,9 +48,6 @@ from parallax.domains.cex_market_intel.repositories.cex_oi_radar_repository impo
 from parallax.domains.evidence.repositories.entity_repository import EntityRepository
 from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from parallax.domains.macro_intel.repositories.macro_intel_repository import MacroIntelRepository
-from parallax.domains.narrative_intel.repositories.discussion_digest_dirty_target_repository import (
-    DiscussionDigestDirtyTargetRepository,
-)
 from parallax.domains.narrative_intel.repositories.narrative_admission_dirty_target_repository import (
     NarrativeAdmissionDirtyTargetRepository,
 )
@@ -146,7 +143,6 @@ class RepositorySession:
     pulse_playbooks: PulsePlaybooksRepository
     narratives: NarrativeRepository
     narrative_admission_dirty_targets: NarrativeAdmissionDirtyTargetRepository
-    discussion_digest_dirty_targets: DiscussionDigestDirtyTargetRepository
     watchlist_intel: WatchlistIntelRepository
     news: NewsRepository
     news_projection_dirty_targets: NewsProjectionDirtyTargetRepository
@@ -212,7 +208,6 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         pulse_playbooks=PulsePlaybooksRepository(conn),
         narratives=NarrativeRepository(conn),
         narrative_admission_dirty_targets=NarrativeAdmissionDirtyTargetRepository(conn),
-        discussion_digest_dirty_targets=DiscussionDigestDirtyTargetRepository(conn),
         watchlist_intel=WatchlistIntelRepository(conn),
         news=NewsRepository(conn),
         news_projection_dirty_targets=NewsProjectionDirtyTargetRepository(conn),
