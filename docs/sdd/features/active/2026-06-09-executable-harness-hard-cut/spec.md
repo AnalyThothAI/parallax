@@ -49,6 +49,7 @@ can both miss real process drift and block healthy refactors.
 | Input contracts must be non-blank. | `WorkerManifest` validation rejects blank `input_contract` entries before registry, factory, settings, or docs harnesses consume them. |
 | Ordering keys must be non-empty. | `WorkerManifest` validation rejects empty `ordering_keys` declarations before lifecycle, idempotency, registry, factory, settings, or docs harnesses consume them. |
 | Ordering keys must be non-blank. | `WorkerManifest` validation rejects blank `ordering_keys` entries before lifecycle, idempotency, registry, factory, settings, or docs harnesses consume them. |
+| Ordering keys must be unique. | `WorkerManifest` validation rejects duplicate `ordering_keys` entries before lifecycle, idempotency, registry, factory, settings, or docs harnesses consume them. |
 | Dirty-target consumers must declare dirty targets. | `WorkerManifest` validation rejects `DIRTY_TARGET_CONSUMER` manifests that omit `dirty_target_tables`. |
 | Leased-job consumers must declare queue depth tables. | `WorkerManifest` validation rejects `LEASED_JOB_CONSUMER` manifests that omit `queue_depth_table`. |
 | Bounded provider schedulers must declare provider I/O. | `WorkerManifest` validation rejects `BOUNDED_PROVIDER_SCHEDULER` manifests that do not set `uses_provider_io`. |
@@ -194,6 +195,7 @@ can both miss real process drift and block healthy refactors.
 - G72. Input contract declarations reject blank entries, so workers cannot satisfy input-boundary review with whitespace placeholders.
 - G73. Ordering-key declarations require at least one entry, so workers cannot enter lifecycle, idempotency, registry, factory, settings, or docs harnesses without a declared processing order boundary.
 - G74. Ordering-key declarations reject blank entries, so workers cannot satisfy ordering and idempotency review with whitespace placeholders.
+- G75. Ordering-key declarations reject duplicate entries, so workers cannot satisfy ordering and idempotency review with repeated placeholders.
 
 ## Non-goals
 
@@ -335,6 +337,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC94. WHEN a `WorkerManifest.input_contract` entry is blank THEN manifest validation SHALL raise before registry, factory, settings, or worker inventory harnesses consume the manifest.
 - AC95. WHEN a `WorkerManifest.ordering_keys` declaration is empty THEN manifest validation SHALL raise before lifecycle, idempotency, registry, factory, settings, or worker inventory harnesses consume the manifest.
 - AC96. WHEN a `WorkerManifest.ordering_keys` entry is blank THEN manifest validation SHALL raise before lifecycle, idempotency, registry, factory, settings, or worker inventory harnesses consume the manifest.
+- AC97. WHEN a `WorkerManifest.ordering_keys` entry repeats within one manifest THEN manifest validation SHALL raise before lifecycle, idempotency, registry, factory, settings, or worker inventory harnesses consume the manifest.
 
 ## Risks
 

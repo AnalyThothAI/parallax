@@ -403,6 +403,19 @@ def test_worker_manifest_validation_rejects_blank_ordering_keys(
 
 
 @pytest.mark.architecture
+def test_worker_manifest_validation_rejects_duplicate_ordering_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifests = list(all_worker_manifests())
+    duplicate_key = manifests[0].ordering_keys[0]
+    manifests[0] = replace(manifests[0], ordering_keys=(*manifests[0].ordering_keys, duplicate_key))
+    monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
+
+    with pytest.raises(ValueError, match="duplicate worker manifest ordering keys"):
+        worker_manifest_module._validate_worker_manifests()
+
+
+@pytest.mark.architecture
 def test_worker_manifest_validation_rejects_duplicate_read_model_identity_columns(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
