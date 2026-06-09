@@ -28,7 +28,7 @@ Known-failing baseline tests:
 - Validate task field semantics, not just presence: path-shaped file/touch values, structured conflict rules, command-shaped verification, test-shaped failing-test-first values, and known task status tokens.
 - Parse task dependency references and ranges, reject unsupported dependency syntax, and report unresolved task numbers as `task-invalid-dependencies`.
 - Reject `[x]` tasks whose declared dependency tasks are not also `[x]`.
-- Validate task review evidence: delegated tasks must name a subagent report path and review result, non-delegated tasks must say `not delegated` / `parent-reviewed`, and completed tasks cannot remain `needs-repair`.
+- Validate task review evidence: delegated tasks must name a subagent report path and review result, non-delegated tasks must say `not delegated` / `parent-reviewed`, and completed tasks must have explicit `parent-reviewed` or `accepted` review evidence.
 - Validate delegated subagent report artifacts by following the report path and running the shared task-bound report contract.
 - Validate completed task evidence by requiring each `[x]` task's `Verification` command to appear in `verification.md` with exit code 0.
 - Limit completed task evidence to the `## Verification commands` and `## Other commands run` evidence sections.
@@ -191,6 +191,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC24: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_approval_metadata -q`
 - AC25: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_structured_tasks -q`
 - AC26: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_one_successor -q`
+- AC27: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_tasks_require_review_result_evidence -q`
 
 ## Verification
 

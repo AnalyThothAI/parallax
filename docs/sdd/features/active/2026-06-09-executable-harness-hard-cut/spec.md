@@ -146,6 +146,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC24. WHEN an artifact is `Superseded` but lacks required approval/execution metadata THEN the validator SHALL still report `missing-approval-metadata`; superseded status only skips content-section gates, not metadata truth.
 - AC25. WHEN a `Superseded` feature has a legacy checkbox-only `tasks.md` with no structured `### Task` sections THEN the validator SHALL report `task-missing-coordination-fields`.
 - AC26. WHEN artifacts in the same `Superseded` feature declare different `Superseded by` paths THEN the validator SHALL report `superseded-successor-mismatch`.
+- AC27. WHEN a task is marked `[x]` but `Review result` is not `parent-reviewed` or `accepted` THEN the validator SHALL report `task-complete-missing-review-evidence`; completion requires a review outcome, not just non-delegation.
 
 ## Risks
 

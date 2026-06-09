@@ -102,6 +102,7 @@ KNOWN_ISSUE_CODES = (
     "task-missing-agent-loop-fields",
     "task-missing-review-fields",
     "task-invalid-review-fields",
+    "task-complete-missing-review-evidence",
     "task-missing-subagent-handoff-artifact",
     "task-missing-subagent-report-artifact",
     "task-invalid-subagent-report-artifact",
@@ -518,6 +519,7 @@ def _task_issues(feature: SddFeature) -> list[SddIssue]:
                     f"{task.title} invalid fields: {', '.join(invalid_review_fields)}",
                 )
             )
+        issues.extend(_complete_task_review_issues(feature, task))
         issues.extend(_subagent_handoff_artifact_issues(feature, task))
         issues.extend(_subagent_report_artifact_issues(feature, task))
         issues.extend(_complete_task_verification_issues(feature, task))
@@ -588,6 +590,23 @@ def _invalid_review_fields(task: TaskRecord) -> list[str]:
     if status == "[x]" and normalized_result in {"needs-repair", "blocked"}:
         invalid.append("review result")
     return list(dict.fromkeys(invalid))
+
+
+def _complete_task_review_issues(feature: SddFeature, task: TaskRecord) -> list[SddIssue]:
+    if task.fields.get("status", "").strip().lower() != "[x]":
+        return []
+
+    review_result = task.fields.get("review result", "").replace("`", "").strip().lower()
+    if review_result in {"parent-reviewed", "accepted"}:
+        return []
+
+    return [
+        _issue(
+            "task-complete-missing-review-evidence",
+            feature.artifacts["tasks.md"],
+            f"{task.title} complete task requires parent-reviewed or accepted review result",
+        )
+    ]
 
 
 def _subagent_report_artifact_issues(feature: SddFeature, task: TaskRecord) -> list[SddIssue]:

@@ -565,6 +565,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 27 — Completed task review outcome gate
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 26
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared task review semantics and generated index.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_complete_tasks_require_review_result_evidence` — asserts `[x]` tasks cannot keep `Review result: not delegated`.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Completed tasks must carry explicit `parent-reviewed` or `accepted` review outcome evidence.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, active SDD task records, generated SDD work index.
+- **Kill/defer criteria**: Stop if a completed task can pass with only `not delegated` as its review result.
+- **Eval/repair signal**: `task-complete-missing-review-evidence`, stale generated index, and review-loop drift.
+- **Implementation**: Add a completed-task review-evidence issue code and reject `[x]` tasks without a real review outcome.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_tasks_require_review_result_evidence -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -592,4 +613,5 @@
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_approval_metadata -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_structured_tasks -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_one_successor -q`
+- [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_tasks_require_review_result_evidence -q`
 - [ ] `make check-all`

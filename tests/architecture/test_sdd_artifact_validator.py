@@ -275,6 +275,23 @@ def test_complete_task_evidence_ignores_commands_outside_evidence_sections(tmp_p
     assert "task-complete-missing-verification-evidence" in _issue_codes(issues)
 
 
+def test_complete_tasks_require_review_result_evidence(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-complete-task-without-review")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(
+        feature / "tasks.md",
+        status="In Progress",
+        review_result="not delegated",
+        task_status="[x]",
+    )
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "task-complete-missing-review-evidence" in _issue_codes(issues)
+
+
 def test_tasks_require_filled_coordination_fields(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-loose-tasks")
     _write_valid_spec(feature / "spec.md", status="In Progress")
