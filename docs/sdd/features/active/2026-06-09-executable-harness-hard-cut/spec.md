@@ -125,6 +125,7 @@ can both miss real process drift and block healthy refactors.
 | Stable payload hash keys must be strings. | `stable_current_payload_hash()` rejects non-string top-level payload keys before `_json_ready()` can stringify compatibility-shaped mapping keys into serving hashes. |
 | Nested stable payload hash keys must be strings. | `stable_current_payload_hash()` rejects non-string keys inside nested mapping payload values before `_json_ready()` can stringify compatibility-shaped factor snapshots or JSON payload blocks into serving hashes. |
 | Stable payload hash values must reject generic isoformat objects. | `stable_current_payload_hash()` rejects arbitrary payload objects that merely expose `isoformat()` before `_json_ready()` can preserve compatibility-shaped values as serving hashes; only real date/time values may use ISO formatting. |
+| Stable payload hash numbers must be finite. | `stable_current_payload_hash()` rejects float and Decimal NaN/Infinity values before JSON serialization or Decimal stringification can consume non-finite numbers as serving hashes. |
 | Worker manifest imports must be explicit. | `worker_manifest.py` imports `importlib.util` directly so clean-process manifest validation never depends on incidental package attribute side effects. |
 | Root visual artifacts must be absent. | Architecture harness rejects loose visual verification files at the repository root so screenshots live only under owned artifact directories. |
 | Worker table declarations must be unique. | `WorkerManifest` validation rejects duplicated table names inside each manifest table-declaration field before `owned_tables` dedupes them. |
@@ -312,6 +313,7 @@ can both miss real process drift and block healthy refactors.
 - G131. Stable current payload hashing rejects non-string payload keys before JSON normalization can stringify compatibility-shaped mapping keys into serving hashes.
 - G132. Stable current payload hashing rejects non-string keys inside nested mapping payload values before JSON normalization can stringify compatibility-shaped factor snapshots into serving hashes.
 - G133. Stable current payload hashing rejects arbitrary `isoformat()` objects before JSON normalization can turn compatibility-shaped payload values into serving hashes.
+- G134. Stable current payload hashing rejects non-finite float and Decimal payload values before JSON serialization or Decimal stringification can consume them as serving hashes.
 
 ## Non-goals
 
@@ -512,6 +514,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC153. WHEN `stable_current_payload_hash()` receives a mapping payload with any non-string top-level key THEN it SHALL raise a dedicated payload-key validation error before JSON normalization, key stringification, or hash generation consumes compatibility-shaped payload keys.
 - AC154. WHEN `stable_current_payload_hash()` receives a mapping payload containing nested mapping values with any non-string key THEN it SHALL raise a dedicated payload-key validation error before JSON normalization, key stringification, or hash generation consumes compatibility-shaped nested payload keys.
 - AC155. WHEN `stable_current_payload_hash()` receives a mapping payload containing an arbitrary object that exposes `isoformat()` but is not a supported date/time value THEN it SHALL raise a dedicated payload-value validation error before JSON normalization, generic ISO formatting, or hash generation consumes compatibility-shaped payload values.
+- AC156. WHEN `stable_current_payload_hash()` receives a mapping payload containing float or Decimal NaN/Infinity values THEN it SHALL raise a dedicated payload-number validation error before JSON serialization, Decimal stringification, or hash generation consumes non-finite payload numbers.
 
 ## Risks
 

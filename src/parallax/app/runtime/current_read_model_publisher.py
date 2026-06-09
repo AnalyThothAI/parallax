@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from decimal import Decimal
+from math import isfinite
 from typing import Any
 
 PAYLOAD_HASH_PREFIX = "sha256:"
@@ -220,6 +221,10 @@ def _validate_payload_hash_values(value: Any) -> None:
         for inner in value:
             _validate_payload_hash_values(inner)
         return
+    if isinstance(value, float) and not isfinite(value):
+        raise ValueError(f"current payload hash payload has non-finite numbers: {value}")
+    if isinstance(value, Decimal) and not value.is_finite():
+        raise ValueError(f"current payload hash payload has non-finite numbers: {value}")
     if value is None or isinstance(value, str | int | float | Decimal | date | datetime | time):
         return
     raise ValueError(f"current payload hash payload has unsupported values: {value}")

@@ -3274,6 +3274,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 156 — Stable payload hash rejects non-finite payload numbers
+
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 155
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for stable payload hash numeric-value validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_non_finite_payload_numbers` — call `stable_current_payload_hash()` with float and Decimal NaN/Infinity values and assert hash validation raises before JSON serialization or Decimal stringification can consume non-finite payload numbers.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `stable_current_payload_hash()` payload numeric values must be finite before `_json_ready()`, JSON serialization, Decimal stringification, or hash generation can consume them as current read-model payload truth.
+- **On-demand context**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, and current read-model payload hash idempotency contracts.
+- **Kill/defer criteria**: Stop if non-finite values are an intentional current read-model serving payload contract, if validation only belongs in concrete row publishers, or if the fix requires serializer-dependent error handling.
+- **Eval/repair signal**: float NaN/Infinity JSON errors, Decimal NaN/Infinity stringification, stable payload hash idempotency drift, JSON normalization compatibility drift, and SDD generated index drift.
+- **Implementation**: Add recursive stable payload numeric validation before `_json_ready()` and reject non-finite float and Decimal values with a dedicated payload-number validation error.
+- **Verification**: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_non_finite_payload_numbers -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -3420,4 +3441,5 @@
 - [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_non_string_payload_keys -q`
 - [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_nested_non_string_payload_keys -q`
 - [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_generic_isoformat_payload_values -q`
+- [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_non_finite_payload_numbers -q`
 - [ ] `make check-all`

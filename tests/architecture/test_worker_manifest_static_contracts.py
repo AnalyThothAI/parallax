@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -138,6 +139,22 @@ def test_stable_current_payload_hash_rejects_generic_isoformat_payload_values() 
 
     with pytest.raises(ValueError, match="current payload hash payload has unsupported values"):
         stable_current_payload_hash({"target_id": "asset-1", "observed_at": LegacyIsoformatValue()})
+
+
+@pytest.mark.architecture
+@pytest.mark.parametrize(
+    "value",
+    [
+        float("nan"),
+        float("inf"),
+        Decimal("NaN"),
+        Decimal("Infinity"),
+    ],
+    ids=["float-nan", "float-infinity", "decimal-nan", "decimal-infinity"],
+)
+def test_stable_current_payload_hash_rejects_non_finite_payload_numbers(value: float | Decimal) -> None:
+    with pytest.raises(ValueError, match="current payload hash payload has non-finite numbers"):
+        stable_current_payload_hash({"target_id": "asset-1", "score": value})
 
 
 @pytest.mark.architecture
