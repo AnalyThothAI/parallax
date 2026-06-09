@@ -243,12 +243,14 @@ Known-failing baseline tests:
 - Reject non-string `CurrentReadModelPublisher.payload_hash_column` values before row hashing or changed-row writes can use them as serving-row keys.
 - Reject blank `CurrentReadModelPublisher.payload_hash_column` values before changed-row writes can add empty serving-row keys.
 - Reject lifecycle `CurrentReadModelPublisher.payload_hash_column` values before changed-row writes can overwrite runtime lifecycle fields.
+- Reject identity `CurrentReadModelPublisher.payload_hash_column` values before changed-row writes can overwrite serving identity keys.
 - Reject non-tuple `CurrentReadModelPublisher.payload_columns` values before row hashing can treat compatibility lists or scalar strings as payload field lists.
 - Reject non-string entries inside `CurrentReadModelPublisher.payload_columns` before row hashing can look up invalid payload keys.
 - Reject blank entries inside `CurrentReadModelPublisher.payload_columns` before row hashing can look up empty payload keys.
 - Reject duplicate entries inside `CurrentReadModelPublisher.payload_columns` before row hashing can silently collapse repeated payload keys.
 - Reject explicit `CurrentReadModelPublisher.payload_columns` that include the configured payload hash column before row hashing can self-reference prior hashes.
 - Reject explicit `CurrentReadModelPublisher.payload_columns` that include lifecycle columns before row hashing can reintroduce run/generation/timestamp drift.
+- Require every explicit `CurrentReadModelPublisher.payload_columns` entry to exist in each row before hashing, so query drift fails instead of hashing missing fields as `None`.
 - Import `importlib.util` directly inside `worker_manifest.py` so manifest validation does not depend on prior import side effects in clean processes.
 - Reject loose visual verification artifacts at the repository root and keep screenshots under owned artifact directories.
 - Reject duplicate table names inside each `WorkerManifest` table-declaration field before `owned_tables` dedupes them.
@@ -393,12 +395,14 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Publisher payload hash columns are strings. | Pass: `CurrentReadModelPublisher` raises at construction when given a numeric payload hash column name. |
 | Publisher payload hash columns are non-blank. | Pass: `CurrentReadModelPublisher` raises at construction when given a blank payload hash column name. |
 | Publisher payload hash columns are not lifecycle columns. | Pass: `CurrentReadModelPublisher` raises at construction when the payload hash column is a serving lifecycle column. |
+| Publisher payload hash columns are not identity columns. | Pass: `CurrentReadModelPublisher` raises at construction when the payload hash column overlaps a stable identity column. |
 | Publisher payload columns are tuples. | Pass: `CurrentReadModelPublisher` raises at construction when given list-shaped payload columns. |
 | Publisher payload column entries are strings. | Pass: `CurrentReadModelPublisher` raises at construction when given a numeric payload column entry. |
 | Publisher payload column entries are non-blank. | Pass: `CurrentReadModelPublisher` raises at construction when given a blank payload column entry. |
 | Publisher payload column entries are unique. | Pass: `CurrentReadModelPublisher` raises at construction when given duplicate payload column entries. |
 | Publisher payload columns exclude the payload hash column. | Pass: `CurrentReadModelPublisher` raises at construction when explicit payload columns include the configured hash column. |
 | Publisher payload columns exclude lifecycle columns. | Pass: `CurrentReadModelPublisher` raises at construction when explicit payload columns include a serving lifecycle column. |
+| Publisher explicit payload columns exist in rows. | Pass: `CurrentReadModelPublisher.row_payload_hash()` raises when a declared explicit payload column is missing from the row. |
 | Worker manifest imports are explicit. | Pass: importing `parallax.app.runtime.worker_manifest` in a clean process succeeds even after removing an incidental `importlib.util` package attribute. |
 | Root visual artifacts are absent. | Pass: architecture harness rejects loose root-level PNG/JPG/WEBP/GIF verification artifacts. |
 | Worker table declarations are unique. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares the same table twice inside one table-declaration field. |
@@ -563,6 +567,8 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC128: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_lifecycle_payload_hash_column -q`
 - AC129: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_payload_hash_payload_columns -q`
 - AC130: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_lifecycle_payload_columns -q`
+- AC131: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_identity_payload_hash_column -q`
+- AC132: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_missing_explicit_payload_column -q`
 
 ## Verification
 

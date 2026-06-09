@@ -147,6 +147,8 @@ claim is allowed without the corresponding output captured below.
 | AC128 — Publisher payload hash columns are not lifecycle columns. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_lifecycle_payload_hash_column -q` failed RED when a lifecycle payload hash column was silently accepted, then passed after adding publisher payload-hash lifecycle-column validation. |
 | AC129 — Publisher payload columns exclude the payload hash column. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_payload_hash_payload_columns -q` failed RED when explicit payload columns could include the payload hash column, then passed after adding publisher payload hash self-reference validation. |
 | AC130 — Publisher payload columns exclude lifecycle columns. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_lifecycle_payload_columns -q` failed RED when explicit lifecycle payload columns were silently accepted, then passed after adding publisher payload lifecycle-column validation. |
+| AC131 — Publisher payload hash columns are not identity columns. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_identity_payload_hash_column -q` failed RED when a payload hash column overlapping stable identity columns was silently accepted, then passed after adding publisher payload-hash identity-column validation. |
+| AC132 — Publisher explicit payload columns exist in rows. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_missing_explicit_payload_column -q` failed RED when a missing explicit payload column was silently hashed as `None`, then passed after making explicit payload hashing require declared row keys. |
 
 Deviations from spec:
 
@@ -2036,6 +2038,50 @@ $ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
 exit code: 0
 
 $ git diff --check
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_identity_payload_hash_column -q
+F                                                                        [100%]
+E       Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_missing_explicit_payload_column -q
+F                                                                        [100%]
+E       Failed: DID NOT RAISE <class 'KeyError'>
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_identity_payload_hash_column -q
+1 passed in 0.44s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_missing_explicit_payload_column -q
+1 passed in 0.42s
+exit code: 0
+
+$ uv run python scripts/regen_sdd_work_index.py
+wrote docs/generated/sdd-work-index.md
+exit code: 0
+
+$ uv run python scripts/validate_sdd_artifacts.py --check
+SDD artifact validation passed.
+exit code: 0
+
+$ uv run python scripts/regen_sdd_work_index.py --check
+exit code: 0
+
+$ uv run ruff check src/parallax/app/runtime/current_read_model_publisher.py tests/architecture/test_worker_manifest_static_contracts.py
+All checks passed!
+exit code: 0
+
+$ git diff --check
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py -q
+17 passed in 0.50s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
+56 passed in 0.59s
 exit code: 0
 ```
 

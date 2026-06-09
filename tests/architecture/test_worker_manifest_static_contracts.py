@@ -118,6 +118,12 @@ def test_current_read_model_publisher_rejects_lifecycle_payload_hash_column() ->
 
 
 @pytest.mark.architecture
+def test_current_read_model_publisher_rejects_identity_payload_hash_column() -> None:
+    with pytest.raises(ValueError, match="payload hash column cannot be identity column"):
+        CurrentReadModelPublisher(identity_columns=("target_id",), payload_hash_column="target_id")
+
+
+@pytest.mark.architecture
 def test_current_read_model_publisher_rejects_non_tuple_payload_columns() -> None:
     with pytest.raises(ValueError, match="non-tuple current payload columns"):
         CurrentReadModelPublisher(identity_columns=("target_id",), payload_columns=["target_id"])
@@ -151,6 +157,14 @@ def test_current_read_model_publisher_rejects_payload_hash_payload_columns() -> 
 def test_current_read_model_publisher_rejects_lifecycle_payload_columns() -> None:
     with pytest.raises(ValueError, match="payload columns cannot include lifecycle columns"):
         CurrentReadModelPublisher(identity_columns=("target_id",), payload_columns=("target_id", "computed_at_ms"))
+
+
+@pytest.mark.architecture
+def test_current_read_model_publisher_rejects_missing_explicit_payload_column() -> None:
+    publisher = CurrentReadModelPublisher(identity_columns=("target_id",), payload_columns=("target_id", "score"))
+
+    with pytest.raises(KeyError, match="score"):
+        publisher.row_payload_hash({"target_id": "asset-1"})
 
 
 @pytest.mark.architecture

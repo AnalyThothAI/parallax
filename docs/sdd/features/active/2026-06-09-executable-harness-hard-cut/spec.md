@@ -94,12 +94,14 @@ can both miss real process drift and block healthy refactors.
 | Publisher payload hash columns must be strings. | `CurrentReadModelPublisher` rejects non-string payload hash column names before row hashing or changed-row writes can use them as serving-row keys. |
 | Publisher payload hash columns must be non-blank. | `CurrentReadModelPublisher` rejects blank payload hash column names before changed-row writes can add empty serving-row keys. |
 | Publisher payload hash columns must not be lifecycle columns. | `CurrentReadModelPublisher` rejects lifecycle payload hash column names before changed-row writes can overwrite runtime lifecycle fields. |
+| Publisher payload hash columns must not be identity columns. | `CurrentReadModelPublisher` rejects payload hash column names that overlap stable identity columns before changed-row writes can overwrite serving identity keys. |
 | Publisher payload columns must be tuples. | `CurrentReadModelPublisher` rejects list-shaped or scalar payload column declarations before row payload hashing can treat them as field lists. |
 | Publisher payload column entries must be strings. | `CurrentReadModelPublisher` rejects non-string payload column entries before row payload hashing can look up invalid payload keys. |
 | Publisher payload column entries must be non-blank. | `CurrentReadModelPublisher` rejects blank payload column entries before row payload hashing can look up empty payload keys. |
 | Publisher payload column entries must be unique. | `CurrentReadModelPublisher` rejects duplicate payload column entries before row payload hashing can silently collapse repeated keys. |
 | Publisher payload columns must not include the payload hash column. | `CurrentReadModelPublisher` rejects explicit payload column sets that include the configured payload hash column before row hashing can self-reference prior hashes. |
 | Publisher payload columns must not include lifecycle columns. | `CurrentReadModelPublisher` rejects explicit lifecycle payload columns before row hashing can reintroduce run/generation/timestamp drift that the default payload path excludes. |
+| Publisher explicit payload columns must exist in rows. | `CurrentReadModelPublisher` raises on missing explicit payload columns instead of hashing absent fields as `None`. |
 | Worker manifest imports must be explicit. | `worker_manifest.py` imports `importlib.util` directly so clean-process manifest validation never depends on incidental package attribute side effects. |
 | Root visual artifacts must be absent. | Architecture harness rejects loose visual verification files at the repository root so screenshots live only under owned artifact directories. |
 | Worker table declarations must be unique. | `WorkerManifest` validation rejects duplicated table names inside each manifest table-declaration field before `owned_tables` dedupes them. |
@@ -262,6 +264,8 @@ can both miss real process drift and block healthy refactors.
 - G106. Current read-model publisher payload hash column declarations reject lifecycle column names, so changed-row writes cannot overwrite runtime lifecycle fields.
 - G107. Current read-model publisher payload column declarations reject the configured payload hash column, so explicit payload hashing cannot self-reference prior hashes.
 - G108. Current read-model publisher payload column declarations reject lifecycle column names, so explicit payload hashing cannot reintroduce run/generation/timestamp drift.
+- G109. Current read-model publisher payload hash column declarations reject stable identity column names, so changed-row writes cannot overwrite serving identity keys.
+- G110. Current read-model publisher explicit payload hashing requires declared payload keys to exist in each row, so query drift cannot silently hash missing fields as null.
 
 ## Non-goals
 
@@ -437,6 +441,8 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC128. WHEN `CurrentReadModelPublisher.payload_hash_column` names a serving lifecycle column THEN publisher construction SHALL raise before changed-row writes can overwrite runtime lifecycle fields.
 - AC129. WHEN `CurrentReadModelPublisher.payload_columns` contains the configured payload hash column THEN publisher construction SHALL raise before row payload hashing can self-reference prior serving hashes.
 - AC130. WHEN `CurrentReadModelPublisher.payload_columns` contains a serving lifecycle column THEN publisher construction SHALL raise before explicit row payload hashing can reintroduce run, generation, attempt, or timestamp drift.
+- AC131. WHEN `CurrentReadModelPublisher.payload_hash_column` names a stable identity column THEN publisher construction SHALL raise before changed-row writes can overwrite serving identity keys.
+- AC132. WHEN `CurrentReadModelPublisher.payload_columns` names a field missing from a row THEN explicit row payload hashing SHALL raise instead of hashing the absent field as `None`.
 
 ## Risks
 

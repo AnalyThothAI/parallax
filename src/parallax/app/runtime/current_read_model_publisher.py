@@ -61,6 +61,8 @@ class CurrentReadModelPublisher:
             raise ValueError(f"blank current payload hash column: {self.payload_hash_column!r}")
         if self.payload_hash_column in FORBIDDEN_SERVING_IDENTITY_COLUMNS:
             raise ValueError(f"payload hash column cannot be lifecycle column: {self.payload_hash_column}")
+        if self.payload_hash_column in self.identity_columns:
+            raise ValueError(f"payload hash column cannot be identity column: {self.payload_hash_column}")
         if self.payload_columns is not None and type(self.payload_columns) is not tuple:
             raise ValueError(f"non-tuple current payload columns: {self.payload_columns}")
         if self.payload_columns is not None:
@@ -92,7 +94,7 @@ class CurrentReadModelPublisher:
                 if key != self.payload_hash_column and key not in FORBIDDEN_SERVING_IDENTITY_COLUMNS
             }
         else:
-            payload = {key: row.get(key) for key in self.payload_columns}
+            payload = {key: row[key] for key in self.payload_columns}
         return stable_current_payload_hash(payload)
 
     def changed_rows(
