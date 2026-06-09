@@ -27,7 +27,7 @@ export function RatesMarketRead({ view }: { view: RatesWorkbenchView }) {
             </div>
             <div>
               <dt>截至</dt>
-              <dd>{view.asOfLabel}</dd>
+              <dd>{compactAsOfLabel(view.asOfLabel)}</dd>
             </div>
           </dl>
         </div>
@@ -46,4 +46,8 @@ export function RatesMarketRead({ view }: { view: RatesWorkbenchView }) {
       </div>
     </MacroPanel>
   );
+}
+
+function compactAsOfLabel(label: string): string {
+  return label.replace(/^截至\s*/, "");
 }
