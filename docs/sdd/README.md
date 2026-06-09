@@ -20,6 +20,8 @@ Each feature is a dated directory containing exactly four artifacts:
 - `verification.md`
 
 Historical one-off plans are not retained here. Canonical project truth lives in root governance docs, domain `ARCHITECTURE.md` files, code, tests, and generated contracts.
+Any extra file or subdirectory under a feature record fails the executable
+harness as `unexpected-artifact`.
 
 ## Loop
 

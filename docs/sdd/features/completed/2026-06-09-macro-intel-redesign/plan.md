@@ -10,7 +10,7 @@
 ## Pre-flight
 
 - [x] Worktree exists at `.worktrees/macro-intel-redesign/` and `git branch --show-current` returns `codex/macro-intel-redesign`.
-- [x] Visual mockup exists at `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/macro-visual-mockup.html`.
+- [x] Legacy visual mockup attachment was removed by the SDD four-artifact hard cut.
 - [x] Spec reviewed against implementation before final verification.
 - [x] Baseline frontend checks recorded.
 
@@ -23,9 +23,7 @@ Baseline issue resolved in first implementation slice:
 ### SDD artifacts
 
 - `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/spec.md`: product architecture and acceptance criteria.
-- `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/macro-visual-mockup.html`: overall visual mockup for overview, asset dashboard, generic module, rates, and mobile.
-- `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/macro-visual-mockup.png`: rendered preview generated from the HTML mockup.
-- `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/timsun-assets-comparison.txt`: reference-page product structure and gap comparison.
+- Legacy mockup, rendered preview, and comparison attachments were removed by the SDD four-artifact hard cut; the successor record owns current harness evidence.
 - `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/verification.md`: final command output and manual UI evidence.
 
 ### `web/src/features/macro/ui/workbench/`

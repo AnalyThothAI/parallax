@@ -11,7 +11,7 @@ Tasks are TDD-ordered. A task is complete only when its verification command pro
 
 ### Task 1 — Visual spec and mockup
 
-- **File(s)**: `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/spec.md`, `macro-visual-mockup.html`, `macro-visual-mockup.png`
+- **File(s)**: `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/spec.md`
 - **Owner**: parent
 - **Depends on**: current user goal
 - **Touch set**: SDD feature directory only

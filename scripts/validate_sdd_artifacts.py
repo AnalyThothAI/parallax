@@ -93,6 +93,7 @@ KNOWN_ISSUE_CODES = (
     "artifact-status-mismatch",
     "missing-status",
     "missing-artifact",
+    "unexpected-artifact",
     "missing-gate-section",
     "missing-approval-metadata",
     "task-missing-coordination-fields",
@@ -358,6 +359,7 @@ def _read_artifact(root: Path, path: Path, artifact_name: str) -> ArtifactRecord
 
 def _feature_issues(feature: SddFeature) -> list[SddIssue]:
     issues: list[SddIssue] = []
+    issues.extend(_unexpected_artifact_issues(feature))
     for artifact in feature.artifacts.values():
         issues.extend(_artifact_issues(feature, artifact))
     issues.extend(_artifact_status_mismatch_issues(feature))
@@ -367,6 +369,19 @@ def _feature_issues(feature: SddFeature) -> list[SddIssue]:
     if feature.status.lower() == "verified":
         issues.extend(_verified_issues(feature))
     return issues
+
+
+def _unexpected_artifact_issues(feature: SddFeature) -> list[SddIssue]:
+    repo_root = _repo_root(feature)
+    unexpected_paths = sorted(path for path in feature.path.iterdir() if path.name not in ARTIFACTS)
+    return [
+        SddIssue(
+            code="unexpected-artifact",
+            path=_relative(repo_root, path),
+            message=f"feature directories must contain only {', '.join(ARTIFACTS)}",
+        )
+        for path in unexpected_paths
+    ]
 
 
 def _artifact_status_mismatch_issues(feature: SddFeature) -> list[SddIssue]:

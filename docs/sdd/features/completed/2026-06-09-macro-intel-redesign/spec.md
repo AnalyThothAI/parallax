@@ -4,7 +4,7 @@
 **Date**: 2026-06-09
 **Owner**: Codex
 **Superseded by**: `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut/`
-**Related**: `docs/FRONTEND.md`, `docs/DESIGN_DISCIPLINE.md`, `src/parallax/domains/macro_intel/ARCHITECTURE.md`, `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/macro-visual-mockup.html`
+**Related**: `docs/FRONTEND.md`, `docs/DESIGN_DISCIPLINE.md`, `src/parallax/domains/macro_intel/ARCHITECTURE.md`
 
 ## Background
 

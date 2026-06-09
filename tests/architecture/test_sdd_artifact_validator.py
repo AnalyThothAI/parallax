@@ -79,6 +79,19 @@ def test_feature_rejects_mixed_artifact_statuses(tmp_path: Path) -> None:
     assert "artifact-status-mismatch" in _issue_codes(issues)
 
 
+def test_feature_rejects_unexpected_artifact_files(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-extra-artifact")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(feature / "tasks.md", status="In Progress", task_status="[~]")
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+    (feature / "notes.md").write_text("old planning notes\n", encoding="utf-8")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "unexpected-artifact" in _issue_codes(issues)
+
+
 def test_superseded_feature_requires_machine_readable_successor(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "completed", "2026-06-09-prose-successor")
     _write_valid_spec(feature / "spec.md", status="Superseded")

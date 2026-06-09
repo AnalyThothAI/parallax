@@ -21,7 +21,7 @@ This file records the Macro Intel frontend redesign implementation: shared workb
 | AC5 — Correlation matrix workbench grammar | Met | Correlation detail renders `相关性简报`, `相关性矩阵`, `相关性证据`, `数据诊断`; matrix and pair evidence use shared correlation components. |
 | AC6 — No overflow at target viewports | Met | Macro responsive audit passes across its internal route/viewport matrix; macro-terminal passes desktop, tablet, and mobile projects. |
 | AC7 — No retired selectors/compat assumptions | Met for current macro frontend | Architecture harness now rejects retired primitive files and old macro metric/read/evidence/health/transmission selectors; lint/architecture passes. |
-| AC8 — Visual mockup exists and renders | Met | Visual mockup HTML/PNG exists; actual implementation screenshots are recorded below. |
+| AC8 — Visual mockup exists and renders | Superseded | Legacy visual/mockup attachments were removed by the SDD four-artifact hard cut; successor record owns current harness evidence. |
 
 Deviations from spec:
 
@@ -141,7 +141,7 @@ Repository non-integration gate:
 
 ```text
 $ PATH=/opt/homebrew/bin:$PATH make check
-Output: docs/sdd/features/completed/2026-06-09-macro-intel-redesign/make-check-output.txt
+External make-check output attachment removed by the SDD four-artifact hard cut.
 exit code: 0
 ```
 
@@ -176,18 +176,9 @@ $ node --input-type=module <playwright file-open script>
 exit code: 0
 ```
 
-Rendered preview:
-
-- `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/macro-visual-mockup.html`
-- `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/macro-visual-mockup.png`
-
-Actual implementation screenshots:
-
-- `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/macro-actual-overview-desktop.png`
-- `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/macro-actual-assets-desktop.png`
-- `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/macro-actual-rates-desktop.png`
-- `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/macro-actual-correlation-desktop.png`
-- `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/macro-actual-assets-mobile.png`
+Rendered preview and actual implementation screenshot attachments were removed by
+the SDD four-artifact hard cut; current evidence belongs in the successor
+record.
 
 Manual visual review:
 
@@ -207,9 +198,7 @@ $ curl -sL -A 'Mozilla/5.0 ... Chrome/126 Safari/537.36' https://timsun.net/asse
 Observed asset groups, cross-asset correlation section, and cross-analysis prose.
 ```
 
-Comparison notes:
-
-- `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/timsun-assets-comparison.txt`
+Comparison note attachment removed by the SDD four-artifact hard cut.
 
 Local browser tooling note:
 
@@ -224,8 +213,6 @@ Design-stage files changed:
 - `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/plan.md`
 - `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/tasks.md`
 - `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/verification.md`
-- `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/macro-visual-mockup.html`
-- `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/macro-visual-mockup.png`
 
 Migrations applied in this slice:
 

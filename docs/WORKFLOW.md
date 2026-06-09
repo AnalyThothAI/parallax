@@ -17,7 +17,9 @@ artifacts:
 
 Templates live at `docs/sdd/_templates/`. Copy all four templates into the
 feature directory. Naming: `YYYY-MM-DD-<kebab-slug>` matching today's date; keep
-slugs short and intent-focused.
+slugs short and intent-focused. Do not add screenshots, mockups, logs, notes, or
+other attachments under the feature directory; the SDD validator reports
+`unexpected-artifact` for anything beyond the four canonical artifacts.
 
 For production features or ambiguous work, run the full SDD loop:
 

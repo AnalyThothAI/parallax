@@ -37,6 +37,7 @@ claim is allowed without the corresponding output captured below.
 | AC18 — delegated handoff artifacts are validated. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_handoff_artifact tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_report_artifact -q` passed. |
 | AC19 — artifact lifecycle statuses are consistent. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_feature_rejects_mixed_artifact_statuses -q` passed after first failing RED run. |
 | AC20 — superseded successor metadata is machine-readable. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_machine_readable_successor -q` passed after first failing RED run. |
+| AC21 — feature directories contain exactly four artifacts. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_feature_rejects_unexpected_artifact_files -q` passed after first failing RED run; legacy macro SDD attachments were deleted. |
 
 Deviations from spec:
 
@@ -319,6 +320,36 @@ exit code: 0
 
 $ uv run pytest tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py -q
 39 passed in 0.44s
+exit code: 0
+
+$ uv run ruff check scripts/validate_sdd_artifacts.py scripts/regen_sdd_work_index.py tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py
+All checks passed!
+exit code: 0
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_feature_rejects_unexpected_artifact_files -q
+F                                                                        [100%]
+AssertionError: assert 'unexpected-artifact' in set()
+exit code: 1
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_feature_rejects_unexpected_artifact_files -q
+1 passed in 0.02s
+exit code: 0
+
+$ uv run python scripts/validate_sdd_artifacts.py --check
+error: unexpected-artifact: docs/sdd/features/completed/2026-06-09-macro-intel-redesign/macro-actual-assets-desktop.png: feature directories must contain only spec.md, plan.md, tasks.md, verification.md
+...
+error: unexpected-artifact: docs/sdd/features/completed/2026-06-09-macro-intel-redesign/timsun-assets-comparison.txt: feature directories must contain only spec.md, plan.md, tasks.md, verification.md
+exit code: 1
+
+$ uv run python scripts/validate_sdd_artifacts.py --check
+SDD artifact validation passed.
+exit code: 0
+
+$ uv run python scripts/regen_sdd_work_index.py --check
+exit code: 0
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py -q
+40 passed in 0.48s
 exit code: 0
 
 $ uv run ruff check scripts/validate_sdd_artifacts.py scripts/regen_sdd_work_index.py tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py

@@ -16,6 +16,8 @@ docs/sdd/features/active/YYYY-MM-DD-<slug>/
 Move the whole directory to `docs/sdd/features/completed/` only after verification is recorded.
 Run `uv run python scripts/validate_sdd_artifacts.py --check` and `uv run python scripts/regen_sdd_work_index.py --check`
 after changing any copied feature record.
+Keep feature directories to these four files only; screenshots, mockups, logs,
+notes, and other attachments fail as `unexpected-artifact`.
 
 ## Artifact Roles
 

@@ -439,6 +439,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 21 — Exact four-artifact feature directory gate
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/README.md`, `docs/sdd/features/completed/2026-06-09-macro-intel-redesign`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 20
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/README.md`, `docs/sdd/features/completed/2026-06-09-macro-intel-redesign`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD lifecycle docs, validator, generated index, and completed-record cleanup.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_feature_rejects_unexpected_artifact_files` — asserts extra feature files cannot pass.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: SDD feature directories must contain exactly `spec.md`, `plan.md`, `tasks.md`, and `verification.md`; old screenshots, mockups, logs, and notes are not allowed.
+- **On-demand context**: `docs/sdd/README.md`, `docs/WORKFLOW.md`, completed SDD records, generated work index.
+- **Kill/defer criteria**: Stop if validator ignores extra feature files or if existing completed records retain local attachments.
+- **Eval/repair signal**: `unexpected-artifact`, stale generated index, dangling old-file references, and docs/source drift review defects.
+- **Implementation**: Add unexpected-artifact validation, remove old macro SDD attachments, clean dangling references, and expose the issue in docs/index.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_feature_rejects_unexpected_artifact_files -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -460,4 +481,5 @@
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_handoff_artifact tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_report_artifact -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_feature_rejects_mixed_artifact_statuses -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_machine_readable_successor -q`
+- [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_feature_rejects_unexpected_artifact_files -q`
 - [ ] `make check-all`

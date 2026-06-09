@@ -214,6 +214,7 @@ def _issue_meaning(code: str) -> str:
         "artifact-status-mismatch": "Feature artifacts disagree on one lifecycle status.",
         "missing-status": "Artifact is missing a status line in its first 40 lines.",
         "missing-artifact": "Feature directory does not contain the full SDD artifact set.",
+        "unexpected-artifact": "Feature directory contains files outside the four canonical artifacts.",
         "missing-gate-section": (
             "Artifact is missing required clarify, checklist, analyze, task, or verification sections."
         ),

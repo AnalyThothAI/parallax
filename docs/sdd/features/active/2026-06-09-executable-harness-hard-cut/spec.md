@@ -140,6 +140,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC18. WHEN a delegated task references a `Subagent handoff` path THEN the SDD validator SHALL require that file to exist and report `task-missing-subagent-handoff-artifact` when it does not.
 - AC19. WHEN one SDD feature has mixed `Status` values across `spec.md`, `plan.md`, `tasks.md`, and `verification.md` THEN the validator SHALL report `artifact-status-mismatch` before any lifecycle transition is trusted.
 - AC20. WHEN a `Superseded` artifact only mentions a successor in prose, omits `**Superseded by**`, names a non-path value, or names a missing path THEN the validator SHALL report `superseded-missing-successor`.
+- AC21. WHEN an SDD feature directory contains any file or subdirectory besides `spec.md`, `plan.md`, `tasks.md`, and `verification.md` THEN the validator SHALL report `unexpected-artifact`; historical screenshots, mockups, logs, and notes SHALL be removed from feature directories.
 
 ## Risks
 
