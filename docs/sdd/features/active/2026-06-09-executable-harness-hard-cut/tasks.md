@@ -691,6 +691,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 33 — Acceptance command exact-line gate
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 32
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD acceptance-command semantics and generated index.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_plan_acceptance_commands_reject_trailing_prose` — asserts command-line escape prose cannot pass.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Acceptance command bullets must be exact `ACn` command lines with no trailing prose, ranges, or side labels.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, active SDD plan artifacts, generated SDD work index, Carver read-only audit.
+- **Kill/defer criteria**: Stop if `or equivalent`, `AC1-AC2`, or non-AC command labels can survive inside `## Acceptance test commands`.
+- **Eval/repair signal**: `acceptance-command-invalid`, stale generated index, and plan execution drift.
+- **Implementation**: Anchor plan AC command parsing to full lines and reject nonmatching bullets inside the acceptance command section.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_acceptance_commands_reject_trailing_prose -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -724,4 +745,5 @@
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_acceptance_commands_must_cover_spec_acceptance_criteria -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_acceptance_criteria_and_commands_require_contiguous_numbers -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_acceptance_commands_must_be_command_shaped -q`
+- [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_acceptance_commands_reject_trailing_prose -q`
 - [ ] `make check-all`

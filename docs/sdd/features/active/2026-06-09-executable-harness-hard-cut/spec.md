@@ -152,6 +152,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC30. WHEN `spec.md` declares an acceptance criterion without a matching `plan.md` `Acceptance test commands` entry, or `plan.md` declares an AC command not present in `spec.md`, THEN the validator SHALL report `acceptance-command-mismatch`; spec criteria and plan commands must have exact machine coverage.
 - AC31. WHEN `spec.md` acceptance criteria or `plan.md` acceptance command entries skip, duplicate, or reorder AC numbers THEN the validator SHALL report `acceptance-numbering-invalid`; acceptance criteria must form one unique contiguous `AC1..N` sequence.
 - AC32. WHEN `plan.md` acceptance test command entries are prose or otherwise not command-shaped THEN the validator SHALL report `acceptance-command-invalid`; acceptance coverage requires runnable command-shaped evidence, not backticked narration.
+- AC33. WHEN `plan.md` acceptance test command bullets contain trailing prose, ranges, or non-AC command labels THEN the validator SHALL report `acceptance-command-invalid`; acceptance test commands must be exact AC-numbered command-only machine lines.
 
 ## Risks
 

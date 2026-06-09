@@ -27,7 +27,11 @@ COMMAND_LINE_RE = re.compile(r"^\s*\$\s+(?P<command>.+?)\s*$")
 EXIT_CODE_RE = re.compile(r"exit code:\s*(?P<code>-?\d+)\b", re.IGNORECASE)
 SKIPPED_RE = re.compile(r"Number of skipped tests in the run above:\s*(?P<count>\d+)", re.IGNORECASE)
 SPEC_AC_RE = re.compile(r"^\s*-\s+AC(?P<number>\d+)\.", re.IGNORECASE | re.MULTILINE)
-PLAN_AC_COMMAND_RE = re.compile(r"^\s*-\s+AC(?P<number>\d+)\s*:\s*`(?P<command>[^`]+)`", re.IGNORECASE | re.MULTILINE)
+PLAN_AC_COMMAND_RE = re.compile(
+    r"^\s*-\s+AC(?P<number>\d+)\s*:\s*`(?P<command>[^`]+)`\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+PLAN_ACCEPTANCE_BULLET_RE = re.compile(r"^\s*-\s+.+$", re.MULTILINE)
 TASK_NUMBER_RE = re.compile(r"^Task\s+(?P<number>\d+)\b", re.IGNORECASE)
 TASK_DEPENDENCY_RE = re.compile(r"\bTasks?\s+(?P<start>\d+)(?:\s*-\s*(?P<end>\d+))?\b", re.IGNORECASE)
 
@@ -460,9 +464,10 @@ def _acceptance_command_issues(feature: SddFeature) -> list[SddIssue]:
         if numbering_message:
             issues.append(_issue("acceptance-numbering-invalid", artifact, numbering_message))
 
-    invalid_commands = [
+    invalid_commands = _invalid_plan_acceptance_command_lines(plan_artifact.text)
+    invalid_commands.extend(
         f"AC{number}={command!r}" for number, command in plan_commands if not _looks_like_command(command)
-    ]
+    )
     if invalid_commands:
         issues.append(
             _issue(
@@ -851,6 +856,15 @@ def _plan_acceptance_commands(text: str) -> list[tuple[int, str]]:
     return [
         (int(match.group("number")), _clean_command(match.group("command")))
         for match in PLAN_AC_COMMAND_RE.finditer(text)
+    ]
+
+
+def _invalid_plan_acceptance_command_lines(text: str) -> list[str]:
+    section = _section_text(text, "## Acceptance test commands")
+    return [
+        line.strip()
+        for line in PLAN_ACCEPTANCE_BULLET_RE.findall(section)
+        if not PLAN_AC_COMMAND_RE.match(line)
     ]
 
 
