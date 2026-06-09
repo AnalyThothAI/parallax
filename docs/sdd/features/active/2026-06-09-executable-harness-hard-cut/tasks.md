@@ -2539,6 +2539,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 121 — Publisher identity columns are strings
+
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 120
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for stable publisher identity column type validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_run_generation_identity_and_skips_unchanged` — construct `CurrentReadModelPublisher` with a numeric stable identity column and assert publisher validation raises before column-name `.strip()` errors leak.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `CurrentReadModelPublisher.identity_columns` entries must be strict `str` before blank, duplicate, forbidden lifecycle-column, row identity, changed-row hashing, or worker static harnesses consume stable serving identity declarations.
+- **On-demand context**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, and stable current read-model identity contracts.
+- **Kill/defer criteria**: Stop if publisher identity columns intentionally support compatibility objects, if validation only checks manifest declarations, or if the fix touches projection worker runtime behavior.
+- **Eval/repair signal**: non-string publisher identity column names, implementation-detail column-name attribute errors, publisher/manifest validation drift, and SDD generated index drift.
+- **Implementation**: Add publisher construction validation rejecting non-string identity column names before blank, duplicate, forbidden lifecycle-column, row identity, and changed-row hashing checks.
+- **Verification**: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_run_generation_identity_and_skips_unchanged -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -2661,4 +2682,5 @@
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_identity_fields -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_read_model_identity_tables -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_read_model_identity_columns -q`
+- [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_run_generation_identity_and_skips_unchanged -q`
 - [ ] `make check-all`

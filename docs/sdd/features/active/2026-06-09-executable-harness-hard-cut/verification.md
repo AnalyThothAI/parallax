@@ -137,6 +137,7 @@ claim is allowed without the corresponding output captured below.
 | AC118 — Worker identity fields are strings. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_identity_fields -q` failed RED when patched numeric identity fields leaked to `AttributeError`, then passed after adding identity-field type validation. |
 | AC119 — Read-model identity tables are strings. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_read_model_identity_tables -q` failed RED when a patched numeric stable identity table name leaked to `AttributeError`, then passed after adding identity-table type validation. |
 | AC120 — Read-model identity columns are strings. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_read_model_identity_columns -q` failed RED when a patched numeric stable identity column leaked to `AttributeError`, then passed after adding identity-column type validation. |
+| AC121 — Publisher identity columns are strings. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_run_generation_identity_and_skips_unchanged -q` failed RED when a numeric publisher identity column leaked to `AttributeError`, then passed after adding publisher identity-column type validation. |
 
 Deviations from spec:
 
@@ -1727,6 +1728,45 @@ exit code: 0
 
 $ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
 56 passed in 0.54s
+exit code: 0
+
+$ git diff --check
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_run_generation_identity_and_skips_unchanged -q
+F                                                                        [100%]
+E       AttributeError: 'int' object has no attribute 'strip'
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_run_generation_identity_and_skips_unchanged -q
+1 passed in 0.39s
+exit code: 0
+
+$ uv run python scripts/regen_sdd_work_index.py
+wrote docs/generated/sdd-work-index.md
+exit code: 0
+
+$ uv run python scripts/validate_sdd_artifacts.py --check
+SDD artifact validation passed.
+exit code: 0
+
+$ uv run python scripts/regen_sdd_work_index.py --check
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_run_generation_identity_and_skips_unchanged -q
+1 passed in 0.57s
+exit code: 0
+
+$ uv run ruff check src/parallax/app/runtime/current_read_model_publisher.py tests/architecture/test_worker_manifest_static_contracts.py
+All checks passed!
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py -q
+6 passed in 0.67s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
+56 passed in 0.86s
 exit code: 0
 
 $ git diff --check

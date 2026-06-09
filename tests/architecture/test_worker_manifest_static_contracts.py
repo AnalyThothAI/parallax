@@ -101,6 +101,8 @@ def test_provider_io_manifest_workers_are_bounded_and_not_projection_claim_loade
 
 @pytest.mark.architecture
 def test_current_read_model_publisher_rejects_run_generation_identity_and_skips_unchanged() -> None:
+    with pytest.raises(ValueError, match="non-string stable identity columns"):
+        CurrentReadModelPublisher(identity_columns=("target_id", 123))
     with pytest.raises(ValueError, match="lifecycle columns"):
         CurrentReadModelPublisher(identity_columns=("run_id", "target_id"))
     with pytest.raises(ValueError, match="lifecycle columns"):
