@@ -761,6 +761,18 @@ def _validate_worker_manifests() -> None:
     if missing_current_identities:
         raise ValueError(f"current read model tables missing stable identities: {missing_current_identities}")
 
+    unowned_current_identities = {
+        manifest.name: sorted(
+            {table_name for table_name, _identity_columns in manifest.current_read_model_identities}
+            - set(manifest.writes_read_models)
+        )
+        for manifest in _WORKER_MANIFESTS
+        if {table_name for table_name, _identity_columns in manifest.current_read_model_identities}
+        - set(manifest.writes_read_models)
+    }
+    if unowned_current_identities:
+        raise ValueError(f"current read model identities declared for unowned tables: {unowned_current_identities}")
+
     forbidden_current_identities = {
         manifest.name: {
             table_name: sorted(set(identity_columns) & FORBIDDEN_SERVING_IDENTITY_COLUMNS)

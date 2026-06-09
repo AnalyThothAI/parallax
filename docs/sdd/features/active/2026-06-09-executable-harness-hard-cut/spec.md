@@ -47,6 +47,7 @@ can both miss real process drift and block healthy refactors.
 | Worker table ownership must be manifest-owned. | `WorkerManifest.owned_tables` exposes the canonical written-table set so harness checks do not reassemble ownership fields ad hoc. |
 | Read-model writer mapping must be manifest-owned. | `read_model_writer_by_table()` exposes the unique read-model writer map from `WorkerManifest`, so docs harnesses do not derive their own registry. |
 | Read-model writer uniqueness must be import-time validated. | `WorkerManifest` validation rejects duplicate read-model writers before docs or worker harnesses consume the manifest. |
+| Read-model identity ownership must be import-time validated. | `WorkerManifest` validation rejects stable identity declarations for read models the worker does not write. |
 | SQL tests must avoid accidental alias/order coupling. | A query-contract helper checks tables, predicates, locks, params, and forbidden surfaces without pinning formatting. |
 | Completion gates must be deterministic. | `make check-all` runs the SDD validator and stale generated index check. |
 | Generated CLI docs must stay source-backed. | `make check-all` runs a non-mutating CLI help snapshot freshness check before integration gates. |
@@ -148,6 +149,7 @@ can both miss real process drift and block healthy refactors.
 - G49. Worker table ownership is exposed by `WorkerManifest.owned_tables`, so queue-health and Worker Inventory harness checks share the same source-owned ownership contract.
 - G50. Read-model writer maps are exposed by `read_model_writer_by_table()`, so Worker Inventory docs checks do not rebuild a second writer registry from manifest internals.
 - G51. Duplicate read-model writers fail during `WorkerManifest` validation, so a source manifest drift cannot wait until docs harness comparison to be caught.
+- G52. Stable read-model identities must point only at tables written by the same worker manifest, so stale identity rows cannot survive as compatibility breadcrumbs.
 
 ## Non-goals
 
@@ -266,6 +268,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC71. WHEN harness code needs the complete set of tables a worker owns THEN it SHALL read `WorkerManifest.owned_tables` instead of rebuilding that set from individual write fields.
 - AC72. WHEN harness code needs read-model writer ownership by table THEN it SHALL read `read_model_writer_by_table()` from `worker_manifest.py` instead of rebuilding a writer registry locally.
 - AC73. WHEN `WorkerManifest` contains two workers writing the same read model table THEN manifest validation SHALL raise before the manifest can be treated as canonical source truth.
+- AC74. WHEN `WorkerManifest.current_read_model_identities` names a table absent from the same manifest's `writes_read_models` THEN manifest validation SHALL raise before the manifest can be treated as canonical source truth.
 
 ## Risks
 

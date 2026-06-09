@@ -81,6 +81,26 @@ def test_worker_manifest_validation_rejects_duplicate_read_model_writers(
 
 
 @pytest.mark.architecture
+def test_worker_manifest_validation_rejects_unowned_read_model_identities(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifests = list(all_worker_manifests())
+    first_writer_index = next(index for index, manifest in enumerate(manifests) if manifest.writes_read_models)
+    first_writer = manifests[first_writer_index]
+    manifests[first_writer_index] = replace(
+        first_writer,
+        current_read_model_identities=(
+            *first_writer.current_read_model_identities,
+            ("unowned_read_model_rows", ("stable_key",)),
+        ),
+    )
+    monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
+
+    with pytest.raises(ValueError, match="current read model identities declared for unowned tables"):
+        worker_manifest_module._validate_worker_manifests()
+
+
+@pytest.mark.architecture
 def test_worker_inventory_keys_match_runtime_registry_and_settings() -> None:
     from parallax.platform.config.settings import WorkersSettings
 

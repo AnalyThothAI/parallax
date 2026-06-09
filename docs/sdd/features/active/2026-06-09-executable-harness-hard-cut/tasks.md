@@ -1552,6 +1552,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 74 — WorkerManifest validates read-model identity ownership
+
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 73
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for read-model identity semantics.
+- **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_unowned_read_model_identities` — patches an unowned `current_read_model_identities` entry and asserts manifest validation rejects it.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `current_read_model_identities` entries must be a subset of the same worker's `writes_read_models`; manifest validation must reject unowned identity rows before downstream docs or architecture harnesses consume the manifest.
+- **On-demand context**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, and stable read-model identity ownership checks.
+- **Kill/defer criteria**: Stop if unowned identity rows are tolerated as stale breadcrumbs, if validation only checks missing identities one way, or if the fix touches dirty worker runtime contract files.
+- **Eval/repair signal**: unowned stable read-model identity, stale identity breadcrumb, manifest import-time validation drift, and SDD generated index drift.
+- **Implementation**: Add reverse ownership validation for `current_read_model_identities` and cover it with a monkeypatch-based architecture test.
+- **Verification**: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_unowned_read_model_identities -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1627,4 +1648,5 @@
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_exposes_owned_tables_as_source_contract -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_exposes_read_model_writer_mapping -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_read_model_writers -q`
+- [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_unowned_read_model_identities -q`
 - [ ] `make check-all`
