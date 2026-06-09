@@ -41,6 +41,73 @@ def test_agent_playbook_reading_matrix_covers_core_incident_types() -> None:
 
 
 @pytest.mark.architecture
+def test_agent_playbook_has_task_examples_and_read_model_checklist() -> None:
+    examples = _read(PLAYBOOK / "task-examples.md")
+    checklist = _read(PLAYBOOK / "read-model-change-checklist.md")
+    matrix = _read(PLAYBOOK / "task-reading-matrix.md")
+
+    for required_phrase in (
+        "## Real Data Provider Diagnostic",
+        "## Worker Backlog",
+        "## Frontend Route Shell QA",
+        "## Read Model Change Review",
+        "Goal:",
+        "Done when:",
+        "Required reading",
+        "Verification",
+    ):
+        assert required_phrase in examples
+
+    for required_phrase in (
+        "stable product/window keys",
+        "single runtime writer",
+        "unchanged projections write zero serving rows",
+        "bounded `interval_seconds` catch-up",
+        "Provider raw frames are inputs, not facts",
+    ):
+        assert required_phrase in checklist
+
+    assert "docs/agent-playbook/task-examples.md" in matrix
+    assert "docs/agent-playbook/read-model-change-checklist.md" in matrix
+
+
+@pytest.mark.architecture
+def test_repo_scoped_agent_skills_cover_high_frequency_workflows() -> None:
+    skills_root = ROOT / ".agents" / "skills"
+    expected_skills = {
+        "parallax-worker-debugging": (
+            "Worker Backlog Or Stuck Worker",
+            "docs/WORKER_FLOW.md",
+            "uv run parallax ops worker-status --help",
+        ),
+        "parallax-real-data-provider-diagnostics": (
+            "Real Data And Provider Debugging",
+            "uv run parallax config",
+            "Never print secrets",
+        ),
+        "parallax-frontend-verification": (
+            "Frontend CSS Or Route Shell",
+            "docs/FRONTEND.md",
+            "cd web && npm run lint",
+        ),
+        "parallax-read-model-review": (
+            "Read Model Change Review",
+            "docs/agent-playbook/read-model-change-checklist.md",
+            "single runtime writer",
+        ),
+    }
+
+    for skill_name, required_phrases in expected_skills.items():
+        skill_file = skills_root / skill_name / "SKILL.md"
+        assert skill_file.exists(), f"{skill_file.relative_to(ROOT)} missing"
+        text = _read(skill_file)
+        assert f"name: {skill_name}" in text
+        assert "description:" in text
+        for phrase in required_phrases:
+            assert phrase in text
+
+
+@pytest.mark.architecture
 def test_subagent_handoff_templates_define_context_and_conflict_contracts() -> None:
     handoff = _read(PLAYBOOK / "subagent-handoff-template.md")
     context = _read(PLAYBOOK / "context-packet-template.md")

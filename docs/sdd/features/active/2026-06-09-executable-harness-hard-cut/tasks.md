@@ -101,7 +101,7 @@
 - **Owner**: parent
 - **Depends on**: Tasks 1-4
 - **Touch set**: `Makefile`, `docs/sdd/_templates`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `web/src/features/macro/ui/pages/MacroAssetOverviewPage.tsx`, `web/src/features/macro/ui/pages/MacroMatrixPage.tsx`, `web/tests/component/features/macro/MacroModulePages.test.tsx`, `web/vite.config.ts`
-- **Conflict set**: `AGENTS.md`, `CLAUDE.md`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD index, macro repository, and agent playbook test edits; `AGENTS.md`, `CLAUDE.md`
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_tasks_template_has_parallel_subagent_contract_fields` — asserts executable gate fields.
 - **Subagent handoff**: not delegated; mechanical Prettier formatting added after `make check` exposed existing frontend format drift.
 - **Factory lane**: Final integration

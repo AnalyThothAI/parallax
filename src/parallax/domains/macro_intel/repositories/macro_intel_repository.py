@@ -1678,7 +1678,6 @@ class MacroIntelRepository:
               FROM macro_observation_series_rows AS rows
               JOIN requested ON requested.concept_key = rows.concept_key
               WHERE rows.projection_version = %s
-                AND rows.series_rank = 1
                 AND rows.observed_at >= CURRENT_DATE - %s::int
                 AND rows.value_numeric IS NOT NULL
               GROUP BY rows.concept_key

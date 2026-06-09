@@ -4,6 +4,8 @@ This matrix routes coding agents to the minimum source-backed context for common
 
 Before answering or editing, classify the task below. Read the required files for that category, then add optional files only when the question needs them. Answer must separate: PostgreSQL facts, read models, control plane state, cache/fan-out state, provider raw inputs, and generated artefacts.
 
+For copyable goal/prompt patterns, use `docs/agent-playbook/task-examples.md`. For any change that creates, rewrites, republishes, or reviews a derived read model, also use `docs/agent-playbook/read-model-change-checklist.md`.
+
 ## Real Data And Provider Debugging
 
 Use for missing provider rows, icon/profile gaps, Token Radar live data, News source coverage, macro provider freshness, or operator reports from a running service.
@@ -129,6 +131,35 @@ Answer must separate:
 - Feature owner CSS from shared UI primitives.
 - Route shell concerns from feature content.
 - Frontend contract payloads from backend repair or provider calls.
+
+Use the repo-scoped `parallax-frontend-verification` skill when a UI task needs a fixed local QA loop.
+
+## Read Model Change Review
+
+Use for any change that adds a derived read model, changes current-row identity, changes a projection writer, changes projection wake/catch-up behavior, or reviews read-model correctness.
+
+Required reading:
+
+- `docs/ARCHITECTURE.md`
+- `docs/RELIABILITY.md`
+- `docs/WORKER_FLOW.md`
+- `docs/WORKERS.md`
+- `docs/agent-playbook/read-model-change-checklist.md`
+- The owning domain `src/parallax/domains/<domain>/ARCHITECTURE.md`
+
+Diagnostic commands:
+
+- `uv run pytest tests/architecture/test_runtime_worker_constraint_hard_cut.py`
+- The smallest domain-specific architecture or integration test covering the changed projection.
+- A targeted idempotency/current-row test when the read model writes serving rows.
+
+Answer must separate:
+
+- Material fact writes from derived read-model writes.
+- Runtime writer ownership from API/query consumers.
+- Stable product/window keys from run/generation/attempt/timestamp identifiers.
+- Wake hints from bounded catch-up.
+- Provider raw inputs from persisted facts.
 
 ## Macro Freshness Or Regime Readiness
 

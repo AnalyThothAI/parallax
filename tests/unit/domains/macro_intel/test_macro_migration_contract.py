@@ -137,8 +137,8 @@ def test_repository_concept_history_counts_reads_projected_rows() -> None:
         params=params,
         required_tables=("macro_observation_series_rows",),
         forbidden_tables=("macro_observations", "macro_observation_series_active_generation"),
-        required_predicates=("projection_version = %s", "series_rank = 1", "value_numeric IS NOT NULL"),
-        forbidden_fragments=("generation_id", "row_number() over"),
+        required_predicates=("projection_version = %s", "value_numeric IS NOT NULL"),
+        forbidden_fragments=("generation_id", "row_number() over", "series_rank = 1"),
         expected_params=(["asset:spx"], "macro_regime_v4", 60),
     )
 

@@ -250,8 +250,8 @@ def test_observation_series_readers_read_current_rows_directly() -> None:
         params=history_params,
         required_tables=("macro_observation_series_rows",),
         forbidden_tables=("macro_observations", "macro_observation_series_active_generation"),
-        required_predicates=("projection_version = %s", "series_rank = 1", "value_numeric IS NOT NULL"),
-        forbidden_fragments=("generation_id", "row_number() over"),
+        required_predicates=("projection_version = %s", "value_numeric IS NOT NULL"),
+        forbidden_fragments=("generation_id", "row_number() over", "series_rank = 1"),
         expected_params=(["asset:spy"], "macro_regime_v4", 60),
     )
 
