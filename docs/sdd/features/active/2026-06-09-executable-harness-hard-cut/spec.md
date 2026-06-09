@@ -127,6 +127,8 @@ can both miss real process drift and block healthy refactors.
 | Stable payload hash values must reject generic isoformat objects. | `stable_current_payload_hash()` rejects arbitrary payload objects that merely expose `isoformat()` before `_json_ready()` can preserve compatibility-shaped values as serving hashes; only real date/time values may use ISO formatting. |
 | Stable payload hash numbers must be finite. | `stable_current_payload_hash()` rejects float and Decimal NaN/Infinity values before JSON serialization or Decimal stringification can consume non-finite numbers as serving hashes. |
 | Stable payload hash containers must be ordered. | `stable_current_payload_hash()` rejects set and frozenset payload values before `_json_ready()` can sort unordered compatibility containers into serving hashes. |
+| CEX board payload hashing must use the shared current payload hash contract. | `CexOiRadarRepository` uses `stable_current_payload_hash()` for board publication hashes instead of a local compatibility normalizer that stringifies keys, sorts unordered containers, or accepts arbitrary `isoformat()` payload values. |
+| Runtime package imports must avoid scheduler side effects. | `parallax.app.runtime.__init__` does not import `WorkerScheduler`, `worker_manifest`, or manifest validation while domain code imports shared runtime helpers such as `stable_current_payload_hash()`. |
 | Worker manifest imports must be explicit. | `worker_manifest.py` imports `importlib.util` directly so clean-process manifest validation never depends on incidental package attribute side effects. |
 | Root visual artifacts must be absent. | Architecture harness rejects loose visual verification files at the repository root so screenshots live only under owned artifact directories. |
 | Worker table declarations must be unique. | `WorkerManifest` validation rejects duplicated table names inside each manifest table-declaration field before `owned_tables` dedupes them. |
@@ -316,6 +318,8 @@ can both miss real process drift and block healthy refactors.
 - G133. Stable current payload hashing rejects arbitrary `isoformat()` objects before JSON normalization can turn compatibility-shaped payload values into serving hashes.
 - G134. Stable current payload hashing rejects non-finite float and Decimal payload values before JSON serialization or Decimal stringification can consume them as serving hashes.
 - G135. Stable current payload hashing rejects unordered set and frozenset payload containers before JSON normalization can sort compatibility-shaped values into serving hashes.
+- G136. CEX OI radar board publication hashing uses the shared stable current payload hash contract instead of a local compatibility normalizer.
+- G137. Runtime package initialization stays side-effect-light so domain imports of shared runtime helpers do not trigger scheduler import, worker manifest validation, or worker class import cycles.
 
 ## Non-goals
 
@@ -518,6 +522,8 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC155. WHEN `stable_current_payload_hash()` receives a mapping payload containing an arbitrary object that exposes `isoformat()` but is not a supported date/time value THEN it SHALL raise a dedicated payload-value validation error before JSON normalization, generic ISO formatting, or hash generation consumes compatibility-shaped payload values.
 - AC156. WHEN `stable_current_payload_hash()` receives a mapping payload containing float or Decimal NaN/Infinity values THEN it SHALL raise a dedicated payload-number validation error before JSON serialization, Decimal stringification, or hash generation consumes non-finite payload numbers.
 - AC157. WHEN `stable_current_payload_hash()` receives a mapping payload containing set or frozenset values THEN it SHALL raise a dedicated payload-container validation error before JSON normalization, container sorting, or hash generation consumes unordered compatibility-shaped payload containers.
+- AC158. WHEN CEX OI radar board publication payload hashing receives row `score_components` with non-string keys THEN it SHALL raise the shared current payload-key validation error before local key stringification, JSON normalization, or board hash generation consumes compatibility-shaped score component payloads.
+- AC159. WHEN a CEX worker module imports repository code that imports shared runtime payload hash helpers THEN package initialization SHALL NOT import `WorkerScheduler`, `worker_manifest`, or run manifest validation before the worker class is fully importable.
 
 ## Risks
 

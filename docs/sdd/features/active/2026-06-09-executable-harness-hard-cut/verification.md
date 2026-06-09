@@ -174,6 +174,8 @@ claim is allowed without the corresponding output captured below.
 | AC155 — Stable payload hash rejects generic isoformat payload values. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_generic_isoformat_payload_values -q` failed RED when an arbitrary `isoformat()` object was accepted into a hash, then passed after adding recursive payload-value validation and restricting ISO formatting to real date/time values. |
 | AC156 — Stable payload hash rejects non-finite payload numbers. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_non_finite_payload_numbers -q` failed RED when float NaN/Infinity leaked raw JSON errors and Decimal NaN/Infinity was accepted, then passed after adding recursive non-finite number validation. |
 | AC157 — Stable payload hash rejects unordered payload containers. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_unordered_payload_containers -q` failed RED when set/frozenset payload values were sorted into hashes, then passed after rejecting unordered containers and removing set/frozenset sorting from `_json_ready()`. |
+| AC158 — CEX board hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/domains/cex_market_intel/test_cex_oi_radar_repository.py::test_board_payload_hash_rejects_legacy_score_component_keys -q` failed RED when the CEX local hash normalizer stringified `score_components` keys, then passed after replacing it with shared `stable_current_payload_hash()` and deleting the local normalizer. |
+| AC159 — Runtime package imports avoid scheduler side effects. | ✅ | `uv run pytest tests/unit/domains/cex_market_intel/test_cex_oi_radar_board_worker.py -q` failed RED during collection when package-root `WorkerScheduler` re-export triggered `worker_manifest` validation before `CexOiRadarBoardWorker` was fully importable, then passed after removing the scheduler re-export from `parallax.app.runtime.__init__`. |
 
 Deviations from spec:
 
@@ -3035,6 +3037,75 @@ $ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
 exit code: 0
 
 $ uv run ruff check src/parallax/app/runtime/current_read_model_publisher.py tests/architecture/test_worker_manifest_static_contracts.py
+All checks passed!
+exit code: 0
+
+$ git diff --check
+exit code: 0
+
+$ uv run pytest tests/unit/domains/cex_market_intel/test_cex_oi_radar_repository.py::test_board_payload_hash_rejects_legacy_score_component_keys -q
+F                                                                        [100%]
+E       Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/unit/domains/cex_market_intel/test_cex_oi_radar_repository.py::test_board_payload_hash_rejects_legacy_score_component_keys -q
+.                                                                        [100%]
+1 passed in 0.47s
+exit code: 0
+
+$ uv run pytest tests/unit/domains/cex_market_intel/test_cex_oi_radar_repository.py -q
+.........                                                                [100%]
+9 passed in 0.46s
+exit code: 0
+
+$ uv run pytest tests/unit/domains/cex_market_intel/test_cex_oi_radar_board_worker.py -q
+ERROR tests/unit/domains/cex_market_intel/test_cex_oi_radar_board_worker.py
+E   ValueError: missing worker manifest class names: {'cex_oi_radar_board': 'parallax.domains.cex_market_intel.runtime.cex_oi_radar_board_worker.CexOiRadarBoardWorker'}
+exit code: 2
+
+$ uv run pytest tests/unit/domains/cex_market_intel/test_cex_oi_radar_board_worker.py -q
+...........                                                              [100%]
+11 passed in 0.04s
+exit code: 0
+
+$ uv run python scripts/validate_sdd_artifacts.py --check
+SDD artifact validation passed.
+exit code: 0
+
+$ uv run python scripts/regen_sdd_work_index.py --check
+exit code: 0
+
+$ uv run pytest tests/unit/domains/cex_market_intel/test_cex_oi_radar_repository.py::test_board_payload_hash_rejects_legacy_score_component_keys -q
+.                                                                        [100%]
+1 passed in 0.13s
+exit code: 0
+
+$ uv run pytest tests/unit/domains/cex_market_intel/test_cex_oi_radar_repository.py -q
+.........                                                                [100%]
+9 passed in 0.14s
+exit code: 0
+
+$ uv run pytest tests/unit/domains/cex_market_intel/test_cex_oi_radar_board_worker.py::test_cex_oi_radar_board_worker_publishes_current_board -q
+.                                                                        [100%]
+1 passed in 0.06s
+exit code: 0
+
+$ uv run pytest tests/unit/domains/cex_market_intel/test_cex_oi_radar_board_worker.py -q
+...........                                                              [100%]
+11 passed in 0.06s
+exit code: 0
+
+$ uv run pytest tests/unit/test_worker_scheduler.py tests/unit/test_bootstrap_worker_runtime_wiring.py -q
+.............................                                            [100%]
+29 passed in 4.26s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_cex_oi_kappa_contract.py tests/architecture/test_worker_manifest_static_contracts.py tests/architecture/test_worker_runtime_contracts.py::test_cex_oi_radar_runtime_uses_current_board_lifecycle tests/architecture/test_worker_runtime_contracts.py::test_cex_oi_radar_manifest_uses_current_board_lifecycle -q
+...............................................                          [100%]
+47 passed in 0.56s
+exit code: 0
+
+$ uv run ruff check src/parallax/app/runtime/__init__.py src/parallax/domains/cex_market_intel/repositories/cex_oi_radar_repository.py tests/unit/domains/cex_market_intel/test_cex_oi_radar_repository.py src/parallax/app/runtime/current_read_model_publisher.py tests/architecture/test_worker_manifest_static_contracts.py
 All checks passed!
 exit code: 0
 

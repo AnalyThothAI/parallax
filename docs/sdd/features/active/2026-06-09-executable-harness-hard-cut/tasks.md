@@ -3316,6 +3316,48 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 158 — CEX board hash uses shared current payload contract
+
+- **File(s)**: `src/parallax/domains/cex_market_intel/repositories/cex_oi_radar_repository.py`, `tests/unit/domains/cex_market_intel/test_cex_oi_radar_repository.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 157
+- **Touch set**: `src/parallax/domains/cex_market_intel/repositories/cex_oi_radar_repository.py`, `tests/unit/domains/cex_market_intel/test_cex_oi_radar_repository.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/domains/cex_market_intel/repositories/cex_oi_radar_repository.py` for CEX board publication payload hash semantics and current-row idempotency.
+- **Failing test first**: `tests/unit/domains/cex_market_intel/test_cex_oi_radar_repository.py::test_board_payload_hash_rejects_legacy_score_component_keys` — call `_board_payload_hash()` with a row whose `score_components` mapping has a non-string key and assert the shared current payload-key validation raises before local key stringification can preserve compatibility-shaped score component payloads.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: CEX board publication hashing must use `stable_current_payload_hash()` from `src/parallax/app/runtime/current_read_model_publisher.py`; the domain repository must not keep a local payload hash normalizer that stringifies mapping keys, sorts unordered containers, or accepts arbitrary `isoformat()` payload values.
+- **On-demand context**: `src/parallax/domains/cex_market_intel/ARCHITECTURE.md`, `src/parallax/domains/cex_market_intel/repositories/cex_oi_radar_repository.py`, `tests/unit/domains/cex_market_intel/test_cex_oi_radar_repository.py`, and current read-model payload hash idempotency contracts.
+- **Kill/defer criteria**: Stop if CEX board hashes intentionally require domain-local compatibility normalization, if existing production rows must be backfilled before strict hash validation, or if the shared hash helper cannot preserve unchanged hashes for compliant board payloads.
+- **Eval/repair signal**: local `_stable_current_payload_hash()`, local `_json_ready()`, score component key stringification, set/frozenset sorting, generic `isoformat()` payload values, CEX board idempotency drift, and SDD generated index drift.
+- **Implementation**: Import and use `stable_current_payload_hash()` inside `_board_payload_hash()`, remove the local CEX `_stable_current_payload_hash()` and `_json_ready()` compatibility normalizers, and keep existing board unchanged-payload tests green for compliant payloads.
+- **Verification**: `uv run pytest tests/unit/domains/cex_market_intel/test_cex_oi_radar_repository.py::test_board_payload_hash_rejects_legacy_score_component_keys -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 159 — Runtime package init avoids scheduler side effects
+
+- **File(s)**: `src/parallax/app/runtime/__init__.py`, `tests/unit/domains/cex_market_intel/test_cex_oi_radar_board_worker.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 158
+- **Touch set**: `src/parallax/app/runtime/__init__.py`, `tests/unit/domains/cex_market_intel/test_cex_oi_radar_board_worker.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/__init__.py` for runtime package export and import side-effect semantics.
+- **Failing test first**: `tests/unit/domains/cex_market_intel/test_cex_oi_radar_board_worker.py::test_cex_oi_radar_board_worker_publishes_current_board` — after CEX board hashing imports the shared runtime payload hash helper, importing the CEX worker module failed during collection before this test could run because `parallax.app.runtime.__init__` imported `WorkerScheduler`, which imported `worker_manifest` and validated manifests before `CexOiRadarBoardWorker` was fully importable.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: importing a shared runtime helper from a domain repository must not trigger scheduler import, `worker_manifest` validation, worker class imports, or clean-process manifest side effects through package initialization.
+- **On-demand context**: `src/parallax/app/runtime/__init__.py`, `src/parallax/app/runtime/worker_scheduler.py`, `src/parallax/app/runtime/worker_manifest.py`, and `tests/unit/domains/cex_market_intel/test_cex_oi_radar_board_worker.py`.
+- **Kill/defer criteria**: Stop if `WorkerScheduler` is a supported package-root export with live consumers, if removing the re-export breaks explicit runtime import contracts, or if the fix requires lazy compatibility shims instead of explicit module imports.
+- **Eval/repair signal**: CEX worker import collection failure, package-root scheduler re-export, manifest validation during helper import, worker class import cycle, and SDD generated index drift.
+- **Implementation**: Remove the `WorkerScheduler` re-export from `parallax.app.runtime.__init__` and keep scheduler consumers on explicit `parallax.app.runtime.worker_scheduler` imports.
+- **Verification**: `uv run pytest tests/unit/domains/cex_market_intel/test_cex_oi_radar_board_worker.py -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -3464,4 +3506,6 @@
 - [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_generic_isoformat_payload_values -q`
 - [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_non_finite_payload_numbers -q`
 - [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_unordered_payload_containers -q`
+- [ ] `uv run pytest tests/unit/domains/cex_market_intel/test_cex_oi_radar_repository.py::test_board_payload_hash_rejects_legacy_score_component_keys -q`
+- [ ] `uv run pytest tests/unit/domains/cex_market_intel/test_cex_oi_radar_board_worker.py -q`
 - [ ] `make check-all`

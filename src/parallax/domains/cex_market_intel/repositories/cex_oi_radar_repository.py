@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import hashlib
-import json
-from collections.abc import Mapping
 from dataclasses import dataclass
-from decimal import Decimal
 from typing import Any
 
 from psycopg.types.json import Jsonb
+
+from parallax.app.runtime.current_read_model_publisher import stable_current_payload_hash
 
 
 @dataclass(frozen=True, slots=True)
@@ -402,7 +401,7 @@ def _latest_attempt_error(*, status: str, notes: dict[str, Any] | None) -> str |
 
 
 def _board_payload_hash(*, rows: list[dict[str, Any]], period: str, source_frontier_ms: int) -> str:
-    return _stable_current_payload_hash(
+    return stable_current_payload_hash(
         {
             "provider": "binance",
             "exchange": "binance",
@@ -435,25 +434,6 @@ def _board_row_payload(row: dict[str, Any]) -> dict[str, Any]:
         "score_components": row.get("score_components") or {},
         "observed_at_ms": row.get("observed_at_ms"),
     }
-
-
-def _stable_current_payload_hash(payload: Mapping[str, Any]) -> str:
-    encoded = json.dumps(_json_ready(dict(payload)), sort_keys=True, separators=(",", ":"), allow_nan=False)
-    return "sha256:" + hashlib.sha256(encoded.encode("utf-8")).hexdigest()
-
-
-def _json_ready(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return {str(key): _json_ready(inner) for key, inner in value.items()}
-    if isinstance(value, tuple | list):
-        return [_json_ready(inner) for inner in value]
-    if isinstance(value, set | frozenset):
-        return sorted(_json_ready(inner) for inner in value)
-    if isinstance(value, Decimal):
-        return str(value.normalize())
-    if hasattr(value, "isoformat"):
-        return value.isoformat()
-    return value
 
 
 def _publication_payload(state: dict[str, Any]) -> dict[str, Any]:

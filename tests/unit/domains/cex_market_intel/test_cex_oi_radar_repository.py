@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from parallax.domains.cex_market_intel.repositories.cex_oi_radar_repository import (
     CexOiRadarRepository,
     _board_payload_hash,
@@ -162,6 +164,28 @@ def test_board_payload_hash_ignores_detail_only_payload_fields():
     )
 
     assert first_hash == second_hash
+
+
+def test_board_payload_hash_rejects_legacy_score_component_keys():
+    row = {
+        "rank": 1,
+        "target_id": "binance:BTCUSDT",
+        "pricefeed_id": "pf-btc",
+        "native_market_id": "BTCUSDT",
+        "base_symbol": "BTC",
+        "quote_symbol": "USDT",
+        "open_interest_usd": 1100.0,
+        "open_interest_change_pct_1h": 10.0,
+        "volume_24h_usd": 10_000_000.0,
+        "funding_rate": 0.0001,
+        "mark_price": 101.0,
+        "score": 91.5,
+        "score_components": {123: "legacy"},
+        "observed_at_ms": 1_778_000_000_001,
+    }
+
+    with pytest.raises(ValueError, match="current payload hash payload has non-string keys"):
+        _board_payload_hash(rows=[row], period="5m", source_frontier_ms=1_778_000_000_001)
 
 
 def test_publish_board_with_result_reports_changed_empty_board_decision():
