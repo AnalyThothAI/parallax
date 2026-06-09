@@ -117,6 +117,23 @@ def test_artifact_owning_links_must_point_to_same_feature(tmp_path: Path) -> Non
     assert sum(issue.code == "artifact-owning-link-mismatch" for issue in issues) == 4
 
 
+def test_plan_acceptance_commands_must_cover_spec_acceptance_criteria(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-missing-ac-command")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _append_acceptance_criterion(feature / "spec.md", 2)
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _append_acceptance_command(feature / "plan.md", 3)
+    _write_valid_tasks(feature / "tasks.md", status="In Progress", task_status="[~]")
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "acceptance-command-mismatch" in _issue_codes(issues)
+    assert any(
+        "missing commands for AC2; commands without spec criteria for AC3" in issue.message for issue in issues
+    )
+
+
 def test_superseded_feature_requires_machine_readable_successor(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "completed", "2026-06-09-prose-successor")
     _write_valid_spec(feature / "spec.md", status="Superseded")
@@ -956,6 +973,22 @@ def _replace_metadata_link(path: Path, field_name: str, value: str) -> None:
         else:
             lines.append(line)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _append_acceptance_criterion(path: Path, number: int) -> None:
+    path.write_text(
+        path.read_text(encoding="utf-8")
+        + f"\n- AC{number}. WHEN another behavior exists THEN the harness SHALL map it to a command.\n",
+        encoding="utf-8",
+    )
+
+
+def _append_acceptance_command(path: Path, number: int) -> None:
+    path.write_text(
+        path.read_text(encoding="utf-8")
+        + f"\n- AC{number}: `uv run pytest tests/architecture/test_sdd_artifact_validator.py -q`\n",
+        encoding="utf-8",
+    )
 
 
 def _append_machine_successor_reference(path: Path) -> None:

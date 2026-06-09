@@ -855,7 +855,7 @@ def _write_context_packet_fixture(root: Path) -> None:
 
             ## Acceptance test commands
 
-            - `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q`
+            - AC1: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q`
             """
         ).strip()
         + "\n",

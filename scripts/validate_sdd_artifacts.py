@@ -26,6 +26,8 @@ FENCED_BLOCK_RE = re.compile(r"```(?:[A-Za-z0-9_-]+)?\n(?P<body>[\s\S]*?)```", r
 COMMAND_LINE_RE = re.compile(r"^\s*\$\s+(?P<command>.+?)\s*$")
 EXIT_CODE_RE = re.compile(r"exit code:\s*(?P<code>-?\d+)\b", re.IGNORECASE)
 SKIPPED_RE = re.compile(r"Number of skipped tests in the run above:\s*(?P<count>\d+)", re.IGNORECASE)
+SPEC_AC_RE = re.compile(r"^\s*-\s+AC(?P<number>\d+)\.", re.IGNORECASE | re.MULTILINE)
+PLAN_AC_COMMAND_RE = re.compile(r"^\s*-\s+AC(?P<number>\d+)\s*:\s*`(?P<command>[^`]+)`", re.IGNORECASE | re.MULTILINE)
 TASK_NUMBER_RE = re.compile(r"^Task\s+(?P<number>\d+)\b", re.IGNORECASE)
 TASK_DEPENDENCY_RE = re.compile(r"\bTasks?\s+(?P<start>\d+)(?:\s*-\s*(?P<end>\d+))?\b", re.IGNORECASE)
 
@@ -96,6 +98,7 @@ KNOWN_ISSUE_CODES = (
     "unexpected-artifact",
     "artifact-owning-link-mismatch",
     "missing-gate-section",
+    "acceptance-command-mismatch",
     "missing-approval-metadata",
     "task-missing-coordination-fields",
     "task-invalid-coordination-fields",
@@ -369,6 +372,7 @@ def _feature_issues(feature: SddFeature) -> list[SddIssue]:
     issues.extend(_artifact_status_mismatch_issues(feature))
     if feature.status.lower() == "superseded":
         return issues + _superseded_issues(feature)
+    issues.extend(_acceptance_command_issues(feature))
     issues.extend(_task_issues(feature))
     if feature.status.lower() == "verified":
         issues.extend(_verified_issues(feature))
@@ -434,6 +438,33 @@ def _artifact_issues(feature: SddFeature, artifact: ArtifactRecord) -> list[SddI
     if missing_sections:
         issues.append(_issue("missing-gate-section", artifact, f"missing sections: {', '.join(missing_sections)}"))
     return issues
+
+
+def _acceptance_command_issues(feature: SddFeature) -> list[SddIssue]:
+    spec_artifact = feature.artifacts["spec.md"]
+    plan_artifact = feature.artifacts["plan.md"]
+    if spec_artifact.missing or plan_artifact.missing:
+        return []
+
+    spec_numbers = _spec_acceptance_numbers(spec_artifact.text)
+    plan_numbers = _plan_acceptance_command_numbers(plan_artifact.text)
+    missing_numbers = sorted(spec_numbers - plan_numbers)
+    extra_numbers = sorted(plan_numbers - spec_numbers)
+    if not missing_numbers and not extra_numbers:
+        return []
+
+    parts: list[str] = []
+    if missing_numbers:
+        parts.append("missing commands for " + ", ".join(f"AC{number}" for number in missing_numbers))
+    if extra_numbers:
+        parts.append("commands without spec criteria for " + ", ".join(f"AC{number}" for number in extra_numbers))
+    return [
+        _issue(
+            "acceptance-command-mismatch",
+            plan_artifact,
+            "; ".join(parts),
+        )
+    ]
 
 
 def _artifact_owning_link_issues(feature: SddFeature, artifact: ArtifactRecord) -> list[SddIssue]:
@@ -789,6 +820,14 @@ def _command_evidence(text: str) -> dict[str, tuple[int, ...]]:
                 evidence[current_command].append(int(exit_match.group("code")))
                 current_command = None
     return {command: tuple(exit_codes) for command, exit_codes in evidence.items()}
+
+
+def _spec_acceptance_numbers(text: str) -> set[int]:
+    return {int(match.group("number")) for match in SPEC_AC_RE.finditer(text)}
+
+
+def _plan_acceptance_command_numbers(text: str) -> set[int]:
+    return {int(match.group("number")) for match in PLAN_AC_COMMAND_RE.finditer(text)}
 
 
 def _verified_issues(feature: SddFeature) -> list[SddIssue]:
