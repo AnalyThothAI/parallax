@@ -109,6 +109,7 @@ Known-failing baseline tests:
 ### `tests/architecture/test_harness_structure.py`
 
 - Assert `make check-all` includes the CLI help snapshot freshness check, so generated public CLI docs cannot drift outside integration-only docs tests.
+- Assert `docs/generated/README.md` source-map rows point at existing generated files, generator scripts, and source paths.
 
 ### `tests/architecture/test_public_contracts_doc_alignment.py`
 
@@ -153,6 +154,11 @@ Known-failing baseline tests:
 - Replace retired worker keys and agent lane prose with source-bound current manifest/settings lists.
 - Replace retired WebSocket `enrichment` payload wording with current event token-intent/resolution, notification, social update, and live market payload wording.
 - Replace old News item detail route with `/api/news/items/{news_item_id}`.
+
+### `docs/generated/README.md`, `scripts/regen_ws_protocol.py`
+
+- Replace the stale `src/parallax/api/ws.py` generated-doc source pointer with the current public API WebSocket source path.
+- Keep the WebSocket protocol generator docstring aligned with its current source boundary.
 
 ### `docs/sdd/_templates/*.md`, `docs/WORKFLOW.md`, `docs/sdd/README.md`
 
@@ -216,6 +222,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Failing-test-first evidence is covered. | Pass: validator rejects completed tasks whose failing-test test file paths never appear in successful command evidence. |
 | Generated CLI docs are freshness-checked. | Pass: `check-all` runs `scripts/regen_cli_help.py --check` before integration gates. |
 | Public contracts are source-bound. | Pass: architecture tests compare CONTRACTS worker keys, agent lanes, WS payloads, and News route against current source. |
+| Generated README source map is real. | Pass: architecture tests fail any README source-map row that names a missing generated file, generator script, or source path. |
 
 ## Acceptance test commands
 
@@ -266,6 +273,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC45: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_tasks_require_failing_test_reference_evidence -q`
 - AC46: `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_cli_help_snapshot -q`
 - AC47: `uv run pytest tests/architecture/test_public_contracts_doc_alignment.py -q`
+- AC48: `uv run pytest tests/architecture/test_harness_structure.py::test_generated_readme_source_map_points_to_existing_paths -q`
 
 ## Verification
 

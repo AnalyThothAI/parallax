@@ -1,5 +1,5 @@
 # scripts/regen_ws_protocol.py
-"""Regenerate docs/generated/ws-protocol.md by introspecting api/ws.py message types."""
+"""Regenerate docs/generated/ws-protocol.md from the public API WebSocket source."""
 
 from __future__ import annotations
 

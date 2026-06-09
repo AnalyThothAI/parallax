@@ -64,6 +64,7 @@ claim is allowed without the corresponding output captured below.
 | AC45 — Completed task failing-test references are evidenced. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_tasks_require_failing_test_reference_evidence -q` passed after first failing RED run. |
 | AC46 — Generated CLI help docs are freshness-checked. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_cli_help_snapshot -q` passed after first failing RED run; `uv run python scripts/regen_cli_help.py --check` exited 0. |
 | AC47 — Public contracts docs are source-bound. | ✅ | `uv run pytest tests/architecture/test_public_contracts_doc_alignment.py -q` failed RED on stale CONTRACTS worker/lane/WS/route docs, then passed after docs and harness updates. |
+| AC48 — Generated README source-map rows point to real files. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_generated_readme_source_map_points_to_existing_paths -q` failed RED on stale `src/parallax/api/ws.py`, then passed after README/script updates. |
 
 Deviations from spec:
 
@@ -784,6 +785,15 @@ exit code: 1
 
 $ uv run pytest tests/architecture/test_public_contracts_doc_alignment.py -q
 4 passed in 0.11s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_harness_structure.py::test_generated_readme_source_map_points_to_existing_paths -q
+F                                                                        [100%]
+AssertionError: generated README source path does not exist: src/parallax/api/ws.py
+exit code: 1
+
+$ uv run pytest tests/architecture/test_harness_structure.py::test_generated_readme_source_map_points_to_existing_paths -q
+1 passed in 0.01s
 exit code: 0
 
 $ uv run python scripts/validate_sdd_artifacts.py --check

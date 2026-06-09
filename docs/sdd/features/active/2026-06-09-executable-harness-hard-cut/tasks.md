@@ -1006,6 +1006,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 48 — Generated README source-map gate
+
+- **File(s)**: `docs/generated/README.md`, `scripts/regen_ws_protocol.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 47
+- **Touch set**: `docs/generated/README.md`, `scripts/regen_ws_protocol.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `docs/generated/README.md` for generated docs source-map semantics.
+- **Failing test first**: `tests/architecture/test_harness_structure.py::test_generated_readme_source_map_points_to_existing_paths` — asserts generated-doc source-map rows cannot point at retired or missing source paths.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Docs/contracts
+- **Deterministic constraints**: Generated README rows must name existing generated files, generator scripts, and backticked source paths; do not depend on database-backed docs regeneration for this fast architecture check.
+- **On-demand context**: `docs/generated/README.md`, `scripts/regen_ws_protocol.py`, `docs/generated/ws-protocol.md`, and `Makefile` docs-generated targets.
+- **Kill/defer criteria**: Stop if the check becomes a prose wording lock instead of path existence/source-map validation, or if it requires integration/database setup.
+- **Eval/repair signal**: missing generated file, missing generator script, stale source path, `test_generated_readme_source_map_points_to_existing_paths` failure, and generated-doc review defects.
+- **Implementation**: Add a path-backed generated README source-map architecture test, update the stale WebSocket source pointer, and align the WebSocket protocol generator docstring.
+- **Verification**: `uv run pytest tests/architecture/test_harness_structure.py::test_generated_readme_source_map_points_to_existing_paths -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1055,4 +1076,5 @@
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_tasks_require_failing_test_reference_evidence -q`
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_cli_help_snapshot -q`
 - [ ] `uv run pytest tests/architecture/test_public_contracts_doc_alignment.py -q`
+- [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_generated_readme_source_map_points_to_existing_paths -q`
 - [ ] `make check-all`

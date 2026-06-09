@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -152,6 +153,31 @@ def test_make_check_all_checks_cli_help_snapshot() -> None:
     check_all = makefile.split("check-all:", 1)[1].split("\n\n", 1)[0]
 
     assert "scripts/regen_cli_help.py --check" in check_all
+
+
+def test_generated_readme_source_map_points_to_existing_paths() -> None:
+    readme = _read(DOCS / "generated" / "README.md")
+    table_rows = [
+        line
+        for line in readme.splitlines()
+        if line.startswith("| `") and "` |" in line and not line.startswith("| File ")
+    ]
+
+    assert table_rows, "docs/generated/README.md must document generated sources"
+    for row in table_rows:
+        cells = [cell.strip() for cell in row.strip("|").split("|")]
+        assert len(cells) == 3, f"unexpected generated README row shape: {row}"
+
+        generated_name = cells[0].strip("`")
+        script_path = cells[2].strip("`")
+        assert (DOCS / "generated" / generated_name).is_file(), f"generated file not found: {generated_name}"
+        assert (REPO_ROOT / script_path).is_file(), f"generator script not found: {script_path}"
+
+        for token in re.findall(r"`([^`]+)`", cells[1]):
+            if "/" not in token and not token.endswith((".py", ".md", ".json", ".yaml", ".yml", ".toml")):
+                continue
+            source_path = REPO_ROOT / token.rstrip("/")
+            assert source_path.exists(), f"generated README source path does not exist: {token}"
 
 
 def test_references_papers_present() -> None:
