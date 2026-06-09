@@ -64,6 +64,7 @@ can both miss real process drift and block healthy refactors.
 | Active touch conflicts must catch nested paths. | The SDD validator treats parent/child touch paths as overlaps and requires coordination that names the overlapping feature or path. |
 | Frontend docs and skills must be harness-bound. | Frontend architecture tests compare `docs/FRONTEND.md` and the frontend verification skill against current CSS and navigation harness source. |
 | Frontend feature-boundary scans must follow source roots. | Frontend architecture tests derive feature root names from `web/src/features` instead of a stale hard-coded subset. |
+| Frontend data ownership must be executable. | Frontend architecture tests reject route modules or presentational UI that directly call server-state primitives instead of feature-owned hooks/controllers. |
 
 ## First principles
 
@@ -102,6 +103,7 @@ can both miss real process drift and block healthy refactors.
 - G27. Active SDD touch-set conflicts detect exact and parent/child path overlaps, and unrelated `coordinate with ...` prose does not suppress them.
 - G28. `docs/FRONTEND.md` and `.agents/skills/parallax-frontend-verification/SKILL.md` are checked against current frontend CSS/navigation architecture source.
 - G29. Frontend feature-boundary grep scans derive feature roots from `web/src/features`, so new feature roots are covered without regex updates.
+- G30. Frontend data ownership is checked by a route/UI static architecture gate rather than a docs-only convention.
 
 ## Non-goals
 
@@ -198,6 +200,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC49. WHEN two active SDD features touch exact or parent/child paths and a feature's conflict set only coordinates with an unrelated slug or path THEN the validator SHALL report `active-touch-conflict`.
 - AC50. WHEN `docs/FRONTEND.md` or `.agents/skills/parallax-frontend-verification/SKILL.md` omits current retired CSS buckets, names the old side-effect CSS line budget, omits sanctioned shell entrypoints, or documents drawer routes absent from `APP_NAVIGATION_GROUPS` THEN frontend architecture tests SHALL fail.
 - AC51. WHEN `web/src/features` contains a feature root omitted from the relative-import feature-boundary scan, or the scan lists a removed feature root, THEN frontend architecture tests SHALL fail before deep-import coverage is trusted.
+- AC52. WHEN a route module under `web/src/routes` or a presentational component under `web/src/features/*/ui` directly references `useQuery`, `useMutation`, `useInfiniteQuery`, `getApi`, `postApi`, or `queryClient.set*` THEN frontend architecture tests SHALL fail and point at the owning file.
 
 ## Risks
 

@@ -68,6 +68,7 @@ claim is allowed without the corresponding output captured below.
 | AC49 — Active touch conflicts catch nested paths and misdirected coordination. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_active_touch_sets_reject_nested_or_misdirected_coordination -q` failed RED with no `active-touch-conflict`, then passed after validator updates. |
 | AC50 — Frontend docs and skill are source-aligned. | ✅ | `cd web && npm run test -- tests/architecture/frontendDocContract.test.ts` failed RED on stale CSS bucket/budget/shell/skill wording, then passed after docs and skill updates. |
 | AC51 — Frontend feature-boundary scan derives feature roots. | ✅ | `cd web && npm run test -- tests/architecture/featureBoundaries.test.ts` failed RED on omitted `macro/news/ops/token-case` and stale `token-target`, then passed after source-derived scan updates. |
+| AC52 — Frontend data ownership gate is executable. | ✅ | `cd web && npm run test -- tests/architecture/frontendDataOwnership.test.ts` failed RED on missing docs binding, then passed after the docs and static source gate were added. |
 
 Deviations from spec:
 
@@ -828,6 +829,25 @@ exit code: 1
 $ cd web && npm run test -- tests/architecture/featureBoundaries.test.ts
 Test Files  1 passed (1)
 Tests  2 passed (2)
+exit code: 0
+
+$ cd web && npm run test -- tests/architecture/frontendDataOwnership.test.ts
+FAIL tests/architecture/frontendDataOwnership.test.ts
+AssertionError: expected docs/FRONTEND.md to contain `frontendDataOwnership.test.ts`
+exit code: 1
+
+$ cd web && npm run test -- tests/architecture/frontendDataOwnership.test.ts
+Test Files  1 passed (1)
+Tests  2 passed (2)
+exit code: 0
+
+$ cd web && npm run test:architecture -- frontendDataOwnership.test.ts
+Test Files  13 passed (13)
+Tests  72 passed (72)
+exit code: 0
+
+$ cd web && npx prettier --check tests/architecture/frontendDataOwnership.test.ts && npx eslint tests/architecture/frontendDataOwnership.test.ts --max-warnings=0
+All matched files use Prettier code style!
 exit code: 0
 
 $ uv run python scripts/validate_sdd_artifacts.py --check

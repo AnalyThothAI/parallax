@@ -1090,6 +1090,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 52 — Frontend data ownership architecture gate
+
+- **File(s)**: `web/tests/architecture/frontendDataOwnership.test.ts`, `docs/FRONTEND.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 51
+- **Touch set**: `web/tests/architecture/frontendDataOwnership.test.ts`, `docs/FRONTEND.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `docs/FRONTEND.md` for frontend data ownership architecture semantics.
+- **Failing test first**: `tests/architecture/frontendDataOwnership.test.ts::frontend data ownership` — asserts data ownership docs are harness-bound and route/UI source cannot directly own server-state primitives under the `web/` test command.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Route modules under `web/src/routes` and presentational UI under `web/src/features/*/ui` must not directly reference `useQuery`, `useMutation`, `useInfiniteQuery`, `getApi`, `postApi`, or `queryClient.set*`; feature API hooks, page hooks, and controllers remain the owning boundary.
+- **On-demand context**: Frontend explorer report, `docs/FRONTEND.md`, feature-owned API hooks/controllers, and current frontend architecture tests.
+- **Kill/defer criteria**: Stop if the gate scans feature-owned API hooks, weakens the documented forbidden primitive list, or requires browser/e2e execution.
+- **Eval/repair signal**: frontend data-ownership architecture failure, stale docs binding, direct route/UI server-state reference, and review defects around feature ownership.
+- **Implementation**: Add a static frontend architecture test that binds the docs to `frontendDataOwnership.test.ts` and rejects direct server-state primitive usage from route modules or presentational UI.
+- **Verification**: `cd web && npm run test -- tests/architecture/frontendDataOwnership.test.ts`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1143,4 +1164,5 @@
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_active_touch_sets_reject_nested_or_misdirected_coordination -q`
 - [ ] `cd web && npm run test -- tests/architecture/frontendDocContract.test.ts`
 - [ ] `cd web && npm run test -- tests/architecture/featureBoundaries.test.ts`
+- [ ] `cd web && npm run test -- tests/architecture/frontendDataOwnership.test.ts`
 - [ ] `make check-all`

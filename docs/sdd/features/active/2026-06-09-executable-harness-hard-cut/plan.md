@@ -122,6 +122,12 @@ Known-failing baseline tests:
 - Replace the stale hard-coded feature-name regex with a source-derived feature root list from `web/src/features`.
 - Add RED coverage proving the boundary scan cannot omit current feature roots or keep removed roots.
 
+### `web/tests/architecture/frontendDataOwnership.test.ts`
+
+- Add a static Vitest gate for the documented data ownership boundary.
+- Scan `web/src/routes` and `web/src/features/*/ui` for direct server-state primitives while allowing feature-owned API hooks, page hooks, and controllers to own server reads/writes.
+- Bind `docs/FRONTEND.md` to the executable harness so the rule cannot remain prose-only.
+
 ### `tests/architecture/test_public_contracts_doc_alignment.py`
 
 - Add source-bound checks that compare `docs/CONTRACTS.md` worker keys, agent runtime lanes, WebSocket payloads, and News item route against current runtime/API source.
@@ -244,6 +250,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Active touch conflicts are path-aware. | Pass: validator rejects parent/child active touch overlaps when coordination names an unrelated target. |
 | Frontend docs and skill are harness-bound. | Pass: frontend architecture tests compare docs/skill wording against CSS architecture constants and app navigation source. |
 | Frontend boundary scans derive feature roots. | Pass: feature-boundary architecture tests fail stale hard-coded root lists and scan all current feature roots. |
+| Frontend data ownership is executable. | Pass: `frontendDataOwnership.test.ts` blocks direct route/UI server-state references while keeping feature-owned hooks/controllers as the owning boundary. |
 
 ## Acceptance test commands
 
@@ -298,6 +305,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC49: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_active_touch_sets_reject_nested_or_misdirected_coordination -q`
 - AC50: `cd web && npm run test -- tests/architecture/frontendDocContract.test.ts`
 - AC51: `cd web && npm run test -- tests/architecture/featureBoundaries.test.ts`
+- AC52: `cd web && npm run test -- tests/architecture/frontendDataOwnership.test.ts`
 
 ## Verification
 
