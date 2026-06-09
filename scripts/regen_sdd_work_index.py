@@ -260,6 +260,9 @@ def _issue_meaning(code: str) -> str:
         ),
         "task-incomplete-in-verified-feature": "Verified feature contains incomplete task status.",
         "verified-missing-check-all": "Verified record lacks successful make check-all evidence.",
+        "verified-missing-spec-compliance-evidence": (
+            "Verified spec compliance rows reference commands without matching exit code 0 evidence."
+        ),
         "verified-contradicts-evidence": "Verified record contains text that contradicts final evidence.",
         "verified-unexplained-skips": "Verified record has skipped tests without an acceptable explanation.",
         "superseded-missing-successor": (

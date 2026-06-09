@@ -775,6 +775,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 37 — Verified spec-compliance evidence gate
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 36
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD verification semantics and generated index.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_spec_compliance_rows_require_matching_command_evidence` — asserts a Verified compliance row cannot cite an unproven command.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Verified Spec compliance table rows that mark criteria complete must cite only command evidence that has exit code 0 in `## Verification commands` or `## Other commands run`.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, active/completed SDD verification records, generated SDD work index.
+- **Kill/defer criteria**: Stop if a Verified record can mark an acceptance row complete while the cited command is missing or failed in canonical evidence sections.
+- **Eval/repair signal**: `verified-missing-spec-compliance-evidence`, stale generated index, and false-green verification drift.
+- **Implementation**: Parse completed Spec compliance rows, extract command-shaped backticked evidence references, and require matching exit code 0 command evidence.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_spec_compliance_rows_require_matching_command_evidence -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -812,4 +833,5 @@
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_feature_directory_name_and_date_metadata_are_machine_valid -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_sections_require_non_placeholder_evidence -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_acceptance_criteria_require_when_then_shall_format -q`
+- [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_spec_compliance_rows_require_matching_command_evidence -q`
 - [ ] `make check-all`

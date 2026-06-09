@@ -48,6 +48,7 @@ can both miss real process drift and block healthy refactors.
 | Completed task status must be evidenced. | A `[x]` task requires matching `verification.md` command evidence with exit code 0. |
 | Machine fields must be exact tokens. | `Subagent handoff` accepts only the exact `not delegated` token or a repo path, not prose suffixes. |
 | Delegated handoff artifacts must be real. | Delegated task handoff paths are checked for existence before dispatch or review. |
+| Verified spec-compliance rows must be evidenced. | A `Verified` record cannot mark a compliance row complete unless command-shaped evidence in that row has exit code 0 in canonical evidence sections. |
 
 ## First principles
 
@@ -156,6 +157,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC34. WHEN an SDD feature directory uses a freeform slug or an artifact `Date` does not match the slug date THEN the validator SHALL report `feature-slug-invalid`; executable SDD records must use `YYYY-MM-DD-kebab-slug` identity.
 - AC35. WHEN required clarify, checklist, analyze, or gate-compliance sections contain only empty template rows or placeholders THEN the validator SHALL report `gate-evidence-missing`; SDD gates require structured evidence, not headings alone.
 - AC36. WHEN a `spec.md` acceptance criterion omits the executable `WHEN ... THEN ... SHALL ...` structure THEN the validator SHALL report `acceptance-criterion-format-invalid`; vague acceptance prose cannot satisfy plan-command coverage.
+- AC37. WHEN a `Verified` `verification.md` Spec compliance row marks an acceptance criterion complete and references a command-shaped backticked command THEN the validator SHALL require matching exit code 0 evidence for that command in canonical evidence sections and report `verified-missing-spec-compliance-evidence` otherwise.
 
 ## Risks
 

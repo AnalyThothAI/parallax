@@ -134,6 +134,7 @@ KNOWN_ISSUE_CODES = (
     "task-complete-missing-verification-evidence",
     "task-incomplete-in-verified-feature",
     "verified-missing-check-all",
+    "verified-missing-spec-compliance-evidence",
     "verified-contradicts-evidence",
     "verified-unexplained-skips",
     "superseded-missing-successor",
@@ -981,12 +982,47 @@ def _verified_issues(feature: SddFeature) -> list[SddIssue]:
         issues.append(
             _issue("verified-contradicts-evidence", artifact, "Verified command block records non-zero exit code")
         )
+    issues.extend(_verified_spec_compliance_issues(artifact))
     skipped_match = SKIPPED_RE.search(artifact.text)
     if skipped_match and int(skipped_match.group("count")) > 0 and not _skipped_rows_are_acceptable(artifact.text):
         issues.append(
             _issue("verified-unexplained-skips", artifact, "Verified record has skipped tests without explanation")
         )
     return issues
+
+
+def _verified_spec_compliance_issues(artifact: ArtifactRecord) -> list[SddIssue]:
+    command_evidence = _command_evidence(_task_evidence_text(artifact.text))
+    missing_commands: list[str] = []
+    for cells in _section_table_rows(artifact.text, "## Spec compliance"):
+        if len(cells) < 3 or not _is_complete_compliance_status(cells[1]):
+            continue
+        commands = [
+            _clean_command(match.group(1))
+            for match in re.finditer(r"`([^`]+)`", cells[2])
+            if _looks_like_command(match.group(1))
+        ]
+        missing_commands.extend(
+            command
+            for command in commands
+            if not any(exit_code == 0 for exit_code in command_evidence.get(command, ()))
+        )
+
+    if not missing_commands:
+        return []
+    return [
+        _issue(
+            "verified-missing-spec-compliance-evidence",
+            artifact,
+            "Verified spec compliance rows lack exit code 0 command evidence: "
+            + ", ".join(dict.fromkeys(missing_commands)),
+        )
+    ]
+
+
+def _is_complete_compliance_status(value: str) -> bool:
+    cleaned = _clean_value(value).lower()
+    return "\u2705" in value or cleaned in {"pass", "passed", "verified", "met", "complete", "completed", "done"}
 
 
 def _superseded_issues(feature: SddFeature) -> list[SddIssue]:

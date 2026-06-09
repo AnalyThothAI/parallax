@@ -65,6 +65,23 @@ def test_verified_feature_accepts_successful_make_check_all_evidence(tmp_path: P
     assert validate_sdd_root(tmp_path) == []
 
 
+def test_verified_spec_compliance_rows_require_matching_command_evidence(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "completed", "2026-06-09-spec-compliance-without-evidence")
+    missing_command = "uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_missing_gate -q"
+    _write_valid_spec(feature / "spec.md", status="Verified")
+    _write_valid_plan(feature / "plan.md", status="Verified")
+    _write_valid_tasks(feature / "tasks.md", status="Verified")
+    _write_valid_verification(feature / "verification.md", status="Verified")
+    _replace_spec_compliance_row(
+        feature / "verification.md",
+        f"| AC1 | Pass | `{missing_command}` passed. |",
+    )
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "verified-missing-spec-compliance-evidence" in _issue_codes(issues)
+
+
 def test_feature_rejects_mixed_artifact_statuses(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "completed", "2026-06-09-mixed-status")
     _write_valid_spec(feature / "spec.md", status="Verified")
@@ -1169,6 +1186,20 @@ def _replace_acceptance_command_line(path: Path, number: int, replacement: str) 
             lines.append(line)
     if not replaced:
         raise AssertionError(f"missing AC{number} command in {path}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _replace_spec_compliance_row(path: Path, replacement: str) -> None:
+    lines = []
+    replaced = False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.startswith("| AC1 |"):
+            lines.append(replacement)
+            replaced = True
+        else:
+            lines.append(line)
+    if not replaced:
+        raise AssertionError(f"missing AC1 compliance row in {path}")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 

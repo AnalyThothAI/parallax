@@ -53,6 +53,7 @@ claim is allowed without the corresponding output captured below.
 | AC34 — feature slugs and artifact dates are machine-valid. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_feature_directory_name_and_date_metadata_are_machine_valid -q` passed after first failing RED run. |
 | AC35 — gate sections require structured evidence. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_sections_require_non_placeholder_evidence -q` passed after first failing RED run. |
 | AC36 — acceptance criteria use executable format. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_acceptance_criteria_require_when_then_shall_format -q` passed after first failing RED run. |
+| AC37 — Verified spec-compliance rows require command evidence. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_spec_compliance_rows_require_matching_command_evidence -q` passed after first failing RED run. |
 
 Deviations from spec:
 
@@ -670,6 +671,15 @@ $ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_acceptan
 1 passed in 0.02s
 exit code: 0
 
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_spec_compliance_rows_require_matching_command_evidence -q
+F                                                                        [100%]
+AssertionError: assert 'verified-missing-spec-compliance-evidence' in set()
+exit code: 1
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_spec_compliance_rows_require_matching_command_evidence -q
+1 passed in 0.04s
+exit code: 0
+
 $ uv run python scripts/validate_sdd_artifacts.py --check
 SDD artifact validation passed.
 exit code: 0
@@ -678,7 +688,7 @@ $ uv run python scripts/regen_sdd_work_index.py --check
 exit code: 0
 
 $ uv run pytest tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py -q
-55 passed in 0.52s
+56 passed in 0.50s
 exit code: 0
 
 $ uv run ruff check scripts/validate_sdd_artifacts.py scripts/regen_sdd_work_index.py tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py
