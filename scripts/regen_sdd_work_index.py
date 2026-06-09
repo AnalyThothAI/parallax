@@ -220,6 +220,7 @@ def _issue_meaning(code: str) -> str:
         "missing-gate-section": (
             "Artifact is missing required clarify, checklist, analyze, task, or verification sections."
         ),
+        "gate-evidence-missing": "Required SDD gate sections lack non-placeholder structured evidence rows.",
         "acceptance-numbering-invalid": "Spec or plan acceptance criteria are not unique contiguous AC numbers.",
         "acceptance-command-invalid": "Plan acceptance entries are not command-shaped executable commands.",
         "acceptance-command-mismatch": "Plan acceptance commands do not exactly cover spec acceptance criteria.",

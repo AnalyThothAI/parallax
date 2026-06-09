@@ -31,6 +31,7 @@ Known-failing baseline tests:
 - Validate plan acceptance test commands are command-shaped, not backticked prose.
 - Validate plan acceptance test command bullets are exact AC-numbered machine lines with no trailing prose or side labels.
 - Validate feature directory slugs and artifact date metadata so old/freeform planning records cannot pass as current executable SDD.
+- Validate clarify, checklist, analyze, and gate-compliance sections have non-placeholder structured evidence rows.
 - Validate task field semantics, not just presence: path-shaped file/touch values, structured conflict rules, command-shaped verification, test-shaped failing-test-first values, and known task status tokens.
 - Validate task headings form a unique contiguous `Task 1..N` sequence before dependency or dispatch state is trusted.
 - Parse task dependency references and ranges, reject unsupported dependency syntax, and report unresolved task numbers as `task-invalid-dependencies`.
@@ -172,6 +173,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Acceptance commands are executable. | Pass: plan AC command entries must be command-shaped before they count as coverage. |
 | Acceptance command lines are exact. | Pass: plan AC command bullets reject trailing prose, ranges, and non-AC labels. |
 | Feature identity is machine-valid. | Pass: SDD feature slugs and artifact dates must match the current lane grammar. |
+| Gate sections carry evidence. | Pass: required SDD gate sections must contain non-placeholder table rows. |
 
 ## Acceptance test commands
 
@@ -209,6 +211,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC32: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_acceptance_commands_must_be_command_shaped -q`
 - AC33: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_acceptance_commands_reject_trailing_prose -q`
 - AC34: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_feature_directory_name_and_date_metadata_are_machine_valid -q`
+- AC35: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_sections_require_non_placeholder_evidence -q`
 
 ## Verification
 

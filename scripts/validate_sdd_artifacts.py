@@ -48,6 +48,11 @@ SECTION_REQUIREMENTS = {
         "## E2E golden path",
     ),
 }
+GATE_EVIDENCE_SECTIONS = {
+    "spec.md": ("## Clarifications", "## Requirement Checklist"),
+    "plan.md": ("## Analyze Gate",),
+    "tasks.md": ("## Gate Compliance",),
+}
 METADATA_REQUIREMENTS = {
     "spec.md": ("status", "date", "owner", "approved by", "approved at"),
     "plan.md": ("status", "date", "owning spec", "worktree", "branch", "approved by", "approved at"),
@@ -104,6 +109,7 @@ KNOWN_ISSUE_CODES = (
     "feature-slug-invalid",
     "artifact-owning-link-mismatch",
     "missing-gate-section",
+    "gate-evidence-missing",
     "acceptance-numbering-invalid",
     "acceptance-command-invalid",
     "acceptance-command-mismatch",
@@ -474,6 +480,7 @@ def _artifact_issues(feature: SddFeature, artifact: ArtifactRecord) -> list[SddI
     missing_sections = [section for section in SECTION_REQUIREMENTS[artifact.name] if section not in artifact.text]
     if missing_sections:
         issues.append(_issue("missing-gate-section", artifact, f"missing sections: {', '.join(missing_sections)}"))
+    issues.extend(_gate_evidence_issues(artifact))
     return issues
 
 
@@ -546,6 +553,23 @@ def _artifact_owning_link_issues(feature: SddFeature, artifact: ArtifactRecord) 
                     f"{artifact.name} {field_name} must be `{expected_path}`, got {actual_path}",
                 )
             )
+    return issues
+
+
+def _gate_evidence_issues(artifact: ArtifactRecord) -> list[SddIssue]:
+    issues: list[SddIssue] = []
+    for heading in GATE_EVIDENCE_SECTIONS.get(artifact.name, ()):
+        if heading not in artifact.text:
+            continue
+        if _section_has_non_placeholder_table_row(artifact.text, heading):
+            continue
+        issues.append(
+            _issue(
+                "gate-evidence-missing",
+                artifact,
+                f"{artifact.name} {heading} must contain at least one non-placeholder evidence row",
+            )
+        )
     return issues
 
 
@@ -1152,6 +1176,30 @@ def _section_text(text: str, heading: str) -> str:
     if heading not in text:
         return ""
     return text.split(heading, 1)[1].split("\n## ", 1)[0]
+
+
+def _section_has_non_placeholder_table_row(text: str, heading: str) -> bool:
+    for cells in _section_table_rows(text, heading):
+        if cells and all(not _is_placeholder_table_cell(cell) for cell in cells):
+            return True
+    return False
+
+
+def _section_table_rows(text: str, heading: str) -> list[list[str]]:
+    rows: list[list[str]] = []
+    section = _section_text(text, heading)
+    for line in section.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|") or "---" in stripped:
+            continue
+        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+        rows.append(cells)
+    return rows[1:]
+
+
+def _is_placeholder_table_cell(value: str) -> bool:
+    cleaned = _clean_value(value).lower()
+    return _is_placeholder(value) or cleaned in {"pass / fail", "yyyy-mm-dd"}
 
 
 def _command_exit_code(block: str) -> int | None:

@@ -117,6 +117,55 @@ def test_feature_directory_name_and_date_metadata_are_machine_valid(tmp_path: Pa
     assert sum(issue.code == "feature-slug-invalid" for issue in issues) == 2
 
 
+def test_gate_sections_require_non_placeholder_evidence(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-empty-gates")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _replace_section_body(
+        feature / "spec.md",
+        "## Clarifications",
+        (
+            "| Question | Answer | Approved by | Approved at |",
+            "|----------|--------|-------------|-------------|",
+            "|          |        |             |             |",
+        ),
+    )
+    _replace_section_body(
+        feature / "spec.md",
+        "## Requirement Checklist",
+        (
+            "| Requirement | Quality gate |",
+            "|-------------|--------------|",
+            "|             |              |",
+        ),
+    )
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _replace_section_body(
+        feature / "plan.md",
+        "## Analyze Gate",
+        (
+            "| Check | Result |",
+            "|-------|--------|",
+            "|       |        |",
+        ),
+    )
+    _write_valid_tasks(feature / "tasks.md", status="In Progress", task_status="[~]")
+    _replace_section_body(
+        feature / "tasks.md",
+        "## Gate Compliance",
+        (
+            "| Gate | Evidence |",
+            "|------|----------|",
+            "|      |          |",
+        ),
+    )
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "gate-evidence-missing" in _issue_codes(issues)
+    assert sum(issue.code == "gate-evidence-missing" for issue in issues) == 4
+
+
 def test_artifact_owning_links_must_point_to_same_feature(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-cross-linked-feature")
     _write_valid_spec(feature / "spec.md", status="In Progress")
@@ -1047,6 +1096,17 @@ def _replace_metadata_field(path: Path, field_name: str, value: str) -> None:
         else:
             lines.append(line)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _replace_section_body(path: Path, heading: str, body_lines: tuple[str, ...]) -> None:
+    text = path.read_text(encoding="utf-8")
+    prefix, section_and_rest = text.split(heading, 1)
+    _section_body, separator, rest = section_and_rest.partition("\n## ")
+    replacement = "\n" + "\n".join(body_lines) + "\n"
+    if separator:
+        path.write_text(prefix + heading + replacement + separator + rest, encoding="utf-8")
+        return
+    path.write_text(prefix + heading + replacement, encoding="utf-8")
 
 
 def _append_acceptance_criterion(path: Path, number: int) -> None:

@@ -51,6 +51,7 @@ claim is allowed without the corresponding output captured below.
 | AC32 — plan acceptance commands are command-shaped. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_acceptance_commands_must_be_command_shaped -q` passed after first failing RED run. |
 | AC33 — plan acceptance command lines are exact. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_acceptance_commands_reject_trailing_prose -q` passed after first failing RED run. |
 | AC34 — feature slugs and artifact dates are machine-valid. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_feature_directory_name_and_date_metadata_are_machine_valid -q` passed after first failing RED run. |
+| AC35 — gate sections require structured evidence. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_sections_require_non_placeholder_evidence -q` passed after first failing RED run. |
 
 Deviations from spec:
 
@@ -650,6 +651,15 @@ $ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_feature_
 1 passed in 0.02s
 exit code: 0
 
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_sections_require_non_placeholder_evidence -q
+F                                                                        [100%]
+AssertionError: assert 'gate-evidence-missing' in set()
+exit code: 1
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_sections_require_non_placeholder_evidence -q
+1 passed in 0.07s
+exit code: 0
+
 $ uv run python scripts/validate_sdd_artifacts.py --check
 SDD artifact validation passed.
 exit code: 0
@@ -658,7 +668,7 @@ $ uv run python scripts/regen_sdd_work_index.py --check
 exit code: 0
 
 $ uv run pytest tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py -q
-53 passed in 0.47s
+54 passed in 0.80s
 exit code: 0
 
 $ uv run ruff check scripts/validate_sdd_artifacts.py scripts/regen_sdd_work_index.py tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py
