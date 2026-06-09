@@ -126,6 +126,14 @@ class CurrentReadModelPublisher:
         non_tuple_hash_identities = tuple(identity for identity in existing_hashes if type(identity) is not tuple)
         if non_tuple_hash_identities:
             raise ValueError(f"current read model existing hash identities must be tuples: {non_tuple_hash_identities}")
+        wrong_arity_hash_identities = tuple(
+            identity for identity in existing_hashes if len(identity) != len(self.identity_columns)
+        )
+        if wrong_arity_hash_identities:
+            raise ValueError(
+                "current read model existing hash identity arity must match identity columns: "
+                f"{wrong_arity_hash_identities}"
+            )
         changed: list[dict[str, Any]] = []
         seen_identities: set[tuple[Any, ...]] = set()
         for row in rows:

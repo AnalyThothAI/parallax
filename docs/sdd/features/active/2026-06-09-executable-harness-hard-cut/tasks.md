@@ -3106,6 +3106,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 148 — Publisher changed rows reject wrong-arity existing-hash identities
+
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 147
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for changed-row existing-hash identity arity validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_wrong_arity_existing_hash_identity_keys_before_hash_lookup` — call `changed_rows()` with a tuple-shaped `existing_hashes` key whose arity differs from `identity_columns` and assert publisher validation raises before unchanged-row lookup silently misses the stable identity tuple.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: each `CurrentReadModelPublisher.changed_rows()` existing-hash identity tuple must have the same arity as `identity_columns` before row validation, payload hashing, hash lookup, unchanged-row skip, duplicate identity checks, or write-preparation can consume it.
+- **On-demand context**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, and current read-model unchanged-row idempotency contracts.
+- **Kill/defer criteria**: Stop if wrong-arity existing-hash identity tuples are an intentional API, if validation only belongs in concrete projection repositories, or if the fix requires compatibility coercion.
+- **Eval/repair signal**: wrong-arity existing hash identity keys, unchanged-row write amplification, stable identity lookup drift, publisher changed-row write preparation drift, and SDD generated index drift.
+- **Implementation**: Validate existing-hash identity tuple arity matches `identity_columns` at the start of `changed_rows()` before iterating rows or looking up payload hashes.
+- **Verification**: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_wrong_arity_existing_hash_identity_keys_before_hash_lookup -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
