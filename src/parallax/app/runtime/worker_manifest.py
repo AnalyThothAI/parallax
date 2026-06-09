@@ -736,6 +736,14 @@ def _validate_worker_manifests() -> None:
     if missing_input_contracts:
         raise ValueError(f"worker manifests missing input contracts: {missing_input_contracts}")
 
+    blank_input_contracts = {
+        manifest.name: tuple(item for item in manifest.input_contract if not item.strip())
+        for manifest in _WORKER_MANIFESTS
+        if any(not item.strip() for item in manifest.input_contract)
+    }
+    if blank_input_contracts:
+        raise ValueError(f"blank worker manifest input contracts: {blank_input_contracts}")
+
     names = [manifest.name for manifest in _WORKER_MANIFESTS]
     duplicate_names = sorted({name for name in names if names.count(name) > 1})
     if duplicate_names:
