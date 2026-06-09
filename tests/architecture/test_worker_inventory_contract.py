@@ -124,6 +124,24 @@ def test_worker_manifest_validation_rejects_duplicate_read_model_identity_entrie
 
 
 @pytest.mark.architecture
+def test_worker_manifest_validation_rejects_duplicate_table_declarations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifests = list(all_worker_manifests())
+    first_writer_index = next(index for index, manifest in enumerate(manifests) if manifest.writes_control_plane)
+    first_writer = manifests[first_writer_index]
+    duplicate_table = first_writer.writes_control_plane[0]
+    manifests[first_writer_index] = replace(
+        first_writer,
+        writes_control_plane=(*first_writer.writes_control_plane, duplicate_table),
+    )
+    monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
+
+    with pytest.raises(ValueError, match="duplicate worker manifest table declarations"):
+        worker_manifest_module._validate_worker_manifests()
+
+
+@pytest.mark.architecture
 def test_worker_inventory_keys_match_runtime_registry_and_settings() -> None:
     from parallax.platform.config.settings import WorkersSettings
 

@@ -731,6 +731,28 @@ def _validate_worker_manifests() -> None:
     if missing_side_effect_ledgers:
         raise ValueError(f"side-effect worker manifests missing ledgers: {missing_side_effect_ledgers}")
 
+    duplicate_table_declarations = {
+        manifest.name: duplicates
+        for manifest in _WORKER_MANIFESTS
+        if (
+            duplicates := {
+                field_name: duplicate_tables
+                for field_name, duplicate_tables in (
+                    ("writes_input_observations", _duplicate_values(manifest.writes_input_observations)),
+                    ("writes_facts", _duplicate_values(manifest.writes_facts)),
+                    ("writes_read_models", _duplicate_values(manifest.writes_read_models)),
+                    ("writes_control_plane", _duplicate_values(manifest.writes_control_plane)),
+                    ("side_effect_ledgers", _duplicate_values(manifest.side_effect_ledgers)),
+                    ("dirty_target_tables", _duplicate_values(manifest.dirty_target_tables)),
+                    ("queue_health_tables", _duplicate_values(manifest.queue_health_tables)),
+                )
+                if duplicate_tables
+            }
+        )
+    }
+    if duplicate_table_declarations:
+        raise ValueError(f"duplicate worker manifest table declarations: {duplicate_table_declarations}")
+
     missing_dirty_control_owner = {
         manifest.name: sorted(set(manifest.dirty_target_tables) - set(manifest.writes_control_plane))
         for manifest in _WORKER_MANIFESTS
@@ -806,6 +828,16 @@ def _validate_worker_manifests() -> None:
 
 def _dedupe(values: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(values))
+
+
+def _duplicate_values(values: tuple[str, ...]) -> tuple[str, ...]:
+    seen: set[str] = set()
+    duplicates: set[str] = set()
+    for value in values:
+        if value in seen:
+            duplicates.add(value)
+        seen.add(value)
+    return tuple(sorted(duplicates))
 
 
 _validate_worker_manifests()

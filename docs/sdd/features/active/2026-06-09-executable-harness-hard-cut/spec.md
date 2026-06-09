@@ -49,6 +49,7 @@ can both miss real process drift and block healthy refactors.
 | Read-model writer uniqueness must be import-time validated. | `WorkerManifest` validation rejects duplicate read-model writers before docs or worker harnesses consume the manifest. |
 | Read-model identity ownership must be import-time validated. | `WorkerManifest` validation rejects stable identity declarations for read models the worker does not write. |
 | Read-model identity declarations must be unique. | `WorkerManifest` validation rejects duplicate stable identity entries for the same read model table in one worker. |
+| Worker table declarations must be unique. | `WorkerManifest` validation rejects duplicated table names inside each manifest table-declaration field before `owned_tables` dedupes them. |
 | SQL tests must avoid accidental alias/order coupling. | A query-contract helper checks tables, predicates, locks, params, and forbidden surfaces without pinning formatting. |
 | Completion gates must be deterministic. | `make check-all` runs the SDD validator and stale generated index check. |
 | Generated CLI docs must stay source-backed. | `make check-all` runs a non-mutating CLI help snapshot freshness check before integration gates. |
@@ -152,6 +153,7 @@ can both miss real process drift and block healthy refactors.
 - G51. Duplicate read-model writers fail during `WorkerManifest` validation, so a source manifest drift cannot wait until docs harness comparison to be caught.
 - G52. Stable read-model identities must point only at tables written by the same worker manifest, so stale identity rows cannot survive as compatibility breadcrumbs.
 - G53. Stable read-model identity declarations are unique per worker/table, so old identity definitions cannot coexist with the current one as ambiguous manifest truth.
+- G54. Worker table-declaration fields reject duplicate table names before `owned_tables` deduplication, so stale compatibility breadcrumbs cannot hide inside the source manifest.
 
 ## Non-goals
 
@@ -272,6 +274,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC73. WHEN `WorkerManifest` contains two workers writing the same read model table THEN manifest validation SHALL raise before the manifest can be treated as canonical source truth.
 - AC74. WHEN `WorkerManifest.current_read_model_identities` names a table absent from the same manifest's `writes_read_models` THEN manifest validation SHALL raise before the manifest can be treated as canonical source truth.
 - AC75. WHEN `WorkerManifest.current_read_model_identities` contains two entries for the same read model table in one worker THEN manifest validation SHALL raise before the manifest can be treated as canonical source truth.
+- AC76. WHEN any `WorkerManifest` table-declaration field contains the same table name twice THEN manifest validation SHALL raise before `owned_tables` or downstream harnesses can dedupe it silently.
 
 ## Risks
 

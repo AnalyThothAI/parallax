@@ -1594,6 +1594,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 76 — WorkerManifest validates unique table declarations
+
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 75
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for table-declaration validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_table_declarations` — patches a duplicate `writes_control_plane` table entry and asserts manifest validation rejects it.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Each `WorkerManifest` table-declaration field must be unique by table name within that field; manifest validation must reject duplicates before `owned_tables` or downstream harnesses dedupe them.
+- **On-demand context**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, and source-owned worker table ownership checks.
+- **Kill/defer criteria**: Stop if duplicate declarations are intentionally allowed as aliases, if validation only catches duplicates after `owned_tables` dedupe, or if the fix touches dirty worker runtime contract files.
+- **Eval/repair signal**: duplicate table declaration, silent manifest dedupe, stale compatibility table breadcrumb, and SDD generated index drift.
+- **Implementation**: Add per-field duplicate table validation for `WorkerManifest` table declaration tuples and cover it with a monkeypatch-based architecture test.
+- **Verification**: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_table_declarations -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1671,4 +1692,5 @@
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_read_model_writers -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_unowned_read_model_identities -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_read_model_identity_entries -q`
+- [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_table_declarations -q`
 - [ ] `make check-all`
