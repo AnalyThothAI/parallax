@@ -1531,6 +1531,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 73 — WorkerManifest validates read-model writer uniqueness
+
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 72
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for read-model writer ownership semantics.
+- **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_read_model_writers` — patches duplicate read-model writers and asserts manifest validation rejects them.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `_validate_worker_manifests()` must call the source-owned read-model writer map so duplicate read-model writers fail before downstream docs or architecture harnesses consume the manifest.
+- **On-demand context**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, and read-model writer ownership checks.
+- **Kill/defer criteria**: Stop if duplicate read-model writers are only caught by docs comparisons, if validation accepts patched duplicates, or if the fix touches dirty worker runtime contract files.
+- **Eval/repair signal**: duplicate read-model writer, manifest import-time validation drift, Worker Inventory doc drift, and SDD generated index drift.
+- **Implementation**: Reuse `read_model_writer_by_table()` inside `_validate_worker_manifests()` and add a monkeypatch-based architecture test proving duplicate read-model writers raise `ValueError`.
+- **Verification**: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_read_model_writers -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1605,4 +1626,5 @@
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_architecture_tests_do_not_import_peer_architecture_tests_as_sources -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_exposes_owned_tables_as_source_contract -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_exposes_read_model_writer_mapping -q`
+- [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_read_model_writers -q`
 - [ ] `make check-all`

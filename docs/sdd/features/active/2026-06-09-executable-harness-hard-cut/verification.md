@@ -89,6 +89,7 @@ claim is allowed without the corresponding output captured below.
 | AC70 — Worker Inventory architecture tests use source manifests. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_architecture_tests_do_not_import_peer_architecture_tests_as_sources -q` failed RED on `test_worker_inventory_contract.py` importing `test_worker_runtime_contracts`, then passed after deriving Worker Inventory expectations from `WorkerManifest`. |
 | AC71 — Worker table ownership composition is manifest-owned. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_exposes_owned_tables_as_source_contract -q` failed RED before `WorkerManifest` exposed `owned_tables`, then passed after adding the source-owned ownership contract and using it in manifest queue-health validation. |
 | AC72 — Read-model writer mapping is manifest-owned. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_exposes_read_model_writer_mapping -q` failed RED before `worker_manifest.py` exposed `read_model_writer_by_table()`, then passed after adding the source-owned read-model writer map and using it in Worker Inventory docs checks. |
+| AC73 — Read-model writer uniqueness is manifest-validated. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_read_model_writers -q` failed RED when patched duplicate read-model writers did not raise, then passed after manifest validation reused `read_model_writer_by_table()`. |
 
 Deviations from spec:
 
@@ -1189,6 +1190,19 @@ exit code: 0
 
 $ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
 7 passed in 0.16s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_read_model_writers -q
+F                                                                        [100%]
+Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_read_model_writers -q
+1 passed in 0.03s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
+8 passed in 0.15s
 exit code: 0
 ```
 

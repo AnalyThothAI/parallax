@@ -46,6 +46,7 @@ can both miss real process drift and block healthy refactors.
 | Worker Inventory docs must be manifest-owned. | Architecture tests derive worker class and read-model writer expectations from `WorkerManifest`, not from peer architecture-test constants. |
 | Worker table ownership must be manifest-owned. | `WorkerManifest.owned_tables` exposes the canonical written-table set so harness checks do not reassemble ownership fields ad hoc. |
 | Read-model writer mapping must be manifest-owned. | `read_model_writer_by_table()` exposes the unique read-model writer map from `WorkerManifest`, so docs harnesses do not derive their own registry. |
+| Read-model writer uniqueness must be import-time validated. | `WorkerManifest` validation rejects duplicate read-model writers before docs or worker harnesses consume the manifest. |
 | SQL tests must avoid accidental alias/order coupling. | A query-contract helper checks tables, predicates, locks, params, and forbidden surfaces without pinning formatting. |
 | Completion gates must be deterministic. | `make check-all` runs the SDD validator and stale generated index check. |
 | Generated CLI docs must stay source-backed. | `make check-all` runs a non-mutating CLI help snapshot freshness check before integration gates. |
@@ -146,6 +147,7 @@ can both miss real process drift and block healthy refactors.
 - G48. Worker Inventory documentation checks derive worker classes and read-model writer rows from `WorkerManifest`, so architecture tests cannot import peer architecture tests as hidden source registries.
 - G49. Worker table ownership is exposed by `WorkerManifest.owned_tables`, so queue-health and Worker Inventory harness checks share the same source-owned ownership contract.
 - G50. Read-model writer maps are exposed by `read_model_writer_by_table()`, so Worker Inventory docs checks do not rebuild a second writer registry from manifest internals.
+- G51. Duplicate read-model writers fail during `WorkerManifest` validation, so a source manifest drift cannot wait until docs harness comparison to be caught.
 
 ## Non-goals
 
@@ -263,6 +265,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC70. WHEN an architecture test needs worker inventory source facts THEN it SHALL import them from runtime source such as `WorkerManifest` and SHALL NOT import peer architecture tests as source registries.
 - AC71. WHEN harness code needs the complete set of tables a worker owns THEN it SHALL read `WorkerManifest.owned_tables` instead of rebuilding that set from individual write fields.
 - AC72. WHEN harness code needs read-model writer ownership by table THEN it SHALL read `read_model_writer_by_table()` from `worker_manifest.py` instead of rebuilding a writer registry locally.
+- AC73. WHEN `WorkerManifest` contains two workers writing the same read model table THEN manifest validation SHALL raise before the manifest can be treated as canonical source truth.
 
 ## Risks
 

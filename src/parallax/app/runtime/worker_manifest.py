@@ -747,6 +747,8 @@ def _validate_worker_manifests() -> None:
     if missing_queue_health_owner:
         raise ValueError(f"queue health tables missing from worker ownership: {missing_queue_health_owner}")
 
+    read_model_writer_by_table()
+
     missing_current_identities = {
         manifest.name: sorted(
             set(manifest.writes_read_models)

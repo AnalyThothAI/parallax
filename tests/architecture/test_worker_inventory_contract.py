@@ -4,6 +4,7 @@ import ast
 import inspect
 import re
 import textwrap
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -58,6 +59,25 @@ def test_worker_manifest_exposes_read_model_writer_mapping() -> None:
             expected[table] = manifest.name
 
     assert worker_manifest_module.read_model_writer_by_table() == expected
+
+
+@pytest.mark.architecture
+def test_worker_manifest_validation_rejects_duplicate_read_model_writers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifests = list(all_worker_manifests())
+    first_writer = next(manifest for manifest in manifests if manifest.writes_read_models)
+    duplicate_table = first_writer.writes_read_models[0]
+    second_index = next(index for index, manifest in enumerate(manifests) if manifest.name != first_writer.name)
+    manifests[second_index] = replace(
+        manifests[second_index],
+        writes_read_models=(duplicate_table,),
+        current_read_model_identities=((duplicate_table, ("stable_key",)),),
+    )
+    monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
+
+    with pytest.raises(ValueError, match=f"multiple worker manifest writers: {duplicate_table}"):
+        worker_manifest_module._validate_worker_manifests()
 
 
 @pytest.mark.architecture
