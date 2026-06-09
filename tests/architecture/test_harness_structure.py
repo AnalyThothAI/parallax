@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -28,6 +29,7 @@ ROUTER_FILES = ("AGENTS.md", "CLAUDE.md")
 LEGACY_SDD_TOKEN = "docs" + "/superpowers"
 SCANNED_SUFFIXES = {".md", ".py", ".toml", ".yaml", ".yml"}
 SKIPPED_DIRS = {
+    ".codex",
     ".git",
     ".mypy_cache",
     ".pytest_cache",
@@ -52,6 +54,21 @@ def _read(p: Path) -> str:
     return p.read_text(encoding="utf-8")
 
 
+def _scanned_files(root: Path) -> list[Path]:
+    files: list[Path] = []
+    for current_root, dirs, filenames in os.walk(root):
+        dirs[:] = [name for name in dirs if name not in SKIPPED_DIRS]
+        current = Path(current_root)
+        for filename in filenames:
+            path = current / filename
+            if path.name == "test_harness_structure.py":
+                continue
+            if path.suffix not in SCANNED_SUFFIXES and path.name != "Makefile":
+                continue
+            files.append(path)
+    return files
+
+
 def test_routers_within_line_budget() -> None:
     for name in ROUTER_FILES:
         path = REPO_ROOT / name
@@ -65,16 +82,7 @@ def test_legacy_superpowers_tree_is_removed() -> None:
 
 def test_current_governance_does_not_reference_legacy_superpowers_paths() -> None:
     offenders: list[str] = []
-    for path in REPO_ROOT.rglob("*"):
-        if not path.is_file():
-            continue
-        rel_parts = path.relative_to(REPO_ROOT).parts
-        if SKIPPED_DIRS.intersection(rel_parts):
-            continue
-        if path.name == "test_harness_structure.py":
-            continue
-        if path.suffix not in SCANNED_SUFFIXES and path.name != "Makefile":
-            continue
+    for path in _scanned_files(REPO_ROOT):
         text = path.read_text(encoding="utf-8")
         if LEGACY_SDD_TOKEN in text:
             offenders.append(path.relative_to(REPO_ROOT).as_posix())

@@ -1,8 +1,8 @@
 # Plan - SDD Governance Hard Cut
 
-**Status**: In Progress
+**Status**: Verified
 **Date**: 2026-06-09
-**Owning spec**: `docs/sdd/features/active/2026-06-09-sdd-governance-hard-cut/spec.md`
+**Owning spec**: `docs/sdd/features/completed/2026-06-09-sdd-governance-hard-cut/spec.md`
 **Worktree**: `.worktrees/sdd-v2-hard-cut/`
 **Branch**: `codex/sdd-v2-hard-cut`
 
