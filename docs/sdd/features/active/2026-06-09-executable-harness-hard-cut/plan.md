@@ -244,6 +244,7 @@ Known-failing baseline tests:
 - Reject empty stable identity column lists inside each `current_read_model_identities` entry.
 - Reject blank stable identity column names inside each `current_read_model_identities` entry and inside `CurrentReadModelPublisher`.
 - Reject list-shaped stable identity column declarations inside `current_read_model_identities` before ownership, registry, factory, settings, or docs harnesses consume them.
+- Reject list-shaped `CurrentReadModelPublisher.identity_columns` declarations before publisher validation consumes compatibility-shaped field lists.
 - Reject non-string stable identity column names inside `CurrentReadModelPublisher` before blank, duplicate, lifecycle-column, row-identity, or changed-row hashing logic consumes them.
 - Reject non-string `CurrentReadModelPublisher.payload_hash_column` values before row hashing or changed-row writes can use them as serving-row keys.
 - Reject blank `CurrentReadModelPublisher.payload_hash_column` values before changed-row writes can add empty serving-row keys.
@@ -407,6 +408,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Read-model identity columns are non-blank. | Pass: `_validate_worker_manifests()` and `CurrentReadModelPublisher` raise when a read-model identity declares a blank stable identity column. |
 | Read-model identity columns are tuples. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares list-shaped stable identity columns. |
 | Read-model identity columns are strings. | Pass: `_validate_worker_manifests()` raises before blank column checks when a patched stable identity column is numeric. |
+| Publisher identity columns are tuples. | Pass: `CurrentReadModelPublisher` raises at construction when given list-shaped stable identity columns. |
 | Publisher identity columns are strings. | Pass: `CurrentReadModelPublisher` raises before blank column checks when constructed with a numeric stable identity column. |
 | Publisher payload hash columns are strings. | Pass: `CurrentReadModelPublisher` raises at construction when given a numeric payload hash column name. |
 | Publisher payload hash columns are non-blank. | Pass: `CurrentReadModelPublisher` raises at construction when given a blank payload hash column name. |
@@ -602,6 +604,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC141: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_string_row_columns_before_write_preparation -q`
 - AC142: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_null_row_identity_values_before_hashing -q`
 - AC143: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_blank_row_identity_values_before_hashing -q`
+- AC144: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_tuple_identity_columns -q`
 
 ## Verification
 

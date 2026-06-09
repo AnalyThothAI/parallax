@@ -37,6 +37,8 @@ class CurrentReadModelPublisher:
     payload_columns: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
+        if type(self.identity_columns) is not tuple:
+            raise ValueError(f"non-tuple stable identity columns: {self.identity_columns}")
         if not self.identity_columns:
             raise ValueError("current read model publisher requires stable identity columns")
         non_string_identity = tuple(column for column in self.identity_columns if type(column) is not str)

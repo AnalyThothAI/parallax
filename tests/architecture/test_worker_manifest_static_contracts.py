@@ -106,6 +106,12 @@ def test_current_read_model_publisher_rejects_non_string_payload_hash_column() -
 
 
 @pytest.mark.architecture
+def test_current_read_model_publisher_rejects_non_tuple_identity_columns() -> None:
+    with pytest.raises(ValueError, match="non-tuple stable identity columns"):
+        CurrentReadModelPublisher(identity_columns=["target_id"])
+
+
+@pytest.mark.architecture
 def test_current_read_model_publisher_rejects_blank_payload_hash_column() -> None:
     with pytest.raises(ValueError, match="blank current payload hash column"):
         CurrentReadModelPublisher(identity_columns=("target_id",), payload_hash_column="   ")

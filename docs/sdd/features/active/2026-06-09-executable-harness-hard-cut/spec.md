@@ -95,6 +95,7 @@ can both miss real process drift and block healthy refactors.
 | Read-model identity columns must be non-blank. | `WorkerManifest` validation and `CurrentReadModelPublisher` reject blank stable identity column names. |
 | Read-model identity columns must be tuples. | `WorkerManifest` validation rejects list-shaped stable identity column declarations before ownership or docs harnesses consume them. |
 | Read-model identity columns must be strings. | `WorkerManifest` validation rejects non-string stable identity column names inside `current_read_model_identities` before blank, duplicate, forbidden-lifecycle, ownership, registry, settings, or worker inventory harnesses consume them. |
+| Publisher identity columns must be tuples. | `CurrentReadModelPublisher` rejects list-shaped or scalar identity column declarations before stable identity validation can consume compatibility-shaped field lists. |
 | Publisher identity columns must be strings. | `CurrentReadModelPublisher` rejects non-string stable identity column names before blank, duplicate, lifecycle-column, row-identity, or changed-row hashing logic consumes them. |
 | Publisher payload hash columns must be strings. | `CurrentReadModelPublisher` rejects non-string payload hash column names before row hashing or changed-row writes can use them as serving-row keys. |
 | Publisher payload hash columns must be non-blank. | `CurrentReadModelPublisher` rejects blank payload hash column names before changed-row writes can add empty serving-row keys. |
@@ -288,6 +289,7 @@ can both miss real process drift and block healthy refactors.
 - G119. Current read-model changed-row publishing rejects non-string row columns before hashing or write preparation, so DB row-shape drift cannot survive as compatibility-shaped serving payload keys.
 - G120. Current read-model changed-row publishing rejects null stable identity values before hashing or write preparation, so absent product/window keys cannot become current serving identities.
 - G121. Current read-model changed-row publishing rejects blank stable identity string values before hashing or write preparation, so whitespace placeholders cannot become current serving identities.
+- G122. Current read-model publisher identity column declarations reject list-shaped compatibility values, so row identity checks consume immutable column tuples.
 
 ## Non-goals
 
@@ -476,6 +478,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC141. WHEN `CurrentReadModelPublisher.changed_rows()` receives a row with any non-string column key THEN it SHALL raise a dedicated row-column validation error before payload hashing or changed-row write preparation.
 - AC142. WHEN `CurrentReadModelPublisher.changed_rows()` receives a row whose stable identity column value is `None` THEN it SHALL raise a dedicated null-identity validation error before payload hashing or changed-row write preparation.
 - AC143. WHEN `CurrentReadModelPublisher.changed_rows()` receives a row whose stable identity column value is a blank string THEN it SHALL raise a dedicated blank-identity validation error before payload hashing or changed-row write preparation.
+- AC144. WHEN `CurrentReadModelPublisher.identity_columns` is not a tuple THEN publisher construction SHALL raise before stable identity validation can consume list-shaped or scalar compatibility values.
 
 ## Risks
 

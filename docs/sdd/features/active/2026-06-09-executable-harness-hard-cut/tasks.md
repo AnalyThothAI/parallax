@@ -3022,6 +3022,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 144 — Publisher identity columns reject list-shaped declarations
+
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 143
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for publisher identity-column declaration shape validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_tuple_identity_columns` — construct `CurrentReadModelPublisher` with list-shaped stable identity columns and assert publisher construction raises before downstream identity validation consumes it.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `CurrentReadModelPublisher.identity_columns` must be a tuple before blank, duplicate, lifecycle, row-identity, payload-hash, or changed-row checks can consume it as source truth.
+- **On-demand context**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, and tuple-valued current read-model identity contracts.
+- **Kill/defer criteria**: Stop if list-shaped publisher identity declarations are an intentional API, if validation only belongs in worker manifests, or if the fix requires compatibility coercion.
+- **Eval/repair signal**: list-shaped publisher identity columns, compatibility-shaped serving identity declarations, publisher construction validation drift, and SDD generated index drift.
+- **Implementation**: Add publisher construction validation rejecting non-tuple `identity_columns` before empty, string, blank, duplicate, or lifecycle checks.
+- **Verification**: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_tuple_identity_columns -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
