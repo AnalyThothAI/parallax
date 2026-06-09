@@ -91,6 +91,7 @@ can both miss real process drift and block healthy refactors.
 | Read-model identity columns must be tuples. | `WorkerManifest` validation rejects list-shaped stable identity column declarations before ownership or docs harnesses consume them. |
 | Read-model identity columns must be strings. | `WorkerManifest` validation rejects non-string stable identity column names inside `current_read_model_identities` before blank, duplicate, forbidden-lifecycle, ownership, registry, settings, or worker inventory harnesses consume them. |
 | Publisher identity columns must be strings. | `CurrentReadModelPublisher` rejects non-string stable identity column names before blank, duplicate, lifecycle-column, row-identity, or changed-row hashing logic consumes them. |
+| Publisher payload hash columns must be strings. | `CurrentReadModelPublisher` rejects non-string payload hash column names before row hashing or changed-row writes can use them as serving-row keys. |
 | Worker manifest imports must be explicit. | `worker_manifest.py` imports `importlib.util` directly so clean-process manifest validation never depends on incidental package attribute side effects. |
 | Root visual artifacts must be absent. | Architecture harness rejects loose visual verification files at the repository root so screenshots live only under owned artifact directories. |
 | Worker table declarations must be unique. | `WorkerManifest` validation rejects duplicated table names inside each manifest table-declaration field before `owned_tables` dedupes them. |
@@ -244,6 +245,7 @@ can both miss real process drift and block healthy refactors.
 - G97. Current read-model identity table declarations reject non-string values, so stable serving identity checks fail with manifest errors instead of implementation-detail attribute errors.
 - G98. Current read-model identity column declarations reject non-string values, so stable serving identity checks fail with manifest errors instead of implementation-detail attribute errors.
 - G99. Current read-model publisher identity columns reject non-string values, so direct publisher construction fails with contract errors instead of implementation-detail attribute errors.
+- G100. Current read-model publisher payload hash column declarations reject non-string values, so changed-row hashing cannot silently write serving rows with invalid hash keys.
 
 ## Non-goals
 
@@ -410,6 +412,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC119. WHEN a `WorkerManifest.current_read_model_identities` entry has a read-model table name that is not a string THEN manifest validation SHALL raise before identity table blank checks, duplicate checks, missing-identity checks, ownership checks, registry, settings, or worker inventory harnesses consume it.
 - AC120. WHEN a `WorkerManifest.current_read_model_identities` identity column value is not a string THEN manifest validation SHALL raise before identity column blank checks, duplicate checks, forbidden lifecycle-column checks, missing-identity checks, ownership checks, registry, settings, or worker inventory harnesses consume it.
 - AC121. WHEN `CurrentReadModelPublisher.identity_columns` contains a non-string value THEN publisher construction SHALL raise before identity column blank checks, duplicate checks, forbidden lifecycle-column checks, row identity reads, changed-row hashing, or worker static harnesses consume it.
+- AC122. WHEN `CurrentReadModelPublisher.payload_hash_column` is not a string THEN publisher construction SHALL raise before row payload hashing, changed-row writes, or worker static harnesses consume it as a serving-row key.
 
 ## Risks
 

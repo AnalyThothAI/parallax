@@ -2560,6 +2560,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 122 — Publisher payload hash columns are strings
+
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 121
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for publisher payload hash column type validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_string_payload_hash_column` — construct `CurrentReadModelPublisher` with a numeric `payload_hash_column` and assert publisher validation raises before row hashing or changed-row writes can use it as a serving-row key.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `CurrentReadModelPublisher.payload_hash_column` must be strict `str` before row payload hashing, changed-row writes, or worker static harnesses consume it as the serving-row payload hash key.
+- **On-demand context**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, and stable current read-model publisher contracts.
+- **Kill/defer criteria**: Stop if publisher payload hash columns intentionally support compatibility objects, if validation only checks caller code, or if the fix touches projection worker runtime behavior.
+- **Eval/repair signal**: non-string publisher payload hash column names, silent invalid serving-row hash keys, publisher validation drift, and SDD generated index drift.
+- **Implementation**: Add publisher construction validation rejecting non-string `payload_hash_column` values before row payload hashing and changed-row write checks.
+- **Verification**: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_string_payload_hash_column -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -2683,4 +2704,5 @@
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_read_model_identity_tables -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_read_model_identity_columns -q`
 - [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_run_generation_identity_and_skips_unchanged -q`
+- [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_string_payload_hash_column -q`
 - [ ] `make check-all`

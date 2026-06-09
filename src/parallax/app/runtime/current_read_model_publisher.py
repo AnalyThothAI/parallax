@@ -55,6 +55,8 @@ class CurrentReadModelPublisher:
             raise ValueError(
                 f"current read model identity cannot include serving lifecycle columns: {forbidden_identity}"
             )
+        if type(self.payload_hash_column) is not str:
+            raise ValueError(f"non-string current payload hash column: {self.payload_hash_column}")
 
     def row_identity(self, row: Mapping[str, Any]) -> tuple[Any, ...]:
         return tuple(row[column] for column in self.identity_columns)

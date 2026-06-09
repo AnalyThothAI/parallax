@@ -100,6 +100,12 @@ def test_provider_io_manifest_workers_are_bounded_and_not_projection_claim_loade
 
 
 @pytest.mark.architecture
+def test_current_read_model_publisher_rejects_non_string_payload_hash_column() -> None:
+    with pytest.raises(ValueError, match="non-string current payload hash column"):
+        CurrentReadModelPublisher(identity_columns=("target_id",), payload_hash_column=123)
+
+
+@pytest.mark.architecture
 def test_current_read_model_publisher_rejects_run_generation_identity_and_skips_unchanged() -> None:
     with pytest.raises(ValueError, match="non-string stable identity columns"):
         CurrentReadModelPublisher(identity_columns=("target_id", 123))
