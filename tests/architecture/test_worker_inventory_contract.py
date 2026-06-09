@@ -367,6 +367,18 @@ def test_worker_manifest_validation_rejects_negative_start_priorities(
 
 
 @pytest.mark.architecture
+def test_worker_manifest_validation_rejects_non_integer_start_priorities(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifests = list(all_worker_manifests())
+    manifests[0] = replace(manifests[0], start_priority=0.5)
+    monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
+
+    with pytest.raises(ValueError, match="non-integer worker manifest start priorities"):
+        worker_manifest_module._validate_worker_manifests()
+
+
+@pytest.mark.architecture
 def test_worker_manifest_validation_rejects_blank_idempotency_evidence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

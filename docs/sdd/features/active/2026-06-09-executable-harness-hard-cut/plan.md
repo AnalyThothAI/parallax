@@ -198,6 +198,7 @@ Known-failing baseline tests:
 - Reject blank `name`, `domain`, `factory`, and `worker_class` declarations before registry, factory, settings, or docs harnesses consume them.
 - Reject duplicate `worker_class` declarations before registry, factory, settings, or docs harnesses consume them.
 - Reject negative `start_priority` declarations before scheduler, registry, settings, or docs harnesses consume them.
+- Reject non-integer `start_priority` declarations before scheduler, registry, settings, or docs harnesses consume them.
 - Reject blank `idempotency_evidence` declarations before lifecycle, ownership, review, or worker inventory harnesses consume them.
 - Reject duplicate `idempotency_evidence` declarations before lifecycle, ownership, review, or worker inventory harnesses consume them.
 - Reject empty `input_contract` declarations before registry, factory, settings, or docs harnesses consume them.
@@ -317,6 +318,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Worker identity fields are non-blank. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares a blank `name`. |
 | Worker runtime classes are unique. | Pass: `_validate_worker_manifests()` raises when a patched manifest reuses another manifest's `worker_class`. |
 | Worker start priorities are non-negative. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares negative `start_priority`. |
+| Worker start priorities are integer bands. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares non-integer `start_priority`. |
 | Idempotency evidence is non-blank. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares blank `idempotency_evidence`. |
 | Idempotency evidence is unique. | Pass: `_validate_worker_manifests()` raises when a patched manifest repeats one `idempotency_evidence` entry. |
 | Input contracts are non-empty. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares an empty `input_contract`. |
@@ -477,6 +479,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC99: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_idempotency_evidence -q`
 - AC100: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_worker_classes -q`
 - AC101: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_negative_start_priorities -q`
+- AC102: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_integer_start_priorities -q`
 
 ## Verification
 

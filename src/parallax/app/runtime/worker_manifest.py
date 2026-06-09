@@ -782,6 +782,14 @@ def _validate_worker_manifests() -> None:
     if duplicate_worker_classes:
         raise ValueError(f"duplicate worker manifest classes: {duplicate_worker_classes}")
 
+    non_integer_start_priorities = {
+        manifest.name: manifest.start_priority
+        for manifest in _WORKER_MANIFESTS
+        if type(manifest.start_priority) is not int
+    }
+    if non_integer_start_priorities:
+        raise ValueError(f"non-integer worker manifest start priorities: {non_integer_start_priorities}")
+
     negative_start_priorities = {
         manifest.name: manifest.start_priority for manifest in _WORKER_MANIFESTS if manifest.start_priority < 0
     }
