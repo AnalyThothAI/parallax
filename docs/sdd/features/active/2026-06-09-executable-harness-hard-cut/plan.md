@@ -257,6 +257,7 @@ Known-failing baseline tests:
 - Reject explicit `CurrentReadModelPublisher.payload_columns` that include lifecycle columns before row hashing can reintroduce run/generation/timestamp drift.
 - Require every explicit `CurrentReadModelPublisher.payload_columns` entry to exist in each row before hashing, so query drift fails instead of hashing missing fields as `None`.
 - Require every `CurrentReadModelPublisher.identity_columns` entry to exist in each changed row before payload hashing, so query drift fails as missing stable identity instead of payload `KeyError`.
+- Reject duplicate stable identity tuples inside one `CurrentReadModelPublisher.changed_rows()` batch before a projection can prepare multiple writes for the same current read-model row.
 - Import `importlib.util` directly inside `worker_manifest.py` so manifest validation does not depend on prior import side effects in clean processes.
 - Reject loose visual verification artifacts at the repository root and keep screenshots under owned artifact directories.
 - Reject duplicate table names inside each `WorkerManifest` table-declaration field before `owned_tables` dedupes them.
@@ -415,6 +416,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Publisher payload columns exclude lifecycle columns. | Pass: `CurrentReadModelPublisher` raises at construction when explicit payload columns include a serving lifecycle column. |
 | Publisher explicit payload columns exist in rows. | Pass: `CurrentReadModelPublisher.row_payload_hash()` raises when a declared explicit payload column is missing from the row. |
 | Publisher changed rows contain identity columns. | Pass: `CurrentReadModelPublisher.changed_rows()` raises a dedicated missing-identity error before payload hashing when a row lacks a stable identity column. |
+| Publisher changed-row batches have unique identities. | Pass: `CurrentReadModelPublisher.changed_rows()` raises when two rows in one batch share the same stable identity tuple. |
 | Worker manifest imports are explicit. | Pass: importing `parallax.app.runtime.worker_manifest` in a clean process succeeds even after removing an incidental `importlib.util` package attribute. |
 | Root visual artifacts are absent. | Pass: architecture harness rejects loose root-level PNG/JPG/WEBP/GIF verification artifacts. |
 | Worker table declarations are unique. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares the same table twice inside one table-declaration field. |
@@ -587,6 +589,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC136: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_queue_depth_tables_outside_control_plane -q`
 - AC137: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_queue_health_tables_outside_control_plane -q`
 - AC138: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_missing_identity_column_before_payload_hashing -q`
+- AC139: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_duplicate_row_identities_in_batch -q`
 
 ## Verification
 

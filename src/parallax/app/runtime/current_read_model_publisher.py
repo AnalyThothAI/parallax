@@ -107,8 +107,12 @@ class CurrentReadModelPublisher:
         existing_hashes: Mapping[tuple[Any, ...], str | None],
     ) -> list[dict[str, Any]]:
         changed: list[dict[str, Any]] = []
+        seen_identities: set[tuple[Any, ...]] = set()
         for row in rows:
             identity = self.row_identity(row)
+            if identity in seen_identities:
+                raise ValueError(f"current read model batch has duplicate row identities: {identity}")
+            seen_identities.add(identity)
             row_hash = self.row_payload_hash(row)
             if existing_hashes.get(identity) == row_hash:
                 continue
