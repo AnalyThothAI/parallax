@@ -44,6 +44,7 @@ can both miss real process drift and block healthy refactors.
 | Test harness intent must be explicit. | Architecture tests classify permanent invariants, migration tripwires, behavior contracts, and generated hygiene. |
 | Worker runtime constraints must be manifest-owned. | `WorkerManifest` carries each worker's runtime constraint classification, so architecture tests do not maintain a second worker inventory. |
 | Worker identity fields must be non-blank. | `WorkerManifest` validation rejects blank `name`, `domain`, `factory`, and `worker_class` values before registries, settings, or docs harnesses consume them. |
+| Worker domains must be source directories. | `WorkerManifest` validation rejects `domain` values that do not name an existing `src/parallax/domains/<domain>` source directory. |
 | Worker factory modules must be source files. | `WorkerManifest` validation rejects `factory` values that do not name an existing `worker_factories/*.py` source file. |
 | Worker runtime classes must be unique. | `WorkerManifest` validation rejects duplicate `worker_class` values before registry, factory, settings, or docs harnesses consume them. |
 | Worker runtime class modules must exist. | `WorkerManifest` validation rejects `worker_class` values whose module path cannot be resolved before registry, factory, settings, or docs harnesses consume them. |
@@ -212,6 +213,7 @@ can both miss real process drift and block healthy refactors.
 - G81. Worker factory declarations reject missing source files, so registry and docs harnesses cannot preserve a worker that no worker factory can instantiate.
 - G82. Worker runtime class declarations reject missing modules, so registry and docs harnesses cannot preserve a worker whose runtime implementation path cannot resolve.
 - G83. Worker runtime class declarations reject missing class names, so registry and docs harnesses cannot preserve stale symbols inside otherwise valid runtime modules.
+- G84. Worker domain declarations reject missing source directories, so registry and docs harnesses cannot preserve a worker owned by a non-existent bounded context.
 
 ## Non-goals
 
@@ -362,6 +364,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC103. WHEN a `WorkerManifest.factory` value does not name an existing `src/parallax/app/runtime/worker_factories/*.py` source file THEN manifest validation SHALL raise before registry, factory, settings, or worker inventory harnesses consume the manifest.
 - AC104. WHEN a `WorkerManifest.worker_class` module path cannot be resolved THEN manifest validation SHALL raise before registry, factory, settings, or worker inventory harnesses consume the manifest.
 - AC105. WHEN a `WorkerManifest.worker_class` class name is absent from its resolved module THEN manifest validation SHALL raise before registry, factory, settings, or worker inventory harnesses consume the manifest.
+- AC106. WHEN a `WorkerManifest.domain` value does not name an existing `src/parallax/domains/<domain>` source directory THEN manifest validation SHALL raise before registry, factory, settings, or worker inventory harnesses consume the manifest.
 
 ## Risks
 

@@ -343,6 +343,18 @@ def test_worker_manifest_validation_rejects_blank_identity_fields(
 
 
 @pytest.mark.architecture
+def test_worker_manifest_validation_rejects_missing_domain_directories(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifests = list(all_worker_manifests())
+    manifests[0] = replace(manifests[0], domain="missing_domain")
+    monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
+
+    with pytest.raises(ValueError, match="missing worker manifest domain directories"):
+        worker_manifest_module._validate_worker_manifests()
+
+
+@pytest.mark.architecture
 def test_worker_manifest_validation_rejects_missing_factory_modules(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

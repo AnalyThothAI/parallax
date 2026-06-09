@@ -2224,6 +2224,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 106 — Worker domains are real source directories
+
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 105
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for worker domain source-directory validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_domain_directories` — patch one manifest to declare missing `domain` and assert manifest validation raises before registry, factory, settings, or docs consumers run.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `WorkerManifest.domain` values must name existing `src/parallax/domains/<domain>` source directories before registries, settings, or worker inventory harnesses can treat bounded-context ownership as source truth.
+- **On-demand context**: `src/parallax/app/runtime/worker_manifest.py`, `src/parallax/domains`, `tests/architecture/test_worker_inventory_contract.py`, and Worker Inventory docs checks.
+- **Kill/defer criteria**: Stop if worker domains intentionally support generated, remote, or non-source domain names, if validation only checks generated docs, or if the fix touches dirty worker runtime contract files.
+- **Eval/repair signal**: missing worker domain directory, bounded-context ownership drift, registry drift, manifest validation drift, and SDD generated index drift.
+- **Implementation**: Add manifest validation rejecting `domain` values that do not resolve to an existing source domain directory.
+- **Verification**: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_domain_directories -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -2331,4 +2352,5 @@
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_factory_modules -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_worker_class_modules -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_worker_class_names -q`
+- [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_domain_directories -q`
 - [ ] `make check-all`

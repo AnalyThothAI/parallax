@@ -7,6 +7,7 @@ from pathlib import Path
 
 from parallax.app.runtime.current_read_model_publisher import FORBIDDEN_SERVING_IDENTITY_COLUMNS
 
+_DOMAIN_DIR = Path(__file__).resolve().parents[2] / "domains"
 _WORKER_FACTORY_DIR = Path(__file__).resolve().parent / "worker_factories"
 
 
@@ -735,6 +736,14 @@ def _validate_worker_manifests() -> None:
     }
     if blank_identity_fields:
         raise ValueError(f"blank worker manifest identity fields: {blank_identity_fields}")
+
+    missing_domain_directories = {
+        manifest.name: manifest.domain
+        for manifest in _WORKER_MANIFESTS
+        if Path(manifest.domain).name != manifest.domain or not (_DOMAIN_DIR / manifest.domain).is_dir()
+    }
+    if missing_domain_directories:
+        raise ValueError(f"missing worker manifest domain directories: {missing_domain_directories}")
 
     missing_factory_modules = {
         manifest.name: manifest.factory
