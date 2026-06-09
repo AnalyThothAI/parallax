@@ -784,6 +784,20 @@ def _validate_worker_manifests() -> None:
     if duplicate_current_identities:
         raise ValueError(f"duplicate current read model identity entries: {duplicate_current_identities}")
 
+    duplicate_current_identity_columns = {
+        manifest.name: duplicate_columns
+        for manifest in _WORKER_MANIFESTS
+        if (
+            duplicate_columns := {
+                table_name: duplicates
+                for table_name, identity_columns in manifest.current_read_model_identities
+                if (duplicates := _duplicate_values(identity_columns))
+            }
+        )
+    }
+    if duplicate_current_identity_columns:
+        raise ValueError(f"duplicate current read model identity columns: {duplicate_current_identity_columns}")
+
     missing_current_identities = {
         manifest.name: sorted(
             set(manifest.writes_read_models)

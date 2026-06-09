@@ -1615,6 +1615,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 77 — Current read-model identity columns are unique
+
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_inventory_contract.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 76
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_inventory_contract.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for stable identity validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_read_model_identity_columns` and `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_run_generation_identity_and_skips_unchanged` — patch or construct duplicate stable identity columns and assert validation rejects them.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Stable current read-model identity columns must be unique inside each identity tuple; both manifest import-time validation and `CurrentReadModelPublisher` construction must reject duplicate columns before downstream serving identity code can normalize them accidentally.
+- **On-demand context**: `src/parallax/app/runtime/worker_manifest.py`, `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_inventory_contract.py`, and current read-model identity static contracts.
+- **Kill/defer criteria**: Stop if duplicate identity columns are intentionally supported as a semantic alias, if only the publisher or only the manifest is validated, or if the fix touches dirty worker runtime contract files.
+- **Eval/repair signal**: duplicate stable identity column, malformed current read-model key, manifest/publisher validation drift, and SDD generated index drift.
+- **Implementation**: Add duplicate-column validation for `CurrentReadModelPublisher.identity_columns` and `WorkerManifest.current_read_model_identities`.
+- **Verification**: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_read_model_identity_columns tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_run_generation_identity_and_skips_unchanged -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1693,4 +1714,5 @@
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_unowned_read_model_identities -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_read_model_identity_entries -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_table_declarations -q`
+- [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_read_model_identity_columns tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_run_generation_identity_and_skips_unchanged -q`
 - [ ] `make check-all`

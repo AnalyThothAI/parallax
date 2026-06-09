@@ -39,6 +39,11 @@ class CurrentReadModelPublisher:
     def __post_init__(self) -> None:
         if not self.identity_columns:
             raise ValueError("current read model publisher requires stable identity columns")
+        duplicate_identity = sorted(
+            {column for column in self.identity_columns if self.identity_columns.count(column) > 1}
+        )
+        if duplicate_identity:
+            raise ValueError(f"duplicate stable identity columns: {duplicate_identity}")
         forbidden_identity = sorted(set(self.identity_columns) & FORBIDDEN_SERVING_IDENTITY_COLUMNS)
         if forbidden_identity:
             raise ValueError(
