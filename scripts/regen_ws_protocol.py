@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import ast
 from collections import defaultdict
 from pathlib import Path
@@ -81,7 +82,7 @@ def _collect_type_literals(tree: ast.AST) -> dict[str, set[str]]:
     return dict(visitor.type_contexts)
 
 
-def main() -> None:
+def _render() -> str:
     tree = ast.parse(WS_FILE.read_text(encoding="utf-8"))
     class_rows = _collect_classes(tree)
     type_rows = _collect_type_literals(tree)
@@ -109,8 +110,28 @@ def main() -> None:
     )
     for name, doc in sorted(class_rows):
         body.append(f"| `{name}` | {doc} |")
-    OUTPUT.write_text(HEADER + "\n".join(body) + "\n", encoding="utf-8")
+    return HEADER + "\n".join(body) + "\n"
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Regenerate docs/generated/ws-protocol.md from API WebSocket source")
+    parser.add_argument("--check", action="store_true", help="exit non-zero if docs/generated/ws-protocol.md is stale")
+    args = parser.parse_args()
+
+    rendered = _render()
+    if args.check:
+        existing = OUTPUT.read_text(encoding="utf-8") if OUTPUT.exists() else ""
+        if existing != rendered:
+            print(
+                "docs/generated/ws-protocol.md is stale; run `uv run python scripts/regen_ws_protocol.py`.",
+            )
+            return 1
+        return 0
+
+    OUTPUT.write_text(rendered, encoding="utf-8")
+    print(f"wrote {OUTPUT.relative_to(OUTPUT.parents[1]).as_posix()}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

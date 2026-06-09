@@ -285,6 +285,13 @@ def test_make_check_all_checks_cli_help_snapshot() -> None:
     assert "scripts/regen_cli_help.py --check" in check_all
 
 
+def test_make_check_all_checks_ws_protocol_snapshot() -> None:
+    makefile = _read(REPO_ROOT / "Makefile")
+    check_all = makefile.split("check-all:", 1)[1].split("\n\n", 1)[0]
+
+    assert "scripts/regen_ws_protocol.py --check" in check_all
+
+
 def test_generated_readme_source_map_points_to_existing_paths() -> None:
     readme = _read(DOCS / "generated" / "README.md")
     table_rows = [
