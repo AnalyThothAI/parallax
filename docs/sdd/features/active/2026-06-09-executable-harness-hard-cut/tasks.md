@@ -3253,6 +3253,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 155 — Stable payload hash rejects generic isoformat payload values
+
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 154
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for stable payload hash value validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_generic_isoformat_payload_values` — call `stable_current_payload_hash()` with an arbitrary object exposing `isoformat()` and assert hash validation raises before generic ISO formatting can preserve compatibility-shaped payload values.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `stable_current_payload_hash()` payload values must be JSON-compatible scalars, `Decimal`, real date/time values, or supported containers before `_json_ready()`, JSON normalization, or hash generation can consume them as current read-model payload truth.
+- **On-demand context**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, and current read-model payload hash idempotency contracts.
+- **Kill/defer criteria**: Stop if arbitrary `isoformat()` objects are an intentional direct hash-helper API, if validation only belongs in concrete row publishers, or if the fix requires generic object coercion.
+- **Eval/repair signal**: generic `isoformat()` payload values, unsupported payload object coercion, stable payload hash idempotency drift, JSON normalization compatibility drift, and SDD generated index drift.
+- **Implementation**: Add recursive stable payload value validation before `_json_ready()`, restrict ISO formatting to real date/time values, and remove generic `hasattr(value, "isoformat")` coercion.
+- **Verification**: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_generic_isoformat_payload_values -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -3398,4 +3419,5 @@
 - [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_non_mapping_payloads -q`
 - [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_non_string_payload_keys -q`
 - [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_nested_non_string_payload_keys -q`
+- [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_generic_isoformat_payload_values -q`
 - [ ] `make check-all`

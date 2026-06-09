@@ -128,6 +128,19 @@ def test_stable_current_payload_hash_rejects_nested_non_string_payload_keys() ->
 
 
 @pytest.mark.architecture
+def test_stable_current_payload_hash_rejects_generic_isoformat_payload_values() -> None:
+    class LegacyIsoformatValue:
+        def isoformat(self) -> str:
+            return "legacy"
+
+        def __repr__(self) -> str:
+            return "LegacyIsoformatValue()"
+
+    with pytest.raises(ValueError, match="current payload hash payload has unsupported values"):
+        stable_current_payload_hash({"target_id": "asset-1", "observed_at": LegacyIsoformatValue()})
+
+
+@pytest.mark.architecture
 def test_current_read_model_publisher_rejects_non_string_payload_hash_column() -> None:
     with pytest.raises(ValueError, match="non-string current payload hash column"):
         CurrentReadModelPublisher(identity_columns=("target_id",), payload_hash_column=123)

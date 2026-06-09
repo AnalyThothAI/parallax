@@ -171,6 +171,7 @@ claim is allowed without the corresponding output captured below.
 | AC152 — Stable payload hash rejects malformed payload containers. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_non_mapping_payloads -q` failed RED when scalar/string payloads leaked `dict(...)` errors and list-of-pairs payloads were accepted, then passed after adding dedicated payload-shape validation. |
 | AC153 — Stable payload hash rejects non-string payload keys. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_non_string_payload_keys -q` failed RED when numeric payload keys were stringified into a hash, then passed after adding dedicated payload-key validation. |
 | AC154 — Stable payload hash rejects nested non-string payload keys. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_nested_non_string_payload_keys -q` failed RED when nested numeric payload keys were stringified into a hash, then passed after adding recursive payload-key validation and removing mapping-key string coercion from `_json_ready()`. |
+| AC155 — Stable payload hash rejects generic isoformat payload values. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_generic_isoformat_payload_values -q` failed RED when an arbitrary `isoformat()` object was accepted into a hash, then passed after adding recursive payload-value validation and restricting ISO formatting to real date/time values. |
 
 Deviations from spec:
 
@@ -2912,6 +2913,38 @@ exit code: 0
 $ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
 .............................................................            [100%]
 61 passed in 0.53s
+exit code: 0
+
+$ uv run ruff check src/parallax/app/runtime/current_read_model_publisher.py tests/architecture/test_worker_manifest_static_contracts.py
+All checks passed!
+exit code: 0
+
+$ git diff --check
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_generic_isoformat_payload_values -q
+F                                                                        [100%]
+E       Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_generic_isoformat_payload_values -q
+.                                                                        [100%]
+1 passed in 0.39s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_generic_isoformat_payload_values -q
+.                                                                        [100%]
+1 passed in 0.51s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py -q
+......................................                                   [100%]
+38 passed in 0.50s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
+.............................................................            [100%]
+61 passed in 0.60s
 exit code: 0
 
 $ uv run ruff check src/parallax/app/runtime/current_read_model_publisher.py tests/architecture/test_worker_manifest_static_contracts.py

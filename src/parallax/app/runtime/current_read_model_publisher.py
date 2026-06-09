@@ -4,6 +4,7 @@ import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any
 
@@ -27,6 +28,7 @@ def stable_current_payload_hash(payload: Mapping[str, Any]) -> str:
     if not isinstance(payload, Mapping):
         raise ValueError(f"current payload hash payload must be mapping: {payload}")
     _validate_payload_hash_keys(payload)
+    _validate_payload_hash_values(payload)
     encoded = json.dumps(
         _json_ready(dict(payload)),
         sort_keys=True,
@@ -209,6 +211,20 @@ def _validate_payload_hash_keys(value: Any) -> None:
             _validate_payload_hash_keys(inner)
 
 
+def _validate_payload_hash_values(value: Any) -> None:
+    if isinstance(value, Mapping):
+        for inner in value.values():
+            _validate_payload_hash_values(inner)
+        return
+    if isinstance(value, tuple | list | set | frozenset):
+        for inner in value:
+            _validate_payload_hash_values(inner)
+        return
+    if value is None or isinstance(value, str | int | float | Decimal | date | datetime | time):
+        return
+    raise ValueError(f"current payload hash payload has unsupported values: {value}")
+
+
 def _json_ready(value: Any) -> Any:
     if isinstance(value, Mapping):
         return {key: _json_ready(inner) for key, inner in value.items()}
@@ -218,6 +234,6 @@ def _json_ready(value: Any) -> Any:
         return sorted(_json_ready(inner) for inner in value)
     if isinstance(value, Decimal):
         return str(value.normalize())
-    if hasattr(value, "isoformat"):
+    if isinstance(value, date | datetime | time):
         return value.isoformat()
     return value
