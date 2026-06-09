@@ -202,6 +202,7 @@ Known-failing baseline tests:
 - Reject non-side-effect worker kinds that declare `side_effect_ledgers` before ownership harnesses consume them.
 - Reject blank `wakes_on` and `wakes_out` channel declarations before listener/notify harnesses consume them.
 - Reject duplicate `wakes_on` and `wakes_out` channel declarations before listener/notify harnesses consume them.
+- Reject duplicate `advisory_lock_key` declarations before lifecycle and advisory-lock harnesses consume them.
 - Add `read_model_writer_by_table()` as the source-owned read-model writer map and use it in Worker Inventory docs checks.
 - Run the read-model writer map inside manifest validation so duplicate read-model writers fail before downstream harness consumers trust the manifest.
 - Reject `current_read_model_identities` entries for tables absent from the same manifest's `writes_read_models`.
@@ -308,6 +309,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Side-effect ledgers belong to side-effect workers. | Pass: `_validate_worker_manifests()` raises when a patched non-side-effect manifest declares `side_effect_ledgers`. |
 | Wake channels are non-blank. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares a blank `wakes_out` channel. |
 | Wake channels are unique per worker field. | Pass: `_validate_worker_manifests()` raises when a patched manifest repeats a `wakes_on` channel. |
+| Advisory lock keys are unique. | Pass: `_validate_worker_manifests()` raises when two patched manifests share an `advisory_lock_key`. |
 | Worker Inventory docs are manifest-owned. | Pass: worker inventory architecture tests import source manifest data directly and reject peer architecture-test imports. |
 | Worker table ownership is manifest-owned. | Pass: `WorkerManifest.owned_tables` exposes the deduped owned-table contract and queue-health validation consumes it. |
 | Read-model writer mapping is manifest-owned. | Pass: `read_model_writer_by_table()` exposes unique read-model ownership and Worker Inventory docs checks consume it. |
@@ -438,6 +440,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC86: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_ledgers_on_non_side_effect_workers -q`
 - AC87: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_wake_channels -q`
 - AC88: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_wake_channels -q`
+- AC89: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_advisory_lock_keys -q`
 
 ## Verification
 

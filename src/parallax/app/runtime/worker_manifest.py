@@ -798,6 +798,17 @@ def _validate_worker_manifests() -> None:
     if duplicate_wake_channels:
         raise ValueError(f"duplicate worker manifest wake channels: {duplicate_wake_channels}")
 
+    advisory_lock_users: dict[str, list[str]] = {}
+    for manifest in _WORKER_MANIFESTS:
+        if manifest.advisory_lock_key is None:
+            continue
+        advisory_lock_users.setdefault(manifest.advisory_lock_key, []).append(manifest.name)
+    duplicate_advisory_locks = {
+        lock_key: worker_names for lock_key, worker_names in advisory_lock_users.items() if len(worker_names) > 1
+    }
+    if duplicate_advisory_locks:
+        raise ValueError(f"duplicate worker manifest advisory lock keys: {duplicate_advisory_locks}")
+
     missing_dirty_targets = [
         manifest.name
         for manifest in _WORKER_MANIFESTS
