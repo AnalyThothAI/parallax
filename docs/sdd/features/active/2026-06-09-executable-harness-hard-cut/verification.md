@@ -87,6 +87,7 @@ claim is allowed without the corresponding output captured below.
 | AC68 — Spec Background local citations are semantically anchored. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_spec_background_rejects_stale_local_citation_lines -q` failed RED when an existing but wrong `docs/WORKFLOW.md:1` citation passed, then passed after requiring cited local lines to mention backticked evidence tokens and updating active Background citations. |
 | AC69 — Worker runtime constraints are manifest-owned. | ✅ | `uv run pytest tests/architecture/test_runtime_worker_constraint_hard_cut.py::test_every_registered_worker_has_runtime_constraint_classification -q` passed after adding `WorkerRuntimeConstraint` to `WorkerManifest` and removing the test-owned classification map; the temporary RED assertion failed first because `WorkerManifest` had no `runtime_constraint`. |
 | AC70 — Worker Inventory architecture tests use source manifests. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_architecture_tests_do_not_import_peer_architecture_tests_as_sources -q` failed RED on `test_worker_inventory_contract.py` importing `test_worker_runtime_contracts`, then passed after deriving Worker Inventory expectations from `WorkerManifest`. |
+| AC71 — Worker table ownership composition is manifest-owned. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_exposes_owned_tables_as_source_contract -q` failed RED before `WorkerManifest` exposed `owned_tables`, then passed after adding the source-owned ownership contract and using it in manifest queue-health validation. |
 
 Deviations from spec:
 
@@ -1161,6 +1162,19 @@ exit code: 0
 
 $ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
 5 passed in 0.19s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_exposes_owned_tables_as_source_contract -q
+F                                                                        [100%]
+AttributeError: 'WorkerManifest' object has no attribute 'owned_tables'
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_exposes_owned_tables_as_source_contract -q
+1 passed in 0.04s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
+6 passed in 0.16s
 exit code: 0
 ```
 

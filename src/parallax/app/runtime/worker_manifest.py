@@ -60,6 +60,18 @@ class WorkerManifest:
     wakes_on: tuple[str, ...] = ()
     wakes_out: tuple[str, ...] = ()
 
+    @property
+    def owned_tables(self) -> tuple[str, ...]:
+        return _dedupe(
+            (
+                *self.writes_input_observations,
+                *self.writes_facts,
+                *self.writes_read_models,
+                *self.writes_control_plane,
+                *self.side_effect_ledgers,
+            )
+        )
+
 
 _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
     WorkerManifest(
@@ -715,29 +727,9 @@ def _validate_worker_manifests() -> None:
         raise ValueError(f"dirty target tables missing from writes_control_plane: {missing_dirty_control_owner}")
 
     missing_queue_health_owner = {
-        manifest.name: sorted(
-            set(manifest.queue_health_tables)
-            - set(
-                (
-                    *manifest.writes_facts,
-                    *manifest.writes_input_observations,
-                    *manifest.writes_read_models,
-                    *manifest.writes_control_plane,
-                    *manifest.side_effect_ledgers,
-                )
-            )
-        )
+        manifest.name: sorted(set(manifest.queue_health_tables) - set(manifest.owned_tables))
         for manifest in _WORKER_MANIFESTS
-        if set(manifest.queue_health_tables)
-        - set(
-            (
-                *manifest.writes_facts,
-                *manifest.writes_input_observations,
-                *manifest.writes_read_models,
-                *manifest.writes_control_plane,
-                *manifest.side_effect_ledgers,
-            )
-        )
+        if set(manifest.queue_health_tables) - set(manifest.owned_tables)
     }
     if missing_queue_health_owner:
         raise ValueError(f"queue health tables missing from worker ownership: {missing_queue_health_owner}")

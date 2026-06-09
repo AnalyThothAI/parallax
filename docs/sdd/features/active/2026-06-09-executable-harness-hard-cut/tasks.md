@@ -1489,6 +1489,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 71 — WorkerManifest owns table ownership composition
+
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 70
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for worker ownership semantics.
+- **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_exposes_owned_tables_as_source_contract` — asserts each manifest exposes the deduped owned-table contract and queue-health tables remain inside it.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `WorkerManifest.owned_tables` must be the canonical deduped composition of input-observation, fact, read-model, control-plane, and side-effect-ledger writes; manifest validation must consume this contract; no compatibility alias for duplicated ownership tuple assembly is allowed.
+- **On-demand context**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, and worker ownership architecture tests.
+- **Kill/defer criteria**: Stop if the fix keeps multiple ownership tuple assembly formulas, changes manifest ownership semantics without tests, or touches dirty worker runtime contract files.
+- **Eval/repair signal**: ownership tuple drift, queue-health table outside owned tables, Worker Inventory doc drift, and SDD generated index drift.
+- **Implementation**: Add `WorkerManifest.owned_tables`, use it in manifest queue-health ownership validation, and add an architecture test for the source-owned table ownership contract.
+- **Verification**: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_exposes_owned_tables_as_source_contract -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1561,4 +1582,5 @@
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_spec_background_rejects_stale_local_citation_lines -q`
 - [ ] `uv run pytest tests/architecture/test_runtime_worker_constraint_hard_cut.py::test_every_registered_worker_has_runtime_constraint_classification -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_architecture_tests_do_not_import_peer_architecture_tests_as_sources -q`
+- [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_exposes_owned_tables_as_source_contract -q`
 - [ ] `make check-all`

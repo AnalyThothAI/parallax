@@ -30,6 +30,25 @@ def test_architecture_tests_do_not_import_peer_architecture_tests_as_sources() -
 
 
 @pytest.mark.architecture
+def test_worker_manifest_exposes_owned_tables_as_source_contract() -> None:
+    for manifest in all_worker_manifests():
+        expected_owned_tables = tuple(
+            dict.fromkeys(
+                (
+                    *manifest.writes_input_observations,
+                    *manifest.writes_facts,
+                    *manifest.writes_read_models,
+                    *manifest.writes_control_plane,
+                    *manifest.side_effect_ledgers,
+                )
+            )
+        )
+
+        assert manifest.owned_tables == expected_owned_tables
+        assert set(manifest.queue_health_tables) <= set(manifest.owned_tables)
+
+
+@pytest.mark.architecture
 def test_worker_inventory_keys_match_runtime_registry_and_settings() -> None:
     from parallax.platform.config.settings import WorkersSettings
 
