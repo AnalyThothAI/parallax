@@ -159,6 +159,7 @@ claim is allowed without the corresponding output captured below.
 | AC139 — Publisher changed-row batches reject duplicate identities. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_duplicate_row_identities_in_batch -q` failed RED when duplicate stable row identities in one batch were accepted, then passed after adding batch identity uniqueness validation. |
 | AC141 — Publisher changed rows reject non-string row columns. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_string_row_columns_before_write_preparation -q` failed RED when a non-string row key was accepted into changed-row write preparation, then passed after adding row-column validation. |
 | AC142 — Publisher changed rows reject null identity values. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_null_row_identity_values_before_hashing -q` failed RED when `None` was accepted as a stable current-row identity value, then passed after adding null identity-value validation. |
+| AC143 — Publisher changed rows reject blank identity values. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_blank_row_identity_values_before_hashing -q` failed RED when a blank string was accepted as a stable current-row identity value, then passed after adding blank identity-value validation. |
 
 Deviations from spec:
 
@@ -2426,6 +2427,45 @@ exit code: 0
 
 $ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
 61 passed in 0.47s
+exit code: 0
+
+$ git diff --check
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_blank_row_identity_values_before_hashing -q
+F                                                                        [100%]
+E       Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_blank_row_identity_values_before_hashing -q
+1 passed in 0.37s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py -q
+22 passed in 0.31s
+exit code: 0
+
+$ uv run python scripts/regen_sdd_work_index.py
+wrote docs/generated/sdd-work-index.md
+exit code: 0
+
+$ uv run python scripts/validate_sdd_artifacts.py --check
+SDD artifact validation passed.
+exit code: 0
+
+$ uv run python scripts/regen_sdd_work_index.py --check
+exit code: 0
+
+$ uv run ruff check src/parallax/app/runtime/current_read_model_publisher.py tests/architecture/test_worker_manifest_static_contracts.py
+All checks passed!
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py -q
+22 passed in 0.40s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
+61 passed in 0.46s
 exit code: 0
 
 $ git diff --check

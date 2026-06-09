@@ -112,6 +112,7 @@ can both miss real process drift and block healthy refactors.
 | Publisher changed-row batches must have unique identities. | `CurrentReadModelPublisher.changed_rows()` rejects duplicate stable identities inside one batch before a current read-model row can be prepared twice. |
 | Publisher changed rows must use string row columns. | `CurrentReadModelPublisher.changed_rows()` rejects non-string row keys before payload hashing or changed-row write preparation can preserve compatibility-shaped mapping keys. |
 | Publisher changed rows must have non-null identity values. | `CurrentReadModelPublisher.changed_rows()` rejects rows whose stable identity columns resolve to `None` before payload hashing or changed-row write preparation. |
+| Publisher changed rows must have non-blank identity values. | `CurrentReadModelPublisher.changed_rows()` rejects rows whose stable identity string values are blank before payload hashing or changed-row write preparation. |
 | Worker manifest imports must be explicit. | `worker_manifest.py` imports `importlib.util` directly so clean-process manifest validation never depends on incidental package attribute side effects. |
 | Root visual artifacts must be absent. | Architecture harness rejects loose visual verification files at the repository root so screenshots live only under owned artifact directories. |
 | Worker table declarations must be unique. | `WorkerManifest` validation rejects duplicated table names inside each manifest table-declaration field before `owned_tables` dedupes them. |
@@ -286,6 +287,7 @@ can both miss real process drift and block healthy refactors.
 - G118. Explicit current-read-model payload hashing reports missing declared payload keys as row-shape validation errors, so query drift does not leak opaque mapping errors into harness evidence.
 - G119. Current read-model changed-row publishing rejects non-string row columns before hashing or write preparation, so DB row-shape drift cannot survive as compatibility-shaped serving payload keys.
 - G120. Current read-model changed-row publishing rejects null stable identity values before hashing or write preparation, so absent product/window keys cannot become current serving identities.
+- G121. Current read-model changed-row publishing rejects blank stable identity string values before hashing or write preparation, so whitespace placeholders cannot become current serving identities.
 
 ## Non-goals
 
@@ -473,6 +475,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC140. WHEN `CurrentReadModelPublisher.row_payload_hash()` receives a row missing any declared explicit payload column THEN it SHALL raise a dedicated missing-payload-column error instead of leaking a raw `KeyError`.
 - AC141. WHEN `CurrentReadModelPublisher.changed_rows()` receives a row with any non-string column key THEN it SHALL raise a dedicated row-column validation error before payload hashing or changed-row write preparation.
 - AC142. WHEN `CurrentReadModelPublisher.changed_rows()` receives a row whose stable identity column value is `None` THEN it SHALL raise a dedicated null-identity validation error before payload hashing or changed-row write preparation.
+- AC143. WHEN `CurrentReadModelPublisher.changed_rows()` receives a row whose stable identity column value is a blank string THEN it SHALL raise a dedicated blank-identity validation error before payload hashing or changed-row write preparation.
 
 ## Risks
 
