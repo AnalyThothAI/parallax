@@ -120,6 +120,7 @@ can both miss real process drift and block healthy refactors.
 | Publisher changed rows must use string row columns. | `CurrentReadModelPublisher.changed_rows()` rejects non-string row keys before payload hashing or changed-row write preparation can preserve compatibility-shaped mapping keys. |
 | Publisher changed rows must have non-null identity values. | `CurrentReadModelPublisher.changed_rows()` rejects rows whose stable identity columns resolve to `None` before payload hashing or changed-row write preparation. |
 | Publisher changed rows must have non-blank identity values. | `CurrentReadModelPublisher.changed_rows()` rejects rows whose stable identity string values are blank before payload hashing or changed-row write preparation. |
+| Publisher changed-row batches must be sequences. | `CurrentReadModelPublisher.changed_rows()` rejects scalar, mapping, and string-shaped row batches before row, column, identity, payload hash, duplicate-identity, or write-preparation validation can consume compatibility-shaped containers. |
 | Worker manifest imports must be explicit. | `worker_manifest.py` imports `importlib.util` directly so clean-process manifest validation never depends on incidental package attribute side effects. |
 | Root visual artifacts must be absent. | Architecture harness rejects loose visual verification files at the repository root so screenshots live only under owned artifact directories. |
 | Worker table declarations must be unique. | `WorkerManifest` validation rejects duplicated table names inside each manifest table-declaration field before `owned_tables` dedupes them. |
@@ -302,6 +303,7 @@ can both miss real process drift and block healthy refactors.
 - G126. Current read-model changed-row publishing rejects wrong-arity existing-hash identity tuples before hash lookup can miss unchanged rows and reprepare current serving writes.
 - G127. Current read-model changed-row publishing rejects non-string, non-null existing-hash values before hash lookup can miss unchanged rows and reprepare current serving writes.
 - G128. Current read-model changed-row publishing rejects malformed existing-hash strings before hash lookup can miss unchanged rows and reprepare current serving writes.
+- G129. Current read-model changed-row publishing rejects scalar, mapping, and string-shaped row batches before row validation can split compatibility containers into fake row values.
 
 ## Non-goals
 
@@ -497,6 +499,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC148. WHEN `CurrentReadModelPublisher.changed_rows()` receives `existing_hashes` with an identity tuple whose arity differs from `identity_columns` THEN it SHALL raise a dedicated existing-hash identity arity validation error before row, payload hash, hash-lookup, unchanged-row skip, or changed-row write-preparation validation.
 - AC149. WHEN `CurrentReadModelPublisher.changed_rows()` receives `existing_hashes` with a value that is neither a string nor `None` THEN it SHALL raise a dedicated existing-hash value validation error before row, payload hash, hash-lookup, unchanged-row skip, or changed-row write-preparation validation.
 - AC150. WHEN `CurrentReadModelPublisher.changed_rows()` receives `existing_hashes` with a string value that is not `sha256:` followed by 64 lowercase hex characters THEN it SHALL raise a dedicated existing-hash value-format validation error before row, payload hash, hash-lookup, unchanged-row skip, or changed-row write-preparation validation.
+- AC151. WHEN `CurrentReadModelPublisher.changed_rows()` receives `rows` that is scalar, mapping-shaped, or string-shaped THEN it SHALL raise a dedicated row-batch validation error before row, column, identity, payload hash, duplicate-identity, or changed-row write-preparation validation consumes compatibility-shaped row containers.
 
 ## Risks
 

@@ -124,6 +124,7 @@ class CurrentReadModelPublisher:
         *,
         existing_hashes: Mapping[tuple[Any, ...], str | None],
     ) -> list[dict[str, Any]]:
+        _validate_row_batch(rows)
         if not isinstance(existing_hashes, Mapping):
             raise ValueError(f"current read model existing hashes must be mapping: {existing_hashes}")
         non_tuple_hash_identities = tuple(identity for identity in existing_hashes if type(identity) is not tuple)
@@ -168,6 +169,13 @@ class CurrentReadModelPublisher:
             next_row[self.payload_hash_column] = row_hash
             changed.append(next_row)
         return changed
+
+
+def _validate_row_batch(rows: Sequence[Mapping[str, Any]]) -> None:
+    if not isinstance(rows, Sequence):
+        raise ValueError(f"current read model rows must be sequence: {rows}")
+    if isinstance(rows, Mapping | str | bytes):
+        raise ValueError(f"current read model rows must be sequence: {rows}")
 
 
 def _validate_row_columns(row: Mapping[str, Any]) -> None:

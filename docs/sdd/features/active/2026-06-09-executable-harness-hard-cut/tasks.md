@@ -3169,6 +3169,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 151 — Publisher changed rows reject malformed row batches
+
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 150
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for changed-row batch-shape validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_sequence_row_batches_before_row_validation` — call `changed_rows()` with scalar, mapping-shaped, and string-shaped `rows` values and assert publisher validation raises before row validation splits compatibility containers into fake row values.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `CurrentReadModelPublisher.changed_rows()` row batches must be non-string sequences before row validation, column validation, stable identity extraction, payload hashing, duplicate identity checks, or changed-row write preparation can consume the container.
+- **On-demand context**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, and current read-model changed-row batch shape contracts.
+- **Kill/defer criteria**: Stop if scalar, mapping-shaped, or string-shaped row batches are an intentional API, if validation only belongs in concrete projection repositories, or if the fix requires compatibility coercion.
+- **Eval/repair signal**: malformed row batches, scalar row-container `TypeError`, mapping/string batch iteration drift, row validation masking, publisher changed-row write preparation drift, and SDD generated index drift.
+- **Implementation**: Add changed-row batch validation before row iteration so scalar, mapping-shaped, and string-shaped batches raise a dedicated row-batch validation error.
+- **Verification**: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_sequence_row_batches_before_row_validation -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -3310,4 +3331,5 @@
 - [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_missing_explicit_payload_column -q`
 - [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_missing_identity_column_before_payload_hashing -q`
 - [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_duplicate_row_identities_in_batch -q`
+- [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_sequence_row_batches_before_row_validation -q`
 - [ ] `make check-all`

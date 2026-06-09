@@ -212,6 +212,23 @@ def test_current_read_model_publisher_rejects_non_mapping_rows_before_column_val
 
 
 @pytest.mark.architecture
+@pytest.mark.parametrize(
+    "rows",
+    [
+        123,
+        {"target_id": "asset-1", "score": 10},
+        "legacy-row-batch",
+    ],
+    ids=["scalar", "mapping", "string"],
+)
+def test_current_read_model_publisher_rejects_non_sequence_row_batches_before_row_validation(rows: object) -> None:
+    publisher = CurrentReadModelPublisher(identity_columns=("target_id",), payload_columns=("target_id", "score"))
+
+    with pytest.raises(ValueError, match="current read model rows must be sequence"):
+        publisher.changed_rows(rows, existing_hashes={})
+
+
+@pytest.mark.architecture
 def test_current_read_model_publisher_rejects_non_mapping_existing_hashes_before_hash_lookup() -> None:
     publisher = CurrentReadModelPublisher(identity_columns=("target_id",), payload_columns=("target_id", "score"))
 

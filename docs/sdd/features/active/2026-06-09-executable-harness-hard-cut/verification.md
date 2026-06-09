@@ -167,6 +167,7 @@ claim is allowed without the corresponding output captured below.
 | AC148 — Publisher changed rows reject wrong-arity existing-hash identities. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_wrong_arity_existing_hash_identity_keys_before_hash_lookup -q` failed RED when wrong-arity tuple keys were accepted, then passed after adding dedicated identity-arity validation. |
 | AC149 — Publisher changed rows reject non-string existing-hash values. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_string_existing_hash_values_before_hash_lookup -q` failed RED when numeric existing-hash values were accepted, then passed after adding dedicated hash-value validation. |
 | AC150 — Publisher changed rows reject malformed existing-hash strings. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_malformed_existing_hash_values_before_hash_lookup -q` failed RED when malformed existing-hash strings were accepted, then passed after adding canonical payload-hash validation. |
+| AC151 — Publisher changed rows reject malformed row batches. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_sequence_row_batches_before_row_validation -q` failed RED when scalar batches leaked `TypeError` and mapping/string batches were iterated as rows, then passed after adding dedicated row-batch validation. |
 
 Deviations from spec:
 
@@ -2748,6 +2749,70 @@ exit code: 0
 
 $ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
 61 passed in 0.52s
+exit code: 0
+
+$ git diff --check
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_sequence_row_batches_before_row_validation -q
+FFF                                                                      [100%]
+E       TypeError: 'int' object is not iterable
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: 'current read model rows must be sequence'
+E         Actual message: 'current read model row must be mapping: target_id'
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: 'current read model rows must be sequence'
+E         Actual message: 'current read model row must be mapping: l'
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_sequence_row_batches_before_row_validation -q
+...                                                                      [100%]
+3 passed in 0.35s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_sequence_row_batches_before_row_validation -q
+...                                                                      [100%]
+3 passed in 0.46s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py -q
+................................                                         [100%]
+32 passed in 0.45s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
+.............................................................            [100%]
+61 passed in 0.53s
+exit code: 0
+
+$ uv run ruff check src/parallax/app/runtime/current_read_model_publisher.py tests/architecture/test_worker_manifest_static_contracts.py
+SIM101 Multiple `isinstance` calls for `rows`, merge into a single call
+exit code: 1
+
+$ uv run ruff check src/parallax/app/runtime/current_read_model_publisher.py tests/architecture/test_worker_manifest_static_contracts.py
+All checks passed!
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_sequence_row_batches_before_row_validation -q
+...                                                                      [100%]
+3 passed in 0.48s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py -q
+................................                                         [100%]
+32 passed in 0.47s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
+.............................................................            [100%]
+61 passed in 0.55s
+exit code: 0
+
+$ uv run python scripts/validate_sdd_artifacts.py --check
+SDD artifact validation passed.
+exit code: 0
+
+$ uv run python scripts/regen_sdd_work_index.py --check
 exit code: 0
 
 $ git diff --check
