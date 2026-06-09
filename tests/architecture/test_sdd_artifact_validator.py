@@ -183,6 +183,33 @@ def test_complete_tasks_require_matching_verification_evidence(tmp_path: Path) -
     assert "task-complete-missing-verification-evidence" in _issue_codes(issues)
 
 
+def test_complete_task_evidence_ignores_commands_outside_evidence_sections(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-complete-task-notes-evidence")
+    expected_command = "uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_expected_gate -q"
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(
+        feature / "tasks.md",
+        status="In Progress",
+        verification=expected_command,
+        task_status="[x]",
+    )
+    _write_valid_verification(
+        feature / "verification.md",
+        status="In Progress",
+        other_command_lines=(
+            "$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_other_gate -q",
+            "1 passed in 0.01s",
+            "exit code: 0",
+        ),
+    )
+    _append_notes_command_evidence(feature / "verification.md", expected_command)
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "task-complete-missing-verification-evidence" in _issue_codes(issues)
+
+
 def test_tasks_require_filled_coordination_fields(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-loose-tasks")
     _write_valid_spec(feature / "spec.md", status="In Progress")
@@ -751,6 +778,18 @@ def _append_prose_successor_reference(path: Path) -> None:
     path.write_text(
         path.read_text(encoding="utf-8")
         + "\n\nThis record was superseded by the current active harness feature.\n",
+        encoding="utf-8",
+    )
+
+
+def _append_notes_command_evidence(path: Path, command: str) -> None:
+    path.write_text(
+        path.read_text(encoding="utf-8")
+        + "\n\n## Notes\n\n```text\n"
+        + f"$ {command}\n"
+        + "1 passed in 0.01s\n"
+        + "exit code: 0\n"
+        + "```\n",
         encoding="utf-8",
     )
 

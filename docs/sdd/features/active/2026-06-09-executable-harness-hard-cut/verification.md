@@ -39,6 +39,7 @@ claim is allowed without the corresponding output captured below.
 | AC20 — superseded successor metadata is machine-readable. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_machine_readable_successor -q` passed after first failing RED run. |
 | AC21 — feature directories contain exactly four artifacts. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_feature_rejects_unexpected_artifact_files -q` passed after first failing RED run; legacy macro SDD attachments were deleted. |
 | AC22 — completed tasks cannot depend on incomplete tasks. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_completed_tasks_reject_incomplete_dependencies -q` passed after first failing RED run; Task 6 dependency was corrected from `Tasks 1-5` to `Tasks 1-4`. |
+| AC23 — completed-task evidence only counts inside evidence sections. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_task_evidence_ignores_commands_outside_evidence_sections -q` passed after first failing RED run. |
 
 Deviations from spec:
 
@@ -379,6 +380,30 @@ exit code: 0
 
 $ uv run pytest tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py -q
 41 passed in 0.40s
+exit code: 0
+
+$ uv run ruff check scripts/validate_sdd_artifacts.py scripts/regen_sdd_work_index.py tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py
+All checks passed!
+exit code: 0
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_task_evidence_ignores_commands_outside_evidence_sections -q
+F                                                                        [100%]
+AssertionError: assert 'task-complete-missing-verification-evidence' in set()
+exit code: 1
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_task_evidence_ignores_commands_outside_evidence_sections -q
+1 passed in 0.03s
+exit code: 0
+
+$ uv run python scripts/validate_sdd_artifacts.py --check
+SDD artifact validation passed.
+exit code: 0
+
+$ uv run python scripts/regen_sdd_work_index.py --check
+exit code: 0
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py -q
+42 passed in 0.37s
 exit code: 0
 
 $ uv run ruff check scripts/validate_sdd_artifacts.py scripts/regen_sdd_work_index.py tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py

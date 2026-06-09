@@ -682,8 +682,19 @@ def _complete_task_verification_issues(feature: SddFeature, task: TaskRecord) ->
 
 
 def _has_successful_command_evidence(text: str, expected_command: str) -> bool:
-    evidence = _command_evidence(text)
+    evidence = _command_evidence(_task_evidence_text(text))
     return any(exit_code == 0 for exit_code in evidence.get(expected_command, ()))
+
+
+def _task_evidence_text(text: str) -> str:
+    return "\n".join(
+        section
+        for section in (
+            _section_text(text, "## Verification commands"),
+            _section_text(text, "## Other commands run"),
+        )
+        if section
+    )
 
 
 def _command_evidence(text: str) -> dict[str, tuple[int, ...]]:

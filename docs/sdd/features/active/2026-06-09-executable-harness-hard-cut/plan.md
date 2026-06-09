@@ -31,6 +31,7 @@ Known-failing baseline tests:
 - Validate task review evidence: delegated tasks must name a subagent report path and review result, non-delegated tasks must say `not delegated` / `parent-reviewed`, and completed tasks cannot remain `needs-repair`.
 - Validate delegated subagent report artifacts by following the report path and running the shared task-bound report contract.
 - Validate completed task evidence by requiring each `[x]` task's `Verification` command to appear in `verification.md` with exit code 0.
+- Limit completed task evidence to the `## Verification commands` and `## Other commands run` evidence sections.
 - Validate machine-token fields strictly so `not delegated` cannot carry prose suffixes.
 - Validate delegated subagent handoff artifacts by following the handoff path before dispatch/review.
 - Parse `Verified` completion evidence from the `## Verification commands` fenced block and require final `make check-all` exit code 0 plus explained skipped-test rows.
@@ -183,6 +184,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC20: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_machine_readable_successor -q`
 - AC21: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_feature_rejects_unexpected_artifact_files -q`
 - AC22: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_completed_tasks_reject_incomplete_dependencies -q`
+- AC23: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_task_evidence_ignores_commands_outside_evidence_sections -q`
 
 ## Verification
 

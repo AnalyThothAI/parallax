@@ -481,6 +481,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 23 — Completed task evidence section gate
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 22
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD verification semantics and generated index.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_complete_task_evidence_ignores_commands_outside_evidence_sections` — asserts Notes code blocks do not satisfy completed-task evidence.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Completed-task command evidence must appear in `## Verification commands` or `## Other commands run`, not arbitrary fenced blocks.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, active SDD verification records.
+- **Kill/defer criteria**: Stop if stale examples or notes can satisfy completed-task evidence.
+- **Eval/repair signal**: `task-complete-missing-verification-evidence`, false-positive command evidence, and stale generated index.
+- **Implementation**: Restrict completed-task command evidence parsing to canonical evidence sections and add a Notes-block regression test.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_task_evidence_ignores_commands_outside_evidence_sections -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -504,4 +525,5 @@
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_machine_readable_successor -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_feature_rejects_unexpected_artifact_files -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_completed_tasks_reject_incomplete_dependencies -q`
+- [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_task_evidence_ignores_commands_outside_evidence_sections -q`
 - [ ] `make check-all`
