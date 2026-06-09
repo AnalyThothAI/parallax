@@ -103,6 +103,7 @@ claim is allowed without the corresponding output captured below.
 | AC84 — Bounded provider schedulers declare provider I/O. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_provider_schedulers_without_provider_io -q` failed RED when a patched `BOUNDED_PROVIDER_SCHEDULER` manifest with `uses_provider_io=False` did not raise, then passed after adding runtime-constraint validation. |
 | AC133 — Bounded provider schedulers do not declare dirty targets. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_provider_schedulers_with_dirty_targets -q` failed RED when a patched `BOUNDED_PROVIDER_SCHEDULER` manifest could declare `dirty_target_tables`, then passed after adding provider scheduler dirty-target validation. |
 | AC134 — Bounded provider schedulers do not declare queue depth tables. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_provider_schedulers_with_queue_depth -q` failed RED when a patched `BOUNDED_PROVIDER_SCHEDULER` manifest could declare `queue_depth_table`, then passed after adding provider scheduler queue-depth validation. |
+| AC135 — Bounded provider schedulers do not declare queue health tables. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_provider_schedulers_with_queue_health_tables -q` failed RED when a patched `BOUNDED_PROVIDER_SCHEDULER` manifest could declare `queue_health_tables`, then passed after adding provider scheduler queue-health validation. |
 | AC85 — Queue depth tables are worker-owned. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_unowned_queue_depth_tables -q` failed RED when a patched `queue_depth_table` outside `owned_tables` did not raise, then passed after adding queue-depth ownership validation. |
 | AC86 — Side-effect ledgers belong to side-effect workers. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_ledgers_on_non_side_effect_workers -q` failed RED when a patched non-side-effect manifest with `side_effect_ledgers` did not raise, then passed after adding ledger-kind validation. |
 | AC87 — Wake channels are non-blank. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_wake_channels -q` failed RED when a patched blank `wakes_out` channel did not raise, then passed after adding wake-channel validation. |
@@ -2104,6 +2105,15 @@ $ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worke
 1 passed in 0.44s
 exit code: 0
 
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_provider_schedulers_with_queue_health_tables -q
+F                                                                        [100%]
+E       Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_provider_schedulers_with_queue_health_tables -q
+1 passed in 0.43s
+exit code: 0
+
 $ uv run python scripts/regen_sdd_work_index.py
 wrote docs/generated/sdd-work-index.md
 exit code: 0
@@ -2125,6 +2135,32 @@ exit code: 0
 
 $ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py -q
 17 passed in 0.58s
+exit code: 0
+
+$ git diff --check
+exit code: 0
+
+$ uv run python scripts/regen_sdd_work_index.py
+wrote docs/generated/sdd-work-index.md
+exit code: 0
+
+$ uv run python scripts/validate_sdd_artifacts.py --check
+SDD artifact validation passed.
+exit code: 0
+
+$ uv run python scripts/regen_sdd_work_index.py --check
+exit code: 0
+
+$ uv run ruff check src/parallax/app/runtime/worker_manifest.py tests/architecture/test_worker_inventory_contract.py
+All checks passed!
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
+59 passed in 0.64s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py -q
+17 passed in 0.55s
 exit code: 0
 
 $ git diff --check

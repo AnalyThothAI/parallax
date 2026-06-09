@@ -1075,6 +1075,17 @@ def _validate_worker_manifests() -> None:
     if provider_queue_depths:
         raise ValueError(f"bounded provider scheduler manifests declaring queue depth tables: {provider_queue_depths}")
 
+    provider_queue_health_tables = {
+        manifest.name: manifest.queue_health_tables
+        for manifest in _WORKER_MANIFESTS
+        if manifest.runtime_constraint == WorkerRuntimeConstraint.BOUNDED_PROVIDER_SCHEDULER
+        and manifest.queue_health_tables
+    }
+    if provider_queue_health_tables:
+        raise ValueError(
+            f"bounded provider scheduler manifests declaring queue health tables: {provider_queue_health_tables}"
+        )
+
     missing_dirty_control_owner = {
         manifest.name: sorted(set(manifest.dirty_target_tables) - set(manifest.writes_control_plane))
         for manifest in _WORKER_MANIFESTS

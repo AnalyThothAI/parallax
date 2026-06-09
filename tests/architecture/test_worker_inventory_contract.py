@@ -421,6 +421,27 @@ def test_worker_manifest_validation_rejects_provider_schedulers_with_queue_depth
 
 
 @pytest.mark.architecture
+def test_worker_manifest_validation_rejects_provider_schedulers_with_queue_health_tables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifests = list(all_worker_manifests())
+    first_provider_index = next(
+        index
+        for index, manifest in enumerate(manifests)
+        if manifest.runtime_constraint == WorkerRuntimeConstraint.BOUNDED_PROVIDER_SCHEDULER
+    )
+    manifests[first_provider_index] = replace(
+        manifests[first_provider_index],
+        writes_control_plane=("provider_queue_health",),
+        queue_health_tables=("provider_queue_health",),
+    )
+    monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
+
+    with pytest.raises(ValueError, match="bounded provider scheduler manifests declaring queue health tables"):
+        worker_manifest_module._validate_worker_manifests()
+
+
+@pytest.mark.architecture
 def test_worker_manifest_validation_rejects_non_boolean_provider_io_flags(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
