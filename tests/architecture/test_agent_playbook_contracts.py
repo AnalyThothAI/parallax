@@ -279,6 +279,35 @@ def test_sdd_task_dispatch_cli_refuses_completed_task(tmp_path: Path) -> None:
 
 
 @pytest.mark.architecture
+def test_sdd_task_dispatch_cli_refuses_unmet_dependencies(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "dispatch_sdd_task.py"
+    assert script.exists()
+    _write_context_packet_fixture(tmp_path)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--task",
+            "3",
+            "--mode",
+            "read-only",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "dependencies are not complete" in result.stderr
+
+
+@pytest.mark.architecture
 def test_development_agent_eval_repair_loop_is_defined() -> None:
     text = _read(PLAYBOOK / "eval-repair-loop.md")
     for required_phrase in (
@@ -475,6 +504,18 @@ def test_sdd_work_index_renders_task_dispatch_board(tmp_path: Path) -> None:
                     "verification": "uv run pytest tests/architecture/test_agent_playbook_contracts.py -q",
                 },
             ),
+            TaskRecord(
+                title="Task 3 — Blocked dispatch",
+                fields={
+                    "status": "[~]",
+                    "factory lane": "Harness/tests",
+                    "owner": "parent",
+                    "depends on": "Task 1",
+                    "touch set": "scripts/dispatch_sdd_task.py",
+                    "conflict set": "coordinate with other-feature for dispatcher docs",
+                    "verification": "uv run pytest tests/architecture/test_agent_playbook_contracts.py -q",
+                },
+            ),
         ),
     )
 
@@ -491,6 +532,13 @@ def test_sdd_work_index_renders_task_dispatch_board(tmp_path: Path) -> None:
         "| `fixture` | `Task 2 — Completed docs` | `[x]` | `complete` | `Docs/contracts` | parent | Task 1 | "
         "`docs/agent-playbook/context-packet-template.md` | "
         "`docs/agent-playbook/factory-operating-model.md` | "
+        "`uv run pytest tests/architecture/test_agent_playbook_contracts.py -q` |"
+    ) in text
+    assert (
+        "| `fixture` | `Task 3 — Blocked dispatch` | `[~]` | `blocked-by-dependencies` | "
+        "`Harness/tests` | parent | Task 1 | "
+        "`scripts/dispatch_sdd_task.py` | "
+        "`coordinate with other-feature for dispatcher docs` | "
         "`uv run pytest tests/architecture/test_agent_playbook_contracts.py -q` |"
     ) in text
 
@@ -629,6 +677,25 @@ def _write_context_packet_fixture(root: Path) -> None:
             - **Verification**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py -q`
             - **Review owner**: parent
             - **Status**: [x]
+
+            ### Task 3 — Blocked packet
+
+            - **File(s)**: `scripts/dispatch_sdd_task.py`
+            - **Owner**: parent
+            - **Depends on**: Task 1
+            - **Touch set**: `scripts/dispatch_sdd_task.py`
+            - **Conflict set**: coordinate with 2026-06-09-other-feature for dispatch docs.
+            - **Failing test first**: `pytest tests/architecture/test_agent_playbook_contracts.py -q`
+            - **Subagent handoff**: not delegated
+            - **Factory lane**: Harness/tests
+            - **Deterministic constraints**: Dependencies must be complete before dispatch.
+            - **On-demand context**: `scripts/dispatch_sdd_task.py`
+            - **Kill/defer criteria**: Stop if dispatcher accepts tasks with incomplete dependencies.
+            - **Eval/repair signal**: dispatch dependency guard failure and review defect.
+            - **Implementation**: Exercise the dependency dispatch guard.
+            - **Verification**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py -q`
+            - **Review owner**: parent
+            - **Status**: [~]
             """
         ).strip()
         + "\n",

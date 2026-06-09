@@ -20,6 +20,8 @@ TASK_FIELD_RE = re.compile(r"^\s*-\s+\*\*(?P<name>[^*]+)\*\*\s*:\s*(?P<value>.*)
 FENCED_BLOCK_RE = re.compile(r"```(?:[A-Za-z0-9_-]+)?\n(?P<body>[\s\S]*?)```", re.MULTILINE)
 EXIT_CODE_RE = re.compile(r"exit code:\s*(?P<code>-?\d+)\b", re.IGNORECASE)
 SKIPPED_RE = re.compile(r"Number of skipped tests in the run above:\s*(?P<count>\d+)", re.IGNORECASE)
+TASK_NUMBER_RE = re.compile(r"^Task\s+(?P<number>\d+)\b", re.IGNORECASE)
+TASK_DEPENDENCY_RE = re.compile(r"\bTasks?\s+(?P<start>\d+)(?:\s*-\s*(?P<end>\d+))?\b", re.IGNORECASE)
 
 SECTION_REQUIREMENTS = {
     "spec.md": ("## Clarifications", "## Requirement Checklist", "## Acceptance criteria"),
@@ -86,6 +88,7 @@ KNOWN_ISSUE_CODES = (
     "missing-approval-metadata",
     "task-missing-coordination-fields",
     "task-invalid-coordination-fields",
+    "task-invalid-dependencies",
     "task-missing-agent-loop-fields",
     "task-incomplete-in-verified-feature",
     "verified-missing-check-all",
@@ -232,6 +235,73 @@ def issue_counts(issues: Iterable[SddIssue]) -> Counter[str]:
     return counts
 
 
+def task_number(task: TaskRecord) -> int | None:
+    match = TASK_NUMBER_RE.match(task.title)
+    return int(match.group("number")) if match else None
+
+
+def task_dependency_numbers(task: TaskRecord) -> tuple[int, ...] | None:
+    raw = task.fields.get("depends on", "")
+    value = raw.replace("`", "").strip()
+    if not value or value.lower() in {"none", "not delegated"}:
+        return ()
+
+    matches = list(TASK_DEPENDENCY_RE.finditer(value))
+    if not matches:
+        return None
+
+    remainder = TASK_DEPENDENCY_RE.sub("", value)
+    remainder = re.sub(r"\b(?:and)\b", "", remainder, flags=re.IGNORECASE)
+    remainder = re.sub(r"[\s,;&+]+", "", remainder)
+    if remainder:
+        return None
+
+    dependencies: list[int] = []
+    for match in matches:
+        start = int(match.group("start"))
+        end = int(match.group("end") or start)
+        if end < start:
+            return None
+        dependencies.extend(range(start, end + 1))
+    return tuple(dict.fromkeys(dependencies))
+
+
+def task_unresolved_dependencies(feature: SddFeature, task: TaskRecord) -> tuple[int, ...]:
+    dependencies = task_dependency_numbers(task)
+    if dependencies is None:
+        return ()
+
+    current_number = task_number(task)
+    tasks_by_number = _tasks_by_number(feature)
+    return tuple(
+        dependency
+        for dependency in dependencies
+        if dependency not in tasks_by_number or dependency == current_number
+    )
+
+
+def task_incomplete_dependencies(feature: SddFeature, task: TaskRecord) -> tuple[int, ...]:
+    dependencies = task_dependency_numbers(task)
+    if dependencies is None:
+        return ()
+
+    tasks_by_number = _tasks_by_number(feature)
+    incomplete: list[int] = []
+    for dependency in dependencies:
+        dependency_task = tasks_by_number.get(dependency)
+        if dependency_task is None:
+            incomplete.append(dependency)
+            continue
+        if dependency_task.fields.get("status", "").strip().lower() != "[x]":
+            incomplete.append(dependency)
+    return tuple(dict.fromkeys(incomplete))
+
+
+def task_dependencies_satisfied(feature: SddFeature, task: TaskRecord) -> bool:
+    dependencies = task_dependency_numbers(task)
+    return dependencies is not None and not task_incomplete_dependencies(feature, task)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Validate executable SDD feature records")
     parser.add_argument("--root", type=Path, default=ROOT, help="repository root to validate")
@@ -343,6 +413,22 @@ def _task_issues(feature: SddFeature) -> list[SddIssue]:
                     f"{task.title} invalid fields: {', '.join(invalid_fields)}",
                 )
             )
+        dependency_numbers = task_dependency_numbers(task)
+        if dependency_numbers is None:
+            issues.append(
+                _issue(
+                    "task-invalid-dependencies",
+                    tasks_artifact,
+                    f"{task.title} has unsupported dependency syntax: {task.fields.get('depends on', '')}",
+                )
+            )
+        else:
+            unresolved_dependencies = task_unresolved_dependencies(feature, task)
+            if unresolved_dependencies:
+                dependencies = ", ".join(f"Task {dependency}" for dependency in unresolved_dependencies)
+                issues.append(
+                    _issue("task-invalid-dependencies", tasks_artifact, f"{task.title} unresolved: {dependencies}")
+                )
         missing_agent_fields = [
             field for field in TASK_AGENT_LOOP_FIELDS if _is_placeholder(task.fields.get(field, ""))
         ]
@@ -506,6 +592,15 @@ def _task_set(tasks: tuple[TaskRecord, ...], field_name: str) -> tuple[str, ...]
             candidate.strip() for candidate in candidates if candidate.strip() and candidate.strip().lower() != "none"
         )
     return tuple(dict.fromkeys(values))
+
+
+def _tasks_by_number(feature: SddFeature) -> dict[int, TaskRecord]:
+    numbered_tasks: dict[int, TaskRecord] = {}
+    for task in feature.tasks:
+        number = task_number(task)
+        if number is not None:
+            numbered_tasks[number] = task
+    return numbered_tasks
 
 
 def _all_list_items(value: str, predicate: Callable[[str], bool]) -> bool:

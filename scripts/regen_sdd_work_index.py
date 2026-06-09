@@ -16,6 +16,7 @@ from scripts.validate_sdd_artifacts import (  # noqa: E402
     SddIssue,
     TaskRecord,
     scan_sdd_features,
+    task_dependencies_satisfied,
     validate_sdd_root,
 )
 
@@ -183,6 +184,8 @@ def _task_dispatch_state(feature: SddFeature, task: TaskRecord) -> str:
     if feature.state != "active":
         return "closed"
     if status in {"[ ]", "[~]"}:
+        if not task_dependencies_satisfied(feature, task):
+            return "blocked-by-dependencies"
         return "dispatchable"
     if status == "[x]":
         return "complete"
@@ -216,6 +219,7 @@ def _issue_meaning(code: str) -> str:
             "Task records contain non-path touch/file fields, non-command verification, invalid status, "
             "or malformed conflict rules."
         ),
+        "task-invalid-dependencies": "Task dependencies reference missing task numbers or unsupported syntax.",
         "task-missing-agent-loop-fields": (
             "Task records lack factory lane, deterministic constraints, on-demand context, kill criteria, "
             "or eval signal."

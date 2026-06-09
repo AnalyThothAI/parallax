@@ -26,6 +26,7 @@ Known-failing baseline tests:
 - Create a pure filesystem validator with `scan_sdd_features(root: Path)`, `validate_sdd_root(root: Path)`, and a `--check` CLI.
 - Emit deterministic issue codes for missing gate sections, missing approval metadata, incomplete task fields, false `Verified` evidence, stale generated index, and active touch/conflict overlap.
 - Validate task field semantics, not just presence: path-shaped file/touch values, structured conflict rules, command-shaped verification, test-shaped failing-test-first values, and known task status tokens.
+- Parse task dependency references and ranges, reject unsupported dependency syntax, and report unresolved task numbers as `task-invalid-dependencies`.
 - Parse `Verified` completion evidence from the `## Verification commands` fenced block and require final `make check-all` exit code 0 plus explained skipped-test rows.
 
 ### `scripts/regen_sdd_work_index.py`
@@ -33,6 +34,7 @@ Known-failing baseline tests:
 - Replace artifact-only rows with feature-level summaries and a coordination board.
 - Reuse the validator metadata rather than duplicating SDD parsing rules.
 - Add a task-level dispatch board with per-task status, dispatchability, factory lane, owner, dependencies, touch/conflict scopes, and verification command.
+- Mark active tasks with incomplete dependencies as `blocked-by-dependencies`.
 
 ### `scripts/build_agent_context_packet.py`
 
@@ -44,7 +46,7 @@ Known-failing baseline tests:
 ### `scripts/dispatch_sdd_task.py`
 
 - Add a pure filesystem dry-run dispatcher that validates SDD records, selects one active feature task, refuses
-  completed or non-dispatchable task statuses, and renders a subagent handoff containing the generated context packet.
+  completed, non-dispatchable, or dependency-blocked task statuses, and renders a subagent handoff containing the generated context packet.
 - Keep dispatch non-persistent for this slice; no task claiming table, product agent queue, or runtime side effect.
 
 ### `tests/architecture/test_agent_playbook_contracts.py`
@@ -55,6 +57,7 @@ Known-failing baseline tests:
 - Require the context-packet CLI to build a bounded packet from an active SDD task.
 - Require the dry-run dispatch CLI to emit a handoff for in-progress tasks and refuse completed tasks.
 - Require the generated SDD index to render task-level dispatch rows from `TaskRecord` metadata.
+- Require dependency-blocked tasks to be refused by dispatch and surfaced in the task board.
 
 ### `tests/architecture/test_sdd_artifact_validator.py`
 
@@ -132,6 +135,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Task fields are semantically checked. | Pass: validator rejects `none` touch sets, non-command verification, non-test failing-test-first values, and unknown task statuses. |
 | Verified evidence is replayable. | Pass: validator reads the canonical command block and validates skipped-test table rows. |
 | Task dispatch state is visible. | Pass: generated index includes a `Task Board` with dispatchable/complete/blocked/closed task state. |
+| Task dependencies are executable. | Pass: validator checks dependency syntax/resolution and dispatcher/index block incomplete dependencies. |
 
 ## Acceptance test commands
 
@@ -146,6 +150,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC9: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_invalid_coordination_field_values tests/architecture/test_sdd_artifact_validator.py::test_tasks_allow_explicit_none_dependency_and_not_delegated_handoff -q`
 - AC10: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_ignores_old_success_outside_verification_commands tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_skipped_table_to_match_skip_count -q`
 - AC11: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board -q`
+- AC12: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_unresolved_dependencies tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_refuses_unmet_dependencies tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board -q`
 
 ## Verification
 

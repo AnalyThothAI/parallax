@@ -15,6 +15,7 @@ from scripts.validate_sdd_artifacts import (  # noqa: E402
     SddIssue,
     TaskRecord,
     scan_sdd_features,
+    task_incomplete_dependencies,
     validate_sdd_root,
 )
 
@@ -54,6 +55,12 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     if status not in DISPATCHABLE_STATUSES:
         print(f"error: task status is not dispatchable ({status or 'missing'}): {task.title}", file=sys.stderr)
+        return 1
+
+    incomplete_dependencies = task_incomplete_dependencies(feature, task)
+    if incomplete_dependencies:
+        dependencies = ", ".join(f"Task {dependency}" for dependency in incomplete_dependencies)
+        print(f"error: dependencies are not complete for {task.title}: {dependencies}", file=sys.stderr)
         return 1
 
     print(render_handoff(feature, task, args.mode))

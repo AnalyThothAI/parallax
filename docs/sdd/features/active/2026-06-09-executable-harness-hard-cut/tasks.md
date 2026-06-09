@@ -228,6 +228,25 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 12 — Dependency-aware SDD dispatch
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/dispatch_sdd_task.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 11
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/dispatch_sdd_task.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD validator, dispatcher, generated index, and agent playbook tests.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_unresolved_dependencies`, `tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_refuses_unmet_dependencies`, and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board` — assert unresolved dependencies fail validation and unmet dependencies block dispatch/index state.
+- **Subagent handoff**: not delegated
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Dependency parsing must be shared by validator, dispatcher, and generated index; unsupported syntax and unresolved task numbers must fail validation.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/dispatch_sdd_task.py`, `scripts/regen_sdd_work_index.py`, active SDD task metadata.
+- **Kill/defer criteria**: Stop if dispatch accepts tasks whose dependencies are not `[x]`, if the index hides dependency blocks, or if dependency parsing becomes prose-compatible magic.
+- **Eval/repair signal**: `task-invalid-dependencies`, dispatcher refusal, `blocked-by-dependencies` task-board state, and review defect.
+- **Implementation**: Add task dependency parsing helpers, validate unresolved dependencies, refuse unmet dependencies in dry-run dispatch, and render dependency-blocked task state.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_unresolved_dependencies tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_refuses_unmet_dependencies tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -240,4 +259,5 @@
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_invalid_coordination_field_values tests/architecture/test_sdd_artifact_validator.py::test_tasks_allow_explicit_none_dependency_and_not_delegated_handoff -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_ignores_old_success_outside_verification_commands tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_skipped_table_to_match_skip_count -q`
 - [ ] `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board -q`
+- [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_unresolved_dependencies tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_refuses_unmet_dependencies tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board -q`
 - [ ] `make check-all`

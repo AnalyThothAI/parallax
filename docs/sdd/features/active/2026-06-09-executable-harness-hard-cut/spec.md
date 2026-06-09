@@ -41,6 +41,7 @@ can both miss real process drift and block healthy refactors.
 | SQL tests must avoid accidental alias/order coupling. | A query-contract helper checks tables, predicates, locks, params, and forbidden surfaces without pinning formatting. |
 | Completion gates must be deterministic. | `make check-all` runs the SDD validator and stale generated index check. |
 | Multi-agent development loops must be bounded. | Task records declare factory lane, deterministic constraints, on-demand context, kill/defer criteria, and eval/repair signal. |
+| Task dependencies must be executable. | Task dependency references are parsed, unresolved references fail validation, and unmet dependencies block dry-run dispatch. |
 
 ## First principles
 
@@ -61,6 +62,7 @@ can both miss real process drift and block healthy refactors.
 - G9. Task coordination fields are semantically validated, not accepted by mere presence.
 - G10. `Verified` evidence is parsed from the canonical verification command block, not from old success snippets elsewhere in the file.
 - G11. The generated SDD work index exposes task-level dispatch state, not only feature-level coordination.
+- G12. Task dependencies are parsed as task references/ranges, unresolved references fail validation, and dispatch/index state blocks tasks whose dependencies are incomplete.
 
 ## Non-goals
 
@@ -100,7 +102,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - CLI: `uv run python scripts/validate_sdd_artifacts.py --check` exits 0 when all SDD records satisfy the executable harness and exits 1 with issue lines otherwise.
 - CLI: `uv run python scripts/regen_sdd_work_index.py --check` fails when `docs/generated/sdd-work-index.md` is stale.
 - CLI: `uv run python scripts/build_agent_context_packet.py --feature <slug> --task <number> --mode <mode>` prints a bounded subagent context packet from active SDD task metadata.
-- CLI: `uv run python scripts/dispatch_sdd_task.py --feature <slug> --task <number> --mode <mode>` prints a dry-run handoff prompt and refuses completed or non-dispatchable tasks.
+- CLI: `uv run python scripts/dispatch_sdd_task.py --feature <slug> --task <number> --mode <mode>` prints a dry-run handoff prompt and refuses completed, non-dispatchable, or dependency-blocked tasks.
 - Test helper: `tests.support.query_contract.assert_query_contract(sql, ...)` raises `AssertionError` with contract-specific messages.
 
 ## Acceptance criteria
@@ -116,6 +118,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC9. WHEN task records contain non-path file/touch fields, malformed conflict rules, non-test failing-test-first values, non-command verification values, or invalid task statuses THEN the validator SHALL report `task-invalid-coordination-fields`.
 - AC10. WHEN a completed SDD record is marked `Verified` THEN the validator SHALL require the `## Verification commands` fenced block to contain the single successful `make check-all` evidence and SHALL reject stale success blocks or unexplained skipped tests.
 - AC11. WHEN `docs/generated/sdd-work-index.md` is regenerated THEN it SHALL include a `Task Board` with one row per SDD task showing task status, dispatch state, factory lane, owner, dependency, touch set, conflict set, and verification command.
+- AC12. WHEN a task references missing dependency task numbers or a dispatchable task depends on incomplete tasks THEN the validator SHALL report `task-invalid-dependencies` for unresolved references, the dispatcher SHALL refuse the task, and the generated `Task Board` SHALL show `blocked-by-dependencies`.
 
 ## Risks
 
