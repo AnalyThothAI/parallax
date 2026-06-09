@@ -794,6 +794,14 @@ def _validate_worker_manifests() -> None:
     if missing_dirty_control_owner:
         raise ValueError(f"dirty target tables missing from writes_control_plane: {missing_dirty_control_owner}")
 
+    missing_queue_depth_owner = {
+        manifest.name: manifest.queue_depth_table
+        for manifest in _WORKER_MANIFESTS
+        if manifest.queue_depth_table is not None and manifest.queue_depth_table not in manifest.owned_tables
+    }
+    if missing_queue_depth_owner:
+        raise ValueError(f"queue depth tables missing from worker ownership: {missing_queue_depth_owner}")
+
     missing_queue_health_owner = {
         manifest.name: sorted(set(manifest.queue_health_tables) - set(manifest.owned_tables))
         for manifest in _WORKER_MANIFESTS

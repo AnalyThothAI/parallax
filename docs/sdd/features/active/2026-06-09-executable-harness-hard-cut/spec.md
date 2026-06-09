@@ -46,6 +46,7 @@ can both miss real process drift and block healthy refactors.
 | Dirty-target consumers must declare dirty targets. | `WorkerManifest` validation rejects `DIRTY_TARGET_CONSUMER` manifests that omit `dirty_target_tables`. |
 | Leased-job consumers must declare queue depth tables. | `WorkerManifest` validation rejects `LEASED_JOB_CONSUMER` manifests that omit `queue_depth_table`. |
 | Bounded provider schedulers must declare provider I/O. | `WorkerManifest` validation rejects `BOUNDED_PROVIDER_SCHEDULER` manifests that do not set `uses_provider_io`. |
+| Queue depth tables must be worker-owned. | `WorkerManifest` validation rejects `queue_depth_table` values absent from the same manifest's owned tables. |
 | Worker Inventory docs must be manifest-owned. | Architecture tests derive worker class and read-model writer expectations from `WorkerManifest`, not from peer architecture-test constants. |
 | Worker table ownership must be manifest-owned. | `WorkerManifest.owned_tables` exposes the canonical written-table set so harness checks do not reassemble ownership fields ad hoc. |
 | Read-model writer mapping must be manifest-owned. | `read_model_writer_by_table()` exposes the unique read-model writer map from `WorkerManifest`, so docs harnesses do not derive their own registry. |
@@ -170,6 +171,7 @@ can both miss real process drift and block healthy refactors.
 - G60. Dirty-target consumer runtime classification requires declared dirty target tables, so worker lifecycle semantics cannot drift away from queue ownership declarations.
 - G61. Leased-job consumer runtime classification requires a declared queue depth table, so leased queue workers cannot lose their queue-health source identity.
 - G62. Bounded provider scheduler runtime classification requires declared provider I/O, so provider-polling or streaming workers cannot lose their external-data boundary marker.
+- G63. Queue depth table declarations require same-manifest table ownership, so queue-health harnesses cannot point at tables owned by another runtime.
 
 ## Non-goals
 
@@ -299,6 +301,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC82. WHEN a `WorkerManifest` is classified as `DIRTY_TARGET_CONSUMER` and has no `dirty_target_tables` THEN manifest validation SHALL raise before worker lifecycle, ownership, or queue-health harnesses consume the manifest.
 - AC83. WHEN a `WorkerManifest` is classified as `LEASED_JOB_CONSUMER` and has no `queue_depth_table` THEN manifest validation SHALL raise before worker lifecycle, ownership, or queue-health harnesses consume the manifest.
 - AC84. WHEN a `WorkerManifest` is classified as `BOUNDED_PROVIDER_SCHEDULER` and does not set `uses_provider_io` THEN manifest validation SHALL raise before provider-boundary, lifecycle, or worker inventory harnesses consume the manifest.
+- AC85. WHEN a `WorkerManifest.queue_depth_table` names a table absent from the same manifest's owned tables THEN manifest validation SHALL raise before queue-health, ownership, or worker inventory harnesses consume the manifest.
 
 ## Risks
 

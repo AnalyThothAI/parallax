@@ -1783,6 +1783,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 85 — Queue depth tables are worker-owned
+
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 84
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for queue ownership validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_unowned_queue_depth_tables` — patch a manifest with `queue_depth_table="unowned_queue_jobs"` and assert manifest validation raises a dedicated queue-depth ownership error.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Every declared `queue_depth_table` must belong to the same manifest's `owned_tables` before queue-health, ownership, or worker inventory harnesses can treat the queue-depth table as source truth.
+- **On-demand context**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, and queue-health ownership checks.
+- **Kill/defer criteria**: Stop if queue-depth tables can intentionally be owned by a separate worker, if validation only checks blank/duplicate table declarations, or if the fix touches dirty worker runtime contract files.
+- **Eval/repair signal**: unowned queue-depth table, queue-health source masking, worker ownership drift, manifest validation drift, and SDD generated index drift.
+- **Implementation**: Add manifest validation rejecting `queue_depth_table` values absent from `manifest.owned_tables`.
+- **Verification**: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_unowned_queue_depth_tables -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1869,4 +1890,5 @@
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_dirty_consumers_without_dirty_targets -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_leased_consumers_without_queue_depth -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_provider_schedulers_without_provider_io -q`
+- [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_unowned_queue_depth_tables -q`
 - [ ] `make check-all`

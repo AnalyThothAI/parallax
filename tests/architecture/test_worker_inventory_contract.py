@@ -216,6 +216,19 @@ def test_worker_manifest_validation_rejects_leased_consumers_without_queue_depth
 
 
 @pytest.mark.architecture
+def test_worker_manifest_validation_rejects_unowned_queue_depth_tables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifests = list(all_worker_manifests())
+    first_queue_index = next(index for index, manifest in enumerate(manifests) if manifest.queue_depth_table)
+    manifests[first_queue_index] = replace(manifests[first_queue_index], queue_depth_table="unowned_queue_jobs")
+    monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
+
+    with pytest.raises(ValueError, match="queue depth tables missing from worker ownership"):
+        worker_manifest_module._validate_worker_manifests()
+
+
+@pytest.mark.architecture
 def test_worker_manifest_validation_rejects_provider_schedulers_without_provider_io(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
