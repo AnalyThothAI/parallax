@@ -26,6 +26,7 @@ Known-failing baseline tests:
 - Create a pure filesystem validator with `scan_sdd_features(root: Path)`, `validate_sdd_root(root: Path)`, and a `--check` CLI.
 - Emit deterministic issue codes for missing gate sections, missing approval metadata, incomplete task fields, false `Verified` evidence, stale generated index, and active touch/conflict overlap.
 - Validate task field semantics, not just presence: path-shaped file/touch values, structured conflict rules, command-shaped verification, test-shaped failing-test-first values, and known task status tokens.
+- Parse `Verified` completion evidence from the `## Verification commands` fenced block and require final `make check-all` exit code 0 plus explained skipped-test rows.
 
 ### `scripts/regen_sdd_work_index.py`
 
@@ -56,6 +57,7 @@ Known-failing baseline tests:
 ### `tests/architecture/test_sdd_artifact_validator.py`
 
 - Add fixture tests for invalid task coordination field values and valid explicit `none` dependencies / `not delegated` handoffs.
+- Add fixture tests proving old successful `make check-all` snippets outside the canonical verification block do not satisfy `Verified`.
 
 ### `tests/architecture/test_test_lane_contracts.py`
 
@@ -126,6 +128,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Context packets are executable, not prose-only. | Pass: a new CLI reads active SDD task metadata and emits a bounded handoff packet. |
 | Dispatch is dry-run and non-runtime. | Pass: dispatcher emits prompts only and refuses completed tasks without creating durable product state. |
 | Task fields are semantically checked. | Pass: validator rejects `none` touch sets, non-command verification, non-test failing-test-first values, and unknown task statuses. |
+| Verified evidence is replayable. | Pass: validator reads the canonical command block and validates skipped-test table rows. |
 
 ## Acceptance test commands
 
@@ -138,6 +141,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC7: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q`
 - AC8: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_refuses_completed_task -q`
 - AC9: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_invalid_coordination_field_values tests/architecture/test_sdd_artifact_validator.py::test_tasks_allow_explicit_none_dependency_and_not_delegated_handoff -q`
+- AC10: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_ignores_old_success_outside_verification_commands tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_skipped_table_to_match_skip_count -q`
 
 ## Verification
 

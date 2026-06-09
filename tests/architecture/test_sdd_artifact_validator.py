@@ -65,6 +65,53 @@ def test_verified_feature_accepts_successful_make_check_all_evidence(tmp_path: P
     assert validate_sdd_root(tmp_path) == []
 
 
+def test_verified_feature_ignores_old_success_outside_verification_commands(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "completed", "2026-06-09-old-success")
+    _write_valid_spec(feature / "spec.md", status="Verified")
+    _write_valid_plan(feature / "plan.md", status="Verified")
+    _write_valid_tasks(feature / "tasks.md", status="Verified")
+    _write_valid_verification(
+        feature / "verification.md",
+        status="Verified",
+        verification_command_lines=(
+            "$ make check-all",
+            "integration failed after unit checks",
+            "exit code: 2",
+        ),
+        other_command_lines=(
+            "$ make check-all",
+            "old run passed before this change",
+            "exit code: 0",
+        ),
+    )
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "verified-missing-check-all" in _issue_codes(issues)
+    assert "verified-contradicts-evidence" in _issue_codes(issues)
+
+
+def test_verified_feature_requires_skipped_table_to_match_skip_count(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "completed", "2026-06-09-bad-skips")
+    _write_valid_spec(feature / "spec.md", status="Verified")
+    _write_valid_plan(feature / "plan.md", status="Verified")
+    _write_valid_tasks(feature / "tasks.md", status="Verified")
+    _write_valid_verification(
+        feature / "verification.md",
+        status="Verified",
+        skipped_count="1",
+        skipped_table_rows=(
+            "| count | reason | acceptable? |",
+            "|-------|--------|-------------|",
+            "| 1 | unknown skip | No |",
+        ),
+    )
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "verified-unexplained-skips" in _issue_codes(issues)
+
+
 def test_tasks_require_filled_coordination_fields(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-loose-tasks")
     _write_valid_spec(feature / "spec.md", status="In Progress")
@@ -295,7 +342,20 @@ def _write_valid_tasks(
     )
 
 
-def _write_valid_verification(path: Path, *, status: str, branch: str = "codex/harness") -> None:
+def _write_valid_verification(
+    path: Path,
+    *,
+    status: str,
+    branch: str = "codex/harness",
+    verification_command_lines: tuple[str, ...] = (
+        "$ make check-all",
+        "all checks passed",
+        "exit code: 0",
+    ),
+    other_command_lines: tuple[str, ...] = (),
+    skipped_count: str = "0",
+    skipped_table_rows: tuple[str, ...] = (),
+) -> None:
     path.write_text(
         "\n".join(
             [
@@ -319,9 +379,7 @@ def _write_valid_verification(path: Path, *, status: str, branch: str = "codex/h
                 "## Verification commands",
                 "",
                 "```text",
-                "$ make check-all",
-                "all checks passed",
-                "exit code: 0",
+                *verification_command_lines,
                 "```",
                 "",
                 "## Coverage",
@@ -332,7 +390,9 @@ def _write_valid_verification(path: Path, *, status: str, branch: str = "codex/h
                 "",
                 "## Skipped tests",
                 "",
-                "Number of skipped tests in the run above: 0",
+                f"Number of skipped tests in the run above: {skipped_count}",
+                "",
+                *skipped_table_rows,
                 "",
                 "## E2E golden path",
                 "",
@@ -341,6 +401,12 @@ def _write_valid_verification(path: Path, *, status: str, branch: str = "codex/h
                 "- [x] /api/recent returned the injected event",
                 "- [x] WS /ws/live pushed within 5s",
                 "- [x] testcontainers PG and uvicorn subprocess cleaned up",
+                "",
+                "## Other commands run",
+                "",
+                "```text",
+                *other_command_lines,
+                "```",
             ]
         ),
         encoding="utf-8",

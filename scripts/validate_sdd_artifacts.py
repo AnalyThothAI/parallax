@@ -17,7 +17,8 @@ STATUS_RE = re.compile(r"^\s*(?:\*\*)?Status(?:\*\*)?\s*:\s*(.+?)\s*$", re.IGNOR
 FIELD_RE = re.compile(r"^\s*\*\*(?P<name>[^*]+)\*\*\s*:\s*(?P<value>.+?)\s*$")
 TASK_RE = re.compile(r"^###\s+Task\b", re.IGNORECASE | re.MULTILINE)
 TASK_FIELD_RE = re.compile(r"^\s*-\s+\*\*(?P<name>[^*]+)\*\*\s*:\s*(?P<value>.*)$", re.MULTILINE)
-CHECK_ALL_RE = re.compile(r"\$\s*make check-all[\s\S]*?exit code:\s*0\b", re.IGNORECASE)
+FENCED_BLOCK_RE = re.compile(r"```(?:[A-Za-z0-9_-]+)?\n(?P<body>[\s\S]*?)```", re.MULTILINE)
+EXIT_CODE_RE = re.compile(r"exit code:\s*(?P<code>-?\d+)\b", re.IGNORECASE)
 SKIPPED_RE = re.compile(r"Number of skipped tests in the run above:\s*(?P<count>\d+)", re.IGNORECASE)
 
 SECTION_REQUIREMENTS = {
@@ -393,9 +394,14 @@ def _verified_issues(feature: SddFeature) -> list[SddIssue]:
         return []
     normalized_text = artifact.text.lower()
     issues: list[SddIssue] = []
-    if not CHECK_ALL_RE.search(artifact.text):
+    make_check_all = _verification_make_check_all_block(artifact.text)
+    if make_check_all is None:
         issues.append(
             _issue("verified-missing-check-all", artifact, "Verified records require make check-all with exit code: 0")
+        )
+    elif _command_exit_code(make_check_all) != 0:
+        issues.append(
+            _issue("verified-missing-check-all", artifact, "Verified records require final make check-all exit code 0")
         )
     if any(phrase in normalized_text for phrase in CONTRADICTION_PHRASES):
         issues.append(
@@ -403,8 +409,12 @@ def _verified_issues(feature: SddFeature) -> list[SddIssue]:
                 "verified-contradicts-evidence", artifact, "Verified record contains contradictory evidence language"
             )
         )
+    if make_check_all is not None and _command_exit_code(make_check_all) not in {0, None}:
+        issues.append(
+            _issue("verified-contradicts-evidence", artifact, "Verified command block records non-zero exit code")
+        )
     skipped_match = SKIPPED_RE.search(artifact.text)
-    if skipped_match and int(skipped_match.group("count")) > 0 and "acceptable" not in normalized_text:
+    if skipped_match and int(skipped_match.group("count")) > 0 and not _skipped_rows_are_acceptable(artifact.text):
         issues.append(
             _issue("verified-unexplained-skips", artifact, "Verified record has skipped tests without explanation")
         )
@@ -537,6 +547,53 @@ def _looks_like_test_reference(value: str) -> bool:
 def _looks_like_command(value: str) -> bool:
     stripped = value.replace("`", "").strip()
     return bool(re.match(r"^(uv|make|cd|npm|python|pytest)\b", stripped))
+
+
+def _verification_make_check_all_block(text: str) -> str | None:
+    section = _section_text(text, "## Verification commands")
+    blocks = [match.group("body").strip() for match in FENCED_BLOCK_RE.finditer(section)]
+    make_check_all_blocks = [block for block in blocks if re.search(r"^\$\s*make check-all\s*$", block, re.MULTILINE)]
+    if len(make_check_all_blocks) != 1:
+        return None
+    return make_check_all_blocks[0]
+
+
+def _section_text(text: str, heading: str) -> str:
+    if heading not in text:
+        return ""
+    return text.split(heading, 1)[1].split("\n## ", 1)[0]
+
+
+def _command_exit_code(block: str) -> int | None:
+    matches = list(EXIT_CODE_RE.finditer(block))
+    if not matches:
+        return None
+    return int(matches[-1].group("code"))
+
+
+def _skipped_rows_are_acceptable(text: str) -> bool:
+    skipped_match = SKIPPED_RE.search(text)
+    if not skipped_match:
+        return False
+    skipped_count = int(skipped_match.group("count"))
+    if skipped_count == 0:
+        return True
+
+    section = _section_text(text, "## Skipped tests")
+    rows = [line for line in section.splitlines() if line.startswith("|") and "---" not in line]
+    data_rows = rows[1:]
+    total = 0
+    for row in data_rows:
+        cells = [cell.strip().lower() for cell in row.strip("|").split("|")]
+        if len(cells) < 3:
+            return False
+        try:
+            total += int(cells[0])
+        except ValueError:
+            return False
+        if cells[-1] not in {"yes", "acceptable", "true"}:
+            return False
+    return total == skipped_count
 
 
 def _first_task_field(tasks: tuple[TaskRecord, ...], field_name: str) -> str | None:

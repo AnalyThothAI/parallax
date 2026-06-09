@@ -59,6 +59,7 @@ can both miss real process drift and block healthy refactors.
 - G7. Parent agents can generate a bounded subagent context packet from a validated active SDD task without hand-copying template prose.
 - G8. Parent agents can generate a dry-run subagent handoff from a dispatchable active SDD task and the harness refuses completed tasks.
 - G9. Task coordination fields are semantically validated, not accepted by mere presence.
+- G10. `Verified` evidence is parsed from the canonical verification command block, not from old success snippets elsewhere in the file.
 
 ## Non-goals
 
@@ -112,6 +113,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC7. WHEN a parent agent prepares a subagent handoff THEN the context packet CLI SHALL read a validated active SDD task and output mode, factory lane, owned scope, conflict scope, deterministic constraints, on-demand context, kill/defer criteria, eval/repair signal, verification evidence, redactions, and the product-agent boundary.
 - AC8. WHEN a parent agent dispatches a task dry-run THEN the dispatcher SHALL output a handoff prompt containing the generated context packet, and SHALL refuse `[x]` completed tasks.
 - AC9. WHEN task records contain non-path file/touch fields, malformed conflict rules, non-test failing-test-first values, non-command verification values, or invalid task statuses THEN the validator SHALL report `task-invalid-coordination-fields`.
+- AC10. WHEN a completed SDD record is marked `Verified` THEN the validator SHALL require the `## Verification commands` fenced block to contain the single successful `make check-all` evidence and SHALL reject stale success blocks or unexplained skipped tests.
 
 ## Risks
 

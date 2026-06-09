@@ -190,6 +190,25 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 10 — Verified evidence parser
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`
+- **Owner**: parent
+- **Depends on**: Task 9
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD validator requirements.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_ignores_old_success_outside_verification_commands` — asserts old successful command snippets outside `## Verification commands` do not satisfy `Verified`.
+- **Subagent handoff**: not delegated
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `Verified` must require the canonical `## Verification commands` fenced block to contain the single successful `make check-all` output.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `docs/sdd/_templates/verification-template.md`, current completed SDD records.
+- **Kill/defer criteria**: Stop if parser accepts stale success snippets, missing exit codes, non-zero final exit codes, or unexplained skipped tests.
+- **Eval/repair signal**: `verified-missing-check-all`, `verified-contradicts-evidence`, `verified-unexplained-skips`, and review defect.
+- **Implementation**: Replace broad text search with canonical section/fenced-block parsing and skipped-test table validation.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_ignores_old_success_outside_verification_commands tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_skipped_table_to_match_skip_count -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -200,4 +219,5 @@
 - [ ] `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q`
 - [ ] `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_refuses_completed_task -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_invalid_coordination_field_values tests/architecture/test_sdd_artifact_validator.py::test_tasks_allow_explicit_none_dependency_and_not_delegated_handoff -q`
+- [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_ignores_old_success_outside_verification_commands tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_skipped_table_to_match_skip_count -q`
 - [ ] `make check-all`
