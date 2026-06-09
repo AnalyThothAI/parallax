@@ -379,6 +379,18 @@ def test_worker_manifest_validation_rejects_blank_input_contracts(
 
 
 @pytest.mark.architecture
+def test_worker_manifest_validation_rejects_empty_ordering_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifests = list(all_worker_manifests())
+    manifests[0] = replace(manifests[0], ordering_keys=())
+    monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
+
+    with pytest.raises(ValueError, match="worker manifests missing ordering keys"):
+        worker_manifest_module._validate_worker_manifests()
+
+
+@pytest.mark.architecture
 def test_worker_manifest_validation_rejects_duplicate_read_model_identity_columns(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
