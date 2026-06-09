@@ -985,6 +985,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 47 — Public contracts source-alignment gate
+
+- **File(s)**: `docs/CONTRACTS.md`, `tests/architecture/test_public_contracts_doc_alignment.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 46
+- **Touch set**: `docs/CONTRACTS.md`, `tests/architecture/test_public_contracts_doc_alignment.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `docs/CONTRACTS.md` for shared News route and WebSocket payload semantics.
+- **Failing test first**: `tests/architecture/test_public_contracts_doc_alignment.py::test_contracts_worker_keys_match_manifest_registry` — asserts public runtime contract docs cannot list retired worker keys; the same file covers stale agent lanes, removed WS payload keys, and the old News item detail route.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Docs/contracts
+- **Deterministic constraints**: Contract docs must be checked against `WorkerManifest`, `WorkersSettings`, `ws.py`, and `routes_news.py`; no compatibility wording for retired worker keys or old routes.
+- **On-demand context**: Explorer audit of `docs/CONTRACTS.md`, `docs/WORKERS.md`, `src/parallax/app/runtime/worker_manifest.py`, `src/parallax/platform/config/settings.py`, and API route source.
+- **Kill/defer criteria**: Stop if the test merely bans words without binding to source, or if docs keep duplicate stale lists that can drift from runtime code.
+- **Eval/repair signal**: `test_public_contracts_doc_alignment.py` failures, source/doc drift in public runtime contracts, and review defects around stale public API wording.
+- **Implementation**: Add source-bound architecture tests, update `CONTRACTS.md` to current worker keys, agent lanes, WS payloads, and News item route, and refresh the generated SDD index.
+- **Verification**: `uv run pytest tests/architecture/test_public_contracts_doc_alignment.py -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1033,4 +1054,5 @@
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_analyze_gate_rejects_failed_results -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_tasks_require_failing_test_reference_evidence -q`
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_cli_help_snapshot -q`
+- [ ] `uv run pytest tests/architecture/test_public_contracts_doc_alignment.py -q`
 - [ ] `make check-all`

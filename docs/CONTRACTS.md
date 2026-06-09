@@ -48,8 +48,9 @@ trigger/gate, and Watchlist summary queue/gate settings are rejected from
 `WorkerManifest v1` in `app/runtime/worker_manifest.py` is the only source for
 the worker inventory, lane membership, start priority, class path, queue-depth
 table, dirty-target consumers, and stable ownership contract. `workers.yaml`
-is the only source for worker runtime knobs. It contains `defaults`, `agent_runtime`, and one block
-per manifest worker key, in manifest start-priority order:
+is the only source for worker runtime knobs. It contains `defaults`,
+`agent_runtime`, and one block per manifest worker key, in manifest registry
+order:
 
 `collector`, `market_tick_stream`, `market_tick_poll`,
 `market_tick_current_projection`, `event_anchor_backfill`,
@@ -58,17 +59,16 @@ per manifest worker key, in manifest start-priority order:
 `token_radar_projection`, `narrative_admission`, `news_fetch`, `news_item_process`,
 `news_item_brief`, `news_page_projection`, `news_source_quality_projection`,
 `cex_oi_radar_board`,
-`macro_sync`, `macro_view_projection`, `pulse_candidate`, `enrichment`, `handle_summary`,
-`notification_rule`, and `notification_delivery`.
+`macro_sync`, `macro_view_projection`, `macro_daily_brief_projection`,
+`pulse_candidate`, `notification_rule`, and `notification_delivery`.
 
 The schema is `WorkersSettings`; its worker fields and the generated default
 `workers.yaml` must match manifest names exactly. Unknown worker keys hard fail
 startup instead of being ignored or aliased.
 
 `workers.agent_runtime` configures the shared agent execution plane. It
-contains the global default model, global concurrency/RPM limits, and
-named lane policies for Pulse, Narrative, Social enrichment, Watchlist
-summaries, future News fact-candidate extraction, and `news.item_brief`.
+contains the global default model, global concurrency/RPM limits, and default
+lane policies. Default lane keys are `pulse.decision` and `news.item_brief`.
 Each lane may override `model`; otherwise it inherits
 `agent_runtime.defaults.model`.
 
@@ -87,9 +87,11 @@ signals only; they are not product readiness and are not business facts.
 
 - Auth: `{"type":"auth","token":"..."}`
 - Subscribe: `{"type":"subscribe","handles":[...],"replay":N,"market_targets":[{"target_type":"Asset","target_id":"..."}]}`
-- Push payloads include `event`, `entities`, `alerts`, `enrichment`,
-  `social_event_enrichment_update` messages after store commit, and
-  `live_market_update` messages for subscribed market targets.
+- Push payloads include `event` messages with `entities`, `alerts`,
+  `token_intents`, and `token_resolutions`; `notification` messages when
+  notifications are subscribed; `social_event_enrichment_update` messages after
+  store commit; and `live_market_update` messages for subscribed market
+  targets.
 - Event payload `token_resolutions` is the same public event-token projection
   used by `/api/recent`: resolved token target identity plus event-anchored
   `price`. It is not a raw `token_intent_resolutions` row.
@@ -170,7 +172,7 @@ News Intel contract:
 - `/api/news` is read-only and paginated. Rows come from `news_page_rows` or
   nothing else; handlers do not fetch feeds, run extraction, execute agents,
   rebuild projections, or fall back to raw `news_items`.
-- `/api/news/{news_item_id}` is the read-only item detail companion for the
+- `/api/news/items/{news_item_id}` is the read-only item detail companion for the
   current News page projection. It requires a current-version `news_page_rows`
   row for the item; raw `news_items`, provider observations, agent briefs, and
   agent run audit rows are detail evidence only and must not synthesize a

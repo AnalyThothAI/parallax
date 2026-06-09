@@ -59,6 +59,7 @@ can both miss real process drift and block healthy refactors.
 | Verified spec-compliance rows must be evidenced. | A `Verified` record cannot mark a compliance row complete unless command-shaped evidence in that row has exit code 0 in canonical evidence sections. |
 | Worktree and branch metadata must be machine-valid. | `plan.md`, `tasks.md`, and `verification.md` must agree on either `codex/<slug>` with `.worktrees/<slug>` or exact `main`/`main` metadata. |
 | Spec background must be source-backed. | Each `spec.md` Background claim block must cite an existing repo `path:line` or an external `https://` source. |
+| Public contracts must be source-bound. | Architecture tests compare `docs/CONTRACTS.md` runtime lists and routes against manifest/settings/API source. |
 
 ## First principles
 
@@ -92,6 +93,7 @@ can both miss real process drift and block healthy refactors.
 - G22. SDD validation rejects plan `Analyze Gate` result cells that are `Fail:` or freeform prose instead of `Pass:` or `Blocked:` machine statuses.
 - G23. SDD validation rejects `[x]` tasks whose `Failing test first` test file paths are absent from successful verification evidence.
 - G24. `make check-all` rejects stale `docs/generated/cli-help.md` snapshots without running database-backed docs regeneration.
+- G25. `docs/CONTRACTS.md` runtime worker keys, agent runtime lanes, WebSocket payloads, and News item route are checked against current source.
 
 ## Non-goals
 
@@ -183,6 +185,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC44. WHEN `plan.md` `Analyze Gate` rows use `Fail:`, `Pass.`, or any result that does not begin with `Pass:` or `Blocked:` THEN the validator SHALL report `plan-analyze-gate-invalid`; failed analysis must stop or block before implementation.
 - AC45. WHEN a task is marked `[x]` and its `Failing test first` field references a test file path absent from successful verification evidence THEN the validator SHALL report `task-complete-missing-failing-test-evidence`; TDD metadata cannot drift away from commands actually run.
 - AC46. WHEN `docs/generated/cli-help.md` drifts from `parallax --help`, `parallax db --help`, or `parallax ops --help` THEN `scripts/regen_cli_help.py --check` SHALL exit non-zero and `make check-all` SHALL run that check before integration, e2e, golden, or coverage gates.
+- AC47. WHEN `docs/CONTRACTS.md` lists retired worker keys, stale agent runtime lanes, removed WebSocket payload keys, or the old News item detail route THEN architecture tests SHALL fail against `WorkerManifest`, `WorkersSettings`, `ws.py`, and `routes_news.py`.
 
 ## Risks
 

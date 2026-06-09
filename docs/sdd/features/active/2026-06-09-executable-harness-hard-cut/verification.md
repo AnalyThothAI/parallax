@@ -63,6 +63,7 @@ claim is allowed without the corresponding output captured below.
 | AC44 — Analyze Gate result statuses are machine-bounded. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_analyze_gate_rejects_failed_results -q` passed after first failing RED run. |
 | AC45 — Completed task failing-test references are evidenced. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_tasks_require_failing_test_reference_evidence -q` passed after first failing RED run. |
 | AC46 — Generated CLI help docs are freshness-checked. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_cli_help_snapshot -q` passed after first failing RED run; `uv run python scripts/regen_cli_help.py --check` exited 0. |
+| AC47 — Public contracts docs are source-bound. | ✅ | `uv run pytest tests/architecture/test_public_contracts_doc_alignment.py -q` failed RED on stale CONTRACTS worker/lane/WS/route docs, then passed after docs and harness updates. |
 
 Deviations from spec:
 
@@ -771,6 +772,18 @@ $ uv run pytest tests/architecture/test_harness_structure.py::test_make_check_al
 exit code: 0
 
 $ uv run python scripts/regen_cli_help.py --check
+exit code: 0
+
+$ uv run pytest tests/architecture/test_public_contracts_doc_alignment.py -q
+FFFF                                                                     [100%]
+FAILED tests/architecture/test_public_contracts_doc_alignment.py::test_contracts_worker_keys_match_manifest_registry
+FAILED tests/architecture/test_public_contracts_doc_alignment.py::test_contracts_agent_runtime_lanes_match_settings_defaults
+FAILED tests/architecture/test_public_contracts_doc_alignment.py::test_contracts_websocket_payloads_match_current_surface
+FAILED tests/architecture/test_public_contracts_doc_alignment.py::test_contracts_news_item_detail_route_matches_fastapi_route
+exit code: 1
+
+$ uv run pytest tests/architecture/test_public_contracts_doc_alignment.py -q
+4 passed in 0.11s
 exit code: 0
 
 $ uv run python scripts/validate_sdd_artifacts.py --check
