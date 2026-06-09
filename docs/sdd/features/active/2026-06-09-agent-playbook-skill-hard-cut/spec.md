@@ -9,7 +9,7 @@
 
 ## Background
 
-The agent coding research document recommends four Parallax follow-ups in `docs/references/agent-coding-research-2026.md`: task examples, repo-scoped skills, a fixed frontend QA skill, and a read-model review checklist. The existing router already points agents at `docs/agent-playbook/task-reading-matrix.md`, and architecture tests already guard that the router references the playbook through `tests/architecture/test_agent_playbook_contracts.py`.
+The agent coding research document recommends source-backed task contracts, short `AGENTS.md` rules, skill packaging, verification gates, and bounded subagent/worktree lanes (`docs/references/agent-coding-research-2026.md:13`, `docs/references/agent-coding-research-2026.md:14`, `docs/references/agent-coding-research-2026.md:17`, `docs/references/agent-coding-research-2026.md:18`). The existing task matrix routes agents to minimum source-backed context and playbook artifacts (`docs/agent-playbook/task-reading-matrix.md:3`, `docs/agent-playbook/task-reading-matrix.md:7`), and architecture tests already guard the playbook surface (`tests/architecture/test_agent_playbook_contracts.py:55`).
 
 ## Problem
 

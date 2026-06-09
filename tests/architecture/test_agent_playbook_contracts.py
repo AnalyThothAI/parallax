@@ -814,6 +814,11 @@ def _write_context_packet_fixture(root: Path) -> None:
             **Approved by**: qinghuan
             **Approved at**: 2026-06-09
 
+            ## Background
+
+            The fixture spec is grounded by its own source record
+            (`docs/sdd/features/active/2026-06-09-context-packet-fixture/spec.md:1`).
+
             ## Clarifications
 
             | Question | Answer | Approved by | Approved at |

@@ -29,6 +29,11 @@ SKIPPED_RE = re.compile(r"Number of skipped tests in the run above:\s*(?P<count>
 FEATURE_SLUG_RE = re.compile(r"^(?P<date>\d{4}-\d{2}-\d{2})-[a-z0-9]+(?:-[a-z0-9]+)*$")
 BRANCH_METADATA_RE = re.compile(r"^codex/(?P<slug>[a-z0-9][a-z0-9._-]*)$")
 WORKTREE_METADATA_RE = re.compile(r"^\.worktrees/(?P<slug>[a-z0-9][a-z0-9._-]*)/?$")
+LOCAL_CITATION_RE = re.compile(
+    r"(?P<path>(?:AGENTS|CLAUDE|Makefile|Dockerfile)\.md|"
+    r"(?:\.agents|docs|scripts|src|tests|web)/[A-Za-z0-9._/\-]+):(?P<line>\d+)"
+)
+URL_CITATION_RE = re.compile(r"https://[^\s`)>\]]+")
 SPEC_AC_RE = re.compile(r"^\s*-\s+AC(?P<number>\d+)\.", re.IGNORECASE | re.MULTILINE)
 SPEC_AC_LINE_RE = re.compile(r"^\s*-\s+AC(?P<number>\d+)\..+$", re.IGNORECASE | re.MULTILINE)
 SPEC_AC_FORMAT_RE = re.compile(
@@ -115,6 +120,7 @@ KNOWN_ISSUE_CODES = (
     "missing-artifact",
     "unexpected-artifact",
     "feature-slug-invalid",
+    "spec-background-uncited",
     "worktree-metadata-invalid",
     "artifact-owning-link-mismatch",
     "missing-gate-section",
@@ -555,6 +561,8 @@ def _artifact_issues(feature: SddFeature, artifact: ArtifactRecord) -> list[SddI
     if missing_sections:
         issues.append(_issue("missing-gate-section", artifact, f"missing sections: {', '.join(missing_sections)}"))
     issues.extend(_gate_evidence_issues(artifact))
+    if artifact.name == "spec.md":
+        issues.extend(_spec_background_issues(feature, artifact))
     return issues
 
 
@@ -655,6 +663,79 @@ def _gate_evidence_issues(artifact: ArtifactRecord) -> list[SddIssue]:
             )
         )
     return issues
+
+
+def _spec_background_issues(feature: SddFeature, artifact: ArtifactRecord) -> list[SddIssue]:
+    background = _section_text(artifact.text, "## Background")
+    if not background.strip():
+        return [_issue("spec-background-uncited", artifact, "spec.md Background is missing or empty")]
+
+    invalid_blocks: list[str] = []
+    for block in _citation_blocks(background):
+        citation_error = _citation_block_error(_repo_root(feature), block)
+        if citation_error:
+            invalid_blocks.append(citation_error)
+
+    if not invalid_blocks:
+        return []
+    return [
+        _issue(
+            "spec-background-uncited",
+            artifact,
+            "spec.md Background claims require existing repo path:line citations or https sources: "
+            + "; ".join(invalid_blocks),
+        )
+    ]
+
+
+def _citation_blocks(section: str) -> list[str]:
+    blocks: list[str] = []
+    current: list[str] = []
+    in_fenced_block = False
+    for line in section.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fenced_block = not in_fenced_block
+            continue
+        if in_fenced_block:
+            continue
+        if not stripped:
+            if current:
+                blocks.append(" ".join(current))
+                current = []
+            continue
+        if stripped.startswith("|") and "---" in stripped:
+            continue
+        if stripped.startswith(("-", "*")):
+            if current:
+                blocks.append(" ".join(current))
+                current = []
+            blocks.append(stripped)
+            continue
+        current.append(stripped)
+    if current:
+        blocks.append(" ".join(current))
+    return blocks
+
+
+def _citation_block_error(root: Path, block: str) -> str:
+    if URL_CITATION_RE.search(block):
+        return ""
+    citations = list(LOCAL_CITATION_RE.finditer(block))
+    if not citations:
+        return f"missing citation in {block!r}"
+    invalid: list[str] = []
+    for citation in citations:
+        citation_path = citation.group("path")
+        citation_line = int(citation.group("line"))
+        path = root / citation_path
+        if not path.is_file():
+            invalid.append(f"{citation_path}:{citation_line} does not exist")
+            continue
+        line_count = len(path.read_text(encoding="utf-8").splitlines())
+        if citation_line < 1 or citation_line > line_count:
+            invalid.append(f"{citation_path}:{citation_line} is outside 1..{line_count}")
+    return ", ".join(invalid)
 
 
 def _task_issues(feature: SddFeature) -> list[SddIssue]:

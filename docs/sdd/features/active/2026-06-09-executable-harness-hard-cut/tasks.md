@@ -817,6 +817,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 39 — Source-backed spec background gate
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 38
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD background/source citations.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_spec_background_requires_source_citations` — asserts uncited Background claims cannot pass.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/docs
+- **Deterministic constraints**: Each non-superseded spec Background claim block must cite an existing repo `path:line` or external `https://` source; local path citations must resolve to existing files and in-range line numbers.
+- **On-demand context**: GitHub Spec Kit, OpenAI agent eval/Codex guidance, Claude hooks/subagents docs, GitHub Copilot task best practices, active SDD specs.
+- **Kill/defer criteria**: Stop if a spec can describe current behavior or external methodology without auditable source evidence.
+- **Eval/repair signal**: `spec-background-uncited`, stale generated index, and source drift review defects.
+- **Implementation**: Parse Background claim blocks, validate local repo line citations, accept external HTTPS sources, and backfill active specs with current local/external references.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_spec_background_requires_source_citations -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -856,4 +877,5 @@
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_acceptance_criteria_require_when_then_shall_format -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_spec_compliance_rows_require_matching_command_evidence -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_worktree_branch_metadata_must_be_machine_valid -q`
+- [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_spec_background_requires_source_citations -q`
 - [ ] `make check-all`

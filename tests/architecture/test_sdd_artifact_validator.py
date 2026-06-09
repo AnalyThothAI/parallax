@@ -161,6 +161,23 @@ def test_worktree_branch_metadata_must_be_machine_valid(tmp_path: Path) -> None:
     assert sum(issue.code == "worktree-metadata-invalid" for issue in issues) == 2
 
 
+def test_spec_background_requires_source_citations(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-uncited-background")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _replace_section_body(
+        feature / "spec.md",
+        "## Background",
+        ("The current harness has a source-backed background claim without a citation.",),
+    )
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(feature / "tasks.md", status="In Progress", task_status="[~]")
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "spec-background-uncited" in _issue_codes(issues)
+
+
 def test_gate_sections_require_non_placeholder_evidence(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-empty-gates")
     _write_valid_spec(feature / "spec.md", status="In Progress")
@@ -836,6 +853,7 @@ def _feature_relative_dir(path: Path) -> str:
 
 
 def _write_valid_spec(path: Path, *, status: str) -> None:
+    feature_dir = _feature_relative_dir(path)
     path.write_text(
         "\n".join(
             [
@@ -846,6 +864,10 @@ def _write_valid_spec(path: Path, *, status: str) -> None:
                 "**Owner**: Codex",
                 "**Approved by**: qinghuan",
                 "**Approved at**: 2026-06-09",
+                "",
+                "## Background",
+                "",
+                f"The fixture spec is grounded by its own source record (`{feature_dir}/spec.md:1`).",
                 "",
                 "## Clarifications",
                 "",

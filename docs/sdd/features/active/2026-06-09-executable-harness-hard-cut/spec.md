@@ -15,6 +15,8 @@ The lane requires `spec.md`, `plan.md`, `tasks.md`, and `verification.md`, and s
 Completion requires `make check-all` evidence in `docs/WORKFLOW.md:57`. The current generated index is produced
 by `scripts/regen_sdd_work_index.py:1` and currently reports only lifecycle/status hygiene.
 
+Latest external SDD and agent-loop references reinforce the same direction: GitHub Spec Kit documents specify, plan, tasks, and implement commands plus clarify/checklist/analyze gates (https://github.com/github/spec-kit), OpenAI's agent evaluation docs emphasize reproducible evals and trace grading (https://platform.openai.com/docs/guides/agent-evals), Claude Code docs separate deterministic hooks and bounded subagents (https://code.claude.com/docs/en/agent-sdk/hooks, https://code.claude.com/docs/en/sub-agents), and GitHub Copilot task guidance emphasizes scoped task prompts for coding agents (https://docs.github.com/en/enterprise-cloud@latest/copilot/using-github-copilot/coding-agent/best-practices-for-using-copilot-to-work-on-tasks).
+
 ## Problem
 
 The harness proves that SDD files exist and have lane-valid status strings, but it does not prove that the
@@ -50,6 +52,7 @@ can both miss real process drift and block healthy refactors.
 | Delegated handoff artifacts must be real. | Delegated task handoff paths are checked for existence before dispatch or review. |
 | Verified spec-compliance rows must be evidenced. | A `Verified` record cannot mark a compliance row complete unless command-shaped evidence in that row has exit code 0 in canonical evidence sections. |
 | Worktree and branch metadata must be machine-valid. | `plan.md`, `tasks.md`, and `verification.md` must agree on either `codex/<slug>` with `.worktrees/<slug>` or exact `main`/`main` metadata. |
+| Spec background must be source-backed. | Each `spec.md` Background claim block must cite an existing repo `path:line` or an external `https://` source. |
 
 ## First principles
 
@@ -160,6 +163,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC36. WHEN a `spec.md` acceptance criterion omits the executable `WHEN ... THEN ... SHALL ...` structure THEN the validator SHALL report `acceptance-criterion-format-invalid`; vague acceptance prose cannot satisfy plan-command coverage.
 - AC37. WHEN a `Verified` `verification.md` Spec compliance row marks an acceptance criterion complete and references a command-shaped backticked command THEN the validator SHALL require matching exit code 0 evidence for that command in canonical evidence sections and report `verified-missing-spec-compliance-evidence` otherwise.
 - AC38. WHEN `plan.md`, `tasks.md`, or `verification.md` declares malformed, template-placeholder, prose, mismatched, or cross-artifact inconsistent Worktree/Branch metadata THEN the validator SHALL report `worktree-metadata-invalid`; execution location metadata must be machine-readable.
+- AC39. WHEN a non-superseded `spec.md` Background claim block lacks an existing repo `path:line` citation or external `https://` source THEN the validator SHALL report `spec-background-uncited`; specs must audit current docs/code or external references before planning.
 
 ## Risks
 
