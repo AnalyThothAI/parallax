@@ -64,6 +64,7 @@ can both miss real process drift and block healthy refactors.
 | Generated WebSocket docs must expose source message kinds. | Architecture tests compare `docs/generated/ws-protocol.md` against current `type` literals in `src/parallax/app/surfaces/api/ws.py`. |
 | Generated WebSocket docs must be freshness-checked. | `scripts/regen_ws_protocol.py --check` fails stale `docs/generated/ws-protocol.md`, and `make check-all` runs it before integration gates. |
 | Generated score-version docs must be freshness-checked. | `scripts/regen_score_versions.py --check` fails stale `docs/generated/score-versions.md`, and `make check-all` runs it before integration gates. |
+| Non-DB generated docs must be freshness-checked from the source map. | Architecture tests derive generator scripts from `docs/generated/README.md` and require each non-DB generator to run with `--check` inside `make check-all`. |
 | Active touch conflicts must catch nested paths. | The SDD validator treats parent/child touch paths as overlaps and requires coordination that names the overlapping feature or path. |
 | Frontend docs and skills must be harness-bound. | Frontend architecture tests compare `docs/FRONTEND.md` and the frontend verification skill against current CSS and navigation harness source. |
 | Frontend feature-boundary scans must follow source roots. | Frontend architecture tests derive feature root names from `web/src/features` instead of a stale hard-coded subset. |
@@ -130,6 +131,7 @@ can both miss real process drift and block healthy refactors.
 - G41. `docs/generated/ws-protocol.md` includes the current WebSocket message `type` literals from `src/parallax/app/surfaces/api/ws.py`, so generated public-surface docs do not stay class-only while runtime payloads are dict-shaped.
 - G42. `make check-all` runs `scripts/regen_ws_protocol.py --check` before integration gates, so stale generated WebSocket docs cannot hide until optional/generated-doc integration checks.
 - G43. `make check-all` runs `scripts/regen_score_versions.py --check` before integration gates, so stale score/version docs cannot hide until optional/generated-doc integration checks.
+- G44. `make check-all` runs every non-DB generated-doc script named by `docs/generated/README.md` with `--check` before integration gates, so generated-doc freshness coverage is source-derived instead of one hard-coded assertion per file.
 
 ## Non-goals
 
@@ -240,6 +242,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC63. WHEN `docs/generated/ws-protocol.md` omits a WebSocket message `type` literal currently present in `src/parallax/app/surfaces/api/ws.py` THEN architecture tests SHALL fail.
 - AC64. WHEN `docs/generated/ws-protocol.md` drifts from `src/parallax/app/surfaces/api/ws.py` THEN `scripts/regen_ws_protocol.py --check` SHALL exit non-zero and `make check-all` SHALL run that check before integration, e2e, golden, or coverage gates.
 - AC65. WHEN `docs/generated/score-versions.md` drifts from score/version literals in `src/` THEN `scripts/regen_score_versions.py --check` SHALL exit non-zero and `make check-all` SHALL run that check before integration, e2e, golden, or coverage gates.
+- AC66. WHEN `docs/generated/README.md` names any non-DB generator script THEN `make check-all` SHALL run that script with `--check` before integration, e2e, golden, or coverage gates.
 
 ## Risks
 

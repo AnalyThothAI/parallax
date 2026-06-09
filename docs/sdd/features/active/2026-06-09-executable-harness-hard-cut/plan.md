@@ -113,6 +113,7 @@ Known-failing baseline tests:
 - Assert `make check-all` includes the CLI help snapshot freshness check, so generated public CLI docs cannot drift outside integration-only docs tests.
 - Assert `make check-all` includes the score-version snapshot freshness check, so generated score/version docs cannot drift outside integration-only generated-doc tests.
 - Assert `make check-all` includes the WebSocket protocol snapshot freshness check, so generated WebSocket docs cannot drift outside integration-only generated-doc tests.
+- Assert `make check-all` includes `--check` for every non-DB generated-doc script listed in `docs/generated/README.md`, so freshness coverage is source-derived instead of one assertion per generated file.
 - Assert `docs/generated/README.md` source-map rows point at existing generated files, generator scripts, and source paths.
 - Assert `docs/generated/ws-protocol.md` lists the current WebSocket `type` literals from `src/parallax/app/surfaces/api/ws.py`.
 - Assert open `docs/TECH_DEBT.md` source/test/doc references use self-contained repo-root paths, point at current files, and `::test_*` references point at existing Python test functions.
@@ -275,6 +276,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Generated CLI docs are freshness-checked. | Pass: `check-all` runs `scripts/regen_cli_help.py --check` before integration gates. |
 | Generated score-version docs are freshness-checked. | Pass: `check-all` runs `scripts/regen_score_versions.py --check` before integration gates. |
 | Generated WebSocket docs are freshness-checked. | Pass: `check-all` runs `scripts/regen_ws_protocol.py --check` before integration gates. |
+| Non-DB generated docs are freshness-checked from the source map. | Pass: architecture tests derive generator scripts from `docs/generated/README.md` and require each non-DB generator to run with `--check` inside `check-all`. |
 | Public contracts are source-bound. | Pass: architecture tests compare CONTRACTS worker keys, agent lanes, WS payloads, and News route against current source. |
 | Generated README source map is real. | Pass: architecture tests fail any README source-map row that names a missing generated file, generator script, or source path. |
 | Active touch conflicts are path-aware. | Pass: validator rejects parent/child active touch overlaps when coordination names an unrelated target. |
@@ -360,6 +362,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC63: `uv run pytest tests/architecture/test_harness_structure.py::test_generated_ws_protocol_documents_current_type_literals -q`
 - AC64: `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_ws_protocol_snapshot -q`
 - AC65: `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_score_versions_snapshot -q`
+- AC66: `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_non_db_generated_snapshots -q`
 
 ## Verification
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 from textwrap import dedent
 
@@ -112,9 +113,30 @@ def render() -> str:
     return HEADER + "\n".join(lines)
 
 
-def main() -> None:
-    OUTPUT.write_text(dedent(render()), encoding="utf-8")
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Regenerate docs/generated/pulse-agent-desk-decisions.md")
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="exit non-zero if docs/generated/pulse-agent-desk-decisions.md is stale",
+    )
+    args = parser.parse_args()
+
+    rendered = dedent(render())
+    if args.check:
+        existing = OUTPUT.read_text(encoding="utf-8") if OUTPUT.exists() else ""
+        if existing != rendered:
+            print(
+                "docs/generated/pulse-agent-desk-decisions.md is stale; "
+                "run `uv run python scripts/regen_pulse_agent_desk_decisions.py`.",
+            )
+            return 1
+        return 0
+
+    OUTPUT.write_text(rendered, encoding="utf-8")
+    print(f"wrote {OUTPUT.relative_to(OUTPUT.parents[1]).as_posix()}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

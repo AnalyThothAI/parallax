@@ -1384,6 +1384,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 66 — Source-derived generated-doc freshness gate
+
+- **File(s)**: `Makefile`, `scripts/regen_pulse_agent_desk_decisions.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 65
+- **Touch set**: `Makefile`, `scripts/regen_pulse_agent_desk_decisions.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `Makefile` for check-all generated-doc gates.
+- **Failing test first**: `tests/architecture/test_harness_structure.py::test_make_check_all_checks_non_db_generated_snapshots` — derives generator scripts from `docs/generated/README.md` and requires every non-DB generator to run with `--check` inside `check-all`.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `scripts/regen_pulse_agent_desk_decisions.py --check` must be non-mutating and exit non-zero on stale output; the architecture test must derive expected scripts from `docs/generated/README.md`; `make check-all` must run the generated-doc freshness checks before integration, e2e, golden, or coverage gates; the DB schema generator remains excluded because it requires Postgres.
+- **On-demand context**: `docs/generated/README.md`, `Makefile` `check-all`, `scripts/regen_pulse_agent_desk_decisions.py`, and generated-doc architecture tests.
+- **Kill/defer criteria**: Stop if the fix adds only another hand-coded assertion without source-map coverage, runs Postgres-backed DB regeneration before integration gates, or mutates generated docs in `--check` mode.
+- **Eval/repair signal**: generated README names a non-DB generator that lacks `--check` coverage in `check-all`, stale Pulse Agent Desk decisions snapshot, and SDD generated index drift.
+- **Implementation**: Replace the one-off generated-doc gate pattern with a README-derived architecture test for non-DB generators, add `--check` mode to the Pulse Agent Desk decisions generator, wire `make check-all` to run it before `make check`, then regenerate the SDD work index.
+- **Verification**: `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_non_db_generated_snapshots -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1451,4 +1472,5 @@
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_generated_ws_protocol_documents_current_type_literals -q`
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_ws_protocol_snapshot -q`
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_score_versions_snapshot -q`
+- [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_non_db_generated_snapshots -q`
 - [ ] `make check-all`

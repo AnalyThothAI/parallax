@@ -299,6 +299,24 @@ def test_make_check_all_checks_score_versions_snapshot() -> None:
     assert "scripts/regen_score_versions.py --check" in check_all
 
 
+def test_make_check_all_checks_non_db_generated_snapshots() -> None:
+    makefile = _read(REPO_ROOT / "Makefile")
+    check_all = makefile.split("check-all:", 1)[1].split("\n\n", 1)[0]
+    readme = _read(DOCS / "generated" / "README.md")
+    script_paths = [
+        cells[2].strip("`")
+        for line in readme.splitlines()
+        if line.startswith("| `") and "` |" in line and not line.startswith("| File ")
+        for cells in ([cell.strip() for cell in line.strip("|").split("|")],)
+    ]
+
+    assert script_paths, "docs/generated/README.md must document generated sources"
+    for script_path in script_paths:
+        if script_path == "scripts/regen_db_schema.py":
+            continue
+        assert f"{script_path} --check" in check_all
+
+
 def test_generated_readme_source_map_points_to_existing_paths() -> None:
     readme = _read(DOCS / "generated" / "README.md")
     table_rows = [

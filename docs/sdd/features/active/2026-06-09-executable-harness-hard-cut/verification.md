@@ -82,6 +82,7 @@ claim is allowed without the corresponding output captured below.
 | AC63 — Generated WebSocket docs expose current message kinds. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_generated_ws_protocol_documents_current_type_literals -q` failed RED on class-only `ws-protocol.md`, then passed after the generator emitted source-derived WebSocket `type` literals. |
 | AC64 — Generated WebSocket docs are freshness-checked. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_ws_protocol_snapshot -q` failed RED before `check-all` ran `scripts/regen_ws_protocol.py --check`, then passed after adding the non-mutating generator check and Makefile gate. |
 | AC65 — Generated score-version docs are freshness-checked. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_score_versions_snapshot -q` failed RED before `check-all` ran `scripts/regen_score_versions.py --check`, then passed after adding the non-mutating generator check and Makefile gate. |
+| AC66 — Non-DB generated docs are freshness-checked from the source map. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_non_db_generated_snapshots -q` failed RED on missing `scripts/regen_pulse_agent_desk_decisions.py --check`, then passed after adding the non-mutating generator check and README-derived Makefile gate. |
 
 Deviations from spec:
 
@@ -200,6 +201,18 @@ $ uv run pytest tests/architecture/test_harness_structure.py::test_make_check_al
 exit code: 0
 
 $ uv run python scripts/regen_score_versions.py --check
+exit code: 0
+
+$ uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_non_db_generated_snapshots -q
+F                                                                        [100%]
+AssertionError: assert 'scripts/regen_pulse_agent_desk_decisions.py --check' in ' ## the only command that may produce verification-artefact evidence (gates 1+2+3)...'
+exit code: 1
+
+$ uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_non_db_generated_snapshots -q
+1 passed in 0.01s
+exit code: 0
+
+$ uv run python scripts/regen_pulse_agent_desk_decisions.py --check
 exit code: 0
 
 $ uv run python scripts/validate_sdd_artifacts.py --check
