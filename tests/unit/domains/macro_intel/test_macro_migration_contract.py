@@ -132,6 +132,7 @@ def test_repository_concept_history_counts_reads_projected_rows() -> None:
 
     assert result == rows
     query, params = conn.executions[0]
+<<<<<<< HEAD
     assert_query_contract(
         query,
         params=params,
@@ -141,6 +142,19 @@ def test_repository_concept_history_counts_reads_projected_rows() -> None:
         forbidden_fragments=("generation_id", "row_number() over", "series_rank = 1"),
         expected_params=(["asset:spx"], "macro_regime_v4", 60),
     )
+=======
+    assert "WITH requested AS" in query
+    assert "FROM macro_observation_series_rows AS rows" in query
+    assert "macro_observation_series_active_generation" not in query
+    assert "generation_id" not in query
+    assert "projection_version = %s" in query
+    assert "rows.value_numeric IS NOT NULL" in query
+    assert "FROM macro_observations" not in query
+    assert "row_number() OVER" not in query
+    assert "LEFT JOIN aggregated" in query
+    assert "COALESCE(aggregated.points, 0)" in query
+    assert params == (["asset:spx"], "macro_regime_v4", 60)
+>>>>>>> codex/macro-intel-redesign
 
 
 def test_repository_refresh_observation_series_rows_writes_current_read_model() -> None:

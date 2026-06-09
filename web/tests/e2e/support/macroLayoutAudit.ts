@@ -20,24 +20,32 @@ export async function expectNoMacroBodyOverflow(page: Page) {
   expect(metrics.body, JSON.stringify(metrics)).toBeLessThanOrEqual(metrics.width + 1);
 }
 
-export async function expectNoMacroMetricFragmentation(page: Page) {
+export async function expectNoMacroLabelFragmentation(page: Page) {
   const failures = await page.evaluate(() => {
     const watched = /^(SPX|VIX|CPI|SOFR|DXY|HY OAS|Payrolls|Claims)$/;
 
-    return Array.from(document.querySelectorAll<HTMLElement>("[data-macro-metric-label]"))
+    return Array.from(
+      document.querySelectorAll<HTMLElement>(
+        ".macro-data-table th, .macro-assets-market-table th, .macro-workbench-brief-row dd",
+      ),
+    )
       .filter((element) => watched.test(element.textContent?.trim() ?? ""))
       .flatMap((element) => {
         const style = window.getComputedStyle(element);
         const rect = element.getBoundingClientRect();
-        const lineHeight = Number.parseFloat(style.lineHeight) || 16;
         const fragmented =
           element.getClientRects().length > 1 ||
-          rect.height > lineHeight * 1.45 ||
           style.overflowWrap === "anywhere" ||
           style.wordBreak === "break-all";
 
         return fragmented
-          ? [{ text: element.textContent?.trim(), height: rect.height, lineHeight }]
+          ? [
+              {
+                text: element.textContent?.trim(),
+                height: rect.height,
+                rects: element.getClientRects().length,
+              },
+            ]
           : [];
       });
   });

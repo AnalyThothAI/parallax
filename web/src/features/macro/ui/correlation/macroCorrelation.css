@@ -141,4 +141,82 @@
   .macro-correlation-pair-list small {
     grid-column: 1 / -1;
   }
+
+  .macro-correlation-read,
+  .macro-correlation-diagnostics,
+  .macro-correlation-lane {
+    display: grid;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .macro-correlation-read p {
+    max-width: 880px;
+    margin: 0;
+    color: var(--text-primary, #f8fafc);
+    font-size: 1rem;
+    font-weight: 800;
+    line-height: 1.45;
+  }
+
+  .macro-correlation-read-facts {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    min-width: 0;
+    margin: 0;
+  }
+
+  .macro-correlation-read-facts div,
+  .macro-correlation-lane {
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    border-radius: 8px;
+    background: rgba(10, 16, 27, 0.28);
+  }
+
+  .macro-correlation-read-facts dt {
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.72rem;
+  }
+
+  .macro-correlation-read-facts dd {
+    min-width: 0;
+    margin: 4px 0 0;
+    color: var(--text-primary, #f8fafc);
+    font-size: 0.86rem;
+    font-weight: 800;
+    line-height: 1.35;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .macro-correlation-lane-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .macro-correlation-lane h4 {
+    margin: 0;
+    color: var(--text-primary, #f8fafc);
+    font-size: 0.84rem;
+  }
+
+  @media (min-width: 768px) and (max-width: 1279px) {
+    .macro-correlation-read-facts,
+    .macro-correlation-lane-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 767px) {
+    .macro-correlation-read-facts,
+    .macro-correlation-lane-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
 }

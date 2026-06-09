@@ -18,6 +18,7 @@ export function MacroMarketBoard({
   seriesData,
   seriesLoading,
   supportingTable,
+  supportingTables = [],
   title = "市场板",
 }: {
   ariaLabel?: string;
@@ -26,8 +27,13 @@ export function MacroMarketBoard({
   seriesData?: MacroSeriesData | null;
   seriesLoading?: boolean;
   supportingTable: MacroModuleTable | null;
+  supportingTables?: MacroModuleTable[];
   title?: string;
 }) {
+  const tables = [supportingTable, ...supportingTables].filter((table): table is MacroModuleTable =>
+    Boolean(table && (table.rows?.length ?? 0) > 0),
+  );
+
   return (
     <MacroPanel
       ariaLabel={ariaLabel ?? title}
@@ -41,13 +47,19 @@ export function MacroMarketBoard({
         seriesData={seriesData}
         seriesLoading={seriesLoading}
       />
-      {supportingTable ? (
-        <>
-          <MacroDataTable caption={tableCaption(supportingTable)} table={supportingTable} />
-          <TableSourceNote source={supportingTable.source} />
-        </>
-      ) : null}
+      {tables.map((table) => (
+        <TableBlock key={String(table.id ?? tableCaption(table))} table={table} />
+      ))}
     </MacroPanel>
+  );
+}
+
+function TableBlock({ table }: { table: MacroModuleTable }) {
+  return (
+    <>
+      <MacroDataTable caption={tableCaption(table)} table={table} />
+      <TableSourceNote source={table.source} />
+    </>
   );
 }
 

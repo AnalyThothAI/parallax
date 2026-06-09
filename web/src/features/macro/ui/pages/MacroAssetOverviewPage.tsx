@@ -1,43 +1,32 @@
-import type { MacroModuleTable, MacroSemanticRecord } from "@lib/types";
 import { useMemo } from "react";
-import { Link } from "react-router-dom";
 
 import { useMacroAssetCorrelationQuery } from "../../api/useMacroAssetCorrelationQuery";
+<<<<<<< HEAD
 import { assetTitleByKey, strongestCorrelationPairs } from "../../model/macroCorrelationModel";
 import { tableCaption } from "../../model/macroModulePageModel";
+=======
+import {
+  buildAssetDiagnosticsSummary,
+  buildAssetMarketGroups,
+  normalizeDailyBrief,
+} from "../../model/macroAssetOverviewModel";
+import { assetTitleByKey, strongestCorrelationPairs } from "../../model/macroCorrelationModel";
+>>>>>>> codex/macro-intel-redesign
 import {
   buildMacroDataHealthBuckets,
   macroReadSummary,
   primarySupportingTable,
-  type MacroDataHealthBucket,
 } from "../../model/macroModulePresentation";
 import { macroStatusLabel } from "../../model/macroPageViewModel";
-import { buildMacroTableModel, type MacroTableRowModel } from "../../model/macroTableColumns";
-import {
-  MacroCorrelationMatrixTable,
-  MacroCorrelationPairList,
-} from "../correlation/MacroCorrelationTables";
+import { AssetCorrelationPreview } from "../assets/AssetCorrelationPreview";
+import { AssetDailyBrief } from "../assets/AssetDailyBrief";
+import { AssetDiagnosticsBoard } from "../assets/AssetDiagnosticsBoard";
+import { AssetMarketDashboard } from "../assets/AssetMarketDashboard";
 import { MacroPageScaffold } from "../primitives/MacroPageScaffold";
 import { MacroPanel } from "../primitives/MacroPanel";
-import { MacroSourceTable } from "../tables/MacroSourceTable";
-import { MacroTableFrame } from "../tables/MacroTableFrame";
 
 import type { MacroModulePageProps } from "./MacroModulePageRenderer";
 import "./macroPages.css";
-
-type MacroDailyBriefBlock = {
-  id: string;
-  title: string;
-  stance: string;
-  body: string;
-};
-
-type MacroDailyBrief = {
-  headline: string;
-  status: string;
-  blocks: MacroDailyBriefBlock[];
-  dataQuality?: MacroDailyBriefQuality;
-};
 
 export function MacroAssetOverviewPage({ module, token }: MacroModulePageProps) {
   const supportingTable = primarySupportingTable(module);
@@ -54,6 +43,12 @@ export function MacroAssetOverviewPage({ module, token }: MacroModulePageProps) 
     () => strongestCorrelationPairs(correlationData, "negative").slice(0, 3),
     [correlationData],
   );
+  const assetGroups = useMemo(() => buildAssetMarketGroups(supportingTable), [supportingTable]);
+  const diagnosticsSummary = buildAssetDiagnosticsSummary({
+    buckets: dataHealthBuckets,
+    moduleStatus: macroStatusLabel(module),
+    provenance: module.provenance,
+  });
   const availabilityTable = module.tables.find((table) => table.id === "availability_proxy_notes");
 
   return (
@@ -67,7 +62,7 @@ export function MacroAssetOverviewPage({ module, token }: MacroModulePageProps) 
         span="full"
         title="市场仪表盘"
       >
-        <AssetGroupBoard table={supportingTable} />
+        <AssetMarketDashboard groups={assetGroups} />
       </MacroPanel>
       <MacroPanel
         ariaLabel="今日判断"
@@ -76,7 +71,7 @@ export function MacroAssetOverviewPage({ module, token }: MacroModulePageProps) 
         span="full"
         title="今日判断"
       >
-        <DailyBriefContent brief={dailyBrief} fallback={macroReadSummary(module)} />
+        <AssetDailyBrief brief={dailyBrief} fallback={macroReadSummary(module)} />
       </MacroPanel>
       <MacroPanel
         ariaLabel="60日相关性"
@@ -85,48 +80,15 @@ export function MacroAssetOverviewPage({ module, token }: MacroModulePageProps) 
         span="major"
         title="60日相关性"
       >
-        {correlationQuery.isLoading ? (
-          <div className="macro-assets-inline-state">相关性加载中</div>
-        ) : correlationQuery.isError ? (
-          <div className="macro-assets-inline-state">
-            相关性暂不可用：{errorLabel(correlationQuery.error)}
-          </div>
-        ) : correlationData ? (
-          <div className="macro-assets-correlation-layout">
-            <MacroCorrelationMatrixTable
-              className="macro-assets-correlation-matrix"
-              data={correlationData}
-              label="60日资产相关性矩阵"
-              minWidth={560}
-              titleByKey={titleByKey}
-            />
-            <div className="macro-assets-correlation-pairs">
-              <div className="macro-assets-pair-group">
-                <h4>正相关</h4>
-                <MacroCorrelationPairList
-                  emptyLabel="暂无"
-                  pairs={positivePairs}
-                  titleByKey={titleByKey}
-                  variant="summary"
-                />
-              </div>
-              <div className="macro-assets-pair-group">
-                <h4>负相关</h4>
-                <MacroCorrelationPairList
-                  emptyLabel="暂无"
-                  pairs={negativePairs}
-                  titleByKey={titleByKey}
-                  variant="summary"
-                />
-              </div>
-              <Link className="macro-assets-detail-link" to="/macro/assets/correlation">
-                打开相关性详情
-              </Link>
-            </div>
-          </div>
-        ) : (
-          <div className="macro-assets-inline-state">暂无相关性样本</div>
-        )}
+        <AssetCorrelationPreview
+          data={correlationData}
+          errorLabel={correlationQuery.isError ? errorLabel(correlationQuery.error) : null}
+          isError={correlationQuery.isError}
+          isLoading={correlationQuery.isLoading}
+          negativePairs={negativePairs}
+          positivePairs={positivePairs}
+          titleByKey={titleByKey}
+        />
       </MacroPanel>
       <MacroPanel
         ariaLabel="数据诊断"
@@ -135,17 +97,18 @@ export function MacroAssetOverviewPage({ module, token }: MacroModulePageProps) 
         span="minor"
         title="数据诊断"
       >
-        <DataDiagnostics
+        <AssetDiagnosticsBoard
           availabilityTable={availabilityTable}
           buckets={dataHealthBuckets}
-          moduleStatus={macroStatusLabel(module)}
           provenance={module.provenance}
+          summary={diagnosticsSummary}
         />
       </MacroPanel>
     </MacroPageScaffold>
   );
 }
 
+<<<<<<< HEAD
 type AssetGroup = {
   key: string;
   route: string;
@@ -480,6 +443,8 @@ function deltaTone(row: MacroTableRowModel): "up" | "down" | "flat" {
   return "flat";
 }
 
+=======
+>>>>>>> codex/macro-intel-redesign
 function correlationMeta(data: unknown, isFetching: boolean): string {
   if (isFetching) return "更新中";
   if (!data || typeof data !== "object") return "暂无";
@@ -491,23 +456,3 @@ function errorLabel(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
   return "请求失败";
 }
-
-function sourceRows(provenance: MacroSemanticRecord): number {
-  const rows = provenance.rows;
-  return Array.isArray(rows) ? rows.length : 0;
-}
-
-function stringValue(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value : null;
-}
-
-function numberValue(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
-type MacroDailyBriefQuality = {
-  gapCount?: number;
-  historyCoverageRatio?: number;
-  latestCoverageRatio?: number;
-  status: string;
-};

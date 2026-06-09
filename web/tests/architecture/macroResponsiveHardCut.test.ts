@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -39,7 +39,8 @@ describe("macro responsive hard cut", () => {
     expect(discoveredFileNames).toEqual(
       expect.arrayContaining([
         "macroCharts.css",
-        "macroMetricStrip.css",
+        "macroAssetOverview.css",
+        "macroCorrelation.css",
         "macroPageScaffold.css",
         "macroPanel.css",
         "macroPages.css",
@@ -47,8 +48,22 @@ describe("macro responsive hard cut", () => {
         "macroShell.css",
         "macroTableFrame.css",
         "macroTables.css",
+        "macroWorkbench.css",
       ]),
     );
+  });
+
+  it("does not keep retired macro primitive files", () => {
+    const retiredFiles = [
+      "ui/primitives/MacroDataHealthPanel.tsx",
+      "ui/primitives/MacroEvidencePanel.tsx",
+      "ui/primitives/MacroMetricStrip.tsx",
+      "ui/primitives/MacroReadPanel.tsx",
+      "ui/primitives/MacroTransmissionPanel.tsx",
+      "ui/primitives/macroMetricStrip.css",
+    ];
+
+    expect(retiredFiles.filter((file) => existsSync(join(macroRoot, file)))).toEqual([]);
   });
 
   it("does not use destructive word wrapping in macro CSS", () => {
@@ -69,6 +84,9 @@ describe("macro responsive hard cut", () => {
     expect(css).not.toContain(".macro-page-kpi-strip");
     expect(css).not.toContain(".macro-correlation-page");
     expect(css).not.toContain(".macro-source-table");
+    expect(css).not.toMatch(
+      /\.macro-(?:metric|read|evidence|health|transmission)(?:[-\s.[{:#>]|$)/,
+    );
   });
 
   it("uses the frontend breakpoint and letter-spacing contract", () => {

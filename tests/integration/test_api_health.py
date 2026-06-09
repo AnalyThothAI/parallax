@@ -817,6 +817,7 @@ def test_readiness_worker_lanes_count_each_effective_status(monkeypatch):
         },
         "cex_oi_radar_board": {"enabled": True, "running": False, "effective_status": "stopped"},
         "macro_view_projection": {"enabled": False, "running": False, "effective_status": "disabled"},
+        "macro_daily_brief_projection": {"enabled": False, "running": False, "effective_status": "disabled"},
     }
     runtime = SimpleNamespace(
         settings=Settings(ws_token="secret", handles=("toly",), notifications={"enabled": False}),
@@ -834,7 +835,7 @@ def test_readiness_worker_lanes_count_each_effective_status(monkeypatch):
     payload, _status_code = _readiness_payload(runtime, now_ms=12_001)
 
     projection = payload["worker_lanes"]["projection"]
-    assert projection["disabled_workers"] == 2
+    assert projection["disabled_workers"] == 3
     assert projection["intentionally_not_started_workers"] == 1
     assert projection["unavailable_workers"] == 1
     assert projection["degraded_workers"] == 1

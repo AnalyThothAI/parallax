@@ -3,7 +3,6 @@ import type { MacroModuleView } from "@lib/types";
 import { tableCaption } from "../../model/macroModulePageModel";
 import type { MacroDataHealthBucket } from "../../model/macroModulePresentation";
 import type { RatesWorkbenchView } from "../../model/macroRatesWorkbenchModel";
-import { MacroDataHealthPanel } from "../primitives/MacroDataHealthPanel";
 import { MacroPanel } from "../primitives/MacroPanel";
 import { MacroDataTable } from "../tables/MacroDataTable";
 import { MacroSourceTable } from "../tables/MacroSourceTable";
@@ -22,20 +21,41 @@ export function RatesDiagnosticsPanel({
   );
 
   return (
-    <div className="macro-rates-diagnostics">
-      <MacroDataHealthPanel
-        ariaLabel="利率数据诊断"
-        buckets={buckets}
-        meta={meta}
-        title="利率数据诊断"
-      />
-      {diagnosticTables.length > 0 ? (
-        <MacroPanel
-          ariaLabel="利率诊断明细"
-          className="macro-rates-diagnostic-tables"
-          meta={`${diagnosticTables.length} 张`}
-          title="诊断明细"
-        >
+    <MacroPanel
+      ariaLabel="数据诊断"
+      className="macro-rates-diagnostics-panel"
+      meta={meta}
+      span="full"
+      title="数据诊断"
+    >
+      <div className="macro-rates-diagnostics-board">
+        <div className="macro-rates-health-buckets">
+          {buckets.map((bucket) => (
+            <section className="macro-rates-health-bucket" key={bucket.key}>
+              <div className="macro-rates-health-head">
+                <h4>{bucket.label}</h4>
+                <span>{bucket.referenceCount ?? bucket.items.length}</span>
+              </div>
+              {bucket.referenceCount ? (
+                <p className="macro-rates-empty macro-rates-empty-compact">总览级缺口，仅供参考</p>
+              ) : bucket.items.length > 0 ? (
+                <div className="macro-rates-health-chip-list">
+                  {bucket.items.map((item, index) => (
+                    <span
+                      className="macro-rates-health-chip"
+                      key={`${bucket.key}:${item}:${index}`}
+                    >
+                      {item}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="macro-rates-empty macro-rates-empty-compact">暂无</p>
+              )}
+            </section>
+          ))}
+        </div>
+        {diagnosticTables.length > 0 ? (
           <div className="macro-rates-table-stack">
             {diagnosticTables.map(({ table }) => (
               <MacroDataTable
@@ -45,17 +65,16 @@ export function RatesDiagnosticsPanel({
               />
             ))}
           </div>
-        </MacroPanel>
-      ) : null}
-      <MacroPanel
-        ariaLabel="利率数据源状态"
-        className="macro-rates-source-diagnostics"
-        meta={view.diagnostics.sourceMeta ?? "来源状态"}
-        title="数据源状态"
-      >
-        <MacroSourceTable caption="利率数据源" source={module.provenance} />
-      </MacroPanel>
-    </div>
+        ) : null}
+        <div className="macro-rates-source-diagnostics">
+          <div className="macro-rates-health-head">
+            <h4>来源状态</h4>
+            <span>{view.diagnostics.sourceMeta ?? "来源状态"}</span>
+          </div>
+          <MacroSourceTable caption="利率数据源" source={module.provenance} />
+        </div>
+      </div>
+    </MacroPanel>
   );
 }
 

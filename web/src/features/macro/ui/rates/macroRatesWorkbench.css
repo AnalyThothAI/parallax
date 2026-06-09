@@ -49,14 +49,12 @@
   .macro-rates-fact-strip,
   .macro-rates-decision-support,
   .macro-rates-detail-tables,
-  .macro-rates-table-stack {
+  .macro-rates-table-stack,
+  .macro-rates-diagnostics-board,
+  .macro-rates-source-diagnostics {
     display: grid;
     gap: 12px;
     min-width: 0;
-  }
-
-  .macro-rates-diagnostics {
-    display: contents;
   }
 
   .macro-rates-market-read-head {
@@ -224,6 +222,66 @@
     min-height: 96px;
   }
 
+  .macro-rates-health-buckets {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .macro-rates-health-bucket,
+  .macro-rates-source-diagnostics {
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    border-radius: 8px;
+    background: rgba(10, 16, 27, 0.28);
+  }
+
+  .macro-rates-health-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .macro-rates-health-head h4 {
+    min-width: 0;
+    margin: 0;
+    color: var(--text-primary, #f8fafc);
+    font-size: 0.82rem;
+    line-height: 1.25;
+  }
+
+  .macro-rates-health-head span {
+    flex: 0 0 auto;
+    color: #bae6fd;
+    font-size: 0.74rem;
+    font-weight: 800;
+  }
+
+  .macro-rates-health-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    min-width: 0;
+    padding-top: 8px;
+  }
+
+  .macro-rates-health-chip {
+    max-width: 100%;
+    min-width: 0;
+    padding: 5px 8px;
+    border: 1px solid rgba(251, 191, 36, 0.2);
+    border-radius: 999px;
+    color: #fde68a;
+    background: rgba(251, 191, 36, 0.08);
+    font-size: 0.74rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .macro-rates-corridor-chart,
   .macro-rates-corridor {
     display: grid;
@@ -388,8 +446,7 @@
     line-height: 1.4;
   }
 
-  .macro-rates-diagnostic-tables,
-  .macro-rates-source-diagnostics {
+  .macro-rates-diagnostics-panel {
     opacity: 0.86;
   }
 

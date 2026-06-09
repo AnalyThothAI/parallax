@@ -127,11 +127,14 @@ describe("macro route", () => {
     expect(screen.queryByRole("heading", { name: "宏观" })).not.toBeInTheDocument();
     expect(screen.getByText("美股风险：等待小盘确认")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "美股模块页面" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "市场板" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "传导链" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "模块证据" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "数据来源" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "模块数据健康" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "模块简报" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "主市场证据" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "驱动与反证" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "数据诊断" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "市场板" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "模块证据" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "数据来源" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "模块数据健康" })).not.toBeInTheDocument();
     await waitFor(() =>
       expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/modules/assets/equities", {
         token: "secret",
@@ -175,6 +178,10 @@ describe("macro route", () => {
       "宏观/大类资产/相关性",
     );
     expect(await screen.findByRole("table", { name: "60d 资产相关性矩阵" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "相关性简报" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "相关性矩阵" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "相关性证据" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "数据诊断" })).toBeInTheDocument();
     expect(await screen.findByText("SPY / QQQ")).toBeInTheDocument();
     await waitFor(() =>
       expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/assets/correlation", {
@@ -195,7 +202,15 @@ describe("macro route", () => {
     expect(await screen.findByRole("heading", { name: "美股风险" })).toBeInTheDocument();
     expect(screen.getByLabelText("宏观工作台")).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "宏观主模块" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("navigation", { name: "宏观模块" })).not.toBeInTheDocument();
+    const moduleNavigation = screen.getByRole("navigation", { name: "宏观模块" });
+    expect(within(moduleNavigation).getByRole("link", { name: "大类资产" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(within(moduleNavigation).getByRole("link", { name: "利率" })).toHaveAttribute(
+      "href",
+      "/macro/rates/fed-funds",
+    );
     expect(screen.queryByRole("heading", { name: "宏观" })).not.toBeInTheDocument();
     expect(document.querySelector(".live-task-nav")).not.toBeInTheDocument();
   });
