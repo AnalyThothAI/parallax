@@ -55,6 +55,7 @@ can both miss real process drift and block healthy refactors.
 | Idempotency evidence must be non-blank. | `WorkerManifest` validation rejects blank `idempotency_evidence` entries before lifecycle, ownership, or review harnesses consume them. |
 | Idempotency evidence must be unique. | `WorkerManifest` validation rejects duplicate `idempotency_evidence` entries before lifecycle, ownership, or review harnesses consume them. |
 | Provider I/O flags must be boolean. | `WorkerManifest` validation rejects non-boolean `uses_provider_io` values before provider-boundary or worker inventory harnesses consume them. |
+| Worker identity fields must be strings. | `WorkerManifest` validation rejects non-string `name`, `domain`, `factory`, and `worker_class` values before blank checks, path checks, imports, registries, settings, or docs harnesses consume them. |
 | Tuple-valued manifest contracts must be tuples. | `WorkerManifest` validation rejects list-shaped compatibility values for tuple contract fields before registry, factory, settings, or docs harnesses consume them. |
 | Tuple-valued string contracts must contain strings. | `WorkerManifest` validation rejects non-string entries inside tuple-valued string contract fields before registry, factory, settings, or docs harnesses consume them. |
 | Input contracts must be non-empty. | `WorkerManifest` validation rejects empty `input_contract` declarations before registry, factory, settings, or docs harnesses consume them. |
@@ -236,6 +237,7 @@ can both miss real process drift and block healthy refactors.
 - G93. Root-level visual verification artifacts are rejected, so old screenshots cannot remain as loose project files outside owned artifact directories.
 - G94. Queue depth table declarations reject non-string values, so queue-health table hygiene fails with manifest errors instead of implementation-detail attribute errors.
 - G95. Advisory lock declarations reject non-string values, so lifecycle lock hygiene fails with manifest errors instead of implementation-detail attribute errors.
+- G96. Worker identity field declarations reject non-string values, so registry and source-path validation fail with manifest errors instead of implementation-detail attribute errors.
 
 ## Non-goals
 
@@ -398,6 +400,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC115. WHEN visual verification artifacts such as PNG, JPG, WEBP, or GIF files exist at the repository root THEN the architecture harness SHALL fail until those loose root artifacts are removed or moved under an owned artifact directory.
 - AC116. WHEN a `WorkerManifest.queue_depth_table` value is neither `None` nor a string THEN manifest validation SHALL raise before table hygiene, queue ownership, queue-health, registry, settings, or worker inventory harnesses consume it.
 - AC117. WHEN a `WorkerManifest.advisory_lock_key` value is neither `None` nor a string THEN manifest validation SHALL raise before advisory-lock blank checks, duplicate checks, lifecycle, registry, settings, or worker inventory harnesses consume it.
+- AC118. WHEN a `WorkerManifest.name`, `domain`, `factory`, or `worker_class` value is not a string THEN manifest validation SHALL raise before identity blank checks, source-path checks, class import checks, registry, settings, or worker inventory harnesses consume it.
 
 ## Risks
 

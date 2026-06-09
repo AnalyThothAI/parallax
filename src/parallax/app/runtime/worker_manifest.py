@@ -719,18 +719,27 @@ def worker_names() -> tuple[str, ...]:
 
 
 def _validate_worker_manifests() -> None:
+    non_string_identity_fields = {
+        _manifest_error_key(index, manifest): invalid_fields
+        for index, manifest in enumerate(_WORKER_MANIFESTS)
+        if (
+            invalid_fields := {
+                field_name: value
+                for field_name, value in _identity_field_values(manifest)
+                if type(value) is not str
+            }
+        )
+    }
+    if non_string_identity_fields:
+        raise ValueError(f"non-string worker manifest identity fields: {non_string_identity_fields}")
+
     blank_identity_fields = {
         manifest.name: blanks
         for manifest in _WORKER_MANIFESTS
         if (
             blanks := {
                 field_name: value
-                for field_name, value in (
-                    ("name", manifest.name),
-                    ("domain", manifest.domain),
-                    ("factory", manifest.factory),
-                    ("worker_class", manifest.worker_class),
-                )
+                for field_name, value in _identity_field_values(manifest)
                 if not value.strip()
             }
         )
@@ -1223,6 +1232,19 @@ def _validate_worker_manifests() -> None:
 
 def _dedupe(values: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(values))
+
+
+def _manifest_error_key(index: int, manifest: WorkerManifest) -> str:
+    return manifest.name if type(manifest.name) is str else f"manifest[{index}]"
+
+
+def _identity_field_values(manifest: WorkerManifest) -> tuple[tuple[str, object], ...]:
+    return (
+        ("name", manifest.name),
+        ("domain", manifest.domain),
+        ("factory", manifest.factory),
+        ("worker_class", manifest.worker_class),
+    )
 
 
 def _tuple_contract_field_values(manifest: WorkerManifest) -> tuple[tuple[str, object], ...]:

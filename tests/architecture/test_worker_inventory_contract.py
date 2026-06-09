@@ -451,6 +451,20 @@ def test_worker_manifest_validation_rejects_blank_identity_fields(
 
 
 @pytest.mark.architecture
+@pytest.mark.parametrize("field_name", ("name", "domain", "factory", "worker_class"))
+def test_worker_manifest_validation_rejects_non_string_identity_fields(
+    monkeypatch: pytest.MonkeyPatch,
+    field_name: str,
+) -> None:
+    manifests = list(all_worker_manifests())
+    manifests[0] = replace(manifests[0], **{field_name: 123})
+    monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
+
+    with pytest.raises(ValueError, match="non-string worker manifest identity fields"):
+        worker_manifest_module._validate_worker_manifests()
+
+
+@pytest.mark.architecture
 def test_worker_manifest_validation_rejects_missing_domain_directories(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

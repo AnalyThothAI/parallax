@@ -134,6 +134,7 @@ claim is allowed without the corresponding output captured below.
 | AC115 — Root visual artifacts are absent. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_repo_root_has_no_loose_visual_artifacts -q` failed RED in a temporary HEAD workspace with six root PNG artifacts, then passed after adding the root-artifact harness and removing those root PNG files. |
 | AC116 — Queue-depth table declarations are strings. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_queue_depth_tables -q` failed RED when a patched numeric `queue_depth_table` leaked to `AttributeError`, then passed after adding queue-depth table type validation. |
 | AC117 — Advisory lock declarations are strings. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_advisory_lock_keys -q` failed RED when a patched numeric `advisory_lock_key` leaked to `AttributeError`, then passed after adding advisory-lock key type validation. |
+| AC118 — Worker identity fields are strings. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_identity_fields -q` failed RED when patched numeric identity fields leaked to `AttributeError`, then passed after adding identity-field type validation. |
 
 Deviations from spec:
 
@@ -1678,6 +1679,15 @@ exit code: 1
 
 $ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_advisory_lock_keys -q
 1 passed in 0.43s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_identity_fields -q
+FFFF                                                                     [100%]
+E   AttributeError: 'int' object has no attribute 'strip'
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_identity_fields -q
+4 passed in 0.67s
 exit code: 0
 ```
 

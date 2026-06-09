@@ -2476,6 +2476,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 118 — Worker identity fields are strings
+
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 117
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for worker identity field type validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_identity_fields` — patch worker identity fields to numeric values and assert manifest validation raises before `.strip()`, `Path`, or import errors leak.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `WorkerManifest.name`, `domain`, `factory`, and `worker_class` must be strict `str` before identity blank checks, source-path checks, class import checks, registry, settings, or worker inventory harnesses consume them.
+- **On-demand context**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, and Worker Inventory registry/docs checks.
+- **Kill/defer criteria**: Stop if worker identity fields intentionally support compatibility objects, if validation only checks generated docs, or if the fix touches worker factory/runtime behavior.
+- **Eval/repair signal**: non-string worker identity declarations, implementation-detail identity-field attribute/path/import errors, registry harness drift, and SDD generated index drift.
+- **Implementation**: Add manifest validation rejecting non-string `name`, `domain`, `factory`, and `worker_class` values before blank and source-path checks.
+- **Verification**: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_identity_fields -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -2595,4 +2616,5 @@
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_repo_root_has_no_loose_visual_artifacts -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_queue_depth_tables -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_advisory_lock_keys -q`
+- [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_identity_fields -q`
 - [ ] `make check-all`
