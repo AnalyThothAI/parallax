@@ -43,6 +43,7 @@ can both miss real process drift and block healthy refactors.
 | Active work must be coordinatable. | The generated SDD index includes owner, worktree, branch, factory lanes, touch set, conflict set, blocked state, and verification status. |
 | Test harness intent must be explicit. | Architecture tests classify permanent invariants, migration tripwires, behavior contracts, and generated hygiene. |
 | Worker runtime constraints must be manifest-owned. | `WorkerManifest` carries each worker's runtime constraint classification, so architecture tests do not maintain a second worker inventory. |
+| Worker identity fields must be non-blank. | `WorkerManifest` validation rejects blank `name`, `domain`, `factory`, and `worker_class` values before registries, settings, or docs harnesses consume them. |
 | Dirty-target consumers must declare dirty targets. | `WorkerManifest` validation rejects `DIRTY_TARGET_CONSUMER` manifests that omit `dirty_target_tables`. |
 | Leased-job consumers must declare queue depth tables. | `WorkerManifest` validation rejects `LEASED_JOB_CONSUMER` manifests that omit `queue_depth_table`. |
 | Bounded provider schedulers must declare provider I/O. | `WorkerManifest` validation rejects `BOUNDED_PROVIDER_SCHEDULER` manifests that do not set `uses_provider_io`. |
@@ -182,6 +183,7 @@ can both miss real process drift and block healthy refactors.
 - G66. Wake channel declarations reject duplicate strings per worker field, so listener and NOTIFY topology cannot hide stale repeated channels.
 - G67. Advisory lock declarations reject duplicate keys, so unrelated workers cannot silently share a long-lived single-writer lock boundary.
 - G68. Advisory lock declarations reject blank keys, so lifecycle code cannot inherit a whitespace placeholder as a lock boundary.
+- G69. Worker identity declarations reject blank fields, so registry, factory, settings, and docs harnesses cannot consume anonymous or unresolvable workers.
 
 ## Non-goals
 
@@ -317,6 +319,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC88. WHEN a `WorkerManifest.wakes_on` or `WorkerManifest.wakes_out` field repeats a channel THEN manifest validation SHALL raise before listener, NOTIFY, or worker inventory harnesses consume the manifest.
 - AC89. WHEN two `WorkerManifest` entries declare the same `advisory_lock_key` THEN manifest validation SHALL raise before runtime lifecycle, advisory-lock, or worker inventory harnesses consume the manifest.
 - AC90. WHEN a `WorkerManifest.advisory_lock_key` value is blank THEN manifest validation SHALL raise before runtime lifecycle, advisory-lock, or worker inventory harnesses consume the manifest.
+- AC91. WHEN a `WorkerManifest.name`, `domain`, `factory`, or `worker_class` value is blank THEN manifest validation SHALL raise before registry, factory, settings, or worker inventory harnesses consume the manifest.
 
 ## Risks
 

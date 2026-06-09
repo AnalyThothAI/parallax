@@ -713,6 +713,25 @@ def worker_names() -> tuple[str, ...]:
 
 
 def _validate_worker_manifests() -> None:
+    blank_identity_fields = {
+        manifest.name: blanks
+        for manifest in _WORKER_MANIFESTS
+        if (
+            blanks := {
+                field_name: value
+                for field_name, value in (
+                    ("name", manifest.name),
+                    ("domain", manifest.domain),
+                    ("factory", manifest.factory),
+                    ("worker_class", manifest.worker_class),
+                )
+                if not value.strip()
+            }
+        )
+    }
+    if blank_identity_fields:
+        raise ValueError(f"blank worker manifest identity fields: {blank_identity_fields}")
+
     names = [manifest.name for manifest in _WORKER_MANIFESTS]
     duplicate_names = sorted({name for name in names if names.count(name) > 1})
     if duplicate_names:
