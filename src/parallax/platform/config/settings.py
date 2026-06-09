@@ -29,6 +29,7 @@ NARRATIVE_REALTIME_WINDOWS = ("1h",)
 NARRATIVE_REALTIME_WINDOW_SET = frozenset(NARRATIVE_REALTIME_WINDOWS)
 NARRATIVE_REALTIME_SCOPES = ("all",)
 NARRATIVE_REALTIME_SCOPE_SET = frozenset(NARRATIVE_REALTIME_SCOPES)
+RETIRED_WORKER_SETTING_KEYS = frozenset({"mention_semantics", "token_discussion_digest"})
 NEWS_PROVIDER_TYPES = (
     "rss",
     "atom",
@@ -1584,7 +1585,7 @@ def load_settings(*, require_ws_token: bool = True) -> Settings:
     data = _load_yaml_mapping(path)
     if "workers" in data:
         raise ValueError("workers runtime settings must be configured in workers.yaml, not config.yaml")
-    workers = WorkersSettings(**_load_yaml_mapping(workers_path))
+    workers = WorkersSettings(**_normalize_workers_yaml_mapping(_load_yaml_mapping(workers_path)))
     settings = Settings(**dict(data), workers=workers)
     settings.set_config_dir(path.parent)
     if require_ws_token and not settings.ws_token:
@@ -1979,6 +1980,21 @@ def _load_yaml_mapping(path: Path) -> Mapping[str, Any]:
     if not isinstance(data, dict):
         raise ValueError(f"{path.name} must contain a mapping at {path}")
     return data
+
+
+def _normalize_workers_yaml_mapping(data: Mapping[str, Any]) -> dict[str, Any]:
+    payload = dict(data)
+    for key in RETIRED_WORKER_SETTING_KEYS:
+        if key not in payload:
+            continue
+        value = payload[key]
+        if isinstance(value, Mapping) and set(value) == {"enabled"} and value.get("enabled") is False:
+            payload.pop(key)
+            continue
+        raise ValueError(
+            f"retired worker setting {key!r} is no longer supported; remove it from workers.yaml"
+        )
+    return payload
 
 
 def _split_values(value: Any) -> list[str]:

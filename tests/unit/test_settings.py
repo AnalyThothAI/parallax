@@ -371,6 +371,31 @@ def test_load_settings_rejects_unknown_top_level_keys(tmp_path, monkeypatch):
         load_settings()
 
 
+def test_load_settings_ignores_disabled_retired_worker_keys(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(tmp_path, {"ws_token": "secret", "handles": ["toly"]})
+    workers_payload = yaml.safe_load(default_workers_yaml())
+    workers_payload["mention_semantics"] = {"enabled": False}
+    workers_payload["token_discussion_digest"] = {"enabled": False}
+    write_workers_config(tmp_path, workers_payload)
+
+    settings = load_settings()
+
+    assert not hasattr(settings.workers, "mention_semantics")
+    assert not hasattr(settings.workers, "token_discussion_digest")
+
+
+def test_load_settings_rejects_active_retired_worker_keys(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(tmp_path, {"ws_token": "secret", "handles": ["toly"]})
+    workers_payload = yaml.safe_load(default_workers_yaml())
+    workers_payload["mention_semantics"] = {"enabled": True}
+    write_workers_config(tmp_path, workers_payload)
+
+    with pytest.raises(ValueError, match="retired worker setting"):
+        load_settings()
+
+
 def test_postgres_storage_and_llm_can_be_explicitly_configured(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     write_config(
