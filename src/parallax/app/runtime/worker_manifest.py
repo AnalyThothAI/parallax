@@ -695,6 +695,19 @@ def worker_dirty_target_tables() -> dict[str, tuple[str, ...]]:
     }
 
 
+def read_model_writer_by_table() -> dict[str, str]:
+    writers: dict[str, str] = {}
+    for manifest in _WORKER_MANIFESTS:
+        for table_name in manifest.writes_read_models:
+            if table_name in writers:
+                raise ValueError(
+                    f"read model table has multiple worker manifest writers: {table_name} "
+                    f"({writers[table_name]}, {manifest.name})"
+                )
+            writers[table_name] = manifest.name
+    return writers
+
+
 def worker_names() -> tuple[str, ...]:
     return tuple(manifest.name for manifest in _WORKER_MANIFESTS)
 
@@ -780,6 +793,7 @@ __all__ = [
     "manifest_by_name",
     "manifest_names_for_factory",
     "manifests_by_lane",
+    "read_model_writer_by_table",
     "require_worker_manifest",
     "worker_class_by_name",
     "worker_dirty_target_tables",

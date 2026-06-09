@@ -1510,6 +1510,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 72 — WorkerManifest owns read-model writer mapping
+
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 71
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for read-model writer ownership semantics.
+- **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_exposes_read_model_writer_mapping` — asserts `worker_manifest.py` exposes the unique read-model writer map.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `read_model_writer_by_table()` must be source-derived from `WorkerManifest.writes_read_models`, must reject duplicate read-model writers, and Worker Inventory docs checks must consume it instead of rebuilding a writer registry locally.
+- **On-demand context**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, and read-model writer ownership checks.
+- **Kill/defer criteria**: Stop if the fix keeps a test-side writer registry, silently accepts duplicate read-model writers, or touches dirty worker runtime contract files.
+- **Eval/repair signal**: duplicate read-model writer, Worker Inventory doc drift, local writer-registry reconstruction, and SDD generated index drift.
+- **Implementation**: Add `read_model_writer_by_table()` to the worker manifest module, export it, and refactor the Worker Inventory docs check to use it.
+- **Verification**: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_exposes_read_model_writer_mapping -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1583,4 +1604,5 @@
 - [ ] `uv run pytest tests/architecture/test_runtime_worker_constraint_hard_cut.py::test_every_registered_worker_has_runtime_constraint_classification -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_architecture_tests_do_not_import_peer_architecture_tests_as_sources -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_exposes_owned_tables_as_source_contract -q`
+- [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_exposes_read_model_writer_mapping -q`
 - [ ] `make check-all`

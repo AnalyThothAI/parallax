@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from parallax.app.runtime import worker_manifest as worker_manifest_module
 from parallax.app.runtime.wake_bus import WakeBus
 from parallax.app.runtime.worker_manifest import all_worker_manifests, worker_class_by_name
 
@@ -46,6 +47,17 @@ def test_worker_manifest_exposes_owned_tables_as_source_contract() -> None:
 
         assert manifest.owned_tables == expected_owned_tables
         assert set(manifest.queue_health_tables) <= set(manifest.owned_tables)
+
+
+@pytest.mark.architecture
+def test_worker_manifest_exposes_read_model_writer_mapping() -> None:
+    expected: dict[str, str] = {}
+    for manifest in all_worker_manifests():
+        for table in manifest.writes_read_models:
+            assert table not in expected, f"{table} has duplicate read model writers"
+            expected[table] = manifest.name
+
+    assert worker_manifest_module.read_model_writer_by_table() == expected
 
 
 @pytest.mark.architecture
@@ -121,14 +133,10 @@ def test_documented_single_writer_read_models_match_worker_manifest() -> None:
 
 
 def _manifest_read_model_writer_rows() -> dict[str, list[str]]:
-    expected_by_table: dict[str, list[str]] = {}
-    for manifest in all_worker_manifests():
-        for table in manifest.writes_read_models:
-            expected_by_table.setdefault(table, []).append(manifest.name)
-
-    duplicate_writers = {table: sorted(workers) for table, workers in expected_by_table.items() if len(workers) > 1}
-    assert duplicate_writers == {}, "WorkerManifest read models must have exactly one runtime writer"
-    return {table: sorted(workers) for table, workers in expected_by_table.items()}
+    return {
+        table: [worker_name]
+        for table, worker_name in sorted(worker_manifest_module.read_model_writer_by_table().items())
+    }
 
 
 def _rel(path: Path) -> str:

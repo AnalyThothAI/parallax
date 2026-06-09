@@ -195,6 +195,7 @@ Known-failing baseline tests:
 ### `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`
 
 - Add `WorkerManifest.owned_tables` as the source-owned table ownership contract and use it inside manifest validation instead of rebuilding ownership tuples in harness checks.
+- Add `read_model_writer_by_table()` as the source-owned read-model writer map and use it in Worker Inventory docs checks.
 
 ### `tests/unit/domains/macro_intel/test_macro_migration_contract.py`
 
@@ -286,6 +287,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Worker runtime constraints are manifest-owned. | Pass: `WorkerManifest` carries the runtime constraint enum for every worker and architecture tests no longer define a separate worker classification map. |
 | Worker Inventory docs are manifest-owned. | Pass: worker inventory architecture tests import source manifest data directly and reject peer architecture-test imports. |
 | Worker table ownership is manifest-owned. | Pass: `WorkerManifest.owned_tables` exposes the deduped owned-table contract and queue-health validation consumes it. |
+| Read-model writer mapping is manifest-owned. | Pass: `read_model_writer_by_table()` exposes unique read-model ownership and Worker Inventory docs checks consume it. |
 | Delegated handoff artifacts are task-bound. | Pass: validator rejects existing delegated handoff files that name another feature/task/mode or stale report-validation command. |
 | Delegated report mode matches handoff mode. | Pass: validator rejects report artifacts whose `Mode:` differs from the owning handoff mode. |
 | Factory lanes are bounded. | Pass: validator rejects task `Factory lane` values outside the six operating-model lanes. |
@@ -387,6 +389,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC69: `uv run pytest tests/architecture/test_runtime_worker_constraint_hard_cut.py::test_every_registered_worker_has_runtime_constraint_classification -q`
 - AC70: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_architecture_tests_do_not_import_peer_architecture_tests_as_sources -q`
 - AC71: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_exposes_owned_tables_as_source_contract -q`
+- AC72: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_exposes_read_model_writer_mapping -q`
 
 ## Verification
 

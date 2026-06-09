@@ -88,6 +88,7 @@ claim is allowed without the corresponding output captured below.
 | AC69 — Worker runtime constraints are manifest-owned. | ✅ | `uv run pytest tests/architecture/test_runtime_worker_constraint_hard_cut.py::test_every_registered_worker_has_runtime_constraint_classification -q` passed after adding `WorkerRuntimeConstraint` to `WorkerManifest` and removing the test-owned classification map; the temporary RED assertion failed first because `WorkerManifest` had no `runtime_constraint`. |
 | AC70 — Worker Inventory architecture tests use source manifests. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_architecture_tests_do_not_import_peer_architecture_tests_as_sources -q` failed RED on `test_worker_inventory_contract.py` importing `test_worker_runtime_contracts`, then passed after deriving Worker Inventory expectations from `WorkerManifest`. |
 | AC71 — Worker table ownership composition is manifest-owned. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_exposes_owned_tables_as_source_contract -q` failed RED before `WorkerManifest` exposed `owned_tables`, then passed after adding the source-owned ownership contract and using it in manifest queue-health validation. |
+| AC72 — Read-model writer mapping is manifest-owned. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_exposes_read_model_writer_mapping -q` failed RED before `worker_manifest.py` exposed `read_model_writer_by_table()`, then passed after adding the source-owned read-model writer map and using it in Worker Inventory docs checks. |
 
 Deviations from spec:
 
@@ -1175,6 +1176,19 @@ exit code: 0
 
 $ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
 6 passed in 0.16s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_exposes_read_model_writer_mapping -q
+F                                                                        [100%]
+AttributeError: module 'parallax.app.runtime.worker_manifest' has no attribute 'read_model_writer_by_table'
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_exposes_read_model_writer_mapping -q
+1 passed in 0.04s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
+7 passed in 0.16s
 exit code: 0
 ```
 
