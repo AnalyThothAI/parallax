@@ -43,7 +43,9 @@ def main() -> int:
 
 def render_index(features: list[SddFeature], issues: list[SddIssue]) -> str:
     feature_counts = Counter(feature.state for feature in features)
-    artifact_counts = Counter(feature.state for feature in features for _artifact in feature.artifacts.values())
+    artifact_counts = Counter(
+        feature.state for feature in features for artifact in feature.artifacts.values() if not artifact.missing
+    )
     issue_counts = Counter({code: 0 for code in KNOWN_ISSUE_CODES})
     issue_counts.update(issue.code for issue in issues)
     issue_map = _issues_by_feature(features, issues)

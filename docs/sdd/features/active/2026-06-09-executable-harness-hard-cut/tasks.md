@@ -131,7 +131,26 @@
 - **Implementation**: Add factory/eval playbook docs, require new task fields, expose factory lanes in the generated work index, and validate the field set.
 - **Verification**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py tests/architecture/test_sdd_artifact_validator.py -q`
 - **Review owner**: parent
-- **Status**: [~]
+- **Status**: [x]
+
+### Task 7 — SDD context-packet CLI
+
+- **File(s)**: `scripts/build_agent_context_packet.py`, `docs/agent-playbook/factory-operating-model.md`, `docs/agent-playbook/task-reading-matrix.md`, `docs/agent-playbook/context-packet-template.md`, `tests/architecture/test_agent_playbook_contracts.py`
+- **Owner**: parent
+- **Depends on**: Task 6
+- **Touch set**: `scripts/build_agent_context_packet.py`, `docs/agent-playbook/factory-operating-model.md`, `docs/agent-playbook/task-reading-matrix.md`, `docs/agent-playbook/context-packet-template.md`, `tests/architecture/test_agent_playbook_contracts.py`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared agent playbook docs and tests.
+- **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli` — asserts an executable CLI can render a bounded packet from an active SDD task.
+- **Subagent handoff**: not delegated; current task creates the handoff packet generator used before future delegation.
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: The CLI must run `scripts/validate_sdd_artifacts.py` semantics before emitting a packet and must reject inactive features.
+- **On-demand context**: `docs/agent-playbook/context-packet-template.md`, `docs/agent-playbook/factory-operating-model.md`, active SDD task metadata.
+- **Kill/defer criteria**: Stop if implementation creates product runtime queues, durable agent task state, or compatibility parsing for old planning records.
+- **Eval/repair signal**: context packet CLI failure, missing active task metadata, review defect, or secret-redaction concern.
+- **Implementation**: Add a filesystem-only CLI that selects one active SDD task and emits mode, lane, owned scope, conflict scope, deterministic constraints, context, kill/defer criteria, eval signal, and verification evidence.
+- **Verification**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q`
+- **Review owner**: parent
+- **Status**: [x]
 
 ## Final verification
 
@@ -140,4 +159,5 @@
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py tests/architecture/test_test_lane_contracts.py -q`
 - [ ] `uv run pytest tests/unit/domains/macro_intel/test_macro_migration_contract.py -q`
 - [ ] `uv run pytest tests/architecture/test_agent_playbook_contracts.py tests/architecture/test_sdd_artifact_validator.py -q`
+- [ ] `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q`
 - [ ] `make check-all`

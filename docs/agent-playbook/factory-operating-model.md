@@ -27,6 +27,7 @@ Deterministic constraints are always loaded or enforced by harness:
 - `docs/WORKFLOW.md` owns SDD lane mechanics, worktree policy, and completion gates.
 - `scripts/validate_sdd_artifacts.py --check` fails false completion claims, missing gate sections, missing task fields, and active touch conflicts.
 - `scripts/regen_sdd_work_index.py --check` keeps the coordination board current.
+- `scripts/build_agent_context_packet.py` generates bounded subagent context from a validated active SDD task.
 - `make check-all` is the only completion command for a `Verified` SDD record.
 
 Do not replace deterministic constraints with prompt instructions. If a rule must always hold, encode it in docs, templates, scripts, tests, generated indexes, or Makefile gates.
@@ -86,7 +87,7 @@ The parent integrator records the reason in the SDD task, verification record, o
 Before dispatching a subagent:
 
 - Fill `Factory lane`, `Touch set`, `Conflict set`, `Deterministic constraints`, `On-demand context`, `Kill/defer criteria`, and `Eval/repair signal` in `tasks.md`.
-- Provide a bounded context packet.
+- Generate a bounded context packet with `uv run python scripts/build_agent_context_packet.py --feature <slug> --task <number> --mode <read-only|write-allowed|review-only>`.
 - State whether the subagent is read-only, write-allowed, or review-only.
 - Require verification evidence or a source-backed explanation for why verification cannot run.
 

@@ -452,7 +452,8 @@ def _task_set(tasks: tuple[TaskRecord, ...], field_name: str) -> tuple[str, ...]
         raw = task.fields.get(field_name, "")
         if _is_placeholder(raw) or raw.lower() in {"none", "not delegated"}:
             continue
-        candidates = re.split(r"[,;]", raw.replace("`", ""))
+        separator = r";" if field_name == "conflict set" else r"[,;]"
+        candidates = re.split(separator, raw.replace("`", ""))
         values.extend(
             candidate.strip() for candidate in candidates if candidate.strip() and candidate.strip().lower() != "none"
         )

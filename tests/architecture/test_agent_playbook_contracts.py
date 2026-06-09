@@ -3,8 +3,19 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
+from textwrap import dedent
 
 import pytest
+
+from scripts.regen_sdd_work_index import render_index
+from scripts.validate_sdd_artifacts import (
+    KNOWN_ISSUE_CODES,
+    ArtifactRecord,
+    SddFeature,
+    TaskRecord,
+    scan_sdd_features,
+    validate_sdd_root,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 PLAYBOOK = ROOT / "docs" / "agent-playbook"
@@ -146,8 +157,55 @@ def test_development_agent_factory_model_is_explicit_and_bounded() -> None:
         "Kill / Defer Criteria",
         "Product LLM agents are not development-agent lanes",
         "Subagent output is evidence, not authority",
+        "scripts/build_agent_context_packet.py",
     ):
         assert required_phrase in text
+
+
+@pytest.mark.architecture
+def test_context_packet_cli(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "build_agent_context_packet.py"
+    assert script.exists()
+    _write_context_packet_fixture(tmp_path)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--task",
+            "1",
+            "--mode",
+            "read-only",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    for required_phrase in (
+        "# Context Packet - 2026-06-09-context-packet-fixture / Task 1",
+        "Mode: read-only",
+        "Factory lane: Harness/tests",
+        "Owned scope:",
+        "Do not touch:",
+        "Deterministic constraints:",
+        "On-demand context:",
+        "Kill/defer criteria:",
+        "Eval/repair signal:",
+        "Verification evidence:",
+        "Redactions:",
+        "Product LLM agents are not development-agent lanes",
+    ):
+        assert required_phrase in result.stdout
+
+    for forbidden_phrase in ("<task", "<path>", "<pending>", "~/.parallax/", "token=", "cookie=", "dsn="):
+        assert forbidden_phrase not in result.stdout.lower()
 
 
 @pytest.mark.architecture
@@ -213,7 +271,10 @@ def test_sdd_work_index_is_generated_and_current() -> None:
     assert validator.exists()
     assert generated.exists()
     text = generated.read_text(encoding="utf-8")
+    assert render_index(scan_sdd_features(ROOT), validate_sdd_root(ROOT)) == text
     assert "## Coordination Board" in text
+    lifecycle_codes = _table_values(text, "## Lifecycle Flags", column=0)
+    assert lifecycle_codes == set(KNOWN_ISSUE_CODES)
     for required_column in (
         "Owner",
         "Worktree",
@@ -225,11 +286,6 @@ def test_sdd_work_index_is_generated_and_current() -> None:
         "Verification",
     ):
         assert required_column in text
-    assert "| `review-lifecycle` | 0 |" in text
-    assert "| `missing-status` | 0 |" in text
-    assert "| `verified-missing-check-all` | 0 |" in text
-    assert "| `task-missing-coordination-fields` | 0 |" in text
-    assert "| `task-missing-agent-loop-fields` | 0 |" in text
     result = subprocess.run(
         [sys.executable, str(script), "--check"],
         cwd=ROOT,
@@ -246,6 +302,239 @@ def test_sdd_work_index_is_generated_and_current() -> None:
         check=False,
     )
     assert validation.returncode == 0, validation.stdout + validation.stderr
+
+
+@pytest.mark.architecture
+def test_sdd_work_index_summary_counts_present_artifacts_only(tmp_path: Path) -> None:
+    feature_path = tmp_path / "docs" / "sdd" / "features" / "active" / "fixture"
+    present = ArtifactRecord(
+        name="spec.md",
+        path=feature_path / "spec.md",
+        relative_path="docs/sdd/features/active/fixture/spec.md",
+        text="",
+        status="In Progress",
+        fields={},
+    )
+    missing = ArtifactRecord(
+        name="plan.md",
+        path=feature_path / "plan.md",
+        relative_path="docs/sdd/features/active/fixture/plan.md",
+        text="",
+        status="missing-file",
+        fields={},
+        missing=True,
+    )
+    feature = SddFeature(
+        slug="fixture",
+        state="active",
+        path=feature_path,
+        relative_path="docs/sdd/features/active/fixture",
+        artifacts={"spec.md": present, "plan.md": missing},
+        tasks=(),
+    )
+
+    text = render_index([feature], [])
+
+    assert "| `active` | 1 | 1 |" in text
+
+
+@pytest.mark.architecture
+def test_sdd_work_index_keeps_conflict_coordination_rule_intact(tmp_path: Path) -> None:
+    feature_path = tmp_path / "docs" / "sdd" / "features" / "active" / "fixture"
+    feature = SddFeature(
+        slug="fixture",
+        state="active",
+        path=feature_path,
+        relative_path="docs/sdd/features/active/fixture",
+        artifacts={},
+        tasks=(
+            TaskRecord(
+                title="Task 1",
+                fields={
+                    "conflict set": (
+                        "coordinate with 2026-06-09-other-feature for shared SDD index, macro repository, "
+                        "and agent playbook test edits"
+                    )
+                },
+            ),
+        ),
+    )
+
+    text = render_index([feature], [])
+
+    assert (
+        "`coordinate with 2026-06-09-other-feature for shared SDD index, macro repository, "
+        "and agent playbook test edits`"
+    ) in text
+    assert "`macro repository`" not in text
+    assert "`and agent playbook test edits`" not in text
+
+
+def _table_values(text: str, heading: str, *, column: int) -> set[str]:
+    section = text.split(heading, 1)[1].split("\n## ", 1)[0]
+    values: set[str] = set()
+    for line in section.splitlines():
+        if not line.startswith("| `"):
+            continue
+        cells = [cell.strip().strip("`") for cell in line.strip("|").split("|")]
+        if len(cells) > column:
+            values.add(cells[column])
+    return values
+
+
+def _write_context_packet_fixture(root: Path) -> None:
+    feature = root / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture"
+    feature.mkdir(parents=True)
+    (feature / "spec.md").write_text(
+        dedent(
+            """
+            # Spec
+
+            **Status**: In Progress
+            **Date**: 2026-06-09
+            **Owner**: Codex
+            **Approved by**: qinghuan
+            **Approved at**: 2026-06-09
+
+            ## Clarifications
+
+            | Question | Answer | Approved by | Approved at |
+            |----------|--------|-------------|-------------|
+            | Should packet generation use active SDD task metadata? | Yes. | qinghuan | 2026-06-09 |
+
+            ## Requirement Checklist
+
+            | Requirement | Quality gate |
+            |-------------|--------------|
+            | Context packet is bounded. | Generated from one task. |
+
+            ## Acceptance criteria
+
+            - AC1. Context packet CLI emits a bounded packet.
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    (feature / "plan.md").write_text(
+        dedent(
+            """
+            # Plan
+
+            **Status**: In Progress
+            **Date**: 2026-06-09
+            **Owning spec**: `docs/sdd/features/active/2026-06-09-context-packet-fixture/spec.md`
+            **Worktree**: `.worktrees/context-packet-fixture`
+            **Branch**: `codex/context-packet-fixture`
+            **Approved by**: qinghuan
+            **Approved at**: 2026-06-09
+
+            ## Analyze Gate
+
+            | Check | Result |
+            |-------|--------|
+            | Product runtime untouched. | Pass. |
+
+            ## Acceptance test commands
+
+            - `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q`
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    (feature / "tasks.md").write_text(
+        dedent(
+            """
+            # Tasks
+
+            **Status**: In Progress
+            **Owning plan**: `docs/sdd/features/active/2026-06-09-context-packet-fixture/plan.md`
+            **Worktree**: `.worktrees/context-packet-fixture`
+            **Branch**: `codex/context-packet-fixture`
+            **Approved by**: qinghuan
+            **Approved at**: 2026-06-09
+
+            ## Gate Compliance
+
+            | Gate | Evidence |
+            |------|----------|
+            | Clarify | `spec.md` includes `## Clarifications`. |
+            | Checklist | `spec.md` includes `## Requirement Checklist`. |
+            | Analyze | `plan.md` includes `## Analyze Gate`. |
+            | Implement | Tasks below are TDD ordered. |
+            | Verify | `verification.md` captures command output. |
+
+            ## Tasks
+
+            ### Task 1 — Dispatch packet
+
+            - **File(s)**: `scripts/build_agent_context_packet.py`
+            - **Owner**: parent
+            - **Depends on**: none
+            - **Touch set**: `scripts/build_agent_context_packet.py`
+            - **Conflict set**: coordinate with active SDD tasks touching context packet generator.
+            - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli`
+            - **Subagent handoff**: not delegated
+            - **Factory lane**: Harness/tests
+            - **Deterministic constraints**: Run validator before emitting context.
+            - **On-demand context**: `docs/agent-playbook/context-packet-template.md`
+            - **Kill/defer criteria**: Stop if inactive SDD records are accepted.
+            - **Eval/repair signal**: context packet CLI failure and review defect.
+            - **Implementation**: Emit a bounded packet from one active task.
+            - **Verification**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py -q`
+            - **Review owner**: parent
+            - **Status**: [x]
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    (feature / "verification.md").write_text(
+        dedent(
+            """
+            # Verification
+
+            **Status**: In Progress
+            **Date**: 2026-06-09
+            **Owning spec**: `docs/sdd/features/active/2026-06-09-context-packet-fixture/spec.md`
+            **Owning plan**: `docs/sdd/features/active/2026-06-09-context-packet-fixture/plan.md`
+            **Branch**: `codex/context-packet-fixture`
+            **Worktree**: `.worktrees/context-packet-fixture`
+            **Approved by**: qinghuan
+            **Approved at**: 2026-06-09
+
+            ## Spec compliance
+
+            | Acceptance criterion | Status | Evidence |
+            |----------------------|--------|----------|
+            | AC1 | In Progress | Pending. |
+
+            ## Verification commands
+
+            ```text
+            $ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q
+            Pending.
+            ```
+
+            ## Coverage
+
+            | metric | value | threshold | status |
+            |--------|-------|-----------|--------|
+            | line | Pending | >= 80% | Pending |
+
+            ## Skipped tests
+
+            Number of skipped tests in the run above: 0
+
+            ## E2E golden path
+
+            - [ ] Not applicable.
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
 
 
 @pytest.mark.architecture

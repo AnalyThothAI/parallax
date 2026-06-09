@@ -1,6 +1,10 @@
 # Context Packet Template
 
-Use this for parent-agent to subagent handoff. It is a bounded fact packet, not a diary and not a replacement for canonical docs.
+Use this for parent-agent to subagent handoff. It is a bounded fact packet, not a diary and not a replacement for canonical docs. Prefer generating it from active SDD task metadata:
+
+```bash
+uv run python scripts/build_agent_context_packet.py --feature <slug> --task <number> --mode read-only
+```
 
 ```md
 # Context Packet - <task slug>

@@ -29,15 +29,17 @@ Historical one-off plans are not retained here. Canonical project truth lives in
 4. Write `plan.md` with file-level edits and verification commands.
 5. Write `tasks.md` for TDD-ordered execution.
 6. Analyze spec, plan, and tasks for contradictions before implementation.
-7. Implement in an isolated `.worktrees/<slug>/` worktree.
-8. Fill `verification.md` with evidence, including `make check-all`.
-9. Move the feature directory from `active/` to `completed/`.
+7. Generate a bounded context packet before any subagent handoff.
+8. Implement in an isolated `.worktrees/<slug>/` worktree.
+9. Fill `verification.md` with evidence, including `make check-all`.
+10. Move the feature directory from `active/` to `completed/`.
 
 Run the executable harness after changing any SDD record:
 
 ```bash
 uv run python scripts/validate_sdd_artifacts.py --check
 uv run python scripts/regen_sdd_work_index.py --check
+uv run python scripts/build_agent_context_packet.py --feature <slug> --task <number> --mode read-only
 ```
 
 The validator rejects false `Verified` records, missing clarify/checklist/analyze

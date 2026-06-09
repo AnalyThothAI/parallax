@@ -56,6 +56,7 @@ can both miss real process drift and block healthy refactors.
 - G4. Tests that rely on SQL shape can use a query-contract helper to assert semantic SQL contracts without exact alias or whitespace coupling.
 - G5. `make check-all` includes SDD artifact validation and generated index freshness so harness drift blocks completion.
 - G6. Development-agent work follows an explicit factory/eval loop that separates deterministic constraints from on-demand context, keeps product LLM agents outside development lanes, and records repair signals.
+- G7. Parent agents can generate a bounded subagent context packet from a validated active SDD task without hand-copying template prose.
 
 ## Non-goals
 
@@ -94,6 +95,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 
 - CLI: `uv run python scripts/validate_sdd_artifacts.py --check` exits 0 when all SDD records satisfy the executable harness and exits 1 with issue lines otherwise.
 - CLI: `uv run python scripts/regen_sdd_work_index.py --check` fails when `docs/generated/sdd-work-index.md` is stale.
+- CLI: `uv run python scripts/build_agent_context_packet.py --feature <slug> --task <number> --mode <mode>` prints a bounded subagent context packet from active SDD task metadata.
 - Test helper: `tests.support.query_contract.assert_query_contract(sql, ...)` raises `AssertionError` with contract-specific messages.
 
 ## Acceptance criteria
@@ -104,6 +106,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC4. WHEN a SQL unit test uses the query-contract helper THEN it SHALL be able to assert required/forbidden tables and predicates without depending on alias names or whitespace.
 - AC5. WHEN `make check-all` runs THEN SDD artifact validation and generated index freshness SHALL be part of the deterministic gate.
 - AC6. WHEN task records are created or updated THEN each task SHALL declare factory lane, deterministic constraints, on-demand context, kill/defer criteria, and eval/repair signal; missing fields SHALL report `task-missing-agent-loop-fields`.
+- AC7. WHEN a parent agent prepares a subagent handoff THEN the context packet CLI SHALL read a validated active SDD task and output mode, factory lane, owned scope, conflict scope, deterministic constraints, on-demand context, kill/defer criteria, eval/repair signal, verification evidence, redactions, and the product-agent boundary.
 
 ## Risks
 
@@ -116,9 +119,9 @@ The new arrows are harness-only and do not affect runtime product data flow.
 
 ## Evolution path
 
-The next expansion is a dedicated active-work dispatch CLI that reads the coordination board and produces
-subagent context packets. This work should not foreclose that path, but it must avoid adding durable runtime
-agent queues.
+The next expansion is a richer active-work dispatch CLI that can split context packets across multiple lanes and
+optionally write reviewed packets to generated artifacts. This work should not foreclose that path, but it must avoid
+adding durable runtime agent queues.
 
 ## Alternatives considered
 
