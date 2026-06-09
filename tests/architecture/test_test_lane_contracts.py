@@ -89,6 +89,11 @@ def test_architecture_tests_declare_harness_taxonomy() -> None:
     architecture_tests = sorted(
         path.relative_to(REPO_ROOT).as_posix() for path in (TESTS_ROOT / "architecture").glob("test_*.py")
     )
+    documented_tests = sorted(
+        line.split("|", 2)[1].strip().strip("`")
+        for line in testing_doc.splitlines()
+        if line.startswith("| `tests/architecture/test_")
+    )
 
     for required_heading in (
         "## Harness Test Taxonomy",
@@ -101,5 +106,4 @@ def test_architecture_tests_declare_harness_taxonomy() -> None:
     ):
         assert required_heading in testing_doc
 
-    for test_path in architecture_tests:
-        assert test_path in testing_doc, f"{test_path} needs a harness taxonomy entry"
+    assert documented_tests == architecture_tests

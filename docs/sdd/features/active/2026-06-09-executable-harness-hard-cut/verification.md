@@ -73,6 +73,7 @@ claim is allowed without the corresponding output captured below.
 | AC54 — Frontend verification skill carries data ownership. | ✅ | `cd web && npm run test -- tests/architecture/frontendDocContract.test.ts` failed RED on missing `frontendDataOwnership.test.ts` in the skill, then passed after the skill and doc-contract update. |
 | AC55 — Architecture docs reference executable tests. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_architecture_doc_test_references_are_path_qualified_and_existing -q` failed RED on bare `test_legacy_asset_repository_is_not_imported`, then passed after path qualification and parser tightening. |
 | AC56 — Architecture module map links current domain docs. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_architecture_module_map_links_every_domain_architecture_doc -q` failed RED on the non-linked Narrative row, then passed after converting it to a markdown link. |
+| AC57 — Architecture test taxonomy inventory is exact. | ✅ | `uv run pytest tests/architecture/test_test_lane_contracts.py::test_architecture_tests_declare_harness_taxonomy -q` failed RED on missing `test_public_contracts_doc_alignment.py`, then passed after exact-set validation and docs update. |
 
 Deviations from spec:
 
@@ -902,6 +903,23 @@ exit code: 1
 
 $ uv run pytest tests/architecture/test_harness_structure.py::test_architecture_module_map_links_every_domain_architecture_doc -q
 1 passed in 0.02s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_test_lane_contracts.py::test_architecture_tests_declare_harness_taxonomy -q
+F                                                                        [100%]
+AssertionError: tests/architecture/test_public_contracts_doc_alignment.py needs a harness taxonomy entry
+exit code: 1
+
+$ uv run pytest tests/architecture/test_test_lane_contracts.py::test_architecture_tests_declare_harness_taxonomy -q
+1 passed in 0.01s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_test_lane_contracts.py -q
+5 passed in 0.13s
+exit code: 0
+
+$ uv run ruff check tests/architecture/test_test_lane_contracts.py
+All checks passed!
 exit code: 0
 
 $ uv run pytest tests/architecture/test_harness_structure.py -q

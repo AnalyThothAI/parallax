@@ -151,6 +151,7 @@ Known-failing baseline tests:
 ### `tests/architecture/test_test_lane_contracts.py`
 
 - Add taxonomy checks for permanent invariants, migration tripwires, behavior contracts, and generated hygiene.
+- Require the architecture test taxonomy table to exactly match current `tests/architecture/test_*.py` files, preventing both missing and stale inventory rows.
 
 ### `docs/agent-playbook/factory-operating-model.md`
 
@@ -271,6 +272,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Frontend verification skill carries data ownership. | Pass: `frontendDocContract.test.ts` compares the skill against `frontendDataOwnership.test.ts` primitives. |
 | Architecture docs reference executable tests. | Pass: `test_architecture_doc_test_references_are_path_qualified_and_existing` rejects bare or missing enforcement test references. |
 | Architecture module maps are source-complete. | Pass: `test_architecture_module_map_links_every_domain_architecture_doc` compares docs links against current domain architecture files. |
+| Test taxonomy inventory is exact. | Pass: `test_architecture_tests_declare_harness_taxonomy` compares `docs/TESTING.md` rows against `tests/architecture`. |
 
 ## Acceptance test commands
 
@@ -330,6 +332,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC54: `cd web && npm run test -- tests/architecture/frontendDocContract.test.ts`
 - AC55: `uv run pytest tests/architecture/test_harness_structure.py::test_architecture_doc_test_references_are_path_qualified_and_existing -q`
 - AC56: `uv run pytest tests/architecture/test_harness_structure.py::test_architecture_module_map_links_every_domain_architecture_doc -q`
+- AC57: `uv run pytest tests/architecture/test_test_lane_contracts.py::test_architecture_tests_declare_harness_taxonomy -q`
 
 ## Verification
 

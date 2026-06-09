@@ -51,6 +51,7 @@ Current architecture test inventory:
 | `tests/architecture/test_notifications_hard_cut.py` | Migration tripwire | Notification hard-cut surfaces. |
 | `tests/architecture/test_project_structure.py` | Permanent invariant | Repository and source tree boundaries. |
 | `tests/architecture/test_projection_worker_idle_cost_contract.py` | Behavior contract | Idle projection workers avoid broad work. |
+| `tests/architecture/test_public_contracts_doc_alignment.py` | Generated hygiene | Public contract docs stay source-aligned. |
 | `tests/architecture/test_public_event_token_projection.py` | Behavior contract | Public event token projection contract. |
 | `tests/architecture/test_pulse_no_compat.py` | Migration tripwire | Pulse compatibility code stays deleted. |
 | `tests/architecture/test_runtime_lifecycle_hard_cut.py` | Migration tripwire | Runtime lifecycle hard cut. |

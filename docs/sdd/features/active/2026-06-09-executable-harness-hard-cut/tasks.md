@@ -1195,6 +1195,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 57 — Architecture test taxonomy exact-inventory gate
+
+- **File(s)**: `docs/TESTING.md`, `tests/architecture/test_test_lane_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 56
+- **Touch set**: `docs/TESTING.md`, `tests/architecture/test_test_lane_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `docs/TESTING.md` for architecture test taxonomy inventory.
+- **Failing test first**: `tests/architecture/test_test_lane_contracts.py::test_architecture_tests_declare_harness_taxonomy` — asserts `docs/TESTING.md` architecture-test taxonomy rows exactly match current `tests/architecture/test_*.py` files.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Docs/contracts
+- **Deterministic constraints**: The architecture taxonomy table in `docs/TESTING.md` must list exactly the current `tests/architecture/test_*.py` files; missing and stale rows both fail.
+- **On-demand context**: `docs/TESTING.md`, `tests/architecture/test_test_lane_contracts.py`, and current files under `tests/architecture`.
+- **Kill/defer criteria**: Stop if the gate only checks presence and still allows stale rows, or if the taxonomy row duplicates implementation details instead of class/review note.
+- **Eval/repair signal**: missing taxonomy row, stale taxonomy row, harness taxonomy failure, and review defects around test-lane documentation.
+- **Implementation**: Strengthen the taxonomy architecture test to compare exact file sets and add the missing public-contracts doc-alignment row to `docs/TESTING.md`.
+- **Verification**: `uv run pytest tests/architecture/test_test_lane_contracts.py::test_architecture_tests_declare_harness_taxonomy -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1253,4 +1274,5 @@
 - [ ] `cd web && npm run test -- tests/architecture/frontendDocContract.test.ts`
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_architecture_doc_test_references_are_path_qualified_and_existing -q`
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_architecture_module_map_links_every_domain_architecture_doc -q`
+- [ ] `uv run pytest tests/architecture/test_test_lane_contracts.py::test_architecture_tests_declare_harness_taxonomy -q`
 - [ ] `make check-all`
