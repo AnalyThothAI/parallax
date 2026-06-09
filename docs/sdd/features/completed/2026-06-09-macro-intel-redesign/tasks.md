@@ -1,8 +1,9 @@
 # Tasks — Macro Intel Workbench Redesign
 
-**Status**: Verified
+**Status**: Superseded
 **Owning plan**: `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/plan.md`
 **Worktree**: `.worktrees/macro-intel-redesign/`
+**Superseded by**: `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut/`
 
 Tasks are TDD-ordered. A task is complete only when its verification command produced the expected output.
 

@@ -231,6 +231,12 @@ def _issue_meaning(code: str) -> str:
         ),
         "task-missing-review-fields": "Task records lack subagent report or parent review result evidence.",
         "task-invalid-review-fields": "Task report/review evidence is inconsistent with delegation, scope, or status.",
+        "task-missing-subagent-report-artifact": (
+            "Delegated task references a subagent report artifact that is missing."
+        ),
+        "task-invalid-subagent-report-artifact": (
+            "Delegated task report artifact fails the task-bound report validator."
+        ),
         "task-incomplete-in-verified-feature": "Verified feature contains incomplete task status.",
         "verified-missing-check-all": "Verified record lacks successful make check-all evidence.",
         "verified-contradicts-evidence": "Verified record contains text that contradicts final evidence.",

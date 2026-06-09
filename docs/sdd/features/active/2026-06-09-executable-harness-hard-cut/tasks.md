@@ -313,6 +313,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 15 — Delegated report artifact validation
+
+- **File(s)**: `scripts/subagent_report_contract.py`, `scripts/validate_subagent_report.py`, `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 14
+- **Touch set**: `scripts/subagent_report_contract.py`, `scripts/validate_subagent_report.py`, `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared generated index, SDD validator, and architecture tests.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_report_artifact` and `tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_validate_report_artifact_against_task` — assert delegated task report paths are real artifacts and pass the task-bound report contract.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: SDD validation must follow delegated `Subagent report` paths and run the same task-bound report contract as the CLI without creating circular imports.
+- **On-demand context**: `scripts/validate_subagent_report.py`, `scripts/validate_sdd_artifacts.py`, `scripts/subagent_report_contract.py`, active SDD task metadata.
+- **Kill/defer criteria**: Stop if delegated tasks can point at missing report files, if SDD validation accepts invalid report evidence, or if the CLI and SDD validator diverge.
+- **Eval/repair signal**: `task-missing-subagent-report-artifact`, `task-invalid-subagent-report-artifact`, report validator failures, and parent review defects.
+- **Implementation**: Extract a shared report contract module, keep the CLI as a thin task resolver, and have SDD validation check referenced report artifacts for delegated tasks.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_report_artifact tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_validate_report_artifact_against_task tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_accepts_task_bound_report -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -328,4 +349,5 @@
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_unresolved_dependencies tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_refuses_unmet_dependencies tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board -q`
 - [ ] `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_accepts_evidence_report tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_rejects_unverifiable_or_out_of_scope_report tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_accepts_task_bound_report tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_rejects_task_bound_scope_and_command_drift tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_review_evidence_fields tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_reject_invalid_review_evidence_values tests/architecture/test_agent_playbook_contracts.py::test_tasks_template_has_parallel_subagent_contract_fields tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board -q`
+- [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_report_artifact tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_validate_report_artifact_against_task tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_accepts_task_bound_report -q`
 - [ ] `make check-all`

@@ -9,6 +9,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.subagent_report_contract import validate_subagent_report  # noqa: E402
+
 SDD_FEATURES = ROOT / "docs" / "sdd" / "features"
 ARTIFACTS = ("spec.md", "plan.md", "tasks.md", "verification.md")
 ACTIVE_STATUSES = {"draft", "approved", "in progress", "review", "blocked"}
@@ -94,6 +99,8 @@ KNOWN_ISSUE_CODES = (
     "task-missing-agent-loop-fields",
     "task-missing-review-fields",
     "task-invalid-review-fields",
+    "task-missing-subagent-report-artifact",
+    "task-invalid-subagent-report-artifact",
     "task-incomplete-in-verified-feature",
     "verified-missing-check-all",
     "verified-contradicts-evidence",
@@ -462,6 +469,7 @@ def _task_issues(feature: SddFeature) -> list[SddIssue]:
                     f"{task.title} invalid fields: {', '.join(invalid_review_fields)}",
                 )
             )
+        issues.extend(_subagent_report_artifact_issues(feature, task))
         if feature.status.lower() == "verified" and task.fields.get("status", "").strip().lower() != "[x]":
             issues.append(
                 _issue("task-incomplete-in-verified-feature", tasks_artifact, f"{task.title} is not complete")
@@ -525,6 +533,60 @@ def _invalid_review_fields(task: TaskRecord) -> list[str]:
     if status == "[x]" and normalized_result in {"needs-repair", "blocked"}:
         invalid.append("review result")
     return list(dict.fromkeys(invalid))
+
+
+def _subagent_report_artifact_issues(feature: SddFeature, task: TaskRecord) -> list[SddIssue]:
+    if _is_not_delegated(task.fields.get("subagent handoff", "")):
+        return []
+
+    report_value = task.fields.get("subagent report", "")
+    if _is_placeholder(report_value) or not _is_repo_path(report_value):
+        return []
+
+    tasks_artifact = feature.artifacts["tasks.md"]
+    report_path = _repo_root(feature) / report_value.replace("`", "").strip()
+    if not report_path.exists():
+        return [
+            _issue(
+                "task-missing-subagent-report-artifact",
+                tasks_artifact,
+                f"{task.title} missing subagent report artifact: {report_value}",
+            )
+        ]
+
+    report_text = report_path.read_text(encoding="utf-8")
+    mode = _extract_report_mode(report_text)
+    if mode is None:
+        return [
+            _issue(
+                "task-invalid-subagent-report-artifact",
+                tasks_artifact,
+                f"{task.title} subagent report has no Mode line: {report_value}",
+            )
+        ]
+
+    report_issues = validate_subagent_report(report_text, mode=mode, task_fields=task.fields)
+    if report_issues:
+        return [
+            _issue(
+                "task-invalid-subagent-report-artifact",
+                tasks_artifact,
+                f"{task.title} invalid subagent report: {'; '.join(report_issues)}",
+            )
+        ]
+    return []
+
+
+def _extract_report_mode(text: str) -> str | None:
+    for line in text.splitlines()[:20]:
+        match = re.match(r"^\s*Mode:\s*(read-only|write-allowed|review-only)\s*$", line, re.IGNORECASE)
+        if match:
+            return match.group(1).lower()
+    return None
+
+
+def _repo_root(feature: SddFeature) -> Path:
+    return feature.path.parents[4]
 
 
 def _verified_issues(feature: SddFeature) -> list[SddIssue]:

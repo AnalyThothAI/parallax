@@ -230,6 +230,76 @@ def test_delegated_tasks_reject_invalid_review_evidence_values(tmp_path: Path) -
     assert "task-invalid-review-fields" in _issue_codes(issues)
 
 
+def test_delegated_tasks_require_report_artifact(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-missing-subagent-report")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(
+        feature / "tasks.md",
+        status="In Progress",
+        subagent_handoff="docs/agent-playbook/subagent-handoff-template.md",
+        subagent_report="docs/generated/subagent-reports/missing.md",
+        review_result="accepted",
+        task_status="[~]",
+    )
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "task-missing-subagent-report-artifact" in _issue_codes(issues)
+
+
+def test_delegated_tasks_validate_report_artifact_against_task(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-invalid-subagent-report")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    report = tmp_path / "docs" / "generated" / "subagent-reports" / "invalid.md"
+    report.parent.mkdir(parents=True)
+    report.write_text(
+        "\n".join(
+            [
+                "# Subagent Report",
+                "",
+                "Mode: write-allowed",
+                "",
+                "## Findings",
+                "- Wrote outside scope.",
+                "",
+                "## Scope Adherence",
+                "- Owned scope: pass",
+                "- Conflict set: pass",
+                "",
+                "## Changed Files",
+                "- `scripts/dispatch_sdd_task.py`",
+                "",
+                "## Verification Evidence",
+                "```text",
+                "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py -q",
+                "failed",
+                "exit code: 1",
+                "```",
+                "",
+                "## Remaining Risks",
+                "- needs repair",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _write_valid_tasks(
+        feature / "tasks.md",
+        status="In Progress",
+        subagent_handoff="docs/agent-playbook/subagent-handoff-template.md",
+        subagent_report="docs/generated/subagent-reports/invalid.md",
+        review_result="needs-repair",
+        task_status="[~]",
+    )
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "task-invalid-subagent-report-artifact" in _issue_codes(issues)
+
+
 def test_tasks_reject_unresolved_dependencies(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-unresolved-dependency")
     _write_valid_spec(feature / "spec.md", status="In Progress")

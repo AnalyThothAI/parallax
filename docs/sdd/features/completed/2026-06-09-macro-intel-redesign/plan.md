@@ -1,10 +1,11 @@
 # Plan — Macro Intel Workbench Redesign
 
-**Status**: Verified
+**Status**: Superseded
 **Date**: 2026-06-09
 **Owning spec**: `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/spec.md`
 **Worktree**: `.worktrees/macro-intel-redesign/`
 **Branch**: `codex/macro-intel-redesign`
+**Superseded by**: `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut/`
 
 ## Pre-flight
 

@@ -1,10 +1,11 @@
 # Verification — Macro Intel Workbench Redesign
 
-**Status**: Verified
+**Status**: Superseded
 **Date**: 2026-06-09
 **Owning spec**: `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/spec.md`
 **Owning plan**: `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/plan.md`
 **Branch**: `codex/macro-intel-redesign`
+**Superseded by**: `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut/`
 **Diff**: final implementation slice committed on `codex/macro-intel-redesign`
 
 This file records the Macro Intel frontend redesign implementation: shared workbench model/components, overview and generic leaf migration, rates naming/diagnostics convergence, asset overview decomposition, correlation detail convergence, CSS/compatibility deletion, golden-path coverage, and visual review screenshots.
