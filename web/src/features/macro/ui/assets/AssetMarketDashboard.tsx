@@ -17,7 +17,7 @@ export function AssetMarketDashboard({ groups }: { groups: AssetMarketGroup[] })
             <h4>{group.title}</h4>
             <Link to={group.route}>查看{group.title}详情</Link>
           </div>
-          <MacroTableFrame caption={group.title} minWidth={540} stickyFirstColumn>
+          <MacroTableFrame caption={group.title} minWidth={420} stickyFirstColumn>
             <table aria-label={group.title} className="macro-assets-market-table">
               <caption>{group.title}</caption>
               <thead>
@@ -30,15 +30,23 @@ export function AssetMarketDashboard({ groups }: { groups: AssetMarketGroup[] })
                 </tr>
               </thead>
               <tbody>
-                {group.rows.map((row) => (
-                  <tr key={row.id}>
-                    <th scope="row">{row.symbol}</th>
-                    <td>{row.name}</td>
-                    <td>{row.latest}</td>
-                    <td data-tone={row.deltaTone}>{row.delta}</td>
-                    <td>{row.date}</td>
+                {group.rows.length > 0 ? (
+                  group.rows.map((row) => (
+                    <tr key={row.id}>
+                      <th scope="row">{row.symbol}</th>
+                      <td>{row.name}</td>
+                      <td>{row.latest}</td>
+                      <td data-tone={row.deltaTone}>{row.delta}</td>
+                      <td>{row.date}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td className="macro-assets-market-empty" colSpan={5}>
+                      暂无{group.title}快照
+                    </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </MacroTableFrame>

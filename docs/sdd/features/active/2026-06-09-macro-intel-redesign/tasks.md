@@ -131,17 +131,17 @@ Tasks are TDD-ordered. A task is complete only when its verification command pro
 - **Implementation**: Update golden paths and record command/manual evidence.
 - **Verification**: `cd web && npm run build && npx playwright test tests/e2e/golden-paths/macro-terminal.spec.ts --project desktop-1366 --project desktop-1920 --project tablet-834 --project mobile-390 --project mobile-430`
 - **Review owner**: parent
-- **Status**: [ ]
+- **Status**: [x]
 
 ## Final verification
 
 After all tasks are `[x] complete`:
 
-- [ ] `cd web && npm run typecheck`
-- [ ] `cd web && npm run lint:eslint`
-- [ ] `cd web && npm run test:architecture`
-- [ ] `cd web && npm test -- --run tests/component/features/macro/MacroModulePages.test.tsx tests/component/features/macro/MacroShell.test.tsx tests/component/features/macro/MacroAssetCorrelationPage.test.tsx tests/component/features/macro/MacroRatesWorkbench.test.tsx tests/routes/macro.route.test.tsx`
-- [ ] `cd web && npm run build`
-- [ ] `cd web && npx playwright test tests/e2e/golden-paths/macro-terminal.spec.ts --project desktop-1366 --project desktop-1920 --project tablet-834 --project mobile-390 --project mobile-430`
-- [ ] Manual visual check recorded in `verification.md`
-- [ ] All acceptance criteria from the spec produce expected output.
+- [x] `cd web && npm run typecheck`
+- [x] `cd web && npm run lint:eslint`
+- [x] `cd web && npm run test:architecture`
+- [x] `cd web && npm test -- --run tests/component/features/macro/MacroModulePages.test.tsx tests/component/features/macro/MacroShell.test.tsx tests/component/features/macro/MacroAssetCorrelationPage.test.tsx tests/component/features/macro/MacroRatesWorkbench.test.tsx tests/routes/macro.route.test.tsx`
+- [x] `cd web && npm run build`
+- [x] `cd web && npx playwright test tests/e2e/golden-paths/macro-terminal.spec.ts --project desktop-1366 --project desktop-1920 --project tablet-834 --project mobile-390 --project mobile-430`
+- [x] Manual visual check recorded in `verification.md`
+- [x] All acceptance criteria from the spec produce expected output.

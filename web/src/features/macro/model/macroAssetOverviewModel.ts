@@ -27,7 +27,7 @@ export function buildAssetMarketGroups(table: MacroModuleTable): AssetMarketGrou
     route: group.route,
     rows: model.rows.filter((row) => group.match(rowKey(row))).map(assetMarketRow),
     title: group.title,
-  })).filter((group) => group.rows.length > 0);
+  }));
 }
 
 export function buildAssetDiagnosticsSummary({

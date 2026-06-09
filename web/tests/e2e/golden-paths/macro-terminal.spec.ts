@@ -1,11 +1,44 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import {
   expectNoDocumentHorizontalOverflow,
   expectNoUnhandledApiRequests,
 } from "@tests/e2e/support/layoutAssertions";
 import { installMockApi } from "@tests/e2e/support/mockApi";
 
+const CORE_PAGE_CONTRACTS = [
+  {
+    route: "/macro",
+    regions: ["宏观简报", "跨域市场板", "传导链", "数据诊断"],
+    visibleText: "总览：风险偏好等待利率与流动性确认",
+  },
+  {
+    route: "/macro/assets",
+    regions: ["市场仪表盘", "今日判断", "60日相关性", "数据诊断"],
+    visibleText: "今日判断：风险资产偏震荡",
+  },
+  {
+    route: "/macro/rates/fed-funds",
+    regions: ["利率简报", "关键事实", "利率主图", "决策支持", "利率明细", "数据诊断"],
+    visibleText: "联邦基金走廊：隔夜利率保持在目标区间内",
+  },
+] as const;
+
 test.describe("macro terminal navigation hardening", () => {
+  test("macro core pages keep the workbench grammar across target viewports", async ({ page }) => {
+    await installMockApi(page);
+
+    for (const contract of CORE_PAGE_CONTRACTS) {
+      await page.goto(contract.route);
+
+      await expect(page.getByLabel("宏观工作台")).toBeVisible();
+      await expect(page.getByText(contract.visibleText)).toBeVisible();
+      await expectRegionsInOrder(page, [...contract.regions]);
+      await expect(page.getByRole("navigation", { name: "宏观模块" })).toBeVisible();
+      await expectNoDocumentHorizontalOverflow(page);
+      await expectNoUnhandledApiRequests(page);
+    }
+  });
+
   test("desktop macro terminal renders equities with shell module navigation", async ({
     page,
   }, testInfo) => {
@@ -91,3 +124,17 @@ test.describe("macro terminal navigation hardening", () => {
     await expectNoUnhandledApiRequests(page);
   });
 });
+
+async function expectRegionsInOrder(page: Page, regionNames: string[]) {
+  const indexes = await page.evaluate((labels) => {
+    const regions = Array.from(document.querySelectorAll<HTMLElement>("[aria-label]"));
+    return labels.map((label) =>
+      regions.findIndex((element) => element.getAttribute("aria-label") === label),
+    );
+  }, regionNames);
+
+  expect(indexes, regionNames.join(" -> ")).not.toContain(-1);
+  expect(indexes, regionNames.join(" -> ")).toEqual(
+    [...indexes].sort((left, right) => left - right),
+  );
+}

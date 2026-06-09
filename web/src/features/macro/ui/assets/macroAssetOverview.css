@@ -54,7 +54,7 @@
 
   .macro-assets-market-board {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
     gap: 14px;
     min-width: 0;
   }
@@ -169,6 +169,12 @@
 
   .macro-assets-market-table td[data-tone="flat"] {
     color: var(--text-muted, #94a3b8);
+  }
+
+  .macro-assets-market-table .macro-assets-market-empty {
+    padding: 14px 9px;
+    color: var(--text-muted, #94a3b8);
+    text-align: left;
   }
 
   .macro-assets-correlation-layout {

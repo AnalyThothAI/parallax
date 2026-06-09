@@ -4,22 +4,22 @@
 **Owning spec**: `docs/sdd/features/active/2026-06-09-macro-intel-redesign/spec.md`
 **Owning plan**: `docs/sdd/features/active/2026-06-09-macro-intel-redesign/plan.md`
 **Branch**: `codex/macro-intel-redesign`
-**Diff**: third implementation slice pending commit
+**Diff**: final implementation slice committed on `codex/macro-intel-redesign`
 
-The full redesign is not complete. This file records implementation progress through the third slice: shared workbench model/components, overview and generic leaf migration, rates naming/diagnostics convergence, asset overview decomposition, correlation detail convergence, CSS/compatibility deletion, and updated macro tests.
+This file records the Macro Intel frontend redesign implementation: shared workbench model/components, overview and generic leaf migration, rates naming/diagnostics convergence, asset overview decomposition, correlation detail convergence, CSS/compatibility deletion, golden-path coverage, and visual review screenshots.
 
 ## Spec compliance
 
 | Acceptance criterion | Status | Evidence |
 |----------------------|--------|----------|
-| AC1 — Overview first-screen desk brief | Partial | Overview now renders `宏观简报`, `跨域市场板`, `传导链`, `数据诊断`; component and route tests pass. |
-| AC2 — Asset dashboard first | Partial | Asset page keeps `市场仪表盘`, `今日判断`, `60日相关性`, `数据诊断`; 509-line page was split into model plus owner UI components. |
-| AC3 — Generic leaf workbench grammar | Partial | Generic leaf now renders `模块简报`, `主市场证据`, `驱动与反证`, `数据诊断`; old standalone metric/source/health regions removed from leaf page. |
-| AC4 — Rates shares grammar | Partial | Rates regions renamed to `利率简报`, `利率主图`, `数据诊断`; diagnostics/source detail now live in one diagnostics region. |
-| AC5 — Correlation matrix workbench grammar | Partial | Correlation detail now renders `相关性简报`, `相关性矩阵`, `相关性证据`, `数据诊断`; component and route tests pass. |
-| AC6 — No overflow at target viewports | Partial | Macro responsive audit passes across its internal route/viewport matrix. |
+| AC1 — Overview first-screen desk brief | Met | Overview renders `宏观简报`, `跨域市场板`, `传导链`, `数据诊断`; component, route, e2e, and screenshot evidence pass. |
+| AC2 — Asset dashboard first | Met | Asset page renders `市场仪表盘`, `今日判断`, `60日相关性`, `数据诊断`; dashboard now keeps all five asset groups visible even when data is sparse. |
+| AC3 — Generic leaf workbench grammar | Met | Generic leaf renders `模块简报`, `主市场证据`, `驱动与反证`, `数据诊断`; old standalone metric/source/health regions are absent. |
+| AC4 — Rates shares grammar | Met | Rates renders `利率简报`, `关键事实`, `利率主图`, `决策支持`, `利率明细`, `数据诊断`; raw backend keys are excluded before diagnostics. |
+| AC5 — Correlation matrix workbench grammar | Met | Correlation detail renders `相关性简报`, `相关性矩阵`, `相关性证据`, `数据诊断`; matrix and pair evidence use shared correlation components. |
+| AC6 — No overflow at target viewports | Met | Macro responsive audit passes across its internal route/viewport matrix; macro-terminal passes desktop, tablet, and mobile projects. |
 | AC7 — No retired selectors/compat assumptions | Met for current macro frontend | Architecture harness now rejects retired primitive files and old macro metric/read/evidence/health/transmission selectors; lint/architecture passes. |
-| AC8 — Visual mockup exists and renders | Partial | See visual mockup check below. |
+| AC8 — Visual mockup exists and renders | Met | Visual mockup HTML/PNG exists; actual implementation screenshots are recorded below. |
 
 Deviations from spec:
 
@@ -102,9 +102,38 @@ $ cd web && npx playwright test tests/e2e/golden-paths/macro-responsive-audit.sp
 1 passed
 ```
 
+Final implementation verification:
+
+```text
+$ cd web && npm run lint:eslint
+eslint --max-warnings=0 exited 0
+
+$ cd web && npm run test:architecture
+Test Files  11 passed (11)
+Tests  65 passed (65)
+
+$ cd web && npm run typecheck
+tsc --noEmit exited 0
+
+$ cd web && npm test -- --run tests/component/features/macro/MacroModulePages.test.tsx tests/component/features/macro/MacroShell.test.tsx tests/component/features/macro/MacroAssetCorrelationPage.test.tsx tests/component/features/macro/MacroRatesWorkbench.test.tsx tests/routes/macro.route.test.tsx
+Test Files  5 passed (5)
+Tests  37 passed (37)
+
+$ cd web && npm run build
+tsc --noEmit exited 0
+vite build exited 0
+Warning observed: Some chunks are larger than 500 kB after minification.
+
+$ cd web && npx playwright test tests/e2e/golden-paths/macro-terminal.spec.ts --project=desktop-1366 --project=desktop-1920 --project=tablet-834 --project=mobile-390 --project=mobile-430
+13 passed, 12 skipped
+
+$ cd web && npx playwright test tests/e2e/golden-paths/macro-responsive-audit.spec.ts --project=desktop-1366
+1 passed
+```
+
 ## Coverage
 
-Targeted macro component, route, unit, architecture, and Playwright coverage was exercised. Full completion gates remain open because final full-gate build/e2e coverage, manual visual review, and SDD completion movement are not finished.
+Targeted macro component, route, unit, architecture, build, and Playwright coverage was exercised. Full repository `make check-all` was not run in this frontend slice.
 
 ## Skipped tests
 
@@ -112,7 +141,7 @@ Not skipped in unit/component/route/lint runs. The macro terminal Playwright com
 
 ## E2E golden path
 
-Macro terminal desktop/mobile sample passed. Macro responsive audit passed for `desktop-1366`; that spec iterates its own product/hidden route and viewport matrix.
+Macro terminal now asserts overview, asset, and rates workbench grammar across `desktop-1366`, `desktop-1920`, `tablet-834`, `mobile-390`, and `mobile-430`. Desktop-only and mobile-only tests intentionally skip non-target projects. Macro responsive audit passed for `desktop-1366`; that spec iterates its own product/hidden route and viewport matrix.
 
 ## Other commands run
 
@@ -133,6 +162,22 @@ Rendered preview:
 
 - `docs/sdd/features/active/2026-06-09-macro-intel-redesign/macro-visual-mockup.html`
 - `docs/sdd/features/active/2026-06-09-macro-intel-redesign/macro-visual-mockup.png`
+
+Actual implementation screenshots:
+
+- `docs/sdd/features/active/2026-06-09-macro-intel-redesign/macro-actual-overview-desktop.png`
+- `docs/sdd/features/active/2026-06-09-macro-intel-redesign/macro-actual-assets-desktop.png`
+- `docs/sdd/features/active/2026-06-09-macro-intel-redesign/macro-actual-rates-desktop.png`
+- `docs/sdd/features/active/2026-06-09-macro-intel-redesign/macro-actual-correlation-desktop.png`
+- `docs/sdd/features/active/2026-06-09-macro-intel-redesign/macro-actual-assets-mobile.png`
+
+Manual visual review:
+
+- Overview: first viewport gives a clear desk brief followed by the cross-domain market board.
+- Asset dashboard: all five asset groups are visible in a stable market-dashboard frame; sparse data is shown as group-level empty states instead of collapsing the page shape.
+- Rates: rates-specific navigation and facts remain visible while the shared read/diagnostics grammar is preserved.
+- Correlation: matrix, summary, and pair evidence are readable with no overlap.
+- Mobile asset page: macro shell, tabs, asset dashboard, and first market group are contained without horizontal document overflow.
 
 Reference comparison:
 
@@ -177,6 +222,8 @@ Migrations applied in this slice:
 - Reduced `MacroAssetOverviewPage.tsx` from a 509-line mixed component to a 119-line page orchestration component.
 - Consolidated rates diagnostics into a single `数据诊断` region and aligned rates labels with the shared grammar.
 - Migrated `MacroMatrixPage.tsx` to `相关性简报`, `相关性矩阵`, `相关性证据`, and `数据诊断`.
+- Stabilized the asset dashboard model so equities, bonds, commodities, FX, and crypto groups always render; sparse groups show explicit empty rows.
+- Adjusted the asset dashboard layout so desktop group tables expose code, name, latest, daily change, and date without hiding key columns behind horizontal scroll.
 - Removed retired macro primitives: `MacroMetricStrip`, `MacroReadPanel`, `MacroEvidencePanel`, `MacroDataHealthPanel`, and `MacroTransmissionPanel`.
 - Deleted `macroMetricStrip.css`, reduced `macroPanel.css` to panel ownership only, and moved asset diagnostics health styles into `macroAssetOverview.css`.
 - Strengthened `macroResponsiveHardCut.test.ts` so retired macro primitive files and generic metric/read/evidence/health/transmission selectors fail architecture tests.
@@ -190,10 +237,11 @@ Schema or contract changes that consumers must be aware of:
 ## Risks observed
 
 - The visual companion server script did not emit a session directory in the Codex PTY, so the visual稿 was produced as a committed local HTML/PNG artifact instead.
-- `timsun.net/assets/` shows ETF/options/positioning depth and a heatmap correlation view that Parallax does not yet expose.
-- Full visual parity is not the target, but our first-screen density and analyst narrative still need refinement beyond testable IA.
+- `timsun.net/assets/` shows ETF/options/positioning depth that Parallax does not yet expose. Adding those surfaces requires backend/product scope beyond this frontend redesign.
+- `make check-all` was not run in this frontend slice.
 
 ## Follow-ups
 
-- Execute Task 9, remaining visual refinement, and full verification gates before any completion claim.
-- After implementation verification, decide whether this SDD directory should move to `docs/sdd/features/completed/`.
+- Consider a backend/product follow-up for ETF/options/positioning macro asset depth.
+- Run full repository `make check-all` before landing if required by the branch owner.
+- Move this SDD directory to `docs/sdd/features/completed/` when the branch is ready to land.
