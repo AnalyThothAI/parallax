@@ -76,6 +76,7 @@ claim is allowed without the corresponding output captured below.
 | AC57 — Architecture test taxonomy inventory is exact. | ✅ | `uv run pytest tests/architecture/test_test_lane_contracts.py::test_architecture_tests_declare_harness_taxonomy -q` failed RED on missing `test_public_contracts_doc_alignment.py`, then passed after exact-set validation and docs update. |
 | AC58 — Open tech debt source/test/doc references are live and self-contained. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_open_tech_debt_references_current_source_and_test_paths -q` failed RED on stale TECH_DEBT file/function references, bare `::test` shorthand, and unrooted source/doc paths, then passed after removing deleted historical integration rows and making references self-contained. |
 | AC59 — Governance rule checks avoid prose overfit. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_rule_ownership tests/architecture/test_harness_structure.py::test_routers_have_no_governance_phrases -q` passed after splitting the mixed rule test and replacing verbatim phrase keys with named multi-anchor contracts. |
+| AC60 — Domain type modules are leaf nodes. | ✅ | `uv run pytest tests/architecture/test_src_domain_architecture.py::test_domain_types_do_not_import_upward_layers -q` failed RED on the evidence entity re-export shim, then passed after moving entity value objects and normalization primitives into `types/entity.py`. |
 
 Deviations from spec:
 
@@ -951,6 +952,25 @@ exit code: 0
 
 $ uv run pytest tests/architecture/test_harness_structure.py::test_rule_ownership tests/architecture/test_harness_structure.py::test_routers_have_no_governance_phrases -q
 2 passed in 0.03s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_src_domain_architecture.py::test_domain_types_do_not_import_upward_layers -q
+F                                                                        [100%]
+AssertionError: 违规:
+- ('src/parallax/domains/evidence/types/entity.py', 'parallax.domains.evidence.services.entity_extractor')
+原因: Type modules are leaf value objects; importing services, repositories, queries, read models, or runtime recreates hidden compatibility shims.
+exit code: 1
+
+$ uv run pytest tests/architecture/test_src_domain_architecture.py::test_domain_types_do_not_import_upward_layers -q
+1 passed in 0.12s
+exit code: 0
+
+$ uv run pytest tests/unit/test_entity_extractor.py -q
+7 passed in 0.16s
+exit code: 0
+
+$ uv run ruff check src/parallax/domains/evidence/types/entity.py src/parallax/domains/evidence/services/entity_extractor.py src/parallax/domains/evidence/interfaces.py src/parallax/app/surfaces/api/ws.py tests/architecture/test_src_domain_architecture.py tests/unit/test_entity_extractor.py
+All checks passed!
 exit code: 0
 
 $ uv run pytest tests/architecture/test_test_lane_contracts.py -q

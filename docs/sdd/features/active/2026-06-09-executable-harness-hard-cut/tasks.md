@@ -1258,6 +1258,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 60 — Evidence entity type shim hard cut
+
+- **File(s)**: `src/parallax/domains/evidence/types/entity.py`, `src/parallax/domains/evidence/services/entity_extractor.py`, `src/parallax/domains/evidence/interfaces.py`, `src/parallax/app/surfaces/api/ws.py`, `tests/unit/test_entity_extractor.py`, `tests/architecture/test_src_domain_architecture.py`, `docs/TECH_DEBT.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 59
+- **Touch set**: `src/parallax/domains/evidence/types/entity.py`, `src/parallax/domains/evidence/services/entity_extractor.py`, `src/parallax/domains/evidence/interfaces.py`, `src/parallax/app/surfaces/api/ws.py`, `tests/unit/test_entity_extractor.py`, `tests/architecture/test_src_domain_architecture.py`, `docs/TECH_DEBT.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/domains/evidence/services/entity_extractor.py` for entity normalization import ownership.
+- **Failing test first**: `tests/architecture/test_src_domain_architecture.py::test_domain_types_do_not_import_upward_layers` — asserts domain `types/` modules cannot import services, repositories, queries, read models, or runtime modules.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Domain implementation
+- **Deterministic constraints**: Remove the thin re-export shim; `ExtractedEntity`, `EVM_QUERY_CHAINS`, address normalization, and TON address validation must live in `domains/evidence/types/entity.py`; upper layers import from types or interfaces, not from the old service re-export.
+- **On-demand context**: `src/parallax/domains/evidence/types/entity.py`, `src/parallax/domains/evidence/services/entity_extractor.py`, `src/parallax/domains/evidence/repositories`, `src/parallax/app/surfaces/api/ws.py`, and entity extractor unit tests.
+- **Kill/defer criteria**: Stop if the fix keeps `types/entity.py` importing from services, adds an allowlist for this shim, or changes entity extraction behavior without focused unit evidence.
+- **Eval/repair signal**: upward type import violation, entity extraction regression, address normalization regression, and stale TECH_DEBT shim row.
+- **Implementation**: Move entity value objects and normalization primitives into the types module, make the extractor consume types, route API WebSocket normalization through the evidence interface, update unit imports, add the architecture gate, and remove the resolved TECH_DEBT row.
+- **Verification**: `uv run pytest tests/architecture/test_src_domain_architecture.py::test_domain_types_do_not_import_upward_layers -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1319,4 +1340,5 @@
 - [ ] `uv run pytest tests/architecture/test_test_lane_contracts.py::test_architecture_tests_declare_harness_taxonomy -q`
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_open_tech_debt_references_current_source_and_test_paths -q`
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_rule_ownership tests/architecture/test_harness_structure.py::test_routers_have_no_governance_phrases -q`
+- [ ] `uv run pytest tests/architecture/test_src_domain_architecture.py::test_domain_types_do_not_import_upward_layers -q`
 - [ ] `make check-all`

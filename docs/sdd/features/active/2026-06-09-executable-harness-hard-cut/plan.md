@@ -115,6 +115,10 @@ Known-failing baseline tests:
 - Assert open `docs/TECH_DEBT.md` source/test/doc references use self-contained repo-root paths, point at current files, and `::test_*` references point at existing Python test functions.
 - Split governance rule checks into ownership and router-leak gates, backed by named multi-anchor rule contracts instead of single verbatim phrase strings.
 
+### `tests/architecture/test_src_domain_architecture.py`
+
+- Assert domain `types/` modules do not import upward layers such as services, repositories, queries, read models, or runtime.
+
 ### `web/tests/architecture/frontendDocContract.test.ts`
 
 - Add a static Vitest gate that compares `docs/FRONTEND.md` and `.agents/skills/parallax-frontend-verification/SKILL.md` against current frontend CSS architecture constants and `APP_NAVIGATION_GROUPS`.
@@ -277,6 +281,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Test taxonomy inventory is exact. | Pass: `test_architecture_tests_declare_harness_taxonomy` compares `docs/TESTING.md` rows against `tests/architecture`. |
 | Open tech debt references are live. | Pass: `test_open_tech_debt_references_current_source_and_test_paths` checks open `docs/TECH_DEBT.md` source/test/doc repo-root paths and test functions against the current tree. |
 | Governance rule checks avoid prose overfit. | Pass: `test_rule_ownership` and `test_routers_have_no_governance_phrases` split ownership from router-leak checks and use multi-anchor contracts. |
+| Domain types are leaf nodes. | Pass: `test_domain_types_do_not_import_upward_layers` prevents types modules from hiding service/repository/runtime shims. |
 
 ## Acceptance test commands
 
@@ -339,6 +344,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC57: `uv run pytest tests/architecture/test_test_lane_contracts.py::test_architecture_tests_declare_harness_taxonomy -q`
 - AC58: `uv run pytest tests/architecture/test_harness_structure.py::test_open_tech_debt_references_current_source_and_test_paths -q`
 - AC59: `uv run pytest tests/architecture/test_harness_structure.py::test_rule_ownership tests/architecture/test_harness_structure.py::test_routers_have_no_governance_phrases -q`
+- AC60: `uv run pytest tests/architecture/test_src_domain_architecture.py::test_domain_types_do_not_import_upward_layers -q`
 
 ## Verification
 

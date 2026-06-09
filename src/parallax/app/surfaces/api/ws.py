@@ -10,7 +10,7 @@ from typing import Any
 from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect, WebSocketState
 
-from parallax.domains.evidence.services.entity_extractor import EVM_QUERY_CHAINS, normalize_ca
+from parallax.domains.evidence.interfaces import EVM_QUERY_CHAINS, normalize_ca
 from parallax.domains.ingestion.services.subscriptions import normalize_handles
 
 DEFAULT_SEND_TIMEOUT_SECONDS = 0.25

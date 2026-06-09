@@ -351,6 +351,28 @@ def test_repositories_and_queries_do_not_import_services_or_runtime() -> None:
     )
 
 
+def test_domain_types_do_not_import_upward_layers() -> None:
+    upward_parts = (".repositories.", ".queries.", ".services.", ".read_models.", ".runtime.")
+    offenders = [
+        (path.relative_to(ROOT).as_posix(), imported)
+        for path in (SRC_ROOT / "domains").rglob("types/*.py")
+        for imported in _imports(path)
+        if any(part in imported for part in upward_parts)
+    ]
+    _assert_no_offenders(
+        offenders,
+        invariant="domain types do not import upward layers",
+        reason=(
+            "Type modules are leaf value objects; importing services, repositories, queries, read models, "
+            "or runtime recreates hidden compatibility shims."
+        ),
+        fix=(
+            "Move shared value objects and normalization primitives into types, then make upper layers "
+            "import them from there."
+        ),
+    )
+
+
 def test_pulse_lab_services_do_not_import_runtime_worker_modules() -> None:
     service_root = SRC_ROOT / "domains" / "pulse_lab" / "services"
     runtime_prefix = "parallax.domains.pulse_lab.runtime."

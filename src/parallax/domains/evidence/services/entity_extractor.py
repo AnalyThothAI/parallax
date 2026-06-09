@@ -1,21 +1,19 @@
 from __future__ import annotations
 
-import base64
-import binascii
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
-from eth_utils.address import is_address, to_checksum_address
+from eth_utils.address import to_checksum_address
 from solders.pubkey import Pubkey
 
+from parallax.domains.evidence.types.entity import ExtractedEntity, is_valid_ton_friendly_address
 from parallax.domains.evidence.types.tweet_text import CASHTAG_RE, HASHTAG_RE, MENTION_RE, URL_RE
 
 EVM_CA_RE = re.compile(r"\b0x[a-fA-F0-9]{40}\b")
 SOLANA_CA_RE = re.compile(r"(?<![A-Za-z0-9])[1-9A-HJ-NP-Za-km-z]{32,44}(?![A-Za-z0-9])")
 TON_CA_RE = re.compile(r"(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{48}(?![A-Za-z0-9_-])")
-EVM_QUERY_CHAINS = frozenset({"evm_unknown", "evm", "eth", "base", "bsc"})
 RESOLVED_EVM_CHAINS = frozenset({"eth", "base", "bsc"})
 EVM_CHAIN_HINT_PATTERNS = (
     ("bsc", re.compile(r"\b(?:bsc|bnb\s+chain|binance\s+smart\s+chain|bep[-\s]?20)\b", re.IGNORECASE)),
@@ -34,22 +32,6 @@ IGNORED_CASHTAG_SYMBOLS = frozenset({"NAN"})
 class TextSurface:
     surface: str
     text: str
-
-
-@dataclass(frozen=True, slots=True)
-class ExtractedEntity:
-    entity_type: str
-    raw_value: str
-    normalized_value: str
-    chain: str | None
-    token_resolution_status: str
-    confidence: float
-    source: str
-    text_surface: str = "primary"
-    span_start: int = 0
-    span_end: int = 0
-    sentence_id: int = 0
-    local_group_key: str = "primary:0"
 
 
 def extract_entities(text: str | None) -> list[ExtractedEntity]:
@@ -195,23 +177,6 @@ def _extract_surface_entities(
             )
 
 
-def normalize_ca(value: str, *, chain: str | None = None) -> tuple[str, str]:
-    text = value.strip()
-    normalized_chain = _normalize_chain_hint(chain)
-    if is_address(text):
-        if normalized_chain is None:
-            return ("evm_unknown", to_checksum_address(text))
-        if normalized_chain in EVM_QUERY_CHAINS:
-            return (normalized_chain, to_checksum_address(text))
-    if _is_valid_ton_friendly_address(text):
-        return ("ton", text)
-    try:
-        pubkey = Pubkey.from_string(text)
-    except ValueError as exc:
-        raise ValueError(f"invalid token CA: {value}") from exc
-    return ("solana", str(pubkey))
-
-
 def entity_key(entity: ExtractedEntity) -> str:
     if entity.chain:
         return f"{entity.entity_type}:{entity.chain}:{entity.normalized_value}"
@@ -233,30 +198,9 @@ def _solana_ca_entity(raw: str) -> ExtractedEntity | None:
 
 
 def _ton_ca_entity(raw: str) -> ExtractedEntity | None:
-    if not _is_valid_ton_friendly_address(raw):
+    if not is_valid_ton_friendly_address(raw):
         return None
     return ExtractedEntity("ca", raw, raw, "ton", "resolved_ca", 1.0, "regex")
-
-
-def _is_valid_ton_friendly_address(raw: str) -> bool:
-    if len(raw) != 48:
-        return False
-    try:
-        decoded = base64.urlsafe_b64decode(raw)
-    except (binascii.Error, ValueError):
-        return False
-    if len(decoded) != 36:
-        return False
-    return _crc16_xmodem(decoded[:34]) == int.from_bytes(decoded[34:], "big")
-
-
-def _crc16_xmodem(data: bytes) -> int:
-    crc = 0
-    for byte in data:
-        crc ^= byte << 8
-        for _ in range(8):
-            crc = ((crc << 1) ^ 0x1021) & 0xFFFF if crc & 0x8000 else (crc << 1) & 0xFFFF
-    return crc
 
 
 def _chain_for_evm_ca(text: str, *, raw: str, start: int, end: int) -> str | None:
@@ -352,16 +296,3 @@ def _sentence_id(text: str, offset: int) -> int:
         if char in {".", "!", "?", "。", "！", "？", "\n"}:
             sentence += 1
     return sentence
-
-
-def _normalize_chain_hint(chain: str | None) -> str | None:
-    if chain is None:
-        return None
-    normalized = chain.strip().lower()
-    if normalized == "ethereum":
-        return "eth"
-    if normalized in {"sol", "solana"}:
-        return "solana"
-    if normalized in {"ton", "toncoin", "the open network"}:
-        return "ton"
-    return normalized

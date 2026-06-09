@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from .repositories.evidence_repository import decode_event_row, event_to_row
 from .services.entity_extractor import (
-    EVM_QUERY_CHAINS,
-    ExtractedEntity,
     TextSurface,
     extract_entities_from_surfaces,
+)
+from .types.entity import (
+    EVM_QUERY_CHAINS,
+    ExtractedEntity,
     normalize_ca,
 )
 from .types.twitter_event import (
