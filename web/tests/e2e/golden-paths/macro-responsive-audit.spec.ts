@@ -5,7 +5,7 @@ import {
   expectHiddenMacroLabelsAbsent,
   expectMacroTableFramesBounded,
   expectNoMacroBodyOverflow,
-  expectNoMacroMetricFragmentation,
+  expectNoMacroLabelFragmentation,
   MACRO_AUDIT_VIEWPORTS,
 } from "@tests/e2e/support/macroLayoutAudit";
 import { installMockApi } from "@tests/e2e/support/mockApi";
@@ -88,7 +88,7 @@ test.describe("macro responsive audit", () => {
         await expect(page.getByLabel("宏观工作台")).toBeVisible();
         await expectRatesWorkbenchHierarchy(page);
         await expectNoMacroBodyOverflow(page);
-        await expectNoMacroMetricFragmentation(page);
+        await expectNoMacroLabelFragmentation(page);
         await expectMacroTableFramesBounded(page);
         await expectHiddenMacroLabelsAbsent(page);
         await expectNoUnhandledApiRequests(page);
@@ -100,7 +100,7 @@ test.describe("macro responsive audit", () => {
         await expect(page.getByLabel("宏观工作台")).toBeVisible();
         await expectRatesWorkbenchHierarchy(page);
         await expectNoMacroBodyOverflow(page);
-        await expectNoMacroMetricFragmentation(page);
+        await expectNoMacroLabelFragmentation(page);
         await expectMacroTableFramesBounded(page);
         await expectHiddenMacroLabelsAbsent(page);
         await expectNoUnhandledApiRequests(page);

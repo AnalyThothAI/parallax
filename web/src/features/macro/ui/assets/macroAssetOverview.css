@@ -239,6 +239,75 @@
     border-top: 1px solid rgba(148, 163, 184, 0.12);
   }
 
+  .macro-assets-health-buckets {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .macro-assets-health-bucket {
+    display: grid;
+    gap: 9px;
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    border-radius: 8px;
+    background: rgba(10, 16, 27, 0.28);
+  }
+
+  .macro-assets-health-bucket-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .macro-assets-health-bucket-head h4 {
+    min-width: 0;
+    margin: 0;
+    color: var(--text-primary, #f8fafc);
+    font-size: 0.78rem;
+    line-height: 1.25;
+  }
+
+  .macro-assets-health-bucket-head span {
+    flex: 0 0 auto;
+    color: #fde68a;
+    font-size: 0.74rem;
+    font-weight: 800;
+  }
+
+  .macro-assets-health-reference,
+  .macro-assets-health-empty {
+    margin: 0;
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.76rem;
+    line-height: 1.4;
+  }
+
+  .macro-assets-health-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    min-width: 0;
+  }
+
+  .macro-assets-health-chip {
+    max-width: 100%;
+    min-width: 0;
+    padding: 5px 8px;
+    border: 1px solid rgba(251, 191, 36, 0.2);
+    border-radius: 999px;
+    color: #fde68a;
+    background: rgba(251, 191, 36, 0.08);
+    font-size: 0.74rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   @media (min-width: 768px) and (max-width: 1279px) {
     .macro-daily-brief-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -4,9 +4,9 @@
 **Owning spec**: `docs/sdd/features/active/2026-06-09-macro-intel-redesign/spec.md`
 **Owning plan**: `docs/sdd/features/active/2026-06-09-macro-intel-redesign/plan.md`
 **Branch**: `codex/macro-intel-redesign`
-**Diff**: second implementation slice pending commit
+**Diff**: third implementation slice pending commit
 
-The full redesign is not complete. This file records implementation progress through the second slice: shared workbench model/components, overview and generic leaf migration, rates naming/diagnostics convergence, asset overview decomposition, correlation detail convergence, and updated macro tests.
+The full redesign is not complete. This file records implementation progress through the third slice: shared workbench model/components, overview and generic leaf migration, rates naming/diagnostics convergence, asset overview decomposition, correlation detail convergence, CSS/compatibility deletion, and updated macro tests.
 
 ## Spec compliance
 
@@ -18,7 +18,7 @@ The full redesign is not complete. This file records implementation progress thr
 | AC4 — Rates shares grammar | Partial | Rates regions renamed to `利率简报`, `利率主图`, `数据诊断`; diagnostics/source detail now live in one diagnostics region. |
 | AC5 — Correlation matrix workbench grammar | Partial | Correlation detail now renders `相关性简报`, `相关性矩阵`, `相关性证据`, `数据诊断`; component and route tests pass. |
 | AC6 — No overflow at target viewports | Partial | Macro responsive audit passes across its internal route/viewport matrix. |
-| AC7 — No retired selectors/compat assumptions | Partial | Lint/architecture harness passes; full old compatibility deletion is still pending. |
+| AC7 — No retired selectors/compat assumptions | Met for current macro frontend | Architecture harness now rejects retired primitive files and old macro metric/read/evidence/health/transmission selectors; lint/architecture passes. |
 | AC8 — Visual mockup exists and renders | Partial | See visual mockup check below. |
 
 Deviations from spec:
@@ -77,9 +77,34 @@ $ cd web && npx playwright test tests/e2e/golden-paths/macro-responsive-audit.sp
 1 passed
 ```
 
+Third-slice CSS/compatibility deletion verification:
+
+```text
+$ cd web && npx vitest run tests/architecture/macroResponsiveHardCut.test.ts
+Test Files  1 passed (1)
+Tests  5 passed (5)
+
+$ cd web && npm run lint
+Test Files  11 passed (11)
+Tests  65 passed (65)
+
+$ cd web && npm run typecheck
+tsc --noEmit exited 0
+
+$ cd web && npm test -- --run tests/component/features/macro tests/unit/features/macro tests/routes/macro.route.test.tsx
+Test Files  17 passed (17)
+Tests  98 passed (98)
+
+$ cd web && npx playwright test tests/e2e/golden-paths/macro-terminal.spec.ts --project=desktop-1366 --project=mobile-390
+4 passed, 4 skipped
+
+$ cd web && npx playwright test tests/e2e/golden-paths/macro-responsive-audit.spec.ts --project=desktop-1366
+1 passed
+```
+
 ## Coverage
 
-Targeted macro component, route, unit, architecture, and Playwright coverage was exercised. Full completion gates remain open because old-code deletion, visual refinement, and the final full-gate sweep are not finished.
+Targeted macro component, route, unit, architecture, and Playwright coverage was exercised. Full completion gates remain open because final full-gate build/e2e coverage, manual visual review, and SDD completion movement are not finished.
 
 ## Skipped tests
 
@@ -152,6 +177,10 @@ Migrations applied in this slice:
 - Reduced `MacroAssetOverviewPage.tsx` from a 509-line mixed component to a 119-line page orchestration component.
 - Consolidated rates diagnostics into a single `数据诊断` region and aligned rates labels with the shared grammar.
 - Migrated `MacroMatrixPage.tsx` to `相关性简报`, `相关性矩阵`, `相关性证据`, and `数据诊断`.
+- Removed retired macro primitives: `MacroMetricStrip`, `MacroReadPanel`, `MacroEvidencePanel`, `MacroDataHealthPanel`, and `MacroTransmissionPanel`.
+- Deleted `macroMetricStrip.css`, reduced `macroPanel.css` to panel ownership only, and moved asset diagnostics health styles into `macroAssetOverview.css`.
+- Strengthened `macroResponsiveHardCut.test.ts` so retired macro primitive files and generic metric/read/evidence/health/transmission selectors fail architecture tests.
+- Updated responsive Playwright label-fragmentation checks to inspect the new table/read surfaces instead of the deleted metric strip compatibility marker.
 - Updated component, route, unit, and E2E tests for the new IA.
 
 Schema or contract changes that consumers must be aware of:
@@ -161,11 +190,10 @@ Schema or contract changes that consumers must be aware of:
 ## Risks observed
 
 - The visual companion server script did not emit a session directory in the Codex PTY, so the visual稿 was produced as a committed local HTML/PNG artifact instead.
-- Some old primitives remain because secondary macro pages still use them; complete deletion should wait until remaining migrations land.
 - `timsun.net/assets/` shows ETF/options/positioning depth and a heatmap correlation view that Parallax does not yet expose.
 - Full visual parity is not the target, but our first-screen density and analyst narrative still need refinement beyond testable IA.
 
 ## Follow-ups
 
-- Execute Task 8, remaining visual refinement, and full verification gates before any completion claim.
+- Execute Task 9, remaining visual refinement, and full verification gates before any completion claim.
 - After implementation verification, decide whether this SDD directory should move to `docs/sdd/features/completed/`.

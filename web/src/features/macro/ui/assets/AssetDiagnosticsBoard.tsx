@@ -63,31 +63,34 @@ function GapSection({
     <div className="macro-assets-diagnostics-section">
       <h4>缺口</h4>
       {gapCount > 0 ? (
-        <div className="macro-health-buckets">
+        <div className="macro-assets-health-buckets">
           {buckets.map((bucket) => (
-            <div className="macro-health-bucket" key={bucket.key}>
-              <div className="macro-health-bucket-head">
+            <div className="macro-assets-health-bucket" key={bucket.key}>
+              <div className="macro-assets-health-bucket-head">
                 <h4>{bucket.label}</h4>
                 <span>{bucket.referenceCount ?? bucket.items.length}</span>
               </div>
               {bucket.referenceCount ? (
-                <p className="macro-health-reference">总览级缺口，仅供参考</p>
+                <p className="macro-assets-health-reference">总览级缺口，仅供参考</p>
               ) : bucket.items.length > 0 ? (
-                <div className="macro-health-chip-list">
+                <div className="macro-assets-health-chip-list">
                   {bucket.items.map((item, index) => (
-                    <span className="macro-health-chip" key={`${bucket.key}:${index}:${item}`}>
+                    <span
+                      className="macro-assets-health-chip"
+                      key={`${bucket.key}:${index}:${item}`}
+                    >
                       {item}
                     </span>
                   ))}
                 </div>
               ) : (
-                <div className="macro-health-empty">暂无</div>
+                <div className="macro-assets-health-empty">暂无</div>
               )}
             </div>
           ))}
         </div>
       ) : (
-        <div className="macro-health-empty" role="status">
+        <div className="macro-assets-health-empty" role="status">
           暂无数据缺口
         </div>
       )}

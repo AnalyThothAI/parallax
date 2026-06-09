@@ -117,7 +117,7 @@ Tasks are TDD-ordered. A task is complete only when its verification command pro
 - **Implementation**: Remove obsolete selectors, keep owner CSS under budgets, and ensure breakpoint/letter-spacing contracts.
 - **Verification**: `cd web && npm run test:architecture && npm run lint:eslint`
 - **Review owner**: parent
-- **Status**: [ ]
+- **Status**: [x]
 
 ### Task 9 — Golden path and full verification
 
