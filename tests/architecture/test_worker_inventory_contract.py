@@ -271,6 +271,22 @@ def test_worker_manifest_validation_rejects_ledgers_on_non_side_effect_workers(
 
 
 @pytest.mark.architecture
+def test_worker_manifest_validation_rejects_blank_wake_channels(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifests = list(all_worker_manifests())
+    first_waker_index = next(index for index, manifest in enumerate(manifests) if manifest.wakes_out)
+    manifests[first_waker_index] = replace(
+        manifests[first_waker_index],
+        wakes_out=(*manifests[first_waker_index].wakes_out, "   "),
+    )
+    monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
+
+    with pytest.raises(ValueError, match="blank worker manifest wake channels"):
+        worker_manifest_module._validate_worker_manifests()
+
+
+@pytest.mark.architecture
 def test_worker_manifest_validation_rejects_duplicate_read_model_identity_columns(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
