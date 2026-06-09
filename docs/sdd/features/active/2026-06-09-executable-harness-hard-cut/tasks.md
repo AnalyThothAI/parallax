@@ -649,6 +649,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 31 — Acceptance numbering gate
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 30
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD acceptance-command semantics and generated index.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_acceptance_criteria_and_commands_require_contiguous_numbers` — asserts synchronized AC gaps cannot pass.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Spec criteria and plan command entries must each form one unique contiguous `AC1..N` sequence.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, active SDD spec/plan artifacts, generated SDD work index.
+- **Kill/defer criteria**: Stop if spec and plan can agree on skipped, duplicate, or reordered AC numbers.
+- **Eval/repair signal**: `acceptance-numbering-invalid`, stale generated index, and Spec→Plan coverage drift.
+- **Implementation**: Preserve AC number order while parsing spec and plan, then reject non-contiguous sequences before coverage comparison.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_acceptance_criteria_and_commands_require_contiguous_numbers -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -680,4 +701,5 @@
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_require_unique_contiguous_numbers -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_artifact_owning_links_must_point_to_same_feature -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_acceptance_commands_must_cover_spec_acceptance_criteria -q`
+- [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_acceptance_criteria_and_commands_require_contiguous_numbers -q`
 - [ ] `make check-all`

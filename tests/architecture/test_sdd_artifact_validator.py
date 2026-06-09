@@ -134,6 +134,21 @@ def test_plan_acceptance_commands_must_cover_spec_acceptance_criteria(tmp_path: 
     )
 
 
+def test_acceptance_criteria_and_commands_require_contiguous_numbers(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-ac-number-gap")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _append_acceptance_criterion(feature / "spec.md", 3)
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _append_acceptance_command(feature / "plan.md", 3)
+    _write_valid_tasks(feature / "tasks.md", status="In Progress", task_status="[~]")
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "acceptance-numbering-invalid" in _issue_codes(issues)
+    assert sum(issue.code == "acceptance-numbering-invalid" for issue in issues) == 2
+
+
 def test_superseded_feature_requires_machine_readable_successor(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "completed", "2026-06-09-prose-successor")
     _write_valid_spec(feature / "spec.md", status="Superseded")

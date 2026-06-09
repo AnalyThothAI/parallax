@@ -98,6 +98,7 @@ KNOWN_ISSUE_CODES = (
     "unexpected-artifact",
     "artifact-owning-link-mismatch",
     "missing-gate-section",
+    "acceptance-numbering-invalid",
     "acceptance-command-mismatch",
     "missing-approval-metadata",
     "task-missing-coordination-fields",
@@ -446,25 +447,31 @@ def _acceptance_command_issues(feature: SddFeature) -> list[SddIssue]:
     if spec_artifact.missing or plan_artifact.missing:
         return []
 
-    spec_numbers = _spec_acceptance_numbers(spec_artifact.text)
-    plan_numbers = _plan_acceptance_command_numbers(plan_artifact.text)
+    spec_number_sequence = _spec_acceptance_numbers(spec_artifact.text)
+    plan_number_sequence = _plan_acceptance_command_numbers(plan_artifact.text)
+    issues: list[SddIssue] = []
+    for artifact, label, numbers in (
+        (spec_artifact, "spec acceptance criteria", spec_number_sequence),
+        (plan_artifact, "plan acceptance commands", plan_number_sequence),
+    ):
+        numbering_message = _contiguous_numbering_error(label, numbers)
+        if numbering_message:
+            issues.append(_issue("acceptance-numbering-invalid", artifact, numbering_message))
+
+    spec_numbers = set(spec_number_sequence)
+    plan_numbers = set(plan_number_sequence)
     missing_numbers = sorted(spec_numbers - plan_numbers)
     extra_numbers = sorted(plan_numbers - spec_numbers)
     if not missing_numbers and not extra_numbers:
-        return []
+        return issues
 
     parts: list[str] = []
     if missing_numbers:
         parts.append("missing commands for " + ", ".join(f"AC{number}" for number in missing_numbers))
     if extra_numbers:
         parts.append("commands without spec criteria for " + ", ".join(f"AC{number}" for number in extra_numbers))
-    return [
-        _issue(
-            "acceptance-command-mismatch",
-            plan_artifact,
-            "; ".join(parts),
-        )
-    ]
+    issues.append(_issue("acceptance-command-mismatch", plan_artifact, "; ".join(parts)))
+    return issues
 
 
 def _artifact_owning_link_issues(feature: SddFeature, artifact: ArtifactRecord) -> list[SddIssue]:
@@ -822,12 +829,21 @@ def _command_evidence(text: str) -> dict[str, tuple[int, ...]]:
     return {command: tuple(exit_codes) for command, exit_codes in evidence.items()}
 
 
-def _spec_acceptance_numbers(text: str) -> set[int]:
-    return {int(match.group("number")) for match in SPEC_AC_RE.finditer(text)}
+def _spec_acceptance_numbers(text: str) -> list[int]:
+    return [int(match.group("number")) for match in SPEC_AC_RE.finditer(text)]
 
 
-def _plan_acceptance_command_numbers(text: str) -> set[int]:
-    return {int(match.group("number")) for match in PLAN_AC_COMMAND_RE.finditer(text)}
+def _plan_acceptance_command_numbers(text: str) -> list[int]:
+    return [int(match.group("number")) for match in PLAN_AC_COMMAND_RE.finditer(text)]
+
+
+def _contiguous_numbering_error(label: str, numbers: list[int]) -> str:
+    expected = list(range(1, len(numbers) + 1))
+    if numbers == expected:
+        return ""
+    expected_summary = f"AC1..AC{len(numbers)}"
+    actual_summary = ", ".join(f"AC{number}" for number in numbers) or "none"
+    return f"{label} must be unique and contiguous: expected {expected_summary}, saw {actual_summary}"
 
 
 def _verified_issues(feature: SddFeature) -> list[SddIssue]:

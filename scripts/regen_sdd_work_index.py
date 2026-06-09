@@ -219,6 +219,7 @@ def _issue_meaning(code: str) -> str:
         "missing-gate-section": (
             "Artifact is missing required clarify, checklist, analyze, task, or verification sections."
         ),
+        "acceptance-numbering-invalid": "Spec or plan acceptance criteria are not unique contiguous AC numbers.",
         "acceptance-command-mismatch": "Plan acceptance commands do not exactly cover spec acceptance criteria.",
         "missing-approval-metadata": "Artifact lacks machine-readable approval or execution metadata.",
         "task-missing-coordination-fields": (
