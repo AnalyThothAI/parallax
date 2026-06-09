@@ -1279,6 +1279,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 61 — Domain interface runtime import hard cut
+
+- **File(s)**: `src/parallax/domains/token_intel/interfaces.py`, `src/parallax/domains/token_intel/services/token_resolution_refresh.py`, `src/parallax/domains/token_intel/runtime/token_resolution_refresh.py`, `src/parallax/domains/token_intel/runtime/token_intent_rebuild.py`, `src/parallax/app/surfaces/cli/commands/ops.py`, `tests/unit/test_token_resolution_refresh.py`, `tests/architecture/test_src_domain_architecture.py`, `docs/TECH_DEBT.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 60
+- **Touch set**: `src/parallax/domains/token_intel/interfaces.py`, `src/parallax/domains/token_intel/services/token_resolution_refresh.py`, `src/parallax/domains/token_intel/runtime/token_resolution_refresh.py`, `src/parallax/domains/token_intel/runtime/token_intent_rebuild.py`, `src/parallax/app/surfaces/cli/commands/ops.py`, `tests/unit/test_token_resolution_refresh.py`, `tests/architecture/test_src_domain_architecture.py`, `docs/TECH_DEBT.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/domains/token_intel/interfaces.py` for domain interface export ownership.
+- **Failing test first**: `tests/architecture/test_src_domain_architecture.py::test_domain_interfaces_do_not_import_runtime_modules` — asserts domain interface modules cannot import runtime modules.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Domain implementation
+- **Deterministic constraints**: `token_intel/interfaces.py` must not import runtime modules; the token resolution refresh use case must live under services; the old runtime module must be deleted rather than kept as a forwarding compatibility file.
+- **On-demand context**: `src/parallax/domains/token_intel/interfaces.py`, token resolution refresh unit tests, resolution refresh worker imports, CLI ops imports, and cross-domain import architecture rules.
+- **Kill/defer criteria**: Stop if the fix introduces a cross-domain direct import from `asset_market` into `token_intel` internals, leaves `runtime/token_resolution_refresh.py` as a shim, or adds an allowlist for the interface runtime import.
+- **Eval/repair signal**: domain interface runtime import failure, token resolution refresh unit regression, cross-domain import regression, and stale TECH_DEBT runtime-coupling row.
+- **Implementation**: Move token resolution refresh functions to `services/token_resolution_refresh.py`, delete the old runtime module, point same-domain runtime/CLI/tests at the new service owner, keep cross-domain worker imports through `token_intel.interfaces`, add the architecture gate, and remove the resolved TECH_DEBT row.
+- **Verification**: `uv run pytest tests/architecture/test_src_domain_architecture.py::test_domain_interfaces_do_not_import_runtime_modules -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1341,4 +1362,5 @@
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_open_tech_debt_references_current_source_and_test_paths -q`
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_rule_ownership tests/architecture/test_harness_structure.py::test_routers_have_no_governance_phrases -q`
 - [ ] `uv run pytest tests/architecture/test_src_domain_architecture.py::test_domain_types_do_not_import_upward_layers -q`
+- [ ] `uv run pytest tests/architecture/test_src_domain_architecture.py::test_domain_interfaces_do_not_import_runtime_modules -q`
 - [ ] `make check-all`

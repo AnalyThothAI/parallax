@@ -26,13 +26,6 @@ from parallax.domains.token_intel.repositories.token_intent_lookup_repository im
     TokenIntentLookupRepository,
 )
 from parallax.domains.token_intel.repositories.token_intent_repository import TokenIntentRepository
-from parallax.domains.token_intel.runtime.token_resolution_refresh import (
-    DEFAULT_REPROCESS_LIMIT,
-    DEFAULT_REPROCESS_WINDOW,
-    deferred_token_radar_projection,
-    refresh_recent_token_state,
-    reprocess_recent_token_intents,
-)
 from parallax.domains.token_intel.scoring.factor_snapshot_contract import (
     is_token_factor_snapshot,
     require_token_factor_snapshot,
@@ -43,6 +36,13 @@ from parallax.domains.token_intel.services.token_intent_builder import build_tok
 from parallax.domains.token_intel.services.token_intent_resolver import (
     TokenIntentResolutionDecision,
     TokenIntentResolver,
+)
+from parallax.domains.token_intel.services.token_resolution_refresh import (
+    DEFAULT_REPROCESS_LIMIT,
+    DEFAULT_REPROCESS_WINDOW,
+    deferred_token_radar_projection,
+    refresh_recent_token_state,
+    reprocess_recent_token_intents,
 )
 
 

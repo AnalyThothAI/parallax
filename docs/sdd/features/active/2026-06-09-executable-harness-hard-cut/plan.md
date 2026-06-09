@@ -118,6 +118,7 @@ Known-failing baseline tests:
 ### `tests/architecture/test_src_domain_architecture.py`
 
 - Assert domain `types/` modules do not import upward layers such as services, repositories, queries, read models, or runtime.
+- Assert domain `interfaces.py` modules do not import runtime modules.
 
 ### `web/tests/architecture/frontendDocContract.test.ts`
 
@@ -282,6 +283,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Open tech debt references are live. | Pass: `test_open_tech_debt_references_current_source_and_test_paths` checks open `docs/TECH_DEBT.md` source/test/doc repo-root paths and test functions against the current tree. |
 | Governance rule checks avoid prose overfit. | Pass: `test_rule_ownership` and `test_routers_have_no_governance_phrases` split ownership from router-leak checks and use multi-anchor contracts. |
 | Domain types are leaf nodes. | Pass: `test_domain_types_do_not_import_upward_layers` prevents types modules from hiding service/repository/runtime shims. |
+| Domain interfaces stay runtime-free. | Pass: `test_domain_interfaces_do_not_import_runtime_modules` prevents public interfaces from re-exporting runtime orchestration. |
 
 ## Acceptance test commands
 
@@ -345,6 +347,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC58: `uv run pytest tests/architecture/test_harness_structure.py::test_open_tech_debt_references_current_source_and_test_paths -q`
 - AC59: `uv run pytest tests/architecture/test_harness_structure.py::test_rule_ownership tests/architecture/test_harness_structure.py::test_routers_have_no_governance_phrases -q`
 - AC60: `uv run pytest tests/architecture/test_src_domain_architecture.py::test_domain_types_do_not_import_upward_layers -q`
+- AC61: `uv run pytest tests/architecture/test_src_domain_architecture.py::test_domain_interfaces_do_not_import_runtime_modules -q`
 
 ## Verification
 

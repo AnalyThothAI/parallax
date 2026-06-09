@@ -52,10 +52,10 @@ from parallax.domains.token_intel.interfaces import (
 from parallax.domains.token_intel.repositories.projection_repository import ProjectionRepository
 from parallax.domains.token_intel.runtime.token_intent_rebuild import rebuild_recent_token_intents
 from parallax.domains.token_intel.runtime.token_radar_projection_worker import TokenRadarProjectionWorker
-from parallax.domains.token_intel.runtime.token_resolution_refresh import reprocess_recent_token_intents
 from parallax.domains.token_intel.scoring.factor_diagnostics import factor_distribution_report
 from parallax.domains.token_intel.services.token_factor_evaluation import settle_token_factor_scores
 from parallax.domains.token_intel.services.token_radar_projection import WINDOW_MS
+from parallax.domains.token_intel.services.token_resolution_refresh import reprocess_recent_token_intents
 from parallax.integrations.binance.cex_profile_client import BinanceCexProfileClient
 from parallax.integrations.binance.usdm_futures_client import BinanceUsdmFuturesClient
 from parallax.integrations.gmgn.directory_client import GmgnDirectoryClient, GmgnDirectoryError

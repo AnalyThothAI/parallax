@@ -9,13 +9,13 @@ from parallax.domains.asset_market.interfaces import (
 from parallax.domains.evidence.interfaces import TextSurface, TokenSnapshot, extract_entities_from_surfaces
 from parallax.domains.token_intel._constants import WINDOW_MS
 from parallax.domains.token_intel.queries.event_rebuild_query import EventRebuildQuery
-from parallax.domains.token_intel.runtime.token_resolution_refresh import (
-    DEFAULT_REPROCESS_WINDOW,
-    deferred_token_radar_projection,
-)
 from parallax.domains.token_intel.services.token_evidence_builder import build_token_evidence
 from parallax.domains.token_intel.services.token_intent_builder import build_token_intents
 from parallax.domains.token_intel.services.token_intent_resolver import TokenIntentResolver
+from parallax.domains.token_intel.services.token_resolution_refresh import (
+    DEFAULT_REPROCESS_WINDOW,
+    deferred_token_radar_projection,
+)
 
 
 def rebuild_recent_token_intents(

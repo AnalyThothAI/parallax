@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from parallax.domains.token_intel.runtime.token_resolution_refresh import (
+from parallax.domains.token_intel.services.token_resolution_refresh import (
     refresh_recent_token_state,
     reprocess_recent_token_intents,
 )
@@ -57,7 +57,7 @@ def test_reprocess_enqueues_dirty_targets_for_incremental_token_radar(monkeypatc
             return self.decisions.pop(0)
 
     monkeypatch.setattr(
-        "parallax.domains.token_intel.runtime.token_resolution_refresh.TokenIntentResolver",
+        "parallax.domains.token_intel.services.token_resolution_refresh.TokenIntentResolver",
         FakeResolver,
     )
 
@@ -97,7 +97,7 @@ def test_refresh_recent_token_state_defers_projection_to_worker(monkeypatch):
         return {"reprocessed_intents": 1, "resolved_intents": 1}
 
     monkeypatch.setattr(
-        "parallax.domains.token_intel.runtime.token_resolution_refresh.reprocess_recent_token_intents",
+        "parallax.domains.token_intel.services.token_resolution_refresh.reprocess_recent_token_intents",
         fake_reprocess,
     )
 

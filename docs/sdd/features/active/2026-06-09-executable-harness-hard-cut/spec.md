@@ -73,6 +73,7 @@ can both miss real process drift and block healthy refactors.
 | Open tech debt references must be live. | Architecture tests require open `docs/TECH_DEBT.md` source/test/doc references to be self-contained repo-root paths and resolve to current files and test functions. |
 | Governance rule checks must not overfit prose. | Architecture tests use named rule anchors and separate ownership from router-leak checks. |
 | Domain type modules must be leaf nodes. | Architecture tests reject `domains/*/types` imports from services, repositories, queries, read models, or runtime. |
+| Domain interfaces must not import runtime. | Architecture tests reject `domains/*/interfaces.py` imports from runtime modules. |
 
 ## First principles
 
@@ -120,6 +121,7 @@ can both miss real process drift and block healthy refactors.
 - G36. Open `docs/TECH_DEBT.md` source/test/doc references are checked as self-contained repo-root paths against current files and test functions, so old follow-up breadcrumbs do not remain as active work.
 - G37. Governance rule checks are split into ownership and router-leak gates, and use multi-anchor rule contracts rather than single verbatim phrase strings.
 - G38. Domain `types/` modules are enforced as leaf value-object modules, so thin re-export shims from services cannot hide upward dependencies.
+- G39. Domain `interfaces.py` modules remain cross-domain contracts and cannot re-export runtime orchestration modules.
 
 ## Non-goals
 
@@ -225,6 +227,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC58. WHEN the open section of `docs/TECH_DEBT.md` names an unrooted or missing source/test/doc file, uses a bare `::test_*` shorthand, or references a missing test function THEN architecture tests SHALL fail.
 - AC59. WHEN a governance rule is duplicated across root docs, absent from its owner, or copied into `AGENTS.md`/`CLAUDE.md` router prose THEN architecture tests SHALL fail with separate ownership and router-leak failures.
 - AC60. WHEN any `src/parallax/domains/*/types/*.py` module imports services, repositories, queries, read models, or runtime modules THEN architecture tests SHALL fail.
+- AC61. WHEN any `src/parallax/domains/*/interfaces.py` module imports a runtime module THEN architecture tests SHALL fail.
 
 ## Risks
 

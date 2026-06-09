@@ -77,6 +77,7 @@ claim is allowed without the corresponding output captured below.
 | AC58 — Open tech debt source/test/doc references are live and self-contained. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_open_tech_debt_references_current_source_and_test_paths -q` failed RED on stale TECH_DEBT file/function references, bare `::test` shorthand, and unrooted source/doc paths, then passed after removing deleted historical integration rows and making references self-contained. |
 | AC59 — Governance rule checks avoid prose overfit. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_rule_ownership tests/architecture/test_harness_structure.py::test_routers_have_no_governance_phrases -q` passed after splitting the mixed rule test and replacing verbatim phrase keys with named multi-anchor contracts. |
 | AC60 — Domain type modules are leaf nodes. | ✅ | `uv run pytest tests/architecture/test_src_domain_architecture.py::test_domain_types_do_not_import_upward_layers -q` failed RED on the evidence entity re-export shim, then passed after moving entity value objects and normalization primitives into `types/entity.py`. |
+| AC61 — Domain interfaces stay runtime-free. | ✅ | `uv run pytest tests/architecture/test_src_domain_architecture.py::test_domain_interfaces_do_not_import_runtime_modules -q` failed RED on `token_intel.interfaces` importing `runtime.token_resolution_refresh`, then passed after moving the use case to `services/token_resolution_refresh.py` and deleting the runtime file. |
 
 Deviations from spec:
 
@@ -132,6 +133,29 @@ Not run because integration/e2e/golden gates were intentionally skipped before m
 ## Other commands run
 
 ```text
+$ uv run pytest tests/architecture/test_src_domain_architecture.py::test_domain_interfaces_do_not_import_runtime_modules -q
+F                                                                        [100%]
+AssertionError: 违规:
+- ('src/parallax/domains/token_intel/interfaces.py', 'parallax.domains.token_intel.runtime.token_resolution_refresh')
+原因: Domain interfaces are cross-domain contracts; importing runtime modules leaks orchestration into callers.
+exit code: 1
+
+$ uv run pytest tests/architecture/test_src_domain_architecture.py::test_domain_interfaces_do_not_import_runtime_modules -q
+1 passed in 0.22s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_src_domain_architecture.py::test_domain_interfaces_do_not_import_runtime_modules tests/architecture/test_src_domain_architecture.py::test_cross_domain_imports_use_interfaces -q
+2 passed in 0.44s
+exit code: 0
+
+$ uv run pytest tests/unit/test_token_resolution_refresh.py tests/unit/test_resolution_refresh_worker.py -q
+10 passed in 0.22s
+exit code: 0
+
+$ uv run ruff check src/parallax/domains/token_intel/interfaces.py src/parallax/domains/token_intel/services/token_resolution_refresh.py src/parallax/domains/token_intel/runtime/token_intent_rebuild.py src/parallax/app/surfaces/cli/commands/ops.py tests/unit/test_token_resolution_refresh.py tests/architecture/test_src_domain_architecture.py
+All checks passed!
+exit code: 0
+
 $ uv run python scripts/validate_sdd_artifacts.py --check
 SDD artifact validation passed.
 

@@ -373,6 +373,27 @@ def test_domain_types_do_not_import_upward_layers() -> None:
     )
 
 
+def test_domain_interfaces_do_not_import_runtime_modules() -> None:
+    offenders = [
+        (path.relative_to(ROOT).as_posix(), imported)
+        for path in (SRC_ROOT / "domains").glob("*/interfaces.py")
+        for imported in _imports(path)
+        if ".runtime." in imported
+    ]
+    _assert_no_offenders(
+        offenders,
+        invariant="domain interfaces do not import runtime modules",
+        reason=(
+            "Domain interfaces are cross-domain contracts; importing runtime modules leaks orchestration "
+            "into callers."
+        ),
+        fix=(
+            "Move shared use cases into services or types, then import runtime modules only from "
+            "composition/runtime code."
+        ),
+    )
+
+
 def test_pulse_lab_services_do_not_import_runtime_worker_modules() -> None:
     service_root = SRC_ROOT / "domains" / "pulse_lab" / "services"
     runtime_prefix = "parallax.domains.pulse_lab.runtime."
