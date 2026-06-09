@@ -49,6 +49,7 @@ can both miss real process drift and block healthy refactors.
 | Read-model writer uniqueness must be import-time validated. | `WorkerManifest` validation rejects duplicate read-model writers before docs or worker harnesses consume the manifest. |
 | Read-model identity ownership must be import-time validated. | `WorkerManifest` validation rejects stable identity declarations for read models the worker does not write. |
 | Read-model identity declarations must be unique. | `WorkerManifest` validation rejects duplicate stable identity entries for the same read model table in one worker. |
+| Read-model identity tables must be non-blank. | `WorkerManifest` validation rejects blank table names inside `current_read_model_identities` before ownership checks. |
 | Read-model identity columns must be unique. | `WorkerManifest` validation and `CurrentReadModelPublisher` reject duplicate stable identity columns inside one read-model identity declaration. |
 | Read-model identity columns must be non-empty. | `WorkerManifest` validation rejects current read-model identity declarations whose stable identity column list is empty. |
 | Read-model identity columns must be non-blank. | `WorkerManifest` validation and `CurrentReadModelPublisher` reject blank stable identity column names. |
@@ -162,6 +163,7 @@ can both miss real process drift and block healthy refactors.
 - G56. Stable read-model identity declarations must include at least one identity column in the source manifest, so empty placeholder identities cannot satisfy harness checks.
 - G57. Worker table declarations reject blank table names before ownership, queue health, or docs harnesses consume them, so empty placeholders cannot satisfy source-manifest truth.
 - G58. Stable read-model identity column names reject blank strings at manifest validation and publisher construction time, so whitespace placeholders cannot become serving identity keys.
+- G59. Stable read-model identity table names reject blank strings before ownership checks, so whitespace placeholders cannot be normalized into missing or unowned identity drift.
 
 ## Non-goals
 
@@ -287,6 +289,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC78. WHEN a `WorkerManifest.current_read_model_identities` entry has an empty identity column list THEN manifest validation SHALL raise before the manifest can be treated as canonical source truth.
 - AC79. WHEN any `WorkerManifest` table-declaration field or `queue_depth_table` contains a blank table name THEN manifest validation SHALL raise before the manifest can be treated as canonical source truth.
 - AC80. WHEN a current read-model identity declaration contains a blank identity column name THEN manifest validation and `CurrentReadModelPublisher` SHALL raise before the identity can be used as stable serving truth.
+- AC81. WHEN a `WorkerManifest.current_read_model_identities` entry contains a blank read-model table name THEN manifest validation SHALL raise before ownership, missing-identity, or downstream harness checks consume the manifest.
 
 ## Risks
 

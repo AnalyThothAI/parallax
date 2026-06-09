@@ -124,6 +124,29 @@ def test_worker_manifest_validation_rejects_duplicate_read_model_identity_entrie
 
 
 @pytest.mark.architecture
+def test_worker_manifest_validation_rejects_blank_read_model_identity_tables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifests = list(all_worker_manifests())
+    first_writer_index = next(
+        index for index, manifest in enumerate(manifests) if manifest.current_read_model_identities
+    )
+    first_writer = manifests[first_writer_index]
+    _table_name, identity_columns = first_writer.current_read_model_identities[0]
+    manifests[first_writer_index] = replace(
+        first_writer,
+        current_read_model_identities=(
+            ("   ", identity_columns),
+            *first_writer.current_read_model_identities[1:],
+        ),
+    )
+    monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
+
+    with pytest.raises(ValueError, match="blank current read model identity tables"):
+        worker_manifest_module._validate_worker_manifests()
+
+
+@pytest.mark.architecture
 def test_worker_manifest_validation_rejects_duplicate_table_declarations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

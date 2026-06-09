@@ -777,6 +777,18 @@ def _validate_worker_manifests() -> None:
 
     read_model_writer_by_table()
 
+    blank_current_identity_tables = {
+        manifest.name: tuple(
+            table_name
+            for table_name, _identity_columns in manifest.current_read_model_identities
+            if not table_name.strip()
+        )
+        for manifest in _WORKER_MANIFESTS
+        if any(not table_name.strip() for table_name, _identity_columns in manifest.current_read_model_identities)
+    }
+    if blank_current_identity_tables:
+        raise ValueError(f"blank current read model identity tables: {blank_current_identity_tables}")
+
     duplicate_current_identities: dict[str, list[str]] = {}
     for manifest in _WORKER_MANIFESTS:
         seen_identity_tables: set[str] = set()
