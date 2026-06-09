@@ -1460,32 +1460,67 @@ def _superseded_issues(feature: SddFeature) -> list[SddIssue]:
 
 
 def _active_touch_conflicts(features: list[SddFeature]) -> list[SddIssue]:
-    owners: dict[str, list[SddFeature]] = defaultdict(list)
+    touches: list[tuple[str, str, SddFeature]] = []
     for feature in features:
         if feature.state != "active" or feature.status.lower() == "superseded":
             continue
         for touched_path in feature.touch_set:
-            owners[touched_path].append(feature)
+            normalized_path = _normalize_repo_path(touched_path)
+            if normalized_path:
+                touches.append((normalized_path, touched_path, feature))
 
     issues: list[SddIssue] = []
-    for touched_path, touching_features in owners.items():
-        unique_features = {feature.slug: feature for feature in touching_features}
-        if len(unique_features) <= 1:
-            continue
-        feature_names = ", ".join(sorted(unique_features))
-        for feature in unique_features.values():
-            conflict_text = " ".join(feature.conflict_set).lower()
-            if "coordinate" not in conflict_text and not any(
-                other in conflict_text for other in unique_features if other != feature.slug
-            ):
+    reported: set[tuple[str, str, str, str]] = set()
+    for index, (left_path, left_raw, left_feature) in enumerate(touches):
+        for right_path, right_raw, right_feature in touches[index + 1 :]:
+            if left_feature.slug == right_feature.slug:
+                continue
+            if not _repo_paths_overlap(left_path, right_path):
+                continue
+            pair_paths = tuple(sorted((left_path, right_path)))
+            feature_names = ", ".join(sorted((left_feature.slug, right_feature.slug)))
+            overlap_label = left_path if left_path == right_path else f"{left_raw} overlaps {right_raw}"
+            for feature, other in ((left_feature, right_feature), (right_feature, left_feature)):
+                report_key = (feature.slug, other.slug, pair_paths[0], pair_paths[1])
+                if report_key in reported:
+                    continue
+                reported.add(report_key)
+                if _coordination_covers_overlap(feature, other, pair_paths):
+                    continue
                 issues.append(
                     SddIssue(
                         code="active-touch-conflict",
                         path=feature.relative_path,
-                        message=f"{touched_path} is touched by active features: {feature_names}",
+                        message=(
+                            f"{overlap_label} is touched by active features: {feature_names}; "
+                            f"{feature.slug} must coordinate with {other.slug} or the overlapping path"
+                        ),
                     )
                 )
     return issues
+
+
+def _normalize_repo_path(value: str) -> str:
+    cleaned = value.replace("`", "").strip().strip("/")
+    return re.sub(r"/+", "/", cleaned)
+
+
+def _repo_paths_overlap(left: str, right: str) -> bool:
+    if not left or not right:
+        return False
+    return left == right or left.startswith(f"{right}/") or right.startswith(f"{left}/")
+
+
+def _coordination_covers_overlap(feature: SddFeature, other: SddFeature, overlapping_paths: tuple[str, str]) -> bool:
+    for conflict_rule in feature.conflict_set:
+        normalized_rule = _normalize_repo_path(conflict_rule).lower()
+        if "coordinate with " not in normalized_rule:
+            continue
+        if other.slug.lower() in normalized_rule:
+            return True
+        if any(path.lower() in normalized_rule for path in overlapping_paths):
+            return True
+    return False
 
 
 def _extract_status(text: str) -> str:

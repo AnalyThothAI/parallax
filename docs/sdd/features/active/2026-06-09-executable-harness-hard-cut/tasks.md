@@ -1027,6 +1027,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 49 — Active touch conflict path-awareness gate
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 48
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD validator conflict semantics and generated index.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_active_touch_sets_reject_nested_or_misdirected_coordination` — asserts nested touch-set overlaps and unrelated coordination prose still fail.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Active touch overlap detection must normalize repo paths, catch exact and parent/child path overlaps, and only suppress conflicts when coordination names the overlapping feature slug or path.
+- **On-demand context**: SDD explorer report, `docs/WORKFLOW.md`, `docs/agent-playbook/factory-operating-model.md`, validator active conflict implementation, and SDD fixture tests.
+- **Kill/defer criteria**: Stop if the rule allows unrelated `coordinate` prose, misses nested paths, or floods current valid active records with false positives.
+- **Eval/repair signal**: `active-touch-conflict` issue coverage, SDD validator failure, generated-index drift, and multi-agent touch-set review defects.
+- **Implementation**: Add RED fixture for parent/child touch overlap with misdirected coordination, update active conflict detection to normalize/compare nested paths, and require targeted coordination.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_active_touch_sets_reject_nested_or_misdirected_coordination -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1077,4 +1098,5 @@
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_cli_help_snapshot -q`
 - [ ] `uv run pytest tests/architecture/test_public_contracts_doc_alignment.py -q`
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_generated_readme_source_map_points_to_existing_paths -q`
+- [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_active_touch_sets_reject_nested_or_misdirected_coordination -q`
 - [ ] `make check-all`

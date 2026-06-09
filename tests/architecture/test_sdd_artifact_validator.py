@@ -990,6 +990,41 @@ def test_active_touch_sets_must_not_overlap_without_conflict_note(tmp_path: Path
     assert "active-touch-conflict" in _issue_codes(issues)
 
 
+def test_active_touch_sets_reject_nested_or_misdirected_coordination(tmp_path: Path) -> None:
+    parent_touch = _feature_dir(tmp_path, "active", "2026-06-09-parent-touch")
+    child_touch = _feature_dir(tmp_path, "active", "2026-06-09-child-touch")
+    fixtures = (
+        (
+            parent_touch,
+            "docs/agent-playbook",
+            "coordinate with 2026-06-09-unrelated for unrelated generated index work.",
+        ),
+        (
+            child_touch,
+            "docs/agent-playbook/context-packet-template.md",
+            "coordinate with 2026-06-09-unrelated for unrelated generated index work.",
+        ),
+    )
+    for feature, touch_set, conflict_set in fixtures:
+        _write_valid_spec(feature / "spec.md", status="In Progress")
+        _write_valid_plan(feature / "plan.md", status="In Progress")
+        _write_valid_tasks(
+            feature / "tasks.md",
+            status="In Progress",
+            touch_set=touch_set,
+            conflict_set=conflict_set,
+        )
+        _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "active-touch-conflict" in _issue_codes(issues)
+    messages = "\n".join(issue.message for issue in issues if issue.code == "active-touch-conflict")
+    assert "docs/agent-playbook" in messages
+    assert "2026-06-09-child-touch" in messages
+    assert "2026-06-09-parent-touch" in messages
+
+
 def _feature_dir(root: Path, lane: str, slug: str) -> Path:
     path = root / "docs" / "sdd" / "features" / lane / slug
     path.mkdir(parents=True)

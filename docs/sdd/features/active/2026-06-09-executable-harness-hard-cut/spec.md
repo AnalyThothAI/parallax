@@ -61,6 +61,7 @@ can both miss real process drift and block healthy refactors.
 | Spec background must be source-backed. | Each `spec.md` Background claim block must cite an existing repo `path:line` or an external `https://` source. |
 | Public contracts must be source-bound. | Architecture tests compare `docs/CONTRACTS.md` runtime lists and routes against manifest/settings/API source. |
 | Generated README source maps must be real. | Architecture tests require `docs/generated/README.md` rows to name existing generated files, generator scripts, and source paths. |
+| Active touch conflicts must catch nested paths. | The SDD validator treats parent/child touch paths as overlaps and requires coordination that names the overlapping feature or path. |
 
 ## First principles
 
@@ -96,6 +97,7 @@ can both miss real process drift and block healthy refactors.
 - G24. `make check-all` rejects stale `docs/generated/cli-help.md` snapshots without running database-backed docs regeneration.
 - G25. `docs/CONTRACTS.md` runtime worker keys, agent runtime lanes, WebSocket payloads, and News item route are checked against current source.
 - G26. `docs/generated/README.md` source-map rows point at real generated files, generator scripts, and source paths.
+- G27. Active SDD touch-set conflicts detect exact and parent/child path overlaps, and unrelated `coordinate with ...` prose does not suppress them.
 
 ## Non-goals
 
@@ -189,6 +191,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC46. WHEN `docs/generated/cli-help.md` drifts from `parallax --help`, `parallax db --help`, or `parallax ops --help` THEN `scripts/regen_cli_help.py --check` SHALL exit non-zero and `make check-all` SHALL run that check before integration, e2e, golden, or coverage gates.
 - AC47. WHEN `docs/CONTRACTS.md` lists retired worker keys, stale agent runtime lanes, removed WebSocket payload keys, or the old News item detail route THEN architecture tests SHALL fail against `WorkerManifest`, `WorkersSettings`, `ws.py`, and `routes_news.py`.
 - AC48. WHEN `docs/generated/README.md` names a missing generated file, missing generator script, or stale backticked source path such as a retired WebSocket module path THEN architecture tests SHALL fail before generated-doc instructions are trusted.
+- AC49. WHEN two active SDD features touch exact or parent/child paths and a feature's conflict set only coordinates with an unrelated slug or path THEN the validator SHALL report `active-touch-conflict`.
 
 ## Risks
 

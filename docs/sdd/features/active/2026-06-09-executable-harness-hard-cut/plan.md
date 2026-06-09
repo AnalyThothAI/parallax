@@ -25,6 +25,7 @@ Known-failing baseline tests:
 
 - Create a pure filesystem validator with `scan_sdd_features(root: Path)`, `validate_sdd_root(root: Path)`, and a `--check` CLI.
 - Emit deterministic issue codes for missing gate sections, missing approval metadata, incomplete task fields, false `Verified` evidence, stale generated index, and active touch/conflict overlap.
+- Treat active touch-set parent/child path overlaps as conflicts and require coordination that names the overlapping feature slug or path.
 - Validate `Owning spec` and `Owning plan` links point at the same feature's canonical artifacts before trusting the lifecycle record.
 - Validate every `spec.md` acceptance criterion has exactly one matching `plan.md` acceptance test command entry.
 - Validate spec and plan AC numbers are unique and contiguous before AC command coverage is trusted.
@@ -105,6 +106,7 @@ Known-failing baseline tests:
 
 - Add fixture tests for invalid task coordination field values and valid explicit `none` dependencies / `not delegated` handoffs.
 - Add fixture tests proving old successful `make check-all` snippets outside the canonical verification block do not satisfy `Verified`.
+- Add fixture coverage for nested active touch-set overlaps and conflict rules that coordinate with the wrong feature/path.
 
 ### `tests/architecture/test_harness_structure.py`
 
@@ -223,6 +225,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Generated CLI docs are freshness-checked. | Pass: `check-all` runs `scripts/regen_cli_help.py --check` before integration gates. |
 | Public contracts are source-bound. | Pass: architecture tests compare CONTRACTS worker keys, agent lanes, WS payloads, and News route against current source. |
 | Generated README source map is real. | Pass: architecture tests fail any README source-map row that names a missing generated file, generator script, or source path. |
+| Active touch conflicts are path-aware. | Pass: validator rejects parent/child active touch overlaps when coordination names an unrelated target. |
 
 ## Acceptance test commands
 
@@ -274,6 +277,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC46: `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_cli_help_snapshot -q`
 - AC47: `uv run pytest tests/architecture/test_public_contracts_doc_alignment.py -q`
 - AC48: `uv run pytest tests/architecture/test_harness_structure.py::test_generated_readme_source_map_points_to_existing_paths -q`
+- AC49: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_active_touch_sets_reject_nested_or_misdirected_coordination -q`
 
 ## Verification
 
