@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -1021,9 +1022,27 @@ def test_router_shared_blocks_match_and_reference_agent_playbook() -> None:
     assert "docs/AGENT_EXECUTION.md" in agents
 
 
+@pytest.mark.architecture
+def test_agent_router_frontend_guardrails_match_css_harness() -> None:
+    agents = _shared_router_block(ROOT / "AGENTS.md")
+    retired_buckets = _typescript_string_set(
+        ROOT / "web" / "tests" / "architecture" / "cssArchitectureHarness.test.ts",
+        "retiredGlobalCssBuckets",
+    )
+
+    for bucket in retired_buckets:
+        assert f"`{bucket}`" in agents
+
+
 def _shared_router_block(path: Path) -> str:
     text = _read(path)
     start = "<!-- BEGIN SHARED AGENT ROUTER -->"
     end = "<!-- END SHARED AGENT ROUTER -->"
     assert start in text and end in text, f"{path.name} missing shared router markers"
     return text.split(start, 1)[1].split(end, 1)[0].strip()
+
+
+def _typescript_string_set(path: Path, variable_name: str) -> list[str]:
+    match = re.search(rf"const {variable_name} = new Set\(\[([\s\S]*?)\]\);", _read(path))
+    assert match is not None, f"{variable_name} must be declared as a string Set"
+    return re.findall(r'"([^"]+)"', match.group(1))

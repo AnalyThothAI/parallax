@@ -128,6 +128,11 @@ Known-failing baseline tests:
 - Scan `web/src/routes` and `web/src/features/*/ui` for direct server-state primitives while allowing feature-owned API hooks, page hooks, and controllers to own server reads/writes.
 - Bind `docs/FRONTEND.md` to the executable harness so the rule cannot remain prose-only.
 
+### `AGENTS.md`, `CLAUDE.md`, `tests/architecture/test_agent_playbook_contracts.py`
+
+- Keep the shared agent router blocks mirrored and short while checking their frontend guardrails against current CSS harness constants.
+- Parse `retiredGlobalCssBuckets` from `web/tests/architecture/cssArchitectureHarness.test.ts` so AGENTS/CLAUDE cannot preserve stale retired-bucket examples.
+
 ### `tests/architecture/test_public_contracts_doc_alignment.py`
 
 - Add source-bound checks that compare `docs/CONTRACTS.md` worker keys, agent runtime lanes, WebSocket payloads, and News item route against current runtime/API source.
@@ -251,6 +256,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Frontend docs and skill are harness-bound. | Pass: frontend architecture tests compare docs/skill wording against CSS architecture constants and app navigation source. |
 | Frontend boundary scans derive feature roots. | Pass: feature-boundary architecture tests fail stale hard-coded root lists and scan all current feature roots. |
 | Frontend data ownership is executable. | Pass: `frontendDataOwnership.test.ts` blocks direct route/UI server-state references while keeping feature-owned hooks/controllers as the owning boundary. |
+| Agent routers are source-aligned. | Pass: `test_agent_router_frontend_guardrails_match_css_harness` compares AGENTS/CLAUDE frontend guardrails with the CSS architecture harness. |
 
 ## Acceptance test commands
 
@@ -306,6 +312,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC50: `cd web && npm run test -- tests/architecture/frontendDocContract.test.ts`
 - AC51: `cd web && npm run test -- tests/architecture/featureBoundaries.test.ts`
 - AC52: `cd web && npm run test -- tests/architecture/frontendDataOwnership.test.ts`
+- AC53: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_agent_router_frontend_guardrails_match_css_harness -q`
 
 ## Verification
 

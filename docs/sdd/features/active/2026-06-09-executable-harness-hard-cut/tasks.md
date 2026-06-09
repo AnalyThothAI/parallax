@@ -1111,6 +1111,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 53 — Agent router frontend guardrail source-alignment gate
+
+- **File(s)**: `AGENTS.md`, `CLAUDE.md`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 52
+- **Touch set**: `AGENTS.md`, `CLAUDE.md`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `AGENTS.md` for root router shared-block semantics; coordinate with `CLAUDE.md` for root router shared-block semantics.
+- **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_agent_router_frontend_guardrails_match_css_harness` — asserts root agent router frontend guardrails include retired CSS buckets declared by the frontend CSS harness.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Docs/contracts
+- **Deterministic constraints**: AGENTS and CLAUDE shared router blocks must remain identical and must include every retired CSS bucket from `retiredGlobalCssBuckets` in `web/tests/architecture/cssArchitectureHarness.test.ts`.
+- **On-demand context**: `AGENTS.md`, `CLAUDE.md`, `docs/FRONTEND.md`, `web/tests/architecture/cssArchitectureHarness.test.ts`, and `tests/architecture/test_agent_playbook_contracts.py`.
+- **Kill/defer criteria**: Stop if the test hard-codes bucket names, weakens shared-router parity, or expands root routers with substantive rules that belong in `docs/`.
+- **Eval/repair signal**: stale root router CSS guardrail, shared-router mismatch, and review defects around AGENTS/CLAUDE drift.
+- **Implementation**: Add a source-derived architecture test for root router frontend guardrails and update both mirrored router blocks to current CSS harness retired buckets.
+- **Verification**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_agent_router_frontend_guardrails_match_css_harness -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1165,4 +1186,5 @@
 - [ ] `cd web && npm run test -- tests/architecture/frontendDocContract.test.ts`
 - [ ] `cd web && npm run test -- tests/architecture/featureBoundaries.test.ts`
 - [ ] `cd web && npm run test -- tests/architecture/frontendDataOwnership.test.ts`
+- [ ] `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_agent_router_frontend_guardrails_match_css_harness -q`
 - [ ] `make check-all`

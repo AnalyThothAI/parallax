@@ -69,6 +69,7 @@ claim is allowed without the corresponding output captured below.
 | AC50 — Frontend docs and skill are source-aligned. | ✅ | `cd web && npm run test -- tests/architecture/frontendDocContract.test.ts` failed RED on stale CSS bucket/budget/shell/skill wording, then passed after docs and skill updates. |
 | AC51 — Frontend feature-boundary scan derives feature roots. | ✅ | `cd web && npm run test -- tests/architecture/featureBoundaries.test.ts` failed RED on omitted `macro/news/ops/token-case` and stale `token-target`, then passed after source-derived scan updates. |
 | AC52 — Frontend data ownership gate is executable. | ✅ | `cd web && npm run test -- tests/architecture/frontendDataOwnership.test.ts` failed RED on missing docs binding, then passed after the docs and static source gate were added. |
+| AC53 — Agent router frontend guardrails are source-aligned. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_agent_router_frontend_guardrails_match_css_harness -q` failed RED on missing `macro.css`, then passed after AGENTS/CLAUDE shared router updates. |
 
 Deviations from spec:
 
@@ -848,6 +849,27 @@ exit code: 0
 
 $ cd web && npx prettier --check tests/architecture/frontendDataOwnership.test.ts && npx eslint tests/architecture/frontendDataOwnership.test.ts --max-warnings=0
 All matched files use Prettier code style!
+exit code: 0
+
+$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_agent_router_frontend_guardrails_match_css_harness -q
+F                                                                        [100%]
+AssertionError: assert '`macro.css`' in agents
+exit code: 1
+
+$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_agent_router_frontend_guardrails_match_css_harness -q
+1 passed in 0.02s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_router_shared_blocks_match_and_reference_agent_playbook -q
+1 passed in 0.02s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_agent_playbook_contracts.py -q
+22 passed in 0.60s
+exit code: 0
+
+$ uv run ruff check tests/architecture/test_agent_playbook_contracts.py
+All checks passed!
 exit code: 0
 
 $ uv run python scripts/validate_sdd_artifacts.py --check
