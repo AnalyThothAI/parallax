@@ -2329,6 +2329,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 111 — Read-model identity columns are tuples
+
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 110
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for stable read-model identity column tuple validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_tuple_read_model_identity_columns` — patch one manifest to declare list-shaped stable identity columns and assert manifest validation raises before ownership, registry, factory, settings, or docs consumers run.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `WorkerManifest.current_read_model_identities` identity columns must be strict tuples before ownership, registry, factory, settings, or worker inventory harnesses can treat serving identity declarations as immutable source truth.
+- **On-demand context**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, and Worker Inventory docs checks.
+- **Kill/defer criteria**: Stop if stable identity columns intentionally support list compatibility values, if validation only checks generated docs, or if the fix touches dirty worker runtime contract files.
+- **Eval/repair signal**: list-shaped stable identity columns, serving identity drift, manifest validation drift, and SDD generated index drift.
+- **Implementation**: Add manifest validation rejecting non-tuple identity columns inside `current_read_model_identities`.
+- **Verification**: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_tuple_read_model_identity_columns -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -2441,4 +2462,5 @@
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_boolean_provider_io_flags -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_tuple_contract_fields -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_contract_entries -q`
+- [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_tuple_read_model_identity_columns -q`
 - [ ] `make check-all`

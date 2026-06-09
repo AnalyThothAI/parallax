@@ -127,6 +127,7 @@ claim is allowed without the corresponding output captured below.
 | AC108 — Provider I/O flags are boolean. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_boolean_provider_io_flags -q` failed RED when a patched truthy string `uses_provider_io` did not raise, then passed after adding provider-I/O flag type validation. |
 | AC109 — Tuple manifest contracts reject compatibility lists. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_tuple_contract_fields -q` failed RED when a patched list-shaped `input_contract` did not raise, then passed after adding tuple-field validation. |
 | AC110 — Tuple string contracts reject non-string entries. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_contract_entries -q` failed RED when a patched numeric `input_contract` entry leaked to `AttributeError`, then passed after adding tuple-entry validation. |
+| AC111 — Read-model identity columns are tuples. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_tuple_read_model_identity_columns -q` failed RED when a patched list-shaped stable identity column declaration did not raise, then passed after adding identity-column tuple validation. |
 
 Deviations from spec:
 
@@ -1608,6 +1609,15 @@ exit code: 1
 
 $ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_contract_entries -q
 1 passed in 0.41s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_tuple_read_model_identity_columns -q
+F                                                                        [100%]
+Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_tuple_read_model_identity_columns -q
+1 passed in 0.48s
 exit code: 0
 ```
 
