@@ -28,6 +28,7 @@ Known-failing baseline tests:
 - Validate `Owning spec` and `Owning plan` links point at the same feature's canonical artifacts before trusting the lifecycle record.
 - Validate every `spec.md` acceptance criterion has exactly one matching `plan.md` acceptance test command entry.
 - Validate spec and plan AC numbers are unique and contiguous before AC command coverage is trusted.
+- Validate plan acceptance test commands are command-shaped, not backticked prose.
 - Validate task field semantics, not just presence: path-shaped file/touch values, structured conflict rules, command-shaped verification, test-shaped failing-test-first values, and known task status tokens.
 - Validate task headings form a unique contiguous `Task 1..N` sequence before dependency or dispatch state is trusted.
 - Parse task dependency references and ranges, reject unsupported dependency syntax, and report unresolved task numbers as `task-invalid-dependencies`.
@@ -166,6 +167,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Completed task status is evidenced. | Pass: SDD validator fails `[x]` tasks without matching exit-code evidence. |
 | Machine-readable tokens are exact. | Pass: validator rejects `not delegated` values with prose suffixes. |
 | Referenced handoff artifacts are verified. | Pass: SDD validator fails missing delegated handoff files. |
+| Acceptance commands are executable. | Pass: plan AC command entries must be command-shaped before they count as coverage. |
 
 ## Acceptance test commands
 
@@ -200,6 +202,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC29: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_artifact_owning_links_must_point_to_same_feature -q`
 - AC30: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_acceptance_commands_must_cover_spec_acceptance_criteria -q`
 - AC31: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_acceptance_criteria_and_commands_require_contiguous_numbers -q`
+- AC32: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_acceptance_commands_must_be_command_shaped -q`
 
 ## Verification
 

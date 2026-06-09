@@ -149,6 +149,19 @@ def test_acceptance_criteria_and_commands_require_contiguous_numbers(tmp_path: P
     assert sum(issue.code == "acceptance-numbering-invalid" for issue in issues) == 2
 
 
+def test_plan_acceptance_commands_must_be_command_shaped(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-prose-ac-command")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _replace_acceptance_command(feature / "plan.md", 1, "read the docs")
+    _write_valid_tasks(feature / "tasks.md", status="In Progress", task_status="[~]")
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "acceptance-command-invalid" in _issue_codes(issues)
+
+
 def test_superseded_feature_requires_machine_readable_successor(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "completed", "2026-06-09-prose-successor")
     _write_valid_spec(feature / "spec.md", status="Superseded")
@@ -1004,6 +1017,21 @@ def _append_acceptance_command(path: Path, number: int) -> None:
         + f"\n- AC{number}: `uv run pytest tests/architecture/test_sdd_artifact_validator.py -q`\n",
         encoding="utf-8",
     )
+
+
+def _replace_acceptance_command(path: Path, number: int, command: str) -> None:
+    target = f"- AC{number}:"
+    lines = []
+    replaced = False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.startswith(target):
+            lines.append(f"- AC{number}: `{command}`")
+            replaced = True
+        else:
+            lines.append(line)
+    if not replaced:
+        raise AssertionError(f"missing AC{number} command in {path}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _append_machine_successor_reference(path: Path) -> None:

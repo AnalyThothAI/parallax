@@ -99,6 +99,7 @@ KNOWN_ISSUE_CODES = (
     "artifact-owning-link-mismatch",
     "missing-gate-section",
     "acceptance-numbering-invalid",
+    "acceptance-command-invalid",
     "acceptance-command-mismatch",
     "missing-approval-metadata",
     "task-missing-coordination-fields",
@@ -448,7 +449,8 @@ def _acceptance_command_issues(feature: SddFeature) -> list[SddIssue]:
         return []
 
     spec_number_sequence = _spec_acceptance_numbers(spec_artifact.text)
-    plan_number_sequence = _plan_acceptance_command_numbers(plan_artifact.text)
+    plan_commands = _plan_acceptance_commands(plan_artifact.text)
+    plan_number_sequence = [number for number, _command in plan_commands]
     issues: list[SddIssue] = []
     for artifact, label, numbers in (
         (spec_artifact, "spec acceptance criteria", spec_number_sequence),
@@ -457,6 +459,18 @@ def _acceptance_command_issues(feature: SddFeature) -> list[SddIssue]:
         numbering_message = _contiguous_numbering_error(label, numbers)
         if numbering_message:
             issues.append(_issue("acceptance-numbering-invalid", artifact, numbering_message))
+
+    invalid_commands = [
+        f"AC{number}={command!r}" for number, command in plan_commands if not _looks_like_command(command)
+    ]
+    if invalid_commands:
+        issues.append(
+            _issue(
+                "acceptance-command-invalid",
+                plan_artifact,
+                "plan acceptance entries must be command-shaped: " + ", ".join(invalid_commands),
+            )
+        )
 
     spec_numbers = set(spec_number_sequence)
     plan_numbers = set(plan_number_sequence)
@@ -833,8 +847,11 @@ def _spec_acceptance_numbers(text: str) -> list[int]:
     return [int(match.group("number")) for match in SPEC_AC_RE.finditer(text)]
 
 
-def _plan_acceptance_command_numbers(text: str) -> list[int]:
-    return [int(match.group("number")) for match in PLAN_AC_COMMAND_RE.finditer(text)]
+def _plan_acceptance_commands(text: str) -> list[tuple[int, str]]:
+    return [
+        (int(match.group("number")), _clean_command(match.group("command")))
+        for match in PLAN_AC_COMMAND_RE.finditer(text)
+    ]
 
 
 def _contiguous_numbering_error(label: str, numbers: list[int]) -> str:
