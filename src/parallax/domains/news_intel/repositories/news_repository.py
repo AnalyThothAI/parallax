@@ -79,6 +79,7 @@ _URL_USERINFO_RE = re.compile(r"([a-z][a-z0-9+.-]*://)[^/@\s]+@", re.IGNORECASE)
 _CHECK_QUOTED_VALUE_RE = re.compile(r"'((?:''|[^'])*)'(?:\s*::\s*[A-Za-z_][A-Za-z0-9_]*)?")
 _PUBLICATION_METADATA_FIELDS = {"computed_at_ms", "updated_at_ms", "projected_at_ms", "payload_hash"}
 _NEWS_PAGE_SIGNAL_SQL = "LOWER(signal_json -> 'display_signal' ->> 'direction') = %s"
+_NEWS_PAGE_DISPLAY_SCORE_SQL = "COALESCE(NULLIF(signal_json -> 'display_signal' ->> 'score', '')::int, -1)"
 _NEWS_ITEM_WORKER_COLUMNS = (
     "news_item_id",
     "provider_item_id",
@@ -5083,8 +5084,7 @@ def _news_page_row_filter_sql(
         filters.append(_NEWS_PAGE_SIGNAL_SQL)
         filter_params.append(str(signal).strip().lower())
     if min_score is not None:
-        filters.append("COALESCE(NULLIF(signal_json -> 'display_signal' ->> 'score', '')::int, -1) >= %s")
-        filter_params.append(int(min_score))
+        filters.append(f"{_NEWS_PAGE_DISPLAY_SCORE_SQL} >= {int(min_score)}")
     query_text = str(q).strip() if q is not None else ""
     if query_text:
         filters.append("search_text ILIKE %s")
