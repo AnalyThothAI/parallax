@@ -777,6 +777,15 @@ def _validate_worker_manifests() -> None:
     if missing_leased_queue_depth:
         raise ValueError(f"leased job consumer manifests missing queue depth tables: {missing_leased_queue_depth}")
 
+    missing_provider_io = [
+        manifest.name
+        for manifest in _WORKER_MANIFESTS
+        if manifest.runtime_constraint == WorkerRuntimeConstraint.BOUNDED_PROVIDER_SCHEDULER
+        and not manifest.uses_provider_io
+    ]
+    if missing_provider_io:
+        raise ValueError(f"bounded provider scheduler manifests missing provider IO: {missing_provider_io}")
+
     missing_dirty_control_owner = {
         manifest.name: sorted(set(manifest.dirty_target_tables) - set(manifest.writes_control_plane))
         for manifest in _WORKER_MANIFESTS

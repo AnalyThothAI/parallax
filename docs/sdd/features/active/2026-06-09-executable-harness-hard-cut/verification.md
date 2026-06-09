@@ -100,6 +100,7 @@ claim is allowed without the corresponding output captured below.
 | AC81 — Read-model identity tables are non-blank. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_read_model_identity_tables -q` failed RED when a patched blank `current_read_model_identities` table name was masked by a later missing-identity error, then passed after adding manifest blank identity-table validation. |
 | AC82 — Dirty-target consumers declare dirty targets. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_dirty_consumers_without_dirty_targets -q` failed RED when a patched `DIRTY_TARGET_CONSUMER` manifest with no `dirty_target_tables` did not raise, then passed after adding runtime-constraint validation. |
 | AC83 — Leased-job consumers declare queue depth tables. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_leased_consumers_without_queue_depth -q` failed RED when a patched `LEASED_JOB_CONSUMER` manifest with no `queue_depth_table` did not raise, then passed after adding runtime-constraint validation. |
+| AC84 — Bounded provider schedulers declare provider I/O. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_provider_schedulers_without_provider_io -q` failed RED when a patched `BOUNDED_PROVIDER_SCHEDULER` manifest with `uses_provider_io=False` did not raise, then passed after adding runtime-constraint validation. |
 
 Deviations from spec:
 
@@ -1337,6 +1338,15 @@ Failed: DID NOT RAISE <class 'ValueError'>
 exit code: 1
 
 $ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_leased_consumers_without_queue_depth -q
+1 passed in 0.03s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_provider_schedulers_without_provider_io -q
+F                                                                        [100%]
+Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_provider_schedulers_without_provider_io -q
 1 passed in 0.03s
 exit code: 0
 ```

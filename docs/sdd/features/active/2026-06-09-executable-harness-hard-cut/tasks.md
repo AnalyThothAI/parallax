@@ -1762,6 +1762,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 84 — Bounded provider schedulers declare provider I/O
+
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 83
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for runtime constraint validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_provider_schedulers_without_provider_io` — patch a `BOUNDED_PROVIDER_SCHEDULER` manifest to clear `uses_provider_io` and assert manifest validation raises a dedicated provider-boundary error.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `BOUNDED_PROVIDER_SCHEDULER` manifests must declare provider I/O before provider-boundary, worker lifecycle, or inventory harnesses can treat the runtime classification as source truth.
+- **On-demand context**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, and runtime constraint classification checks.
+- **Kill/defer criteria**: Stop if a bounded provider scheduler can intentionally avoid provider I/O, if validation only relies on provider-specific docs checks, or if the fix touches dirty worker runtime contract files.
+- **Eval/repair signal**: provider scheduler without provider I/O, runtime classification drift, external-data boundary masking, manifest validation drift, and SDD generated index drift.
+- **Implementation**: Add manifest validation requiring `uses_provider_io` whenever `runtime_constraint` is `BOUNDED_PROVIDER_SCHEDULER`.
+- **Verification**: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_provider_schedulers_without_provider_io -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1847,4 +1868,5 @@
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_read_model_identity_tables -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_dirty_consumers_without_dirty_targets -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_leased_consumers_without_queue_depth -q`
+- [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_provider_schedulers_without_provider_io -q`
 - [ ] `make check-all`

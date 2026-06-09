@@ -216,6 +216,23 @@ def test_worker_manifest_validation_rejects_leased_consumers_without_queue_depth
 
 
 @pytest.mark.architecture
+def test_worker_manifest_validation_rejects_provider_schedulers_without_provider_io(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifests = list(all_worker_manifests())
+    first_provider_index = next(
+        index
+        for index, manifest in enumerate(manifests)
+        if manifest.runtime_constraint == WorkerRuntimeConstraint.BOUNDED_PROVIDER_SCHEDULER
+    )
+    manifests[first_provider_index] = replace(manifests[first_provider_index], uses_provider_io=False)
+    monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
+
+    with pytest.raises(ValueError, match="bounded provider scheduler manifests missing provider IO"):
+        worker_manifest_module._validate_worker_manifests()
+
+
+@pytest.mark.architecture
 def test_worker_manifest_validation_rejects_duplicate_read_model_identity_columns(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

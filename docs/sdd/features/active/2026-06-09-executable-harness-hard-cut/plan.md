@@ -197,6 +197,7 @@ Known-failing baseline tests:
 - Add `WorkerManifest.owned_tables` as the source-owned table ownership contract and use it inside manifest validation instead of rebuilding ownership tuples in harness checks.
 - Reject `DIRTY_TARGET_CONSUMER` manifests that omit `dirty_target_tables` before worker lifecycle harnesses trust runtime classification.
 - Reject `LEASED_JOB_CONSUMER` manifests that omit `queue_depth_table` before queue-health harnesses trust runtime classification.
+- Reject `BOUNDED_PROVIDER_SCHEDULER` manifests that omit `uses_provider_io` before provider-boundary harnesses trust runtime classification.
 - Add `read_model_writer_by_table()` as the source-owned read-model writer map and use it in Worker Inventory docs checks.
 - Run the read-model writer map inside manifest validation so duplicate read-model writers fail before downstream harness consumers trust the manifest.
 - Reject `current_read_model_identities` entries for tables absent from the same manifest's `writes_read_models`.
@@ -298,6 +299,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Worker runtime constraints are manifest-owned. | Pass: `WorkerManifest` carries the runtime constraint enum for every worker and architecture tests no longer define a separate worker classification map. |
 | Dirty-target consumers declare dirty targets. | Pass: `_validate_worker_manifests()` raises when a patched `DIRTY_TARGET_CONSUMER` manifest omits `dirty_target_tables`. |
 | Leased-job consumers declare queue depth tables. | Pass: `_validate_worker_manifests()` raises when a patched `LEASED_JOB_CONSUMER` manifest omits `queue_depth_table`. |
+| Bounded provider schedulers declare provider I/O. | Pass: `_validate_worker_manifests()` raises when a patched `BOUNDED_PROVIDER_SCHEDULER` manifest clears `uses_provider_io`. |
 | Worker Inventory docs are manifest-owned. | Pass: worker inventory architecture tests import source manifest data directly and reject peer architecture-test imports. |
 | Worker table ownership is manifest-owned. | Pass: `WorkerManifest.owned_tables` exposes the deduped owned-table contract and queue-health validation consumes it. |
 | Read-model writer mapping is manifest-owned. | Pass: `read_model_writer_by_table()` exposes unique read-model ownership and Worker Inventory docs checks consume it. |
@@ -423,6 +425,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC81: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_read_model_identity_tables -q`
 - AC82: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_dirty_consumers_without_dirty_targets -q`
 - AC83: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_leased_consumers_without_queue_depth -q`
+- AC84: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_provider_schedulers_without_provider_io -q`
 
 ## Verification
 

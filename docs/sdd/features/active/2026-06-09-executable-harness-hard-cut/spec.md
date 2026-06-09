@@ -45,6 +45,7 @@ can both miss real process drift and block healthy refactors.
 | Worker runtime constraints must be manifest-owned. | `WorkerManifest` carries each worker's runtime constraint classification, so architecture tests do not maintain a second worker inventory. |
 | Dirty-target consumers must declare dirty targets. | `WorkerManifest` validation rejects `DIRTY_TARGET_CONSUMER` manifests that omit `dirty_target_tables`. |
 | Leased-job consumers must declare queue depth tables. | `WorkerManifest` validation rejects `LEASED_JOB_CONSUMER` manifests that omit `queue_depth_table`. |
+| Bounded provider schedulers must declare provider I/O. | `WorkerManifest` validation rejects `BOUNDED_PROVIDER_SCHEDULER` manifests that do not set `uses_provider_io`. |
 | Worker Inventory docs must be manifest-owned. | Architecture tests derive worker class and read-model writer expectations from `WorkerManifest`, not from peer architecture-test constants. |
 | Worker table ownership must be manifest-owned. | `WorkerManifest.owned_tables` exposes the canonical written-table set so harness checks do not reassemble ownership fields ad hoc. |
 | Read-model writer mapping must be manifest-owned. | `read_model_writer_by_table()` exposes the unique read-model writer map from `WorkerManifest`, so docs harnesses do not derive their own registry. |
@@ -168,6 +169,7 @@ can both miss real process drift and block healthy refactors.
 - G59. Stable read-model identity table names reject blank strings before ownership checks, so whitespace placeholders cannot be normalized into missing or unowned identity drift.
 - G60. Dirty-target consumer runtime classification requires declared dirty target tables, so worker lifecycle semantics cannot drift away from queue ownership declarations.
 - G61. Leased-job consumer runtime classification requires a declared queue depth table, so leased queue workers cannot lose their queue-health source identity.
+- G62. Bounded provider scheduler runtime classification requires declared provider I/O, so provider-polling or streaming workers cannot lose their external-data boundary marker.
 
 ## Non-goals
 
@@ -296,6 +298,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC81. WHEN a `WorkerManifest.current_read_model_identities` entry contains a blank read-model table name THEN manifest validation SHALL raise before ownership, missing-identity, or downstream harness checks consume the manifest.
 - AC82. WHEN a `WorkerManifest` is classified as `DIRTY_TARGET_CONSUMER` and has no `dirty_target_tables` THEN manifest validation SHALL raise before worker lifecycle, ownership, or queue-health harnesses consume the manifest.
 - AC83. WHEN a `WorkerManifest` is classified as `LEASED_JOB_CONSUMER` and has no `queue_depth_table` THEN manifest validation SHALL raise before worker lifecycle, ownership, or queue-health harnesses consume the manifest.
+- AC84. WHEN a `WorkerManifest` is classified as `BOUNDED_PROVIDER_SCHEDULER` and does not set `uses_provider_io` THEN manifest validation SHALL raise before provider-boundary, lifecycle, or worker inventory harnesses consume the manifest.
 
 ## Risks
 
