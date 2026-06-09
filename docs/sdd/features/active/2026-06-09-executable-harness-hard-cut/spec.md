@@ -86,6 +86,7 @@ can both miss real process drift and block healthy refactors.
 | Read-model identity columns must be non-blank. | `WorkerManifest` validation and `CurrentReadModelPublisher` reject blank stable identity column names. |
 | Read-model identity columns must be tuples. | `WorkerManifest` validation rejects list-shaped stable identity column declarations before ownership or docs harnesses consume them. |
 | Worker manifest imports must be explicit. | `worker_manifest.py` imports `importlib.util` directly so clean-process manifest validation never depends on incidental package attribute side effects. |
+| Root visual artifacts must be absent. | Architecture harness rejects loose visual verification files at the repository root so screenshots live only under owned artifact directories. |
 | Worker table declarations must be unique. | `WorkerManifest` validation rejects duplicated table names inside each manifest table-declaration field before `owned_tables` dedupes them. |
 | Worker table declarations must be non-blank. | `WorkerManifest` validation rejects blank table names in table-declaration fields and queue-depth table declarations. |
 | SQL tests must avoid accidental alias/order coupling. | A query-contract helper checks tables, predicates, locks, params, and forbidden surfaces without pinning formatting. |
@@ -230,6 +231,7 @@ can both miss real process drift and block healthy refactors.
 - G90. Stable read-model identity entries reject list-shaped compatibility values, so serving identity table/column pairs remain immutable manifest source truth.
 - G91. Worker manifest module imports declare `importlib.util` directly, so source-owned manifest validation survives clean-process imports without depending on prior import side effects.
 - G92. Stable read-model identity entries reject malformed arity, so manifest validation owns the table/column pair shape instead of leaking Python unpacking errors.
+- G93. Root-level visual verification artifacts are rejected, so old screenshots cannot remain as loose project files outside owned artifact directories.
 
 ## Non-goals
 
@@ -389,6 +391,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC112. WHEN a `WorkerManifest.current_read_model_identities` entry is not a tuple THEN manifest validation SHALL raise before ownership, registry, factory, settings, or worker inventory harnesses consume the manifest.
 - AC113. WHEN `worker_manifest.py` is imported in a clean process where `importlib.util` is not already attached to the imported `importlib` package object THEN the import SHALL succeed without relying on incidental import side effects.
 - AC114. WHEN a `WorkerManifest.current_read_model_identities` entry does not contain exactly the read-model table name and stable identity columns THEN manifest validation SHALL raise before table/column unpacking, ownership, registry, factory, settings, or worker inventory harnesses consume the manifest.
+- AC115. WHEN visual verification artifacts such as PNG, JPG, WEBP, or GIF files exist at the repository root THEN the architecture harness SHALL fail until those loose root artifacts are removed or moved under an owned artifact directory.
 
 ## Risks
 

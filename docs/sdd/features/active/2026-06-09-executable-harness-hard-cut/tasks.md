@@ -2413,6 +2413,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 115 — Root visual artifacts are rejected
+
+- **File(s)**: `tests/architecture/test_harness_structure.py`, `news-provider-rating-1366.png`, `parallax-macro-assets-after-1366.png`, `parallax-macro-assets-after-390.png`, `parallax-macro-assets-before-1366.png`, `parallax-macro-assets-before-390.png`, `timsun-assets-1366.png`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 114
+- **Touch set**: `tests/architecture/test_harness_structure.py`, `news-provider-rating-1366.png`, `parallax-macro-assets-after-1366.png`, `parallax-macro-assets-after-390.png`, `parallax-macro-assets-before-1366.png`, `parallax-macro-assets-before-390.png`, `timsun-assets-1366.png`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `tests/architecture/test_harness_structure.py` for root artifact hygiene semantics.
+- **Failing test first**: `tests/architecture/test_harness_structure.py::test_repo_root_has_no_loose_visual_artifacts` — run the new harness against a temporary HEAD workspace with root PNG artifacts still present and assert it fails on those loose files.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Visual verification artifacts must live under owned artifact directories such as `.codex_artifacts/`, `docs/generated/`, `docs/mockups/`, or `output/playwright/`, never as loose repository-root files.
+- **On-demand context**: `tests/architecture/test_harness_structure.py`, `docs/generated/README.md`, and current tracked root visual artifacts.
+- **Kill/defer criteria**: Stop if a root visual artifact is intentionally part of public product packaging, if it is referenced by docs/source, or if the harness cannot distinguish root files from owned artifact directories.
+- **Eval/repair signal**: root PNG/JPG/WEBP/GIF files, stale visual verification screenshots, repository-root artifact drift, and SDD generated index drift.
+- **Implementation**: Add an architecture harness rejecting loose root-level visual files and remove the existing root PNG artifacts.
+- **Verification**: `uv run pytest tests/architecture/test_harness_structure.py::test_repo_root_has_no_loose_visual_artifacts -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -2529,4 +2550,5 @@
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_tuple_read_model_identity_entries -q`
 - [ ] `uv run pytest tests/architecture/test_src_domain_architecture.py::test_worker_manifest_imports_in_clean_process_without_importlib_util_side_effect -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_malformed_read_model_identity_entries -q`
+- [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_repo_root_has_no_loose_visual_artifacts -q`
 - [ ] `make check-all`

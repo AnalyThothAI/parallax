@@ -244,6 +244,20 @@ def test_no_legacy_files_at_docs_root() -> None:
     assert legacy == [], f"legacy files still at docs root: {legacy}"
 
 
+def test_repo_root_has_no_loose_visual_artifacts() -> None:
+    visual_suffixes = {".gif", ".jpeg", ".jpg", ".png", ".webp"}
+    loose_visuals = sorted(
+        path.name
+        for path in REPO_ROOT.iterdir()
+        if path.is_file() and path.suffix.lower() in visual_suffixes
+    )
+
+    assert loose_visuals == [], (
+        "visual verification artifacts must live under an owned artifact directory, "
+        f"not repo root: {loose_visuals}"
+    )
+
+
 def test_rule_ownership() -> None:
     governance_paths = _governance_paths()
     for rule_name, contract in GOVERNANCE_RULE_ANCHORS.items():

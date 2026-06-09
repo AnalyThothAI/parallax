@@ -131,6 +131,7 @@ claim is allowed without the corresponding output captured below.
 | AC112 — Read-model identity entries are tuples. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_tuple_read_model_identity_entries -q` failed RED when a patched list-shaped stable identity entry did not raise, then passed after adding identity-entry tuple validation. |
 | AC113 — Worker manifest imports are explicit. | ✅ | `uv run pytest tests/architecture/test_src_domain_architecture.py::test_worker_manifest_imports_in_clean_process_without_importlib_util_side_effect -q` failed RED in a temporary HEAD workspace when `worker_manifest.py` relied on `importlib.util` as an incidental package attribute, then passed after adding an explicit `import importlib.util`. |
 | AC114 — Read-model identity entries are pairs. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_malformed_read_model_identity_entries -q` failed RED when a patched three-field stable identity entry leaked a Python unpacking error, then passed after adding identity-entry arity validation. |
+| AC115 — Root visual artifacts are absent. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_repo_root_has_no_loose_visual_artifacts -q` failed RED in a temporary HEAD workspace with six root PNG artifacts, then passed after adding the root-artifact harness and removing those root PNG files. |
 
 Deviations from spec:
 
@@ -1648,6 +1649,15 @@ exit code: 1
 
 $ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_malformed_read_model_identity_entries -q
 1 passed in 0.41s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_harness_structure.py::test_repo_root_has_no_loose_visual_artifacts -q
+F                                                                        [100%]
+AssertionError: visual verification artifacts must live under an owned artifact directory, not repo root: ['news-provider-rating-1366.png', 'parallax-macro-assets-after-1366.png', 'parallax-macro-assets-after-390.png', 'parallax-macro-assets-before-1366.png', 'parallax-macro-assets-before-390.png', 'timsun-assets-1366.png']
+exit code: 1
+
+$ uv run pytest tests/architecture/test_harness_structure.py::test_repo_root_has_no_loose_visual_artifacts -q
+1 passed in 0.02s
 exit code: 0
 ```
 

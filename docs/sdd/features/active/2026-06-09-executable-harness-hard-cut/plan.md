@@ -236,6 +236,7 @@ Known-failing baseline tests:
 - Reject blank stable identity column names inside each `current_read_model_identities` entry and inside `CurrentReadModelPublisher`.
 - Reject list-shaped stable identity column declarations inside `current_read_model_identities` before ownership, registry, factory, settings, or docs harnesses consume them.
 - Import `importlib.util` directly inside `worker_manifest.py` so manifest validation does not depend on prior import side effects in clean processes.
+- Reject loose visual verification artifacts at the repository root and keep screenshots under owned artifact directories.
 - Reject duplicate table names inside each `WorkerManifest` table-declaration field before `owned_tables` dedupes them.
 - Reject blank table names inside each `WorkerManifest` table-declaration field and `queue_depth_table`.
 
@@ -370,6 +371,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Read-model identity columns are non-blank. | Pass: `_validate_worker_manifests()` and `CurrentReadModelPublisher` raise when a read-model identity declares a blank stable identity column. |
 | Read-model identity columns are tuples. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares list-shaped stable identity columns. |
 | Worker manifest imports are explicit. | Pass: importing `parallax.app.runtime.worker_manifest` in a clean process succeeds even after removing an incidental `importlib.util` package attribute. |
+| Root visual artifacts are absent. | Pass: architecture harness rejects loose root-level PNG/JPG/WEBP/GIF verification artifacts. |
 | Worker table declarations are unique. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares the same table twice inside one table-declaration field. |
 | Worker table declarations are non-blank. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares a blank table name in a table-declaration field. |
 | Delegated handoff artifacts are task-bound. | Pass: validator rejects existing delegated handoff files that name another feature/task/mode or stale report-validation command. |
@@ -516,6 +518,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC112: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_tuple_read_model_identity_entries -q`
 - AC113: `uv run pytest tests/architecture/test_src_domain_architecture.py::test_worker_manifest_imports_in_clean_process_without_importlib_util_side_effect -q`
 - AC114: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_malformed_read_model_identity_entries -q`
+- AC115: `uv run pytest tests/architecture/test_harness_structure.py::test_repo_root_has_no_loose_visual_artifacts -q`
 
 ## Verification
 
