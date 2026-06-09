@@ -116,6 +116,12 @@ def test_stable_current_payload_hash_rejects_non_mapping_payloads(payload: objec
 
 
 @pytest.mark.architecture
+def test_stable_current_payload_hash_rejects_non_string_payload_keys() -> None:
+    with pytest.raises(ValueError, match="current payload hash payload has non-string keys"):
+        stable_current_payload_hash({123: "legacy"})
+
+
+@pytest.mark.architecture
 def test_current_read_model_publisher_rejects_non_string_payload_hash_column() -> None:
     with pytest.raises(ValueError, match="non-string current payload hash column"):
         CurrentReadModelPublisher(identity_columns=("target_id",), payload_hash_column=123)

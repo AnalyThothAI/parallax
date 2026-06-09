@@ -169,6 +169,7 @@ claim is allowed without the corresponding output captured below.
 | AC150 — Publisher changed rows reject malformed existing-hash strings. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_malformed_existing_hash_values_before_hash_lookup -q` failed RED when malformed existing-hash strings were accepted, then passed after adding canonical payload-hash validation. |
 | AC151 — Publisher changed rows reject malformed row batches. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_sequence_row_batches_before_row_validation -q` failed RED when scalar batches leaked `TypeError` and mapping/string batches were iterated as rows, then passed after adding dedicated row-batch validation. |
 | AC152 — Stable payload hash rejects malformed payload containers. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_non_mapping_payloads -q` failed RED when scalar/string payloads leaked `dict(...)` errors and list-of-pairs payloads were accepted, then passed after adding dedicated payload-shape validation. |
+| AC153 — Stable payload hash rejects non-string payload keys. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_non_string_payload_keys -q` failed RED when numeric payload keys were stringified into a hash, then passed after adding dedicated payload-key validation. |
 
 Deviations from spec:
 
@@ -2846,6 +2847,38 @@ exit code: 0
 $ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
 .............................................................            [100%]
 61 passed in 0.52s
+exit code: 0
+
+$ uv run ruff check src/parallax/app/runtime/current_read_model_publisher.py tests/architecture/test_worker_manifest_static_contracts.py
+All checks passed!
+exit code: 0
+
+$ git diff --check
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_non_string_payload_keys -q
+F                                                                        [100%]
+E       Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_non_string_payload_keys -q
+.                                                                        [100%]
+1 passed in 0.34s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_non_string_payload_keys -q
+.                                                                        [100%]
+1 passed in 0.45s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py -q
+....................................                                     [100%]
+36 passed in 0.45s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
+.............................................................            [100%]
+61 passed in 0.55s
 exit code: 0
 
 $ uv run ruff check src/parallax/app/runtime/current_read_model_publisher.py tests/architecture/test_worker_manifest_static_contracts.py
