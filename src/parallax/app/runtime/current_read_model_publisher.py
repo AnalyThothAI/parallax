@@ -59,6 +59,8 @@ class CurrentReadModelPublisher:
             raise ValueError(f"non-string current payload hash column: {self.payload_hash_column}")
         if not self.payload_hash_column.strip():
             raise ValueError(f"blank current payload hash column: {self.payload_hash_column!r}")
+        if self.payload_hash_column in FORBIDDEN_SERVING_IDENTITY_COLUMNS:
+            raise ValueError(f"payload hash column cannot be lifecycle column: {self.payload_hash_column}")
         if self.payload_columns is not None and type(self.payload_columns) is not tuple:
             raise ValueError(f"non-tuple current payload columns: {self.payload_columns}")
         if self.payload_columns is not None:
@@ -73,6 +75,11 @@ class CurrentReadModelPublisher:
             )
             if duplicate_payload_columns:
                 raise ValueError(f"duplicate current payload columns: {duplicate_payload_columns}")
+            if self.payload_hash_column in self.payload_columns:
+                raise ValueError(f"payload columns cannot include payload hash column: {self.payload_hash_column}")
+            forbidden_payload_columns = sorted(set(self.payload_columns) & FORBIDDEN_SERVING_IDENTITY_COLUMNS)
+            if forbidden_payload_columns:
+                raise ValueError(f"payload columns cannot include lifecycle columns: {forbidden_payload_columns}")
 
     def row_identity(self, row: Mapping[str, Any]) -> tuple[Any, ...]:
         return tuple(row[column] for column in self.identity_columns)

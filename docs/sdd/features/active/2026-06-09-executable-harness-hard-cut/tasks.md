@@ -2686,6 +2686,69 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 128 — Publisher payload hash columns are not lifecycle columns
+
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 127
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for publisher payload hash lifecycle-column validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_lifecycle_payload_hash_column` — construct `CurrentReadModelPublisher` with a lifecycle `payload_hash_column` and assert publisher validation raises before changed-row writes can overwrite runtime lifecycle fields.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `CurrentReadModelPublisher.payload_hash_column` must not be a serving lifecycle column before changed-row writes, worker static harnesses, or row payload hashing consume it as the serving-row hash key.
+- **On-demand context**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, and stable current read-model publisher contracts.
+- **Kill/defer criteria**: Stop if lifecycle-named publisher payload hash columns intentionally mean lifecycle-field replacement, if validation only checks caller code, or if the fix touches projection worker runtime behavior.
+- **Eval/repair signal**: lifecycle publisher payload hash column names, overwritten runtime lifecycle fields, changed-row write drift, publisher validation drift, and SDD generated index drift.
+- **Implementation**: Add publisher construction validation rejecting lifecycle `payload_hash_column` values before changed-row write checks.
+- **Verification**: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_lifecycle_payload_hash_column -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 129 — Publisher payload columns exclude the payload hash column
+
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 128
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for publisher payload hash self-reference validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_payload_hash_payload_columns` — construct `CurrentReadModelPublisher` with explicit `payload_columns` containing the configured hash column and assert publisher validation raises before row hashing can self-reference prior serving hashes.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `CurrentReadModelPublisher.payload_columns` must not include the configured payload hash column before row payload hashing, changed-row writes, or worker static harnesses consume them as payload keys.
+- **On-demand context**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, and stable current read-model publisher contracts.
+- **Kill/defer criteria**: Stop if payload hash self-reference is intentionally part of the hash protocol, if validation only checks caller code, or if the fix touches projection worker runtime behavior.
+- **Eval/repair signal**: self-referential payload hash columns, prior-hash feedback loops, changed-row drift, publisher validation drift, and SDD generated index drift.
+- **Implementation**: Add publisher construction validation rejecting explicit `payload_columns` that contain the configured `payload_hash_column`.
+- **Verification**: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_payload_hash_payload_columns -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 130 — Publisher payload columns exclude lifecycle columns
+
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 129
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for publisher payload lifecycle-column validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_lifecycle_payload_columns` — construct `CurrentReadModelPublisher` with explicit lifecycle `payload_columns` and assert publisher validation raises before row hashing can reintroduce run/generation/timestamp drift.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `CurrentReadModelPublisher.payload_columns` must not include serving lifecycle columns before row payload hashing, changed-row writes, or worker static harnesses consume them as payload keys.
+- **On-demand context**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, and stable current read-model publisher contracts.
+- **Kill/defer criteria**: Stop if explicit lifecycle payload columns intentionally mean attempt/timestamp-sensitive serving hashes, if validation only checks caller code, or if the fix touches projection worker runtime behavior.
+- **Eval/repair signal**: lifecycle payload columns, run/generation/timestamp hash drift, changed-row write drift, publisher validation drift, and SDD generated index drift.
+- **Implementation**: Add publisher construction validation rejecting explicit `payload_columns` that contain serving lifecycle columns.
+- **Verification**: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_lifecycle_payload_columns -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -2815,4 +2878,7 @@
 - [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_blank_payload_columns -q`
 - [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_blank_payload_hash_column -q`
 - [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_duplicate_payload_columns -q`
+- [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_lifecycle_payload_hash_column -q`
+- [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_payload_hash_payload_columns -q`
+- [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_lifecycle_payload_columns -q`
 - [ ] `make check-all`

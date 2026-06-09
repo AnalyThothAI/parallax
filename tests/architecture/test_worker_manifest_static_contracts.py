@@ -112,6 +112,12 @@ def test_current_read_model_publisher_rejects_blank_payload_hash_column() -> Non
 
 
 @pytest.mark.architecture
+def test_current_read_model_publisher_rejects_lifecycle_payload_hash_column() -> None:
+    with pytest.raises(ValueError, match="payload hash column cannot be lifecycle"):
+        CurrentReadModelPublisher(identity_columns=("target_id",), payload_hash_column="computed_at_ms")
+
+
+@pytest.mark.architecture
 def test_current_read_model_publisher_rejects_non_tuple_payload_columns() -> None:
     with pytest.raises(ValueError, match="non-tuple current payload columns"):
         CurrentReadModelPublisher(identity_columns=("target_id",), payload_columns=["target_id"])
@@ -133,6 +139,18 @@ def test_current_read_model_publisher_rejects_blank_payload_columns() -> None:
 def test_current_read_model_publisher_rejects_duplicate_payload_columns() -> None:
     with pytest.raises(ValueError, match="duplicate current payload columns"):
         CurrentReadModelPublisher(identity_columns=("target_id",), payload_columns=("target_id", "score", "score"))
+
+
+@pytest.mark.architecture
+def test_current_read_model_publisher_rejects_payload_hash_payload_columns() -> None:
+    with pytest.raises(ValueError, match="payload columns cannot include payload hash column"):
+        CurrentReadModelPublisher(identity_columns=("target_id",), payload_columns=("target_id", "payload_hash"))
+
+
+@pytest.mark.architecture
+def test_current_read_model_publisher_rejects_lifecycle_payload_columns() -> None:
+    with pytest.raises(ValueError, match="payload columns cannot include lifecycle columns"):
+        CurrentReadModelPublisher(identity_columns=("target_id",), payload_columns=("target_id", "computed_at_ms"))
 
 
 @pytest.mark.architecture

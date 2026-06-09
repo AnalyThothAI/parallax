@@ -144,6 +144,9 @@ claim is allowed without the corresponding output captured below.
 | AC125 — Publisher payload column entries are non-blank. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_blank_payload_columns -q` failed RED when a blank payload column entry was silently accepted, then passed after adding publisher payload-column blank validation. |
 | AC126 — Publisher payload hash columns are non-blank. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_blank_payload_hash_column -q` failed RED when a blank payload hash column was silently accepted, then passed after adding publisher payload-hash column blank validation. |
 | AC127 — Publisher payload column entries are unique. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_duplicate_payload_columns -q` failed RED when duplicate payload column entries were silently accepted, then passed after adding publisher payload-column duplicate validation. |
+| AC128 — Publisher payload hash columns are not lifecycle columns. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_lifecycle_payload_hash_column -q` failed RED when a lifecycle payload hash column was silently accepted, then passed after adding publisher payload-hash lifecycle-column validation. |
+| AC129 — Publisher payload columns exclude the payload hash column. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_payload_hash_payload_columns -q` failed RED when explicit payload columns could include the payload hash column, then passed after adding publisher payload hash self-reference validation. |
+| AC130 — Publisher payload columns exclude lifecycle columns. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_lifecycle_payload_columns -q` failed RED when explicit lifecycle payload columns were silently accepted, then passed after adding publisher payload lifecycle-column validation. |
 
 Deviations from spec:
 
@@ -1977,6 +1980,59 @@ exit code: 0
 
 $ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
 56 passed in 0.53s
+exit code: 0
+
+$ git diff --check
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_lifecycle_payload_hash_column -q
+F                                                                        [100%]
+E       Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_payload_hash_payload_columns -q
+F                                                                        [100%]
+E       Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_lifecycle_payload_columns -q
+F                                                                        [100%]
+E       Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_lifecycle_payload_hash_column -q
+1 passed in 0.41s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_payload_hash_payload_columns -q
+1 passed in 0.42s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_lifecycle_payload_columns -q
+1 passed in 0.41s
+exit code: 0
+
+$ uv run python scripts/regen_sdd_work_index.py
+wrote docs/generated/sdd-work-index.md
+exit code: 0
+
+$ uv run python scripts/validate_sdd_artifacts.py --check
+SDD artifact validation passed.
+exit code: 0
+
+$ uv run python scripts/regen_sdd_work_index.py --check
+exit code: 0
+
+$ uv run ruff check src/parallax/app/runtime/current_read_model_publisher.py tests/architecture/test_worker_manifest_static_contracts.py
+All checks passed!
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py -q
+15 passed in 0.66s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
+56 passed in 0.41s
 exit code: 0
 
 $ git diff --check
