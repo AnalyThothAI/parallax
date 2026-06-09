@@ -126,6 +126,25 @@ def test_superseded_feature_requires_approval_metadata(tmp_path: Path) -> None:
     assert "missing-approval-metadata" in _issue_codes(issues)
 
 
+def test_superseded_feature_requires_structured_tasks(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "completed", "2026-06-09-superseded-unstructured-tasks")
+    successor = _feature_dir(tmp_path, "active", "2026-06-09-successor")
+    _write_valid_spec(successor / "spec.md", status="In Progress")
+    _write_valid_plan(successor / "plan.md", status="In Progress")
+    _write_valid_tasks(successor / "tasks.md", status="In Progress", task_status="[~]")
+    _write_valid_verification(successor / "verification.md", status="In Progress")
+    _write_valid_spec(feature / "spec.md", status="Superseded")
+    _write_valid_plan(feature / "plan.md", status="Superseded")
+    _write_unstructured_superseded_tasks(feature / "tasks.md")
+    _write_valid_verification(feature / "verification.md", status="Superseded")
+    for artifact_name in ("spec.md", "plan.md", "tasks.md", "verification.md"):
+        _append_machine_successor_reference(feature / artifact_name)
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "task-missing-coordination-fields" in _issue_codes(issues)
+
+
 def test_verified_feature_ignores_old_success_outside_verification_commands(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "completed", "2026-06-09-old-success")
     _write_valid_spec(feature / "spec.md", status="Verified")
@@ -637,6 +656,28 @@ def _write_valid_tasks(
                 "- **Kill/defer criteria**: Stop if validator cannot prove artifact truth.",
                 "- **Eval/repair signal**: Record harness failures and review defects.",
                 f"- **Status**: {task_status}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_unstructured_superseded_tasks(path: Path) -> None:
+    path.write_text(
+        "\n".join(
+            [
+                "# Tasks - Legacy",
+                "",
+                "**Status**: Superseded",
+                "**Owning plan**: `docs/sdd/features/completed/2026-06-09-legacy/plan.md`",
+                "**Worktree**: `.worktrees/legacy`",
+                "**Branch**: `codex/legacy`",
+                "**Approved by**: qinghuan",
+                "**Approved at**: 2026-06-09",
+                "",
+                "## Tasks",
+                "",
+                "- [x] legacy checklist item",
             ]
         ),
         encoding="utf-8",

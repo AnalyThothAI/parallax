@@ -780,6 +780,15 @@ def _superseded_issues(feature: SddFeature) -> list[SddIssue]:
                     f"Superseded successor path does not exist: {successor}",
                 )
             )
+    tasks_artifact = feature.artifacts["tasks.md"]
+    if not tasks_artifact.missing and not feature.tasks:
+        issues.append(
+            _issue(
+                "task-missing-coordination-fields",
+                tasks_artifact,
+                "Superseded tasks.md must retain structured Task sections",
+            )
+        )
     return issues
 
 

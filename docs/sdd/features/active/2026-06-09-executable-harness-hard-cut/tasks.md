@@ -523,6 +523,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 25 — Superseded structured task record gate
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-sdd-governance-hard-cut/tasks.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 24
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-sdd-governance-hard-cut/tasks.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD lifecycle semantics and completed-record task structure.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_structured_tasks` — asserts legacy checkbox-only tasks cannot pass as Superseded.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Superseded `tasks.md` may skip full active-task field validation, but must still retain structured `### Task` records.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, completed SDD feature records, SDD task templates.
+- **Kill/defer criteria**: Stop if completed records need a checkbox-only compatibility format or if old tasks cannot be mapped to structured records.
+- **Eval/repair signal**: `task-missing-coordination-fields`, stale generated index, and completed-record drift.
+- **Implementation**: Add a Superseded structured-task check and convert the legacy governance completed tasks record into structured tasks.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_structured_tasks -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -548,4 +569,5 @@
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_completed_tasks_reject_incomplete_dependencies -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_task_evidence_ignores_commands_outside_evidence_sections -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_approval_metadata -q`
+- [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_structured_tasks -q`
 - [ ] `make check-all`

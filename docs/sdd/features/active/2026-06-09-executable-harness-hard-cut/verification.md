@@ -41,6 +41,7 @@ claim is allowed without the corresponding output captured below.
 | AC22 — completed tasks cannot depend on incomplete tasks. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_completed_tasks_reject_incomplete_dependencies -q` passed after first failing RED run; Task 6 dependency was corrected from `Tasks 1-5` to `Tasks 1-4`. |
 | AC23 — completed-task evidence only counts inside evidence sections. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_task_evidence_ignores_commands_outside_evidence_sections -q` passed after first failing RED run. |
 | AC24 — superseded records still carry approval metadata. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_approval_metadata -q` passed after first failing RED run; completed SDD records were backfilled. |
+| AC25 — superseded records retain structured tasks. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_structured_tasks -q` passed after first failing RED run; legacy governance completed tasks were converted. |
 
 Deviations from spec:
 
@@ -435,6 +436,34 @@ exit code: 0
 
 $ uv run pytest tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py -q
 43 passed in 0.43s
+exit code: 0
+
+$ uv run ruff check scripts/validate_sdd_artifacts.py scripts/regen_sdd_work_index.py tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py
+All checks passed!
+exit code: 0
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_structured_tasks -q
+F                                                                        [100%]
+AssertionError: assert 'task-missing-coordination-fields' in set()
+exit code: 1
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_structured_tasks -q
+1 passed in 0.02s
+exit code: 0
+
+$ uv run python scripts/validate_sdd_artifacts.py --check
+error: task-missing-coordination-fields: docs/sdd/features/completed/2026-06-09-sdd-governance-hard-cut/tasks.md: Superseded tasks.md must retain structured Task sections
+exit code: 1
+
+$ uv run python scripts/validate_sdd_artifacts.py --check
+SDD artifact validation passed.
+exit code: 0
+
+$ uv run python scripts/regen_sdd_work_index.py --check
+exit code: 0
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py -q
+44 passed in 0.43s
 exit code: 0
 
 $ uv run ruff check scripts/validate_sdd_artifacts.py scripts/regen_sdd_work_index.py tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py
