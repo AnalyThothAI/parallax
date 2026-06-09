@@ -111,6 +111,7 @@ Known-failing baseline tests:
 ### `tests/architecture/test_harness_structure.py`
 
 - Assert `make check-all` includes the CLI help snapshot freshness check, so generated public CLI docs cannot drift outside integration-only docs tests.
+- Assert `make check-all` includes the score-version snapshot freshness check, so generated score/version docs cannot drift outside integration-only generated-doc tests.
 - Assert `make check-all` includes the WebSocket protocol snapshot freshness check, so generated WebSocket docs cannot drift outside integration-only generated-doc tests.
 - Assert `docs/generated/README.md` source-map rows point at existing generated files, generator scripts, and source paths.
 - Assert `docs/generated/ws-protocol.md` lists the current WebSocket `type` literals from `src/parallax/app/surfaces/api/ws.py`.
@@ -272,6 +273,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Analyze gate statuses are bounded. | Pass: validator rejects plan Analyze Gate results that do not begin with `Pass:` or `Blocked:`. |
 | Failing-test-first evidence is covered. | Pass: validator rejects completed tasks whose failing-test test file paths never appear in successful command evidence. |
 | Generated CLI docs are freshness-checked. | Pass: `check-all` runs `scripts/regen_cli_help.py --check` before integration gates. |
+| Generated score-version docs are freshness-checked. | Pass: `check-all` runs `scripts/regen_score_versions.py --check` before integration gates. |
 | Generated WebSocket docs are freshness-checked. | Pass: `check-all` runs `scripts/regen_ws_protocol.py --check` before integration gates. |
 | Public contracts are source-bound. | Pass: architecture tests compare CONTRACTS worker keys, agent lanes, WS payloads, and News route against current source. |
 | Generated README source map is real. | Pass: architecture tests fail any README source-map row that names a missing generated file, generator script, or source path. |
@@ -357,6 +359,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC62: `uv run pytest tests/architecture/test_harness_structure.py::test_open_tech_debt_duplicate_symbol_claims_match_current_sources -q`
 - AC63: `uv run pytest tests/architecture/test_harness_structure.py::test_generated_ws_protocol_documents_current_type_literals -q`
 - AC64: `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_ws_protocol_snapshot -q`
+- AC65: `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_score_versions_snapshot -q`
 
 ## Verification
 

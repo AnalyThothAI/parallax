@@ -1363,6 +1363,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 65 — Generated score-version freshness gate
+
+- **File(s)**: `Makefile`, `scripts/regen_score_versions.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 64
+- **Touch set**: `Makefile`, `scripts/regen_score_versions.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `Makefile` for check-all generated-doc gates.
+- **Failing test first**: `tests/architecture/test_harness_structure.py::test_make_check_all_checks_score_versions_snapshot` — asserts `check-all` runs the score-version freshness check.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `scripts/regen_score_versions.py --check` must be non-mutating and exit non-zero on stale output; `make check-all` must run the check before integration, e2e, golden, or coverage gates; the implementation must not require Postgres or generated DB docs.
+- **On-demand context**: `Makefile` `check-all`, `scripts/regen_score_versions.py`, `docs/generated/score-versions.md`, and generated-doc architecture tests.
+- **Kill/defer criteria**: Stop if the fix only updates docs without executable `--check`, runs full `make docs-generated` inside `check-all`, or introduces a database-backed generated-doc dependency before integration gates.
+- **Eval/repair signal**: stale score-version snapshot, missing `check-all` generated-doc gate, and SDD generated index drift.
+- **Implementation**: Add `--check` mode to the score-version generator, wire `make check-all` to run it before `make check`, and add an architecture test for the Makefile gate.
+- **Verification**: `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_score_versions_snapshot -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1429,4 +1450,5 @@
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_open_tech_debt_duplicate_symbol_claims_match_current_sources -q`
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_generated_ws_protocol_documents_current_type_literals -q`
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_ws_protocol_snapshot -q`
+- [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_score_versions_snapshot -q`
 - [ ] `make check-all`

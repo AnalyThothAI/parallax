@@ -56,6 +56,7 @@ check-all: ## the only command that may produce verification-artefact evidence (
 	@uv run python scripts/validate_sdd_artifacts.py --check
 	@uv run python scripts/regen_sdd_work_index.py --check
 	@uv run python scripts/regen_cli_help.py --check
+	@uv run python scripts/regen_score_versions.py --check
 	@uv run python scripts/regen_ws_protocol.py --check
 	@$(MAKE) check
 	@$(MAKE) test-integration
