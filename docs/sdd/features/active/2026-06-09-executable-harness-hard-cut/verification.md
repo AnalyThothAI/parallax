@@ -154,6 +154,7 @@ claim is allowed without the corresponding output captured below.
 | AC130 — Publisher payload columns exclude lifecycle columns. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_lifecycle_payload_columns -q` failed RED when explicit lifecycle payload columns were silently accepted, then passed after adding publisher payload lifecycle-column validation. |
 | AC131 — Publisher payload hash columns are not identity columns. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_identity_payload_hash_column -q` failed RED when a payload hash column overlapping stable identity columns was silently accepted, then passed after adding publisher payload-hash identity-column validation. |
 | AC132 — Publisher explicit payload columns exist in rows. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_missing_explicit_payload_column -q` failed RED when a missing explicit payload column was silently hashed as `None`, then passed after making explicit payload hashing require declared row keys. |
+| AC138 — Publisher changed rows require identity columns before hashing. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_missing_identity_column_before_payload_hashing -q` failed RED when missing stable identity columns leaked as payload `KeyError`, then passed after validating row identity before payload hashing. |
 
 Deviations from spec:
 
@@ -2226,6 +2227,45 @@ exit code: 0
 
 $ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
 61 passed in 0.54s
+exit code: 0
+
+$ git diff --check
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_missing_identity_column_before_payload_hashing -q
+F                                                                        [100%]
+E           KeyError: 'target_id'
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_missing_identity_column_before_payload_hashing -q
+1 passed in 0.42s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py -q
+18 passed in 0.42s
+exit code: 0
+
+$ uv run python scripts/regen_sdd_work_index.py
+wrote docs/generated/sdd-work-index.md
+exit code: 0
+
+$ uv run python scripts/validate_sdd_artifacts.py --check
+SDD artifact validation passed.
+exit code: 0
+
+$ uv run python scripts/regen_sdd_work_index.py --check
+exit code: 0
+
+$ uv run ruff check src/parallax/app/runtime/current_read_model_publisher.py tests/architecture/test_worker_manifest_static_contracts.py
+All checks passed!
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py -q
+18 passed in 0.40s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
+61 passed in 0.49s
 exit code: 0
 
 $ git diff --check

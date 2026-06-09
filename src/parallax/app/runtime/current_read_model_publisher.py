@@ -84,6 +84,9 @@ class CurrentReadModelPublisher:
                 raise ValueError(f"payload columns cannot include lifecycle columns: {forbidden_payload_columns}")
 
     def row_identity(self, row: Mapping[str, Any]) -> tuple[Any, ...]:
+        missing_identity_columns = tuple(column for column in self.identity_columns if column not in row)
+        if missing_identity_columns:
+            raise ValueError(f"current read model row missing identity columns: {missing_identity_columns}")
         return tuple(row[column] for column in self.identity_columns)
 
     def row_payload_hash(self, row: Mapping[str, Any]) -> str:
@@ -105,8 +108,8 @@ class CurrentReadModelPublisher:
     ) -> list[dict[str, Any]]:
         changed: list[dict[str, Any]] = []
         for row in rows:
-            row_hash = self.row_payload_hash(row)
             identity = self.row_identity(row)
+            row_hash = self.row_payload_hash(row)
             if existing_hashes.get(identity) == row_hash:
                 continue
             next_row = dict(row)

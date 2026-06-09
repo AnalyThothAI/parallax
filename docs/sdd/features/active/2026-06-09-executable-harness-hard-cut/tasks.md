@@ -2896,6 +2896,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 138 — Publisher changed rows require identity columns before hashing
+
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 137
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for changed-row identity validation order semantics.
+- **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_missing_identity_column_before_payload_hashing` — call `changed_rows()` with a row missing a stable identity column and assert publisher validation raises a dedicated missing-identity error before explicit payload hashing can raise `KeyError`.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: every `CurrentReadModelPublisher.identity_columns` entry must be present in each changed row before payload hashing, existing-hash lookup, or changed-row write preparation consumes row data as stable serving truth.
+- **On-demand context**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, and stable current read-model publisher contracts.
+- **Kill/defer criteria**: Stop if missing identity columns intentionally fall through as payload errors, if validation only checks caller code, or if the fix touches projection worker runtime behavior.
+- **Eval/repair signal**: missing stable identity columns, payload hashing masking identity drift, changed-row write drift, publisher validation drift, and SDD generated index drift.
+- **Implementation**: Add row identity validation for missing identity columns and call `row_identity()` before `row_payload_hash()` inside `changed_rows()`.
+- **Verification**: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_missing_identity_column_before_payload_hashing -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -3035,4 +3056,5 @@
 - [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_lifecycle_payload_columns -q`
 - [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_identity_payload_hash_column -q`
 - [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_missing_explicit_payload_column -q`
+- [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_missing_identity_column_before_payload_hashing -q`
 - [ ] `make check-all`

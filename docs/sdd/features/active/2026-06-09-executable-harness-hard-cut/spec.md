@@ -107,6 +107,7 @@ can both miss real process drift and block healthy refactors.
 | Publisher payload columns must not include the payload hash column. | `CurrentReadModelPublisher` rejects explicit payload column sets that include the configured payload hash column before row hashing can self-reference prior hashes. |
 | Publisher payload columns must not include lifecycle columns. | `CurrentReadModelPublisher` rejects explicit lifecycle payload columns before row hashing can reintroduce run/generation/timestamp drift that the default payload path excludes. |
 | Publisher explicit payload columns must exist in rows. | `CurrentReadModelPublisher` raises on missing explicit payload columns instead of hashing absent fields as `None`. |
+| Publisher changed rows must contain identity columns. | `CurrentReadModelPublisher.changed_rows()` validates stable identity columns before payload hashing so query drift cannot surface as a payload `KeyError` or hash a row without serving identity. |
 | Worker manifest imports must be explicit. | `worker_manifest.py` imports `importlib.util` directly so clean-process manifest validation never depends on incidental package attribute side effects. |
 | Root visual artifacts must be absent. | Architecture harness rejects loose visual verification files at the repository root so screenshots live only under owned artifact directories. |
 | Worker table declarations must be unique. | `WorkerManifest` validation rejects duplicated table names inside each manifest table-declaration field before `owned_tables` dedupes them. |
@@ -276,6 +277,7 @@ can both miss real process drift and block healthy refactors.
 - G113. Bounded provider scheduler runtime classification rejects queue-health table declarations, so provider source adapters cannot silently acquire queue-health consumer semantics.
 - G114. Queue-depth table declarations require control-plane ownership, so fact and read-model tables cannot silently masquerade as leased queues.
 - G115. Explicit queue-health table declarations require control-plane ownership, so fact and read-model tables cannot silently masquerade as queue-health surfaces.
+- G116. Current read-model changed-row publishing validates stable identity columns before payload hashing, so query drift cannot produce serving writes without identity keys or opaque payload `KeyError` failures.
 
 ## Non-goals
 
@@ -458,6 +460,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC135. WHEN a `WorkerManifest` is classified as `BOUNDED_PROVIDER_SCHEDULER` and declares `queue_health_tables` THEN manifest validation SHALL raise before worker lifecycle, queue-health, or inventory harnesses can treat that provider source adapter as a queue-health consumer.
 - AC136. WHEN a `WorkerManifest.queue_depth_table` value is owned only through facts, read models, input observations, or side-effect ledgers and not through `writes_control_plane` THEN manifest validation SHALL raise before queue-health or inventory harnesses can treat the table as a leased queue.
 - AC137. WHEN a `WorkerManifest.queue_health_tables` value is owned only through facts, read models, input observations, or side-effect ledgers and not through `writes_control_plane` THEN manifest validation SHALL raise before queue-health or inventory harnesses can treat the table as a queue-health surface.
+- AC138. WHEN `CurrentReadModelPublisher.changed_rows()` receives a row missing any stable identity column THEN it SHALL raise a dedicated missing-identity error before payload hashing, existing-hash lookup, or changed-row write preparation.
 
 ## Risks
 
