@@ -198,6 +198,14 @@ def test_current_read_model_publisher_rejects_non_string_row_columns_before_writ
 
 
 @pytest.mark.architecture
+def test_current_read_model_publisher_rejects_null_row_identity_values_before_hashing() -> None:
+    publisher = CurrentReadModelPublisher(identity_columns=("target_id",), payload_columns=("target_id", "score"))
+
+    with pytest.raises(ValueError, match="current read model row has null identity values"):
+        publisher.changed_rows([{"target_id": None, "score": 10}], existing_hashes={})
+
+
+@pytest.mark.architecture
 def test_current_read_model_publisher_rejects_run_generation_identity_and_skips_unchanged() -> None:
     with pytest.raises(ValueError, match="non-string stable identity columns"):
         CurrentReadModelPublisher(identity_columns=("target_id", 123))

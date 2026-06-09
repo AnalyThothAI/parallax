@@ -2980,6 +2980,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 142 — Publisher changed rows reject null identity values
+
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 141
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for changed-row identity-value validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_null_row_identity_values_before_hashing` — call `changed_rows()` with a row whose stable identity value is `None` and assert publisher validation raises before payload hashing or write preparation.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: current read-model changed-row identities must resolve to non-null product/window values before payload hashing, existing-hash lookup, duplicate identity checks, or serving-row write preparation consume them.
+- **On-demand context**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, and current read-model stable identity contracts.
+- **Kill/defer criteria**: Stop if nullable current-row identity values are an intentional serving contract, if validation belongs only in concrete projection SQL, or if the fix requires changing existing read-model schemas.
+- **Eval/repair signal**: null current-row identity values, absent product/window keys, stable identity validation drift, publisher changed-row write preparation drift, and SDD generated index drift.
+- **Implementation**: Add null identity-value validation inside `row_identity()` after missing-column checks and before returning the identity tuple.
+- **Verification**: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_null_row_identity_values_before_hashing -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`

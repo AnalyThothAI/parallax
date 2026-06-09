@@ -88,6 +88,9 @@ class CurrentReadModelPublisher:
         missing_identity_columns = tuple(column for column in self.identity_columns if column not in row)
         if missing_identity_columns:
             raise ValueError(f"current read model row missing identity columns: {missing_identity_columns}")
+        null_identity_columns = tuple(column for column in self.identity_columns if row[column] is None)
+        if null_identity_columns:
+            raise ValueError(f"current read model row has null identity values: {null_identity_columns}")
         return tuple(row[column] for column in self.identity_columns)
 
     def row_payload_hash(self, row: Mapping[str, Any]) -> str:
