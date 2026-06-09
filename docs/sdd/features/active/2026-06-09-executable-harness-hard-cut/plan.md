@@ -202,6 +202,7 @@ Known-failing baseline tests:
 - Reject duplicate stable identity columns inside each `current_read_model_identities` entry and inside `CurrentReadModelPublisher`.
 - Reject empty stable identity column lists inside each `current_read_model_identities` entry.
 - Reject duplicate table names inside each `WorkerManifest` table-declaration field before `owned_tables` dedupes them.
+- Reject blank table names inside each `WorkerManifest` table-declaration field and `queue_depth_table`.
 
 ### `tests/unit/domains/macro_intel/test_macro_migration_contract.py`
 
@@ -300,6 +301,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Read-model identity columns are unique. | Pass: `_validate_worker_manifests()` and `CurrentReadModelPublisher` raise when a read-model identity repeats the same stable identity column. |
 | Read-model identity columns are non-empty. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares an empty stable identity column list. |
 | Worker table declarations are unique. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares the same table twice inside one table-declaration field. |
+| Worker table declarations are non-blank. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares a blank table name in a table-declaration field. |
 | Delegated handoff artifacts are task-bound. | Pass: validator rejects existing delegated handoff files that name another feature/task/mode or stale report-validation command. |
 | Delegated report mode matches handoff mode. | Pass: validator rejects report artifacts whose `Mode:` differs from the owning handoff mode. |
 | Factory lanes are bounded. | Pass: validator rejects task `Factory lane` values outside the six operating-model lanes. |
@@ -408,6 +410,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC76: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_table_declarations -q`
 - AC77: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_read_model_identity_columns tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_run_generation_identity_and_skips_unchanged -q`
 - AC78: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_empty_read_model_identity_columns -q`
+- AC79: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_table_declarations -q`
 
 ## Verification
 

@@ -731,22 +731,28 @@ def _validate_worker_manifests() -> None:
     if missing_side_effect_ledgers:
         raise ValueError(f"side-effect worker manifests missing ledgers: {missing_side_effect_ledgers}")
 
+    blank_table_declarations = {
+        manifest.name: blanks
+        for manifest in _WORKER_MANIFESTS
+        if (
+            blanks := {
+                field_name: blank_values
+                for field_name, blank_values in _blank_table_declarations(manifest)
+                if blank_values
+            }
+        )
+    }
+    if blank_table_declarations:
+        raise ValueError(f"blank worker manifest table declarations: {blank_table_declarations}")
+
     duplicate_table_declarations = {
         manifest.name: duplicates
         for manifest in _WORKER_MANIFESTS
         if (
             duplicates := {
                 field_name: duplicate_tables
-                for field_name, duplicate_tables in (
-                    ("writes_input_observations", _duplicate_values(manifest.writes_input_observations)),
-                    ("writes_facts", _duplicate_values(manifest.writes_facts)),
-                    ("writes_read_models", _duplicate_values(manifest.writes_read_models)),
-                    ("writes_control_plane", _duplicate_values(manifest.writes_control_plane)),
-                    ("side_effect_ledgers", _duplicate_values(manifest.side_effect_ledgers)),
-                    ("dirty_target_tables", _duplicate_values(manifest.dirty_target_tables)),
-                    ("queue_health_tables", _duplicate_values(manifest.queue_health_tables)),
-                )
-                if duplicate_tables
+                for field_name, table_names in _table_declaration_values(manifest)
+                if (duplicate_tables := _duplicate_values(table_names))
             }
         )
     }
@@ -854,6 +860,26 @@ def _validate_worker_manifests() -> None:
 
 def _dedupe(values: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(values))
+
+
+def _table_declaration_values(manifest: WorkerManifest) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    return (
+        ("writes_input_observations", manifest.writes_input_observations),
+        ("writes_facts", manifest.writes_facts),
+        ("writes_read_models", manifest.writes_read_models),
+        ("writes_control_plane", manifest.writes_control_plane),
+        ("side_effect_ledgers", manifest.side_effect_ledgers),
+        ("dirty_target_tables", manifest.dirty_target_tables),
+        ("queue_health_tables", manifest.queue_health_tables),
+        ("queue_depth_table", (manifest.queue_depth_table,) if manifest.queue_depth_table is not None else ()),
+    )
+
+
+def _blank_table_declarations(manifest: WorkerManifest) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    return tuple(
+        (field_name, tuple(table_name for table_name in table_names if not table_name.strip()))
+        for field_name, table_names in _table_declaration_values(manifest)
+    )
 
 
 def _duplicate_values(values: tuple[str, ...]) -> tuple[str, ...]:
