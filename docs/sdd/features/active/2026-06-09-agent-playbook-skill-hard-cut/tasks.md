@@ -2,7 +2,7 @@
 
 **Status**: In Progress
 **Owning plan**: `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut/plan.md`
-**Worktree**: `main checkout (delegated goal)`
+**Worktree**: `main`
 **Branch**: `main`
 **Approved by**: delegated goal
 **Approved at**: 2026-06-09

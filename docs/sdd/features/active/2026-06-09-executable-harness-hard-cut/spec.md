@@ -49,6 +49,7 @@ can both miss real process drift and block healthy refactors.
 | Machine fields must be exact tokens. | `Subagent handoff` accepts only the exact `not delegated` token or a repo path, not prose suffixes. |
 | Delegated handoff artifacts must be real. | Delegated task handoff paths are checked for existence before dispatch or review. |
 | Verified spec-compliance rows must be evidenced. | A `Verified` record cannot mark a compliance row complete unless command-shaped evidence in that row has exit code 0 in canonical evidence sections. |
+| Worktree and branch metadata must be machine-valid. | `plan.md`, `tasks.md`, and `verification.md` must agree on either `codex/<slug>` with `.worktrees/<slug>` or exact `main`/`main` metadata. |
 
 ## First principles
 
@@ -158,6 +159,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC35. WHEN required clarify, checklist, analyze, or gate-compliance sections contain only empty template rows or placeholders THEN the validator SHALL report `gate-evidence-missing`; SDD gates require structured evidence, not headings alone.
 - AC36. WHEN a `spec.md` acceptance criterion omits the executable `WHEN ... THEN ... SHALL ...` structure THEN the validator SHALL report `acceptance-criterion-format-invalid`; vague acceptance prose cannot satisfy plan-command coverage.
 - AC37. WHEN a `Verified` `verification.md` Spec compliance row marks an acceptance criterion complete and references a command-shaped backticked command THEN the validator SHALL require matching exit code 0 evidence for that command in canonical evidence sections and report `verified-missing-spec-compliance-evidence` otherwise.
+- AC38. WHEN `plan.md`, `tasks.md`, or `verification.md` declares malformed, template-placeholder, prose, mismatched, or cross-artifact inconsistent Worktree/Branch metadata THEN the validator SHALL report `worktree-metadata-invalid`; execution location metadata must be machine-readable.
 
 ## Risks
 

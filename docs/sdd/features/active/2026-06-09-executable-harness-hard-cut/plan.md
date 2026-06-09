@@ -34,6 +34,7 @@ Known-failing baseline tests:
 - Validate clarify, checklist, analyze, and gate-compliance sections have non-placeholder structured evidence rows.
 - Validate spec acceptance criteria use executable `WHEN ... THEN ... SHALL ...` structure before plan-command coverage is trusted.
 - Validate `Verified` Spec compliance rows by requiring every command-shaped backticked command in completed rows to have exit code 0 evidence in canonical evidence sections.
+- Validate Worktree/Branch metadata as machine-readable execution-location state, rejecting template placeholders, prose values, slug mismatches, and cross-artifact disagreement.
 - Validate task field semantics, not just presence: path-shaped file/touch values, structured conflict rules, command-shaped verification, test-shaped failing-test-first values, and known task status tokens.
 - Validate task headings form a unique contiguous `Task 1..N` sequence before dependency or dispatch state is trusted.
 - Parse task dependency references and ranges, reject unsupported dependency syntax, and report unresolved task numbers as `task-invalid-dependencies`.
@@ -178,6 +179,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Gate sections carry evidence. | Pass: required SDD gate sections must contain non-placeholder table rows. |
 | Acceptance criteria are executable. | Pass: spec AC lines must use WHEN/THEN/SHALL structure. |
 | Verified compliance rows are evidenced. | Pass: command-shaped evidence cited by completed Spec compliance rows must have exit code 0 in canonical evidence sections. |
+| Worktree metadata is machine-valid. | Pass: validator rejects placeholder, prose, mismatched, or cross-artifact inconsistent Worktree/Branch fields. |
 
 ## Acceptance test commands
 
@@ -218,6 +220,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC35: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_sections_require_non_placeholder_evidence -q`
 - AC36: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_acceptance_criteria_require_when_then_shall_format -q`
 - AC37: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_spec_compliance_rows_require_matching_command_evidence -q`
+- AC38: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_worktree_branch_metadata_must_be_machine_valid -q`
 
 ## Verification
 

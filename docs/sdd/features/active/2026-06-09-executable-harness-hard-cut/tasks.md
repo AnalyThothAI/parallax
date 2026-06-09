@@ -796,6 +796,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 38 — Worktree metadata hard cut
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 37
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared Worktree/Branch metadata and generated index.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_worktree_branch_metadata_must_be_machine_valid` — asserts template placeholders and branch/worktree mismatches cannot pass.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Worktree/Branch metadata must be either `codex/<slug>` with `.worktrees/<slug>` across plan/tasks/verification or the exact `main`/`main` machine token pair.
+- **On-demand context**: Banach read-only audit, `docs/WORKFLOW.md`, active SDD feature metadata, generated SDD work index.
+- **Kill/defer criteria**: Stop if copied template placeholders, prose execution-location values, or cross-artifact branch/worktree disagreement can pass validation.
+- **Eval/repair signal**: `worktree-metadata-invalid`, stale generated index, and old metadata drift.
+- **Implementation**: Add strict Worktree/Branch metadata parsing, expose the issue code, and convert the agent-playbook active record from prose Worktree metadata to `main`.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_worktree_branch_metadata_must_be_machine_valid -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -834,4 +855,5 @@
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_sections_require_non_placeholder_evidence -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_acceptance_criteria_require_when_then_shall_format -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_spec_compliance_rows_require_matching_command_evidence -q`
+- [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_worktree_branch_metadata_must_be_machine_valid -q`
 - [ ] `make check-all`

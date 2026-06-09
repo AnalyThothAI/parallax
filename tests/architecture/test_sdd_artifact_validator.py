@@ -134,6 +134,33 @@ def test_feature_directory_name_and_date_metadata_are_machine_valid(tmp_path: Pa
     assert sum(issue.code == "feature-slug-invalid" for issue in issues) == 2
 
 
+def test_worktree_branch_metadata_must_be_machine_valid(tmp_path: Path) -> None:
+    template_feature = _feature_dir(tmp_path, "active", "2026-06-09-template-worktree")
+    _write_valid_spec(template_feature / "spec.md", status="In Progress")
+    _write_valid_plan(template_feature / "plan.md", status="In Progress")
+    _replace_metadata_field(template_feature / "plan.md", "Worktree", "`.worktrees/<branch-slug>/`")
+    _write_valid_tasks(template_feature / "tasks.md", status="In Progress", task_status="[~]")
+    _write_valid_verification(template_feature / "verification.md", status="In Progress")
+
+    mismatch_feature = _feature_dir(tmp_path, "active", "2026-06-09-mismatched-worktree")
+    _write_valid_spec(mismatch_feature / "spec.md", status="In Progress")
+    _write_valid_plan(mismatch_feature / "plan.md", status="In Progress", branch="codex/expected")
+    _write_valid_tasks(
+        mismatch_feature / "tasks.md",
+        status="In Progress",
+        branch="codex/expected",
+        touch_set="tests/architecture/test_agent_playbook_contracts.py",
+        task_status="[~]",
+    )
+    _replace_metadata_field(mismatch_feature / "tasks.md", "Worktree", "`.worktrees/other`")
+    _write_valid_verification(mismatch_feature / "verification.md", status="In Progress", branch="codex/expected")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "worktree-metadata-invalid" in _issue_codes(issues)
+    assert sum(issue.code == "worktree-metadata-invalid" for issue in issues) == 2
+
+
 def test_gate_sections_require_non_placeholder_evidence(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-empty-gates")
     _write_valid_spec(feature / "spec.md", status="In Progress")

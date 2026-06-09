@@ -5,7 +5,7 @@
 **Owning spec**: `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut/spec.md`
 **Owning plan**: `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut/plan.md`
 **Branch**: `main`
-**Worktree**: `main checkout (delegated goal)`
+**Worktree**: `main`
 **Approved by**: delegated goal
 **Approved at**: 2026-06-09
 **Diff**: Pending final diff.

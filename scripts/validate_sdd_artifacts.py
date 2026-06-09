@@ -27,6 +27,8 @@ COMMAND_LINE_RE = re.compile(r"^\s*\$\s+(?P<command>.+?)\s*$")
 EXIT_CODE_RE = re.compile(r"exit code:\s*(?P<code>-?\d+)\b", re.IGNORECASE)
 SKIPPED_RE = re.compile(r"Number of skipped tests in the run above:\s*(?P<count>\d+)", re.IGNORECASE)
 FEATURE_SLUG_RE = re.compile(r"^(?P<date>\d{4}-\d{2}-\d{2})-[a-z0-9]+(?:-[a-z0-9]+)*$")
+BRANCH_METADATA_RE = re.compile(r"^codex/(?P<slug>[a-z0-9][a-z0-9._-]*)$")
+WORKTREE_METADATA_RE = re.compile(r"^\.worktrees/(?P<slug>[a-z0-9][a-z0-9._-]*)/?$")
 SPEC_AC_RE = re.compile(r"^\s*-\s+AC(?P<number>\d+)\.", re.IGNORECASE | re.MULTILINE)
 SPEC_AC_LINE_RE = re.compile(r"^\s*-\s+AC(?P<number>\d+)\..+$", re.IGNORECASE | re.MULTILINE)
 SPEC_AC_FORMAT_RE = re.compile(
@@ -73,6 +75,7 @@ METADATA_REQUIREMENTS = {
         "approved at",
     ),
 }
+WORKTREE_METADATA_ARTIFACTS = ("plan.md", "tasks.md", "verification.md")
 TASK_REQUIRED_FIELDS = (
     "file(s)",
     "owner",
@@ -112,6 +115,7 @@ KNOWN_ISSUE_CODES = (
     "missing-artifact",
     "unexpected-artifact",
     "feature-slug-invalid",
+    "worktree-metadata-invalid",
     "artifact-owning-link-mismatch",
     "missing-gate-section",
     "gate-evidence-missing",
@@ -389,6 +393,7 @@ def _feature_issues(feature: SddFeature) -> list[SddIssue]:
     issues: list[SddIssue] = []
     issues.extend(_unexpected_artifact_issues(feature))
     issues.extend(_feature_identity_issues(feature))
+    issues.extend(_worktree_metadata_issues(feature))
     for artifact in feature.artifacts.values():
         issues.extend(_artifact_issues(feature, artifact))
     issues.extend(_artifact_status_mismatch_issues(feature))
@@ -440,6 +445,68 @@ def _feature_identity_issues(feature: SddFeature) -> list[SddIssue]:
             )
         )
     return issues
+
+
+def _worktree_metadata_issues(feature: SddFeature) -> list[SddIssue]:
+    invalid_metadata: list[str] = []
+    canonical_pairs: dict[str, tuple[str, str]] = {}
+    for artifact_name in WORKTREE_METADATA_ARTIFACTS:
+        artifact = feature.artifacts[artifact_name]
+        branch = artifact.fields.get("branch", "")
+        worktree = artifact.fields.get("worktree", "")
+        if artifact.missing or _is_placeholder(branch) or _is_placeholder(worktree):
+            continue
+        metadata_error = _worktree_metadata_error(branch, worktree)
+        if metadata_error:
+            invalid_metadata.append(f"{artifact.name}: {metadata_error}")
+            continue
+        canonical_pairs[artifact.name] = _canonical_worktree_pair(branch, worktree)
+
+    anchor = feature.artifacts["verification.md"]
+    if invalid_metadata:
+        return [_issue("worktree-metadata-invalid", anchor, "; ".join(invalid_metadata))]
+
+    unique_pairs = set(canonical_pairs.values())
+    if len(unique_pairs) <= 1:
+        return []
+    summary = ", ".join(
+        f"{artifact_name}={branch}/{worktree}"
+        for artifact_name, (branch, worktree) in sorted(canonical_pairs.items())
+    )
+    return [
+        _issue(
+            "worktree-metadata-invalid",
+            anchor,
+            f"Worktree/Branch metadata must match across plan.md, tasks.md, and verification.md: {summary}",
+        )
+    ]
+
+
+def _worktree_metadata_error(branch: str, worktree: str) -> str:
+    cleaned_branch, cleaned_worktree = _canonical_worktree_pair(branch, worktree)
+    if cleaned_branch == "main" or cleaned_worktree == "main":
+        if (cleaned_branch, cleaned_worktree) == ("main", "main"):
+            return ""
+        return f"main checkout metadata must be Branch=main and Worktree=main, got {cleaned_branch}/{cleaned_worktree}"
+
+    branch_match = BRANCH_METADATA_RE.match(cleaned_branch)
+    worktree_match = WORKTREE_METADATA_RE.match(cleaned_worktree)
+    if not branch_match or not worktree_match:
+        return (
+            "expected Branch=codex/<slug> with Worktree=.worktrees/<slug>, "
+            f"or Branch=main with Worktree=main, got {cleaned_branch}/{cleaned_worktree}"
+        )
+    if branch_match.group("slug") != worktree_match.group("slug"):
+        return f"branch/worktree slug mismatch: {cleaned_branch}/{cleaned_worktree}"
+    return ""
+
+
+def _canonical_worktree_pair(branch: str, worktree: str) -> tuple[str, str]:
+    cleaned_branch = _clean_value(branch)
+    cleaned_worktree = _clean_value(worktree)
+    if cleaned_worktree.startswith(".worktrees/"):
+        cleaned_worktree = cleaned_worktree.rstrip("/")
+    return cleaned_branch, cleaned_worktree
 
 
 def _artifact_status_mismatch_issues(feature: SddFeature) -> list[SddIssue]:

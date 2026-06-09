@@ -216,6 +216,7 @@ def _issue_meaning(code: str) -> str:
         "missing-artifact": "Feature directory does not contain the full SDD artifact set.",
         "unexpected-artifact": "Feature directory contains files outside the four canonical artifacts.",
         "feature-slug-invalid": "Feature directory slug or artifact Date metadata is not machine-valid.",
+        "worktree-metadata-invalid": "Worktree and Branch metadata are malformed or inconsistent.",
         "artifact-owning-link-mismatch": "Artifact owning links do not point at the same feature's canonical files.",
         "missing-gate-section": (
             "Artifact is missing required clarify, checklist, analyze, task, or verification sections."
