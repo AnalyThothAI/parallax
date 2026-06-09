@@ -243,6 +243,7 @@ Known-failing baseline tests:
 - Reject non-string `CurrentReadModelPublisher.payload_hash_column` values before row hashing or changed-row writes can use them as serving-row keys.
 - Reject non-tuple `CurrentReadModelPublisher.payload_columns` values before row hashing can treat compatibility lists or scalar strings as payload field lists.
 - Reject non-string entries inside `CurrentReadModelPublisher.payload_columns` before row hashing can look up invalid payload keys.
+- Reject blank entries inside `CurrentReadModelPublisher.payload_columns` before row hashing can look up empty payload keys.
 - Import `importlib.util` directly inside `worker_manifest.py` so manifest validation does not depend on prior import side effects in clean processes.
 - Reject loose visual verification artifacts at the repository root and keep screenshots under owned artifact directories.
 - Reject duplicate table names inside each `WorkerManifest` table-declaration field before `owned_tables` dedupes them.
@@ -387,6 +388,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Publisher payload hash columns are strings. | Pass: `CurrentReadModelPublisher` raises at construction when given a numeric payload hash column name. |
 | Publisher payload columns are tuples. | Pass: `CurrentReadModelPublisher` raises at construction when given list-shaped payload columns. |
 | Publisher payload column entries are strings. | Pass: `CurrentReadModelPublisher` raises at construction when given a numeric payload column entry. |
+| Publisher payload column entries are non-blank. | Pass: `CurrentReadModelPublisher` raises at construction when given a blank payload column entry. |
 | Worker manifest imports are explicit. | Pass: importing `parallax.app.runtime.worker_manifest` in a clean process succeeds even after removing an incidental `importlib.util` package attribute. |
 | Root visual artifacts are absent. | Pass: architecture harness rejects loose root-level PNG/JPG/WEBP/GIF verification artifacts. |
 | Worker table declarations are unique. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares the same table twice inside one table-declaration field. |
@@ -545,6 +547,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC122: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_string_payload_hash_column -q`
 - AC123: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_tuple_payload_columns -q`
 - AC124: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_string_payload_columns -q`
+- AC125: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_blank_payload_columns -q`
 
 ## Verification
 

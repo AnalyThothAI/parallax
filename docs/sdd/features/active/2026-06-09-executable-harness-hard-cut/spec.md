@@ -94,6 +94,7 @@ can both miss real process drift and block healthy refactors.
 | Publisher payload hash columns must be strings. | `CurrentReadModelPublisher` rejects non-string payload hash column names before row hashing or changed-row writes can use them as serving-row keys. |
 | Publisher payload columns must be tuples. | `CurrentReadModelPublisher` rejects list-shaped or scalar payload column declarations before row payload hashing can treat them as field lists. |
 | Publisher payload column entries must be strings. | `CurrentReadModelPublisher` rejects non-string payload column entries before row payload hashing can look up invalid payload keys. |
+| Publisher payload column entries must be non-blank. | `CurrentReadModelPublisher` rejects blank payload column entries before row payload hashing can look up empty payload keys. |
 | Worker manifest imports must be explicit. | `worker_manifest.py` imports `importlib.util` directly so clean-process manifest validation never depends on incidental package attribute side effects. |
 | Root visual artifacts must be absent. | Architecture harness rejects loose visual verification files at the repository root so screenshots live only under owned artifact directories. |
 | Worker table declarations must be unique. | `WorkerManifest` validation rejects duplicated table names inside each manifest table-declaration field before `owned_tables` dedupes them. |
@@ -250,6 +251,7 @@ can both miss real process drift and block healthy refactors.
 - G100. Current read-model publisher payload hash column declarations reject non-string values, so changed-row hashing cannot silently write serving rows with invalid hash keys.
 - G101. Current read-model publisher payload column declarations reject non-tuple values, so payload hashing cannot silently iterate compatibility lists or scalar strings.
 - G102. Current read-model publisher payload column entries reject non-string values, so payload hashing cannot silently look up invalid payload keys.
+- G103. Current read-model publisher payload column entries reject blank values, so payload hashing cannot silently look up empty payload keys.
 
 ## Non-goals
 
@@ -419,6 +421,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC122. WHEN `CurrentReadModelPublisher.payload_hash_column` is not a string THEN publisher construction SHALL raise before row payload hashing, changed-row writes, or worker static harnesses consume it as a serving-row key.
 - AC123. WHEN `CurrentReadModelPublisher.payload_columns` is neither `None` nor a tuple THEN publisher construction SHALL raise before row payload hashing, changed-row writes, or worker static harnesses consume it as the payload field list.
 - AC124. WHEN `CurrentReadModelPublisher.payload_columns` contains a non-string entry THEN publisher construction SHALL raise before row payload hashing, changed-row writes, or worker static harnesses consume it as a payload key.
+- AC125. WHEN `CurrentReadModelPublisher.payload_columns` contains a blank entry THEN publisher construction SHALL raise before row payload hashing, changed-row writes, or worker static harnesses consume it as a payload key.
 
 ## Risks
 
