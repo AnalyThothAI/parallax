@@ -355,6 +355,22 @@ def test_worker_manifest_validation_rejects_blank_idempotency_evidence(
 
 
 @pytest.mark.architecture
+def test_worker_manifest_validation_rejects_duplicate_idempotency_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifests = list(all_worker_manifests())
+    duplicate_evidence = manifests[0].idempotency_evidence[0]
+    manifests[0] = replace(
+        manifests[0],
+        idempotency_evidence=(*manifests[0].idempotency_evidence, duplicate_evidence),
+    )
+    monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
+
+    with pytest.raises(ValueError, match="duplicate worker manifest idempotency evidence"):
+        worker_manifest_module._validate_worker_manifests()
+
+
+@pytest.mark.architecture
 def test_worker_manifest_validation_rejects_empty_input_contracts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

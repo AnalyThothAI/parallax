@@ -45,6 +45,7 @@ can both miss real process drift and block healthy refactors.
 | Worker runtime constraints must be manifest-owned. | `WorkerManifest` carries each worker's runtime constraint classification, so architecture tests do not maintain a second worker inventory. |
 | Worker identity fields must be non-blank. | `WorkerManifest` validation rejects blank `name`, `domain`, `factory`, and `worker_class` values before registries, settings, or docs harnesses consume them. |
 | Idempotency evidence must be non-blank. | `WorkerManifest` validation rejects blank `idempotency_evidence` entries before lifecycle, ownership, or review harnesses consume them. |
+| Idempotency evidence must be unique. | `WorkerManifest` validation rejects duplicate `idempotency_evidence` entries before lifecycle, ownership, or review harnesses consume them. |
 | Input contracts must be non-empty. | `WorkerManifest` validation rejects empty `input_contract` declarations before registry, factory, settings, or docs harnesses consume them. |
 | Input contracts must be non-blank. | `WorkerManifest` validation rejects blank `input_contract` entries before registry, factory, settings, or docs harnesses consume them. |
 | Input contracts must be unique. | `WorkerManifest` validation rejects duplicate `input_contract` entries before registry, factory, settings, or docs harnesses consume them. |
@@ -198,6 +199,7 @@ can both miss real process drift and block healthy refactors.
 - G74. Ordering-key declarations reject blank entries, so workers cannot satisfy ordering and idempotency review with whitespace placeholders.
 - G75. Ordering-key declarations reject duplicate entries, so workers cannot satisfy ordering and idempotency review with repeated placeholders.
 - G76. Input contract declarations reject duplicate entries, so workers cannot satisfy input-boundary review with repeated placeholders.
+- G77. Idempotency evidence declarations reject duplicate entries, so workers cannot satisfy lifecycle and review gates with repeated evidence placeholders.
 
 ## Non-goals
 
@@ -341,6 +343,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC96. WHEN a `WorkerManifest.ordering_keys` entry is blank THEN manifest validation SHALL raise before lifecycle, idempotency, registry, factory, settings, or worker inventory harnesses consume the manifest.
 - AC97. WHEN a `WorkerManifest.ordering_keys` entry repeats within one manifest THEN manifest validation SHALL raise before lifecycle, idempotency, registry, factory, settings, or worker inventory harnesses consume the manifest.
 - AC98. WHEN a `WorkerManifest.input_contract` entry repeats within one manifest THEN manifest validation SHALL raise before registry, factory, settings, or worker inventory harnesses consume the manifest.
+- AC99. WHEN a `WorkerManifest.idempotency_evidence` entry repeats within one manifest THEN manifest validation SHALL raise before lifecycle, ownership, review, or worker inventory harnesses consume the manifest.
 
 ## Risks
 

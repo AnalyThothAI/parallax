@@ -115,6 +115,7 @@ claim is allowed without the corresponding output captured below.
 | AC96 — Ordering keys are non-blank. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_ordering_keys -q` failed RED when a patched blank `ordering_keys` entry did not raise, then passed after adding ordering-key blank-entry validation. |
 | AC97 — Ordering keys are unique. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_ordering_keys -q` failed RED when a patched duplicate `ordering_keys` entry did not raise, then passed after adding ordering-key duplicate validation. |
 | AC98 — Input contracts are unique. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_input_contracts -q` failed RED when a patched duplicate `input_contract` entry did not raise, then passed after adding input-contract duplicate validation. |
+| AC99 — Idempotency evidence is unique. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_idempotency_evidence -q` failed RED when a patched duplicate `idempotency_evidence` entry did not raise, then passed after adding idempotency-evidence duplicate validation. |
 
 Deviations from spec:
 
@@ -1488,6 +1489,15 @@ exit code: 1
 
 $ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_input_contracts -q
 1 passed in 0.03s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_idempotency_evidence -q
+F                                                                        [100%]
+Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_idempotency_evidence -q
+1 passed in 0.04s
 exit code: 0
 ```
 
