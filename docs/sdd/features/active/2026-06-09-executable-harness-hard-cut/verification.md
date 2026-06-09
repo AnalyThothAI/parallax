@@ -25,6 +25,7 @@ claim is allowed without the corresponding output captured below.
 | AC6 — development-agent factory/eval loop is executable. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py tests/architecture/test_sdd_artifact_validator.py -q` passed. |
 | AC7 — SDD task context-packet CLI is executable. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py tests/architecture/test_sdd_artifact_validator.py -q` and `uv run python scripts/build_agent_context_packet.py --feature 2026-06-09-executable-harness-hard-cut --task 7 --mode read-only` passed. |
 | AC8 — SDD dry-run dispatcher emits handoff and refuses completed tasks. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_refuses_completed_task -q` passed; real Task 5 dispatch emitted a handoff and real Task 8 dispatch was refused. |
+| AC9 — task field values are semantically validated. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_invalid_coordination_field_values tests/architecture/test_sdd_artifact_validator.py::test_tasks_allow_explicit_none_dependency_and_not_delegated_handoff -q` passed. |
 
 Deviations from spec:
 
@@ -143,6 +144,10 @@ exit code: 0
 $ uv run python scripts/dispatch_sdd_task.py --feature 2026-06-09-executable-harness-hard-cut --task 8 --mode read-only
 error: task is already complete and cannot be dispatched: Task 8 — SDD dry-run dispatch CLI
 exit code: 1
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_invalid_coordination_field_values tests/architecture/test_sdd_artifact_validator.py::test_tasks_allow_explicit_none_dependency_and_not_delegated_handoff -q
+2 passed in 0.02s
+exit code: 0
 ```
 
 ## Diff summary

@@ -58,6 +58,7 @@ can both miss real process drift and block healthy refactors.
 - G6. Development-agent work follows an explicit factory/eval loop that separates deterministic constraints from on-demand context, keeps product LLM agents outside development lanes, and records repair signals.
 - G7. Parent agents can generate a bounded subagent context packet from a validated active SDD task without hand-copying template prose.
 - G8. Parent agents can generate a dry-run subagent handoff from a dispatchable active SDD task and the harness refuses completed tasks.
+- G9. Task coordination fields are semantically validated, not accepted by mere presence.
 
 ## Non-goals
 
@@ -110,6 +111,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC6. WHEN task records are created or updated THEN each task SHALL declare factory lane, deterministic constraints, on-demand context, kill/defer criteria, and eval/repair signal; missing fields SHALL report `task-missing-agent-loop-fields`.
 - AC7. WHEN a parent agent prepares a subagent handoff THEN the context packet CLI SHALL read a validated active SDD task and output mode, factory lane, owned scope, conflict scope, deterministic constraints, on-demand context, kill/defer criteria, eval/repair signal, verification evidence, redactions, and the product-agent boundary.
 - AC8. WHEN a parent agent dispatches a task dry-run THEN the dispatcher SHALL output a handoff prompt containing the generated context packet, and SHALL refuse `[x]` completed tasks.
+- AC9. WHEN task records contain non-path file/touch fields, malformed conflict rules, non-test failing-test-first values, non-command verification values, or invalid task statuses THEN the validator SHALL report `task-invalid-coordination-fields`.
 
 ## Risks
 

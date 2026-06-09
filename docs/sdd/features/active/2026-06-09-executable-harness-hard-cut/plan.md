@@ -25,6 +25,7 @@ Known-failing baseline tests:
 
 - Create a pure filesystem validator with `scan_sdd_features(root: Path)`, `validate_sdd_root(root: Path)`, and a `--check` CLI.
 - Emit deterministic issue codes for missing gate sections, missing approval metadata, incomplete task fields, false `Verified` evidence, stale generated index, and active touch/conflict overlap.
+- Validate task field semantics, not just presence: path-shaped file/touch values, structured conflict rules, command-shaped verification, test-shaped failing-test-first values, and known task status tokens.
 
 ### `scripts/regen_sdd_work_index.py`
 
@@ -51,6 +52,10 @@ Known-failing baseline tests:
 - Require explicit development-agent factory and eval/repair loop playbook contracts.
 - Require the context-packet CLI to build a bounded packet from an active SDD task.
 - Require the dry-run dispatch CLI to emit a handoff for in-progress tasks and refuse completed tasks.
+
+### `tests/architecture/test_sdd_artifact_validator.py`
+
+- Add fixture tests for invalid task coordination field values and valid explicit `none` dependencies / `not delegated` handoffs.
 
 ### `tests/architecture/test_test_lane_contracts.py`
 
@@ -120,6 +125,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Development-agent loops are separated from product agents. | Pass: factory/eval playbooks explicitly keep product LLM agents outside development-agent lanes. |
 | Context packets are executable, not prose-only. | Pass: a new CLI reads active SDD task metadata and emits a bounded handoff packet. |
 | Dispatch is dry-run and non-runtime. | Pass: dispatcher emits prompts only and refuses completed tasks without creating durable product state. |
+| Task fields are semantically checked. | Pass: validator rejects `none` touch sets, non-command verification, non-test failing-test-first values, and unknown task statuses. |
 
 ## Acceptance test commands
 
@@ -131,6 +137,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC6: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_development_agent_factory_model_is_explicit_and_bounded tests/architecture/test_agent_playbook_contracts.py::test_development_agent_eval_repair_loop_is_defined -q`
 - AC7: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q`
 - AC8: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_refuses_completed_task -q`
+- AC9: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_invalid_coordination_field_values tests/architecture/test_sdd_artifact_validator.py::test_tasks_allow_explicit_none_dependency_and_not_delegated_handoff -q`
 
 ## Verification
 

@@ -120,7 +120,7 @@
 - **Owner**: parent
 - **Depends on**: Tasks 1-5
 - **Touch set**: `docs/agent-playbook`, `docs/sdd/_templates/tasks-template.md`, `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_agent_playbook_contracts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/generated/sdd-work-index.md`
-- **Conflict set**: coordinate with active SDD tasks touching agent playbook docs plus SDD templates plus validator plus generated index.
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared agent playbook docs plus SDD templates plus validator plus generated index.
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_development_agent_factory_model_is_explicit_and_bounded` and `tests/architecture/test_agent_playbook_contracts.py::test_development_agent_eval_repair_loop_is_defined` — assert explicit factory and repair-loop contracts.
 - **Subagent handoff**: not delegated; current change consolidates the parent integrator contract before future lane dispatch.
 - **Factory lane**: Harness/tests
@@ -171,6 +171,25 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 9 — Task field semantic validator
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 8
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD validator requirements and generated index.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_invalid_coordination_field_values` — asserts invalid task field values fail even when field names are present.
+- **Subagent handoff**: not delegated
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Validator must reject invalid task field semantics while allowing `Depends on: none` and `Subagent handoff: not delegated`.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/_templates/tasks-template.md`.
+- **Kill/defer criteria**: Stop if implementation accepts `none` touch sets, non-command verification, malformed conflict rules, or unknown task statuses.
+- **Eval/repair signal**: `task-invalid-coordination-fields`, validator failure, generated-index drift, and review defect.
+- **Implementation**: Add `task-invalid-coordination-fields` and field-specific task validators for paths, conflict rules, command-shaped verification, test-shaped failing-test-first values, and task statuses.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_invalid_coordination_field_values tests/architecture/test_sdd_artifact_validator.py::test_tasks_allow_explicit_none_dependency_and_not_delegated_handoff -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -180,4 +199,5 @@
 - [ ] `uv run pytest tests/architecture/test_agent_playbook_contracts.py tests/architecture/test_sdd_artifact_validator.py -q`
 - [ ] `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q`
 - [ ] `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_refuses_completed_task -q`
+- [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_invalid_coordination_field_values tests/architecture/test_sdd_artifact_validator.py::test_tasks_allow_explicit_none_dependency_and_not_delegated_handoff -q`
 - [ ] `make check-all`

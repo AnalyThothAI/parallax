@@ -153,6 +153,10 @@ def _issue_meaning(code: str) -> str:
         "task-missing-coordination-fields": (
             "Task records lack owner, touch set, conflict set, verification, review, or status fields."
         ),
+        "task-invalid-coordination-fields": (
+            "Task records contain non-path touch/file fields, non-command verification, invalid status, "
+            "or malformed conflict rules."
+        ),
         "task-missing-agent-loop-fields": (
             "Task records lack factory lane, deterministic constraints, on-demand context, kill criteria, "
             "or eval signal."

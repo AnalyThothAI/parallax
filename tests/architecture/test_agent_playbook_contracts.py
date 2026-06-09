@@ -195,7 +195,7 @@ def test_context_packet_cli(tmp_path: Path) -> None:
         "Factory lane: Harness/tests",
         "Owned scope:",
         "Do not touch:",
-        "coordinate with active SDD tasks touching context packet generator, docs, and tests.",
+        "coordinate with 2026-06-09-other-feature for context packet generator, docs, and tests.",
         "Deterministic constraints:",
         "On-demand context:",
         "Kill/defer criteria:",
@@ -543,7 +543,7 @@ def _write_context_packet_fixture(root: Path) -> None:
             - **Owner**: parent
             - **Depends on**: none
             - **Touch set**: `scripts/build_agent_context_packet.py`
-            - **Conflict set**: coordinate with active SDD tasks touching context packet generator, docs, and tests.
+            - **Conflict set**: coordinate with 2026-06-09-other-feature for context packet generator, docs, and tests.
             - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli`
             - **Subagent handoff**: not delegated
             - **Factory lane**: Harness/tests
@@ -562,7 +562,7 @@ def _write_context_packet_fixture(root: Path) -> None:
             - **Owner**: parent
             - **Depends on**: Task 1
             - **Touch set**: `docs/agent-playbook/context-packet-template.md`
-            - **Conflict set**: coordinate with active SDD tasks touching context packet docs.
+            - **Conflict set**: coordinate with 2026-06-09-other-feature for context packet docs.
             - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli`
             - **Subagent handoff**: not delegated
             - **Factory lane**: Docs/contracts

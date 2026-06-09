@@ -4,7 +4,7 @@ import argparse
 import re
 import sys
 from collections import Counter, defaultdict
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -67,6 +67,7 @@ TASK_AGENT_LOOP_FIELDS = (
     "kill/defer criteria",
     "eval/repair signal",
 )
+TASK_STATUSES = {"[ ]", "[~]", "[x]", "[!]"}
 PLACEHOLDER_VALUES = {"", "...", "tbd", "todo", "pending", "<pending>", "<none>"}
 CONTRADICTION_PHRASES = (
     "not final evidence",
@@ -83,6 +84,7 @@ KNOWN_ISSUE_CODES = (
     "missing-gate-section",
     "missing-approval-metadata",
     "task-missing-coordination-fields",
+    "task-invalid-coordination-fields",
     "task-missing-agent-loop-fields",
     "task-incomplete-in-verified-feature",
     "verified-missing-check-all",
@@ -331,6 +333,15 @@ def _task_issues(feature: SddFeature) -> list[SddIssue]:
                     f"{task.title} missing fields: {', '.join(missing_fields)}",
                 )
             )
+        invalid_fields = _invalid_task_fields(task)
+        if invalid_fields:
+            issues.append(
+                _issue(
+                    "task-invalid-coordination-fields",
+                    tasks_artifact,
+                    f"{task.title} invalid fields: {', '.join(invalid_fields)}",
+                )
+            )
         missing_agent_fields = [
             field for field in TASK_AGENT_LOOP_FIELDS if _is_placeholder(task.fields.get(field, ""))
         ]
@@ -347,6 +358,33 @@ def _task_issues(feature: SddFeature) -> list[SddIssue]:
                 _issue("task-incomplete-in-verified-feature", tasks_artifact, f"{task.title} is not complete")
             )
     return issues
+
+
+def _invalid_task_fields(task: TaskRecord) -> list[str]:
+    invalid: list[str] = []
+    for field_name in ("file(s)", "touch set"):
+        value = task.fields.get(field_name, "")
+        if _is_placeholder(value):
+            continue
+        if not _all_list_items(value, _is_repo_path):
+            invalid.append(field_name)
+
+    conflict_set = task.fields.get("conflict set", "")
+    if not _is_placeholder(conflict_set) and not _valid_conflict_set(conflict_set):
+        invalid.append("conflict set")
+
+    failing_test = task.fields.get("failing test first", "")
+    if not _is_placeholder(failing_test) and not _looks_like_test_reference(failing_test):
+        invalid.append("failing test first")
+
+    verification = task.fields.get("verification", "")
+    if not _is_placeholder(verification) and not _looks_like_command(verification):
+        invalid.append("verification")
+
+    status = task.fields.get("status", "").strip().lower()
+    if status and status not in TASK_STATUSES:
+        invalid.append("status")
+    return invalid
 
 
 def _verified_issues(feature: SddFeature) -> list[SddIssue]:
@@ -458,6 +496,47 @@ def _task_set(tasks: tuple[TaskRecord, ...], field_name: str) -> tuple[str, ...]
             candidate.strip() for candidate in candidates if candidate.strip() and candidate.strip().lower() != "none"
         )
     return tuple(dict.fromkeys(values))
+
+
+def _all_list_items(value: str, predicate: Callable[[str], bool]) -> bool:
+    items = [item.strip() for item in re.split(r"[,;]", value.replace("`", "")) if item.strip()]
+    return bool(items) and all(predicate(item) for item in items)
+
+
+def _valid_conflict_set(value: str) -> bool:
+    stripped = value.replace("`", "").strip()
+    if stripped.lower() in {"none", "not delegated"}:
+        return False
+    items = [item.strip() for item in re.split(r";", stripped) if item.strip()]
+    return bool(items) and all(_is_coordination_rule(item) or _all_list_items(item, _is_repo_path) for item in items)
+
+
+def _is_coordination_rule(value: str) -> bool:
+    return bool(re.match(r"^coordinate with [a-z0-9][a-z0-9_.\-/]+ for .+", value, re.IGNORECASE))
+
+
+def _is_repo_path(value: str) -> bool:
+    stripped = value.strip()
+    if stripped.lower() in {"none", "not delegated"}:
+        return False
+    if any(character.isspace() for character in stripped):
+        return False
+    return (
+        "/" in stripped
+        or stripped.startswith(".")
+        or "." in stripped
+        or stripped in {"Makefile", "Dockerfile", "AGENTS.md", "CLAUDE.md"}
+    )
+
+
+def _looks_like_test_reference(value: str) -> bool:
+    stripped = value.replace("`", "")
+    return "tests/" in stripped and ("pytest" in stripped or "::" in stripped or stripped.endswith(".py"))
+
+
+def _looks_like_command(value: str) -> bool:
+    stripped = value.replace("`", "").strip()
+    return bool(re.match(r"^(uv|make|cd|npm|python|pytest)\b", stripped))
 
 
 def _first_task_field(tasks: tuple[TaskRecord, ...], field_name: str) -> str | None:

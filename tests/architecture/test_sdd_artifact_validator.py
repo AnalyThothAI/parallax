@@ -102,6 +102,49 @@ def test_tasks_require_filled_coordination_fields(tmp_path: Path) -> None:
     assert "task-missing-agent-loop-fields" in _issue_codes(issues)
 
 
+def test_tasks_reject_invalid_coordination_field_values(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-invalid-task-values")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(
+        feature / "tasks.md",
+        status="In Progress",
+        touch_set="none",
+        failing_test_first="none",
+        verification="done manually",
+        task_status="[maybe]",
+    )
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    invalid_issues = [issue for issue in issues if issue.code == "task-invalid-coordination-fields"]
+    assert invalid_issues
+    invalid_text = " ".join(issue.message for issue in invalid_issues)
+    assert "touch set" in invalid_text
+    assert "failing test first" in invalid_text
+    assert "verification" in invalid_text
+    assert "status" in invalid_text
+
+
+def test_tasks_allow_explicit_none_dependency_and_not_delegated_handoff(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-valid-none-values")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(
+        feature / "tasks.md",
+        status="In Progress",
+        depends_on="none",
+        subagent_handoff="not delegated",
+        task_status="[~]",
+    )
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "task-invalid-coordination-fields" not in _issue_codes(issues)
+
+
 def test_active_touch_sets_must_not_overlap_without_conflict_note(tmp_path: Path) -> None:
     first = _feature_dir(tmp_path, "active", "2026-06-09-first")
     second = _feature_dir(tmp_path, "active", "2026-06-09-second")
@@ -194,8 +237,16 @@ def _write_valid_tasks(
     *,
     status: str,
     branch: str = "codex/harness",
+    depends_on: str = "none",
     touch_set: str = "scripts/validate_sdd_artifacts.py",
     conflict_set: str = "scripts/regen_sdd_work_index.py",
+    failing_test_first: str = (
+        "tests/architecture/test_sdd_artifact_validator.py::"
+        "test_verified_feature_requires_successful_make_check_all_evidence"
+    ),
+    subagent_handoff: str = "not delegated",
+    verification: str = "uv run pytest tests/architecture/test_sdd_artifact_validator.py -q",
+    task_status: str = "[x]",
 ) -> None:
     path.write_text(
         "\n".join(
@@ -224,22 +275,20 @@ def _write_valid_tasks(
                 "- **File(s)**: `tests/architecture/test_sdd_artifact_validator.py`, "
                 "`scripts/validate_sdd_artifacts.py`",
                 "- **Owner**: parent",
-                "- **Depends on**: none",
+                f"- **Depends on**: {depends_on}",
                 f"- **Touch set**: `{touch_set}`",
                 f"- **Conflict set**: `{conflict_set}`",
-                "- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::"
-                "test_verified_feature_requires_successful_make_check_all_evidence` - "
-                "asserts false Verified records fail.",
-                "- **Subagent handoff**: not delegated",
+                f"- **Failing test first**: `{failing_test_first}` - asserts false Verified records fail.",
+                f"- **Subagent handoff**: {subagent_handoff}",
                 "- **Implementation**: Create validator.",
-                "- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py -q`",
+                f"- **Verification**: `{verification}`",
                 "- **Review owner**: parent",
                 "- **Factory lane**: Harness",
                 "- **Deterministic constraints**: SDD validator, generated index, make check-all.",
                 "- **On-demand context**: `docs/WORKFLOW.md`, `docs/sdd/_templates/`.",
                 "- **Kill/defer criteria**: Stop if validator cannot prove artifact truth.",
                 "- **Eval/repair signal**: Record harness failures and review defects.",
-                "- **Status**: [x]",
+                f"- **Status**: {task_status}",
             ]
         ),
         encoding="utf-8",
