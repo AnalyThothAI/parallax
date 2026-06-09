@@ -199,6 +199,7 @@ Known-failing baseline tests:
 - Reject blank `idempotency_evidence` declarations before lifecycle, ownership, review, or worker inventory harnesses consume them.
 - Reject empty `input_contract` declarations before registry, factory, settings, or docs harnesses consume them.
 - Reject blank `input_contract` entries before registry, factory, settings, or docs harnesses consume them.
+- Reject duplicate `input_contract` entries before registry, factory, settings, or docs harnesses consume them.
 - Reject empty `ordering_keys` declarations before lifecycle, idempotency, registry, factory, settings, or docs harnesses consume them.
 - Reject blank `ordering_keys` entries before lifecycle, idempotency, registry, factory, settings, or docs harnesses consume them.
 - Reject duplicate `ordering_keys` entries before lifecycle, idempotency, registry, factory, settings, or docs harnesses consume them.
@@ -314,6 +315,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Idempotency evidence is non-blank. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares blank `idempotency_evidence`. |
 | Input contracts are non-empty. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares an empty `input_contract`. |
 | Input contracts are non-blank. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares a blank `input_contract` entry. |
+| Input contracts are unique. | Pass: `_validate_worker_manifests()` raises when a patched manifest repeats one `input_contract` entry. |
 | Ordering keys are non-empty. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares empty `ordering_keys`. |
 | Ordering keys are non-blank. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares a blank `ordering_keys` entry. |
 | Ordering keys are unique. | Pass: `_validate_worker_manifests()` raises when a patched manifest repeats one `ordering_keys` entry. |
@@ -465,6 +467,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC95: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_empty_ordering_keys -q`
 - AC96: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_ordering_keys -q`
 - AC97: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_ordering_keys -q`
+- AC98: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_input_contracts -q`
 
 ## Verification
 

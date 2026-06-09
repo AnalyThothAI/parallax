@@ -47,6 +47,7 @@ can both miss real process drift and block healthy refactors.
 | Idempotency evidence must be non-blank. | `WorkerManifest` validation rejects blank `idempotency_evidence` entries before lifecycle, ownership, or review harnesses consume them. |
 | Input contracts must be non-empty. | `WorkerManifest` validation rejects empty `input_contract` declarations before registry, factory, settings, or docs harnesses consume them. |
 | Input contracts must be non-blank. | `WorkerManifest` validation rejects blank `input_contract` entries before registry, factory, settings, or docs harnesses consume them. |
+| Input contracts must be unique. | `WorkerManifest` validation rejects duplicate `input_contract` entries before registry, factory, settings, or docs harnesses consume them. |
 | Ordering keys must be non-empty. | `WorkerManifest` validation rejects empty `ordering_keys` declarations before lifecycle, idempotency, registry, factory, settings, or docs harnesses consume them. |
 | Ordering keys must be non-blank. | `WorkerManifest` validation rejects blank `ordering_keys` entries before lifecycle, idempotency, registry, factory, settings, or docs harnesses consume them. |
 | Ordering keys must be unique. | `WorkerManifest` validation rejects duplicate `ordering_keys` entries before lifecycle, idempotency, registry, factory, settings, or docs harnesses consume them. |
@@ -196,6 +197,7 @@ can both miss real process drift and block healthy refactors.
 - G73. Ordering-key declarations require at least one entry, so workers cannot enter lifecycle, idempotency, registry, factory, settings, or docs harnesses without a declared processing order boundary.
 - G74. Ordering-key declarations reject blank entries, so workers cannot satisfy ordering and idempotency review with whitespace placeholders.
 - G75. Ordering-key declarations reject duplicate entries, so workers cannot satisfy ordering and idempotency review with repeated placeholders.
+- G76. Input contract declarations reject duplicate entries, so workers cannot satisfy input-boundary review with repeated placeholders.
 
 ## Non-goals
 
@@ -338,6 +340,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC95. WHEN a `WorkerManifest.ordering_keys` declaration is empty THEN manifest validation SHALL raise before lifecycle, idempotency, registry, factory, settings, or worker inventory harnesses consume the manifest.
 - AC96. WHEN a `WorkerManifest.ordering_keys` entry is blank THEN manifest validation SHALL raise before lifecycle, idempotency, registry, factory, settings, or worker inventory harnesses consume the manifest.
 - AC97. WHEN a `WorkerManifest.ordering_keys` entry repeats within one manifest THEN manifest validation SHALL raise before lifecycle, idempotency, registry, factory, settings, or worker inventory harnesses consume the manifest.
+- AC98. WHEN a `WorkerManifest.input_contract` entry repeats within one manifest THEN manifest validation SHALL raise before registry, factory, settings, or worker inventory harnesses consume the manifest.
 
 ## Risks
 

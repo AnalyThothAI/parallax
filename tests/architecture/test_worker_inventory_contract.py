@@ -379,6 +379,19 @@ def test_worker_manifest_validation_rejects_blank_input_contracts(
 
 
 @pytest.mark.architecture
+def test_worker_manifest_validation_rejects_duplicate_input_contracts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifests = list(all_worker_manifests())
+    duplicate_contract = manifests[0].input_contract[0]
+    manifests[0] = replace(manifests[0], input_contract=(*manifests[0].input_contract, duplicate_contract))
+    monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
+
+    with pytest.raises(ValueError, match="duplicate worker manifest input contracts"):
+        worker_manifest_module._validate_worker_manifests()
+
+
+@pytest.mark.architecture
 def test_worker_manifest_validation_rejects_empty_ordering_keys(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
