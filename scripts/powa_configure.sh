@@ -8,8 +8,20 @@ if ! [[ "${SNAPSHOT_COUNT}" =~ ^[0-9]+$ ]] || [ "${SNAPSHOT_COUNT}" -lt 1 ]; the
   exit 2
 fi
 
+docker compose exec -T postgres psql -U parallax_app -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+SELECT 'CREATE DATABASE powa'
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM pg_database
+  WHERE datname = 'powa'
+)
+\gexec
+SQL
+
 docker compose exec -T postgres psql -U parallax_app -d powa -v ON_ERROR_STOP=1 \
   -v snapshot_count="${SNAPSHOT_COUNT}" <<'SQL'
+CREATE EXTENSION IF NOT EXISTS powa CASCADE;
+
 ALTER SYSTEM SET powa.coalesce = '5';
 ALTER SYSTEM SET powa.frequency = '5min';
 SELECT pg_reload_conf() AS config_reloaded;

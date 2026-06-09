@@ -227,6 +227,9 @@ POSTGRES_OBSERVABILITY_EXTENSIONS_MIGRATION = Path(
 NEWS_AGENT_ADMISSION_CANDIDATE_INDEXES_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260609_0161_news_agent_admission_candidate_indexes.py"
 )
+NEWS_PAGE_MEMBER_LOOKUP_INDEX_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260609_0162_news_page_member_lookup_index.py"
+)
 TOKEN_PULSE_EQUITY_CPU_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260529_0124_token_pulse_equity_cpu_hard_cut.py"
 )
@@ -2003,6 +2006,23 @@ def test_news_agent_admission_candidate_indexes_support_identity_lookup() -> Non
         "ANALYZE news_items",
     ):
         assert statement in text
+
+
+def test_news_page_member_lookup_index_supports_projection_deletes() -> None:
+    assert NEWS_PAGE_MEMBER_LOOKUP_INDEX_MIGRATION.exists(), (
+        f"{NEWS_PAGE_MEMBER_LOOKUP_INDEX_MIGRATION} missing; add News page member lookup index"
+    )
+    text = NEWS_PAGE_MEMBER_LOOKUP_INDEX_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+
+    for statement in (
+        'revision = "20260609_0162"',
+        'down_revision = "20260609_0161"',
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_page_rows_member_news_item_ids_gin",
+        "USING GIN ((COALESCE(story_json -> 'member_news_item_ids', '[]'::jsonb)))",
+        "ANALYZE news_page_rows",
+    ):
+        assert statement in normalized_text or statement in text
 
 
 def test_news_agent_market_admission_migration_adds_agent_admission_columns_and_indexes() -> None:

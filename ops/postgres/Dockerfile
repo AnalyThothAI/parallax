@@ -11,3 +11,5 @@ RUN apt-get update \
         postgresql-18-pg-wait-sampling \
         postgresql-18-powa \
     && rm -rf /var/lib/apt/lists/*
+
+COPY ops/postgres/init/ /docker-entrypoint-initdb.d/

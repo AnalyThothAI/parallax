@@ -8,6 +8,10 @@ ROOT = Path(__file__).resolve().parents[2]
 def test_powa_configure_script_sets_bounded_history_and_does_not_print_secrets() -> None:
     script = (ROOT / "scripts" / "powa_configure.sh").read_text(encoding="utf-8")
 
+    assert "-d postgres" in script
+    assert "CREATE DATABASE powa" in script
+    assert "\\gexec" in script
+    assert "CREATE EXTENSION IF NOT EXISTS powa CASCADE" in script
     assert "powa_servers" in script
     assert "ALTER SYSTEM SET powa.coalesce = '5'" in script
     assert "ALTER SYSTEM SET powa.frequency = '5min'" in script
@@ -24,6 +28,19 @@ def test_powa_configure_script_sets_bounded_history_and_does_not_print_secrets()
     assert "POSTGRES_PASSWORD" not in script
     assert "postgres_password" not in script
     assert "cat " not in script
+
+
+def test_powa_postgres_image_bootstraps_required_database() -> None:
+    dockerfile = (ROOT / "ops" / "postgres" / "Dockerfile").read_text(encoding="utf-8")
+    bootstrap = (ROOT / "ops" / "postgres" / "init" / "01-powa.sql").read_text(encoding="utf-8")
+
+    assert "COPY ops/postgres/init/ /docker-entrypoint-initdb.d/" in dockerfile
+    assert "CREATE DATABASE powa" in bootstrap
+    assert "WHERE datname = 'powa'" in bootstrap
+    assert "\\connect powa" in bootstrap
+    assert "CREATE EXTENSION IF NOT EXISTS powa CASCADE" in bootstrap
+    assert "POSTGRES_PASSWORD" not in bootstrap
+    assert "postgres_password" not in bootstrap
 
 
 def test_runtime_performance_check_prints_read_only_lifecycle_report() -> None:
