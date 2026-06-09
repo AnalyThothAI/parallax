@@ -14,6 +14,7 @@ from parallax.domains.macro_intel.services.macro_module_catalog import (
 
 EXPECTED_MODULE_IDS = (
     "overview",
+    "assets",
     "assets/equities",
     "assets/bonds",
     "assets/commodities",
@@ -55,7 +56,16 @@ def test_catalog_exposes_exact_supported_module_ids() -> None:
 
 
 def test_catalog_configs_have_stable_contract_fields() -> None:
+    assets = get_macro_module_config("assets")
     equities = get_macro_module_config("assets/equities")
+
+    assert assets.module_id == "assets"
+    assert assets.route_path == "/macro/assets"
+    assert assets.title == "大类资产"
+    assert assets.section == "assets"
+    assert assets.required_concepts == ("asset:spx", "rates:dgs10", "fx:dxy", "commodity:wti", "crypto:btc")
+    assert assets.chart_specs[0].chart_id == "asset_cross_market_snapshot"
+    assert assets.table_specs[0].table_id == "asset_group_snapshot"
 
     assert equities.module_id == "assets/equities"
     assert equities.route_path == "/macro/assets/equities"
@@ -76,7 +86,7 @@ def test_catalog_configs_have_stable_contract_fields() -> None:
 
 @pytest.mark.parametrize(
     "module_id",
-    ("assets", "rates", "fed", "liquidity", "economy", "volatility", "credit"),
+    ("rates", "fed", "liquidity", "economy", "volatility", "credit"),
 )
 def test_parent_macro_categories_are_not_backend_modules(module_id: str) -> None:
     with pytest.raises(UnsupportedMacroModuleError):

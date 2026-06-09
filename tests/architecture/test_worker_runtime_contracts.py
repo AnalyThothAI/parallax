@@ -423,6 +423,10 @@ def test_macro_sync_is_fact_ingest_and_projection_remains_read_model_writer() ->
     assert "macro_projection_dirty_targets" in projection.writes_control_plane
     assert projection.dirty_target_tables == ("macro_projection_dirty_targets",)
     assert "macro_observations_imported" in projection.wakes_on
+    assert projection.wakes_out == ("macro_view_snapshot_updated",)
+
+    daily_brief = manifests["macro_daily_brief_projection"]
+    assert daily_brief.wakes_on == ("macro_view_snapshot_updated",)
 
 
 @pytest.mark.architecture

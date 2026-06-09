@@ -71,6 +71,16 @@ class WakeBus:
             },
         )
 
+    def notify_macro_view_snapshot_updated(self, *, projection_version: str, status: str, regime: str) -> None:
+        self._notify(
+            "macro_view_snapshot_updated",
+            {
+                "projection_version": str(projection_version),
+                "status": str(status),
+                "regime": str(regime),
+            },
+        )
+
     def _notify(self, channel: str, payload: dict[str, Any]) -> None:
         conn_or_context = self._conn_factory()
         if hasattr(conn_or_context, "__enter__"):

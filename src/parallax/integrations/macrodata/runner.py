@@ -5,8 +5,11 @@ import os
 import shutil
 import subprocess
 import sys
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from importlib import import_module
+from importlib.metadata import PackageNotFoundError, version
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
@@ -26,10 +29,10 @@ class MacrodataBundleRunner:
 
     def history_bundle(self, *, bundle: str, start: str, end: str) -> MacrodataBundleRunResult:
         fred_state = fred_api_key_state(self.settings, environ=self.environ)
-        executable = resolve_macrodata_executable(environ=self.environ)
+        command_prefix = resolve_macrodata_command(environ=self.environ)
         timeout_seconds = _macrodata_timeout_seconds(self.settings)
         command = [
-            executable,
+            *command_prefix,
             "bundle",
             "history",
             bundle,
@@ -93,15 +96,136 @@ class MacrodataRunnerError(RuntimeError):
 def resolve_macrodata_executable(*, environ: Mapping[str, str] | None = None) -> str:
     env = os.environ if environ is None else environ
     executable = shutil.which("macrodata", path=env.get("PATH"))
-    if executable:
+    if executable and _executable_path_is_usable(executable):
         return executable
     sibling = Path(sys.executable).parent / "macrodata"
-    if sibling.exists() and os.access(sibling, os.X_OK):
+    if sibling.exists() and _executable_path_is_usable(str(sibling)):
         return str(sibling)
     raise MacrodataRunnerError(
         "macrodata executable not found",
         diagnostics={"error_code": "macrodata_executable_missing"},
     )
+
+
+def resolve_macrodata_command(*, environ: Mapping[str, str] | None = None) -> list[str]:
+    try:
+        return [resolve_macrodata_executable(environ=environ)]
+    except MacrodataRunnerError as exc:
+        diagnostics = getattr(exc, "diagnostics", {})
+        if diagnostics.get("error_code") != "macrodata_executable_missing":
+            raise
+        if _macrodata_cli_entrypoint_available():
+            return [sys.executable, "-c", "from macrodata.surfaces.cli import main; main()"]
+        raise
+
+
+def macrodata_runtime_state(
+    *,
+    required_series: Sequence[str] = (),
+    environ: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    command_path: str | None = None
+    command_mode = "missing"
+    command_error_code: str | None = None
+    try:
+        command = resolve_macrodata_command(environ=environ)
+        command_path = command[0] if command else None
+        command_mode = "python_entrypoint" if _is_python_entrypoint_command(command) else "console_script"
+    except MacrodataRunnerError as exc:
+        diagnostics = getattr(exc, "diagnostics", {})
+        command_error_code = str(diagnostics.get("error_code") or "macrodata_runner_error")
+
+    catalog_series = _macrodata_catalog_series()
+    macro_core_series = _macrodata_bundle_series("macro-core")
+    required = tuple(dict.fromkeys(str(item) for item in required_series))
+    missing = [series_key for series_key in required if catalog_series is None or series_key not in catalog_series]
+    missing_bundle = [
+        series_key for series_key in required if macro_core_series is None or series_key not in macro_core_series
+    ]
+    return {
+        "package_version": _macrodata_cli_package_version(),
+        "entrypoint_available": _macrodata_cli_entrypoint_available(),
+        "command_mode": command_mode,
+        "command_path": command_path,
+        "command_error_code": command_error_code,
+        "catalog_available": catalog_series is not None,
+        "required_series_count": len(required),
+        "missing_required_series_count": len(missing),
+        "required_series_available": False if catalog_series is None else not missing,
+        "missing_required_series_sample": _edge_sample(missing, edge_count=12),
+        "macro_core_bundle_available": macro_core_series is not None,
+        "missing_required_bundle_series_count": len(missing_bundle),
+        "required_bundle_series_available": False if macro_core_series is None else not missing_bundle,
+        "missing_required_bundle_series_sample": _edge_sample(missing_bundle, edge_count=12),
+    }
+
+
+def _macrodata_cli_entrypoint_available() -> bool:
+    return find_spec("macrodata.surfaces.cli") is not None
+
+
+def _macrodata_cli_package_version() -> str | None:
+    try:
+        return version("macrodata-cli")
+    except PackageNotFoundError:
+        return None
+
+
+def _macrodata_catalog_series() -> set[str] | None:
+    try:
+        module = import_module("macrodata.catalog.entries")
+    except Exception:
+        return None
+    entries = getattr(module, "CATALOG_ENTRIES", None)
+    if not isinstance(entries, Sequence):
+        return None
+    series: set[str] = set()
+    for entry in entries:
+        series_key = getattr(entry, "series_key", None)
+        if isinstance(series_key, str) and series_key:
+            series.add(series_key)
+    return series
+
+
+def _macrodata_bundle_series(bundle_name: str) -> set[str] | None:
+    try:
+        module = import_module("macrodata.app.services")
+    except Exception:
+        return None
+    bundles = getattr(module, "BUNDLES", None)
+    if isinstance(bundles, Mapping):
+        bundle_series = bundles.get(bundle_name)
+        if isinstance(bundle_series, Sequence) and not isinstance(bundle_series, str | bytes | bytearray):
+            return {str(series_key) for series_key in bundle_series}
+    if bundle_name == "macro-core":
+        macro_core = getattr(module, "MACRO_CORE", None)
+        if isinstance(macro_core, Sequence) and not isinstance(macro_core, str | bytes | bytearray):
+            return {str(series_key) for series_key in macro_core}
+    return None
+
+
+def _is_python_entrypoint_command(command: Sequence[str]) -> bool:
+    return len(command) >= 3 and command[1] == "-c" and "macrodata.surfaces.cli" in command[2]
+
+
+def _edge_sample(values: Sequence[str], *, edge_count: int) -> list[str]:
+    if len(values) <= edge_count * 2:
+        return list(values)
+    return [*values[:edge_count], "...", *values[-edge_count:]]
+
+
+def _executable_path_is_usable(path: str) -> bool:
+    if not os.access(path, os.X_OK):
+        return False
+    try:
+        with Path(path).open("rb") as handle:
+            first_line = handle.readline(256).rstrip()
+    except (IndexError, OSError):
+        return True
+    if not first_line.startswith(b"#!"):
+        return True
+    interpreter = first_line[2:].strip().split(maxsplit=1)[0].decode(errors="ignore")
+    return not interpreter.startswith("/") or Path(interpreter).exists()
 
 
 def fred_api_key_state(settings: object, *, environ: Mapping[str, str] | None = None) -> dict[str, Any]:
@@ -140,5 +264,7 @@ __all__ = [
     "MacrodataBundleRunner",
     "MacrodataRunnerError",
     "fred_api_key_state",
+    "macrodata_runtime_state",
+    "resolve_macrodata_command",
     "resolve_macrodata_executable",
 ]

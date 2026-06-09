@@ -8,6 +8,7 @@ import {
 
 export type MacroModuleId =
   | "overview"
+  | "assets"
   | "assets/equities"
   | "assets/bonds"
   | "assets/commodities"
@@ -100,7 +101,6 @@ export const MACRO_MODULE_ROUTES: MacroModuleRoute[] =
 const ROUTES_BY_ID = new Map(MACRO_MODULE_ROUTES.map((route) => [route.moduleId, route]));
 
 const MACRO_PARENT_ROUTE_REDIRECTS = new Map<string, string>([
-  ["assets", "/macro/assets/equities"],
   ["rates", "/macro/rates/fed-funds"],
   ["fed", "/macro/fed/statements"],
   ["liquidity", "/macro/liquidity/transmission-chain"],

@@ -24,6 +24,7 @@ def build_macro_module_view(
     snapshot: Mapping[str, Any] | None,
     observations: Sequence[Mapping[str, Any]],
     cex_board: Mapping[str, Any] | None = None,
+    daily_brief: Mapping[str, Any] | None = None,
     facts_max_observed_at: object = None,
     projection_lag_days: int | None = None,
     projection_behind_facts: bool = False,
@@ -64,7 +65,7 @@ def build_macro_module_view(
     )
 
     tiles = [_tile(concept_key, feature_map[concept_key]) for concept_key in concept_keys if concept_key in feature_map]
-    return _ordered_payload(
+    payload = _ordered_payload(
         snapshot=_snapshot_header(config=config, snapshot=snapshot),
         tiles=tiles,
         primary_chart=primary_chart,
@@ -96,6 +97,9 @@ def build_macro_module_view(
         ),
         related_routes=_related_routes(config.related_routes),
     )
+    if config.module_id == "assets" and daily_brief is not None:
+        payload["daily_brief"] = dict(daily_brief)
+    return payload
 
 
 def _missing_view(
@@ -115,7 +119,7 @@ def _missing_view(
         primary_chart=primary_chart,
         cex_source=cex_source,
     )
-    return _ordered_payload(
+    payload = _ordered_payload(
         snapshot={
             "module_id": config.module_id,
             "route_path": config.route_path,
@@ -167,6 +171,9 @@ def _missing_view(
         ),
         related_routes=_related_routes(config.related_routes),
     )
+    if config.module_id == "assets":
+        payload["daily_brief"] = None
+    return payload
 
 
 def _ordered_payload(
@@ -1281,6 +1288,7 @@ _ROUTE_LABELS = {
 }
 
 _CHART_TITLES = {
+    "asset_cross_market_snapshot": "大类资产走势",
     "rates_curve": "收益率曲线",
     "asset_proxy_performance": "资产代理走势",
     "macro_regime": "宏观链条走势",
@@ -1320,6 +1328,7 @@ _CHART_TITLES = {
 }
 
 _TABLE_TITLES = {
+    "asset_group_snapshot": "大类资产快照",
     "rates_snapshot": "利率快照",
     "asset_proxy_snapshot": "资产快照",
     "panel_scorecard": "面板记分卡",

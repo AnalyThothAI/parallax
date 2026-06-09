@@ -31,8 +31,11 @@ export const MACRO_NAVIGATION_TREE: MacroNavigationNode[] = [
       },
       {
         label: "大类资产",
-        href: "/macro/assets/equities",
+        href: "/macro/assets",
         matchPath: "/macro/assets/*",
+        pageKind: "leaf",
+        productTier: "primary",
+        routeId: "assets",
         section: "assets",
         children: [
           {

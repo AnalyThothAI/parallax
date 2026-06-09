@@ -121,7 +121,7 @@ collector
   -> token_radar_projection
   -> narrative_admission (only when narrative bulk analysis gate is enabled)
   -> mention_semantics / token_discussion_digest (same gate)
-  -> macro_sync / macro_view_projection
+  -> macro_sync / macro_view_projection / macro_daily_brief_projection
   -> pulse_candidate / notifications / API / WebSocket / CLI
 ```
 
@@ -130,7 +130,10 @@ document because every downstream worker depends on the facts it writes.
 Macro Intel has a normal fact-ingest worker. `macro_sync` claims bounded
 sync windows, runs the packaged `macrodata` executable outside DB
 transactions, writes `macro_observations`, `macro_import_runs`, and
-sync control/audit rows, then wakes projection as a hint. The
+sync control/audit rows, then wakes the macro view projection as a hint.
+When `macro_view_projection` publishes a changed current snapshot, it wakes
+`macro_daily_brief_projection`, which reads the current macro projection and
+writes the stable `assets_today` daily-brief read model for the operator console. The
 `macro import-bundle` CLI is offline replay/seed only.
 
 Narrative bulk analysis is all-or-nothing at runtime. The gate requires
@@ -150,7 +153,7 @@ asset_profile_refresh, token_image_mirror, token_radar_projection, token_profile
 narrative_admission, mention_semantics, token_discussion_digest,
 news_fetch, news_item_process,
 news_item_brief, news_page_projection, news_source_quality_projection,
-cex_oi_radar_board, macro_sync, macro_view_projection,
+cex_oi_radar_board, macro_sync, macro_view_projection, macro_daily_brief_projection,
 pulse_candidate, notification_rule,
 notification_delivery
 -->
@@ -179,7 +182,8 @@ notification_delivery
 | `news_source_quality_projection` (`NewsSourceQualityProjectionWorker`) | `news_intel` | `domains/news_intel/runtime/news_source_quality_projection_worker.py` | semantic source-quality refresh/window work; target-scoped `news_sources`, `news_fetch_runs`, `news_items`, `news_token_mentions`, `news_fact_candidates`, `news_item_agent_briefs` by source/window | `news_source_quality_rows`, `news_sources.source_quality_status` | `news_item_written` | `news_page_dirty` only when compact source status changes | `interval_seconds`; windows are owned by worker settings |
 | `cex_oi_radar_board` (`CexOiRadarBoardWorker`) | `cex_market_intel` | `domains/cex_market_intel/runtime/cex_oi_radar_board_worker.py` | Binance-backed `price_feeds`, Binance USD-M ticker/premium/OI history, bounded CoinGlass enrichment when available | `cex_oi_radar_rows`, `cex_oi_radar_publication_state`, `cex_detail_snapshots` | poll | none | `interval_seconds`; current board row ids are stable by provider/exchange/period/target |
 | `macro_sync` (`MacroSyncWorker`) | `macro_intel` | `domains/macro_intel/runtime/macro_sync_worker.py` | due `macro_sync_windows`; packaged `macrodata` history bundle after claim | `macro_observations`, `macro_import_runs`, `macro_sync_windows`, `macro_sync_runs` | poll | `macro_observations_imported` | claims one bounded window; idle cycles do no provider IO and no broad fact scan |
-| `macro_view_projection` (`MacroViewProjectionWorker`) | `macro_intel` | `domains/macro_intel/runtime/macro_view_projection_worker.py` | due `macro_projection_dirty_targets`; then exact `macro_observations` history and `macro_observation_series_rows` current projection | `macro_observation_series_rows`, `macro_view_snapshots`, `macro_observation_series_publication_state` | `macro_observations_imported` | none | `interval_seconds`; no dirty target means no broad fact scan; unchanged signatures write zero serving rows |
+| `macro_view_projection` (`MacroViewProjectionWorker`) | `macro_intel` | `domains/macro_intel/runtime/macro_view_projection_worker.py` | due `macro_projection_dirty_targets`; then exact `macro_observations` history and `macro_observation_series_rows` current projection | `macro_observation_series_rows`, `macro_view_snapshots`, `macro_observation_series_publication_state` | `macro_observations_imported` | `macro_view_snapshot_updated` | `interval_seconds`; no dirty target means no broad fact scan; unchanged signatures write zero serving rows and emit no downstream wake |
+| `macro_daily_brief_projection` (`MacroDailyBriefProjectionWorker`) | `macro_intel` | `domains/macro_intel/runtime/macro_daily_brief_projection_worker.py` | current `macro_view_snapshots` and current macro series rows | `macro_daily_briefs` | `macro_view_snapshot_updated` | none | daily `interval_seconds`; deterministic `assets_today` row writes zero serving rows when payload hash is unchanged |
 | `pulse_candidate` (`PulseCandidateWorker`) | `pulse_lab` | `domains/pulse_lab/runtime/pulse_candidate_worker.py` | due `pulse_trigger_dirty_targets`; exact Token Radar current row and evidence context for Pulse `1h`/`4h` horizons | read models: `pulse_candidate_edge_state`, `pulse_candidates`, `pulse_candidates.decision_*`, `pulse_candidates.decision_json`, `pulse_playbook_snapshots`; control/audit: `pulse_agent_jobs`, run-budget tables, `pulse_agent_runs`, `pulse_agent_run_steps`, runtime-version and eval tables | `token_radar_updated` | none | `interval_seconds` |
 | `notification_rule` (`NotificationWorker`) | `notifications` | `domains/notifications/runtime/notification_worker.py` | notification rules, candidate rows | `notifications` facts and `notification_deliveries` control rows | poll | none | `interval_seconds` |
 | `notification_delivery` (`NotificationDeliveryWorker`) | `notifications` | `domains/notifications/runtime/notification_delivery.py` | pending `notification_deliveries` | `notification_deliveries` side-effect/control ledger | poll | none | `interval_seconds` |

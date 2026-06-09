@@ -6,6 +6,7 @@ from .runner import (
     MacrodataBundleRunResult,
     MacrodataRunnerError,
     fred_api_key_state,
+    macrodata_runtime_state,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "MacrodataQuoteProvider",
     "MacrodataRunnerError",
     "fred_api_key_state",
+    "macrodata_runtime_state",
 ]

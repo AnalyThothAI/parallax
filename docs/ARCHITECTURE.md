@@ -22,20 +22,25 @@ GMGN public stream
 
 Macro intelligence has a normal runtime fact-ingest lane. `macro_sync` claims
 bounded date windows in PostgreSQL before provider IO, runs the packaged
-`macrodata-cli` executable from the installed image, and writes
+`macrodata-cli` runtime from the installed image, and writes
 `macro_observations`, `macro_import_runs`, `macro_sync_windows`, and
-`macro_sync_runs`. The Docker image installs `macrodata-cli` from its versioned
-Git source (`v0.1.5`) and uses its `macrodata` executable; runtime must not use
-`uv run` or depend on a host-local checkout path.
+`macro_sync_runs`. The Docker image installs `macrodata-cli` from its pinned Git
+source. Runtime uses the packaged `macrodata` executable when the console
+script is healthy, or the installed Python package entrypoint when the script is
+absent or stale; it must not use `uv run` or depend on a host-local checkout
+path.
 
 ```text
 macro_sync windows
   -> packaged macrodata bundle history macro-core
   -> macro_observations / macro_import_runs / macro_sync_runs
-  -> wake hint
+  -> wake macro_observations_imported
   -> macro_view_projection
   -> feature engine and regime state machine
   -> macro_regime_v4 in macro_view_snapshots
+  -> wake macro_view_snapshot_updated
+  -> macro_daily_brief_projection
+  -> assets_today in macro_daily_briefs
   -> /api/macro
   -> web /macro
 ```

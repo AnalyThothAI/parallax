@@ -23,9 +23,16 @@ if TYPE_CHECKING:
 
 
 class MacroViewProjectionWorker(WorkerBase):
-    def __init__(self, *, clock_ms: Callable[[], int] | None = None, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        *,
+        clock_ms: Callable[[], int] | None = None,
+        wake_bus: Any | None = None,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(**kwargs)
         self.clock_ms = clock_ms or _now_ms
+        self.wake_bus = wake_bus
 
     async def run_once(self) -> WorkerResult:
         return await asyncio.to_thread(self.run_once_sync)
@@ -116,6 +123,12 @@ class MacroViewProjectionWorker(WorkerBase):
         snapshot_changed = repos.macro_intel.insert_snapshot(snapshot)
         snapshot_rows_written = 1 if snapshot_changed else 0
         repos.macro_intel.mark_macro_projection_dirty_targets_done(claimed, now_ms=now, commit=True)
+        if snapshot_changed and self.wake_bus is not None:
+            self.wake_bus.notify_macro_view_snapshot_updated(
+                projection_version=str(snapshot["projection_version"]),
+                status=str(snapshot["status"]),
+                regime=str(snapshot["regime"]),
+            )
         return WorkerResult(
             processed=1,
             notes={

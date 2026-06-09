@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import subprocess
+import sys
 from contextlib import contextmanager
 from datetime import date
 from types import TracebackType
@@ -11,7 +12,7 @@ import pytest
 
 from parallax.app.surfaces.cli.parser import build_parser
 from parallax.cli import main
-from parallax.domains.macro_intel._constants import MACRO_HISTORY_REQUIRED_CONCEPTS
+from parallax.domains.macro_intel._constants import MACRO_HISTORY_REQUIRED_CONCEPTS, MACRO_PROVIDER_SERIES_TO_CONCEPT
 from parallax.domains.macro_intel.observation_identity import (
     macro_observation_fact_payload_hash,
     macro_observation_id,
@@ -219,6 +220,128 @@ def test_macrodata_runner_uses_default_fred_env_when_unset(monkeypatch) -> None:
     assert result.diagnostics["fred_api_key_env"] == "FINANCE_FRED_API_KEY"
     assert result.diagnostics["fred_api_key_configured"] is False
     assert calls[0]["env_has_fred"] is False
+
+
+def test_macrodata_runner_falls_back_to_python_entrypoint_when_console_script_missing(monkeypatch) -> None:
+    from parallax.integrations.macrodata.runner import MacrodataBundleRunner, MacrodataRunnerError
+
+    calls: list[dict[str, object]] = []
+
+    class Settings:
+        macrodata_fred_api_key_env = None
+
+    class Completed:
+        returncode = 0
+        stdout = json.dumps(ENVELOPE)
+        stderr = ""
+
+    def fake_resolve_executable(*, environ=None):
+        raise MacrodataRunnerError(
+            "macrodata executable not found",
+            diagnostics={"error_code": "macrodata_executable_missing"},
+        )
+
+    def fake_run(command, *, env, cwd, capture_output, text, check, timeout=None):
+        calls.append({"command": command, "cwd": cwd, "timeout": timeout})
+        return Completed()
+
+    monkeypatch.setattr("parallax.integrations.macrodata.runner.resolve_macrodata_executable", fake_resolve_executable)
+    monkeypatch.setattr("parallax.integrations.macrodata.runner._macrodata_cli_entrypoint_available", lambda: True)
+    monkeypatch.setattr("parallax.integrations.macrodata.runner.subprocess.run", fake_run)
+
+    result = MacrodataBundleRunner(settings=Settings()).history_bundle(
+        bundle="macro-core",
+        start="2026-01-01",
+        end="2026-05-21",
+    )
+
+    assert result.envelope == ENVELOPE
+    assert calls[0]["command"][:3] == [
+        sys.executable,
+        "-c",
+        "from macrodata.surfaces.cli import main; main()",
+    ]
+    assert calls[0]["command"][3:] == [
+        "bundle",
+        "history",
+        "macro-core",
+        "--start",
+        "2026-01-01",
+        "--end",
+        "2026-05-21",
+    ]
+    assert calls[0]["cwd"] is None
+    assert result.diagnostics["command"] == calls[0]["command"]
+
+
+def test_macrodata_runner_skips_stale_console_script_shebang(monkeypatch, tmp_path) -> None:
+    from parallax.integrations.macrodata.runner import resolve_macrodata_command
+
+    executable = tmp_path / "macrodata"
+    executable.write_text(
+        "#!/missing/parallax/python\nfrom macrodata.surfaces.cli import main\nmain()\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+
+    monkeypatch.setattr("parallax.integrations.macrodata.runner._macrodata_cli_entrypoint_available", lambda: True)
+
+    command = resolve_macrodata_command(environ={"PATH": str(tmp_path)})
+
+    assert command == [sys.executable, "-c", "from macrodata.surfaces.cli import main; main()"]
+
+
+def test_macrodata_runtime_state_reports_missing_required_catalog_series(monkeypatch) -> None:
+    from parallax.integrations.macrodata import runner
+
+    monkeypatch.setattr(runner, "_macrodata_cli_package_version", lambda: "0.1.5")
+    monkeypatch.setattr(runner, "_macrodata_catalog_series", lambda: {"fred:SP500"})
+    monkeypatch.setattr(runner, "_macrodata_bundle_series", lambda bundle_name: {"fred:SP500"})
+    monkeypatch.setattr(runner, "_macrodata_cli_entrypoint_available", lambda: True)
+    monkeypatch.setattr(runner, "resolve_macrodata_command", lambda *, environ=None: ["/app/.venv/bin/macrodata"])
+
+    state = runner.macrodata_runtime_state(
+        required_series=("fred:SP500", "nyfed:SRF", "yahoo:USDCNY=X"),
+        environ={"PATH": "/app/.venv/bin"},
+    )
+
+    assert state == {
+        "package_version": "0.1.5",
+        "entrypoint_available": True,
+        "command_mode": "console_script",
+        "command_path": "/app/.venv/bin/macrodata",
+        "command_error_code": None,
+        "catalog_available": True,
+        "required_series_count": 3,
+        "missing_required_series_count": 2,
+        "required_series_available": False,
+        "missing_required_series_sample": ["nyfed:SRF", "yahoo:USDCNY=X"],
+        "macro_core_bundle_available": True,
+        "missing_required_bundle_series_count": 2,
+        "required_bundle_series_available": False,
+        "missing_required_bundle_series_sample": ["nyfed:SRF", "yahoo:USDCNY=X"],
+    }
+
+
+def test_macrodata_runtime_state_reports_python_entrypoint_fallback(monkeypatch) -> None:
+    from parallax.integrations.macrodata import runner
+
+    monkeypatch.setattr(runner, "_macrodata_cli_package_version", lambda: "0.1.6")
+    monkeypatch.setattr(runner, "_macrodata_catalog_series", lambda: {"nyfed:SRF"})
+    monkeypatch.setattr(runner, "_macrodata_bundle_series", lambda bundle_name: {"nyfed:SRF"})
+    monkeypatch.setattr(runner, "_macrodata_cli_entrypoint_available", lambda: True)
+    monkeypatch.setattr(
+        runner,
+        "resolve_macrodata_command",
+        lambda *, environ=None: [sys.executable, "-c", "from macrodata.surfaces.cli import main; main()"],
+    )
+
+    state = runner.macrodata_runtime_state(required_series=("nyfed:SRF",))
+
+    assert state["command_mode"] == "python_entrypoint"
+    assert state["command_path"] == sys.executable
+    assert state["required_series_available"] is True
+    assert state["required_bundle_series_available"] is True
 
 
 def test_macrodata_runner_passes_configured_timeout_to_child_process(monkeypatch) -> None:
@@ -664,6 +787,22 @@ def test_macro_status_reports_repository_counts(monkeypatch) -> None:
             "migration_ready": True,
             "fred_api_key_env": "APP_FRED_KEY",
             "fred_api_key_configured": True,
+            "macrodata_cli": {
+                "package_version": "0.1.test",
+                "entrypoint_available": True,
+                "command_mode": "console_script",
+                "command_path": "/app/.venv/bin/macrodata",
+                "command_error_code": None,
+                "catalog_available": True,
+                "required_series_count": len(MACRO_PROVIDER_SERIES_TO_CONCEPT),
+                "missing_required_series_count": 0,
+                "required_series_available": True,
+                "missing_required_series_sample": [],
+                "macro_core_bundle_available": True,
+                "missing_required_bundle_series_count": 0,
+                "required_bundle_series_available": True,
+                "missing_required_bundle_series_sample": [],
+            },
             "observations_count": 0,
             "concept_count": 0,
             "required_history_concept_count": len(MACRO_HISTORY_REQUIRED_CONCEPTS),
@@ -755,6 +894,22 @@ def test_macro_status_repository_exception_returns_structured_error_without_secr
         "data": {
             "fred_api_key_env": "APP_FRED_KEY",
             "fred_api_key_configured": True,
+            "macrodata_cli": {
+                "package_version": "0.1.test",
+                "entrypoint_available": True,
+                "command_mode": "console_script",
+                "command_path": "/app/.venv/bin/macrodata",
+                "command_error_code": None,
+                "catalog_available": True,
+                "required_series_count": len(MACRO_PROVIDER_SERIES_TO_CONCEPT),
+                "missing_required_series_count": 0,
+                "required_series_available": True,
+                "missing_required_series_sample": [],
+                "macro_core_bundle_available": True,
+                "missing_required_bundle_series_count": 0,
+                "required_bundle_series_available": True,
+                "missing_required_bundle_series_sample": [],
+            },
         },
     }
 
@@ -821,6 +976,26 @@ def _patch_macro_dependencies(
 
     monkeypatch.setattr(macro_module, "load_settings", lambda require_ws_token=False: settings or FakeSettings())
     monkeypatch.setattr(macro_module, "repositories", fake_repositories)
+    monkeypatch.setattr(
+        macro_module,
+        "macrodata_runtime_state",
+        lambda *, required_series: {
+            "package_version": "0.1.test",
+            "entrypoint_available": True,
+            "command_mode": "console_script",
+            "command_path": "/app/.venv/bin/macrodata",
+            "command_error_code": None,
+            "catalog_available": True,
+            "required_series_count": len(required_series),
+            "missing_required_series_count": 0,
+            "required_series_available": True,
+            "missing_required_series_sample": [],
+            "macro_core_bundle_available": True,
+            "missing_required_bundle_series_count": 0,
+            "required_bundle_series_available": True,
+            "missing_required_bundle_series_sample": [],
+        },
+    )
     monkeypatch.setattr(macro_module, "_now_ms", lambda: NOW_MS)
 
 

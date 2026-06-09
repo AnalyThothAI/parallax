@@ -104,7 +104,7 @@ export function macroModuleFixture(overrides: Partial<MacroModuleView> = {}): Ma
       ],
     },
     related_routes: [
-      { href: "/macro/assets/equities", label: "大类资产" },
+      { href: "/macro/assets", label: "大类资产" },
       { href: "/macro/volatility/dashboard", label: "波动率" },
     ],
     ...overrides,
@@ -159,6 +159,81 @@ export function macroOverviewModuleFixture(
         { code: "macro_forward_calendar_missing", label: "未来宏观日历待接入" },
       ],
     },
+    ...overrides,
+  });
+}
+
+export function macroAssetsModuleFixture(
+  overrides: Partial<MacroModuleView> = {},
+): MacroModuleView {
+  return macroModuleFixture({
+    snapshot: {
+      ...macroModuleFixture().snapshot,
+      module_id: "assets",
+      route_path: "/macro/assets",
+      section: "assets",
+      title: "大类资产",
+      subtitle: "股票、债券、商品、美元与加密资产总览",
+      question: "今天跨资产链条是在支持 risk-on，还是提示防守？",
+      status: "partial",
+      status_label: "部分可用",
+    },
+    primary_chart: {
+      ...equityChart(),
+      id: "asset_cross_market_snapshot",
+      title: "大类资产走势",
+    },
+    tables: [
+      {
+        ...equityTable(),
+        id: "asset_group_snapshot",
+        title: "大类资产快照",
+      },
+    ],
+    module_read: {
+      headline: "大类资产：风险资产偏震荡",
+      regime_label: "部分可用",
+      confidence_label: "模块覆盖 5/12",
+      data_note: "只展示已入库事实和可用性说明。",
+    },
+    daily_brief: {
+      brief_key: "assets_today",
+      projection_version: "macro_daily_brief_v1",
+      brief_date: "2026-05-20",
+      asof_date: "2026-05-20",
+      status: "partial",
+      headline: "今日判断：风险资产偏震荡",
+      blocks: [
+        {
+          id: "cross_correlation",
+          title: "跨资产相关性",
+          stance: "mixed",
+          body: "SPX 与 BTC 同向，但 10Y 仍有压力。",
+        },
+        {
+          id: "dollar_commodity",
+          title: "美元与商品",
+          stance: "commodity_supported",
+          body: "DXY 回落，WTI 偏强。",
+        },
+        {
+          id: "risk_appetite",
+          title: "风险偏好",
+          stance: "neutral",
+          body: "风险偏好部分恢复，信用确认不足。",
+        },
+        {
+          id: "outlook",
+          title: "今日展望",
+          stance: "watch_data_quality",
+          body: "等待美元、10Y 与信用利差同向确认。",
+        },
+      ],
+    },
+    related_routes: [
+      { href: "/macro/assets/equities", label: "美股" },
+      { href: "/macro/assets/correlation", label: "相关性" },
+    ],
     ...overrides,
   });
 }

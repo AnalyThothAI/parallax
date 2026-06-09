@@ -407,7 +407,18 @@ def test_macro_module_api_rejects_unsupported_module() -> None:
     assert response.json() == {"ok": False, "error": "unsupported_macro_module", "field": "module_id"}
 
 
-@pytest.mark.parametrize("module_id", ("assets", "rates", "fed", "liquidity", "economy", "volatility", "credit"))
+def test_macro_module_api_serves_assets_landing_module() -> None:
+    app = _app(FakeMacroIntelRepository(snapshot=None))
+
+    with TestClient(app) as client:
+        response = client.get("/api/macro/modules/assets", headers={"Authorization": "Bearer secret"})
+
+    assert response.status_code == 200
+    assert response.json()["data"]["snapshot"]["module_id"] == "assets"
+    assert response.json()["data"]["snapshot"]["route_path"] == "/macro/assets"
+
+
+@pytest.mark.parametrize("module_id", ("rates", "fed", "liquidity", "economy", "volatility", "credit"))
 def test_macro_module_api_rejects_parent_categories(module_id: str) -> None:
     app = _app(FakeMacroIntelRepository(snapshot=None))
 

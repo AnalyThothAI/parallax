@@ -14,6 +14,7 @@ from parallax.domains.macro_intel._constants import (
     MACRO_CONCEPT_METADATA,
     MACRO_HISTORY_REQUIRED_CONCEPTS,
     MACRO_HISTORY_REQUIRED_POINTS_BY_CONCEPT,
+    MACRO_PROVIDER_SERIES_TO_CONCEPT,
     MACRO_REQUIRED_STAT_POINTS,
     MACRO_VIEW_HISTORY_LOOKBACK_DAYS,
     MACRO_VIEW_PROJECTION_VERSION,
@@ -22,7 +23,7 @@ from parallax.domains.macro_intel.observation_identity import normalize_macro_da
 from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
 from parallax.domains.macro_intel.services.macro_sync_types import MacroSyncRunSummary
 from parallax.domains.macro_intel.services.macrodata_bundle_importer import import_macrodata_bundle
-from parallax.integrations.macrodata import MacrodataBundleRunner, fred_api_key_state
+from parallax.integrations.macrodata import MacrodataBundleRunner, fred_api_key_state, macrodata_runtime_state
 from parallax.platform.config.settings import load_settings
 
 
@@ -108,6 +109,7 @@ def _handle_sync(args: object) -> tuple[int, dict[str, Any]]:
 def _handle_status() -> tuple[int, dict[str, Any]]:
     settings = load_settings(require_ws_token=False)
     fred_state = fred_api_key_state(settings)
+    macrodata_state = macrodata_runtime_state(required_series=tuple(MACRO_PROVIDER_SERIES_TO_CONCEPT))
     try:
         with repositories(settings) as repos:
             history = repos.macro_intel.concept_history_counts(
@@ -126,6 +128,7 @@ def _handle_status() -> tuple[int, dict[str, Any]]:
             data = {
                 "migration_ready": True,
                 **fred_state,
+                "macrodata_cli": macrodata_state,
                 "observations_count": repos.macro_intel.observations_count(),
                 "concept_count": repos.macro_intel.concept_count(),
                 "required_history_concept_count": len(MACRO_HISTORY_REQUIRED_CONCEPTS),
@@ -140,7 +143,7 @@ def _handle_status() -> tuple[int, dict[str, Any]]:
     except Exception as exc:
         payload = _error_payload("macro_status_unavailable", exc)
         payload["error_type"] = type(exc).__name__
-        payload["data"] = _fred_payload_from_diagnostics(fred_state)
+        payload["data"] = {**_fred_payload_from_diagnostics(fred_state), "macrodata_cli": macrodata_state}
         return 1, payload
     return 0, {"ok": True, "data": data}
 

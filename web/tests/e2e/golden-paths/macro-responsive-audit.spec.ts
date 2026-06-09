@@ -12,6 +12,7 @@ import { installMockApi } from "@tests/e2e/support/mockApi";
 
 const PRODUCT_ROUTES = [
   "/macro",
+  "/macro/assets",
   "/macro/assets/equities",
   "/macro/assets/bonds",
   "/macro/assets/commodities",
@@ -39,7 +40,6 @@ const PRODUCT_ROUTES = [
 ];
 
 const PARENT_ALIAS_ROUTES = [
-  { route: "/macro/assets", target: /\/macro\/assets\/equities$/ },
   { route: "/macro/rates", target: /\/macro\/rates\/fed-funds$/ },
   { route: "/macro/fed", target: /\/macro\/fed\/statements$/ },
   { route: "/macro/liquidity", target: /\/macro\/liquidity\/transmission-chain$/ },

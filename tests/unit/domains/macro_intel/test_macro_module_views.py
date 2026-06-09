@@ -264,6 +264,29 @@ def test_build_macro_module_view_consumes_real_regime_v4_snapshot_without_crashi
     assert "asset:spy" not in view["tiles"][0]["label"]
 
 
+def test_assets_landing_module_view_includes_daily_brief_without_redirecting_to_equities() -> None:
+    brief = {
+        "brief_key": "assets_today",
+        "projection_version": "macro_daily_brief_v1",
+        "brief_date": "2026-05-20",
+        "asof_date": "2026-05-20",
+        "status": "partial",
+        "headline": "今日判断：风险资产偏震荡",
+        "blocks": [
+            {"id": "cross_correlation", "title": "跨资产相关性", "stance": "neutral", "body": "股债相关性偏高。"}
+        ],
+    }
+
+    view = build_macro_module_view("assets", snapshot=_snapshot(), observations=[], daily_brief=brief)
+
+    assert view["snapshot"]["module_id"] == "assets"
+    assert view["snapshot"]["route_path"] == "/macro/assets"
+    assert view["snapshot"]["title"] == "大类资产"
+    assert view["daily_brief"] == brief
+    assert view["primary_chart"]["id"] == "asset_cross_market_snapshot"
+    assert view["tables"][0]["id"] == "asset_group_snapshot"
+
+
 def test_module_view_uses_semantic_chart_table_titles_for_every_catalog_spec() -> None:
     snapshot = _snapshot()
     for config in list_macro_module_configs():
@@ -513,7 +536,7 @@ def test_build_macro_module_view_rejects_unknown_module_id() -> None:
 
 @pytest.mark.parametrize(
     "module_id",
-    ("assets", "rates", "fed", "liquidity", "economy", "volatility", "credit"),
+    ("rates", "fed", "liquidity", "economy", "volatility", "credit"),
 )
 def test_build_macro_module_view_rejects_parent_category_ids(module_id: str) -> None:
     with pytest.raises(UnsupportedMacroModuleError):

@@ -19,6 +19,7 @@ Cboe, CFTC, crypto providers, or macrodata directly.
 | `macro_observation_series_rows` | Read model | `MacroViewProjectionWorker` only. It is a compact current-only projection from `macro_observations` and owns request-path latest/history rows. |
 | `macro_observation_series_publication_state` | Read-model state | `MacroViewProjectionWorker` only. It records the current source signature and latest refresh status. |
 | `macro_view_snapshots` | Read model | `MacroViewProjectionWorker` only. One stable row per projection version, keyed as `macro-view:{projection_version}:current`. |
+| `macro_daily_briefs` | Read model | `MacroDailyBriefProjectionWorker` only. One stable row per brief key, currently `assets_today`, derived from the current macro view snapshot. |
 
 ## Flow
 
@@ -36,6 +37,9 @@ macro_sync_windows
   -> services/macro_scenario_engine.py
   -> runtime/macro_view_projection_worker.py
   -> macro_regime_v4 in macro_view_snapshots
+  -> wake macro_view_snapshot_updated
+  -> MacroDailyBriefProjectionWorker
+  -> assets_today in macro_daily_briefs
   -> /api/macro and /api/macro/modules/{module_id}
   -> macro_module_view_v3
   -> web /macro
@@ -98,18 +102,23 @@ Module pages consume only `macro_module_view_v3`, whose payload is
 display-ready: semantic snapshot headers, tiles, one primary chart with
 minimum-point status, typed display tables, `module_read`, `module_evidence`,
 `transmission`, `data_health`, summarized provenance rows,
-and related routes. Overview/global regime fields describe the whole macro
-state; module-local `data_health` describes page readiness without overriding
-global scores. Raw provider payloads,
+and related routes. The `/macro/assets` module is a real page, not a parent
+redirect. It combines the assets module view with the optional
+`assets_today` daily brief read model; the API reads the persisted brief and
+does not recompute the daily judgement during request handling. Overview/global
+regime fields describe the whole macro state; module-local `data_health`
+describes page readiness without overriding global scores. Raw provider payloads,
 old provenance JSON blobs, and old v1/v2 module fields are not public
 compatibility surfaces.
 
 ## CLI And Operations
 
-- Docker installs `AnalyThothAI/macrodata-cli` from the `v0.1.5` Git tag.
-  Its executable is `macrodata`; runtime sync uses that packaged executable,
-  not `uv run macrodata`, and deployment must not mount or reference a
-  host-local `/Users/.../macrodata-cli` checkout.
+- Docker installs `AnalyThothAI/macrodata-cli` from the pinned Git tag.
+  Runtime sync uses the packaged `macrodata` executable when the console
+  script is healthy, or the installed Python package entrypoint when the
+  script is absent or stale. It does not use `uv run macrodata`, and
+  deployment must not mount or reference a host-local `/Users/.../macrodata-cli`
+  checkout.
 - Docker operators provide `FINANCE_FRED_API_KEY` through environment or a
   deployment secret manager. Config stores only the env var name and status
   surfaces expose only env names/booleans, never secret values.
@@ -126,7 +135,11 @@ compatibility surfaces.
 - `uv run parallax macro status` reports migration readiness,
   observation count, concept count, history readiness, concepts below minimum
   history, latest import run, latest sync run, sync queue state,
-  `facts_max_observed_at`, projection lag, and latest snapshot.
+  `facts_max_observed_at`, projection lag, latest snapshot, and installed
+  `macrodata-cli` package/bundle capability. If
+  `required_bundle_series_available` is false, the packaged macrodata
+  dependency is too old for the current Parallax series map even if individual
+  providers can fetch data manually.
 - `uv run parallax db health` must report the expected migration
   version before real-data verification.
 

@@ -13,6 +13,7 @@ NOW_MS = 1_779_000_000_000
 
 def test_macro_view_projection_worker_writes_latest_snapshot() -> None:
     target = _concept_dirty_target("vol:vix")
+    wake_bus = FakeWakeBus()
     repo = FakeMacroIntelRepository(
         dirty_targets=[target],
         observations=[
@@ -31,7 +32,7 @@ def test_macro_view_projection_worker_writes_latest_snapshot() -> None:
         ],
     )
     db = FakeDB(repo)
-    worker = _worker(db)
+    worker = _worker(db, wake_bus=wake_bus)
 
     result = worker.run_once_sync()
 
@@ -83,6 +84,13 @@ def test_macro_view_projection_worker_writes_latest_snapshot() -> None:
     assert repo.snapshots[0]["snapshot_id"] == "macro-view:macro_regime_v4:current"
     assert repo.snapshots[0]["panels_json"]["volatility"]["regime"] == "carry"
     assert repo.done_targets == [(target, NOW_MS, True)]
+    assert wake_bus.macro_view_snapshot_updates == [
+        {
+            "projection_version": repo.snapshots[0]["projection_version"],
+            "status": repo.snapshots[0]["status"],
+            "regime": repo.snapshots[0]["regime"],
+        }
+    ]
 
 
 def test_macro_view_projection_worker_without_dirty_target_does_not_scan_sources() -> None:
@@ -105,6 +113,7 @@ def test_macro_view_projection_worker_without_dirty_target_does_not_scan_sources
 
 def test_macro_view_projection_worker_unchanged_series_marks_done_without_snapshot() -> None:
     target = _concept_dirty_target("rates:dgs10")
+    wake_bus = FakeWakeBus()
     repo = FakeMacroIntelRepository(
         dirty_targets=[target],
         observations=[],
@@ -116,7 +125,7 @@ def test_macro_view_projection_worker_unchanged_series_marks_done_without_snapsh
         },
     )
     db = FakeDB(repo)
-    worker = _worker(db)
+    worker = _worker(db, wake_bus=wake_bus)
 
     result = worker.run_once_sync()
 
@@ -136,6 +145,40 @@ def test_macro_view_projection_worker_unchanged_series_marks_done_without_snapsh
     ]
     assert repo.done_targets == [(target, NOW_MS, True)]
     assert repo.snapshots == []
+    assert wake_bus.macro_view_snapshot_updates == []
+
+
+def test_macro_view_projection_worker_unchanged_snapshot_does_not_notify() -> None:
+    target = _concept_dirty_target("vol:vix")
+    wake_bus = FakeWakeBus()
+    repo = FakeMacroIntelRepository(
+        dirty_targets=[target],
+        observations=[
+            {
+                "source_name": "fred",
+                "concept_key": "vol:vix",
+                "series_key": "fred:VIXCLS",
+                "source_priority": 100,
+                "observed_at": "2026-05-20",
+                "value_numeric": 18.2,
+                "unit": "index",
+                "frequency": "daily",
+                "data_quality": "ok",
+                "source_ts": "2026-05-20",
+            }
+        ],
+        snapshot_changed=False,
+    )
+    db = FakeDB(repo)
+    worker = _worker(db, wake_bus=wake_bus)
+
+    result = worker.run_once_sync()
+
+    assert result.processed == 1
+    assert result.notes["projected_rows_written"] == 3
+    assert result.notes["snapshot_rows_written"] == 0
+    assert result.notes["rows_written"] == 3
+    assert wake_bus.macro_view_snapshot_updates == []
 
 
 def test_macro_view_projection_worker_refresh_failure_marks_dirty_target_error() -> None:
@@ -158,7 +201,7 @@ def test_macro_view_projection_worker_refresh_failure_marks_dirty_target_error()
     assert repo.error_targets == [(target, "boom", 300_000, NOW_MS, True)]
 
 
-def _worker(db: FakeDB) -> MacroViewProjectionWorker:
+def _worker(db: FakeDB, *, wake_bus: object | None = None) -> MacroViewProjectionWorker:
     return MacroViewProjectionWorker(
         name="macro_view_projection",
         settings=SimpleNamespace(
@@ -171,6 +214,7 @@ def _worker(db: FakeDB) -> MacroViewProjectionWorker:
         ),
         db=db,
         telemetry=object(),
+        wake_bus=wake_bus,
         clock_ms=lambda: NOW_MS,
     )
 
@@ -223,6 +267,7 @@ class FakeMacroIntelRepository:
         observations: list[dict[str, object]],
         refresh_result: dict[str, object] | None = None,
         refresh_error: Exception | None = None,
+        snapshot_changed: bool = True,
     ) -> None:
         self.dirty_targets = dirty_targets
         self.observations = observations
@@ -233,6 +278,7 @@ class FakeMacroIntelRepository:
             "source_signature": "sig-a",
         }
         self.refresh_error = refresh_error
+        self.snapshot_changed = snapshot_changed
         self.calls: list[str] = []
         self.claim_call: dict[str, object] | None = None
         self.refresh_call: dict[str, object] | None = None
@@ -305,7 +351,7 @@ class FakeMacroIntelRepository:
     def insert_snapshot(self, snapshot: dict[str, object]) -> bool:
         self.calls.append("insert_snapshot")
         self.snapshots.append(snapshot)
-        return True
+        return self.snapshot_changed
 
     def mark_macro_projection_dirty_targets_done(
         self,
@@ -330,3 +376,17 @@ class FakeMacroIntelRepository:
         self.calls.append("mark_macro_projection_dirty_targets_error")
         self.error_targets.extend((target, error, retry_ms, now_ms, commit) for target in claimed)
         return len(claimed)
+
+
+class FakeWakeBus:
+    def __init__(self) -> None:
+        self.macro_view_snapshot_updates: list[dict[str, object]] = []
+
+    def notify_macro_view_snapshot_updated(self, *, projection_version: str, status: str, regime: str) -> None:
+        self.macro_view_snapshot_updates.append(
+            {
+                "projection_version": projection_version,
+                "status": status,
+                "regime": regime,
+            }
+        )

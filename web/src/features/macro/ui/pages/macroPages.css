@@ -66,4 +66,62 @@
     font-size: 0.78rem;
     line-height: 1.45;
   }
+
+  .macro-daily-brief {
+    display: grid;
+    gap: 16px;
+  }
+
+  .macro-daily-brief > strong {
+    color: var(--text-primary, #f8fafc);
+    font-size: 1rem;
+    line-height: 1.35;
+  }
+
+  .macro-daily-brief-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .macro-daily-brief-block {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.34);
+  }
+
+  .macro-daily-brief-block span {
+    color: var(--text-muted, #94a3b8);
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    text-transform: uppercase;
+  }
+
+  .macro-daily-brief-block b {
+    color: var(--text-primary, #f8fafc);
+    font-size: 0.86rem;
+  }
+
+  .macro-daily-brief-block p {
+    margin: 0;
+    color: var(--text-secondary, #cbd5e1);
+    font-size: 0.78rem;
+    line-height: 1.45;
+  }
+
+  @media (min-width: 768px) and (max-width: 1279px) {
+    .macro-daily-brief-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 767px) {
+    .macro-daily-brief-grid {
+      grid-template-columns: 1fr;
+    }
+  }
 }

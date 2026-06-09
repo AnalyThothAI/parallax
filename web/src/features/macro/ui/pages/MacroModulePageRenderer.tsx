@@ -5,6 +5,7 @@ import { isRatesModuleId } from "../../model/macroRatesWorkbenchModel";
 import type { MacroModuleId } from "../../model/macroRoutes";
 import { MacroRatesModulePage } from "../rates/MacroRatesModulePage";
 
+import { MacroAssetOverviewPage } from "./MacroAssetOverviewPage";
 import { MacroLeafModulePage } from "./MacroLeafModulePage";
 import { MacroOverviewModulePage } from "./MacroOverviewModulePage";
 
@@ -21,6 +22,9 @@ export function MacroModulePageRenderer(props: MacroModulePageProps) {
   }
   if (isRatesModuleId(props.moduleId)) {
     return <MacroRatesModulePage {...props} moduleId={props.moduleId} />;
+  }
+  if (props.moduleId === "assets") {
+    return <MacroAssetOverviewPage {...props} />;
   }
   return <MacroLeafModulePage {...props} />;
 }

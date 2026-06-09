@@ -586,11 +586,18 @@ window. It never writes macro read models directly. `macro import-bundle --file
 offline replay/seed only, records a `macro_import_runs` audit row, and emits the
 same persisted-fact wake hint as runtime sync; `macro status` reports migration readiness,
 observation/concept counts, history readiness, concepts below minimum history,
-latest import run, latest sync run, sync queue state, fact max observed date,
-projection lag, and the latest snapshot.
-Docker builds install the `AnalyThothAI/macrodata-cli` `v0.1.5` Git dependency,
-whose executable is `macrodata`; runtime sync uses that packaged executable,
-not `uv run macrodata`, and does not require a host-local source checkout.
+sync queue state, fact max observed date, projection lag, the latest snapshot,
+and a `macrodata_cli` diagnostic block. That block reports the installed
+`macrodata-cli` package version, whether runtime will use a console script or
+Python entrypoint fallback, and whether the installed `macro-core` bundle
+contains the Parallax-required series. A status can therefore distinguish
+provider/key gaps from an old packaged macrodata dependency before operators
+debug the page.
+Docker builds install the pinned `AnalyThothAI/macrodata-cli` Git dependency.
+Runtime sync uses the packaged `macrodata` executable when the console script
+is healthy, or the installed Python package entrypoint when the script is
+absent or stale. It does not use `uv run macrodata` and does not require a
+host-local source checkout.
 The child process is bounded by `workers.macro_sync.macrodata_timeout_seconds`
 so worker hard-timeout cancellation is not the only stop mechanism.
 Docker operators provide `FINANCE_FRED_API_KEY` through environment or a

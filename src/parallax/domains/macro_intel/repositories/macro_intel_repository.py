@@ -1761,6 +1761,58 @@ class MacroIntelRepository:
         ).fetchone()
         return dict(row) if row is not None else None
 
+    def upsert_macro_daily_brief(self, brief: Mapping[str, Any], *, now_ms: int) -> bool:
+        payload_hash = _macro_daily_brief_payload_hash(brief)
+        brief_date = brief.get("brief_date")
+        asof_date = brief.get("asof_date")
+        row = self.conn.execute(
+            """
+            INSERT INTO macro_daily_briefs(
+              brief_key, projection_version, brief_date, asof_date, status, headline,
+              payload_json, computed_at_ms, updated_at_ms, payload_hash
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT(brief_key) DO UPDATE SET
+              projection_version = excluded.projection_version,
+              brief_date = excluded.brief_date,
+              asof_date = excluded.asof_date,
+              status = excluded.status,
+              headline = excluded.headline,
+              payload_json = excluded.payload_json,
+              computed_at_ms = excluded.computed_at_ms,
+              updated_at_ms = excluded.updated_at_ms,
+              payload_hash = excluded.payload_hash
+            WHERE macro_daily_briefs.payload_hash IS DISTINCT FROM excluded.payload_hash
+            RETURNING true AS changed
+            """,
+            (
+                str(brief["brief_key"]),
+                str(brief["projection_version"]),
+                normalize_macro_date(brief_date) if brief_date is not None else None,
+                normalize_macro_date(asof_date) if asof_date is not None else None,
+                str(brief["status"]),
+                str(brief.get("headline") or ""),
+                Jsonb(postgres_safe_json(dict(brief))),
+                int(brief.get("computed_at_ms") or now_ms),
+                int(now_ms),
+                payload_hash,
+            ),
+        ).fetchone()
+        return bool(dict(row or {}).get("changed", False))
+
+    def latest_macro_daily_brief(self, *, brief_key: str = "assets_today") -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """
+            SELECT payload_json
+            FROM macro_daily_briefs
+            WHERE brief_key = %s
+            LIMIT 1
+            """,
+            (str(brief_key),),
+        ).fetchone()
+        payload = dict(row or {}).get("payload_json")
+        return dict(payload) if isinstance(payload, Mapping) else None
+
     def observations_count(self) -> int:
         row = self.conn.execute("SELECT COUNT(*) AS count FROM macro_observations").fetchone()
         return _count(row)
@@ -1906,6 +1958,16 @@ def _macro_snapshot_payload_hash(snapshot: Mapping[str, Any]) -> str:
         "chain_json": snapshot.get("chain_json") or {},
         "scenario_json": snapshot.get("scenario_json") or {},
         "scorecard_json": snapshot.get("scorecard_json") or {},
+    }
+    encoded = json.dumps(postgres_safe_json(payload), sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(encoded.encode()).hexdigest()
+
+
+def _macro_daily_brief_payload_hash(brief: Mapping[str, Any]) -> str:
+    payload = {
+        key: value
+        for key, value in dict(brief).items()
+        if key not in {"computed_at_ms"}
     }
     encoded = json.dumps(postgres_safe_json(payload), sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(encoded.encode()).hexdigest()

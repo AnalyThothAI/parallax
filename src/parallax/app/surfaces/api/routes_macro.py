@@ -119,6 +119,7 @@ def macro_module(request: Request, module_id: str) -> JSONResponse:
         publication_state = repos.macro_intel.macro_series_publication_state(MACRO_VIEW_PROJECTION_VERSION)
         currentness = _macro_currentness(snapshot=snapshot, publication_state=publication_state)
         cex_board = _cex_board(repos, module_id)
+        daily_brief = _daily_brief(repos, module_id)
     return _json(
         {
             "ok": True,
@@ -126,6 +127,7 @@ def macro_module(request: Request, module_id: str) -> JSONResponse:
                 module_id,
                 snapshot=snapshot,
                 observations=observations,
+                daily_brief=daily_brief,
                 facts_max_observed_at=currentness["facts_max_observed_at"],
                 projection_lag_days=currentness["projection_lag_days"],
                 projection_behind_facts=bool(currentness["projection_behind_facts"]),
@@ -257,6 +259,16 @@ def _cex_board(repos: Any, module_id: str) -> dict[str, Any] | None:
         else None,
         "rows": rows if isinstance(rows, list) else [],
     }
+
+
+def _daily_brief(repos: Any, module_id: str) -> dict[str, Any] | None:
+    if module_id != "assets":
+        return None
+    loader = getattr(repos.macro_intel, "latest_macro_daily_brief", None)
+    if loader is None:
+        return None
+    brief = loader(brief_key="assets_today")
+    return brief if isinstance(brief, dict) else None
 
 
 def _macro_currentness(

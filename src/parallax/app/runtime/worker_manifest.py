@@ -547,6 +547,26 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         dirty_target_tables=("macro_projection_dirty_targets",),
         advisory_lock_key="2026052109",
         wakes_on=("macro_observations_imported",),
+        wakes_out=("macro_view_snapshot_updated",),
+    ),
+    WorkerManifest(
+        name="macro_daily_brief_projection",
+        domain="macro_intel",
+        factory="macro_intel.py",
+        lane=WorkerLane.PROJECTION,
+        kind=WorkerKind.PROJECTION,
+        worker_class=(
+            "parallax.domains.macro_intel.runtime.macro_daily_brief_projection_worker."
+            "MacroDailyBriefProjectionWorker"
+        ),
+        start_priority=96,
+        input_contract=("macro_view_snapshots current", "macro_observation_series_rows current"),
+        ordering_keys=("brief_key",),
+        writes_read_models=("macro_daily_briefs",),
+        current_read_model_identities=(("macro_daily_briefs", ("brief_key",)),),
+        idempotency_evidence=("macro_daily_briefs brief_key payload hash",),
+        advisory_lock_key="2026060901",
+        wakes_on=("macro_view_snapshot_updated",),
     ),
     WorkerManifest(
         name="pulse_candidate",

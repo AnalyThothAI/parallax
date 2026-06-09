@@ -1030,6 +1030,18 @@ class MacroViewProjectionWorkerSettings(PerWorkerSettings):
         return tuple(_split_values(value))
 
 
+class MacroDailyBriefProjectionWorkerSettings(PerWorkerSettings):
+    interval_seconds: float = Field(default=86_400.0, ge=0)
+    statement_timeout_seconds: float = Field(default=30.0, ge=0)
+    advisory_lock_key: int = 2026060901
+    wakes_on: tuple[str, ...] = ("macro_view_snapshot_updated",)
+
+    @field_validator("wakes_on", mode="before")
+    @classmethod
+    def parse_wakes_on(cls, value: Any) -> tuple[str, ...]:
+        return tuple(_split_values(value))
+
+
 class MacroSyncWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=900.0, ge=0)
     soft_timeout_seconds: float = Field(default=180.0, ge=0)
@@ -1320,6 +1332,9 @@ class WorkersSettings(BaseModel):
     cex_oi_radar_board: CexOiRadarBoardWorkerSettings = Field(default_factory=CexOiRadarBoardWorkerSettings)
     macro_sync: MacroSyncWorkerSettings = Field(default_factory=MacroSyncWorkerSettings)
     macro_view_projection: MacroViewProjectionWorkerSettings = Field(default_factory=MacroViewProjectionWorkerSettings)
+    macro_daily_brief_projection: MacroDailyBriefProjectionWorkerSettings = Field(
+        default_factory=MacroDailyBriefProjectionWorkerSettings
+    )
     narrative_admission: NarrativeAdmissionWorkerSettings = Field(default_factory=NarrativeAdmissionWorkerSettings)
     mention_semantics: MentionSemanticsWorkerSettings = Field(default_factory=MentionSemanticsWorkerSettings)
     token_discussion_digest: TokenDiscussionDigestWorkerSettings = Field(
@@ -1949,6 +1964,12 @@ macro_view_projection:
   statement_timeout_seconds: 30.0
   advisory_lock_key: 2026052109
   wakes_on: ["macro_observations_imported"]
+macro_daily_brief_projection:
+  enabled: true
+  interval_seconds: 86400.0
+  statement_timeout_seconds: 30.0
+  advisory_lock_key: 2026060901
+  wakes_on: ["macro_view_snapshot_updated"]
 narrative_admission:
   enabled: true
   interval_seconds: 60.0

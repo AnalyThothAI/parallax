@@ -1,5 +1,6 @@
 import type { Page, Route } from "@playwright/test";
 import {
+  macroAssetsModuleFixture,
   macroAuctionsProxyModuleFixture,
   macroCorrelationFixture,
   macroExpectationsProxyModuleFixture,
@@ -1357,9 +1358,7 @@ function macroModuleIdFromPath(path: string) {
 }
 
 function isParentMacroModule(moduleId: string) {
-  return new Set(["assets", "rates", "fed", "liquidity", "economy", "volatility", "credit"]).has(
-    moduleId,
-  );
+  return new Set(["rates", "fed", "liquidity", "economy", "volatility", "credit"]).has(moduleId);
 }
 
 function macroModuleData(moduleId: string) {
@@ -1367,6 +1366,8 @@ function macroModuleData(moduleId: string) {
     return macroOverviewModuleFixture();
   }
   switch (moduleId) {
+    case "assets":
+      return macroAssetsModuleFixture();
     case "rates/fed-funds":
       return macroFedFundsModuleFixture();
     case "rates/yield-curve":

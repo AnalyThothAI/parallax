@@ -879,83 +879,6 @@ wheels = [
 ]
 
 [[package]]
-name = "parallax"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "aiolimiter" },
-    { name = "alembic" },
-    { name = "apprise" },
-    { name = "coinglass-cli" },
-    { name = "cryptopanic-cli" },
-    { name = "curl-cffi" },
-    { name = "eth-hash", extra = ["pycryptodome"] },
-    { name = "eth-utils" },
-    { name = "fastapi" },
-    { name = "feedparser" },
-    { name = "httpx", extra = ["socks"] },
-    { name = "jsonref" },
-    { name = "litellm" },
-    { name = "loguru" },
-    { name = "macrodata-cli" },
-    { name = "prometheus-client" },
-    { name = "psycopg", extra = ["binary", "pool"] },
-    { name = "pydantic" },
-    { name = "pyyaml" },
-    { name = "solders" },
-    { name = "tenacity" },
-    { name = "uvicorn", extra = ["standard"] },
-    { name = "websockets" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "mypy" },
-    { name = "pre-commit" },
-    { name = "pytest" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
-    { name = "testcontainers" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiolimiter", specifier = ">=1.2.1" },
-    { name = "alembic", specifier = ">=1.18.0" },
-    { name = "apprise", specifier = ">=1.10.0" },
-    { name = "coinglass-cli", git = "https://github.com/AnalyThothAI/coinglass-cli.git?rev=592bf2f973411e4d516ca928f65aaabf40d707eb" },
-    { name = "cryptopanic-cli", git = "https://github.com/AnalyThothAI/cryptopanic-cli.git?rev=921245022ff30fc027dd7dde7dd59f4a6d94ae7c" },
-    { name = "curl-cffi", specifier = ">=0.15,<0.16" },
-    { name = "eth-hash", extras = ["pycryptodome"], specifier = ">=0.8.0" },
-    { name = "eth-utils", specifier = ">=5.0.0" },
-    { name = "fastapi", specifier = ">=0.115.0" },
-    { name = "feedparser", specifier = ">=6.0,<7.0" },
-    { name = "httpx", extras = ["socks"], specifier = ">=0.27.0" },
-    { name = "jsonref", specifier = ">=1.1.0" },
-    { name = "litellm", specifier = ">=1.80.0" },
-    { name = "loguru", specifier = ">=0.7.2" },
-    { name = "macrodata-cli", git = "https://github.com/AnalyThothAI/macrodata-cli.git?tag=v0.1.5" },
-    { name = "prometheus-client", specifier = ">=0.22.0" },
-    { name = "psycopg", extras = ["binary", "pool"], specifier = ">=3.2.0" },
-    { name = "pydantic", specifier = ">=2.8.0" },
-    { name = "pyyaml", specifier = ">=6.0.3" },
-    { name = "solders", specifier = ">=0.26.0" },
-    { name = "tenacity", specifier = ">=9.1.4" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.30.0" },
-    { name = "websockets", specifier = ">=12.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "mypy", specifier = ">=1.13" },
-    { name = "pre-commit", specifier = ">=3.7" },
-    { name = "pytest", specifier = ">=8.3.0" },
-    { name = "pytest-cov", specifier = ">=5.0" },
-    { name = "ruff", specifier = ">=0.8.6" },
-    { name = "testcontainers", extras = ["postgres"], specifier = ">=4.8" },
-]
-
-[[package]]
 name = "greenlet"
 version = "3.5.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1349,8 +1272,8 @@ wheels = [
 
 [[package]]
 name = "macrodata-cli"
-version = "0.1.5"
-source = { git = "https://github.com/AnalyThothAI/macrodata-cli.git?tag=v0.1.5#c1084185ffb6953f29b54572d1527bbf83c1f2ba" }
+version = "0.1.6"
+source = { git = "https://github.com/AnalyThothAI/macrodata-cli.git?tag=v0.1.6#afaeef8da27640e9b8b63e2dd17bb4e7abfea96a" }
 dependencies = [
     { name = "httpx" },
     { name = "mcp" },
@@ -1754,6 +1677,83 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/31/89/8fc1c268969fac43688d65fd92e67df24bd128d53cb4d2eee534cd307399/pandas-3.0.3-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:9c39be2d709d01fa972a0cabc522389fceca4f3969332ba25a7d6c5802cf976a", size = 11828897, upload-time = "2026-05-11T18:54:17.146Z" },
     { url = "https://files.pythonhosted.org/packages/56/3b/e7d20dea247a3e6dc0bd8a6953854afbedc03951def4e7371e05e7263e25/pandas-3.0.3-cp314-cp314t-win_amd64.whl", hash = "sha256:4db8c527972a821cf5286b40ccc57642a39bc62e62022b42f99f8a67fca8c3a1", size = 10900855, upload-time = "2026-05-11T18:54:19.72Z" },
     { url = "https://files.pythonhosted.org/packages/0f/54/68a0978d1ef8502b8492099beaa6e7a0c1b32e3b5d4f677f5810cb08711c/pandas-3.0.3-cp314-cp314t-win_arm64.whl", hash = "sha256:b2c95f8bfc1ee412bf482605d7bfd30c12d1d26bd59fdd91efeef1d4718decb1", size = 9466464, upload-time = "2026-05-11T18:54:22.754Z" },
+]
+
+[[package]]
+name = "parallax"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "aiolimiter" },
+    { name = "alembic" },
+    { name = "apprise" },
+    { name = "coinglass-cli" },
+    { name = "cryptopanic-cli" },
+    { name = "curl-cffi" },
+    { name = "eth-hash", extra = ["pycryptodome"] },
+    { name = "eth-utils" },
+    { name = "fastapi" },
+    { name = "feedparser" },
+    { name = "httpx", extra = ["socks"] },
+    { name = "jsonref" },
+    { name = "litellm" },
+    { name = "loguru" },
+    { name = "macrodata-cli" },
+    { name = "prometheus-client" },
+    { name = "psycopg", extra = ["binary", "pool"] },
+    { name = "pydantic" },
+    { name = "pyyaml" },
+    { name = "solders" },
+    { name = "tenacity" },
+    { name = "uvicorn", extra = ["standard"] },
+    { name = "websockets" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "mypy" },
+    { name = "pre-commit" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+    { name = "testcontainers" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiolimiter", specifier = ">=1.2.1" },
+    { name = "alembic", specifier = ">=1.18.0" },
+    { name = "apprise", specifier = ">=1.10.0" },
+    { name = "coinglass-cli", git = "https://github.com/AnalyThothAI/coinglass-cli.git?rev=592bf2f973411e4d516ca928f65aaabf40d707eb" },
+    { name = "cryptopanic-cli", git = "https://github.com/AnalyThothAI/cryptopanic-cli.git?rev=921245022ff30fc027dd7dde7dd59f4a6d94ae7c" },
+    { name = "curl-cffi", specifier = ">=0.15,<0.16" },
+    { name = "eth-hash", extras = ["pycryptodome"], specifier = ">=0.8.0" },
+    { name = "eth-utils", specifier = ">=5.0.0" },
+    { name = "fastapi", specifier = ">=0.115.0" },
+    { name = "feedparser", specifier = ">=6.0,<7.0" },
+    { name = "httpx", extras = ["socks"], specifier = ">=0.27.0" },
+    { name = "jsonref", specifier = ">=1.1.0" },
+    { name = "litellm", specifier = ">=1.80.0" },
+    { name = "loguru", specifier = ">=0.7.2" },
+    { name = "macrodata-cli", git = "https://github.com/AnalyThothAI/macrodata-cli.git?tag=v0.1.6" },
+    { name = "prometheus-client", specifier = ">=0.22.0" },
+    { name = "psycopg", extras = ["binary", "pool"], specifier = ">=3.2.0" },
+    { name = "pydantic", specifier = ">=2.8.0" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
+    { name = "solders", specifier = ">=0.26.0" },
+    { name = "tenacity", specifier = ">=9.1.4" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.30.0" },
+    { name = "websockets", specifier = ">=12.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mypy", specifier = ">=1.13" },
+    { name = "pre-commit", specifier = ">=3.7" },
+    { name = "pytest", specifier = ">=8.3.0" },
+    { name = "pytest-cov", specifier = ">=5.0" },
+    { name = "ruff", specifier = ">=0.8.6" },
+    { name = "testcontainers", extras = ["postgres"], specifier = ">=4.8" },
 ]
 
 [[package]]

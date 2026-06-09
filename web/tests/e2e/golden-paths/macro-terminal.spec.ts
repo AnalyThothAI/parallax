@@ -55,17 +55,15 @@ test.describe("macro terminal navigation hardening", () => {
     await expectNoUnhandledApiRequests(page);
   });
 
-  test("macro terminal parent category aliases redirect to their default child", async ({
-    page,
-  }, testInfo) => {
+  test("macro terminal asset parent opens the asset landing module", async ({ page }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith("desktop-"), "desktop asset landing contract");
 
     await installMockApi(page);
     await page.goto("/macro/assets");
 
-    await expect(page).toHaveURL(/\/macro\/assets\/equities$/);
-    await expect(page.getByRole("heading", { name: "美股风险" })).toBeVisible();
-    await expect(page.getByRole("region", { name: "大类资产索引" })).toHaveCount(0);
+    await expect(page).toHaveURL(/\/macro\/assets$/);
+    await expect(page.getByRole("heading", { name: "大类资产" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "今日判断" })).toBeVisible();
 
     await expectNoDocumentHorizontalOverflow(page);
     await expectNoUnhandledApiRequests(page);

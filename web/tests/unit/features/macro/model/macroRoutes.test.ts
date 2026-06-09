@@ -12,6 +12,7 @@ describe("macroRoutes", () => {
   it("contains the backend module catalog in route order", () => {
     expect(MACRO_MODULE_ROUTES.map((route) => route.moduleId)).toEqual([
       "overview",
+      "assets",
       "assets/equities",
       "assets/bonds",
       "assets/commodities",
@@ -63,9 +64,11 @@ describe("macroRoutes", () => {
       wasUnknown: false,
     });
     expect(parseMacroRouteTail("assets")).toMatchObject({
-      canonicalPath: "/macro/assets/equities",
-      routeKind: "redirect",
-      routeTail: "assets",
+      canonicalPath: "/macro/assets",
+      moduleId: "assets",
+      pageKind: "leaf",
+      productTier: "primary",
+      routeKind: "module",
       wasUnknown: false,
     });
     expect(parseMacroRouteTail("rates")).toMatchObject({
@@ -113,6 +116,7 @@ describe("macroRoutes", () => {
 
   it("builds canonical hrefs, labels, and breadcrumbs for nested modules", () => {
     expect(macroModuleHref("overview")).toBe("/macro");
+    expect(macroModuleHref("assets")).toBe("/macro/assets");
     expect(macroModuleHref("assets/equities")).toBe("/macro/assets/equities");
     expect(macroRouteLabel("assets/equities")).toBe("美股");
     expect(macroModuleHref("liquidity/transmission-chain")).toBe(
@@ -121,7 +125,7 @@ describe("macroRoutes", () => {
 
     expect(buildMacroBreadcrumbs("assets/crypto-derivatives")).toEqual([
       { label: "宏观", href: "/macro" },
-      { label: "大类资产", href: "/macro/assets/equities" },
+      { label: "大类资产", href: "/macro/assets" },
       { label: "加密衍生品", href: "/macro/assets/crypto-derivatives" },
     ]);
     expect(buildMacroBreadcrumbs("assets/correlation").map((crumb) => crumb.label)).toEqual([
@@ -132,6 +136,7 @@ describe("macroRoutes", () => {
   });
 
   it("derives navigation paths from the macro navigation tree", () => {
+    expect(macroNavigationPath("assets").map((node) => node.label)).toEqual(["宏观", "大类资产"]);
     expect(macroNavigationPath("assets/equities").map((node) => node.label)).toEqual([
       "宏观",
       "大类资产",
@@ -139,7 +144,7 @@ describe("macroRoutes", () => {
     ]);
     expect(macroNavigationPath("assets/correlation").map((node) => node.href)).toEqual([
       "/macro",
-      "/macro/assets/equities",
+      "/macro/assets",
       "/macro/assets/correlation",
     ]);
   });

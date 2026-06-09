@@ -35,7 +35,7 @@ describe("AppSidebar", () => {
     expect(macroLink).not.toHaveAttribute("aria-current");
 
     const assetLink = screen.getByRole("link", { name: "大类资产" });
-    expect(assetLink).toHaveAttribute("href", "/macro/assets/equities");
+    expect(assetLink).toHaveAttribute("href", "/macro/assets");
     expect(assetLink).toHaveAttribute("data-active", "true");
     expect(assetLink).not.toHaveAttribute("aria-current");
     expect(screen.getByRole("button", { name: "展开大类资产" })).toHaveAttribute(
@@ -75,7 +75,7 @@ describe("AppSidebar", () => {
     );
     const assetLink = screen.getByRole("link", { name: "大类资产" });
     expect(assetLink).toHaveAttribute("data-active", "true");
-    expect(assetLink).toHaveAttribute("href", "/macro/assets/equities");
+    expect(assetLink).toHaveAttribute("href", "/macro/assets");
     expect(assetLink).not.toHaveAttribute("aria-current");
     expect(screen.getByRole("button", { name: "展开大类资产" })).toHaveAttribute(
       "aria-expanded",
@@ -104,10 +104,7 @@ describe("AppSidebar", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "展开宏观" }));
 
-    expect(screen.getByRole("link", { name: "大类资产" })).toHaveAttribute(
-      "href",
-      "/macro/assets/equities",
-    );
+    expect(screen.getByRole("link", { name: "大类资产" })).toHaveAttribute("href", "/macro/assets");
     expect(screen.getByRole("button", { name: "展开大类资产" })).toHaveAttribute(
       "aria-expanded",
       "false",
@@ -148,7 +145,7 @@ describe("AppSidebar", () => {
 
     const assetLink = screen.getByRole("link", { name: "大类资产" });
     expect(assetLink).toHaveAttribute("data-active", "true");
-    expect(assetLink).toHaveAttribute("href", "/macro/assets/equities");
+    expect(assetLink).toHaveAttribute("href", "/macro/assets");
     expect(assetLink).not.toHaveAttribute("aria-current");
     expect(screen.getByRole("link", { name: "利率" })).toHaveAttribute(
       "href",

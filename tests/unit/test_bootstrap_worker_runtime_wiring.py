@@ -20,6 +20,7 @@ from parallax.domains.asset_market.runtime.market_tick_stream_worker import Mark
 from parallax.domains.asset_market.runtime.token_capture_tier_worker import TokenCaptureTierWorker
 from parallax.domains.asset_market.runtime.token_image_mirror_worker import TokenImageMirrorWorker
 from parallax.domains.asset_market.runtime.token_profile_current_worker import TokenProfileCurrentWorker
+from parallax.domains.macro_intel.runtime.macro_daily_brief_projection_worker import MacroDailyBriefProjectionWorker
 from parallax.domains.macro_intel.runtime.macro_sync_worker import MacroSyncWorker
 from parallax.domains.macro_intel.runtime.macro_view_projection_worker import MacroViewProjectionWorker
 from parallax.domains.narrative_intel.runtime.mention_semantics_worker import MentionSemanticsWorker
@@ -332,9 +333,12 @@ def test_worker_factory_wires_news_fetch_by_default() -> None:
     assert isinstance(workers["macro_view_projection"], MacroViewProjectionWorker)
     assert isinstance(workers["macro_sync"], MacroSyncWorker)
     assert workers["macro_sync"].wake_bus is db.wake
+    assert workers["macro_view_projection"].wake_bus is db.wake
     assert workers["macro_view_projection"].settings.advisory_lock_key == 2026052109
     assert workers["macro_view_projection"].settings.batch_size == 250
     assert workers["macro_view_projection"].wake_waiter.channels == ("macro_observations_imported",)
+    assert isinstance(workers["macro_daily_brief_projection"], MacroDailyBriefProjectionWorker)
+    assert workers["macro_daily_brief_projection"].wake_waiter.channels == ("macro_view_snapshot_updated",)
 
 
 def test_news_provider_wiring_constructs_opennews_rest_client_without_websocket_kwargs(

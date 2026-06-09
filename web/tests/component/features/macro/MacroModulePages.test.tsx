@@ -1,6 +1,7 @@
 import { MacroModulePageRenderer } from "@features/macro/ui/pages/MacroModulePageRenderer";
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import {
+  macroAssetsModuleFixture,
   macroCryptoDerivativesModuleFixture,
   macroModuleFixture,
   macroOverviewModuleFixture,
@@ -144,6 +145,24 @@ describe("Macro module pages", () => {
     expect(screen.getByText("Yahoo")).toBeInTheDocument();
     expect(screen.getByText("美股风险偏好")).toBeInTheDocument();
     expect(await screen.findByText("10%")).toBeInTheDocument();
+  });
+
+  it("renders the asset landing page with daily judgment blocks", () => {
+    renderWithProviders(
+      <MacroModulePageRenderer
+        module={macroAssetsModuleFixture()}
+        moduleId="assets"
+        pageKind="leaf"
+        token="test-token"
+      />,
+      { route: "/macro/assets" },
+    );
+
+    expect(screen.getByRole("region", { name: "大类资产模块页面" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "今日判断" })).toBeInTheDocument();
+    expect(screen.getByText("今日判断：风险资产偏震荡")).toBeInTheDocument();
+    expect(screen.getByText("跨资产相关性")).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "大类资产快照" })).toBeInTheDocument();
   });
 
   it("keeps a stable chart loading state while backend series is pending", async () => {

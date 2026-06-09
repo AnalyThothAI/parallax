@@ -5,6 +5,7 @@ from datetime import date
 
 from parallax.domains.macro_intel.repositories.macro_intel_repository import (
     MacroIntelRepository,
+    _macro_daily_brief_payload_hash,
 )
 
 CONTROL_METHODS = (
@@ -214,6 +215,20 @@ def test_upsert_observation_updates_only_when_fact_payload_hash_changes() -> Non
     assert "noop" in source
     assert "ingested_at_ms = excluded.ingested_at_ms" in source
     assert "WHERE macro_observations.fact_payload_hash IS DISTINCT FROM excluded.fact_payload_hash" in normalized_source
+
+
+def test_upsert_macro_daily_brief_is_stable_key_payload_hash_read_model() -> None:
+    source = inspect.getsource(MacroIntelRepository.upsert_macro_daily_brief)
+    hash_source = inspect.getsource(_macro_daily_brief_payload_hash)
+    normalized_source = " ".join(source.split())
+
+    assert "INSERT INTO macro_daily_briefs" in source
+    assert "ON CONFLICT(brief_key) DO UPDATE" in source
+    assert "payload_hash" in source
+    assert "RETURNING true AS changed" in source
+    assert "WHERE macro_daily_briefs.payload_hash IS DISTINCT FROM excluded.payload_hash" in normalized_source
+    assert '"computed_at_ms"' in hash_source
+    assert "if key not in" in hash_source
 
 
 def test_record_run_methods_write_hard_cut_observation_counts_and_watermarks() -> None:

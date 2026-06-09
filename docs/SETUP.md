@@ -72,10 +72,11 @@ booleans, and diagnostic command status; do not paste WebSocket tokens, API
 keys, provider passwords, or full config payloads into docs or chat.
 
 Macro freshness is normally owned by the `macro_sync` worker. Docker/runtime
-uses the packaged `macrodata` executable and must not depend on `uv run
-macrodata` or a host-local macrodata checkout. Provide `FINANCE_FRED_API_KEY`
-through the environment or deployment secret manager when FRED coverage is
-needed; config stores only the env var name. Tune
+uses the packaged `macrodata` executable when the console script is healthy, or
+the installed Python package entrypoint when the script is absent or stale. It
+must not depend on `uv run macrodata` or a host-local macrodata checkout.
+Provide `FINANCE_FRED_API_KEY` through the environment or deployment secret
+manager when FRED coverage is needed; config stores only the env var name. Tune
 `workers.macro_sync.macrodata_timeout_seconds` below the worker hard timeout so
 a stuck macrodata child process is killed and recorded as source-health
 failure.
@@ -94,9 +95,12 @@ claiming `ready`, a recent `latest_sync_run`, `facts_max_observed_at` near the
 expected upstream date, and `projection_behind_facts=false` after projection
 catches up. If facts exist but no macro snapshot exists yet,
 `projection_behind_facts=true`; that means projection has not caught up, not
-that source facts are missing. FRED public CSV timeouts or a missing optional FRED API key are
-source-health gaps; they should appear as partial coverage/data gaps and are
-not frontend defects.
+that source facts are missing. The `macrodata_cli` block must show the expected
+package version and `required_bundle_series_available=true`; otherwise the
+runtime is using an old packaged `macrodata-cli` bundle and sync cannot import
+all Parallax-required series. FRED public CSV timeouts or a missing optional
+FRED API key are source-health gaps; they should appear as partial
+coverage/data gaps and are not frontend defects.
 
 The full CLI surface is documented by `uv run parallax --help`.
 Treat that output as the source of truth — do not enumerate commands

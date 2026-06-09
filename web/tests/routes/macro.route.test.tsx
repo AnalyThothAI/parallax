@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import {
+  macroAssetsModuleFixture,
   macroCorrelationFixture,
   macroModuleFixture,
   macroOverviewModuleFixture,
@@ -59,6 +60,9 @@ describe("macro route", () => {
         }
         if (path === "/api/macro/modules/assets/equities") {
           return ok(macroModuleFixture());
+        }
+        if (path === "/api/macro/modules/assets") {
+          return ok(macroAssetsModuleFixture());
         }
         if (path === "/api/macro/series") {
           const conceptKeys = String(options?.params?.concept_keys ?? "asset:spx").split(",");
@@ -135,17 +139,18 @@ describe("macro route", () => {
     );
   });
 
-  it("redirects macro parent aliases to their default child module", async () => {
+  it("opens the asset landing module without redirecting to equities", async () => {
     renderAppRoute("/macro/assets");
 
-    expect(await screen.findByRole("heading", { name: "美股风险" })).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "大类资产索引" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "大类资产" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "今日判断" })).toBeInTheDocument();
+    expect(screen.getByText("今日判断：风险资产偏震荡")).toBeInTheDocument();
     await waitFor(() =>
-      expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/modules/assets/equities", {
+      expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/modules/assets", {
         token: "secret",
       }),
     );
-    expect(apiMock.readApi).not.toHaveBeenCalledWith("/api/macro/modules/assets", {
+    expect(apiMock.readApi).not.toHaveBeenCalledWith("/api/macro/modules/assets/equities", {
       token: "secret",
     });
   });

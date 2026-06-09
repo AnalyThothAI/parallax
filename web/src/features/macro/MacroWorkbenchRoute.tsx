@@ -124,7 +124,6 @@ function macroModuleHeader({
     statusItems: [
       { label: "状态", value: macroStatusLabel(module) },
       { label: "截至", value: macroAsOfLabel(module) },
-      { label: "版本", value: module.snapshot.projection_version ?? "暂无版本" },
     ],
     title: macroModuleTitle(moduleId, module),
   };
