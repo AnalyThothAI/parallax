@@ -851,6 +851,14 @@ def _validate_worker_manifests() -> None:
     if negative_start_priorities:
         raise ValueError(f"negative worker manifest start priorities: {negative_start_priorities}")
 
+    non_boolean_provider_io = {
+        manifest.name: manifest.uses_provider_io
+        for manifest in _WORKER_MANIFESTS
+        if type(manifest.uses_provider_io) is not bool
+    }
+    if non_boolean_provider_io:
+        raise ValueError(f"non-boolean worker manifest provider IO flags: {non_boolean_provider_io}")
+
     missing_idempotency = [manifest.name for manifest in _WORKER_MANIFESTS if not manifest.idempotency_evidence]
     if missing_idempotency:
         raise ValueError(f"worker manifests missing idempotency evidence: {missing_idempotency}")

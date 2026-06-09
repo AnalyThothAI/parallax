@@ -251,6 +251,19 @@ def test_worker_manifest_validation_rejects_provider_schedulers_without_provider
 
 
 @pytest.mark.architecture
+def test_worker_manifest_validation_rejects_non_boolean_provider_io_flags(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifests = list(all_worker_manifests())
+    first_provider_index = next(index for index, manifest in enumerate(manifests) if manifest.uses_provider_io)
+    manifests[first_provider_index] = replace(manifests[first_provider_index], uses_provider_io="yes")
+    monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
+
+    with pytest.raises(ValueError, match="non-boolean worker manifest provider IO flags"):
+        worker_manifest_module._validate_worker_manifests()
+
+
+@pytest.mark.architecture
 def test_worker_manifest_validation_rejects_ledgers_on_non_side_effect_workers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
