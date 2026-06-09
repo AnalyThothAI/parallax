@@ -120,10 +120,15 @@ def test_page_projection_worker_deletes_missing_claimed_items_without_fallback_s
     assert repos.news.loaded_ids == ["news-1", "news-deleted"]
     assert repos.news.replacements == [
         {
-            "news_item_ids": ["news-1", "news-deleted"],
+            "news_item_ids": ["news-1"],
             "row_ids": ["news-1"],
             "commit": False,
-        }
+        },
+        {
+            "news_item_ids": ["news-deleted"],
+            "row_ids": [],
+            "commit": False,
+        },
     ]
     assert repos.dirty.marked_done == [[token_1, token_2]]
 
@@ -698,6 +703,7 @@ class FakePageNewsRepository:
                 "commit": commit,
             }
         )
+        return {"deleted": max(0, len(news_item_ids) - len(rows)), "unchanged": 0}
 
     def replace_page_rows_for_story_targets(
         self,

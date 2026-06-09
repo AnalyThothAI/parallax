@@ -16,6 +16,7 @@ from parallax.domains.news_intel._constants import (
     NEWS_ITEM_BRIEF_SCHEMA_VERSION,
     NEWS_ITEM_BRIEF_VALIDATOR_VERSION,
     NEWS_PAGE_PROJECTION_VERSION,
+    NEWS_STORY_IDENTITY_VERSION,
 )
 from parallax.domains.news_intel.repositories.news_repository import NewsRepository, news_page_cursor
 from parallax.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
@@ -25,6 +26,7 @@ from parallax.domains.news_intel.types.news_item_brief import (
     NEWS_ITEM_BRIEF_LANE,
     NEWS_ITEM_BRIEF_WORKFLOW_NAME,
 )
+from parallax.domains.news_intel.types.news_item_agent_admission import NewsItemAgentAdmission
 from parallax.platform.db.postgres_migrations import alembic_config
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
@@ -5921,8 +5923,20 @@ def _set_market_scope_story(
             "story_key": story_key,
             "confidence": "strong",
             "basis": {"test": True, "market_scope": [primary_scope], "market_scope_primary": primary_scope},
-            "version": "test_news_story_identity_v1",
+            "version": NEWS_STORY_IDENTITY_VERSION,
         },
+        now_ms=NOW_MS,
+    )
+    repo.mark_item_processed(news_item_id=news_item_id, processed_at_ms=NOW_MS)
+    repo.update_item_agent_admission(
+        news_item_id=news_item_id,
+        admission=NewsItemAgentAdmission(
+            eligible=True,
+            status="eligible",
+            reason="test_eligible",
+            representative_news_item_id=news_item_id,
+            basis={"test": True},
+        ),
         now_ms=NOW_MS,
     )
 

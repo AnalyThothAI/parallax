@@ -116,12 +116,25 @@ class NewsPageProjectionWorker(WorkerBase):
 
             try:
                 with _transaction(repos.conn):
+                    projected_member_ids = set(member_item_ids)
+                    orphaned_claim_ids = [
+                        news_item_id for news_item_id in claimed_ids if news_item_id not in projected_member_ids
+                    ]
                     replacement = repos.news.replace_page_rows_for_story_targets(
-                        news_item_ids=claimed_ids,
+                        news_item_ids=[news_item_id for news_item_id in claimed_ids if news_item_id in projected_member_ids],
                         story_keys=story_keys,
                         rows=rows,
                         commit=False,
                     )
+                    if orphaned_claim_ids:
+                        orphan_replacement = repos.news.replace_page_rows_for_items(
+                            news_item_ids=orphaned_claim_ids,
+                            rows=[],
+                            commit=False,
+                        )
+                        replacement["deleted"] = int(replacement.get("deleted", 0)) + int(
+                            orphan_replacement.get("deleted", 0)
+                        )
                     deleted = int(replacement.get("deleted", 0))
                     unchanged = int(replacement.get("unchanged", 0))
             except Exception as exc:

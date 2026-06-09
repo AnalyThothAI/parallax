@@ -245,6 +245,24 @@ NEWS_STORY_IDENTITY_V2_MIGRATION = Path(
 NEWS_STORY_IDENTITY_V2_REMAINING_OPENNEWS_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260609_0168_news_story_identity_v2_remaining_opennews.py"
 )
+NEWS_PAGE_ROWS_RETIRED_PROJECTION_PURGE_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260609_0169_news_page_rows_retired_projection_purge.py"
+)
+NEWS_AGENT_ADMISSION_RETIRED_POLICY_REPROCESS_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260609_0170_news_agent_admission_retired_policy_reprocess.py"
+)
+NEWS_PAGE_ROWS_REQUIRE_STORY_IDENTITY_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260609_0171_news_page_rows_require_story_identity.py"
+)
+NEWS_PAGE_ROWS_REQUIRE_AGENT_ELIGIBLE_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260609_0172_news_page_rows_require_agent_eligible.py"
+)
+NEWS_PAGE_ROWS_SERVING_INVARIANTS_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260609_0173_news_page_rows_serving_invariants.py"
+)
+NEWS_PAGE_PROVIDER_RATING_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260609_0174_news_page_provider_rating.py"
+)
 TOKEN_PULSE_EQUITY_CPU_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260529_0124_token_pulse_equity_cpu_hard_cut.py"
 )
@@ -2158,6 +2176,175 @@ def test_news_story_identity_v2_remaining_opennews_migration_hard_cuts_provider_
     assert "provider_article_key" not in normalized_text
     assert "def downgrade() -> None:" in text
     assert "pass" in text.split("def downgrade() -> None:", maxsplit=1)[1]
+
+
+def test_news_page_rows_retired_projection_purge_hard_cuts_old_serving_generations() -> None:
+    assert NEWS_PAGE_ROWS_RETIRED_PROJECTION_PURGE_MIGRATION.exists(), (
+        f"{NEWS_PAGE_ROWS_RETIRED_PROJECTION_PURGE_MIGRATION} missing; retired News page rows must be purged"
+    )
+    text = NEWS_PAGE_ROWS_RETIRED_PROJECTION_PURGE_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+
+    for statement in (
+        'revision = "20260609_0169"',
+        'down_revision = "20260609_0168"',
+        "DELETE FROM news_page_rows",
+        "projection_version <> 'news_page_rows_v5'",
+        "story_key ~ '^news-story:opennews-article:'",
+        "ANALYZE news_page_rows",
+    ):
+        assert statement in normalized_text or statement in text
+    assert "INSERT INTO news_projection_dirty_targets" not in normalized_text
+    assert "def downgrade() -> None:" in text
+    assert "pass" in text.split("def downgrade() -> None:", maxsplit=1)[1]
+
+
+def test_news_agent_admission_retired_policy_reprocess_hard_cuts_stale_admission_rows() -> None:
+    assert NEWS_AGENT_ADMISSION_RETIRED_POLICY_REPROCESS_MIGRATION.exists(), (
+        f"{NEWS_AGENT_ADMISSION_RETIRED_POLICY_REPROCESS_MIGRATION} missing; "
+        "retired News agent admission policy rows must be reprocessed"
+    )
+    text = NEWS_AGENT_ADMISSION_RETIRED_POLICY_REPROCESS_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+
+    for statement in (
+        'revision = "20260609_0170"',
+        'down_revision = "20260609_0169"',
+        "CREATE TEMP TABLE news_agent_admission_reprocess_targets ON COMMIT DROP AS",
+        "agent_admission_version <> 'news_item_agent_admission_market_v2'",
+        "COALESCE(agent_admission_json->>'version', '') <> 'news_item_agent_admission_market_v2'",
+        "agent_admission_status NOT IN",
+        "'eligible'",
+        "'eligible_refresh'",
+        "'exact_duplicate'",
+        "'similar_story_covered'",
+        "'similar_story_burst'",
+        "'materially_superseded'",
+        "'source_suppressed'",
+        "'operational_disabled'",
+        "'needs_review'",
+        "lifecycle_status = 'raw'",
+        "processing_attempts = 0",
+        "agent_admission_reason = 'agent_admission_policy_reprocess'",
+        "DELETE FROM news_projection_dirty_targets",
+        "dirty.projection_name IN ('page', 'brief_input')",
+        "DELETE FROM news_page_rows",
+        "ANALYZE news_items",
+        "ANALYZE news_page_rows",
+        "ANALYZE news_projection_dirty_targets",
+    ):
+        assert statement in normalized_text or statement in text
+    assert "INSERT INTO news_projection_dirty_targets" not in normalized_text
+    assert "score_below_threshold" not in normalized_text
+    assert "def downgrade() -> None:" in text
+    assert "pass" in text.split("def downgrade() -> None:", maxsplit=1)[1]
+
+
+def test_news_page_rows_require_story_identity_purges_incomplete_serving_rows() -> None:
+    assert NEWS_PAGE_ROWS_REQUIRE_STORY_IDENTITY_MIGRATION.exists(), (
+        f"{NEWS_PAGE_ROWS_REQUIRE_STORY_IDENTITY_MIGRATION} missing; "
+        "News page rows must require current story identity"
+    )
+    text = NEWS_PAGE_ROWS_REQUIRE_STORY_IDENTITY_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+
+    for statement in (
+        'revision = "20260609_0171"',
+        'down_revision = "20260609_0170"',
+        "DELETE FROM news_projection_dirty_targets",
+        "dirty.projection_name = 'page'",
+        "dirty.target_kind = 'news_item'",
+        "items.lifecycle_status <> 'processed'",
+        "items.story_key = ''",
+        "items.story_identity_version <> 'news_story_identity_v2'",
+        "DELETE FROM news_page_rows",
+        "rows.projection_version = 'news_page_rows_v5'",
+        "rows.story_key = ''",
+        "ANALYZE news_projection_dirty_targets",
+        "ANALYZE news_page_rows",
+    ):
+        assert statement in normalized_text or statement in text
+    assert "brief_input" not in normalized_text
+    assert "def downgrade() -> None:" in text
+    assert "pass" in text.split("def downgrade() -> None:", maxsplit=1)[1]
+
+
+def test_news_page_rows_require_agent_eligible_purges_duplicate_serving_rows() -> None:
+    assert NEWS_PAGE_ROWS_REQUIRE_AGENT_ELIGIBLE_MIGRATION.exists(), (
+        f"{NEWS_PAGE_ROWS_REQUIRE_AGENT_ELIGIBLE_MIGRATION} missing; "
+        "News page rows must require eligible agent admission"
+    )
+    text = NEWS_PAGE_ROWS_REQUIRE_AGENT_ELIGIBLE_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+
+    for statement in (
+        'revision = "20260609_0172"',
+        'down_revision = "20260609_0171"',
+        "DELETE FROM news_projection_dirty_targets",
+        "dirty.projection_name = 'page'",
+        "dirty.target_kind = 'news_item'",
+        "items.agent_admission_version <> 'news_item_agent_admission_market_v2'",
+        "items.agent_admission_status NOT IN ('eligible', 'eligible_refresh')",
+        "DELETE FROM news_page_rows",
+        "rows.projection_version = 'news_page_rows_v5'",
+        "rows.agent_admission_status NOT IN ('eligible', 'eligible_refresh')",
+        "ANALYZE news_projection_dirty_targets",
+        "ANALYZE news_page_rows",
+    ):
+        assert statement in normalized_text or statement in text
+    assert "exact_duplicate" not in normalized_text
+    assert "def downgrade() -> None:" in text
+    assert "pass" in text.split("def downgrade() -> None:", maxsplit=1)[1]
+
+
+def test_news_page_rows_serving_invariants_use_not_exists_hard_cut() -> None:
+    assert NEWS_PAGE_ROWS_SERVING_INVARIANTS_MIGRATION.exists(), (
+        f"{NEWS_PAGE_ROWS_SERVING_INVARIANTS_MIGRATION} missing; "
+        "News page rows must hard-cut rows without a valid serving item"
+    )
+    text = NEWS_PAGE_ROWS_SERVING_INVARIANTS_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+
+    for statement in (
+        'revision = "20260609_0173"',
+        'down_revision = "20260609_0172"',
+        "DELETE FROM news_projection_dirty_targets",
+        "DELETE FROM news_page_rows",
+        "NOT EXISTS",
+        "items.lifecycle_status = 'processed'",
+        "items.story_key <> ''",
+        "items.story_identity_version = 'news_story_identity_v2'",
+        "items.agent_admission_version = 'news_item_agent_admission_market_v2'",
+        "items.agent_admission_status IN ('eligible', 'eligible_refresh')",
+        "rows.story_key = ''",
+        "rows.agent_admission_status NOT IN ('eligible', 'eligible_refresh')",
+        "ANALYZE news_projection_dirty_targets",
+        "ANALYZE news_page_rows",
+    ):
+        assert statement in normalized_text or statement in text
+    assert "def downgrade() -> None:" in text
+    assert "pass" in text.split("def downgrade() -> None:", maxsplit=1)[1]
+
+
+def test_news_page_provider_rating_migration_adds_read_model_evidence_column() -> None:
+    assert NEWS_PAGE_PROVIDER_RATING_MIGRATION.exists(), (
+        f"{NEWS_PAGE_PROVIDER_RATING_MIGRATION} missing; expose provider rating as News page evidence"
+    )
+    text = NEWS_PAGE_PROVIDER_RATING_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+
+    for statement in (
+        'revision = "20260609_0174"',
+        'down_revision = "20260609_0173"',
+        "ADD COLUMN IF NOT EXISTS provider_rating_json JSONB NOT NULL DEFAULT '{}'::jsonb",
+        "UPDATE news_page_rows AS rows",
+        "jsonb_build_object(",
+        "'provider', items.provider_signal_json ->> 'provider'",
+        "'score', (items.provider_signal_json ->> 'score')::integer",
+        "rows.news_item_id = items.news_item_id",
+        "ANALYZE news_page_rows",
+    ):
+        assert statement in normalized_text or statement in text
 
 
 def test_news_agent_market_admission_migration_adds_agent_admission_columns_and_indexes() -> None:

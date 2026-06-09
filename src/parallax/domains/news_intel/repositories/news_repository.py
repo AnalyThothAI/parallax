@@ -15,6 +15,7 @@ from parallax.domains.news_intel._constants import (
     NEWS_ITEM_AGENT_ADMISSION_VERSION,
     NEWS_ITEM_BRIEF_SCHEMA_VERSION,
     NEWS_PAGE_PROJECTION_VERSION,
+    NEWS_STORY_IDENTITY_VERSION,
 )
 from parallax.domains.news_intel.services.news_canonical_identity import (
     CANONICAL_POLICY_VERSION,
@@ -3535,6 +3536,11 @@ class NewsRepository:
               SELECT news_item_id, story_key, published_at_ms
                 FROM news_items
                WHERE news_item_id = ANY(%s::text[])
+                 AND lifecycle_status = 'processed'
+                 AND story_key <> ''
+                 AND story_identity_version = %s
+                 AND agent_admission_version = %s
+                 AND agent_admission_status IN ('eligible', 'eligible_refresh')
             ),
             story_bounds AS (
               SELECT story_key,
@@ -3554,6 +3560,11 @@ class NewsRepository:
                 FROM story_bounds
                 JOIN news_items AS items ON items.story_key = story_bounds.story_key
                WHERE items.published_at_ms BETWEEN story_bounds.lower_bound_ms AND story_bounds.upper_bound_ms
+                 AND items.lifecycle_status = 'processed'
+                 AND items.story_key <> ''
+                 AND items.story_identity_version = %s
+                 AND items.agent_admission_version = %s
+                 AND items.agent_admission_status IN ('eligible', 'eligible_refresh')
                  AND EXISTS (
                    SELECT 1
                      FROM news_item_observation_edges AS edges
@@ -3561,60 +3572,39 @@ class NewsRepository:
                     WHERE edges.news_item_id = items.news_item_id
                       AND sources.enabled = true
                  )
-            ),
-            fallback_items AS (
-              SELECT target_items.news_item_id,
-                     ''::text AS story_key,
-                     array_position(%s::text[], target_items.news_item_id) AS first_target_ordinal,
-                     target_items.published_at_ms,
-                     true AS fallback_item
-                FROM target_items
-               WHERE target_items.story_key = ''
-                 AND EXISTS (
-                   SELECT 1
-                     FROM news_item_observation_edges AS edges
-                     JOIN news_sources AS sources ON sources.source_id = edges.source_id
-                    WHERE edges.news_item_id = target_items.news_item_id
-                      AND sources.enabled = true
-                 )
             )
             SELECT *
-              FROM (
-                SELECT * FROM story_members
-                UNION ALL
-                SELECT * FROM fallback_items
-              ) AS scoped_items
+              FROM story_members AS scoped_items
              ORDER BY first_target_ordinal ASC NULLS LAST,
-                      fallback_item ASC,
                       story_key ASC,
                       published_at_ms DESC,
                       news_item_id DESC
             """,
             (
                 target_ids,
+                NEWS_STORY_IDENTITY_VERSION,
+                NEWS_ITEM_AGENT_ADMISSION_VERSION,
                 _STORY_PROJECTION_WINDOW_MS,
                 _STORY_PROJECTION_WINDOW_MS,
                 target_ids,
-                target_ids,
+                NEWS_STORY_IDENTITY_VERSION,
+                NEWS_ITEM_AGENT_ADMISSION_VERSION,
             ),
         ).fetchall()
         scoped_item_ids = [str(row["news_item_id"]) for row in story_scope_rows]
         item_payloads = self.load_items_for_page_projection(news_item_ids=scoped_item_ids)
         item_payloads_by_id = {str(payload["item"]["news_item_id"]): payload for payload in item_payloads}
         grouped_ids: dict[str, list[str]] = {}
-        fallback_group_keys: dict[str, str] = {}
         group_order: list[str] = []
         for row in story_scope_rows:
             news_item_id = str(row["news_item_id"])
             if news_item_id not in item_payloads_by_id:
                 continue
             story_key = str(row["story_key"] or "")
-            group_key = story_key or f"item:{news_item_id}"
+            group_key = story_key
             if group_key not in grouped_ids:
                 grouped_ids[group_key] = []
                 group_order.append(group_key)
-                if not story_key:
-                    fallback_group_keys[group_key] = news_item_id
             grouped_ids[group_key].append(news_item_id)
 
         payloads: list[dict[str, Any]] = []
@@ -3623,15 +3613,14 @@ class NewsRepository:
             if not member_payloads:
                 continue
             representative = member_payloads[0]
-            story_key = "" if group_key in fallback_group_keys else group_key
-            story = _story_projection_payload(story_key=story_key, member_payloads=member_payloads)
+            story = _story_projection_payload(story_key=group_key, member_payloads=member_payloads)
             payloads.append(
                 {
                     "item": representative["item"],
                     "current_brief": representative.get("current_brief"),
                     "token_mentions": representative.get("token_mentions") or [],
                     "fact_candidates": representative.get("fact_candidates") or [],
-                    "story": story if story_key else None,
+                    "story": story,
                     "member_items": [payload["item"] for payload in member_payloads],
                 }
             )

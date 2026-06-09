@@ -75,6 +75,15 @@ describe("news API client normalization", () => {
                   coverage_tags: ["opennews", "6551news"],
                   source_quality_status: "healthy",
                 },
+                provider_rating: {
+                  provider: "opennews",
+                  status: "ready",
+                  direction: "bullish",
+                  signal: "long",
+                  score: "82",
+                  grade: "A",
+                  method: "opennews.aiRating",
+                },
               },
             ],
             next_cursor: null,
@@ -102,6 +111,15 @@ describe("news API client normalization", () => {
     expect(rows.items[0].signal.display_signal).not.toHaveProperty("grade");
     expect(rows.items[0].token_lanes).toEqual([]);
     expect(rows.items[0].token_impacts).toEqual([]);
+    expect(rows.items[0].provider_rating).toEqual({
+      provider: "opennews",
+      status: "ready",
+      direction: "bullish",
+      signal: "long",
+      score: 82,
+      grade: "A",
+      method: "opennews.aiRating",
+    });
     expect(rows.items[0].signal).not.toHaveProperty("provider_signal");
     expect(rows.items[0].signal.alert_eligibility).not.toHaveProperty("provider_score");
     expect(rows.items[0].source?.provider_type).toBe("opennews");

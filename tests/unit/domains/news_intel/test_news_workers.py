@@ -1162,7 +1162,7 @@ def test_news_page_projection_worker_reports_unchanged_story_projection() -> Non
 def test_news_page_projection_worker_replaces_story_targets_when_payloads_empty() -> None:
     repo = FakePageProjectionRepository(
         story_payloads=[],
-        replace_result={"inserted": 0, "updated": 0, "unchanged": 0, "deleted": 1},
+        replace_result={"inserted": 0, "updated": 0, "unchanged": 0, "deleted": 0},
     )
     db = FakeProjectionDB("news_page_projection", repo, claimed=[_claimed_page_target("news-non-representative")])
     worker = NewsPageProjectionWorker(
@@ -1176,9 +1176,11 @@ def test_news_page_projection_worker_replaces_story_targets_when_payloads_empty(
     result = worker.run_once_sync(now_ms=NOW_MS)
 
     assert repo.story_load_news_item_ids == ["news-non-representative"]
-    assert repo.replaced_story_news_item_ids == ["news-non-representative"]
+    assert repo.replaced_story_news_item_ids == []
     assert repo.replaced_story_keys == []
     assert repo.replaced_story_rows == []
+    assert repo.replaced_news_item_ids == ["news-non-representative"]
+    assert repo.replaced_rows == []
     assert result.notes["deleted"] == 1
 
 
@@ -1855,6 +1857,7 @@ class FakePageProjectionRepository:
     def replace_page_rows_for_items(self, *, news_item_ids, rows, commit: bool = True):
         self.replaced_news_item_ids = list(news_item_ids)
         self.replaced_rows = [dict(row) for row in rows]
+        return {"inserted": 0, "updated": 0, "unchanged": 0, "deleted": len(self.replaced_news_item_ids)}
 
     def replace_page_rows_for_story_targets(self, *, news_item_ids, story_keys, rows, commit: bool = True):
         self.replaced_story_news_item_ids = list(news_item_ids)

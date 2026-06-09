@@ -527,6 +527,15 @@ def test_build_news_page_row_does_not_mix_provider_signal_into_ready_agent_brief
     assert "score" not in row["signal"]["display_signal"]
     assert "grade" not in row["signal"]["display_signal"]
     assert "provider_signal" not in row["signal"]
+    assert row["provider_rating"] == {
+        "provider": "opennews",
+        "status": "ready",
+        "direction": "bullish",
+        "signal": "long",
+        "score": 92,
+        "grade": "A",
+        "method": "opennews.aiRating",
+    }
     assert row["signal"]["alert_eligibility"] == {
         "agent_status": "ready",
         "decision_class": "watch",

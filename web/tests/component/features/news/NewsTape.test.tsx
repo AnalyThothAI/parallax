@@ -8,11 +8,13 @@ describe("NewsTape", () => {
     cleanup();
   });
 
-  it("renders compact rows without provider score labels", () => {
+  it("renders compact rows with provider rating evidence", () => {
     render(<NewsTape rows={[rowWithBtcEth]} onOpen={vi.fn()} />);
 
     expect(screen.getByText("利好")).toBeInTheDocument();
     expect(screen.getByText("ready")).toBeInTheDocument();
+    expect(screen.getByText("OPENNEWS")).toBeInTheDocument();
+    expect(screen.getByText("82")).toBeInTheDocument();
     expect(screen.getByText("BTC")).toBeInTheDocument();
     expect(screen.getByText("ETH")).toBeInTheDocument();
     expect(screen.getAllByText("CEX").length).toBeGreaterThanOrEqual(2);
@@ -63,6 +65,15 @@ const rowWithBtcEth: NewsRow = {
   summary: "ETF desk activity stays elevated.",
   latest_at_ms: 1_779_000_000_000,
   source_domain: "6551.io",
+  provider_rating: {
+    provider: "opennews",
+    status: "ready",
+    direction: "bullish",
+    signal: "long",
+    score: 82,
+    grade: "A",
+    method: "opennews.aiRating",
+  },
   signal: newsSignalEnvelope({
     source: "provider",
     provider: "opennews",

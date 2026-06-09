@@ -508,6 +508,7 @@ def test_news_openapi_schema_exposes_market_scope_not_legacy_admission() -> None
     row_props = schemas["NewsRow"]["properties"]
     detail_props = schemas["NewsObjectData"]["properties"]
     eligibility_props = schemas["NewsAlertEligibility"]["properties"]
+    provider_rating_props = schemas["NewsProviderRating"]["properties"]
     signal_props = schemas["NewsSignalEnvelope"]["properties"]
     signal_summary_props = schemas["NewsSignalSummary"]["properties"]
     token_lane_props = schemas["NewsTokenLane"]["properties"]
@@ -517,8 +518,15 @@ def test_news_openapi_schema_exposes_market_scope_not_legacy_admission() -> None
         param["name"] for param in schema["paths"]["/api/news"]["get"]["parameters"]
     }
 
-    assert {"market_scope", "agent_admission", "agent_admission_status"} <= set(row_props)
-    assert {"market_scope", "agent_admission", "agent_admission_status"} <= set(detail_props)
+    assert {"market_scope", "agent_admission", "agent_admission_status", "provider_rating"} <= set(
+        row_props
+    )
+    assert {"market_scope", "agent_admission", "agent_admission_status", "provider_rating"} <= set(
+        detail_props
+    )
+    assert {"provider", "status", "direction", "signal", "score", "grade", "method"} <= set(
+        provider_rating_props
+    )
     assert {"market_scope", "agent_admission_status", "agent_admission_reason"} <= set(eligibility_props)
     assert schemas["NewsSignalEnvelope"]["additionalProperties"] is False
     assert "provider_signal" not in detail_props
