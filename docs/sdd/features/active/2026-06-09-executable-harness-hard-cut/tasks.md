@@ -2791,6 +2791,48 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 133 — Bounded provider schedulers do not declare dirty targets
+
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 132
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for bounded provider scheduler runtime-constraint validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_provider_schedulers_with_dirty_targets` — patch a `BOUNDED_PROVIDER_SCHEDULER` manifest to declare `dirty_target_tables` and assert manifest validation raises before provider source adapters can masquerade as dirty-target consumers.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `BOUNDED_PROVIDER_SCHEDULER` manifests must not declare `dirty_target_tables`; dirty-target consumption belongs to explicitly classified dirty-target consumers before lifecycle, queue-health, or inventory harnesses consume the manifest.
+- **On-demand context**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, and worker runtime constraint semantics.
+- **Kill/defer criteria**: Stop if bounded provider schedulers intentionally consume dirty-target queues, if validation only checks docs, or if the fix touches provider runtime worker behavior.
+- **Eval/repair signal**: provider scheduler dirty-target declarations, source adapter masquerading as dirty consumer, runtime classification drift, manifest validation drift, and SDD generated index drift.
+- **Implementation**: Add manifest validation rejecting `dirty_target_tables` whenever `runtime_constraint` is `BOUNDED_PROVIDER_SCHEDULER`.
+- **Verification**: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_provider_schedulers_with_dirty_targets -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 134 — Bounded provider schedulers do not declare queue depth tables
+
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 133
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for bounded provider scheduler queue-depth validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_provider_schedulers_with_queue_depth` — patch a `BOUNDED_PROVIDER_SCHEDULER` manifest to declare `queue_depth_table` and assert manifest validation raises before provider source adapters can masquerade as leased queue consumers.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `BOUNDED_PROVIDER_SCHEDULER` manifests must not declare `queue_depth_table`; leased queue consumption belongs to explicitly classified leased-job consumers before lifecycle, queue-health, or inventory harnesses consume the manifest.
+- **On-demand context**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, and worker runtime constraint semantics.
+- **Kill/defer criteria**: Stop if bounded provider schedulers intentionally lease queue tables, if validation only checks docs, or if the fix touches provider runtime worker behavior.
+- **Eval/repair signal**: provider scheduler queue-depth declarations, source adapter masquerading as leased queue consumer, runtime classification drift, manifest validation drift, and SDD generated index drift.
+- **Implementation**: Add manifest validation rejecting `queue_depth_table` whenever `runtime_constraint` is `BOUNDED_PROVIDER_SCHEDULER`.
+- **Verification**: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_provider_schedulers_with_queue_depth -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -2877,6 +2919,8 @@
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_dirty_consumers_without_dirty_targets -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_leased_consumers_without_queue_depth -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_provider_schedulers_without_provider_io -q`
+- [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_provider_schedulers_with_dirty_targets -q`
+- [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_provider_schedulers_with_queue_depth -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_unowned_queue_depth_tables -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_ledgers_on_non_side_effect_workers -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_wake_channels -q`

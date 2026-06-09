@@ -1055,6 +1055,26 @@ def _validate_worker_manifests() -> None:
     if missing_provider_io:
         raise ValueError(f"bounded provider scheduler manifests missing provider IO: {missing_provider_io}")
 
+    provider_dirty_targets = {
+        manifest.name: manifest.dirty_target_tables
+        for manifest in _WORKER_MANIFESTS
+        if manifest.runtime_constraint == WorkerRuntimeConstraint.BOUNDED_PROVIDER_SCHEDULER
+        and manifest.dirty_target_tables
+    }
+    if provider_dirty_targets:
+        raise ValueError(
+            f"bounded provider scheduler manifests declaring dirty target tables: {provider_dirty_targets}"
+        )
+
+    provider_queue_depths = {
+        manifest.name: manifest.queue_depth_table
+        for manifest in _WORKER_MANIFESTS
+        if manifest.runtime_constraint == WorkerRuntimeConstraint.BOUNDED_PROVIDER_SCHEDULER
+        and manifest.queue_depth_table is not None
+    }
+    if provider_queue_depths:
+        raise ValueError(f"bounded provider scheduler manifests declaring queue depth tables: {provider_queue_depths}")
+
     missing_dirty_control_owner = {
         manifest.name: sorted(set(manifest.dirty_target_tables) - set(manifest.writes_control_plane))
         for manifest in _WORKER_MANIFESTS

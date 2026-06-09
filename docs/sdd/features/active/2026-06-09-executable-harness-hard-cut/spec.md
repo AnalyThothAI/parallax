@@ -67,6 +67,8 @@ can both miss real process drift and block healthy refactors.
 | Dirty-target consumers must declare dirty targets. | `WorkerManifest` validation rejects `DIRTY_TARGET_CONSUMER` manifests that omit `dirty_target_tables`. |
 | Leased-job consumers must declare queue depth tables. | `WorkerManifest` validation rejects `LEASED_JOB_CONSUMER` manifests that omit `queue_depth_table`. |
 | Bounded provider schedulers must declare provider I/O. | `WorkerManifest` validation rejects `BOUNDED_PROVIDER_SCHEDULER` manifests that do not set `uses_provider_io`. |
+| Bounded provider schedulers must not declare dirty targets. | `WorkerManifest` validation rejects `BOUNDED_PROVIDER_SCHEDULER` manifests that declare `dirty_target_tables` before source adapters can masquerade as dirty-target consumers. |
+| Bounded provider schedulers must not declare queue depth tables. | `WorkerManifest` validation rejects `BOUNDED_PROVIDER_SCHEDULER` manifests that declare `queue_depth_table` before source adapters can masquerade as leased queue consumers. |
 | Queue depth tables must be worker-owned. | `WorkerManifest` validation rejects `queue_depth_table` values absent from the same manifest's owned tables. |
 | Queue depth tables must be strings. | `WorkerManifest` validation rejects non-string `queue_depth_table` declarations before table hygiene and queue-health harnesses consume them. |
 | Side-effect ledgers must belong to side-effect workers. | `WorkerManifest` validation rejects non-side-effect worker kinds that declare `side_effect_ledgers`. |
@@ -266,6 +268,8 @@ can both miss real process drift and block healthy refactors.
 - G108. Current read-model publisher payload column declarations reject lifecycle column names, so explicit payload hashing cannot reintroduce run/generation/timestamp drift.
 - G109. Current read-model publisher payload hash column declarations reject stable identity column names, so changed-row writes cannot overwrite serving identity keys.
 - G110. Current read-model publisher explicit payload hashing requires declared payload keys to exist in each row, so query drift cannot silently hash missing fields as null.
+- G111. Bounded provider scheduler runtime classification rejects dirty-target table declarations, so provider source adapters cannot silently acquire dirty-target consumer semantics.
+- G112. Bounded provider scheduler runtime classification rejects queue-depth table declarations, so provider source adapters cannot silently acquire leased queue consumer semantics.
 
 ## Non-goals
 
@@ -443,6 +447,8 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC130. WHEN `CurrentReadModelPublisher.payload_columns` contains a serving lifecycle column THEN publisher construction SHALL raise before explicit row payload hashing can reintroduce run, generation, attempt, or timestamp drift.
 - AC131. WHEN `CurrentReadModelPublisher.payload_hash_column` names a stable identity column THEN publisher construction SHALL raise before changed-row writes can overwrite serving identity keys.
 - AC132. WHEN `CurrentReadModelPublisher.payload_columns` names a field missing from a row THEN explicit row payload hashing SHALL raise instead of hashing the absent field as `None`.
+- AC133. WHEN a `WorkerManifest` is classified as `BOUNDED_PROVIDER_SCHEDULER` and declares `dirty_target_tables` THEN manifest validation SHALL raise before worker lifecycle, queue-health, or inventory harnesses can treat that provider source adapter as a dirty-target consumer.
+- AC134. WHEN a `WorkerManifest` is classified as `BOUNDED_PROVIDER_SCHEDULER` and declares `queue_depth_table` THEN manifest validation SHALL raise before worker lifecycle, queue-health, or inventory harnesses can treat that provider source adapter as a leased queue consumer.
 
 ## Risks
 

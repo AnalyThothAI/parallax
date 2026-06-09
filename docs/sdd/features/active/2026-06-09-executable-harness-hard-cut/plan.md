@@ -219,6 +219,8 @@ Known-failing baseline tests:
 - Reject `DIRTY_TARGET_CONSUMER` manifests that omit `dirty_target_tables` before worker lifecycle harnesses trust runtime classification.
 - Reject `LEASED_JOB_CONSUMER` manifests that omit `queue_depth_table` before queue-health harnesses trust runtime classification.
 - Reject `BOUNDED_PROVIDER_SCHEDULER` manifests that omit `uses_provider_io` before provider-boundary harnesses trust runtime classification.
+- Reject `BOUNDED_PROVIDER_SCHEDULER` manifests that declare `dirty_target_tables` before provider source adapters can masquerade as dirty-target consumers.
+- Reject `BOUNDED_PROVIDER_SCHEDULER` manifests that declare `queue_depth_table` before provider source adapters can masquerade as leased queue consumers.
 - Reject `queue_depth_table` declarations absent from the same manifest's owned tables before queue-health harnesses consume them.
 - Reject non-string `queue_depth_table` declarations before table hygiene, queue ownership, queue-health, registry, settings, or worker inventory harnesses consume them.
 - Reject non-side-effect worker kinds that declare `side_effect_ledgers` before ownership harnesses consume them.
@@ -368,6 +370,8 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Dirty-target consumers declare dirty targets. | Pass: `_validate_worker_manifests()` raises when a patched `DIRTY_TARGET_CONSUMER` manifest omits `dirty_target_tables`. |
 | Leased-job consumers declare queue depth tables. | Pass: `_validate_worker_manifests()` raises when a patched `LEASED_JOB_CONSUMER` manifest omits `queue_depth_table`. |
 | Bounded provider schedulers declare provider I/O. | Pass: `_validate_worker_manifests()` raises when a patched `BOUNDED_PROVIDER_SCHEDULER` manifest clears `uses_provider_io`. |
+| Bounded provider schedulers do not declare dirty targets. | Pass: `_validate_worker_manifests()` raises when a patched `BOUNDED_PROVIDER_SCHEDULER` manifest declares `dirty_target_tables`. |
+| Bounded provider schedulers do not declare queue depth tables. | Pass: `_validate_worker_manifests()` raises when a patched `BOUNDED_PROVIDER_SCHEDULER` manifest declares `queue_depth_table`. |
 | Queue depth tables are worker-owned. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares an unowned `queue_depth_table`. |
 | Queue depth tables are strings. | Pass: `_validate_worker_manifests()` raises before blank table checks when a patched manifest declares numeric `queue_depth_table`. |
 | Side-effect ledgers belong to side-effect workers. | Pass: `_validate_worker_manifests()` raises when a patched non-side-effect manifest declares `side_effect_ledgers`. |
@@ -569,6 +573,8 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC130: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_lifecycle_payload_columns -q`
 - AC131: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_identity_payload_hash_column -q`
 - AC132: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_missing_explicit_payload_column -q`
+- AC133: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_provider_schedulers_with_dirty_targets -q`
+- AC134: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_provider_schedulers_with_queue_depth -q`
 
 ## Verification
 
