@@ -71,6 +71,8 @@ can both miss real process drift and block healthy refactors.
 | Bounded provider schedulers must not declare queue depth tables. | `WorkerManifest` validation rejects `BOUNDED_PROVIDER_SCHEDULER` manifests that declare `queue_depth_table` before source adapters can masquerade as leased queue consumers. |
 | Bounded provider schedulers must not declare queue health tables. | `WorkerManifest` validation rejects `BOUNDED_PROVIDER_SCHEDULER` manifests that declare `queue_health_tables` before source adapters can masquerade as queue-health consumers. |
 | Queue depth tables must be worker-owned. | `WorkerManifest` validation rejects `queue_depth_table` values absent from the same manifest's owned tables. |
+| Queue depth tables must be control-plane-owned. | `WorkerManifest` validation rejects `queue_depth_table` values absent from the same manifest's `writes_control_plane` before facts or read models can masquerade as leased queues. |
+| Queue health tables must be control-plane-owned. | `WorkerManifest` validation rejects `queue_health_tables` values absent from the same manifest's `writes_control_plane` before facts or read models can masquerade as queue-health surfaces. |
 | Queue depth tables must be strings. | `WorkerManifest` validation rejects non-string `queue_depth_table` declarations before table hygiene and queue-health harnesses consume them. |
 | Side-effect ledgers must belong to side-effect workers. | `WorkerManifest` validation rejects non-side-effect worker kinds that declare `side_effect_ledgers`. |
 | Wake channels must be non-blank. | `WorkerManifest` validation rejects blank `wakes_on` and `wakes_out` channel declarations before listener/notify harnesses consume them. |
@@ -272,6 +274,8 @@ can both miss real process drift and block healthy refactors.
 - G111. Bounded provider scheduler runtime classification rejects dirty-target table declarations, so provider source adapters cannot silently acquire dirty-target consumer semantics.
 - G112. Bounded provider scheduler runtime classification rejects queue-depth table declarations, so provider source adapters cannot silently acquire leased queue consumer semantics.
 - G113. Bounded provider scheduler runtime classification rejects queue-health table declarations, so provider source adapters cannot silently acquire queue-health consumer semantics.
+- G114. Queue-depth table declarations require control-plane ownership, so fact and read-model tables cannot silently masquerade as leased queues.
+- G115. Explicit queue-health table declarations require control-plane ownership, so fact and read-model tables cannot silently masquerade as queue-health surfaces.
 
 ## Non-goals
 
@@ -452,6 +456,8 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC133. WHEN a `WorkerManifest` is classified as `BOUNDED_PROVIDER_SCHEDULER` and declares `dirty_target_tables` THEN manifest validation SHALL raise before worker lifecycle, queue-health, or inventory harnesses can treat that provider source adapter as a dirty-target consumer.
 - AC134. WHEN a `WorkerManifest` is classified as `BOUNDED_PROVIDER_SCHEDULER` and declares `queue_depth_table` THEN manifest validation SHALL raise before worker lifecycle, queue-health, or inventory harnesses can treat that provider source adapter as a leased queue consumer.
 - AC135. WHEN a `WorkerManifest` is classified as `BOUNDED_PROVIDER_SCHEDULER` and declares `queue_health_tables` THEN manifest validation SHALL raise before worker lifecycle, queue-health, or inventory harnesses can treat that provider source adapter as a queue-health consumer.
+- AC136. WHEN a `WorkerManifest.queue_depth_table` value is owned only through facts, read models, input observations, or side-effect ledgers and not through `writes_control_plane` THEN manifest validation SHALL raise before queue-health or inventory harnesses can treat the table as a leased queue.
+- AC137. WHEN a `WorkerManifest.queue_health_tables` value is owned only through facts, read models, input observations, or side-effect ledgers and not through `writes_control_plane` THEN manifest validation SHALL raise before queue-health or inventory harnesses can treat the table as a queue-health surface.
 
 ## Risks
 

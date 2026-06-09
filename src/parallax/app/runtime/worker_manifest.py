@@ -1110,6 +1110,26 @@ def _validate_worker_manifests() -> None:
     if missing_queue_health_owner:
         raise ValueError(f"queue health tables missing from worker ownership: {missing_queue_health_owner}")
 
+    missing_queue_depth_control_owner = {
+        manifest.name: manifest.queue_depth_table
+        for manifest in _WORKER_MANIFESTS
+        if manifest.queue_depth_table is not None and manifest.queue_depth_table not in manifest.writes_control_plane
+    }
+    if missing_queue_depth_control_owner:
+        raise ValueError(
+            f"queue depth tables missing from writes_control_plane: {missing_queue_depth_control_owner}"
+        )
+
+    missing_queue_health_control_owner = {
+        manifest.name: sorted(set(manifest.queue_health_tables) - set(manifest.writes_control_plane))
+        for manifest in _WORKER_MANIFESTS
+        if set(manifest.queue_health_tables) - set(manifest.writes_control_plane)
+    }
+    if missing_queue_health_control_owner:
+        raise ValueError(
+            f"queue health tables missing from writes_control_plane: {missing_queue_health_control_owner}"
+        )
+
     read_model_writer_by_table()
 
     non_tuple_current_identity_entries = {

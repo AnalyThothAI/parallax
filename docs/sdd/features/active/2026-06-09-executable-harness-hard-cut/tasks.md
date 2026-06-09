@@ -2854,6 +2854,48 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 136 — Queue depth tables are control-plane-owned
+
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 135
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for queue-depth control-plane ownership validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_queue_depth_tables_outside_control_plane` — patch a manifest to point `queue_depth_table` at an owned fact table and assert manifest validation raises before facts or read models can masquerade as leased queues.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Queue-depth declarations must be owned through `writes_control_plane`; generic `owned_tables` membership is not sufficient for queue-health harnesses.
+- **On-demand context**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, and worker queue-health ownership semantics.
+- **Kill/defer criteria**: Stop if leased queue depth is intentionally allowed for fact or read-model tables, if validation only checks docs, or if the fix touches worker runtime behavior.
+- **Eval/repair signal**: queue-depth table masquerading, fact/read-model queue drift, control-plane ownership drift, manifest validation drift, and SDD generated index drift.
+- **Implementation**: Add manifest validation rejecting `queue_depth_table` whenever the table is absent from the same manifest's `writes_control_plane`.
+- **Verification**: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_queue_depth_tables_outside_control_plane -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 137 — Queue health tables are control-plane-owned
+
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 136
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for queue-health control-plane ownership validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_queue_health_tables_outside_control_plane` — patch a manifest to point `queue_health_tables` at an owned read-model table and assert manifest validation raises before facts or read models can masquerade as queue-health surfaces.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Explicit queue-health declarations must be owned through `writes_control_plane`; generic `owned_tables` membership is not sufficient for queue-health harnesses.
+- **On-demand context**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, and worker queue-health ownership semantics.
+- **Kill/defer criteria**: Stop if queue-health reporting is intentionally allowed for fact or read-model tables, if validation only checks docs, or if the fix touches worker runtime behavior.
+- **Eval/repair signal**: queue-health table masquerading, fact/read-model queue-health drift, control-plane ownership drift, manifest validation drift, and SDD generated index drift.
+- **Implementation**: Add manifest validation rejecting `queue_health_tables` values absent from the same manifest's `writes_control_plane`.
+- **Verification**: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_queue_health_tables_outside_control_plane -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -2944,6 +2986,8 @@
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_provider_schedulers_with_queue_depth -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_provider_schedulers_with_queue_health_tables -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_unowned_queue_depth_tables -q`
+- [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_queue_depth_tables_outside_control_plane -q`
+- [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_queue_health_tables_outside_control_plane -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_ledgers_on_non_side_effect_workers -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_wake_channels -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_wake_channels -q`

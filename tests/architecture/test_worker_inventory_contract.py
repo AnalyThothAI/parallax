@@ -349,6 +349,54 @@ def test_worker_manifest_validation_rejects_unowned_queue_depth_tables(
 
 
 @pytest.mark.architecture
+def test_worker_manifest_validation_rejects_queue_depth_tables_outside_control_plane(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifests = list(all_worker_manifests())
+    first_queue_index, non_control_plane_table = next(
+        (index, table)
+        for index, manifest in enumerate(manifests)
+        if manifest.queue_depth_table
+        for table in (
+            *manifest.writes_input_observations,
+            *manifest.writes_facts,
+            *manifest.writes_read_models,
+            *manifest.side_effect_ledgers,
+        )
+        if table not in manifest.writes_control_plane
+    )
+    manifests[first_queue_index] = replace(
+        manifests[first_queue_index],
+        queue_depth_table=non_control_plane_table,
+    )
+    monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
+
+    with pytest.raises(ValueError, match="queue depth tables missing from writes_control_plane"):
+        worker_manifest_module._validate_worker_manifests()
+
+
+@pytest.mark.architecture
+def test_worker_manifest_validation_rejects_queue_health_tables_outside_control_plane(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifests = list(all_worker_manifests())
+    first_read_model_index, non_control_plane_table = next(
+        (index, table)
+        for index, manifest in enumerate(manifests)
+        for table in manifest.writes_read_models
+        if table not in manifest.writes_control_plane
+    )
+    manifests[first_read_model_index] = replace(
+        manifests[first_read_model_index],
+        queue_health_tables=(non_control_plane_table,),
+    )
+    monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
+
+    with pytest.raises(ValueError, match="queue health tables missing from writes_control_plane"):
+        worker_manifest_module._validate_worker_manifests()
+
+
+@pytest.mark.architecture
 def test_worker_manifest_validation_rejects_non_string_queue_depth_tables(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
