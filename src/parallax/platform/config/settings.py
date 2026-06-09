@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, SecretStr, field_validator, model_validator
 
 from parallax.platform.agent_execution import PULSE_DECISION_LANE
 from parallax.platform.paths.runtime_paths import app_home, app_log_path, config_path, workers_config_path
@@ -614,10 +614,19 @@ class MacrodataProviderConfig(BaseModel):
     quote_timeout_seconds: float = Field(default=5.0, gt=0)
     quote_cache_ttl_seconds: float = Field(default=30.0, ge=0)
     fred_api_key_env: str | None = "FINANCE_FRED_API_KEY"
+    fred_api_key: SecretStr | None = None
 
     @field_validator("fred_api_key_env", mode="before")
     @classmethod
     def parse_optional_string(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
+
+    @field_validator("fred_api_key", mode="before")
+    @classmethod
+    def parse_optional_secret(cls, value: Any) -> Any:
         if value is None:
             return None
         normalized = str(value).strip()
@@ -1019,8 +1028,8 @@ class MacroViewProjectionWorkerSettings(PerWorkerSettings):
     batch_size: int = Field(default=250, ge=1)
     statement_timeout_seconds: float = Field(default=30.0, ge=0)
     advisory_lock_key: int = 2026052109
-    lookback_days: int = Field(default=730, ge=1)
-    limit_per_series: int = Field(default=250, ge=1)
+    lookback_days: int = Field(default=1095, ge=1)
+    limit_per_series: int = Field(default=800, ge=1)
     wakes_on: tuple[str, ...] = ("macro_observations_imported",)
 
     @field_validator("wakes_on", mode="before")
@@ -1520,7 +1529,17 @@ class Settings(BaseModel):
         return self.providers.macrodata.fred_api_key_env
 
     @property
+    def macrodata_fred_api_key(self) -> str | None:
+        secret = self.providers.macrodata.fred_api_key
+        if secret is None:
+            return None
+        value = secret.get_secret_value().strip()
+        return value or None
+
+    @property
     def macrodata_fred_api_key_configured(self) -> bool:
+        if self.macrodata_fred_api_key:
+            return True
         env_name = self.macrodata_fred_api_key_env
         if not env_name:
             return False
@@ -1676,6 +1695,7 @@ providers:
     quote_timeout_seconds: 5
     quote_cache_ttl_seconds: 30
     fred_api_key_env: "FINANCE_FRED_API_KEY"
+    fred_api_key:
 
 {_default_news_intel_yaml()}
 
@@ -1875,6 +1895,8 @@ macro_view_projection:
   batch_size: 250
   statement_timeout_seconds: 30.0
   advisory_lock_key: 2026052109
+  lookback_days: 1095
+  limit_per_series: 800
   wakes_on: ["macro_observations_imported"]
 macro_daily_brief_projection:
   enabled: true

@@ -75,8 +75,11 @@ Macro freshness is normally owned by the `macro_sync` worker. Docker/runtime
 uses the packaged `macrodata` executable when the console script is healthy, or
 the installed Python package entrypoint when the script is absent or stale. It
 must not depend on `uv run macrodata` or a host-local macrodata checkout.
-Provide `FINANCE_FRED_API_KEY` through the environment or deployment secret
-manager when FRED coverage is needed; config stores only the env var name. Tune
+Provide a FRED API key either as `providers.macrodata.fred_api_key` in the
+operator-owned `~/.parallax/config.yaml`, or through the environment /
+deployment secret manager named by `providers.macrodata.fred_api_key_env`
+(default `FINANCE_FRED_API_KEY`). `uv run parallax config` and macro sync
+diagnostics report only whether a key is configured, never the key value. Tune
 `workers.macro_sync.macrodata_timeout_seconds` below the worker hard timeout so
 a stuck macrodata child process is killed and recorded as source-health
 failure.

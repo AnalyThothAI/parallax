@@ -187,6 +187,48 @@ def test_macrodata_runner_injects_fred_env_without_exposing_secret(monkeypatch) 
     assert secret not in " ".join(calls[0]["command"])
 
 
+def test_macrodata_runner_injects_configured_fred_key_without_exposing_secret(monkeypatch) -> None:
+    from parallax.integrations.macrodata.runner import MacrodataBundleRunner
+
+    secret = "configured-fred-secret"
+    stale_env_secret = "stale-parent-fred-secret"
+    calls: list[dict[str, object]] = []
+
+    class Settings:
+        macrodata_fred_api_key_env = "APP_FRED_KEY"
+        macrodata_fred_api_key = secret
+
+    class Completed:
+        returncode = 0
+        stdout = json.dumps(ENVELOPE)
+        stderr = ""
+
+    def fake_run(command, *, env, cwd, capture_output, text, check, timeout=None):
+        calls.append({"command": command, "env_fred_api_key": env.get("FRED_API_KEY"), "timeout": timeout})
+        return Completed()
+
+    monkeypatch.setenv("APP_FRED_KEY", stale_env_secret)
+    monkeypatch.setattr(
+        "parallax.integrations.macrodata.runner.resolve_macrodata_executable",
+        lambda *, environ=None: "/app/.venv/bin/macrodata",
+    )
+    monkeypatch.setattr("parallax.integrations.macrodata.runner.subprocess.run", fake_run)
+
+    result = MacrodataBundleRunner(settings=Settings()).history_bundle(
+        bundle="macro-core",
+        start="2026-01-01",
+        end="2026-05-21",
+    )
+
+    assert result.envelope == ENVELOPE
+    assert calls[0]["env_fred_api_key"] == secret
+    assert result.diagnostics["fred_api_key_env"] == "APP_FRED_KEY"
+    assert result.diagnostics["fred_api_key_configured"] is True
+    rendered = json.dumps(result.diagnostics)
+    assert secret not in rendered
+    assert stale_env_secret not in rendered
+
+
 def test_macrodata_runner_uses_default_fred_env_when_unset(monkeypatch) -> None:
     from parallax.integrations.macrodata.runner import MacrodataBundleRunner
 

@@ -43,7 +43,9 @@ class MacrodataBundleRunner:
         ]
         child_env = dict(self.environ)
         child_env.pop("FRED_API_KEY", None)
-        key_value = self.environ.get(fred_state["fred_api_key_env"], "").strip()
+        key_value = _configured_fred_api_key(settings=self.settings)
+        if not key_value:
+            key_value = self.environ.get(fred_state["fred_api_key_env"], "").strip()
         if key_value:
             child_env["FRED_API_KEY"] = key_value
 
@@ -231,9 +233,10 @@ def _executable_path_is_usable(path: str) -> bool:
 def fred_api_key_state(settings: object, *, environ: Mapping[str, str] | None = None) -> dict[str, Any]:
     env = os.environ if environ is None else environ
     env_name = _configured_fred_env_name(settings)
+    configured_key = _configured_fred_api_key(settings=settings)
     return {
         "fred_api_key_env": env_name,
-        "fred_api_key_configured": bool(env.get(env_name, "").strip()),
+        "fred_api_key_configured": bool(configured_key or env.get(env_name, "").strip()),
     }
 
 
@@ -247,6 +250,27 @@ def _configured_fred_env_name(settings: object) -> str:
     if isinstance(nested_env_name, str) and nested_env_name.strip():
         return nested_env_name.strip()
     return DEFAULT_FRED_API_KEY_ENV
+
+
+def _configured_fred_api_key(*, settings: object) -> str | None:
+    value = getattr(settings, "macrodata_fred_api_key", None)
+    normalized = _secret_string(value)
+    if normalized:
+        return normalized
+    providers = getattr(settings, "providers", None)
+    macrodata = getattr(providers, "macrodata", None)
+    nested_value = getattr(macrodata, "fred_api_key", None)
+    return _secret_string(nested_value)
+
+
+def _secret_string(value: object) -> str | None:
+    if value is None:
+        return None
+    getter = getattr(value, "get_secret_value", None)
+    if callable(getter):
+        value = getter()
+    normalized = str(value).strip()
+    return normalized or None
 
 
 def _macrodata_timeout_seconds(settings: object) -> float:

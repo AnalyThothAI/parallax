@@ -114,7 +114,7 @@ def test_repository_latest_observations_reads_projected_rows() -> None:
     assert params == ("macro_regime_v4", ["asset:spx"], 25)
 
 
-def test_repository_concept_history_counts_returns_projected_point_contract() -> None:
+def test_repository_concept_history_counts_returns_fact_point_contract() -> None:
     rows = [
         {
             "concept_key": "asset:spx",
@@ -132,15 +132,16 @@ def test_repository_concept_history_counts_returns_projected_point_contract() ->
     assert result == rows
     query, params = conn.executions[0]
     assert "WITH requested AS" in query
-    assert "FROM macro_observation_series_rows AS rows" in query
+    assert "FROM macro_observations AS observations" in query
     assert "macro_observation_series_active_generation" not in query
     assert "generation_id" not in query
-    assert "projection_version = %s" in query
-    assert "FROM macro_observations" not in query
+    assert "projection_version = %s" not in query
+    assert "observations.value_numeric IS NOT NULL" in query
+    assert "FROM macro_observation_series_rows" not in query
     assert "row_number() OVER" not in query
     assert "LEFT JOIN aggregated" in query
     assert "COALESCE(aggregated.points, 0)" in query
-    assert params == (["asset:spx"], "macro_regime_v4", 60)
+    assert params == (["asset:spx"], 60)
 
 
 def test_repository_refresh_observation_series_rows_writes_current_read_model() -> None:

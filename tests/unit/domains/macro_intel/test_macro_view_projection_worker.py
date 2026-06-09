@@ -70,15 +70,15 @@ def test_macro_view_projection_worker_writes_latest_snapshot() -> None:
     assert repo.refresh_call == {
         "projection_version": "macro_regime_v4",
         "now_ms": NOW_MS,
-        "lookback_days": 730,
-        "limit_per_series": 99,
+        "lookback_days": 1095,
+        "limit_per_series": 800,
         "claimed_targets": [target],
         "concept_keys": ("vol:vix",),
     }
     assert repo.observations_for_series_call == {
         "concept_keys": MACRO_CORE_CONCEPTS,
-        "lookback_days": 730,
-        "limit_per_series": 99,
+        "lookback_days": 1095,
+        "limit_per_series": 800,
     }
     assert len(repo.snapshots) == 1
     assert repo.snapshots[0]["snapshot_id"] == "macro-view:macro_regime_v4:current"
@@ -206,8 +206,8 @@ def _worker(db: FakeDB, *, wake_bus: object | None = None) -> MacroViewProjectio
         name="macro_view_projection",
         settings=SimpleNamespace(
             batch_size=250,
-            lookback_days=730,
-            limit_per_series=99,
+            lookback_days=1095,
+            limit_per_series=800,
             lease_ms=300_000,
             retry_ms=300_000,
             statement_timeout_seconds=30,

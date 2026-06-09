@@ -106,8 +106,8 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.macro_sync.retry_delay_ms == 900_000
     assert settings.macro_sync.max_attempts == 8
     assert settings.macro_sync.macrodata_timeout_seconds == 240.0
-    assert settings.macro_view_projection.lookback_days == 730
-    assert settings.macro_view_projection.limit_per_series == 250
+    assert settings.macro_view_projection.lookback_days == 1095
+    assert settings.macro_view_projection.limit_per_series == 800
     assert settings.macro_view_projection.wakes_on == ("macro_observations_imported",)
     assert settings.macro_daily_brief_projection.wakes_on == ("macro_view_snapshot_updated",)
     assert settings.notification_delivery.max_attempts == 5

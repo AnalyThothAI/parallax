@@ -345,6 +345,7 @@ def test_default_config_yaml_contains_macrodata_fred_env_pointer() -> None:
         "quote_timeout_seconds": 5,
         "quote_cache_ttl_seconds": 30,
         "fred_api_key_env": "FINANCE_FRED_API_KEY",
+        "fred_api_key": None,
     }
 
 
@@ -646,6 +647,29 @@ def test_macrodata_fred_configured_is_false_without_env_value(tmp_path, monkeypa
     assert settings.macrodata_fred_api_key_configured is False
 
 
+def test_macrodata_fred_api_key_can_be_configured_without_leaking(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("FINANCE_FRED_API_KEY", raising=False)
+    write_config(
+        tmp_path,
+        {
+            "ws_token": "secret",
+            "handles": ["toly"],
+            "providers": {
+                "macrodata": {
+                    "fred_api_key": "  config-fred-secret  ",
+                },
+            },
+        },
+    )
+
+    settings = load_settings()
+
+    assert settings.macrodata_fred_api_key == "config-fred-secret"
+    assert settings.macrodata_fred_api_key_configured is True
+    assert "config-fred-secret" not in repr(settings)
+
+
 def test_cli_config_reports_macrodata_without_secret(tmp_path, monkeypatch):
     from parallax.app.surfaces.cli.commands.config import handle_config
 
@@ -665,6 +689,38 @@ def test_cli_config_reports_macrodata_without_secret(tmp_path, monkeypatch):
         "fred_api_key_configured": True,
     }
     assert "secret-fred-key" not in str(payload)
+
+
+def test_cli_config_reports_configured_macrodata_config_key_without_secret(tmp_path, monkeypatch):
+    from parallax.app.surfaces.cli.commands.config import handle_config
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("FINANCE_FRED_API_KEY", raising=False)
+    write_config(
+        tmp_path,
+        {
+            "ws_token": "secret",
+            "handles": ["toly"],
+            "providers": {
+                "macrodata": {
+                    "fred_api_key": "config-fred-secret",
+                },
+            },
+        },
+    )
+
+    code, payload = handle_config(object())
+
+    assert code == 0
+    macrodata = payload["data"]["providers"]["macrodata"]
+    assert macrodata == {
+        "enabled": True,
+        "quote_timeout_seconds": 5.0,
+        "quote_cache_ttl_seconds": 30.0,
+        "fred_api_key_env": "FINANCE_FRED_API_KEY",
+        "fred_api_key_configured": True,
+    }
+    assert "config-fred-secret" not in str(payload)
 
 
 def test_okx_dex_ws_configured_requires_url_and_all_credentials(tmp_path, monkeypatch):

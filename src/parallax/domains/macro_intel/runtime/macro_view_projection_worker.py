@@ -164,10 +164,12 @@ class MacroViewProjectionWorker(WorkerBase):
         return max(1, int(getattr(self.settings, "batch_size", 250)))
 
     def _lookback_days(self) -> int:
-        return max(1, int(getattr(self.settings, "lookback_days", MACRO_VIEW_HISTORY_LOOKBACK_DAYS)))
+        configured = int(getattr(self.settings, "lookback_days", MACRO_VIEW_HISTORY_LOOKBACK_DAYS))
+        return max(MACRO_VIEW_HISTORY_LOOKBACK_DAYS, configured)
 
     def _limit_per_series(self) -> int:
-        return max(1, int(getattr(self.settings, "limit_per_series", MACRO_VIEW_HISTORY_LIMIT_PER_SERIES)))
+        configured = int(getattr(self.settings, "limit_per_series", MACRO_VIEW_HISTORY_LIMIT_PER_SERIES))
+        return max(MACRO_VIEW_HISTORY_LIMIT_PER_SERIES, configured)
 
     def _lease_ms(self) -> int:
         return max(1, int(getattr(self.settings, "lease_ms", 300_000)))

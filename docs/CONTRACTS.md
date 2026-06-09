@@ -596,9 +596,12 @@ absent or stale. It does not use `uv run macrodata` and does not require a
 host-local source checkout.
 The child process is bounded by `workers.macro_sync.macrodata_timeout_seconds`
 so worker hard-timeout cancellation is not the only stop mechanism.
-Docker operators provide `FINANCE_FRED_API_KEY` through environment or a
-deployment secret manager; config and payloads contain only env var names and
-booleans. For an explicit repair sync, operators run:
+Docker operators provide a FRED API key either as
+`providers.macrodata.fred_api_key` in the operator-owned config file or through
+the environment / deployment secret manager named by
+`providers.macrodata.fred_api_key_env` (default `FINANCE_FRED_API_KEY`);
+config/status payloads contain only env var names and configured booleans. For
+an explicit repair sync, operators run:
 
 ```bash
 uv run parallax macro sync --bundle macro-core --start <YYYY-MM-DD> --end <YYYY-MM-DD>
