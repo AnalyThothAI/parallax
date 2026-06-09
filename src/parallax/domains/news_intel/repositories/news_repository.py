@@ -2388,10 +2388,12 @@ class NewsRepository:
                    sources.trust_tier,
                    sources.source_name,
                    sources.coverage_tags_json,
-                   sources.authority_scope_json
+                   sources.authority_scope_json,
+                   provider_items.canonical_url AS provider_canonical_url
               FROM claimed
               JOIN picked ON picked.news_item_id = claimed.news_item_id
               JOIN news_sources AS sources ON sources.source_id = claimed.source_id
+              JOIN news_provider_items AS provider_items ON provider_items.provider_item_id = claimed.provider_item_id
              ORDER BY picked.claim_priority ASC,
                       claimed.processing_next_due_at_ms ASC,
                       claimed.published_at_ms ASC,

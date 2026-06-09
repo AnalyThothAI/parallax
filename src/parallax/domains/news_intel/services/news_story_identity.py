@@ -4,6 +4,7 @@ import hashlib
 import re
 from collections.abc import Mapping, Sequence
 from typing import Any
+from urllib.parse import urlparse
 
 from parallax.domains.news_intel.types.news_story_identity import NEWS_STORY_IDENTITY_VERSION, NewsStoryIdentity
 from parallax.domains.news_intel.types.text_normalization import title_fingerprint
@@ -11,9 +12,10 @@ from parallax.domains.news_intel.types.text_normalization import title_fingerpri
 _HOUR_MS = 60 * 60 * 1000
 _STRONG_BUCKET_MS = 12 * _HOUR_MS
 _MEDIUM_BUCKET_MS = 6 * _HOUR_MS
+_LISTING_BUCKET_MS = 24 * _HOUR_MS
 _SOURCE_PREFIX_RE = re.compile(r"^([a-z][a-z0-9&.+/-]*(?:[ -][a-z][a-z0-9&.+/-]*){0,2})[:：]\s+", re.IGNORECASE)
 _BULLET_PREFIX_RE = re.compile(r"^(?:[-*•·]+|\(?\d+[.)])\s+")
-_ARTICLE_KEY_RE = re.compile(r"^(?:opennews[:/_-])?([0-9]{3,})$", re.IGNORECASE)
+_PAREN_TICKER_RE = re.compile(r"[\(（]([A-Z][A-Z0-9]{1,11})[\)）]")
 _SOURCE_PREFIXES = frozenset(
     {
         "afp",
@@ -69,6 +71,72 @@ _STRONG_SUBJECT_RULES: tuple[tuple[str, frozenset[str]], ...] = (
 )
 _SPACEX_VALUATION_TOKENS = frozenset({"sale", "share", "shares", "tender", "valuation", "valuing"})
 _TRUMP_IRAN_TALKS_TOKENS = frozenset({"negotiation", "negotiations", "talk", "talks"})
+_EXCHANGE_LISTING_ACTION_TOKENS = frozenset(
+    {
+        "add",
+        "added",
+        "addition",
+        "adds",
+        "list",
+        "listed",
+        "listing",
+        "market",
+        "support",
+        "trade",
+        "trading",
+    }
+)
+_EXCHANGE_LISTING_ACTION_TEXT_MARKERS = (
+    "交易",
+    "上线",
+    "上新",
+    "市场",
+    "支撑",
+    "마켓",
+    "상장",
+    "추가",
+)
+_EXCHANGE_VENUE_TOKENS = frozenset(
+    {
+        "binance",
+        "bithumb",
+        "bybit",
+        "coinbase",
+        "gate",
+        "kraken",
+        "kucoin",
+        "mexc",
+        "okx",
+        "upbit",
+    }
+)
+_EXCHANGE_HOST_VENUES: tuple[tuple[str, str], ...] = (
+    ("upbit.com", "upbit"),
+    ("bithumb.com", "bithumb"),
+    ("binance.com", "binance"),
+    ("coinbase.com", "coinbase"),
+    ("okx.com", "okx"),
+    ("bybit.com", "bybit"),
+    ("kraken.com", "kraken"),
+    ("kucoin.com", "kucoin"),
+    ("mexc.com", "mexc"),
+    ("gate.io", "gate"),
+)
+_QUOTE_ASSET_TOKENS = frozenset(
+    {
+        "btc",
+        "eth",
+        "eur",
+        "krw",
+        "try",
+        "usd",
+        "usdc",
+        "usdt",
+    }
+)
+_QUOTE_TEXT_MARKERS: dict[str, tuple[str, ...]] = {
+    "krw": ("원화", "韩元", "韓元"),
+}
 
 
 def build_news_story_identity(
@@ -79,18 +147,6 @@ def build_news_story_identity(
     market_scope: Mapping[str, Any],
 ) -> NewsStoryIdentity:
     market_scope_basis = _market_scope_basis(market_scope)
-    provider_article_key = _opennews_article_key(item)
-    if provider_article_key:
-        return NewsStoryIdentity(
-            story_key=f"news-story:opennews-article:{provider_article_key}",
-            confidence="strong",
-            basis={
-                "method": "opennews_article_key",
-                "provider_article_key": provider_article_key,
-                **market_scope_basis,
-            },
-            version=NEWS_STORY_IDENTITY_VERSION,
-        )
 
     title = _field(item, "title", "") or _field(item, "headline", "")
     subject_text = " ".join(
@@ -107,6 +163,30 @@ def build_news_story_identity(
     normalized_title = _normalized_material_title(title)
     tokens = _material_tokens(subject_text or normalized_title)
     published_at_ms = _published_at_ms(item)
+
+    exchange_listing_subject = _exchange_listing_subject(
+        item=item,
+        title=title,
+        subject_text=subject_text,
+        token_mentions=token_mentions,
+        tokens=tokens,
+    )
+    if exchange_listing_subject:
+        bucket = _shifted_time_bucket(published_at_ms, _LISTING_BUCKET_MS)
+        return NewsStoryIdentity(
+            story_key=f"news-story:event:{exchange_listing_subject}:t{bucket}",
+            confidence="strong",
+            basis={
+                "method": "exchange_listing_event_key",
+                "subject": exchange_listing_subject,
+                "time_bucket_ms": _LISTING_BUCKET_MS,
+                "bucket_offset_ms": _LISTING_BUCKET_MS // 2,
+                "bucket": bucket,
+                "normalized_title": normalized_title,
+                **market_scope_basis,
+            },
+            version=NEWS_STORY_IDENTITY_VERSION,
+        )
 
     strong_subject = _strong_subject(tokens)
     if strong_subject:
@@ -158,20 +238,6 @@ def build_news_story_identity(
     )
 
 
-def _opennews_article_key(item: Mapping[str, Any]) -> str:
-    provider = str(_field(item, "provider_type", "")).casefold()
-    raw_keys = _field(item, "provider_article_keys_json", ())
-    if provider != "opennews" or isinstance(raw_keys, str) or not isinstance(raw_keys, Sequence):
-        return ""
-
-    for raw_key in raw_keys:
-        text = str(raw_key).strip()
-        match = _ARTICLE_KEY_RE.fullmatch(text)
-        if match:
-            return match.group(1)
-    return ""
-
-
 def _normalized_material_title(title: object) -> str:
     text = str(title or "").strip()
     for _ in range(3):
@@ -200,6 +266,103 @@ def _strong_subject(tokens: Sequence[str]) -> str:
         if required_tokens <= token_set:
             return subject
     return ""
+
+
+def _exchange_listing_subject(
+    *,
+    item: Mapping[str, Any],
+    title: object,
+    subject_text: str,
+    token_mentions: Sequence[Mapping[str, Any]],
+    tokens: Sequence[str],
+) -> str:
+    token_set = set(tokens)
+    venue = _exchange_venue(item=item, token_set=token_set)
+    if not venue:
+        return ""
+    if not _has_exchange_listing_action(subject_text=subject_text, token_set=token_set):
+        return ""
+    asset = _listing_asset(title=title, subject_text=subject_text, token_mentions=token_mentions)
+    if not asset:
+        return ""
+    quote_assets = _quote_assets(subject_text=subject_text, token_set=token_set, asset=asset)
+    quote_key = "-".join(quote_assets) if quote_assets else "spot"
+    return f"exchange-listing:{venue}:{asset}:{quote_key}"
+
+
+def _has_exchange_listing_action(*, subject_text: str, token_set: set[str]) -> bool:
+    if token_set & _EXCHANGE_LISTING_ACTION_TOKENS:
+        return True
+    return any(marker in subject_text for marker in _EXCHANGE_LISTING_ACTION_TEXT_MARKERS)
+
+
+def _exchange_venue(*, item: Mapping[str, Any], token_set: set[str]) -> str:
+    for venue in sorted(_EXCHANGE_VENUE_TOKENS):
+        if venue in token_set:
+            return venue
+    for field in ("provider_canonical_url", "provider_observation_url", "source_url"):
+        venue = _exchange_venue_from_url(_field(item, field, ""))
+        if venue:
+            return venue
+    return ""
+
+
+def _exchange_venue_from_url(value: object) -> str:
+    try:
+        host = (urlparse(str(value or "")).hostname or "").casefold()
+    except ValueError:
+        return ""
+    if not host:
+        return ""
+    for suffix, venue in _EXCHANGE_HOST_VENUES:
+        if host == suffix or host.endswith(f".{suffix}"):
+            return venue
+    return ""
+
+
+def _listing_asset(
+    *,
+    title: object,
+    subject_text: str,
+    token_mentions: Sequence[Mapping[str, Any]],
+) -> str:
+    for match in _PAREN_TICKER_RE.finditer(str(title or "")):
+        ticker = match.group(1).casefold()
+        if ticker and ticker not in _QUOTE_ASSET_TOKENS:
+            return ticker
+    for match in _PAREN_TICKER_RE.finditer(subject_text):
+        ticker = match.group(1).casefold()
+        if ticker and ticker not in _QUOTE_ASSET_TOKENS:
+            return ticker
+    for mention in token_mentions:
+        for field in ("display_symbol", "observed_symbol"):
+            symbol = str(_field(mention, field, "") or "").strip().casefold()
+            if symbol and symbol not in _QUOTE_ASSET_TOKENS:
+                return symbol
+    return ""
+
+
+def _quote_assets(*, subject_text: str, token_set: set[str], asset: str) -> list[str]:
+    upper_text = subject_text.upper()
+    quotes = {
+        quote
+        for quote in _QUOTE_ASSET_TOKENS
+        if quote != asset
+        and (
+            quote in token_set
+            or _contains_upper_token(upper_text, quote.upper())
+            or _contains_quote_text_marker(subject_text, quote)
+        )
+    }
+    return sorted(quotes)
+
+
+def _contains_quote_text_marker(subject_text: str, quote: str) -> bool:
+    return any(marker in subject_text for marker in _QUOTE_TEXT_MARKERS.get(quote, ()))
+
+
+def _contains_upper_token(text: str, token: str) -> bool:
+    return bool(re.search(rf"(?<![A-Z0-9]){re.escape(token)}(?![A-Z0-9])", text))
 
 
 def _canonical_subject_token(token: str) -> str:

@@ -140,10 +140,10 @@ def test_update_item_market_scope_and_story_identity_rejects_unsupported_story_i
                 "version": "news_market_scope_v1",
             },
             {
-                "story_key": "news-story:opennews-article:2367422",
+                "story_key": "news-story:event:exchange-listing:upbit:ctr:btc-usdt:t20613",
                 "confidence": "strong",
-                "basis": {"method": "opennews_article_key"},
-                "version": "news_story_identity_v1",
+                "basis": {"method": "exchange_listing_event_key"},
+                "version": "news_story_identity_v2",
             },
             "blank primary",
         ),
@@ -156,7 +156,7 @@ def test_update_item_market_scope_and_story_identity_rejects_unsupported_story_i
                 "basis": {"crypto_evidence": ["resolved_crypto_target:cex:BTC"]},
                 "version": "news_market_scope_v1",
             },
-            {"story_key": "", "confidence": "strong", "basis": {}, "version": "news_story_identity_v1"},
+            {"story_key": "", "confidence": "strong", "basis": {}, "version": "news_story_identity_v2"},
             "blank story_key",
         ),
     ],
@@ -194,10 +194,10 @@ def test_update_item_market_scope_and_story_identity_rejects_blank_required_fiel
                 "version": "news_market_scope_v1",
             },
             {
-                "story_key": "news-story:opennews-article:2367422",
+                "story_key": "news-story:event:exchange-listing:upbit:ctr:btc-usdt:t20613",
                 "confidence": "strong",
-                "basis": {"method": "opennews_article_key"},
-                "version": "news_story_identity_v1",
+                "basis": {"method": "exchange_listing_event_key"},
+                "version": "news_story_identity_v2",
             },
             "market scope payload.*scope must be list",
         ),
@@ -211,10 +211,10 @@ def test_update_item_market_scope_and_story_identity_rejects_blank_required_fiel
                 "version": "news_market_scope_v1",
             },
             {
-                "story_key": "news-story:opennews-article:2367422",
+                "story_key": "news-story:event:exchange-listing:upbit:ctr:btc-usdt:t20613",
                 "confidence": "strong",
-                "basis": {"method": "opennews_article_key"},
-                "version": "news_story_identity_v1",
+                "basis": {"method": "exchange_listing_event_key"},
+                "version": "news_story_identity_v2",
             },
             "market scope payload.*basis must be mapping",
         ),
@@ -228,10 +228,10 @@ def test_update_item_market_scope_and_story_identity_rejects_blank_required_fiel
                 "version": "news_market_scope_v1",
             },
             {
-                "story_key": "news-story:opennews-article:2367422",
+                "story_key": "news-story:event:exchange-listing:upbit:ctr:btc-usdt:t20613",
                 "confidence": "strong",
-                "basis": ["opennews_article_key"],
-                "version": "news_story_identity_v1",
+                "basis": ["exchange_listing_event_key"],
+                "version": "news_story_identity_v2",
             },
             "story identity payload.*basis must be mapping",
         ),
@@ -275,8 +275,8 @@ def test_update_item_market_scope_and_story_identity_writes_current_fields_only(
     assert "story_identity_version = %s" in conn.sql
     assert "updated_at_ms = %s" in conn.sql
     assert "analysis_admission" not in conn.sql
-    assert conn.params[1] == "news-story:opennews-article:2367422"
-    assert conn.params[3] == "news_story_identity_v1"
+    assert conn.params[1] == "news-story:event:exchange-listing:upbit:ctr:btc-usdt:t20613"
+    assert conn.params[3] == "news_story_identity_v2"
     assert conn.params[4] == 1_000
     assert conn.params[5] == "news-1"
 
@@ -300,7 +300,7 @@ def test_update_item_market_scope_and_agent_admission_writes_current_fields_only
     assert "agent_admission_reason = %s" in conn.sql
     assert "agent_representative_news_item_id = %s" in conn.sql
     assert "analysis_admission" not in conn.sql
-    assert conn.params[1] == "news-story:opennews-article:2367422"
+    assert conn.params[1] == "news-story:event:exchange-listing:upbit:ctr:btc-usdt:t20613"
     assert conn.params[4] == "eligible"
     assert conn.params[5] == "eligible"
     assert conn.params[8] == "news-1"
@@ -405,10 +405,13 @@ def _valid_market_scope_payload() -> dict[str, object]:
 
 def _valid_story_identity_payload() -> dict[str, object]:
     return {
-        "story_key": "news-story:opennews-article:2367422",
+        "story_key": "news-story:event:exchange-listing:upbit:ctr:btc-usdt:t20613",
         "confidence": "strong",
-        "basis": {"method": "opennews_article_key"},
-        "version": "news_story_identity_v1",
+        "basis": {
+            "method": "exchange_listing_event_key",
+            "subject": "exchange-listing:upbit:ctr:btc-usdt",
+        },
+        "version": "news_story_identity_v2",
     }
 
 

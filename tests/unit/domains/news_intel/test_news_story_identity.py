@@ -9,6 +9,7 @@ def _item(
     title: str,
     published_at_ms: int,
     provider_article_keys_json: list[str] | None = None,
+    provider_canonical_url: str = "",
     summary: str = "",
 ) -> dict[str, object]:
     payload: dict[str, object] = {
@@ -20,6 +21,8 @@ def _item(
     if provider_article_keys_json is not None:
         payload["provider_type"] = "opennews"
         payload["provider_article_keys_json"] = provider_article_keys_json
+    if provider_canonical_url:
+        payload["provider_canonical_url"] = provider_canonical_url
     return payload
 
 
@@ -217,7 +220,21 @@ def test_source_prefixes_and_bullet_prefixes_do_not_affect_key() -> None:
     assert prefixed.story_key == plain.story_key
 
 
-def test_matching_opennews_article_keys_prefer_provider_article_group() -> None:
+def test_opennews_article_key_does_not_become_story_identity() -> None:
+    identity = _identity(
+        _item(
+            news_item_id="article-1",
+            title="SpaceX valuation story",
+            published_at_ms=1_735_689_600_000,
+            provider_article_keys_json=["opennews:2367422"],
+        )
+    )
+
+    assert identity.story_key != "news-story:opennews-article:2367422"
+    assert identity.basis["method"] != "opennews_article_key"
+
+
+def test_opennews_same_title_items_still_group_without_article_identity() -> None:
     first = _identity(
         _item(
             news_item_id="article-1",
@@ -229,18 +246,94 @@ def test_matching_opennews_article_keys_prefer_provider_article_group() -> None:
     second = _identity(
         _item(
             news_item_id="article-2",
-            title="Different title for the same article",
-            published_at_ms=1_735_779_600_000,
+            title="SpaceX valuation story",
+            published_at_ms=1_735_689_660_000,
             provider_article_keys_json=["2367422"],
         )
     )
 
     assert first.story_key == second.story_key
-    assert first.story_key == "news-story:opennews-article:2367422"
-    assert first.confidence == "strong"
     assert first.basis["market_scope"] == ["crypto"]
     assert first.basis["market_scope_primary"] == "crypto"
     assert "admission_status" not in first.basis
+
+
+def test_exchange_listing_variants_group_to_same_event_story_key() -> None:
+    first = _identity(
+        _item(
+            news_item_id="upbit-citrea-1",
+            title="[Trade] Market Support for Citrea(CTR) (BTC, USDT Market)",
+            published_at_ms=1_780_972_202_947,
+            provider_article_keys_json=["opennews:2599805"],
+            provider_canonical_url="https://upbit.com/service_center/notice?id=6282",
+        )
+    )
+    second = _identity(
+        _item(
+            news_item_id="upbit-citrea-2",
+            title="UPBIT LISTING:【交易】Citrea(CTR)（BTC、USDT市场）市场支撑",
+            published_at_ms=1_780_972_203_025,
+            provider_article_keys_json=["opennews:2599811"],
+        )
+    )
+    third = _identity(
+        _item(
+            news_item_id="upbit-citrea-3",
+            title="UPBIT: UPBIT LISTING:【交易】Citrea(CTR)（BTC、USDT市场）市场支撑",
+            published_at_ms=1_780_972_203_025,
+            provider_article_keys_json=["opennews:2599812"],
+        )
+    )
+
+    assert first.story_key == second.story_key == third.story_key
+    assert first.story_key.startswith("news-story:event:exchange-listing:upbit:ctr:btc-usdt:t")
+    assert first.confidence == "strong"
+    assert first.basis["method"] == "exchange_listing_event_key"
+
+
+def test_exchange_listing_keeps_different_venues_separate() -> None:
+    upbit = _identity(
+        _item(
+            news_item_id="upbit-citrea",
+            title="[Trade] Market Support for Citrea(CTR) (BTC, USDT Market)",
+            published_at_ms=1_780_972_202_947,
+        )
+    )
+    bithumb = _identity(
+        _item(
+            news_item_id="bithumb-citrea",
+            title="Bithumb Listing: [마켓 추가] 시트레아(CTR) 원화 마켓 추가",
+            published_at_ms=1_780_969_207_417,
+        )
+    )
+
+    assert upbit.story_key != bithumb.story_key
+
+
+def test_exchange_listing_detects_provider_url_and_multilingual_action() -> None:
+    identity = _identity(
+        _item(
+            news_item_id="upbit-citrea-official",
+            title="【交易】Citrea(CTR)（BTC、USDT市场）市场支撑",
+            published_at_ms=1_780_972_203_025,
+            provider_canonical_url="https://upbit.com/service_center/notice?id=6282",
+        )
+    )
+
+    assert identity.story_key.startswith("news-story:event:exchange-listing:upbit:ctr:btc-usdt:t")
+    assert identity.basis["method"] == "exchange_listing_event_key"
+
+
+def test_exchange_listing_detects_krw_quote_aliases() -> None:
+    identity = _identity(
+        _item(
+            news_item_id="bithumb-citrea-krw",
+            title="Bithumb Listing: [마켓 추가] 시트레아(CTR) 원화 마켓 추가",
+            published_at_ms=1_780_969_207_417,
+        )
+    )
+
+    assert identity.story_key.startswith("news-story:event:exchange-listing:bithumb:ctr:krw:t")
 
 
 def test_article_key_alone_is_ignored() -> None:
@@ -256,7 +349,7 @@ def test_article_key_alone_is_ignored() -> None:
     assert identity.story_key != "news-story:opennews-article:2367422"
 
 
-def test_opennews_article_key_requires_repository_provider_type() -> None:
+def test_provider_article_keys_never_drive_story_identity() -> None:
     item = {
         "news_item_id": "wrong-provider",
         "title": "Different title for a non-opennews article key",

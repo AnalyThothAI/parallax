@@ -615,7 +615,7 @@ class NewsItemBriefWorker(WorkerBase):
                 workflow_name=str(audit.get("workflow_name") or agent_config.workflow_name),
                 agent_name=str(audit.get("agent_name") or agent_config.agent_name),
                 lane=str(audit.get("lane") or agent_config.lane),
-                artifact_version_hash=str(audit.get("artifact_version_hash") or agent_config.artifact_version_hash),
+                artifact_version_hash=agent_config.artifact_version_hash,
                 prompt_version=str(audit.get("prompt_version") or agent_config.prompt_version),
                 schema_version=str(audit.get("schema_version") or agent_config.schema_version),
                 validator_version=agent_config.validator_version,

@@ -46,6 +46,12 @@ forced into a resolved asset.
   how it groups for the current serving projection.
   Story identity is rebuildable state over facts, not a separate material truth
   table.
+- Provider-native article ids, including OpenNews ids, are evidence only. They
+  may appear in story/member evidence for auditability, but must not become a
+  `story_key`. Stable story identity is derived from product facts such as
+  exchange-listing venue, asset, quote market, and time bucket, then from
+  normalized material title buckets, and finally from item-level keys for weak
+  low-information items.
 - Public `http://` and `https://` URLs admitted by
   `public_url_identity_policy` are the hard identity for `news_items`.
   Homepage, aggregator, live page, feed, preview, and generic announcement URLs

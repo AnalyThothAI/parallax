@@ -236,6 +236,15 @@ NEWS_PAGE_ALERT_READY_INDEX_MIGRATION = Path(
 NEWS_PAGE_REMOVE_DISPLAY_SCORE_INDEX_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260609_0165_news_page_remove_display_score_index.py"
 )
+NEWS_AGENT_RUN_ARTIFACT_HASH_CANONICAL_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260609_0166_news_agent_run_artifact_hash_canonical.py"
+)
+NEWS_STORY_IDENTITY_V2_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260609_0167_news_story_identity_v2.py"
+)
+NEWS_STORY_IDENTITY_V2_REMAINING_OPENNEWS_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260609_0168_news_story_identity_v2_remaining_opennews.py"
+)
 TOKEN_PULSE_EQUITY_CPU_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260529_0124_token_pulse_equity_cpu_hard_cut.py"
 )
@@ -2067,6 +2076,88 @@ def test_news_page_display_score_index_is_removed_after_score_filter_hard_cut() 
         assert statement in normalized_text or statement in text
     assert "CREATE INDEX" not in normalized_text
     assert "display_signal' ->> 'score" not in normalized_text
+
+
+def test_news_agent_run_artifact_hash_migration_canonicalizes_from_current_brief() -> None:
+    assert NEWS_AGENT_RUN_ARTIFACT_HASH_CANONICAL_MIGRATION.exists(), (
+        f"{NEWS_AGENT_RUN_ARTIFACT_HASH_CANONICAL_MIGRATION} missing; canonicalize News agent run artifact hashes"
+    )
+    text = NEWS_AGENT_RUN_ARTIFACT_HASH_CANONICAL_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+
+    for statement in (
+        'revision = "20260609_0166"',
+        'down_revision = "20260609_0165"',
+        "UPDATE news_item_agent_runs AS runs",
+        "SET artifact_version_hash = briefs.artifact_version_hash",
+        "FROM news_item_agent_briefs AS briefs",
+        "briefs.agent_run_id = runs.run_id",
+        "runs.artifact_version_hash IS DISTINCT FROM briefs.artifact_version_hash",
+        "runs.prompt_version = briefs.prompt_version",
+        "runs.schema_version = briefs.schema_version",
+        "runs.validator_version = briefs.validator_version",
+        "ANALYZE news_item_agent_runs",
+    ):
+        assert statement in normalized_text or statement in text
+    assert "def downgrade() -> None:" in text
+    assert "pass" in text.split("def downgrade() -> None:", maxsplit=1)[1]
+
+
+def test_news_story_identity_v2_migration_rekeys_opennews_article_stories() -> None:
+    assert NEWS_STORY_IDENTITY_V2_MIGRATION.exists(), (
+        f"{NEWS_STORY_IDENTITY_V2_MIGRATION} missing; hard-cut News story identity v2"
+    )
+    text = NEWS_STORY_IDENTITY_V2_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+
+    for statement in (
+        'revision = "20260609_0167"',
+        'down_revision = "20260609_0166"',
+        "news_story_identity_v2",
+        "exchange_listing_event_key",
+        "news-story:event:exchange-listing:",
+        "UPDATE news_items AS items",
+        "story_identity_json = jsonb_build_object",
+        "WHERE items.story_key ~ '^news-story:opennews-article:'",
+        "INSERT INTO news_projection_dirty_targets",
+        "projection_name, target_kind, target_id, \"window\"",
+        "'page'",
+        "'news_item'",
+        "'news_story_identity_v2'",
+        "ANALYZE news_items",
+        "ANALYZE news_page_rows",
+    ):
+        assert statement in normalized_text or statement in text
+    assert "provider_article_key" not in normalized_text
+    assert "def downgrade() -> None:" in text
+    assert "pass" in text.split("def downgrade() -> None:", maxsplit=1)[1]
+
+
+def test_news_story_identity_v2_remaining_opennews_migration_hard_cuts_provider_story_keys() -> None:
+    assert NEWS_STORY_IDENTITY_V2_REMAINING_OPENNEWS_MIGRATION.exists(), (
+        f"{NEWS_STORY_IDENTITY_V2_REMAINING_OPENNEWS_MIGRATION} missing; hard-cut remaining OpenNews story keys"
+    )
+    text = NEWS_STORY_IDENTITY_V2_REMAINING_OPENNEWS_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+
+    for statement in (
+        'revision = "20260609_0168"',
+        'down_revision = "20260609_0167"',
+        "WHERE items.story_key ~ '^news-story:opennews-article:'",
+        "material_title_shifted_time_bucket",
+        "weak_item_level",
+        "news-story:title:",
+        "news-story:item:",
+        "story_identity_version = 'news_story_identity_v2'",
+        "news_story_identity_v2_remaining_opennews",
+        "INSERT INTO news_projection_dirty_targets",
+        "ANALYZE news_items",
+        "ANALYZE news_page_rows",
+    ):
+        assert statement in normalized_text or statement in text
+    assert "provider_article_key" not in normalized_text
+    assert "def downgrade() -> None:" in text
+    assert "pass" in text.split("def downgrade() -> None:", maxsplit=1)[1]
 
 
 def test_news_agent_market_admission_migration_adds_agent_admission_columns_and_indexes() -> None:

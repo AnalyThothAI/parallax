@@ -598,7 +598,9 @@ def test_news_item_process_admitted_crypto_row_enqueues_page_and_brief_with_stor
     assert db.repo.entities["news-zec"][0].normalized_value == "ZEC"
     assert db.repo.mentions["news-zec"][0].observed_symbol == "ZEC"
     assert db.repo.market_scope_story_updates[0]["market_scope"].primary == "crypto"
-    assert db.repo.market_scope_story_updates[0]["story_identity"].story_key == "news-story:opennews-article:2367422"
+    assert db.repo.market_scope_story_updates[0]["story_identity"].story_key.startswith(
+        "news-story:event:exchange-listing:coinbase:zec:spot:t"
+    )
     assert db.repo.agent_admission_updates[0]["admission"].status == "eligible"
     assert db.dirty.enqueued == [
         {

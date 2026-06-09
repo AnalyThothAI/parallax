@@ -21,6 +21,10 @@ def test_worker_writes_ready_brief_and_emits_wake() -> None:
     asyncio.run(_test_worker_writes_ready_brief_and_emits_wake())
 
 
+def test_worker_canonicalizes_run_artifact_hash_to_worker_config() -> None:
+    asyncio.run(_test_worker_canonicalizes_run_artifact_hash_to_worker_config())
+
+
 def test_worker_publishes_market_wide_proxy_brief_without_domain_validation_failure() -> None:
     asyncio.run(_test_worker_publishes_market_wide_proxy_brief_without_domain_validation_failure())
 
@@ -75,6 +79,18 @@ async def _test_worker_writes_ready_brief_and_emits_wake() -> None:
     assert result.failed == 0
     assert result.notes["ready"] == 1
     assert result.notes["claimed"] == 1
+
+
+async def _test_worker_canonicalizes_run_artifact_hash_to_worker_config() -> None:
+    db = FakeDB([_candidate()])
+    provider = FakeBriefProvider(payload=_ready_payload(), audit_artifact_version_hash="agent-audit-hash")
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert result.processed == 1
+    assert db.news.runs[0]["artifact_version_hash"] == provider.artifact_version_hash
+    assert db.news.briefs[0]["artifact_version_hash"] == provider.artifact_version_hash
 
 
 async def _test_worker_publishes_market_wide_proxy_brief_without_domain_validation_failure() -> None:
@@ -879,12 +895,14 @@ class FakeBriefProvider:
         audit_error: Exception | None = None,
         reserve_error: Exception | None = None,
         brief_error: Exception | None = None,
+        audit_artifact_version_hash: str | None = None,
     ) -> None:
         self.payload = payload or _ready_payload()
         self.reservation = reservation or AgentCapacityReservation(lane=NEWS_ITEM_BRIEF_LANE, acquired=True)
         self.audit_error = audit_error
         self.reserve_error = reserve_error
         self.brief_error = brief_error
+        self.audit_artifact_version_hash = audit_artifact_version_hash or self.artifact_version_hash
         self.reserve_calls: list[str] = []
         self.reserve_rate_units: list[int] = []
         self.request_audit_calls: list[str] = []
@@ -908,7 +926,12 @@ class FakeBriefProvider:
         self.request_audit_calls.append(run_id)
         if self.audit_error is not None:
             raise self.audit_error
-        return _audit(run_id=run_id, packet=packet, execution_started=False)
+        return _audit(
+            run_id=run_id,
+            packet=packet,
+            execution_started=False,
+            artifact_version_hash=self.audit_artifact_version_hash,
+        )
 
     async def brief_item(self, *, run_id: str, packet: Any, reservation: Any | None = None) -> dict[str, Any]:
         self.execution_calls += 1
@@ -919,7 +942,12 @@ class FakeBriefProvider:
             raise self.brief_error
         return {
             "payload": self.payload,
-            "agent_run_audit": _audit(run_id=run_id, packet=packet, execution_started=True),
+            "agent_run_audit": _audit(
+                run_id=run_id,
+                packet=packet,
+                execution_started=True,
+                artifact_version_hash=self.audit_artifact_version_hash,
+            ),
         }
 
     def packet_for_candidate(self, candidate: dict[str, Any]) -> Any:
@@ -952,7 +980,13 @@ class FakeBriefProvider:
         )
 
 
-def _audit(*, run_id: str, packet: Any, execution_started: bool) -> dict[str, Any]:
+def _audit(
+    *,
+    run_id: str,
+    packet: Any,
+    execution_started: bool,
+    artifact_version_hash: str = "artifact-hash-1",
+) -> dict[str, Any]:
     return {
         "provider": "litellm",
         "backend": "litellm_sdk",
@@ -966,7 +1000,7 @@ def _audit(*, run_id: str, packet: Any, execution_started: bool) -> dict[str, An
         "prompt_version": packet.prompt_version,
         "schema_version": packet.schema_version,
         "runtime_version": "agent-execution-plane-v1",
-        "artifact_version_hash": "artifact-hash-1",
+        "artifact_version_hash": artifact_version_hash,
         "input_hash": packet.input_hash,
         "output_hash": "output-hash-1" if execution_started else None,
         "latency_ms": 123 if execution_started else None,
