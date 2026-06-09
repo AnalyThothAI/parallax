@@ -31,7 +31,7 @@ def build_macro_daily_brief(*, snapshot: Mapping[str, Any] | None, computed_at_m
     quality = _data_quality(snapshot)
     risk = _risk_label(features)
     dollar = _delta(features, "fx:dxy")
-    wti = _delta(features, "commodity:wti")
+    wti = _first_delta(features, "commodity:wti_futures", "commodity:wti")
     btc = _delta(features, "crypto:btc")
     spx = _delta(features, "asset:spx")
     ten_year = _delta(features, "rates:dgs10")
@@ -189,6 +189,14 @@ def _delta(features: Mapping[str, Any], concept_key: str) -> float | None:
         return None if value is None else float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _first_delta(features: Mapping[str, Any], *concept_keys: str) -> float | None:
+    for concept_key in concept_keys:
+        value = _delta(features, concept_key)
+        if value is not None:
+            return value
+    return None
 
 
 def _positive(value: float | None) -> bool:

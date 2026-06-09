@@ -6,12 +6,12 @@ export type AssetMarketGroup = {
 };
 
 export type AssetMarketRow = {
-  date: string;
   delta: string;
   deltaTone: "up" | "down" | "flat";
   id: string;
   latest: string;
   name: string;
+  quality: string;
   symbol: string;
 };
 

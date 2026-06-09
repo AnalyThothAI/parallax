@@ -287,6 +287,41 @@ def test_assets_landing_module_view_includes_daily_brief_without_redirecting_to_
     assert view["tables"][0]["id"] == "asset_group_snapshot"
 
 
+def test_assets_landing_prefers_fresh_wti_futures_over_stale_fred_spot() -> None:
+    snapshot = _snapshot()
+    snapshot["features_json"]["commodity:wti"] = {
+        **_feature("commodity:wti", 95.96, unit="usd_per_barrel", source_name="fred"),
+        "latest": {"value": 95.96, "observed_at": "2026-06-01", "unit": "usd_per_barrel"},
+        "freshness_days": 8,
+        "stale_after_days": 7,
+        "data_gaps": [
+            {
+                "code": "stale_latest_8d",
+                "label": "最新观测滞后：8 天",
+                "severity": "warning",
+                "score_participation": False,
+            }
+        ],
+    }
+    snapshot["features_json"]["commodity:wti_futures"] = _feature(
+        "commodity:wti_futures",
+        91.3,
+        unit="usd",
+        source_name="yahoo",
+    )
+
+    view = build_macro_module_view("assets", snapshot=snapshot, observations=[])
+
+    chart_keys = [series["concept_key"] for series in view["primary_chart"]["series"]]
+    assert "commodity:wti_futures" in chart_keys
+    assert "commodity:wti" not in chart_keys
+    table_row_ids = [row["row_id"] for row in view["tables"][0]["rows"]]
+    assert "commodity:wti_futures" in table_row_ids
+    assert "commodity:wti" not in table_row_ids
+    module_gap_codes = {gap["code"] for gap in view["data_health"]["module_gaps"]}
+    assert "stale_latest_8d" not in module_gap_codes
+
+
 def test_module_view_uses_semantic_chart_table_titles_for_every_catalog_spec() -> None:
     snapshot = _snapshot()
     for config in list_macro_module_configs():
@@ -616,6 +651,8 @@ def _feature(concept_key: str, value: float, *, unit: str, source_name: str) -> 
         "asset:spy": ("标普500 ETF", "SPY", "美国大盘股可交易风险偏好代理", "美元"),
         "asset:qqq": ("纳指100 ETF", "QQQ", "美国成长股风险偏好代理", "美元"),
         "asset:tlt": ("长期美债 ETF", "TLT", "长久期利率敏感资产代理", "美元"),
+        "commodity:wti": ("WTI 原油现货", "WTI Spot", "FRED 原油现货宏观参考", "美元/桶"),
+        "commodity:wti_futures": ("WTI 原油期货", "CL=F", "WTI 原油可交易期货代理", "美元"),
         "vol:vix": ("VIX", "VIX", "标普500 隐含波动率压力", "点"),
         "credit:hy_oas": ("高收益债 OAS", "HY OAS", "美国高收益债信用利差压力", "%"),
         "crypto:btc": ("比特币", "BTC", "加密资产宏观风险偏好代理", "美元"),

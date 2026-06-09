@@ -13,7 +13,7 @@ const CORE_PAGE_CONTRACTS = [
   },
   {
     route: "/macro/assets",
-    regions: ["市场仪表盘", "今日判断", "60日相关性", "数据诊断"],
+    regions: ["今日判断", "核心资产行情", "60日相关性", "数据诊断"],
     visibleText: "今日判断：风险资产偏震荡",
   },
   {
@@ -101,8 +101,8 @@ test.describe("macro terminal navigation hardening", () => {
 
     await expect(page).toHaveURL(/\/macro\/assets$/);
     await expect(page.getByRole("heading", { name: "大类资产" })).toBeVisible();
-    await expect(page.getByRole("region", { name: "市场仪表盘" })).toBeVisible();
     await expect(page.getByRole("region", { name: "今日判断" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "核心资产行情" })).toBeVisible();
 
     await expectNoDocumentHorizontalOverflow(page);
     await expectNoUnhandledApiRequests(page);

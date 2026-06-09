@@ -6,8 +6,44 @@
 
   .macro-daily-brief > strong {
     color: var(--text-primary, #f8fafc);
-    font-size: 1rem;
+    font-size: 1.02rem;
     line-height: 1.35;
+  }
+
+  .macro-daily-brief-quality {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-width: 0;
+    margin: 0;
+  }
+
+  .macro-daily-brief-quality div {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    min-width: 0;
+    padding: 5px 8px;
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    border-radius: 8px;
+    background: rgba(10, 16, 27, 0.3);
+  }
+
+  .macro-daily-brief-quality dt,
+  .macro-daily-brief-quality dd {
+    margin: 0;
+    white-space: nowrap;
+  }
+
+  .macro-daily-brief-quality dt {
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.7rem;
+  }
+
+  .macro-daily-brief-quality dd {
+    color: var(--text-primary, #f8fafc);
+    font-size: 0.78rem;
+    font-weight: 800;
   }
 
   .macro-daily-brief-grid {
@@ -54,7 +90,7 @@
 
   .macro-assets-market-board {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
+    grid-template-columns: minmax(0, 1fr);
     gap: 14px;
     min-width: 0;
   }
@@ -79,11 +115,18 @@
 
   .macro-assets-group-head h4,
   .macro-assets-pair-group h4,
-  .macro-assets-diagnostics-section > h4 {
+  .macro-assets-diagnostics-section > h4,
+  .macro-assets-diagnostics-section > summary {
     margin: 0;
     color: var(--text-primary, #f8fafc);
     font-size: 0.84rem;
     line-height: 1.25;
+  }
+
+  .macro-assets-diagnostics-section > summary {
+    cursor: pointer;
+    font-weight: 800;
+    list-style-position: inside;
   }
 
   .macro-assets-group-head a,
@@ -149,6 +192,29 @@
   .macro-assets-market-table td,
   .macro-assets-availability-table td {
     color: var(--text-secondary, #cbd5e1);
+  }
+
+  .macro-assets-market-name {
+    min-width: 0;
+  }
+
+  .macro-assets-market-name > span:first-child {
+    display: block;
+    min-width: 0;
+  }
+
+  .macro-assets-row-quality {
+    display: none;
+    min-width: 0;
+    margin-top: 2px;
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.68rem;
+    font-weight: 700;
+    line-height: 1.3;
+  }
+
+  .macro-assets-quality-cell {
+    white-space: nowrap;
   }
 
   .macro-assets-market-table th:nth-child(3),
@@ -241,8 +307,14 @@
   }
 
   .macro-assets-diagnostics-section {
+    display: grid;
+    gap: 10px;
     padding-top: 10px;
     border-top: 1px solid rgba(148, 163, 184, 0.12);
+  }
+
+  .macro-assets-diagnostics-section:not([open]) {
+    gap: 0;
   }
 
   .macro-assets-health-buckets {
@@ -329,6 +401,25 @@
     .macro-assets-correlation-layout,
     .macro-assets-diagnostics-summary {
       grid-template-columns: minmax(0, 1fr);
+    }
+
+    .macro-assets-market-table th,
+    .macro-assets-market-table td {
+      padding: 8px 7px;
+      font-size: 0.76rem;
+    }
+
+    .macro-assets-market-table thead th {
+      font-size: 0.62rem;
+    }
+
+    .macro-assets-market-table th:nth-child(5),
+    .macro-assets-market-table td:nth-child(5) {
+      display: none;
+    }
+
+    .macro-assets-row-quality {
+      display: block;
     }
   }
 }

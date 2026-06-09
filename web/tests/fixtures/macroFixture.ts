@@ -203,6 +203,12 @@ export function macroAssetsModuleFixture(
       asof_date: "2026-05-20",
       status: "partial",
       headline: "今日判断：风险资产偏震荡",
+      data_quality: {
+        status: "partial",
+        gap_count: 7,
+        latest_coverage_ratio: 1,
+        history_coverage_ratio: 0.84,
+      },
       blocks: [
         {
           id: "cross_correlation",
