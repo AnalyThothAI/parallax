@@ -245,7 +245,6 @@ def test_observation_series_readers_read_current_rows_directly() -> None:
         assert "FROM macro_observations" not in query
 
     history_query, history_params = conn.executions[2]
-<<<<<<< HEAD
     assert_query_contract(
         history_query,
         params=history_params,
@@ -255,13 +254,6 @@ def test_observation_series_readers_read_current_rows_directly() -> None:
         forbidden_fragments=("generation_id", "row_number() over", "series_rank = 1"),
         expected_params=(["asset:spy"], "macro_regime_v4", 60),
     )
-=======
-    assert "FROM macro_observation_series_rows AS rows" in history_query
-    assert "rows.value_numeric IS NOT NULL" in history_query
-    assert "FROM macro_observations" not in history_query
-    assert "projection_version = %s" in history_query
-    assert history_params == (["asset:spy"], "macro_regime_v4", 60)
->>>>>>> codex/macro-intel-redesign
 
 
 def _series_row(
