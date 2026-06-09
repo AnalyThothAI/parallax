@@ -1,6 +1,7 @@
 # Verification — `<feature title>`
 
 **Status**: Draft | Approved | In Progress | Review | Blocked | Verified | Superseded
+**Superseded by**: `<required existing repo path when Status is Superseded>`
 **Date**: YYYY-MM-DD
 **Owning spec**: `docs/sdd/features/active/YYYY-MM-DD-<slug>/spec.md`
 **Owning plan**: `docs/sdd/features/active/YYYY-MM-DD-<slug>/plan.md`

@@ -52,6 +52,9 @@ active touch-set conflicts without an explicit coordination rule.
 ## Status Rules
 
 Every artifact has a `Status:` line in the first 40 lines. Active feature artifacts use `Draft`, `Approved`, `In Progress`, `Review`, or `Blocked`. Completed feature artifacts use `Verified` or `Superseded`.
+Every artifact in a `Superseded` feature must also include `**Superseded by**:`
+with an existing repo path to the successor SDD record; prose references do not
+count.
 
 Run this check after changing the lane:
 

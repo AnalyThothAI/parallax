@@ -1,6 +1,7 @@
 # Spec — `<feature title>`
 
 **Status**: Draft | Approved | In Progress | Review | Blocked | Verified | Superseded
+**Superseded by**: `<required existing repo path when Status is Superseded>`
 **Date**: YYYY-MM-DD
 **Owner**: <user / agent name>
 **Approved by**: <user / delegated goal / pending>

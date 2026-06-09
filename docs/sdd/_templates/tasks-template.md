@@ -1,6 +1,7 @@
 # Tasks — `<feature title>`
 
 **Status**: Draft | Approved | In Progress | Review | Blocked | Verified | Superseded
+**Superseded by**: `<required existing repo path when Status is Superseded>`
 **Owning plan**: `docs/sdd/features/active/YYYY-MM-DD-<slug>/plan.md`
 **Worktree**: `.worktrees/<branch-slug>/`
 **Branch**: `<branch>`

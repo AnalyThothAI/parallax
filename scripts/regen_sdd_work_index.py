@@ -248,7 +248,9 @@ def _issue_meaning(code: str) -> str:
         "verified-missing-check-all": "Verified record lacks successful make check-all evidence.",
         "verified-contradicts-evidence": "Verified record contains text that contradicts final evidence.",
         "verified-unexplained-skips": "Verified record has skipped tests without an acceptable explanation.",
-        "superseded-missing-successor": "Superseded record does not name the successor.",
+        "superseded-missing-successor": (
+            "Superseded record lacks a machine-readable existing successor path."
+        ),
         "active-touch-conflict": "Active features share touch paths without an explicit coordination rule.",
     }
     return meanings[code]

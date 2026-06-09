@@ -34,8 +34,9 @@ The loop is executable. Feature records must carry machine-readable
 `Approved by`, `Approved at`, `Worktree`, `Branch`, `Touch set`, `Conflict set`,
 task verification, and review-owner fields. `uv run python
 scripts/validate_sdd_artifacts.py --check` fails false `Verified` records,
-missing gate sections, incomplete task coordination fields, and overlapping
-active touch sets without an explicit coordination rule.
+missing gate sections, prose-only `Superseded` successors, incomplete task
+coordination fields, and overlapping active touch sets without an explicit
+coordination rule.
 
 When work ships and verification is recorded, move the whole feature directory
 from `features/active/` to `features/completed/` in the same PR.

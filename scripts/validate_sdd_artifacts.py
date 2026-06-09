@@ -715,9 +715,33 @@ def _superseded_issues(feature: SddFeature) -> list[SddIssue]:
     for artifact in feature.artifacts.values():
         if artifact.missing:
             continue
-        if "superseded by" not in artifact.text.lower():
+        successor = artifact.fields.get("superseded by", "")
+        if _is_placeholder(successor):
             issues.append(
-                _issue("superseded-missing-successor", artifact, "Superseded artifacts must name the successor record")
+                _issue(
+                    "superseded-missing-successor",
+                    artifact,
+                    "Superseded artifacts must declare **Superseded by** metadata",
+                )
+            )
+            continue
+        if not _is_repo_path(successor):
+            issues.append(
+                _issue(
+                    "superseded-missing-successor",
+                    artifact,
+                    f"Superseded successor must be a repo path: {successor}",
+                )
+            )
+            continue
+        successor_path = _repo_root(feature) / successor
+        if not successor_path.exists():
+            issues.append(
+                _issue(
+                    "superseded-missing-successor",
+                    artifact,
+                    f"Superseded successor path does not exist: {successor}",
+                )
             )
     return issues
 

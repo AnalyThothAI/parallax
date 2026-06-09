@@ -49,3 +49,6 @@ after changing any copied feature record.
 Every artifact must include a `Status:` line in the first 40 lines. Active feature artifacts use
 `Draft`, `Approved`, `In Progress`, `Review`, or `Blocked`. Completed feature artifacts use
 `Verified` or `Superseded`.
+When an artifact is `Superseded`, fill `**Superseded by**:` with an existing
+repo path to the successor SDD record; prose references are ignored by the
+validator.
