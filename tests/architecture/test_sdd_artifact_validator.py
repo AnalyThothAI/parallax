@@ -722,6 +722,50 @@ def test_delegated_tasks_require_handoff_artifact(tmp_path: Path) -> None:
     assert "task-missing-subagent-handoff-artifact" in _issue_codes(issues)
 
 
+def test_delegated_tasks_validate_handoff_artifact_against_task(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-stale-subagent-handoff")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    report = tmp_path / "docs" / "generated" / "subagent-reports" / "valid.md"
+    _write_valid_subagent_report(report)
+    handoff = tmp_path / "docs" / "generated" / "subagent-handoffs" / "stale.md"
+    handoff.parent.mkdir(parents=True)
+    handoff.write_text(
+        "\n".join(
+            [
+                "# Subagent Handoff - 2026-06-09-other-feature / Task 99",
+                "",
+                "Mode: write-allowed",
+                "",
+                "Context packet:",
+                "",
+                "```md",
+                "# Context Packet - 2026-06-09-other-feature / Task 99",
+                "```",
+                "",
+                "Report contract:",
+                "- Parent validates the report with "
+                "`uv run python scripts/validate_subagent_report.py --feature 2026-06-09-other-feature "
+                "--task 99 --mode write-allowed --report <report.md>`.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _write_valid_tasks(
+        feature / "tasks.md",
+        status="In Progress",
+        subagent_handoff="docs/generated/subagent-handoffs/stale.md",
+        subagent_report="docs/generated/subagent-reports/valid.md",
+        review_result="accepted",
+        task_status="[~]",
+    )
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "task-invalid-subagent-handoff-artifact" in _issue_codes(issues)
+
+
 def test_delegated_tasks_validate_report_artifact_against_task(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-invalid-subagent-report")
     _write_valid_spec(feature / "spec.md", status="In Progress")

@@ -47,6 +47,7 @@ Known-failing baseline tests:
 - Limit completed task evidence to the `## Verification commands` and `## Other commands run` evidence sections.
 - Validate machine-token fields strictly so `not delegated` cannot carry prose suffixes.
 - Validate delegated subagent handoff artifacts by following the handoff path before dispatch/review.
+- Validate delegated subagent handoff artifacts against the owning feature/task/mode so stale handoff prompts cannot pass as current loop evidence.
 - Validate `Superseded` artifact metadata before skipping content-section gates.
 - Validate `Superseded` tasks files retain structured `### Task` records instead of legacy checkbox lists.
 - Validate all artifacts in a `Superseded` feature point at the same successor record.
@@ -184,6 +185,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Worktree metadata is machine-valid. | Pass: validator rejects placeholder, prose, mismatched, or cross-artifact inconsistent Worktree/Branch fields. |
 | Checked Pre-flight setup matches metadata. | Pass: validator rejects checked Worktree/Branch setup claims that disagree with plan metadata. |
 | Spec background is source-backed. | Pass: Background claim blocks must cite existing repo `path:line` evidence or external `https://` sources. |
+| Delegated handoff artifacts are task-bound. | Pass: validator rejects existing delegated handoff files that name another feature/task/mode or stale report-validation command. |
 
 ## Acceptance test commands
 
@@ -227,6 +229,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC38: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_worktree_branch_metadata_must_be_machine_valid -q`
 - AC39: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_spec_background_requires_source_citations -q`
 - AC40: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_preflight_worktree_claims_must_match_metadata -q`
+- AC41: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_validate_handoff_artifact_against_task -q`
 
 ## Verification
 

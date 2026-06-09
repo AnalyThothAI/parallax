@@ -859,6 +859,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 41 — Subagent handoff artifact binding gate
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 40
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared subagent handoff/report semantics.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_validate_handoff_artifact_against_task` — asserts an existing handoff artifact from another feature/task cannot satisfy delegated task evidence.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Delegated `Subagent handoff` artifacts must name the same feature and task in the handoff title, embedded context packet, Mode line, and report-validation command.
+- **On-demand context**: `docs/agent-playbook/factory-operating-model.md`, `docs/agent-playbook/subagent-handoff-template.md`, `scripts/dispatch_sdd_task.py`.
+- **Kill/defer criteria**: Stop if a stale or wrong-task handoff file can pass because it merely exists.
+- **Eval/repair signal**: `task-invalid-subagent-handoff-artifact`, stale generated index, and parent review defects from wrong handoff context.
+- **Implementation**: Parse delegated handoff artifacts and reject stale feature/task/mode/report-validator bindings before accepting the task record.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_validate_handoff_artifact_against_task -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -900,4 +921,5 @@
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_worktree_branch_metadata_must_be_machine_valid -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_spec_background_requires_source_citations -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_preflight_worktree_claims_must_match_metadata -q`
+- [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_validate_handoff_artifact_against_task -q`
 - [ ] `make check-all`

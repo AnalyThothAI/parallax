@@ -252,6 +252,9 @@ def _issue_meaning(code: str) -> str:
         "task-missing-subagent-handoff-artifact": (
             "Delegated task references a subagent handoff artifact that is missing."
         ),
+        "task-invalid-subagent-handoff-artifact": (
+            "Delegated task references a subagent handoff artifact that is not bound to the task."
+        ),
         "task-missing-subagent-report-artifact": (
             "Delegated task references a subagent report artifact that is missing."
         ),

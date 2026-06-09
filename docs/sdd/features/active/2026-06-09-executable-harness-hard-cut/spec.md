@@ -50,6 +50,7 @@ can both miss real process drift and block healthy refactors.
 | Completed task status must be evidenced. | A `[x]` task requires matching `verification.md` command evidence with exit code 0. |
 | Machine fields must be exact tokens. | `Subagent handoff` accepts only the exact `not delegated` token or a repo path, not prose suffixes. |
 | Delegated handoff artifacts must be real. | Delegated task handoff paths are checked for existence before dispatch or review. |
+| Delegated handoff artifacts must be task-bound. | Existing delegated handoff files must name the current feature, task, mode, context packet, and report validator command. |
 | Verified spec-compliance rows must be evidenced. | A `Verified` record cannot mark a compliance row complete unless command-shaped evidence in that row has exit code 0 in canonical evidence sections. |
 | Worktree and branch metadata must be machine-valid. | `plan.md`, `tasks.md`, and `verification.md` must agree on either `codex/<slug>` with `.worktrees/<slug>` or exact `main`/`main` metadata. |
 | Spec background must be source-backed. | Each `spec.md` Background claim block must cite an existing repo `path:line` or an external `https://` source. |
@@ -80,6 +81,7 @@ can both miss real process drift and block healthy refactors.
 - G16. SDD validation fails any `[x]` task whose `Verification` command is not recorded in `verification.md` with exit code 0.
 - G17. SDD validation treats machine-readable task tokens as exact values and rejects prose appended to `not delegated`.
 - G18. SDD validation follows delegated `Subagent handoff` paths and fails missing handoff artifacts.
+- G19. SDD validation rejects delegated `Subagent handoff` artifacts that are stale or bound to a different feature, task, mode, context packet, or report validator command.
 
 ## Non-goals
 
@@ -165,6 +167,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC38. WHEN `plan.md`, `tasks.md`, or `verification.md` declares malformed, template-placeholder, prose, mismatched, or cross-artifact inconsistent Worktree/Branch metadata THEN the validator SHALL report `worktree-metadata-invalid`; execution location metadata must be machine-readable.
 - AC39. WHEN a non-superseded `spec.md` Background claim block lacks an existing repo `path:line` citation or external `https://` source THEN the validator SHALL report `spec-background-uncited`; specs must audit current docs/code or external references before planning.
 - AC40. WHEN a checked `plan.md` Pre-flight row claims a Worktree/Branch verification that disagrees with the artifact's Worktree/Branch metadata THEN the validator SHALL report `plan-preflight-metadata-mismatch`; checked setup evidence cannot preserve stale worktree names.
+- AC41. WHEN a delegated task references an existing `Subagent handoff` artifact whose title, embedded context packet, mode, or report-validation command is not bound to the same feature and task THEN the validator SHALL report `task-invalid-subagent-handoff-artifact`; stale handoff artifacts cannot satisfy the agent loop.
 
 ## Risks
 

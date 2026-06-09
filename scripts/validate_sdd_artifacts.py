@@ -52,6 +52,18 @@ PLAN_PREFLIGHT_WORKTREE_RE = re.compile(
 )
 TASK_NUMBER_RE = re.compile(r"^Task\s+(?P<number>\d+)\b", re.IGNORECASE)
 TASK_DEPENDENCY_RE = re.compile(r"\bTasks?\s+(?P<start>\d+)(?:\s*-\s*(?P<end>\d+))?\b", re.IGNORECASE)
+HANDOFF_TITLE_RE = re.compile(
+    r"^#\s+Subagent Handoff - (?P<feature>[^/\n]+?)\s*/\s*(?P<task>Task\s+\d+)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+HANDOFF_MODE_RE = re.compile(
+    r"^\s*Mode:\s*(?P<mode>read-only|write-allowed|review-only)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+HANDOFF_CONTEXT_PACKET_RE = re.compile(
+    r"^#\s+Context Packet - (?P<feature>[^/\n]+?)\s*/\s*(?P<task>Task\s+\d+)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
 
 SECTION_REQUIREMENTS = {
     "spec.md": ("## Clarifications", "## Requirement Checklist", "## Acceptance criteria"),
@@ -145,6 +157,7 @@ KNOWN_ISSUE_CODES = (
     "task-invalid-review-fields",
     "task-complete-missing-review-evidence",
     "task-missing-subagent-handoff-artifact",
+    "task-invalid-subagent-handoff-artifact",
     "task-missing-subagent-report-artifact",
     "task-invalid-subagent-report-artifact",
     "task-complete-missing-verification-evidence",
@@ -1027,6 +1040,16 @@ def _subagent_handoff_artifact_issues(feature: SddFeature, task: TaskRecord) -> 
     tasks_artifact = feature.artifacts["tasks.md"]
     handoff_path = _repo_root(feature) / handoff_value.replace("`", "").strip()
     if handoff_path.exists():
+        handoff_text = handoff_path.read_text(encoding="utf-8")
+        handoff_issues = _subagent_handoff_contract_issues(feature, task, handoff_text)
+        if handoff_issues:
+            return [
+                _issue(
+                    "task-invalid-subagent-handoff-artifact",
+                    tasks_artifact,
+                    f"{task.title} invalid subagent handoff: {'; '.join(handoff_issues)}",
+                )
+            ]
         return []
     return [
         _issue(
@@ -1035,6 +1058,68 @@ def _subagent_handoff_artifact_issues(feature: SddFeature, task: TaskRecord) -> 
             f"{task.title} missing subagent handoff artifact: {handoff_value}",
         )
     ]
+
+
+def _subagent_handoff_contract_issues(feature: SddFeature, task: TaskRecord, text: str) -> list[str]:
+    task_anchor = _task_anchor(task)
+    if task_anchor is None:
+        return ["task heading is not machine-readable"]
+
+    issues: list[str] = []
+    title_match = HANDOFF_TITLE_RE.search(text)
+    if title_match is None:
+        issues.append("missing matching Subagent Handoff title")
+    else:
+        _append_handoff_binding_issues(issues, title_match, feature.slug, task_anchor, "handoff title")
+
+    mode_match = HANDOFF_MODE_RE.search(text)
+    mode = mode_match.group("mode").lower() if mode_match else ""
+    if not mode:
+        issues.append("missing valid Mode line")
+
+    context_match = HANDOFF_CONTEXT_PACKET_RE.search(text)
+    if context_match is None:
+        issues.append("missing matching embedded Context Packet title")
+    else:
+        _append_handoff_binding_issues(issues, context_match, feature.slug, task_anchor, "context packet title")
+
+    normalized_text = _normalize_handoff_text(text)
+    required_tokens = (
+        "scripts/validate_subagent_report.py",
+        "--feature",
+        feature.slug,
+        "--task",
+        task_anchor.removeprefix("Task "),
+        "--mode",
+        mode,
+        "--report",
+    )
+    missing_tokens = [token for token in required_tokens if token and token not in normalized_text]
+    if missing_tokens:
+        issues.append("report validation command missing tokens: " + ", ".join(missing_tokens))
+    return issues
+
+
+def _append_handoff_binding_issues(
+    issues: list[str],
+    match: re.Match[str],
+    expected_feature: str,
+    expected_task: str,
+    label: str,
+) -> None:
+    actual_feature = " ".join(match.group("feature").strip().split())
+    actual_task = " ".join(match.group("task").strip().split())
+    if actual_feature != expected_feature or actual_task.lower() != expected_task.lower():
+        issues.append(f"{label} expected {expected_feature} / {expected_task}, saw {actual_feature} / {actual_task}")
+
+
+def _task_anchor(task: TaskRecord) -> str | None:
+    number = task_number(task)
+    return f"Task {number}" if number is not None else None
+
+
+def _normalize_handoff_text(text: str) -> str:
+    return " ".join(text.replace("`", " ").split())
 
 
 def _extract_report_mode(text: str) -> str | None:
