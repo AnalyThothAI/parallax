@@ -65,6 +65,20 @@ def test_verified_feature_accepts_successful_make_check_all_evidence(tmp_path: P
     assert validate_sdd_root(tmp_path) == []
 
 
+def test_feature_rejects_mixed_artifact_statuses(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "completed", "2026-06-09-mixed-status")
+    _write_valid_spec(feature / "spec.md", status="Verified")
+    _write_valid_plan(feature / "plan.md", status="Verified")
+    _write_valid_tasks(feature / "tasks.md", status="Verified")
+    _write_valid_verification(feature / "verification.md", status="Superseded")
+    for artifact_name in ("spec.md", "plan.md", "tasks.md", "verification.md"):
+        _append_successor_reference(feature / artifact_name)
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "artifact-status-mismatch" in _issue_codes(issues)
+
+
 def test_verified_feature_ignores_old_success_outside_verification_commands(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "completed", "2026-06-09-old-success")
     _write_valid_spec(feature / "spec.md", status="Verified")
@@ -647,6 +661,14 @@ def _write_valid_subagent_report(path: Path) -> None:
                 "- none",
             ]
         ),
+        encoding="utf-8",
+    )
+
+
+def _append_successor_reference(path: Path) -> None:
+    path.write_text(
+        path.read_text(encoding="utf-8")
+        + "\n\nSuperseded by: `docs/sdd/features/active/2026-06-09-successor/spec.md`\n",
         encoding="utf-8",
     )
 

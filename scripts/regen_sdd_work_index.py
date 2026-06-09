@@ -211,6 +211,7 @@ def _task_set_cell(task: TaskRecord, field_name: str) -> str:
 def _issue_meaning(code: str) -> str:
     meanings = {
         "review-lifecycle": "Artifact status is not valid for its lane.",
+        "artifact-status-mismatch": "Feature artifacts disagree on one lifecycle status.",
         "missing-status": "Artifact is missing a status line in its first 40 lines.",
         "missing-artifact": "Feature directory does not contain the full SDD artifact set.",
         "missing-gate-section": (

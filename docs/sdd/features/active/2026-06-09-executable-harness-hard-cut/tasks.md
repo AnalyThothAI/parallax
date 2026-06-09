@@ -397,6 +397,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 19 — Artifact lifecycle status consistency gate
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 18
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD lifecycle records and generated index.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_feature_rejects_mixed_artifact_statuses` — asserts mixed artifact lifecycle statuses cannot pass.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Every present SDD artifact in a feature must declare the same `Status` before lifecycle gates trust the feature state.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, active and completed SDD feature records, generated SDD work index.
+- **Kill/defer criteria**: Stop if a mixed `Verified`/`Superseded` or active/completed status set can pass validation.
+- **Eval/repair signal**: `artifact-status-mismatch`, stale generated index, and lifecycle review defects.
+- **Implementation**: Add feature-level artifact status mismatch validation and expose the issue code in the generated index.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_feature_rejects_mixed_artifact_statuses -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -416,4 +437,5 @@
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_tasks_require_matching_verification_evidence tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_non_delegated_handoff_rejects_prose_suffix tests/architecture/test_sdd_artifact_validator.py::test_tasks_allow_explicit_none_dependency_and_not_delegated_handoff tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_report_artifact -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_handoff_artifact tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_report_artifact -q`
+- [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_feature_rejects_mixed_artifact_statuses -q`
 - [ ] `make check-all`

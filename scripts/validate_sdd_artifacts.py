@@ -90,6 +90,7 @@ CONTRADICTION_PHRASES = (
 )
 KNOWN_ISSUE_CODES = (
     "review-lifecycle",
+    "artifact-status-mismatch",
     "missing-status",
     "missing-artifact",
     "missing-gate-section",
@@ -359,12 +360,30 @@ def _feature_issues(feature: SddFeature) -> list[SddIssue]:
     issues: list[SddIssue] = []
     for artifact in feature.artifacts.values():
         issues.extend(_artifact_issues(feature, artifact))
+    issues.extend(_artifact_status_mismatch_issues(feature))
     if feature.status.lower() == "superseded":
         return issues + _superseded_issues(feature)
     issues.extend(_task_issues(feature))
     if feature.status.lower() == "verified":
         issues.extend(_verified_issues(feature))
     return issues
+
+
+def _artifact_status_mismatch_issues(feature: SddFeature) -> list[SddIssue]:
+    present_artifacts = [artifact for artifact in feature.artifacts.values() if not artifact.missing]
+    statuses = {artifact.status.lower() for artifact in present_artifacts}
+    if len(statuses) <= 1:
+        return []
+
+    status_summary = ", ".join(f"{artifact.name}={artifact.status}" for artifact in present_artifacts)
+    anchor = feature.artifacts.get("verification.md") or present_artifacts[0]
+    return [
+        _issue(
+            "artifact-status-mismatch",
+            anchor,
+            f"feature artifacts must share one Status value: {status_summary}",
+        )
+    ]
 
 
 def _artifact_issues(feature: SddFeature, artifact: ArtifactRecord) -> list[SddIssue]:

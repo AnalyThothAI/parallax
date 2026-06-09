@@ -138,6 +138,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC16. WHEN a task is marked `[x]` THEN its `Verification` command SHALL appear in `verification.md` with exit code 0, otherwise the validator SHALL report `task-complete-missing-verification-evidence`.
 - AC17. WHEN `Subagent handoff` starts with `not delegated` but includes extra prose THEN the validator SHALL reject it as `task-invalid-review-fields`; rationale belongs in deterministic constraints, implementation, or verification evidence.
 - AC18. WHEN a delegated task references a `Subagent handoff` path THEN the SDD validator SHALL require that file to exist and report `task-missing-subagent-handoff-artifact` when it does not.
+- AC19. WHEN one SDD feature has mixed `Status` values across `spec.md`, `plan.md`, `tasks.md`, and `verification.md` THEN the validator SHALL report `artifact-status-mismatch` before any lifecycle transition is trusted.
 
 ## Risks
 
