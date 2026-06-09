@@ -318,6 +318,19 @@ def test_worker_manifest_validation_rejects_duplicate_advisory_lock_keys(
 
 
 @pytest.mark.architecture
+def test_worker_manifest_validation_rejects_blank_advisory_lock_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifests = list(all_worker_manifests())
+    first_locked_index = next(index for index, manifest in enumerate(manifests) if manifest.advisory_lock_key)
+    manifests[first_locked_index] = replace(manifests[first_locked_index], advisory_lock_key="   ")
+    monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
+
+    with pytest.raises(ValueError, match="blank worker manifest advisory lock keys"):
+        worker_manifest_module._validate_worker_manifests()
+
+
+@pytest.mark.architecture
 def test_worker_manifest_validation_rejects_duplicate_read_model_identity_columns(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

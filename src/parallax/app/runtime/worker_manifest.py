@@ -798,6 +798,14 @@ def _validate_worker_manifests() -> None:
     if duplicate_wake_channels:
         raise ValueError(f"duplicate worker manifest wake channels: {duplicate_wake_channels}")
 
+    blank_advisory_locks = [
+        manifest.name
+        for manifest in _WORKER_MANIFESTS
+        if manifest.advisory_lock_key is not None and not manifest.advisory_lock_key.strip()
+    ]
+    if blank_advisory_locks:
+        raise ValueError(f"blank worker manifest advisory lock keys: {blank_advisory_locks}")
+
     advisory_lock_users: dict[str, list[str]] = {}
     for manifest in _WORKER_MANIFESTS:
         if manifest.advisory_lock_key is None:

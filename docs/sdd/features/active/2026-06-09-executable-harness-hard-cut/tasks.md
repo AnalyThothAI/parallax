@@ -1888,6 +1888,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 90 — Advisory lock keys are non-blank
+
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 89
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for advisory-lock validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_advisory_lock_keys` — patch a locked manifest to declare a blank `advisory_lock_key` and assert manifest validation raises a dedicated advisory-lock blank-key error.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Non-empty `advisory_lock_key` declarations must not be blank before runtime lifecycle, advisory-lock, or worker inventory harnesses can treat lock ownership as source truth.
+- **On-demand context**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `WorkerBase._advisory_lock_key`, `DBPoolBundle.acquire_advisory_lock_connection`, and worker inventory advisory-lock docs.
+- **Kill/defer criteria**: Stop if blank advisory lock keys are intentionally supported as placeholders, if validation only checks settings defaults, or if the fix touches dirty worker runtime contract files.
+- **Eval/repair signal**: blank advisory lock key, whitespace lock placeholder, lifecycle ownership drift, manifest validation drift, and SDD generated index drift.
+- **Implementation**: Add manifest validation rejecting blank non-`None` `advisory_lock_key` values.
+- **Verification**: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_advisory_lock_keys -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1979,4 +2000,5 @@
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_wake_channels -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_wake_channels -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_advisory_lock_keys -q`
+- [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_advisory_lock_keys -q`
 - [ ] `make check-all`

@@ -51,6 +51,7 @@ can both miss real process drift and block healthy refactors.
 | Wake channels must be non-blank. | `WorkerManifest` validation rejects blank `wakes_on` and `wakes_out` channel declarations before listener/notify harnesses consume them. |
 | Wake channels must be unique per worker field. | `WorkerManifest` validation rejects duplicate `wakes_on` and `wakes_out` entries before listener/notify harnesses consume them. |
 | Advisory lock keys must be unique. | `WorkerManifest` validation rejects duplicate `advisory_lock_key` values before runtime lifecycle or worker inventory harnesses consume them. |
+| Advisory lock keys must be non-blank. | `WorkerManifest` validation rejects blank `advisory_lock_key` values before runtime lifecycle or worker inventory harnesses consume them. |
 | Worker Inventory docs must be manifest-owned. | Architecture tests derive worker class and read-model writer expectations from `WorkerManifest`, not from peer architecture-test constants. |
 | Worker table ownership must be manifest-owned. | `WorkerManifest.owned_tables` exposes the canonical written-table set so harness checks do not reassemble ownership fields ad hoc. |
 | Read-model writer mapping must be manifest-owned. | `read_model_writer_by_table()` exposes the unique read-model writer map from `WorkerManifest`, so docs harnesses do not derive their own registry. |
@@ -180,6 +181,7 @@ can both miss real process drift and block healthy refactors.
 - G65. Wake channel declarations reject blank strings, so listener and NOTIFY topology cannot include placeholder channels.
 - G66. Wake channel declarations reject duplicate strings per worker field, so listener and NOTIFY topology cannot hide stale repeated channels.
 - G67. Advisory lock declarations reject duplicate keys, so unrelated workers cannot silently share a long-lived single-writer lock boundary.
+- G68. Advisory lock declarations reject blank keys, so lifecycle code cannot inherit a whitespace placeholder as a lock boundary.
 
 ## Non-goals
 
@@ -314,6 +316,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC87. WHEN a `WorkerManifest.wakes_on` or `WorkerManifest.wakes_out` entry is blank THEN manifest validation SHALL raise before listener, NOTIFY, or worker inventory harnesses consume the manifest.
 - AC88. WHEN a `WorkerManifest.wakes_on` or `WorkerManifest.wakes_out` field repeats a channel THEN manifest validation SHALL raise before listener, NOTIFY, or worker inventory harnesses consume the manifest.
 - AC89. WHEN two `WorkerManifest` entries declare the same `advisory_lock_key` THEN manifest validation SHALL raise before runtime lifecycle, advisory-lock, or worker inventory harnesses consume the manifest.
+- AC90. WHEN a `WorkerManifest.advisory_lock_key` value is blank THEN manifest validation SHALL raise before runtime lifecycle, advisory-lock, or worker inventory harnesses consume the manifest.
 
 ## Risks
 
