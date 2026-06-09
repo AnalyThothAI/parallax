@@ -104,6 +104,7 @@ claim is allowed without the corresponding output captured below.
 | AC85 — Queue depth tables are worker-owned. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_unowned_queue_depth_tables -q` failed RED when a patched `queue_depth_table` outside `owned_tables` did not raise, then passed after adding queue-depth ownership validation. |
 | AC86 — Side-effect ledgers belong to side-effect workers. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_ledgers_on_non_side_effect_workers -q` failed RED when a patched non-side-effect manifest with `side_effect_ledgers` did not raise, then passed after adding ledger-kind validation. |
 | AC87 — Wake channels are non-blank. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_wake_channels -q` failed RED when a patched blank `wakes_out` channel did not raise, then passed after adding wake-channel validation. |
+| AC88 — Wake channels are unique per worker field. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_wake_channels -q` failed RED when a patched duplicate `wakes_on` channel did not raise, then passed after adding wake-channel duplicate validation. |
 
 Deviations from spec:
 
@@ -1377,6 +1378,15 @@ Failed: DID NOT RAISE <class 'ValueError'>
 exit code: 1
 
 $ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_wake_channels -q
+1 passed in 0.03s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_wake_channels -q
+F                                                                        [100%]
+Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_wake_channels -q
 1 passed in 0.03s
 exit code: 0
 ```

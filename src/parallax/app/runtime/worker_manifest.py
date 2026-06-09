@@ -784,6 +784,20 @@ def _validate_worker_manifests() -> None:
     if blank_wake_channels:
         raise ValueError(f"blank worker manifest wake channels: {blank_wake_channels}")
 
+    duplicate_wake_channels = {
+        manifest.name: duplicates
+        for manifest in _WORKER_MANIFESTS
+        if (
+            duplicates := {
+                field_name: duplicate_channels
+                for field_name, channels in (("wakes_on", manifest.wakes_on), ("wakes_out", manifest.wakes_out))
+                if (duplicate_channels := _duplicate_values(channels))
+            }
+        )
+    }
+    if duplicate_wake_channels:
+        raise ValueError(f"duplicate worker manifest wake channels: {duplicate_wake_channels}")
+
     missing_dirty_targets = [
         manifest.name
         for manifest in _WORKER_MANIFESTS

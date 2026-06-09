@@ -49,6 +49,7 @@ can both miss real process drift and block healthy refactors.
 | Queue depth tables must be worker-owned. | `WorkerManifest` validation rejects `queue_depth_table` values absent from the same manifest's owned tables. |
 | Side-effect ledgers must belong to side-effect workers. | `WorkerManifest` validation rejects non-side-effect worker kinds that declare `side_effect_ledgers`. |
 | Wake channels must be non-blank. | `WorkerManifest` validation rejects blank `wakes_on` and `wakes_out` channel declarations before listener/notify harnesses consume them. |
+| Wake channels must be unique per worker field. | `WorkerManifest` validation rejects duplicate `wakes_on` and `wakes_out` entries before listener/notify harnesses consume them. |
 | Worker Inventory docs must be manifest-owned. | Architecture tests derive worker class and read-model writer expectations from `WorkerManifest`, not from peer architecture-test constants. |
 | Worker table ownership must be manifest-owned. | `WorkerManifest.owned_tables` exposes the canonical written-table set so harness checks do not reassemble ownership fields ad hoc. |
 | Read-model writer mapping must be manifest-owned. | `read_model_writer_by_table()` exposes the unique read-model writer map from `WorkerManifest`, so docs harnesses do not derive their own registry. |
@@ -176,6 +177,7 @@ can both miss real process drift and block healthy refactors.
 - G63. Queue depth table declarations require same-manifest table ownership, so queue-health harnesses cannot point at tables owned by another runtime.
 - G64. Side-effect ledger declarations require a side-effect worker kind, so ordinary fact/projection workers cannot acquire ledger ownership by stale manifest breadcrumb.
 - G65. Wake channel declarations reject blank strings, so listener and NOTIFY topology cannot include placeholder channels.
+- G66. Wake channel declarations reject duplicate strings per worker field, so listener and NOTIFY topology cannot hide stale repeated channels.
 
 ## Non-goals
 
@@ -308,6 +310,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC85. WHEN a `WorkerManifest.queue_depth_table` names a table absent from the same manifest's owned tables THEN manifest validation SHALL raise before queue-health, ownership, or worker inventory harnesses consume the manifest.
 - AC86. WHEN a non-side-effect `WorkerManifest.kind` declares `side_effect_ledgers` THEN manifest validation SHALL raise before ownership, side-effect, or worker inventory harnesses consume the manifest.
 - AC87. WHEN a `WorkerManifest.wakes_on` or `WorkerManifest.wakes_out` entry is blank THEN manifest validation SHALL raise before listener, NOTIFY, or worker inventory harnesses consume the manifest.
+- AC88. WHEN a `WorkerManifest.wakes_on` or `WorkerManifest.wakes_out` field repeats a channel THEN manifest validation SHALL raise before listener, NOTIFY, or worker inventory harnesses consume the manifest.
 
 ## Risks
 

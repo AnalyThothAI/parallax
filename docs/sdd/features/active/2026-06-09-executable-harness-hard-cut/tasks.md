@@ -1846,6 +1846,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 88 — Wake channels are unique per worker field
+
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 87
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for wake-channel validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_wake_channels` — patch a manifest to repeat a `wakes_on` channel and assert manifest validation raises a dedicated wake-channel duplication error.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `wakes_on` and `wakes_out` channel declarations must not repeat a channel within the same worker field before listener, NOTIFY, or worker inventory harnesses can treat wake topology as source truth.
+- **On-demand context**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, Worker Inventory Wake-in/Wake-out checks, and `WakeBus` notify-channel docs checks.
+- **Kill/defer criteria**: Stop if duplicate wake channels are intentionally supported for weighting or repeated wake waits, if validation only relies on Worker Inventory docs comparison, or if the fix touches dirty worker runtime contract files.
+- **Eval/repair signal**: duplicate wake channel, listener/notify topology duplication, stale repeated wake breadcrumb, manifest validation drift, and SDD generated index drift.
+- **Implementation**: Add manifest validation rejecting duplicate strings in `wakes_on` and `wakes_out`.
+- **Verification**: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_wake_channels -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1935,4 +1956,5 @@
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_unowned_queue_depth_tables -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_ledgers_on_non_side_effect_workers -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_wake_channels -q`
+- [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_wake_channels -q`
 - [ ] `make check-all`

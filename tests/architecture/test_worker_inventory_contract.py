@@ -287,6 +287,23 @@ def test_worker_manifest_validation_rejects_blank_wake_channels(
 
 
 @pytest.mark.architecture
+def test_worker_manifest_validation_rejects_duplicate_wake_channels(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifests = list(all_worker_manifests())
+    first_listener_index = next(index for index, manifest in enumerate(manifests) if manifest.wakes_on)
+    duplicate_channel = manifests[first_listener_index].wakes_on[0]
+    manifests[first_listener_index] = replace(
+        manifests[first_listener_index],
+        wakes_on=(*manifests[first_listener_index].wakes_on, duplicate_channel),
+    )
+    monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
+
+    with pytest.raises(ValueError, match="duplicate worker manifest wake channels"):
+        worker_manifest_module._validate_worker_manifests()
+
+
+@pytest.mark.architecture
 def test_worker_manifest_validation_rejects_duplicate_read_model_identity_columns(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
