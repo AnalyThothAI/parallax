@@ -2497,6 +2497,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 119 — Read-model identity tables are strings
+
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 118
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for stable read-model identity table type validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_read_model_identity_tables` — patch one `current_read_model_identities` table name to a numeric value and assert manifest validation raises before table-name `.strip()` errors leak.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `WorkerManifest.current_read_model_identities` table names must be strict `str` before blank, duplicate, missing-identity, ownership, registry, settings, or worker inventory harnesses consume stable serving identity declarations.
+- **On-demand context**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, and current read-model writer/identity ownership checks.
+- **Kill/defer criteria**: Stop if stable read-model identity table names intentionally support compatibility objects, if validation only checks generated docs, or if the fix touches projection runtime behavior.
+- **Eval/repair signal**: non-string stable identity table names, implementation-detail table-name attribute errors, serving identity harness drift, and SDD generated index drift.
+- **Implementation**: Add manifest validation rejecting non-string table names inside `current_read_model_identities` before blank and ownership checks.
+- **Verification**: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_read_model_identity_tables -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -2617,4 +2638,5 @@
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_queue_depth_tables -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_advisory_lock_keys -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_identity_fields -q`
+- [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_read_model_identity_tables -q`
 - [ ] `make check-all`

@@ -84,6 +84,7 @@ can both miss real process drift and block healthy refactors.
 | Read-model identity entries must be tuples. | `WorkerManifest` validation rejects list-shaped current read-model identity entries before ownership or docs harnesses consume them. |
 | Read-model identity entries must be pairs. | `WorkerManifest` validation rejects malformed current read-model identity entries before table/column unpacking can raise implementation-detail errors. |
 | Read-model identity tables must be non-blank. | `WorkerManifest` validation rejects blank table names inside `current_read_model_identities` before ownership checks. |
+| Read-model identity tables must be strings. | `WorkerManifest` validation rejects non-string table names inside `current_read_model_identities` before blank, duplicate, missing, or ownership checks consume them. |
 | Read-model identity columns must be unique. | `WorkerManifest` validation and `CurrentReadModelPublisher` reject duplicate stable identity columns inside one read-model identity declaration. |
 | Read-model identity columns must be non-empty. | `WorkerManifest` validation rejects current read-model identity declarations whose stable identity column list is empty. |
 | Read-model identity columns must be non-blank. | `WorkerManifest` validation and `CurrentReadModelPublisher` reject blank stable identity column names. |
@@ -238,6 +239,7 @@ can both miss real process drift and block healthy refactors.
 - G94. Queue depth table declarations reject non-string values, so queue-health table hygiene fails with manifest errors instead of implementation-detail attribute errors.
 - G95. Advisory lock declarations reject non-string values, so lifecycle lock hygiene fails with manifest errors instead of implementation-detail attribute errors.
 - G96. Worker identity field declarations reject non-string values, so registry and source-path validation fail with manifest errors instead of implementation-detail attribute errors.
+- G97. Current read-model identity table declarations reject non-string values, so stable serving identity checks fail with manifest errors instead of implementation-detail attribute errors.
 
 ## Non-goals
 
@@ -401,6 +403,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC116. WHEN a `WorkerManifest.queue_depth_table` value is neither `None` nor a string THEN manifest validation SHALL raise before table hygiene, queue ownership, queue-health, registry, settings, or worker inventory harnesses consume it.
 - AC117. WHEN a `WorkerManifest.advisory_lock_key` value is neither `None` nor a string THEN manifest validation SHALL raise before advisory-lock blank checks, duplicate checks, lifecycle, registry, settings, or worker inventory harnesses consume it.
 - AC118. WHEN a `WorkerManifest.name`, `domain`, `factory`, or `worker_class` value is not a string THEN manifest validation SHALL raise before identity blank checks, source-path checks, class import checks, registry, settings, or worker inventory harnesses consume it.
+- AC119. WHEN a `WorkerManifest.current_read_model_identities` entry has a read-model table name that is not a string THEN manifest validation SHALL raise before identity table blank checks, duplicate checks, missing-identity checks, ownership checks, registry, settings, or worker inventory harnesses consume it.
 
 ## Risks
 
