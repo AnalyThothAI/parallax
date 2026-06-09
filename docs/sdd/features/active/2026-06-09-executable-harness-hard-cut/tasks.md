@@ -2455,6 +2455,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 117 — Worker advisory lock keys are strings
+
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 116
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for advisory-lock key type validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_advisory_lock_keys` — patch one manifest to declare numeric `advisory_lock_key` and assert manifest validation raises before lock-key `.strip()` errors leak.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `WorkerManifest.advisory_lock_key` must be `None` or strict `str` before advisory-lock blank checks, duplicate checks, lifecycle, registry, settings, or worker inventory harnesses consume it.
+- **On-demand context**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, and worker lifecycle advisory-lock harness checks.
+- **Kill/defer criteria**: Stop if advisory-lock declarations intentionally support compatibility metadata objects, if validation only checks generated docs, or if the fix touches runtime lock acquisition behavior.
+- **Eval/repair signal**: non-string advisory-lock declarations, implementation-detail lock-key attribute errors, worker lifecycle harness drift, and SDD generated index drift.
+- **Implementation**: Add manifest validation rejecting non-string `advisory_lock_key` values before blank and duplicate lock checks.
+- **Verification**: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_advisory_lock_keys -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -2573,4 +2594,5 @@
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_malformed_read_model_identity_entries -q`
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_repo_root_has_no_loose_visual_artifacts -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_queue_depth_tables -q`
+- [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_advisory_lock_keys -q`
 - [ ] `make check-all`

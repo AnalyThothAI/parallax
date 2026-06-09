@@ -73,6 +73,7 @@ can both miss real process drift and block healthy refactors.
 | Wake channels must be unique per worker field. | `WorkerManifest` validation rejects duplicate `wakes_on` and `wakes_out` entries before listener/notify harnesses consume them. |
 | Advisory lock keys must be unique. | `WorkerManifest` validation rejects duplicate `advisory_lock_key` values before runtime lifecycle or worker inventory harnesses consume them. |
 | Advisory lock keys must be non-blank. | `WorkerManifest` validation rejects blank `advisory_lock_key` values before runtime lifecycle or worker inventory harnesses consume them. |
+| Advisory lock keys must be strings. | `WorkerManifest` validation rejects non-string `advisory_lock_key` declarations before lifecycle or advisory-lock harnesses consume them. |
 | Worker Inventory docs must be manifest-owned. | Architecture tests derive worker class and read-model writer expectations from `WorkerManifest`, not from peer architecture-test constants. |
 | Worker table ownership must be manifest-owned. | `WorkerManifest.owned_tables` exposes the canonical written-table set so harness checks do not reassemble ownership fields ad hoc. |
 | Read-model writer mapping must be manifest-owned. | `read_model_writer_by_table()` exposes the unique read-model writer map from `WorkerManifest`, so docs harnesses do not derive their own registry. |
@@ -234,6 +235,7 @@ can both miss real process drift and block healthy refactors.
 - G92. Stable read-model identity entries reject malformed arity, so manifest validation owns the table/column pair shape instead of leaking Python unpacking errors.
 - G93. Root-level visual verification artifacts are rejected, so old screenshots cannot remain as loose project files outside owned artifact directories.
 - G94. Queue depth table declarations reject non-string values, so queue-health table hygiene fails with manifest errors instead of implementation-detail attribute errors.
+- G95. Advisory lock declarations reject non-string values, so lifecycle lock hygiene fails with manifest errors instead of implementation-detail attribute errors.
 
 ## Non-goals
 
@@ -395,6 +397,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC114. WHEN a `WorkerManifest.current_read_model_identities` entry does not contain exactly the read-model table name and stable identity columns THEN manifest validation SHALL raise before table/column unpacking, ownership, registry, factory, settings, or worker inventory harnesses consume the manifest.
 - AC115. WHEN visual verification artifacts such as PNG, JPG, WEBP, or GIF files exist at the repository root THEN the architecture harness SHALL fail until those loose root artifacts are removed or moved under an owned artifact directory.
 - AC116. WHEN a `WorkerManifest.queue_depth_table` value is neither `None` nor a string THEN manifest validation SHALL raise before table hygiene, queue ownership, queue-health, registry, settings, or worker inventory harnesses consume it.
+- AC117. WHEN a `WorkerManifest.advisory_lock_key` value is neither `None` nor a string THEN manifest validation SHALL raise before advisory-lock blank checks, duplicate checks, lifecycle, registry, settings, or worker inventory harnesses consume it.
 
 ## Risks
 
