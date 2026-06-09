@@ -79,6 +79,7 @@ can both miss real process drift and block healthy refactors.
 | Read-model identity ownership must be import-time validated. | `WorkerManifest` validation rejects stable identity declarations for read models the worker does not write. |
 | Read-model identity declarations must be unique. | `WorkerManifest` validation rejects duplicate stable identity entries for the same read model table in one worker. |
 | Read-model identity entries must be tuples. | `WorkerManifest` validation rejects list-shaped current read-model identity entries before ownership or docs harnesses consume them. |
+| Read-model identity entries must be pairs. | `WorkerManifest` validation rejects malformed current read-model identity entries before table/column unpacking can raise implementation-detail errors. |
 | Read-model identity tables must be non-blank. | `WorkerManifest` validation rejects blank table names inside `current_read_model_identities` before ownership checks. |
 | Read-model identity columns must be unique. | `WorkerManifest` validation and `CurrentReadModelPublisher` reject duplicate stable identity columns inside one read-model identity declaration. |
 | Read-model identity columns must be non-empty. | `WorkerManifest` validation rejects current read-model identity declarations whose stable identity column list is empty. |
@@ -228,6 +229,7 @@ can both miss real process drift and block healthy refactors.
 - G89. Stable read-model identity column declarations reject list-shaped compatibility values, so serving identity checks consume immutable column tuples.
 - G90. Stable read-model identity entries reject list-shaped compatibility values, so serving identity table/column pairs remain immutable manifest source truth.
 - G91. Worker manifest module imports declare `importlib.util` directly, so source-owned manifest validation survives clean-process imports without depending on prior import side effects.
+- G92. Stable read-model identity entries reject malformed arity, so manifest validation owns the table/column pair shape instead of leaking Python unpacking errors.
 
 ## Non-goals
 
@@ -386,6 +388,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC111. WHEN a `WorkerManifest.current_read_model_identities` entry declares identity columns that are not a tuple THEN manifest validation SHALL raise before ownership, registry, factory, settings, or worker inventory harnesses consume the manifest.
 - AC112. WHEN a `WorkerManifest.current_read_model_identities` entry is not a tuple THEN manifest validation SHALL raise before ownership, registry, factory, settings, or worker inventory harnesses consume the manifest.
 - AC113. WHEN `worker_manifest.py` is imported in a clean process where `importlib.util` is not already attached to the imported `importlib` package object THEN the import SHALL succeed without relying on incidental import side effects.
+- AC114. WHEN a `WorkerManifest.current_read_model_identities` entry does not contain exactly the read-model table name and stable identity columns THEN manifest validation SHALL raise before table/column unpacking, ownership, registry, factory, settings, or worker inventory harnesses consume the manifest.
 
 ## Risks
 

@@ -229,6 +229,7 @@ Known-failing baseline tests:
 - Reject `current_read_model_identities` entries for tables absent from the same manifest's `writes_read_models`.
 - Reject duplicate `current_read_model_identities` entries for the same table within one worker manifest.
 - Reject list-shaped `current_read_model_identities` entries before ownership, registry, factory, settings, or docs harnesses consume them.
+- Reject malformed `current_read_model_identities` entries whose tuple arity is not exactly `(table_name, identity_columns)`.
 - Reject blank table names inside `current_read_model_identities` before ownership and missing-identity checks.
 - Reject duplicate stable identity columns inside each `current_read_model_identities` entry and inside `CurrentReadModelPublisher`.
 - Reject empty stable identity column lists inside each `current_read_model_identities` entry.
@@ -362,6 +363,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Read-model identity ownership is import-time validated. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares a stable identity for an unowned read model table. |
 | Read-model identity entries are unique. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares two stable identity entries for one read model table. |
 | Read-model identity entries are tuples. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares a list-shaped stable identity entry. |
+| Read-model identity entries are pairs. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares a three-field stable identity entry before Python unpacking errors leak. |
 | Read-model identity tables are non-blank. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares a blank `current_read_model_identities` table name before ownership checks. |
 | Read-model identity columns are unique. | Pass: `_validate_worker_manifests()` and `CurrentReadModelPublisher` raise when a read-model identity repeats the same stable identity column. |
 | Read-model identity columns are non-empty. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares an empty stable identity column list. |
@@ -513,6 +515,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC111: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_tuple_read_model_identity_columns -q`
 - AC112: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_tuple_read_model_identity_entries -q`
 - AC113: `uv run pytest tests/architecture/test_src_domain_architecture.py::test_worker_manifest_imports_in_clean_process_without_importlib_util_side_effect -q`
+- AC114: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_malformed_read_model_identity_entries -q`
 
 ## Verification
 

@@ -1071,6 +1071,18 @@ def _validate_worker_manifests() -> None:
     if non_tuple_current_identity_entries:
         raise ValueError(f"non-tuple current read model identity entries: {non_tuple_current_identity_entries}")
 
+    malformed_current_identity_entries = {
+        manifest.name: tuple(
+            identity_entry
+            for identity_entry in manifest.current_read_model_identities
+            if len(identity_entry) != 2
+        )
+        for manifest in _WORKER_MANIFESTS
+        if any(len(identity_entry) != 2 for identity_entry in manifest.current_read_model_identities)
+    }
+    if malformed_current_identity_entries:
+        raise ValueError(f"malformed current read model identity entries: {malformed_current_identity_entries}")
+
     non_tuple_current_identity_columns = {
         manifest.name: {
             table_name: identity_columns

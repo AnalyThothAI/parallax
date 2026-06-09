@@ -130,6 +130,7 @@ claim is allowed without the corresponding output captured below.
 | AC111 — Read-model identity columns are tuples. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_tuple_read_model_identity_columns -q` failed RED when a patched list-shaped stable identity column declaration did not raise, then passed after adding identity-column tuple validation. |
 | AC112 — Read-model identity entries are tuples. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_tuple_read_model_identity_entries -q` failed RED when a patched list-shaped stable identity entry did not raise, then passed after adding identity-entry tuple validation. |
 | AC113 — Worker manifest imports are explicit. | ✅ | `uv run pytest tests/architecture/test_src_domain_architecture.py::test_worker_manifest_imports_in_clean_process_without_importlib_util_side_effect -q` failed RED in a temporary HEAD workspace when `worker_manifest.py` relied on `importlib.util` as an incidental package attribute, then passed after adding an explicit `import importlib.util`. |
+| AC114 — Read-model identity entries are pairs. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_malformed_read_model_identity_entries -q` failed RED when a patched three-field stable identity entry leaked a Python unpacking error, then passed after adding identity-entry arity validation. |
 
 Deviations from spec:
 
@@ -1638,6 +1639,15 @@ exit code: 1
 
 $ uv run pytest tests/architecture/test_src_domain_architecture.py::test_worker_manifest_imports_in_clean_process_without_importlib_util_side_effect -q
 1 passed in 0.53s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_malformed_read_model_identity_entries -q
+F                                                                        [100%]
+E   ValueError: too many values to unpack (expected 2)
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_malformed_read_model_identity_entries -q
+1 passed in 0.41s
 exit code: 0
 ```
 
