@@ -2371,6 +2371,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 113 — Worker manifest import dependency is explicit
+
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_src_domain_architecture.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 112
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_src_domain_architecture.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for manifest import dependency semantics.
+- **Failing test first**: `tests/architecture/test_src_domain_architecture.py::test_worker_manifest_imports_in_clean_process_without_importlib_util_side_effect` — import `worker_manifest.py` in a clean subprocess after removing incidental `importlib.util` from the package object and assert import succeeds.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `worker_manifest.py` must import `importlib.util` directly before manifest validation calls `find_spec`, so source-owned worker harnesses do not rely on prior import side effects.
+- **On-demand context**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_src_domain_architecture.py`, and Worker Manifest validation helpers.
+- **Kill/defer criteria**: Stop if Python import semantics intentionally guarantee `importlib.util` on the package object for all supported runtimes, if the fix masks import errors broadly, or if the change touches worker runtime behavior outside manifest import dependencies.
+- **Eval/repair signal**: clean-process import failure, `AttributeError: module 'importlib' has no attribute 'util'`, manifest validation import drift, and SDD generated index drift.
+- **Implementation**: Add an explicit `import importlib.util` dependency in `worker_manifest.py`.
+- **Verification**: `uv run pytest tests/architecture/test_src_domain_architecture.py::test_worker_manifest_imports_in_clean_process_without_importlib_util_side_effect -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -2485,4 +2506,5 @@
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_contract_entries -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_tuple_read_model_identity_columns -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_tuple_read_model_identity_entries -q`
+- [ ] `uv run pytest tests/architecture/test_src_domain_architecture.py::test_worker_manifest_imports_in_clean_process_without_importlib_util_side_effect -q`
 - [ ] `make check-all`

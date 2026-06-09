@@ -654,6 +654,24 @@ if loaded:
     assert result.returncode == 0
 
 
+def test_worker_manifest_imports_in_clean_process_without_importlib_util_side_effect() -> None:
+    script = """
+import importlib
+
+if hasattr(importlib, "util"):
+    delattr(importlib, "util")
+importlib.import_module("parallax.app.runtime.worker_manifest")
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+
+
 def test_pulse_agent_route_policy_stays_in_domain() -> None:
     path = SRC_ROOT / "domains" / "pulse_lab" / "services" / "agent_routing.py"
     offenders = [

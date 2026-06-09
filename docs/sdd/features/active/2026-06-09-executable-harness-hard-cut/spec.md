@@ -84,6 +84,7 @@ can both miss real process drift and block healthy refactors.
 | Read-model identity columns must be non-empty. | `WorkerManifest` validation rejects current read-model identity declarations whose stable identity column list is empty. |
 | Read-model identity columns must be non-blank. | `WorkerManifest` validation and `CurrentReadModelPublisher` reject blank stable identity column names. |
 | Read-model identity columns must be tuples. | `WorkerManifest` validation rejects list-shaped stable identity column declarations before ownership or docs harnesses consume them. |
+| Worker manifest imports must be explicit. | `worker_manifest.py` imports `importlib.util` directly so clean-process manifest validation never depends on incidental package attribute side effects. |
 | Worker table declarations must be unique. | `WorkerManifest` validation rejects duplicated table names inside each manifest table-declaration field before `owned_tables` dedupes them. |
 | Worker table declarations must be non-blank. | `WorkerManifest` validation rejects blank table names in table-declaration fields and queue-depth table declarations. |
 | SQL tests must avoid accidental alias/order coupling. | A query-contract helper checks tables, predicates, locks, params, and forbidden surfaces without pinning formatting. |
@@ -226,6 +227,7 @@ can both miss real process drift and block healthy refactors.
 - G88. Tuple-valued string manifest declarations reject non-string entries, so blank, duplicate, ownership, and wake-channel checks fail with manifest errors instead of implementation-detail attribute errors.
 - G89. Stable read-model identity column declarations reject list-shaped compatibility values, so serving identity checks consume immutable column tuples.
 - G90. Stable read-model identity entries reject list-shaped compatibility values, so serving identity table/column pairs remain immutable manifest source truth.
+- G91. Worker manifest module imports declare `importlib.util` directly, so source-owned manifest validation survives clean-process imports without depending on prior import side effects.
 
 ## Non-goals
 
@@ -383,6 +385,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC110. WHEN a tuple-valued string `WorkerManifest` contract field contains a non-string entry THEN manifest validation SHALL raise before registry, factory, settings, or worker inventory harnesses consume the manifest.
 - AC111. WHEN a `WorkerManifest.current_read_model_identities` entry declares identity columns that are not a tuple THEN manifest validation SHALL raise before ownership, registry, factory, settings, or worker inventory harnesses consume the manifest.
 - AC112. WHEN a `WorkerManifest.current_read_model_identities` entry is not a tuple THEN manifest validation SHALL raise before ownership, registry, factory, settings, or worker inventory harnesses consume the manifest.
+- AC113. WHEN `worker_manifest.py` is imported in a clean process where `importlib.util` is not already attached to the imported `importlib` package object THEN the import SHALL succeed without relying on incidental import side effects.
 
 ## Risks
 
