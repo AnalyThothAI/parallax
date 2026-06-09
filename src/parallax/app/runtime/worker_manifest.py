@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -793,6 +794,14 @@ def _validate_worker_manifests() -> None:
     if duplicate_worker_classes:
         raise ValueError(f"duplicate worker manifest classes: {duplicate_worker_classes}")
 
+    missing_worker_class_modules = {
+        manifest.name: manifest.worker_class
+        for manifest in _WORKER_MANIFESTS
+        if not _worker_class_module_exists(manifest.worker_class)
+    }
+    if missing_worker_class_modules:
+        raise ValueError(f"missing worker manifest class modules: {missing_worker_class_modules}")
+
     non_integer_start_priorities = {
         manifest.name: manifest.start_priority
         for manifest in _WORKER_MANIFESTS
@@ -1114,6 +1123,16 @@ def _duplicate_values(values: tuple[str, ...]) -> tuple[str, ...]:
             duplicates.add(value)
         seen.add(value)
     return tuple(sorted(duplicates))
+
+
+def _worker_class_module_exists(worker_class: str) -> bool:
+    module_name, _separator, class_name = worker_class.rpartition(".")
+    if not module_name or not class_name:
+        return False
+    try:
+        return importlib.util.find_spec(module_name) is not None
+    except (ImportError, ValueError):
+        return False
 
 
 _validate_worker_manifests()
