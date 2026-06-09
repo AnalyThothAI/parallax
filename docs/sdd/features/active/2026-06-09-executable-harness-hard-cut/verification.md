@@ -70,6 +70,7 @@ claim is allowed without the corresponding output captured below.
 | AC51 — Frontend feature-boundary scan derives feature roots. | ✅ | `cd web && npm run test -- tests/architecture/featureBoundaries.test.ts` failed RED on omitted `macro/news/ops/token-case` and stale `token-target`, then passed after source-derived scan updates. |
 | AC52 — Frontend data ownership gate is executable. | ✅ | `cd web && npm run test -- tests/architecture/frontendDataOwnership.test.ts` failed RED on missing docs binding, then passed after the docs and static source gate were added. |
 | AC53 — Agent router frontend guardrails are source-aligned. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_agent_router_frontend_guardrails_match_css_harness -q` failed RED on missing `macro.css`, then passed after AGENTS/CLAUDE shared router updates. |
+| AC54 — Frontend verification skill carries data ownership. | ✅ | `cd web && npm run test -- tests/architecture/frontendDocContract.test.ts` failed RED on missing `frontendDataOwnership.test.ts` in the skill, then passed after the skill and doc-contract update. |
 
 Deviations from spec:
 
@@ -862,6 +863,25 @@ exit code: 0
 
 $ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_router_shared_blocks_match_and_reference_agent_playbook -q
 1 passed in 0.02s
+exit code: 0
+
+$ cd web && npm run test -- tests/architecture/frontendDocContract.test.ts
+FAIL tests/architecture/frontendDocContract.test.ts
+AssertionError: expected frontend verification skill to contain `frontendDataOwnership.test.ts`
+exit code: 1
+
+$ cd web && npm run test -- tests/architecture/frontendDocContract.test.ts
+Test Files  1 passed (1)
+Tests  5 passed (5)
+exit code: 0
+
+$ cd web && npm run test:architecture -- frontendDocContract.test.ts
+Test Files  13 passed (13)
+Tests  73 passed (73)
+exit code: 0
+
+$ cd web && npx prettier --check tests/architecture/frontendDocContract.test.ts && npx eslint tests/architecture/frontendDocContract.test.ts --max-warnings=0
+All matched files use Prettier code style!
 exit code: 0
 
 $ uv run pytest tests/architecture/test_agent_playbook_contracts.py -q

@@ -23,11 +23,12 @@ Use this skill after any `web/src` UI, route shell, CSS, responsive layout, or s
 3. Confirm no retired CSS buckets return: `cockpit.css`, `macro.css`, `macroResponsive.css`, `shared.css`, or `signalLab.css`.
 4. Confirm feature CSS does not restyle shared UI internals, notification internals, or Obsidian `.ods-*` selectors.
 5. Prefer local owner CSS beside the component or route that imports it.
-6. Run `cd web && npm run lint`.
-7. Run `cd web && npm run test:architecture`.
-8. Run `cd web && npm run typecheck`.
-9. Run targeted `npm run test -- <path>` when a component test exists.
-10. For visible layout changes, use browser screenshots across desktop and mobile. Check blank states, text overflow, overlap, and missing data states.
+6. Confirm `frontendDataOwnership.test.ts` stays green: route modules and presentational UI must not directly call `useQuery`, `useMutation`, `useInfiniteQuery`, `getApi`, `postApi`, or `queryClient.set`; feature API hooks, page hooks, and controllers own server reads/writes.
+7. Run `cd web && npm run lint`.
+8. Run `cd web && npm run test:architecture`.
+9. Run `cd web && npm run typecheck`.
+10. Run targeted `npm run test -- <path>` when a component test exists.
+11. For visible layout changes, use browser screenshots across desktop and mobile. Check blank states, text overflow, overlap, and missing data states.
 
 ## Verification Commands
 

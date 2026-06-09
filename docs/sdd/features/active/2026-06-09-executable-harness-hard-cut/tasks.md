@@ -1132,6 +1132,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 54 — Frontend verification skill data-ownership gate
+
+- **File(s)**: `.agents/skills/parallax-frontend-verification/SKILL.md`, `web/tests/architecture/frontendDocContract.test.ts`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 53
+- **Touch set**: `.agents/skills/parallax-frontend-verification/SKILL.md`, `web/tests/architecture/frontendDocContract.test.ts`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `docs/FRONTEND.md` for frontend verification skill semantics.
+- **Failing test first**: `tests/architecture/frontendDocContract.test.ts::frontend documentation contract` — asserts the frontend verification skill names the data-ownership harness and forbidden route/UI server-state primitives under the `web/` test command.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Docs/contracts
+- **Deterministic constraints**: The skill must name `frontendDataOwnership.test.ts` and the forbidden primitives checked by that harness: `useQuery`, `useMutation`, `useInfiniteQuery`, `getApi`, `postApi`, and `queryClient.set`.
+- **On-demand context**: `docs/FRONTEND.md`, `.agents/skills/parallax-frontend-verification/SKILL.md`, `web/tests/architecture/frontendDocContract.test.ts`, and `web/tests/architecture/frontendDataOwnership.test.ts`.
+- **Kill/defer criteria**: Stop if the check hard-codes stale prose instead of binding to the data-ownership harness, or if the skill becomes a duplicate of `docs/FRONTEND.md` rather than a short verification router.
+- **Eval/repair signal**: stale frontend verification skill, missing data-ownership primitive, frontend doc-contract failure, and review defects around route/UI server-state ownership.
+- **Implementation**: Extend the frontend doc-contract architecture test and update the repo-scoped frontend verification skill to carry the current data-ownership gate.
+- **Verification**: `cd web && npm run test -- tests/architecture/frontendDocContract.test.ts`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1187,4 +1208,5 @@
 - [ ] `cd web && npm run test -- tests/architecture/featureBoundaries.test.ts`
 - [ ] `cd web && npm run test -- tests/architecture/frontendDataOwnership.test.ts`
 - [ ] `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_agent_router_frontend_guardrails_match_css_harness -q`
+- [ ] `cd web && npm run test -- tests/architecture/frontendDocContract.test.ts`
 - [ ] `make check-all`

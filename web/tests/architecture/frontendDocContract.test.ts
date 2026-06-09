@@ -46,6 +46,28 @@ describe("frontend documentation contract", () => {
     expect(frontendVerificationSkill).toContain("`cd web && npm run typecheck`");
   });
 
+  it("keeps the frontend verification skill aligned with data ownership checks", () => {
+    const dataOwnershipHarness = readFileSync(
+      join(webRoot, "tests/architecture/frontendDataOwnership.test.ts"),
+      "utf8",
+    );
+    const forbiddenPrimitives = [
+      { harnessNeedle: "useQuery", skillToken: "useQuery" },
+      { harnessNeedle: "useMutation", skillToken: "useMutation" },
+      { harnessNeedle: "useInfiniteQuery", skillToken: "useInfiniteQuery" },
+      { harnessNeedle: "getApi", skillToken: "getApi" },
+      { harnessNeedle: "postApi", skillToken: "postApi" },
+      { harnessNeedle: "queryClient\\.set", skillToken: "queryClient.set" },
+    ];
+
+    expect(frontendDoc).toContain("`frontendDataOwnership.test.ts`");
+    expect(frontendVerificationSkill).toContain("`frontendDataOwnership.test.ts`");
+    for (const { harnessNeedle, skillToken } of forbiddenPrimitives) {
+      expect(dataOwnershipHarness).toContain(harnessNeedle);
+      expect(frontendVerificationSkill).toContain(`\`${skillToken}\``);
+    }
+  });
+
   it("documents public feature barrels plus sanctioned shell entrypoints", () => {
     expect(frontendDoc).toContain("`@features/<name>`");
     expect(frontendDoc).toContain("`@features/<name>/shell`");
