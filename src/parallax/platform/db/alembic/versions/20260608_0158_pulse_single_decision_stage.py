@@ -19,6 +19,7 @@ _SINGLE_DECISION_STAGES = (
     "write_gate",
 )
 
+
 def upgrade() -> None:
     _replace_stage_check(
         name="chk_pulse_agent_run_steps_stage_single_decision",

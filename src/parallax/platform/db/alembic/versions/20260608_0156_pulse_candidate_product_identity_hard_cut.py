@@ -15,8 +15,7 @@ def upgrade() -> None:
     op.execute("SET LOCAL statement_timeout = '10min'")
     op.execute("DROP INDEX IF EXISTS ux_pulse_candidates_product_window_key")
     op.execute(
-        "ALTER TABLE pulse_playbook_snapshots "
-        "DROP CONSTRAINT IF EXISTS pulse_playbook_snapshots_candidate_id_fkey"
+        "ALTER TABLE pulse_playbook_snapshots DROP CONSTRAINT IF EXISTS pulse_playbook_snapshots_candidate_id_fkey"
     )
     op.execute(
         """
@@ -196,8 +195,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.execute("DROP INDEX IF EXISTS ux_pulse_candidates_product_window_key")
     op.execute(
-        "ALTER TABLE pulse_playbook_snapshots "
-        "DROP CONSTRAINT IF EXISTS pulse_playbook_snapshots_candidate_id_fkey"
+        "ALTER TABLE pulse_playbook_snapshots DROP CONSTRAINT IF EXISTS pulse_playbook_snapshots_candidate_id_fkey"
     )
     op.execute(
         """

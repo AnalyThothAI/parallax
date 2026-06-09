@@ -541,10 +541,10 @@ def test_news_item_process_provider_only_non_crypto_row_enqueues_page_and_brief(
         {
             "rows": [
                 {
-                        "projection_name": "brief_input",
-                        "target_kind": "news_item",
-                        "target_id": "news-spacex",
-                        "priority": 100,
+                    "projection_name": "brief_input",
+                    "target_kind": "news_item",
+                    "target_id": "news-spacex",
+                    "priority": 100,
                 }
             ],
             "reason": "news_item_processed",
@@ -610,10 +610,10 @@ def test_news_item_process_admitted_crypto_row_enqueues_page_and_brief_with_stor
         {
             "rows": [
                 {
-                        "projection_name": "brief_input",
-                        "target_kind": "news_item",
-                        "target_id": "news-zec",
-                        "priority": 100,
+                    "projection_name": "brief_input",
+                    "target_kind": "news_item",
+                    "target_id": "news-zec",
+                    "priority": 100,
                 }
             ],
             "reason": "news_item_processed",

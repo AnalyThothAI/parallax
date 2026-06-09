@@ -115,26 +115,29 @@ def test_hydrate_token_radar_does_not_expose_digest_runtime_or_storage_fields():
     assert digest["headline_zh"] == "SOL 讨论升温"
     assert digest["dominant_narratives"] == [{"label_zh": "SOL 轮动"}]
     assert digest["evidence_refs"] == [{"ref_id": "event:event-1"}]
-    assert not {
-        "digest_id",
-        "model_run_id",
-        "payload_hash",
-        "source_fingerprint",
-        "label_fingerprint",
-        "dominant_narratives_json",
-        "bull_view_json",
-        "bear_view_json",
-        "stance_mix_json",
-        "attention_valence_mix_json",
-        "propagation_read_json",
-        "data_gaps_json",
-        "evidence_refs_json",
-        "raw_response_json",
-        "raw_request_json",
-        "_current_admission",
-        "admission_id",
-        "admission_generation",
-    } & digest.keys()
+    assert (
+        not {
+            "digest_id",
+            "model_run_id",
+            "payload_hash",
+            "source_fingerprint",
+            "label_fingerprint",
+            "dominant_narratives_json",
+            "bull_view_json",
+            "bear_view_json",
+            "stance_mix_json",
+            "attention_valence_mix_json",
+            "propagation_read_json",
+            "data_gaps_json",
+            "evidence_refs_json",
+            "raw_response_json",
+            "raw_request_json",
+            "_current_admission",
+            "admission_id",
+            "admission_generation",
+        }
+        & digest.keys()
+    )
 
 
 def test_hydrate_token_radar_adds_compact_processing_backlog_without_rewriting_status_truth():

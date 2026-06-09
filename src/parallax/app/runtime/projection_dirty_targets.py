@@ -87,11 +87,7 @@ def _enqueue_news_targets(
         else []
     )
     page_rows = [row for row in news_item_rows if "page" in news_item_projections]
-    brief_rows = [
-        row
-        for row in news_item_rows
-        if "brief_input" in news_item_projections and _row_brief_eligible(row)
-    ]
+    brief_rows = [row for row in news_item_rows if "brief_input" in news_item_projections and _row_brief_eligible(row)]
     watermarks = {str(row["news_item_id"]): int(row["source_watermark_ms"] or 0) for row in news_item_rows}
     enqueued_pages = (
         enqueue_page_reprojection(

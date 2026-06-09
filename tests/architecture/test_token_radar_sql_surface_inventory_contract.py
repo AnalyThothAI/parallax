@@ -20,6 +20,7 @@ TOKEN_RADAR_SQL_SURFACES = (
     "src/parallax/domains/token_intel/repositories/token_radar_source_dirty_event_repository.py",
     "src/parallax/domains/token_intel/services/token_radar_projection.py",
     "src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py",
+    "src/parallax/platform/agent_read_tools.py",
     "src/parallax/platform/db/postgres_audit.py",
 )
 

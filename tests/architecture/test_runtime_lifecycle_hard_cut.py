@@ -68,9 +68,8 @@ def test_canonical_lifecycle_docs_do_not_republish_retired_runtime_contracts() -
 
 
 @pytest.mark.architecture
-def test_active_superpower_docs_do_not_republish_retired_runtime_contracts() -> None:
-    active_docs = list((ROOT / "docs/superpowers/specs/active").glob("*.md"))
-    active_docs += list((ROOT / "docs/superpowers/plans/active").glob("*.md"))
+def test_active_sdd_docs_do_not_republish_retired_runtime_contracts() -> None:
+    active_docs = list((ROOT / "docs/sdd/features/active").glob("**/*.md"))
     retired_contract_tokens = (
         "cex_oi_radar_runs",
         "macro_observation_series_active_generation",

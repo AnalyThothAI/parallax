@@ -405,6 +405,21 @@
 | `updated_at_ms` | `BIGINT` | False | `None` |
 | `search_tsv` | `TSVECTOR` | True | `None` |
 
+## `macro_daily_briefs`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `brief_key` | `TEXT` | False | `None` |
+| `projection_version` | `TEXT` | False | `None` |
+| `brief_date` | `DATE` | True | `None` |
+| `asof_date` | `DATE` | True | `None` |
+| `status` | `TEXT` | False | `None` |
+| `headline` | `TEXT` | False | `None` |
+| `payload_json` | `JSONB` | False | `'{}'::jsonb` |
+| `computed_at_ms` | `BIGINT` | False | `None` |
+| `updated_at_ms` | `BIGINT` | False | `None` |
+| `payload_hash` | `TEXT` | False | `None` |
+
 ## `macro_import_runs`
 
 | Column | Type | Nullable | Default |

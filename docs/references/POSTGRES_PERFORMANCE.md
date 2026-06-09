@@ -52,8 +52,7 @@ observable as zero serving-row writes.
 
 ## Source Material
 
-- Spec: `docs/superpowers/specs/active/2026-05-26-postgres-performance-queue-hard-cut-cn.md`
-- Plan: `docs/superpowers/plans/active/2026-05-26-postgres-performance-queue-hard-cut-plan-cn.md`
+- SDD workflow: `docs/sdd/`
 - Operational invariants: `docs/RELIABILITY.md`
 - Setup commands: `docs/SETUP.md`
 

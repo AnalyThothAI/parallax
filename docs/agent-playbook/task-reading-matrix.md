@@ -155,7 +155,7 @@ Answer must separate:
 
 ## Agent Workflow Or Documentation Harness
 
-Use for changes to `AGENTS.md`, `CLAUDE.md`, `docs/superpowers`, sub-agent work, specs/plans, generated docs, or completion gates.
+Use for changes to `AGENTS.md`, `CLAUDE.md`, `docs/sdd`, sub-agent work, specs/plans, generated docs, or completion gates.
 
 Required reading:
 
@@ -163,11 +163,11 @@ Required reading:
 - `docs/DESIGN_DISCIPLINE.md`
 - `docs/agent-playbook/subagent-handoff-template.md`
 - `docs/agent-playbook/context-packet-template.md`
-- `docs/superpowers/_templates/`
+- `docs/sdd/_templates/`
 
 Diagnostic commands:
 
-- `uv run python scripts/regen_agent_work_index.py --check`
+- `uv run python scripts/regen_sdd_work_index.py --check`
 - `uv run pytest tests/architecture/test_agent_playbook_contracts.py`
 - `uv run pytest tests/architecture/test_harness_structure.py tests/architecture/test_completion_gates.py`
 

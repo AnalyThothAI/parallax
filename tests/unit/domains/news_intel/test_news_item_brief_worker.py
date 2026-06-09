@@ -1013,9 +1013,7 @@ class FakeNewsRepository:
             candidate = by_id.get(item_id)
             if candidate is None:
                 continue
-            contexts.append(
-                _agent_admission_context_for_candidate(candidate)
-            )
+            contexts.append(_agent_admission_context_for_candidate(candidate))
         return contexts
 
     def update_item_agent_admission(self, **payload: Any) -> int:

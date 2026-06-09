@@ -509,8 +509,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         lane=WorkerLane.PROJECTION,
         kind=WorkerKind.PROJECTION,
         worker_class=(
-            "parallax.domains.macro_intel.runtime.macro_daily_brief_projection_worker."
-            "MacroDailyBriefProjectionWorker"
+            "parallax.domains.macro_intel.runtime.macro_daily_brief_projection_worker.MacroDailyBriefProjectionWorker"
         ),
         start_priority=96,
         input_contract=("macro_view_snapshots current", "macro_observation_series_rows current"),

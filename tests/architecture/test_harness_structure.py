@@ -1,8 +1,4 @@
-"""Structural assertions for the docs harness.
-
-Each test maps to an acceptance criterion in
-docs/superpowers/specs/completed/2026-05-09-harness-engineering-restructure.md.
-"""
+"""Structural assertions for the docs harness."""
 
 from __future__ import annotations
 
@@ -10,7 +6,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 DOCS = REPO_ROOT / "docs"
-SUPERPOWERS = DOCS / "superpowers"
+SDD = DOCS / "sdd"
 
 EXPECTED_GOVERNANCE = {
     "ARCHITECTURE.md",
@@ -29,6 +25,18 @@ EXPECTED_GOVERNANCE = {
 }
 
 ROUTER_FILES = ("AGENTS.md", "CLAUDE.md")
+LEGACY_SDD_TOKEN = "docs" + "/superpowers"
+SCANNED_SUFFIXES = {".md", ".py", ".toml", ".yaml", ".yml"}
+SKIPPED_DIRS = {
+    ".git",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    ".worktrees",
+    "__pycache__",
+    "node_modules",
+}
 
 RULE_PHRASES = {
     "Single ASGI worker": "RELIABILITY.md",
@@ -51,18 +59,56 @@ def test_routers_within_line_budget() -> None:
         assert line_count <= 60, f"{name} has {line_count} lines, expected <= 60"
 
 
-def test_lane_roots_have_no_loose_files() -> None:
-    for lane in ("specs", "plans"):
-        lane_root = SUPERPOWERS / lane
+def test_legacy_superpowers_tree_is_removed() -> None:
+    assert not (DOCS / "superpowers").exists(), "legacy SDD tree must not remain as a compatibility lane"
+
+
+def test_current_governance_does_not_reference_legacy_superpowers_paths() -> None:
+    offenders: list[str] = []
+    for path in REPO_ROOT.rglob("*"):
+        if not path.is_file():
+            continue
+        rel_parts = path.relative_to(REPO_ROOT).parts
+        if SKIPPED_DIRS.intersection(rel_parts):
+            continue
+        if path.name == "test_harness_structure.py":
+            continue
+        if path.suffix not in SCANNED_SUFFIXES and path.name != "Makefile":
+            continue
+        text = path.read_text(encoding="utf-8")
+        if LEGACY_SDD_TOKEN in text:
+            offenders.append(path.relative_to(REPO_ROOT).as_posix())
+
+    assert offenders == [], f"legacy SDD path references remain: {offenders}"
+
+
+def test_sdd_feature_tree_has_no_loose_lane_files() -> None:
+    for lane in ("active", "completed"):
+        lane_root = SDD / "features" / lane
         loose_md = sorted(p.name for p in lane_root.glob("*.md"))
-        assert loose_md == [], f"{lane}/ root holds loose files: {loose_md}"
-        children = sorted(p.name for p in lane_root.iterdir() if not p.name.startswith("."))
-        assert set(children) == {"active", "completed"}, children
+        assert loose_md == [], f"features/{lane}/ root holds loose files: {loose_md}"
+        for feature in sorted(path for path in lane_root.iterdir() if path.is_dir() and not path.name.startswith(".")):
+            actual = {path.name for path in feature.glob("*.md")}
+            assert actual == {"spec.md", "plan.md", "tasks.md", "verification.md"}, (
+                f"{feature.relative_to(REPO_ROOT)} must contain the complete SDD artifact set"
+            )
 
 
-def test_specs_lane_has_templates_dir_only_under_superpowers() -> None:
-    children = sorted(p.name for p in SUPERPOWERS.iterdir() if not p.name.startswith("."))
-    assert set(children) == {"_templates", "specs", "plans"}, children
+def test_sdd_root_has_templates_and_feature_lanes_only() -> None:
+    children = sorted(p.name for p in SDD.iterdir() if not p.name.startswith("."))
+    assert set(children) == {"README.md", "_templates", "features"}, children
+
+    template_files = {p.name for p in (SDD / "_templates").glob("*.md")}
+    assert template_files == {
+        "README.md",
+        "spec-template.md",
+        "plan-template.md",
+        "tasks-template.md",
+        "verification-template.md",
+    }
+
+    feature_children = sorted(p.name for p in (SDD / "features").iterdir() if not p.name.startswith("."))
+    assert set(feature_children) == {"active", "completed"}, feature_children
 
 
 def test_docs_root_governance_files() -> None:

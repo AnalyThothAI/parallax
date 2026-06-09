@@ -47,9 +47,7 @@ export const newsAgentReviewBadge = (
       "",
   ).toLowerCase();
   const reason =
-    eligibility?.external_push_block_reason ??
-    eligibility?.agent_admission_reason ??
-    null;
+    eligibility?.external_push_block_reason ?? eligibility?.agent_admission_reason ?? null;
   const badge = (
     label: string,
     tone: NewsAgentReviewBadge["tone"],

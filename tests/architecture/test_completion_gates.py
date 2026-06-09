@@ -14,7 +14,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 TESTING = ROOT / "docs" / "TESTING.md"
 WORKFLOW = ROOT / "docs" / "WORKFLOW.md"
-TEMPLATE = ROOT / "docs" / "superpowers" / "_templates" / "verification-template.md"
+TEMPLATE = ROOT / "docs" / "sdd" / "_templates" / "verification-template.md"
 
 
 @pytest.mark.architecture

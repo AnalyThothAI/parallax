@@ -9,14 +9,7 @@ import type {
   NewsTokenLane,
 } from "@shared/model/newsIntel";
 import { newsLifecycleLabel } from "@shared/model/newsIntel";
-import {
-  Activity,
-  Brain,
-  Database,
-  ExternalLink,
-  FileText,
-  ShieldCheck,
-} from "lucide-react";
+import { Activity, Brain, Database, ExternalLink, FileText, ShieldCheck } from "lucide-react";
 import type { ComponentType } from "react";
 
 import {

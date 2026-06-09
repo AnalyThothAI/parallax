@@ -31,12 +31,7 @@ PULSE_CANDIDATE_AUDIT_IDENTITY_MIGRATION = (
     / "20260608_0155_pulse_candidate_serving_row_audit_identity_hard_cut.py"
 )
 PULSE_CANDIDATE_PRODUCT_IDENTITY_MIGRATION = (
-    SRC
-    / "platform"
-    / "db"
-    / "alembic"
-    / "versions"
-    / "20260608_0156_pulse_candidate_product_identity_hard_cut.py"
+    SRC / "platform" / "db" / "alembic" / "versions" / "20260608_0156_pulse_candidate_product_identity_hard_cut.py"
 )
 PULSE_DESK_DECISIONS = ROOT / "docs" / "generated" / "pulse-agent-desk-decisions.md"
 PULSE_OPERATOR_DOCS = (

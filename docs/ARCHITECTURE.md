@@ -456,9 +456,8 @@ market-data lane, which lanes are allowed to write `market_ticks` /
 `enriched_events`, and which lanes are read-only. It supersedes any older
 phrasing in this doc or `WORKERS.md` that described OKX as a "fallback" to a
 GMGN price WebSocket — GMGN's public WebSocket is a *social* ingestion stream,
-not a price source. The active spec and plan that pin this layout are
-`docs/superpowers/specs/active/2026-05-16-price-pipeline-throughput-recovery-cn.md`
-and `docs/superpowers/plans/active/2026-05-16-price-pipeline-throughput-recovery-plan-cn.md`.
+not a price source. This matrix is canonical; future SDD feature records must
+update this section when they change provider ownership.
 
 | Layer | Primary | Fallback | Writes facts | Notes |
 |---|---|---|---|---|

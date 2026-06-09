@@ -47,7 +47,10 @@ describe("newsSignalViewModel", () => {
         signal: {
           display_signal: { source: "provider", status: "ready", direction: "neutral" },
           agent_signal: { status: "not_required" },
-          alert_eligibility: { agent_status: "not_required", agent_admission_reason: "exact_duplicate" },
+          alert_eligibility: {
+            agent_status: "not_required",
+            agent_admission_reason: "exact_duplicate",
+          },
         },
       }),
     ).toEqual({

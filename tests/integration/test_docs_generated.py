@@ -20,12 +20,12 @@ AUTO_GENERATED = {
     "pulse-agent-desk-decisions.md",
 }
 GENERATED_REPORTS = {
-    "agent-work-index.md",
     "backend-architecture-audit-2026-05-17.md",
     "duplicate-token-audit.md",
     "duplicate-token-audit-applied.md",
     "frontend-test-ownership.md",
     "pulse-1h-4h-agent-runtime-evaluation-2026-05-20.md",
+    "sdd-work-index.md",
     "signal-pulse-agent-cost-guard-2026-05-21.md",
 }
 EXPECTED = {"README.md"} | AUTO_GENERATED | GENERATED_REPORTS

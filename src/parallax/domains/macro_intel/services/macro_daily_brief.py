@@ -66,7 +66,11 @@ def build_macro_daily_brief(*, snapshot: Mapping[str, Any] | None, computed_at_m
             {
                 "id": "outlook",
                 "title": "今日展望",
-                "stance": "watch_data_quality" if quality["status"] != "ok" else _risk_stance(spx=spx, btc=btc, vix=vix, hy_oas=hy_oas),
+                "stance": (
+                    "watch_data_quality"
+                    if quality["status"] != "ok"
+                    else _risk_stance(spx=spx, btc=btc, vix=vix, hy_oas=hy_oas)
+                ),
                 "body": _outlook_body(quality=quality, risk=risk),
             },
         ],
@@ -154,10 +158,7 @@ def _risk_stance(*, spx: float | None, btc: float | None, vix: float | None, hy_
 
 
 def _risk_body(*, spx: float | None, btc: float | None, vix: float | None, hy_oas: float | None) -> str:
-    return (
-        f"SPX {_fmt_delta(spx)}，BTC {_fmt_delta(btc)}，VIX {_fmt_delta(vix)}，"
-        f"HY OAS {_fmt_delta(hy_oas)}。"
-    )
+    return f"SPX {_fmt_delta(spx)}，BTC {_fmt_delta(btc)}，VIX {_fmt_delta(vix)}，HY OAS {_fmt_delta(hy_oas)}。"
 
 
 def _outlook_body(*, quality: Mapping[str, Any], risk: str) -> str:
@@ -211,9 +212,11 @@ def _mapping(value: object) -> Mapping[str, Any]:
 
 def _float_or_zero(value: object) -> float:
     try:
-        return float(value)
+        if isinstance(value, (bytes, float, int, str)):
+            return float(value)
     except (TypeError, ValueError):
-        return 0.0
+        pass
+    return 0.0
 
 
 def _string_or_none(value: object) -> str | None:

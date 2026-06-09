@@ -3,10 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-ACTIVE_DIRS = (
-    ROOT / "docs" / "superpowers" / "specs" / "active",
-    ROOT / "docs" / "superpowers" / "plans" / "active",
-)
+ACTIVE_DIRS = (ROOT / "docs" / "sdd" / "features" / "active",)
 ALLOWLIST = {
     "2026-06-07-news-market-wide-notification-hard-cut-cn.md",
     "2026-06-07-news-market-wide-notification-hard-cut-plan-cn.md",
@@ -27,7 +24,7 @@ FORBIDDEN = (
 def test_active_news_specs_do_not_define_legacy_crypto_gate() -> None:
     offenders: list[str] = []
     for directory in ACTIVE_DIRS:
-        for path in sorted(directory.glob("*news*.md")):
+        for path in sorted(directory.glob("**/*news*.md")):
             if path.name in ALLOWLIST:
                 continue
             text = path.read_text(encoding="utf-8")

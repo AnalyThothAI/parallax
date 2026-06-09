@@ -476,7 +476,7 @@ def _target_domains(*, target_id: Any, target_type: Any) -> list[str]:
         domains.append("commodity")
     elif target_kind in {"cextoken", "cex_token", "asset", "token", "crypto_asset"}:
         domains.append("crypto")
-    return _stable_unique(domain for domain in domains if domain in _NEWS_MARKET_DOMAINS)
+    return _stable_unique([domain for domain in domains if domain in _NEWS_MARKET_DOMAINS])
 
 
 def _mention_sort_key(row: Mapping[str, Any]) -> tuple[str, str]:

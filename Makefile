@@ -132,9 +132,9 @@ clean: ## remove local test/cache artifacts
 	@rm -rf .pytest_cache .ruff_cache __pycache__
 	@find src tests -type d -name __pycache__ -prune -exec rm -rf {} +
 
-.PHONY: docs-generated docs-db-schema docs-cli-help docs-score-versions docs-ws-protocol docs-pulse-agent-desk-decisions
+.PHONY: docs-generated docs-db-schema docs-cli-help docs-score-versions docs-ws-protocol docs-pulse-agent-desk-decisions docs-sdd-work-index
 
-docs-generated: docs-db-schema docs-cli-help docs-score-versions docs-ws-protocol docs-pulse-agent-desk-decisions ## regenerate docs/generated/*
+docs-generated: docs-db-schema docs-cli-help docs-score-versions docs-ws-protocol docs-pulse-agent-desk-decisions docs-sdd-work-index ## regenerate docs/generated/*
 
 docs-db-schema: ## regenerate docs/generated/db-schema.md (requires Postgres)
 	@uv run python scripts/regen_db_schema.py
@@ -150,3 +150,6 @@ docs-ws-protocol: ## regenerate docs/generated/ws-protocol.md
 
 docs-pulse-agent-desk-decisions: ## regenerate docs/generated/pulse-agent-desk-decisions.md
 	@uv run python scripts/regen_pulse_agent_desk_decisions.py
+
+docs-sdd-work-index: ## regenerate docs/generated/sdd-work-index.md
+	@uv run python scripts/regen_sdd_work_index.py

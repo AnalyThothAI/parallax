@@ -107,8 +107,9 @@ def test_api_and_cli_surface_roots_stay_thin_dispatchers():
 
 def test_current_projection_docs_are_postgres_only():
     paths = [
-        ROOT / "docs" / "superpowers" / "specs" / "completed" / "2026-05-06-materialized-read-models-production-cn.md",
-        ROOT / "docs" / "superpowers" / "plans" / "completed" / "2026-05-06-postgresql-projection-closure.md",
+        ROOT / "docs" / "ARCHITECTURE.md",
+        ROOT / "docs" / "WORKERS.md",
+        ROOT / "docs" / "CONTRACTS.md",
     ]
     for path in paths:
         text = path.read_text(encoding="utf-8").lower()

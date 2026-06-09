@@ -340,10 +340,10 @@ def test_process_worker_enqueues_page_and_brief_dirty_in_same_transaction_after_
         {
             "rows": [
                 {
-                        "projection_name": "brief_input",
-                        "target_kind": "news_item",
-                        "target_id": "news-1",
-                        "priority": 100,
+                    "projection_name": "brief_input",
+                    "target_kind": "news_item",
+                    "target_id": "news-1",
+                    "priority": 100,
                 }
             ],
             "reason": "news_item_processed",
@@ -377,10 +377,10 @@ def test_ops_projection_repair_enqueues_provider_signal_brief_input_dirty_target
             "rows": [
                 {
                     "projection_name": "brief_input",
-                        "target_kind": "news_item",
-                        "target_id": "news-provider",
-                        "source_watermark_ms": NOW_MS - 1_000,
-                        "priority": 100,
+                    "target_kind": "news_item",
+                    "target_id": "news-provider",
+                    "source_watermark_ms": NOW_MS - 1_000,
+                    "priority": 100,
                 }
             ],
             "reason": "ops_projection_dirty_repair",

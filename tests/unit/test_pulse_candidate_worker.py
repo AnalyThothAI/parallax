@@ -2241,8 +2241,7 @@ class FakeClient:
                 summary_zh="成本门控跳过单阶段决策，本次不发布候选。",
                 narrative_archetype="unclear",
                 narrative_thesis_zh=(
-                    "确定性成本门控判定该样本不需要运行 Pulse 决策；"
-                    "系统保留审计并等待下一轮公开资格确认。"
+                    "确定性成本门控判定该样本不需要运行 Pulse 决策；系统保留审计并等待下一轮公开资格确认。"
                 ),
                 bull_view=BullBearView(strength="absent"),
                 bear_view=BullBearView(strength="absent"),

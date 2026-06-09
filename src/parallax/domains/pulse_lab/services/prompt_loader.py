@@ -81,15 +81,9 @@ def pulse_decision_prompt_text_hash() -> str:
     catalog = agent_knowledge_catalog()
     return json_sha256(
         {
-            "prompts": {
-                role: _read_file(str(_PROMPTS_DIR / f"{role}.md"))
-                for role in _KNOWN_ROLES
-            },
+            "prompts": {role: _read_file(str(_PROMPTS_DIR / f"{role}.md")) for role in _KNOWN_ROLES},
             "knowledge_refs": PULSE_DECISION_KNOWLEDGE_REFS,
-            "knowledge": {
-                ref: catalog.load(ref)
-                for ref in PULSE_DECISION_KNOWLEDGE_REFS
-            },
+            "knowledge": {ref: catalog.load(ref) for ref in PULSE_DECISION_KNOWLEDGE_REFS},
         }
     )
 

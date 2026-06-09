@@ -94,10 +94,7 @@ def bootstrap(settings: Settings, *, start_collector: bool = True) -> Runtime:
         if not startup_db.get("ok"):
             raise RuntimeError(f"postgres health check failed: {startup_db}")
 
-        if (
-            settings.pulse_agent_configured
-            or settings.news_item_brief_configured
-        ):
+        if settings.pulse_agent_configured or settings.news_item_brief_configured:
             llm_gateway = LLMGateway.create(settings)
             agent_execution_gateway = build_agent_execution_gateway(
                 settings,

@@ -1174,10 +1174,7 @@ def test_opennews_public_url_later_remaps_dirty_targets_without_rewriting_agent_
     ]
     assert current_brief is None
     assert old_brief_count == 1
-    dirty_target_by_key = {
-        (row["target_id"], row["projection_name"]): dict(row)
-        for row in dirty_targets
-    }
+    dirty_target_by_key = {(row["target_id"], row["projection_name"]): dict(row) for row in dirty_targets}
     assert set(dirty_target_by_key) == {
         (fallback_news["news_item_id"], "page"),
         (public_news["news_item_id"], "brief_input"),

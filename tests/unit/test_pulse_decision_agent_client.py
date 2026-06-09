@@ -347,9 +347,7 @@ def test_pulse_client_cost_guard_skip_decision_skips_llm() -> None:
 
     result = asyncio.run(
         client.run_decision_pipeline(
-            context=_pipeline_context(
-                cost_guard={"decision": {"action": "skip_decision", "decision_allowed": False}}
-            ),
+            context=_pipeline_context(cost_guard={"decision": {"action": "skip_decision", "decision_allowed": False}}),
             run_id="run-1",
             job={"job_id": "job-1", "attempt_count": 1},
             route="meme",
@@ -385,11 +383,7 @@ def test_pulse_client_cost_guard_run_decision_runs_single_stage() -> None:
 
     asyncio.run(
         client.run_decision_pipeline(
-            context=_pipeline_context(
-                cost_guard={
-                    "decision": {"action": "run_decision", "decision_allowed": True}
-                }
-            ),
+            context=_pipeline_context(cost_guard={"decision": {"action": "run_decision", "decision_allowed": True}}),
             run_id="run-1",
             job={"job_id": "job-1", "attempt_count": 1},
             route="meme",
