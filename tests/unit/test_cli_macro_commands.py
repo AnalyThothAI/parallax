@@ -283,12 +283,14 @@ def test_macrodata_runner_skips_stale_console_script_shebang(monkeypatch, tmp_pa
         encoding="utf-8",
     )
     executable.chmod(0o755)
+    fake_python = str(tmp_path / "python")
 
     monkeypatch.setattr("parallax.integrations.macrodata.runner._macrodata_cli_entrypoint_available", lambda: True)
+    monkeypatch.setattr("parallax.integrations.macrodata.runner.sys.executable", fake_python)
 
     command = resolve_macrodata_command(environ={"PATH": str(tmp_path)})
 
-    assert command == [sys.executable, "-c", "from macrodata.surfaces.cli import main; main()"]
+    assert command == [fake_python, "-c", "from macrodata.surfaces.cli import main; main()"]
 
 
 def test_macrodata_runtime_state_reports_missing_required_catalog_series(monkeypatch) -> None:
