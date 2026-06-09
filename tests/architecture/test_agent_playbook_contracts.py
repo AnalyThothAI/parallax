@@ -84,6 +84,11 @@ def test_agent_execution_doc_keeps_runtime_agent_boundary_explicit() -> None:
 def test_tasks_template_has_parallel_subagent_contract_fields() -> None:
     text = _read(ROOT / "docs" / "sdd" / "_templates" / "tasks-template.md")
     for required_phrase in (
+        "**Status**",
+        "**Branch**",
+        "**Approved by**",
+        "**Approved at**",
+        "## Gate Compliance",
         "**Owner**",
         "**Depends on**",
         "**Touch set**",
@@ -98,12 +103,27 @@ def test_tasks_template_has_parallel_subagent_contract_fields() -> None:
 @pytest.mark.architecture
 def test_sdd_work_index_is_generated_and_current() -> None:
     script = ROOT / "scripts" / "regen_sdd_work_index.py"
+    validator = ROOT / "scripts" / "validate_sdd_artifacts.py"
     generated = ROOT / "docs" / "generated" / "sdd-work-index.md"
     assert script.exists()
+    assert validator.exists()
     assert generated.exists()
     text = generated.read_text(encoding="utf-8")
+    assert "## Coordination Board" in text
+    for required_column in (
+        "Owner",
+        "Worktree",
+        "Branch",
+        "Touch set",
+        "Conflict set",
+        "Blocked",
+        "Verification",
+    ):
+        assert required_column in text
     assert "| `review-lifecycle` | 0 |" in text
     assert "| `missing-status` | 0 |" in text
+    assert "| `verified-missing-check-all` | 0 |" in text
+    assert "| `task-missing-coordination-fields` | 0 |" in text
     result = subprocess.run(
         [sys.executable, str(script), "--check"],
         cwd=ROOT,
@@ -112,6 +132,14 @@ def test_sdd_work_index_is_generated_and_current() -> None:
         check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+    validation = subprocess.run(
+        [sys.executable, str(validator), "--check"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert validation.returncode == 0, validation.stdout + validation.stderr
 
 
 @pytest.mark.architecture

@@ -1,7 +1,11 @@
 # Tasks — `<feature title>`
 
+**Status**: Draft | Approved | In Progress | Review | Blocked | Verified | Superseded
 **Owning plan**: `docs/sdd/features/active/YYYY-MM-DD-<slug>/plan.md`
 **Worktree**: `.worktrees/<branch-slug>/`
+**Branch**: `<branch>`
+**Approved by**: <user / delegated goal / pending>
+**Approved at**: <YYYY-MM-DD / pending>
 
 Use this file when a plan spans multiple PRs or when a parallel sub-agent will execute pieces. Skip it for single-PR work.
 
@@ -14,6 +18,16 @@ Tasks are TDD-ordered: write the failing test first, then the implementation, th
 - A task is complete only when its verification command produced the expected output.
 - Use `docs/agent-playbook/subagent-handoff-template.md` for delegated work.
 - The **Touch set** is what the assignee may edit. The **Conflict set** is what they must avoid or coordinate with the parent agent.
+
+## Gate Compliance
+
+| Gate | Evidence |
+|------|----------|
+| Clarify | `spec.md` includes `## Clarifications`. |
+| Checklist | `spec.md` includes `## Requirement Checklist`. |
+| Analyze | `plan.md` includes `## Analyze Gate`. |
+| Implement | Tasks below are TDD ordered. |
+| Verify | `verification.md` captures command output. |
 
 ## Tasks
 

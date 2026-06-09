@@ -1,10 +1,11 @@
 # Verification - SDD Governance Hard Cut
 
-**Status**: Verified
+**Status**: Superseded
 **Date**: 2026-06-09
 **Owning spec**: `docs/sdd/features/completed/2026-06-09-sdd-governance-hard-cut/spec.md`
 **Owning plan**: `docs/sdd/features/completed/2026-06-09-sdd-governance-hard-cut/plan.md`
 **Branch**: `codex/sdd-v2-hard-cut`
+**Superseded by**: `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut/`
 
 ## Spec Compliance
 

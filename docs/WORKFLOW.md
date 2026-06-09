@@ -30,6 +30,13 @@ requirements quality, and `analyze` to check consistency across spec, plan, and
 tasks before implementation starts. Repeat analysis after implementation when
 the diff changes the contract.
 
+The loop is executable. Feature records must carry machine-readable
+`Approved by`, `Approved at`, `Worktree`, `Branch`, `Touch set`, `Conflict set`,
+task verification, and review-owner fields. `uv run python
+scripts/validate_sdd_artifacts.py --check` fails false `Verified` records,
+missing gate sections, incomplete task coordination fields, and overlapping
+active touch sets without an explicit coordination rule.
+
 When work ships and verification is recorded, move the whole feature directory
 from `features/active/` to `features/completed/` in the same PR.
 
@@ -60,6 +67,8 @@ Do not claim a task is complete, fixed, or passing until all of the following
 are true and have been written into the verification artefact:
 
 - The implementation matches the approved spec; deviations are documented.
+- `uv run python scripts/validate_sdd_artifacts.py --check` exited 0, and
+  `uv run python scripts/regen_sdd_work_index.py --check` exited 0.
 - `make check-all` exited 0 in the worktree, AND the verification artefact contains
   its full output (no abridging) plus the new `Coverage`, `Skipped tests`, and
   `E2E golden path` sections.

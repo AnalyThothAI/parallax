@@ -15,6 +15,61 @@
 - Golden tests live under `tests/golden/`. They exercise curated corpus expectations against the real ingest/projection pipeline, provision PostgreSQL like integration tests, and are covered by `make check-all`.
 - Business skips are not a long-term state. Do not leave `@pytest.mark.skip` or `pytest.skip(...)` in business tests; move environment-dependent skips into lane conftests or the shared PostgreSQL test harness.
 
+## Harness Test Taxonomy
+
+Architecture tests must declare what kind of harness pressure they apply. A test may appear in more than one class, but the dominant class determines how reviewers judge brittleness:
+
+| Class | Purpose | Expiry condition | Replacement behavior test |
+|-------|---------|------------------|---------------------------|
+| Permanent invariant | Enforce stable project boundaries such as facts vs read models, router size, worker ownership, and public runtime contracts. | None unless the canonical architecture doc changes in the same PR. | Required before changing or deleting the invariant. |
+| Migration tripwire | Prevent a retired table, command, prompt, compatibility layer, or old identity scheme from returning. | Delete or relax only when the replacement has shipped and a behavior contract proves the replacement path. | Required; the test must name the runtime behavior that replaces the old surface. |
+| Behavior contract | Assert observable behavior at a boundary without pinning incidental wording, alias names, or call order. | None; prefer refactoring toward this class. | The test itself is the replacement. |
+| Generated hygiene | Prove generated files are current, deterministic, and sourced from the expected generator. | None while the generated artifact remains published. | A stale-generation or semantic-content check must replace file-list checks. |
+
+Current architecture test inventory:
+
+| Test file | Class | Review note |
+|-----------|-------|-------------|
+| `tests/architecture/test_agent_execution_plane_contracts.py` | Permanent invariant | Product LLM agent runtime boundary. |
+| `tests/architecture/test_agent_harness_cleanup_contracts.py` | Migration tripwire | Retired agent harness cleanup; keep paired with execution-plane behavior. |
+| `tests/architecture/test_agent_input_identity_contracts.py` | Permanent invariant | Input identity and provenance boundaries. |
+| `tests/architecture/test_agent_model_capability_contracts.py` | Permanent invariant | Model capability registry contract. |
+| `tests/architecture/test_agent_playbook_contracts.py` | Generated hygiene | Agent router, SDD index, and playbook freshness. |
+| `tests/architecture/test_api_read_paths_provider_free.py` | Permanent invariant | API reads do not call providers. |
+| `tests/architecture/test_cex_oi_kappa_contract.py` | Permanent invariant | CEX OI Kappa/CQRS ownership. |
+| `tests/architecture/test_completion_gates.py` | Permanent invariant | Completion evidence requirements. |
+| `tests/architecture/test_earnings_hard_delete_contracts.py` | Migration tripwire | Retired earnings runtime surfaces. |
+| `tests/architecture/test_equity_runtime_hard_delete_contract.py` | Migration tripwire | Retired equity runtime compatibility. |
+| `tests/architecture/test_event_anchor_capture_redesign_contracts.py` | Migration tripwire | Event-anchor redesign hard cut. |
+| `tests/architecture/test_harness_structure.py` | Permanent invariant | Documentation harness and SDD lane structure. |
+| `tests/architecture/test_macro_kappa_contract.py` | Permanent invariant | Macro Kappa/CQRS boundaries. |
+| `tests/architecture/test_macro_no_compatibility_contract.py` | Migration tripwire | Macro compatibility surfaces stay deleted. |
+| `tests/architecture/test_news_active_spec_hygiene.py` | Generated hygiene | Active news SDD hygiene. |
+| `tests/architecture/test_news_intel_boundaries.py` | Permanent invariant | News domain boundaries. |
+| `tests/architecture/test_news_intel_kiss_simplification.py` | Migration tripwire | News simplification hard cut. |
+| `tests/architecture/test_no_factor_snapshot_fallback.py` | Migration tripwire | Factor snapshot fallback stays deleted. |
+| `tests/architecture/test_notifications_hard_cut.py` | Migration tripwire | Notification hard-cut surfaces. |
+| `tests/architecture/test_project_structure.py` | Permanent invariant | Repository and source tree boundaries. |
+| `tests/architecture/test_projection_worker_idle_cost_contract.py` | Behavior contract | Idle projection workers avoid broad work. |
+| `tests/architecture/test_public_event_token_projection.py` | Behavior contract | Public event token projection contract. |
+| `tests/architecture/test_pulse_no_compat.py` | Migration tripwire | Pulse compatibility code stays deleted. |
+| `tests/architecture/test_runtime_lifecycle_hard_cut.py` | Migration tripwire | Runtime lifecycle hard cut. |
+| `tests/architecture/test_runtime_performance_architecture_hard_cut.py` | Migration tripwire | Runtime performance hard cut. |
+| `tests/architecture/test_runtime_worker_constraint_hard_cut.py` | Permanent invariant | Worker runtime constraints. |
+| `tests/architecture/test_sdd_artifact_validator.py` | Generated hygiene | Executable SDD artifact truth. |
+| `tests/architecture/test_src_domain_architecture.py` | Permanent invariant | Source/domain architecture boundaries. |
+| `tests/architecture/test_test_lane_contracts.py` | Permanent invariant | Test lane and taxonomy contract. |
+| `tests/architecture/test_token_profile_current_hard_cut.py` | Migration tripwire | Token profile current-row hard cut. |
+| `tests/architecture/test_token_pulse_equity_cpu_hard_cut_contract.py` | Migration tripwire | Token pulse CPU hard cut. |
+| `tests/architecture/test_token_radar_publication_state_hard_cut.py` | Migration tripwire | Token Radar publication state hard cut. |
+| `tests/architecture/test_token_radar_source_width_contract.py` | Permanent invariant | Token Radar source width. |
+| `tests/architecture/test_token_radar_sql_surface_inventory_contract.py` | Generated hygiene | Token Radar SQL surface inventory. |
+| `tests/architecture/test_token_radar_venue_leaderboard_contract.py` | Behavior contract | Venue leaderboard behavior. |
+| `tests/architecture/test_watchlist_agent_hard_cut.py` | Migration tripwire | Watchlist agent hard cut. |
+| `tests/architecture/test_worker_inventory_contract.py` | Generated hygiene | Worker inventory lockstep. |
+| `tests/architecture/test_worker_manifest_static_contracts.py` | Permanent invariant | Worker manifest static ownership. |
+| `tests/architecture/test_worker_runtime_contracts.py` | Permanent invariant | Worker runtime behavior constraints. |
+
 ## Frontend (`web/tests/`)
 
 - Component and hook tests use Vitest + Testing Library; place them in `web/tests/component/` or `web/tests/unit/` per the layout in `docs/FRONTEND.md`.

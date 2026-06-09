@@ -1,8 +1,9 @@
 # Tasks - SDD Governance Hard Cut
 
-**Status**: Verified
+**Status**: Superseded
 **Owning plan**: `docs/sdd/features/completed/2026-06-09-sdd-governance-hard-cut/plan.md`
 **Worktree**: `.worktrees/sdd-v2-hard-cut/`
+**Superseded by**: `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut/`
 
 ## Tasks
 

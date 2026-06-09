@@ -2,6 +2,7 @@ from pathlib import Path
 
 from parallax.domains.macro_intel import _constants
 from parallax.domains.macro_intel.repositories.macro_intel_repository import MacroIntelRepository
+from tests.support.query_contract import assert_query_contract
 
 ROOT = Path(__file__).resolve().parents[4]
 MIGRATION = (
@@ -114,7 +115,7 @@ def test_repository_latest_observations_reads_projected_rows() -> None:
     assert params == ("macro_regime_v4", ["asset:spx"], 25)
 
 
-def test_repository_concept_history_counts_returns_fact_point_contract() -> None:
+def test_repository_concept_history_counts_reads_projected_rows() -> None:
     rows = [
         {
             "concept_key": "asset:spx",
@@ -131,17 +132,15 @@ def test_repository_concept_history_counts_returns_fact_point_contract() -> None
 
     assert result == rows
     query, params = conn.executions[0]
-    assert "WITH requested AS" in query
-    assert "FROM macro_observations AS observations" in query
-    assert "macro_observation_series_active_generation" not in query
-    assert "generation_id" not in query
-    assert "projection_version = %s" not in query
-    assert "observations.value_numeric IS NOT NULL" in query
-    assert "FROM macro_observation_series_rows" not in query
-    assert "row_number() OVER" not in query
-    assert "LEFT JOIN aggregated" in query
-    assert "COALESCE(aggregated.points, 0)" in query
-    assert params == (["asset:spx"], 60)
+    assert_query_contract(
+        query,
+        params=params,
+        required_tables=("macro_observation_series_rows",),
+        forbidden_tables=("macro_observations", "macro_observation_series_active_generation"),
+        required_predicates=("projection_version = %s", "series_rank = 1", "value_numeric IS NOT NULL"),
+        forbidden_fragments=("generation_id", "row_number() over"),
+        expected_params=(["asset:spx"], "macro_regime_v4", 60),
+    )
 
 
 def test_repository_refresh_observation_series_rows_writes_current_read_model() -> None:

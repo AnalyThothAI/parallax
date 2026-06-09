@@ -82,3 +82,24 @@ def test_integration_tests_do_not_use_fake_runtime_repositories() -> None:
     hits = [hit for path in _python_files(TESTS_ROOT / "integration") for hit in _line_hits(path, forbidden_terms)]
 
     assert hits == [], "integration tests must use real runtime repositories:\n" + "\n".join(hits)
+
+
+def test_architecture_tests_declare_harness_taxonomy() -> None:
+    testing_doc = (REPO_ROOT / "docs" / "TESTING.md").read_text(encoding="utf-8")
+    architecture_tests = sorted(
+        path.relative_to(REPO_ROOT).as_posix() for path in (TESTS_ROOT / "architecture").glob("test_*.py")
+    )
+
+    for required_heading in (
+        "## Harness Test Taxonomy",
+        "Permanent invariant",
+        "Migration tripwire",
+        "Behavior contract",
+        "Generated hygiene",
+        "Expiry condition",
+        "Replacement behavior test",
+    ):
+        assert required_heading in testing_doc
+
+    for test_path in architecture_tests:
+        assert test_path in testing_doc, f"{test_path} needs a harness taxonomy entry"

@@ -1,16 +1,10 @@
-import type {
-  MacroAssetCorrelationData,
-  MacroAssetCorrelationWindow,
-} from "@lib/types";
+import type { MacroAssetCorrelationData, MacroAssetCorrelationWindow } from "@lib/types";
 import * as PageState from "@shared/ui/PageState";
 import { Button } from "@shared/ui/button";
 import { useMemo, useState } from "react";
 
 import { useMacroAssetCorrelationQuery } from "../../api/useMacroAssetCorrelationQuery";
-import {
-  assetTitleByKey,
-  strongestCorrelationPairs,
-} from "../../model/macroCorrelationModel";
+import { assetTitleByKey, strongestCorrelationPairs } from "../../model/macroCorrelationModel";
 import { buildMacroBreadcrumbs } from "../../model/macroRoutes";
 import {
   MacroCorrelationAssetCoverage,

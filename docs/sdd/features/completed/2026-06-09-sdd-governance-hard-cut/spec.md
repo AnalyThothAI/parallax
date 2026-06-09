@@ -1,9 +1,10 @@
 # Spec - SDD Governance Hard Cut
 
-**Status**: Verified
+**Status**: Superseded
 **Date**: 2026-06-09
 **Owner**: Codex
 **Related**: `docs/WORKFLOW.md`, `docs/TESTING.md`, `AGENTS.md`, `CLAUDE.md`
+**Superseded by**: `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut/`
 
 ## Background
 

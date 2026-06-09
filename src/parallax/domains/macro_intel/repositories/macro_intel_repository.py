@@ -1660,7 +1660,6 @@ class MacroIntelRepository:
         lookback_days: int,
         projection_version: str = MACRO_VIEW_PROJECTION_VERSION,
     ) -> list[dict[str, Any]]:
-        _ = projection_version
         bounded_lookback_days = max(1, int(lookback_days))
         rows = self.conn.execute(
             """
@@ -1668,19 +1667,21 @@ class MacroIntelRepository:
               SELECT unnest(%s::text[]) AS concept_key
             ),
             aggregated AS (
-              SELECT observations.concept_key,
+              SELECT rows.concept_key,
                      COUNT(*)::int AS points,
-                     MAX(observations.observed_at) AS latest_observed_at,
-                     MIN(observations.observed_at) AS oldest_observed_at,
+                     MAX(rows.observed_at) AS latest_observed_at,
+                     MIN(rows.observed_at) AS oldest_observed_at,
                      array_remove(
-                       array_agg(DISTINCT observations.source_name ORDER BY observations.source_name),
+                       array_agg(DISTINCT rows.source_name ORDER BY rows.source_name),
                        NULL
                      ) AS sources
-              FROM macro_observations AS observations
-              JOIN requested ON requested.concept_key = observations.concept_key
-              WHERE observations.observed_at >= CURRENT_DATE - %s::int
-                AND observations.value_numeric IS NOT NULL
-              GROUP BY observations.concept_key
+              FROM macro_observation_series_rows AS rows
+              JOIN requested ON requested.concept_key = rows.concept_key
+              WHERE rows.projection_version = %s
+                AND rows.series_rank = 1
+                AND rows.observed_at >= CURRENT_DATE - %s::int
+                AND rows.value_numeric IS NOT NULL
+              GROUP BY rows.concept_key
             )
             SELECT requested.concept_key,
                    COALESCE(aggregated.points, 0) AS points,
@@ -1691,7 +1692,7 @@ class MacroIntelRepository:
             LEFT JOIN aggregated ON aggregated.concept_key = requested.concept_key
             ORDER BY requested.concept_key ASC
             """,
-            (list(concept_keys), bounded_lookback_days),
+            (list(concept_keys), projection_version, bounded_lookback_days),
         ).fetchall()
         return [dict(row) for row in rows]
 

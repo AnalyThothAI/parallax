@@ -1,9 +1,13 @@
 # Verification — `<feature title>`
 
+**Status**: Draft | Approved | In Progress | Review | Blocked | Verified | Superseded
 **Date**: YYYY-MM-DD
 **Owning spec**: `docs/sdd/features/active/YYYY-MM-DD-<slug>/spec.md`
 **Owning plan**: `docs/sdd/features/active/YYYY-MM-DD-<slug>/plan.md`
 **Branch**: `<branch>`
+**Worktree**: `.worktrees/<branch-slug>/`
+**Approved by**: <user / delegated goal / pending>
+**Approved at**: <YYYY-MM-DD / pending>
 **Diff**: `git diff main...<branch>` — `<N>` files changed, `<+a>/-<b>` lines.
 
 The plan and spec are the contract. This file is the evidence the contract was met. No `done`, `fixed`, or `passing` claim is allowed without the corresponding output captured below.

@@ -1,0 +1,131 @@
+# Spec — Executable Harness Hard Cut
+
+**Status**: In Progress
+**Date**: 2026-06-09
+**Owner**: Codex
+**Approved by**: qinghuan
+**Approved at**: 2026-06-09
+**Related**: `docs/WORKFLOW.md`, `docs/sdd/README.md`, `scripts/regen_sdd_work_index.py`
+
+## Background
+
+Parallax already routes non-trivial coding-agent work through the SDD lane in `docs/WORKFLOW.md:7`.
+The lane requires `spec.md`, `plan.md`, `tasks.md`, and `verification.md`, and says production work follows
+`spec -> clarify -> checklist -> plan -> tasks -> analyze -> implement -> verify` in `docs/WORKFLOW.md:22`.
+Completion requires `make check-all` evidence in `docs/WORKFLOW.md:57`. The current generated index is produced
+by `scripts/regen_sdd_work_index.py:1` and currently reports only lifecycle/status hygiene.
+
+## Problem
+
+The harness proves that SDD files exist and have lane-valid status strings, but it does not prove that the
+records are truthful, coordinated, or useful for multi-agent execution. A completed record can say `Verified`
+while its verification text admits that `make check-all` did not produce final evidence. Test architecture also
+contains useful hard-cut tripwires mixed with brittle wording, source-shape, and exact SQL checks, so the harness
+can both miss real process drift and block healthy refactors.
+
+## Clarifications
+
+| Question | Answer | Approved by | Approved at |
+|----------|--------|-------------|-------------|
+| Should old SDD compatibility lanes or retired planning trees remain supported? | No. The current `docs/sdd/` lane is the only planning lane. | qinghuan | 2026-06-09 |
+| Should `Verified` ever allow partial `make check-all` evidence? | No. Use `Review`, `Blocked`, or `Superseded` until final evidence exists. | qinghuan | 2026-06-09 |
+| Should brittle tests be deleted without replacement? | No. Hard-cut tripwires stay when they defend retired runtime surfaces, but behavior contracts replace accidental shape locks. | qinghuan | 2026-06-09 |
+
+## Requirement Checklist
+
+| Requirement | Quality gate |
+|-------------|--------------|
+| SDD truth must be executable. | A script fails false `Verified` records, missing gate sections, missing approval metadata, and incomplete task coordination fields. |
+| Active work must be coordinatable. | The generated SDD index includes owner, worktree, branch, touch set, conflict set, blocked state, and verification status. |
+| Test harness intent must be explicit. | Architecture tests classify permanent invariants, migration tripwires, behavior contracts, and generated hygiene. |
+| SQL tests must avoid accidental alias/order coupling. | A query-contract helper checks tables, predicates, locks, params, and forbidden surfaces without pinning formatting. |
+| Completion gates must be deterministic. | `make check-all` runs the SDD validator and stale generated index check. |
+
+## First principles
+
+- Material facts and runtime behavior remain the source of product truth; SDD files are execution records, as stated in `docs/sdd/README.md:13`.
+- Development-agent orchestration must stay separate from product LLM agents; `docs/AGENT_EXECUTION.md:3` owns the product runtime boundary.
+- Hard cuts should delete compatibility surfaces, not wrap them; `docs/WORKFLOW.md:49` already requires isolated worktrees for non-trivial coding work.
+
+## Goals
+
+- G1. A `Verified` SDD artifact set with missing or contradicted `make check-all` evidence fails `uv run python scripts/validate_sdd_artifacts.py --check`.
+- G2. A filled `tasks.md` without owner, touch set, conflict set, verification command, review owner, or task status fails the same validator.
+- G3. `docs/generated/sdd-work-index.md` renders a coordination board with owner, worktree, branch, touch set, conflict set, blocked state, and verification status.
+- G4. Tests that rely on SQL shape can use a query-contract helper to assert semantic SQL contracts without exact alias or whitespace coupling.
+- G5. `make check-all` includes SDD artifact validation and generated index freshness so harness drift blocks completion.
+
+## Non-goals
+
+- N1. This does not add a product LLM agent runtime, background agent task queue, or shared tool loop.
+- N2. This does not preserve legacy planning-lane compatibility.
+- N3. This does not rewrite every existing SQL test; it establishes the harness and converts the currently blocking obsolete macro contract.
+
+## Target architecture
+
+The SDD lane becomes an executable control plane for development work. A validator parses feature records,
+emits explicit issue codes, and exits non-zero when active/completed records violate gate semantics. The generated
+work index becomes a compact coordination board for parent agents and subagents. Test taxonomy is documented and
+enforced so string tripwires are deliberate, expiring safeguards rather than accidental design locks.
+
+## Conceptual data flow
+
+```text
+SDD records -> validate_sdd_artifacts -> regen_sdd_work_index -> make check-all
+      |                    |                       |
+      |                    v                       v
+      +------------> issue codes ------------> coordination board
+```
+
+The new arrows are harness-only and do not affect runtime product data flow.
+
+## Core models
+
+- `SddFeature`: feature slug, lane, artifact paths, status values, owner, branch, worktree, approval metadata,
+  touch set, conflict set, verification status, blocked reason, and issue codes.
+- `SddIssue`: code, severity, path, and message for deterministic gate failures.
+- `SqlContract`: required tables, forbidden tables, required predicates, forbidden fragments, required locks, and
+  expected params.
+
+## Interface contracts
+
+- CLI: `uv run python scripts/validate_sdd_artifacts.py --check` exits 0 when all SDD records satisfy the executable harness and exits 1 with issue lines otherwise.
+- CLI: `uv run python scripts/regen_sdd_work_index.py --check` fails when `docs/generated/sdd-work-index.md` is stale.
+- Test helper: `tests.support.query_contract.assert_query_contract(sql, ...)` raises `AssertionError` with contract-specific messages.
+
+## Acceptance criteria
+
+- AC1. WHEN a completed feature is marked `Verified` without full successful `make check-all` evidence THEN the validator SHALL exit non-zero and report a `verified-missing-check-all` or `verified-contradicts-evidence` issue.
+- AC2. WHEN a feature task omits owner/touch/conflict/verification/review/status fields THEN the validator SHALL exit non-zero and report a task coordination issue.
+- AC3. WHEN the SDD index is regenerated THEN it SHALL include a coordination board with owner, worktree, branch, touch set, conflict set, blocked state, verification status, and flags.
+- AC4. WHEN a SQL unit test uses the query-contract helper THEN it SHALL be able to assert required/forbidden tables and predicates without depending on alias names or whitespace.
+- AC5. WHEN `make check-all` runs THEN SDD artifact validation and generated index freshness SHALL be part of the deterministic gate.
+
+## Risks
+
+| Risk | Severity | Mitigation |
+|------|----------|------------|
+| Validator becomes another wording-only scanner. | High | Parse stable metadata and issue codes; reserve phrase scans for forbidden contradiction language. |
+| Coordination board grows into canonical runtime truth. | Medium | Index states that code/docs/runtime contracts remain canonical truth. |
+| SQL helper over-promises parsing. | Medium | Keep it a lightweight contract normalizer for test assertions, not a SQL parser. |
+| `make check-all` becomes too slow. | Low | Validator and index checks are pure filesystem scans. |
+
+## Evolution path
+
+The next expansion is a dedicated active-work dispatch CLI that reads the coordination board and produces
+subagent context packets. This work should not foreclose that path, but it must avoid adding durable runtime
+agent queues.
+
+## Alternatives considered
+
+- Keep prose-only SDD checks — rejected because prose allowed false `Verified` records.
+- Add a second planning tree — rejected because `docs/sdd/` is the current hard-cut lane and old lanes should not remain as compatibility paths.
+- Fully parse PostgreSQL SQL grammar in tests — rejected because the immediate need is stable contract assertions, not query rewriting.
+
+## Boundaries
+
+| Class | Behaviour |
+|-------|-----------|
+| Always | Validate SDD truth, render coordination fields, classify harness tests, and include the new checks in `make check-all`. |
+| Ask first | Large-scale conversion of every SQL test family. |
+| Never | Recreate legacy planning folders, accept partial `Verified` evidence, or add compatibility shims for old harness surfaces. |

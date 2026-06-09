@@ -17,6 +17,6 @@ This runs six scripts in sequence:
 | `score-versions.md` | grep `score_version=` literals in `src/` | `scripts/regen_score_versions.py` |
 | `ws-protocol.md` | extract message-type union from `src/parallax/api/ws.py` | `scripts/regen_ws_protocol.py` |
 | `pulse-agent-desk-decisions.md` | Pulse Agent Desk OQ + hardening decision constants | `scripts/regen_pulse_agent_desk_decisions.py` |
-| `sdd-work-index.md` | current SDD feature lane hygiene and lifecycle flags | `scripts/regen_sdd_work_index.py` |
+| `sdd-work-index.md` | SDD feature coordination board and executable harness flags | `scripts/regen_sdd_work_index.py` |
 
 CI verifies that `make docs-generated` produces no diff against the committed tree.

@@ -170,9 +170,11 @@ describe("Macro module pages", () => {
     expect(within(dashboard).getByRole("table", { name: "商品" })).toBeInTheDocument();
     expect(within(dashboard).getByRole("table", { name: "外汇" })).toBeInTheDocument();
     expect(within(dashboard).getByRole("table", { name: "加密货币" })).toBeInTheDocument();
-    expect(within(dashboard).getAllByRole("columnheader").map((header) => header.textContent)).toEqual(
-      expect.arrayContaining(["代码", "名称", "最新", "日涨跌幅", "日期"]),
-    );
+    expect(
+      within(dashboard)
+        .getAllByRole("columnheader")
+        .map((header) => header.textContent),
+    ).toEqual(expect.arrayContaining(["代码", "名称", "最新", "日涨跌幅", "日期"]));
     expect(within(dashboard).getByRole("link", { name: "查看美股详情" })).toHaveAttribute(
       "href",
       "/macro/assets/equities",

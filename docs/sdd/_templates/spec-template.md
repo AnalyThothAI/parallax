@@ -3,6 +3,8 @@
 **Status**: Draft | Approved | In Progress | Review | Blocked | Verified | Superseded
 **Date**: YYYY-MM-DD
 **Owner**: <user / agent name>
+**Approved by**: <user / delegated goal / pending>
+**Approved at**: <YYYY-MM-DD / pending>
 **Related**: <link to plan, predecessor specs, ADRs>
 
 ## Background
@@ -12,6 +14,18 @@ State what exists today. **Cite real files** — `src/parallax/<area>/<file>.py:
 ## Problem
 
 One paragraph describing the user-visible or system-visible problem. Avoid solution language.
+
+## Clarifications
+
+| Question | Answer | Approved by | Approved at |
+|----------|--------|-------------|-------------|
+|          |        |             |             |
+
+## Requirement Checklist
+
+| Requirement | Quality gate |
+|-------------|--------------|
+|             |              |
 
 ## First principles
 

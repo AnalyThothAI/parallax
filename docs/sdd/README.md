@@ -33,6 +33,17 @@ Historical one-off plans are not retained here. Canonical project truth lives in
 8. Fill `verification.md` with evidence, including `make check-all`.
 9. Move the feature directory from `active/` to `completed/`.
 
+Run the executable harness after changing any SDD record:
+
+```bash
+uv run python scripts/validate_sdd_artifacts.py --check
+uv run python scripts/regen_sdd_work_index.py --check
+```
+
+The validator rejects false `Verified` records, missing clarify/checklist/analyze
+sections, missing approval metadata, incomplete task coordination fields, and
+active touch-set conflicts without an explicit coordination rule.
+
 ## Status Rules
 
 Every artifact has a `Status:` line in the first 40 lines. Active feature artifacts use `Draft`, `Approved`, `In Progress`, `Review`, or `Blocked`. Completed feature artifacts use `Verified` or `Superseded`.
@@ -40,5 +51,6 @@ Every artifact has a `Status:` line in the first 40 lines. Active feature artifa
 Run this check after changing the lane:
 
 ```bash
+uv run python scripts/validate_sdd_artifacts.py --check
 uv run python scripts/regen_sdd_work_index.py --check
 ```

@@ -5,6 +5,8 @@
 **Owning spec**: `docs/sdd/features/active/YYYY-MM-DD-<slug>/spec.md`
 **Worktree**: `.worktrees/<branch-slug>/`
 **Branch**: `<branch>`
+**Approved by**: <user / delegated goal / pending>
+**Approved at**: <YYYY-MM-DD / pending>
 
 ## Pre-flight
 
@@ -52,6 +54,15 @@ One PR per logical, independently-reviewable slice. Each PR lists which file edi
 1. **PR 1 — <name>**: edits <files>, adds <tests>. Mergeable on its own.
 2. **PR 2 — <name>**: depends on PR 1. ...
 3. **PR 3 — <name>**: ...
+
+## Analyze Gate
+
+| Check | Result |
+|-------|--------|
+| Spec goals map to file-level edits. | Pass / fail |
+| Plan preserves canonical architecture boundaries. | Pass / fail |
+| Compatibility code or old files are not retained. | Pass / fail |
+| Parallel touch/conflict sets are explicit. | Pass / fail |
 
 ## Rollout order
 

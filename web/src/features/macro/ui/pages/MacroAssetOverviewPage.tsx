@@ -3,10 +3,7 @@ import { useMemo } from "react";
 import { Link } from "react-router-dom";
 
 import { useMacroAssetCorrelationQuery } from "../../api/useMacroAssetCorrelationQuery";
-import {
-  assetTitleByKey,
-  strongestCorrelationPairs,
-} from "../../model/macroCorrelationModel";
+import { assetTitleByKey, strongestCorrelationPairs } from "../../model/macroCorrelationModel";
 import { tableCaption } from "../../model/macroModulePageModel";
 import {
   buildMacroDataHealthBuckets,
@@ -167,8 +164,15 @@ const ASSET_GROUPS: Array<{
     title: "美股",
     route: "/macro/assets/equities",
     match: (key) =>
-      ["asset:spx", "asset:spy", "asset:qqq", "asset:ndx", "asset:dji", "asset:iwm", "asset:rut"]
-        .includes(key),
+      [
+        "asset:spx",
+        "asset:spy",
+        "asset:qqq",
+        "asset:ndx",
+        "asset:dji",
+        "asset:iwm",
+        "asset:rut",
+      ].includes(key),
   },
   {
     key: "bonds",

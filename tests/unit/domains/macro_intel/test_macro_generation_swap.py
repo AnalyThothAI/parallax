@@ -8,6 +8,7 @@ from parallax.domains.macro_intel.repositories.macro_intel_repository import (
     _series_source_signature,
 )
 from parallax.domains.macro_intel.services.macro_regime_engine import build_macro_view_snapshot
+from tests.support.query_contract import assert_query_contract
 
 
 def test_build_macro_view_snapshot_uses_stable_current_identity() -> None:
@@ -244,11 +245,15 @@ def test_observation_series_readers_read_current_rows_directly() -> None:
         assert "FROM macro_observations" not in query
 
     history_query, history_params = conn.executions[2]
-    assert "FROM macro_observations AS observations" in history_query
-    assert "observations.value_numeric IS NOT NULL" in history_query
-    assert "FROM macro_observation_series_rows AS rows" not in history_query
-    assert "projection_version = %s" not in history_query
-    assert history_params == (["asset:spy"], 60)
+    assert_query_contract(
+        history_query,
+        params=history_params,
+        required_tables=("macro_observation_series_rows",),
+        forbidden_tables=("macro_observations", "macro_observation_series_active_generation"),
+        required_predicates=("projection_version = %s", "series_rank = 1", "value_numeric IS NOT NULL"),
+        forbidden_fragments=("generation_id", "row_number() over"),
+        expected_params=(["asset:spy"], "macro_regime_v4", 60),
+    )
 
 
 def _series_row(
