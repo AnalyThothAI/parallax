@@ -209,6 +209,25 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 11 — Task-level generated dispatch board
+
+- **File(s)**: `scripts/regen_sdd_work_index.py`, `docs/generated/sdd-work-index.md`, `tests/architecture/test_agent_playbook_contracts.py`
+- **Owner**: parent
+- **Depends on**: Task 10
+- **Touch set**: `scripts/regen_sdd_work_index.py`, `docs/generated/sdd-work-index.md`, `tests/architecture/test_agent_playbook_contracts.py`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared generated index and agent playbook tests.
+- **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board` — asserts the generated index renders per-task dispatch rows.
+- **Subagent handoff**: not delegated
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `uv run python scripts/regen_sdd_work_index.py --check` must fail stale generated task-board output.
+- **On-demand context**: `scripts/regen_sdd_work_index.py`, `scripts/validate_sdd_artifacts.py`, active SDD task metadata.
+- **Kill/defer criteria**: Stop if the index remains feature-only, duplicates parser rules, or hides completed/non-dispatchable task state.
+- **Eval/repair signal**: stale generated index, missing `Task Board`, incorrect dispatch state, and review defect.
+- **Implementation**: Add a `Task Board` section with one row per SDD task and dispatchability derived from task status and feature lane.
+- **Verification**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -220,4 +239,5 @@
 - [ ] `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_refuses_completed_task -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_invalid_coordination_field_values tests/architecture/test_sdd_artifact_validator.py::test_tasks_allow_explicit_none_dependency_and_not_delegated_handoff -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_ignores_old_success_outside_verification_commands tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_skipped_table_to_match_skip_count -q`
+- [ ] `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board -q`
 - [ ] `make check-all`

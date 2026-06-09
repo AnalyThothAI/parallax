@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -13,6 +14,7 @@ from scripts.validate_sdd_artifacts import (  # noqa: E402
     KNOWN_ISSUE_CODES,
     SddFeature,
     SddIssue,
+    TaskRecord,
     scan_sdd_features,
     validate_sdd_root,
 )
@@ -111,6 +113,20 @@ def render_index(features: list[SddFeature], issues: list[SddIssue]) -> str:
     lines.extend(
         [
             "",
+            "## Task Board",
+            "",
+            "| Feature | Task | Status | Dispatch | Factory lane | Owner | Depends on | Touch set | Conflict set | "
+            "Verification |",
+            "|---------|------|--------|----------|--------------|-------|------------|-----------|--------------|"
+            "--------------|",
+        ]
+    )
+    for feature in sorted(features, key=lambda item: (item.state, item.slug)):
+        lines.extend(_task_row(feature, task) for task in feature.tasks)
+
+    lines.extend(
+        [
+            "",
             "## Artifacts",
             "",
             "| Feature | State | Artifact | Status | Path |",
@@ -139,6 +155,49 @@ def _issues_by_feature(features: list[SddFeature], issues: list[SddIssue]) -> di
 
 def _set_cell(values: tuple[str, ...]) -> str:
     return "<br>".join(f"`{markdown_escape(value)}`" for value in values) if values else "-"
+
+
+def _task_field(task: TaskRecord, field_name: str) -> str:
+    value = task.fields.get(field_name, "")
+    return value or "-"
+
+
+def _task_row(feature: SddFeature, task: TaskRecord) -> str:
+    return (
+        "| "
+        f"`{feature.slug}` | "
+        f"`{markdown_escape(task.title)}` | "
+        f"`{markdown_escape(_task_field(task, 'status'))}` | "
+        f"`{_task_dispatch_state(feature, task)}` | "
+        f"`{markdown_escape(_task_field(task, 'factory lane'))}` | "
+        f"{markdown_escape(_task_field(task, 'owner'))} | "
+        f"{markdown_escape(_task_field(task, 'depends on'))} | "
+        f"{_task_set_cell(task, 'touch set')} | "
+        f"{_task_set_cell(task, 'conflict set')} | "
+        f"`{markdown_escape(_task_field(task, 'verification'))}` |"
+    )
+
+
+def _task_dispatch_state(feature: SddFeature, task: TaskRecord) -> str:
+    status = _task_field(task, "status").strip().lower()
+    if feature.state != "active":
+        return "closed"
+    if status in {"[ ]", "[~]"}:
+        return "dispatchable"
+    if status == "[x]":
+        return "complete"
+    if status == "[!]":
+        return "blocked"
+    return "invalid"
+
+
+def _task_set_cell(task: TaskRecord, field_name: str) -> str:
+    raw = _task_field(task, field_name)
+    if raw in {"", "-"}:
+        return "-"
+    separator = r";" if field_name == "conflict set" else r"[,;]"
+    values = tuple(item.strip() for item in re.split(separator, raw.replace("`", "")) if item.strip())
+    return _set_cell(values)
 
 
 def _issue_meaning(code: str) -> str:

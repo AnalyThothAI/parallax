@@ -32,6 +32,7 @@ Known-failing baseline tests:
 
 - Replace artifact-only rows with feature-level summaries and a coordination board.
 - Reuse the validator metadata rather than duplicating SDD parsing rules.
+- Add a task-level dispatch board with per-task status, dispatchability, factory lane, owner, dependencies, touch/conflict scopes, and verification command.
 
 ### `scripts/build_agent_context_packet.py`
 
@@ -53,6 +54,7 @@ Known-failing baseline tests:
 - Require explicit development-agent factory and eval/repair loop playbook contracts.
 - Require the context-packet CLI to build a bounded packet from an active SDD task.
 - Require the dry-run dispatch CLI to emit a handoff for in-progress tasks and refuse completed tasks.
+- Require the generated SDD index to render task-level dispatch rows from `TaskRecord` metadata.
 
 ### `tests/architecture/test_sdd_artifact_validator.py`
 
@@ -129,6 +131,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Dispatch is dry-run and non-runtime. | Pass: dispatcher emits prompts only and refuses completed tasks without creating durable product state. |
 | Task fields are semantically checked. | Pass: validator rejects `none` touch sets, non-command verification, non-test failing-test-first values, and unknown task statuses. |
 | Verified evidence is replayable. | Pass: validator reads the canonical command block and validates skipped-test table rows. |
+| Task dispatch state is visible. | Pass: generated index includes a `Task Board` with dispatchable/complete/blocked/closed task state. |
 
 ## Acceptance test commands
 
@@ -142,6 +145,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC8: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_refuses_completed_task -q`
 - AC9: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_invalid_coordination_field_values tests/architecture/test_sdd_artifact_validator.py::test_tasks_allow_explicit_none_dependency_and_not_delegated_handoff -q`
 - AC10: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_ignores_old_success_outside_verification_commands tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_skipped_table_to_match_skip_count -q`
+- AC11: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board -q`
 
 ## Verification
 

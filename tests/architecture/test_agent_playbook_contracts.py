@@ -343,6 +343,7 @@ def test_sdd_work_index_is_generated_and_current() -> None:
     text = generated.read_text(encoding="utf-8")
     assert render_index(scan_sdd_features(ROOT), validate_sdd_root(ROOT)) == text
     assert "## Coordination Board" in text
+    assert "## Task Board" in text
     lifecycle_codes = _table_values(text, "## Lifecycle Flags", column=0)
     assert lifecycle_codes == set(KNOWN_ISSUE_CODES)
     for required_column in (
@@ -438,6 +439,60 @@ def test_sdd_work_index_keeps_conflict_coordination_rule_intact(tmp_path: Path) 
     ) in text
     assert "`macro repository`" not in text
     assert "`and agent playbook test edits`" not in text
+
+
+@pytest.mark.architecture
+def test_sdd_work_index_renders_task_dispatch_board(tmp_path: Path) -> None:
+    feature_path = tmp_path / "docs" / "sdd" / "features" / "active" / "fixture"
+    feature = SddFeature(
+        slug="fixture",
+        state="active",
+        path=feature_path,
+        relative_path="docs/sdd/features/active/fixture",
+        artifacts={},
+        tasks=(
+            TaskRecord(
+                title="Task 1 — Build harness",
+                fields={
+                    "status": "[~]",
+                    "factory lane": "Harness/tests",
+                    "owner": "parent",
+                    "depends on": "none",
+                    "touch set": "scripts/build_agent_context_packet.py",
+                    "conflict set": "coordinate with other-feature for context packet docs",
+                    "verification": "uv run pytest tests/architecture/test_agent_playbook_contracts.py -q",
+                },
+            ),
+            TaskRecord(
+                title="Task 2 — Completed docs",
+                fields={
+                    "status": "[x]",
+                    "factory lane": "Docs/contracts",
+                    "owner": "parent",
+                    "depends on": "Task 1",
+                    "touch set": "docs/agent-playbook/context-packet-template.md",
+                    "conflict set": "docs/agent-playbook/factory-operating-model.md",
+                    "verification": "uv run pytest tests/architecture/test_agent_playbook_contracts.py -q",
+                },
+            ),
+        ),
+    )
+
+    text = render_index([feature], [])
+
+    assert "## Task Board" in text
+    assert (
+        "| `fixture` | `Task 1 — Build harness` | `[~]` | `dispatchable` | `Harness/tests` | parent | none | "
+        "`scripts/build_agent_context_packet.py` | "
+        "`coordinate with other-feature for context packet docs` | "
+        "`uv run pytest tests/architecture/test_agent_playbook_contracts.py -q` |"
+    ) in text
+    assert (
+        "| `fixture` | `Task 2 — Completed docs` | `[x]` | `complete` | `Docs/contracts` | parent | Task 1 | "
+        "`docs/agent-playbook/context-packet-template.md` | "
+        "`docs/agent-playbook/factory-operating-model.md` | "
+        "`uv run pytest tests/architecture/test_agent_playbook_contracts.py -q` |"
+    ) in text
 
 
 def _table_values(text: str, heading: str, *, column: int) -> set[str]:
