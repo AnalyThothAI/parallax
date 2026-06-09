@@ -11,7 +11,12 @@ import pytest
 
 from parallax.app.runtime import worker_manifest as worker_manifest_module
 from parallax.app.runtime.wake_bus import WakeBus
-from parallax.app.runtime.worker_manifest import WorkerRuntimeConstraint, all_worker_manifests, worker_class_by_name
+from parallax.app.runtime.worker_manifest import (
+    WorkerKind,
+    WorkerRuntimeConstraint,
+    all_worker_manifests,
+    worker_class_by_name,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCS_WORKERS = ROOT / "docs" / "WORKERS.md"
@@ -242,6 +247,26 @@ def test_worker_manifest_validation_rejects_provider_schedulers_without_provider
     monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
 
     with pytest.raises(ValueError, match="bounded provider scheduler manifests missing provider IO"):
+        worker_manifest_module._validate_worker_manifests()
+
+
+@pytest.mark.architecture
+def test_worker_manifest_validation_rejects_ledgers_on_non_side_effect_workers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifests = list(all_worker_manifests())
+    first_non_side_effect_index = next(
+        index
+        for index, manifest in enumerate(manifests)
+        if manifest.kind not in {WorkerKind.AGENT_SIDE_EFFECT, WorkerKind.NOTIFICATION_DELIVERY}
+    )
+    manifests[first_non_side_effect_index] = replace(
+        manifests[first_non_side_effect_index],
+        side_effect_ledgers=("unexpected_side_effect_ledger",),
+    )
+    monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
+
+    with pytest.raises(ValueError, match="non-side-effect worker manifests declaring side-effect ledgers"):
         worker_manifest_module._validate_worker_manifests()
 
 

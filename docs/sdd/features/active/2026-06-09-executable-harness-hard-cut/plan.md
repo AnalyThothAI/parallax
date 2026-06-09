@@ -199,6 +199,7 @@ Known-failing baseline tests:
 - Reject `LEASED_JOB_CONSUMER` manifests that omit `queue_depth_table` before queue-health harnesses trust runtime classification.
 - Reject `BOUNDED_PROVIDER_SCHEDULER` manifests that omit `uses_provider_io` before provider-boundary harnesses trust runtime classification.
 - Reject `queue_depth_table` declarations absent from the same manifest's owned tables before queue-health harnesses consume them.
+- Reject non-side-effect worker kinds that declare `side_effect_ledgers` before ownership harnesses consume them.
 - Add `read_model_writer_by_table()` as the source-owned read-model writer map and use it in Worker Inventory docs checks.
 - Run the read-model writer map inside manifest validation so duplicate read-model writers fail before downstream harness consumers trust the manifest.
 - Reject `current_read_model_identities` entries for tables absent from the same manifest's `writes_read_models`.
@@ -302,6 +303,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Leased-job consumers declare queue depth tables. | Pass: `_validate_worker_manifests()` raises when a patched `LEASED_JOB_CONSUMER` manifest omits `queue_depth_table`. |
 | Bounded provider schedulers declare provider I/O. | Pass: `_validate_worker_manifests()` raises when a patched `BOUNDED_PROVIDER_SCHEDULER` manifest clears `uses_provider_io`. |
 | Queue depth tables are worker-owned. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares an unowned `queue_depth_table`. |
+| Side-effect ledgers belong to side-effect workers. | Pass: `_validate_worker_manifests()` raises when a patched non-side-effect manifest declares `side_effect_ledgers`. |
 | Worker Inventory docs are manifest-owned. | Pass: worker inventory architecture tests import source manifest data directly and reject peer architecture-test imports. |
 | Worker table ownership is manifest-owned. | Pass: `WorkerManifest.owned_tables` exposes the deduped owned-table contract and queue-health validation consumes it. |
 | Read-model writer mapping is manifest-owned. | Pass: `read_model_writer_by_table()` exposes unique read-model ownership and Worker Inventory docs checks consume it. |
@@ -429,6 +431,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC83: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_leased_consumers_without_queue_depth -q`
 - AC84: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_provider_schedulers_without_provider_io -q`
 - AC85: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_unowned_queue_depth_tables -q`
+- AC86: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_ledgers_on_non_side_effect_workers -q`
 
 ## Verification
 

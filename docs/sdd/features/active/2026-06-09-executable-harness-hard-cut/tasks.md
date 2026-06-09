@@ -1804,6 +1804,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 86 — Side-effect ledgers belong to side-effect workers
+
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 85
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for side-effect ledger validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_ledgers_on_non_side_effect_workers` — patch a non-side-effect manifest to declare `side_effect_ledgers` and assert manifest validation raises a dedicated ledger-kind ownership error.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `side_effect_ledgers` may be declared only by `AGENT_SIDE_EFFECT` or `NOTIFICATION_DELIVERY` worker kinds before ownership, side-effect, or worker inventory harnesses can treat ledger tables as source truth.
+- **On-demand context**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, and side-effect ledger validation checks.
+- **Kill/defer criteria**: Stop if non-side-effect workers intentionally own side-effect ledgers, if validation only checks side-effect workers for missing ledgers, or if the fix touches dirty worker runtime contract files.
+- **Eval/repair signal**: non-side-effect ledger ownership, stale ledger breadcrumb, side-effect boundary drift, manifest validation drift, and SDD generated index drift.
+- **Implementation**: Add manifest validation rejecting `side_effect_ledgers` on worker kinds outside `AGENT_SIDE_EFFECT` and `NOTIFICATION_DELIVERY`.
+- **Verification**: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_ledgers_on_non_side_effect_workers -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1891,4 +1912,5 @@
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_leased_consumers_without_queue_depth -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_provider_schedulers_without_provider_io -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_unowned_queue_depth_tables -q`
+- [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_ledgers_on_non_side_effect_workers -q`
 - [ ] `make check-all`

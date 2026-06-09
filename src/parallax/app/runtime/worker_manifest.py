@@ -731,6 +731,17 @@ def _validate_worker_manifests() -> None:
     if missing_side_effect_ledgers:
         raise ValueError(f"side-effect worker manifests missing ledgers: {missing_side_effect_ledgers}")
 
+    unexpected_side_effect_ledgers = [
+        manifest.name
+        for manifest in _WORKER_MANIFESTS
+        if manifest.kind not in {WorkerKind.AGENT_SIDE_EFFECT, WorkerKind.NOTIFICATION_DELIVERY}
+        and manifest.side_effect_ledgers
+    ]
+    if unexpected_side_effect_ledgers:
+        raise ValueError(
+            f"non-side-effect worker manifests declaring side-effect ledgers: {unexpected_side_effect_ledgers}"
+        )
+
     blank_table_declarations = {
         manifest.name: blanks
         for manifest in _WORKER_MANIFESTS

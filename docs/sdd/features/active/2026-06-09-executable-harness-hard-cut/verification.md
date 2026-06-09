@@ -102,6 +102,7 @@ claim is allowed without the corresponding output captured below.
 | AC83 — Leased-job consumers declare queue depth tables. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_leased_consumers_without_queue_depth -q` failed RED when a patched `LEASED_JOB_CONSUMER` manifest with no `queue_depth_table` did not raise, then passed after adding runtime-constraint validation. |
 | AC84 — Bounded provider schedulers declare provider I/O. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_provider_schedulers_without_provider_io -q` failed RED when a patched `BOUNDED_PROVIDER_SCHEDULER` manifest with `uses_provider_io=False` did not raise, then passed after adding runtime-constraint validation. |
 | AC85 — Queue depth tables are worker-owned. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_unowned_queue_depth_tables -q` failed RED when a patched `queue_depth_table` outside `owned_tables` did not raise, then passed after adding queue-depth ownership validation. |
+| AC86 — Side-effect ledgers belong to side-effect workers. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_ledgers_on_non_side_effect_workers -q` failed RED when a patched non-side-effect manifest with `side_effect_ledgers` did not raise, then passed after adding ledger-kind validation. |
 
 Deviations from spec:
 
@@ -1357,6 +1358,15 @@ Failed: DID NOT RAISE <class 'ValueError'>
 exit code: 1
 
 $ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_unowned_queue_depth_tables -q
+1 passed in 0.03s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_ledgers_on_non_side_effect_workers -q
+F                                                                        [100%]
+Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_ledgers_on_non_side_effect_workers -q
 1 passed in 0.03s
 exit code: 0
 ```
