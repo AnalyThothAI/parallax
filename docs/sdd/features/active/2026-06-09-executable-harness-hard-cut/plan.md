@@ -272,6 +272,7 @@ Known-failing baseline tests:
 - Reject scalar, mapping, and string-shaped row batches inside `CurrentReadModelPublisher.changed_rows()` before row validation can split compatibility containers into fake row values.
 - Reject scalar, list-of-pairs, and string-shaped payloads inside `stable_current_payload_hash()` before `dict(...)` coercion can turn compatibility containers into serving hashes.
 - Reject non-string top-level payload keys inside `stable_current_payload_hash()` before JSON normalization can stringify compatibility-shaped mapping keys.
+- Reject non-string nested mapping keys inside `stable_current_payload_hash()` before JSON normalization can stringify compatibility-shaped factor snapshots or JSON payload blocks.
 - Import `importlib.util` directly inside `worker_manifest.py` so manifest validation does not depend on prior import side effects in clean processes.
 - Reject loose visual verification artifacts at the repository root and keep screenshots under owned artifact directories.
 - Reject duplicate table names inside each `WorkerManifest` table-declaration field before `owned_tables` dedupes them.
@@ -445,6 +446,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Publisher changed-row batches are sequences. | Pass: `CurrentReadModelPublisher.changed_rows()` raises `current read model rows must be sequence` before row validation when `rows` is scalar, mapping-shaped, or string-shaped. |
 | Stable payload hash inputs are mappings. | Pass: `stable_current_payload_hash()` raises `current payload hash payload must be mapping` before dict coercion when payload input is scalar, list-of-pairs-shaped, or string-shaped. |
 | Stable payload hash keys are strings. | Pass: `stable_current_payload_hash()` raises `current payload hash payload has non-string keys` before JSON normalization when payload input contains a numeric key. |
+| Nested stable payload hash keys are strings. | Pass: `stable_current_payload_hash()` raises `current payload hash payload has non-string keys` before JSON normalization when a nested factor snapshot contains a numeric key. |
 | Worker manifest imports are explicit. | Pass: importing `parallax.app.runtime.worker_manifest` in a clean process succeeds even after removing an incidental `importlib.util` package attribute. |
 | Root visual artifacts are absent. | Pass: architecture harness rejects loose root-level PNG/JPG/WEBP/GIF verification artifacts. |
 | Worker table declarations are unique. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares the same table twice inside one table-declaration field. |
@@ -632,6 +634,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC151: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_sequence_row_batches_before_row_validation -q`
 - AC152: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_non_mapping_payloads -q`
 - AC153: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_non_string_payload_keys -q`
+- AC154: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_nested_non_string_payload_keys -q`
 
 ## Verification
 

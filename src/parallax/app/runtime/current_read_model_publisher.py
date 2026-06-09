@@ -26,9 +26,7 @@ FORBIDDEN_SERVING_IDENTITY_COLUMNS = frozenset(
 def stable_current_payload_hash(payload: Mapping[str, Any]) -> str:
     if not isinstance(payload, Mapping):
         raise ValueError(f"current payload hash payload must be mapping: {payload}")
-    non_string_keys = tuple(key for key in payload if type(key) is not str)
-    if non_string_keys:
-        raise ValueError(f"current payload hash payload has non-string keys: {non_string_keys}")
+    _validate_payload_hash_keys(payload)
     encoded = json.dumps(
         _json_ready(dict(payload)),
         sort_keys=True,
@@ -198,9 +196,22 @@ def _is_payload_hash(value: str) -> bool:
     return len(digest) == PAYLOAD_HASH_HEX_LENGTH and all(character in "0123456789abcdef" for character in digest)
 
 
+def _validate_payload_hash_keys(value: Any) -> None:
+    if isinstance(value, Mapping):
+        non_string_keys = tuple(key for key in value if type(key) is not str)
+        if non_string_keys:
+            raise ValueError(f"current payload hash payload has non-string keys: {non_string_keys}")
+        for inner in value.values():
+            _validate_payload_hash_keys(inner)
+        return
+    if isinstance(value, tuple | list | set | frozenset):
+        for inner in value:
+            _validate_payload_hash_keys(inner)
+
+
 def _json_ready(value: Any) -> Any:
     if isinstance(value, Mapping):
-        return {str(key): _json_ready(inner) for key, inner in value.items()}
+        return {key: _json_ready(inner) for key, inner in value.items()}
     if isinstance(value, tuple | list):
         return [_json_ready(inner) for inner in value]
     if isinstance(value, set | frozenset):

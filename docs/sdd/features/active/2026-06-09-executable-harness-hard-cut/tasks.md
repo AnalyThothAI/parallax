@@ -3232,6 +3232,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 154 — Stable payload hash rejects nested non-string payload keys
+
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 153
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for recursive stable payload hash key validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_nested_non_string_payload_keys` — call `stable_current_payload_hash()` with a factor snapshot containing a nested numeric key and assert hash validation raises before JSON normalization can stringify compatibility-shaped nested mapping keys.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: every mapping key reachable inside a `stable_current_payload_hash()` payload must be a strict string before `_json_ready()`, JSON normalization, or hash generation can consume nested JSON payload blocks as current read-model payload truth.
+- **On-demand context**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, and current read-model payload hash idempotency contracts.
+- **Kill/defer criteria**: Stop if nested numeric payload keys are an intentional direct hash-helper API, if validation only belongs in concrete row publishers, or if the fix requires compatibility key coercion.
+- **Eval/repair signal**: nested non-string payload keys, factor snapshot key stringification, JSON normalization compatibility drift, stable payload hash idempotency drift, and SDD generated index drift.
+- **Implementation**: Replace top-level-only stable payload key validation with recursive payload key validation before `_json_ready()`, and remove `_json_ready()` mapping-key string coercion.
+- **Verification**: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_nested_non_string_payload_keys -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -3376,4 +3397,5 @@
 - [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_sequence_row_batches_before_row_validation -q`
 - [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_non_mapping_payloads -q`
 - [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_non_string_payload_keys -q`
+- [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_nested_non_string_payload_keys -q`
 - [ ] `make check-all`

@@ -123,6 +123,7 @@ can both miss real process drift and block healthy refactors.
 | Publisher changed-row batches must be sequences. | `CurrentReadModelPublisher.changed_rows()` rejects scalar, mapping, and string-shaped row batches before row, column, identity, payload hash, duplicate-identity, or write-preparation validation can consume compatibility-shaped containers. |
 | Stable payload hash inputs must be mappings. | `stable_current_payload_hash()` rejects scalar, list-of-pairs, and string-shaped payloads before `dict(...)` coercion or JSON hashing can preserve compatibility-shaped payload containers. |
 | Stable payload hash keys must be strings. | `stable_current_payload_hash()` rejects non-string top-level payload keys before `_json_ready()` can stringify compatibility-shaped mapping keys into serving hashes. |
+| Nested stable payload hash keys must be strings. | `stable_current_payload_hash()` rejects non-string keys inside nested mapping payload values before `_json_ready()` can stringify compatibility-shaped factor snapshots or JSON payload blocks into serving hashes. |
 | Worker manifest imports must be explicit. | `worker_manifest.py` imports `importlib.util` directly so clean-process manifest validation never depends on incidental package attribute side effects. |
 | Root visual artifacts must be absent. | Architecture harness rejects loose visual verification files at the repository root so screenshots live only under owned artifact directories. |
 | Worker table declarations must be unique. | `WorkerManifest` validation rejects duplicated table names inside each manifest table-declaration field before `owned_tables` dedupes them. |
@@ -308,6 +309,7 @@ can both miss real process drift and block healthy refactors.
 - G129. Current read-model changed-row publishing rejects scalar, mapping, and string-shaped row batches before row validation can split compatibility containers into fake row values.
 - G130. Stable current payload hashing rejects scalar, list-of-pairs, and string-shaped payloads before `dict(...)` coercion can turn compatibility containers into serving hashes.
 - G131. Stable current payload hashing rejects non-string payload keys before JSON normalization can stringify compatibility-shaped mapping keys into serving hashes.
+- G132. Stable current payload hashing rejects non-string keys inside nested mapping payload values before JSON normalization can stringify compatibility-shaped factor snapshots into serving hashes.
 
 ## Non-goals
 
@@ -506,6 +508,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC151. WHEN `CurrentReadModelPublisher.changed_rows()` receives `rows` that is scalar, mapping-shaped, or string-shaped THEN it SHALL raise a dedicated row-batch validation error before row, column, identity, payload hash, duplicate-identity, or changed-row write-preparation validation consumes compatibility-shaped row containers.
 - AC152. WHEN `stable_current_payload_hash()` receives a payload that is scalar, list-of-pairs-shaped, or string-shaped THEN it SHALL raise a dedicated payload-shape validation error before `dict(...)` coercion, JSON normalization, or hash generation consumes compatibility-shaped payload containers.
 - AC153. WHEN `stable_current_payload_hash()` receives a mapping payload with any non-string top-level key THEN it SHALL raise a dedicated payload-key validation error before JSON normalization, key stringification, or hash generation consumes compatibility-shaped payload keys.
+- AC154. WHEN `stable_current_payload_hash()` receives a mapping payload containing nested mapping values with any non-string key THEN it SHALL raise a dedicated payload-key validation error before JSON normalization, key stringification, or hash generation consumes compatibility-shaped nested payload keys.
 
 ## Risks
 
