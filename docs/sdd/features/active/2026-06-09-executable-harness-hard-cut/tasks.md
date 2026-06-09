@@ -2938,6 +2938,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 140 — Publisher missing payload columns use dedicated row-shape errors
+
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 139
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for explicit payload row-shape validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_missing_explicit_payload_column` — tighten the existing missing explicit payload column test to require a dedicated `current read model row missing payload columns` error instead of raw `KeyError`.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: missing explicit `CurrentReadModelPublisher.payload_columns` entries must fail with a publisher row-shape validation error before row payload hashes become harness evidence.
+- **On-demand context**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, and stable current read-model publisher contracts.
+- **Kill/defer criteria**: Stop if raw `KeyError` is intentionally part of the publisher API, if validation only checks caller code, or if the fix touches projection worker runtime behavior.
+- **Eval/repair signal**: missing explicit payload columns, opaque mapping errors, row-shape validation drift, publisher validation drift, and SDD generated index drift.
+- **Implementation**: Add explicit payload-column presence validation inside `row_payload_hash()` before building the payload dict.
+- **Verification**: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_missing_explicit_payload_column -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`

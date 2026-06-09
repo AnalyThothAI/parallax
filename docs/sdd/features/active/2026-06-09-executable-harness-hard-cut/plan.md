@@ -256,6 +256,7 @@ Known-failing baseline tests:
 - Reject explicit `CurrentReadModelPublisher.payload_columns` that include the configured payload hash column before row hashing can self-reference prior hashes.
 - Reject explicit `CurrentReadModelPublisher.payload_columns` that include lifecycle columns before row hashing can reintroduce run/generation/timestamp drift.
 - Require every explicit `CurrentReadModelPublisher.payload_columns` entry to exist in each row before hashing, so query drift fails instead of hashing missing fields as `None`.
+- Report missing explicit `CurrentReadModelPublisher.payload_columns` entries as dedicated row-shape validation errors instead of raw `KeyError`.
 - Require every `CurrentReadModelPublisher.identity_columns` entry to exist in each changed row before payload hashing, so query drift fails as missing stable identity instead of payload `KeyError`.
 - Reject duplicate stable identity tuples inside one `CurrentReadModelPublisher.changed_rows()` batch before a projection can prepare multiple writes for the same current read-model row.
 - Import `importlib.util` directly inside `worker_manifest.py` so manifest validation does not depend on prior import side effects in clean processes.
@@ -415,6 +416,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Publisher payload columns exclude the payload hash column. | Pass: `CurrentReadModelPublisher` raises at construction when explicit payload columns include the configured hash column. |
 | Publisher payload columns exclude lifecycle columns. | Pass: `CurrentReadModelPublisher` raises at construction when explicit payload columns include a serving lifecycle column. |
 | Publisher explicit payload columns exist in rows. | Pass: `CurrentReadModelPublisher.row_payload_hash()` raises when a declared explicit payload column is missing from the row. |
+| Publisher missing payload columns use dedicated row-shape errors. | Pass: `CurrentReadModelPublisher.row_payload_hash()` raises `current read model row missing payload columns` instead of raw `KeyError`. |
 | Publisher changed rows contain identity columns. | Pass: `CurrentReadModelPublisher.changed_rows()` raises a dedicated missing-identity error before payload hashing when a row lacks a stable identity column. |
 | Publisher changed-row batches have unique identities. | Pass: `CurrentReadModelPublisher.changed_rows()` raises when two rows in one batch share the same stable identity tuple. |
 | Worker manifest imports are explicit. | Pass: importing `parallax.app.runtime.worker_manifest` in a clean process succeeds even after removing an incidental `importlib.util` package attribute. |
@@ -590,6 +592,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC137: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_queue_health_tables_outside_control_plane -q`
 - AC138: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_missing_identity_column_before_payload_hashing -q`
 - AC139: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_duplicate_row_identities_in_batch -q`
+- AC140: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_missing_explicit_payload_column -q`
 
 ## Verification
 

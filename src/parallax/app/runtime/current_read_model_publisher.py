@@ -97,6 +97,9 @@ class CurrentReadModelPublisher:
                 if key != self.payload_hash_column and key not in FORBIDDEN_SERVING_IDENTITY_COLUMNS
             }
         else:
+            missing_payload_columns = tuple(column for column in self.payload_columns if column not in row)
+            if missing_payload_columns:
+                raise ValueError(f"current read model row missing payload columns: {missing_payload_columns}")
             payload = {key: row[key] for key in self.payload_columns}
         return stable_current_payload_hash(payload)
 

@@ -163,7 +163,7 @@ def test_current_read_model_publisher_rejects_lifecycle_payload_columns() -> Non
 def test_current_read_model_publisher_rejects_missing_explicit_payload_column() -> None:
     publisher = CurrentReadModelPublisher(identity_columns=("target_id",), payload_columns=("target_id", "score"))
 
-    with pytest.raises(KeyError, match="score"):
+    with pytest.raises(ValueError, match="current read model row missing payload columns"):
         publisher.row_payload_hash({"target_id": "asset-1"})
 
 

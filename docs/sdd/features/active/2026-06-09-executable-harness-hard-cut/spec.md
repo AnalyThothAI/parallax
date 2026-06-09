@@ -107,6 +107,7 @@ can both miss real process drift and block healthy refactors.
 | Publisher payload columns must not include the payload hash column. | `CurrentReadModelPublisher` rejects explicit payload column sets that include the configured payload hash column before row hashing can self-reference prior hashes. |
 | Publisher payload columns must not include lifecycle columns. | `CurrentReadModelPublisher` rejects explicit lifecycle payload columns before row hashing can reintroduce run/generation/timestamp drift that the default payload path excludes. |
 | Publisher explicit payload columns must exist in rows. | `CurrentReadModelPublisher` raises on missing explicit payload columns instead of hashing absent fields as `None`. |
+| Publisher missing payload columns must use dedicated row-shape errors. | `CurrentReadModelPublisher.row_payload_hash()` reports missing explicit payload columns as publisher row-shape validation errors, not raw mapping `KeyError`s. |
 | Publisher changed rows must contain identity columns. | `CurrentReadModelPublisher.changed_rows()` validates stable identity columns before payload hashing so query drift cannot surface as a payload `KeyError` or hash a row without serving identity. |
 | Publisher changed-row batches must have unique identities. | `CurrentReadModelPublisher.changed_rows()` rejects duplicate stable identities inside one batch before a current read-model row can be prepared twice. |
 | Worker manifest imports must be explicit. | `worker_manifest.py` imports `importlib.util` directly so clean-process manifest validation never depends on incidental package attribute side effects. |
@@ -280,6 +281,7 @@ can both miss real process drift and block healthy refactors.
 - G115. Explicit queue-health table declarations require control-plane ownership, so fact and read-model tables cannot silently masquerade as queue-health surfaces.
 - G116. Current read-model changed-row publishing validates stable identity columns before payload hashing, so query drift cannot produce serving writes without identity keys or opaque payload `KeyError` failures.
 - G117. Current read-model changed-row publishing rejects duplicate stable row identities inside one batch, so a projection query cannot prepare multiple writes for one current serving row.
+- G118. Explicit current-read-model payload hashing reports missing declared payload keys as row-shape validation errors, so query drift does not leak opaque mapping errors into harness evidence.
 
 ## Non-goals
 
@@ -464,6 +466,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC137. WHEN a `WorkerManifest.queue_health_tables` value is owned only through facts, read models, input observations, or side-effect ledgers and not through `writes_control_plane` THEN manifest validation SHALL raise before queue-health or inventory harnesses can treat the table as a queue-health surface.
 - AC138. WHEN `CurrentReadModelPublisher.changed_rows()` receives a row missing any stable identity column THEN it SHALL raise a dedicated missing-identity error before payload hashing, existing-hash lookup, or changed-row write preparation.
 - AC139. WHEN `CurrentReadModelPublisher.changed_rows()` receives more than one row with the same stable identity tuple in a single batch THEN it SHALL raise before returning changed rows or preparing duplicate writes for the same current read-model identity.
+- AC140. WHEN `CurrentReadModelPublisher.row_payload_hash()` receives a row missing any declared explicit payload column THEN it SHALL raise a dedicated missing-payload-column error instead of leaking a raw `KeyError`.
 
 ## Risks
 
