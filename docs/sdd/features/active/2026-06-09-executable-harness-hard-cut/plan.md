@@ -196,6 +196,7 @@ Known-failing baseline tests:
 
 - Add `WorkerManifest.owned_tables` as the source-owned table ownership contract and use it inside manifest validation instead of rebuilding ownership tuples in harness checks.
 - Reject blank `name`, `domain`, `factory`, and `worker_class` declarations before registry, factory, settings, or docs harnesses consume them.
+- Reject duplicate `worker_class` declarations before registry, factory, settings, or docs harnesses consume them.
 - Reject blank `idempotency_evidence` declarations before lifecycle, ownership, review, or worker inventory harnesses consume them.
 - Reject duplicate `idempotency_evidence` declarations before lifecycle, ownership, review, or worker inventory harnesses consume them.
 - Reject empty `input_contract` declarations before registry, factory, settings, or docs harnesses consume them.
@@ -313,6 +314,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Spec background citations are semantically anchored. | Pass: validator rejects local Background citations whose cited lines do not mention backticked evidence tokens from the claim block. |
 | Worker runtime constraints are manifest-owned. | Pass: `WorkerManifest` carries the runtime constraint enum for every worker and architecture tests no longer define a separate worker classification map. |
 | Worker identity fields are non-blank. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares a blank `name`. |
+| Worker runtime classes are unique. | Pass: `_validate_worker_manifests()` raises when a patched manifest reuses another manifest's `worker_class`. |
 | Idempotency evidence is non-blank. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares blank `idempotency_evidence`. |
 | Idempotency evidence is unique. | Pass: `_validate_worker_manifests()` raises when a patched manifest repeats one `idempotency_evidence` entry. |
 | Input contracts are non-empty. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares an empty `input_contract`. |
@@ -471,6 +473,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC97: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_ordering_keys -q`
 - AC98: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_input_contracts -q`
 - AC99: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_idempotency_evidence -q`
+- AC100: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_worker_classes -q`
 
 ## Verification
 

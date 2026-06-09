@@ -777,6 +777,11 @@ def _validate_worker_manifests() -> None:
     if duplicate_names:
         raise ValueError(f"duplicate worker manifest names: {duplicate_names}")
 
+    worker_classes = [manifest.worker_class for manifest in _WORKER_MANIFESTS]
+    duplicate_worker_classes = sorted({item for item in worker_classes if worker_classes.count(item) > 1})
+    if duplicate_worker_classes:
+        raise ValueError(f"duplicate worker manifest classes: {duplicate_worker_classes}")
+
     missing_idempotency = [manifest.name for manifest in _WORKER_MANIFESTS if not manifest.idempotency_evidence]
     if missing_idempotency:
         raise ValueError(f"worker manifests missing idempotency evidence: {missing_idempotency}")
