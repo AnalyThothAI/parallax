@@ -8,7 +8,6 @@ ROOT = Path(__file__).resolve().parents[2]
 LATEST_MIGRATION = ROOT / "src/parallax/platform/db/alembic/versions/20260515_0046_event_anchor_capture_redesign.py"
 ALEMBIC_VERSIONS = ROOT / "src/parallax/platform/db/alembic/versions"
 GENERATED_DOCS = ROOT / "docs/generated"
-SUPERPOWERS_DOCS = ROOT / "docs/superpowers"
 
 SCANNED_SUFFIXES = {".html", ".md", ".py", ".sql", ".toml", ".ts", ".tsx", ".yaml", ".yml"}
 SKIPPED_DIRS = {
@@ -76,7 +75,7 @@ def _scanned_project_files() -> list[Path]:
 
 def _allows_historical_anchor_references(path: Path) -> bool:
     return path == Path(__file__).resolve() or any(
-        path.is_relative_to(allowed_root) for allowed_root in (ALEMBIC_VERSIONS, GENERATED_DOCS, SUPERPOWERS_DOCS)
+        path.is_relative_to(allowed_root) for allowed_root in (ALEMBIC_VERSIONS, GENERATED_DOCS)
     )
 
 

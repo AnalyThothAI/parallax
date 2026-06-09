@@ -595,6 +595,7 @@ def _pulse_domain(runtime: Any, *, now_ms: int, since_ms: int, window: str, scop
     status = "blocked" if int(payload.get("dead_jobs") or 0) > 0 else "ok"
     return {"status": status, **payload}
 
+
 def _news_domain(runtime: Any) -> dict[str, Any]:
     with runtime.repositories() as repos:
         sources = repos.news.list_source_status()

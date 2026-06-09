@@ -5,9 +5,10 @@
 Source of truth: deterministic generator script; no runtime database reads.
 
 Current references:
+- `docs/AGENT_EXECUTION.md`
+- `docs/WORKERS.md`
 - `src/parallax/domains/pulse_lab/ARCHITECTURE.md`
-- `docs/superpowers/plans/active/2026-05-21-signal-pulse-agent-cost-guard-plan-cn.md`
-- `docs/superpowers/plans/active/2026-05-20-news-item-agent-brief-plan-cn.md`
+- `src/parallax/platform/agent_execution.py`
 
 ## Decision Inventory
 

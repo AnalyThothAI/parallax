@@ -202,10 +202,10 @@ def _strings_in_payload(value: Any) -> list[str]:
             texts.extend(_strings_in_payload(child))
         return texts
     if isinstance(value, list):
-        texts: list[str] = []
+        list_texts: list[str] = []
         for child in value:
-            texts.extend(_strings_in_payload(child))
-        return texts
+            list_texts.extend(_strings_in_payload(child))
+        return list_texts
     return []
 
 

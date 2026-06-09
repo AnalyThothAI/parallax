@@ -901,8 +901,10 @@ class NarrativeRepository:
                 result[(decoded["event_id"], decoded["target_type"], decoded["target_id"])] = decoded
         return result
 
+
 def _empty_semantic_coverage() -> dict[str, int]:
     return {key: 0 for key in _SEMANTIC_COVERAGE_KEYS}
+
 
 def _missing_digest_row(
     *,
@@ -929,6 +931,7 @@ def _missing_digest_row(
         "evidence_refs_json": [],
     }
 
+
 def deterministic_admission_id(
     *,
     target_type: str,
@@ -939,8 +942,10 @@ def deterministic_admission_id(
 ) -> str:
     return _stable_id("narrative_admission", target_type, target_id, window, scope, schema_version)
 
+
 def _stable_id(*parts: str) -> str:
     return hashlib.sha256("\x1f".join(str(part) for part in parts).encode("utf-8")).hexdigest()
+
 
 def admission_payload_hash(payload: dict[str, Any]) -> str:
     return _stable_payload_hash(
@@ -960,15 +965,19 @@ def admission_payload_hash(payload: dict[str, Any]) -> str:
         }
     )
 
+
 def _stable_payload_hash(payload: dict[str, Any]) -> str:
     encoded = json.dumps(_json_ready(payload), ensure_ascii=True, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
+
 def _author_count(rows: Sequence[dict[str, Any]]) -> int:
     return len({str(row.get("author_handle") or "").strip() for row in rows if str(row.get("author_handle") or "")})
 
+
 def _json(value: Any) -> Jsonb:
     return Jsonb(value, dumps=lambda item: json.dumps(item, ensure_ascii=False, sort_keys=True, default=str))
+
 
 def _json_ready(value: Any) -> Any:
     raw = getattr(value, "obj", value)
@@ -979,6 +988,7 @@ def _json_ready(value: Any) -> Any:
     if isinstance(raw, set | frozenset):
         return sorted(_json_ready(inner) for inner in raw)
     return raw
+
 
 def _json_list(value: Any) -> list[str]:
     if value is None:
@@ -993,14 +1003,17 @@ def _json_list(value: Any) -> list[str]:
         return []
     return [str(item) for item in decoded if str(item)]
 
+
 def _row(row: Any) -> dict[str, Any]:
     decoded = dict(row)
     if "source_event_ids_json" in decoded and "source_event_ids" not in decoded:
         decoded["source_event_ids"] = _json_list(decoded.get("source_event_ids_json"))
     return decoded
 
+
 def _is_admitted(row: dict[str, Any] | None) -> bool:
     return row is not None and str(row.get("status") or "") == "admitted"
+
 
 def _required(row: dict[str, Any], key: str) -> str:
     value = _clean(row.get(key))
@@ -1008,9 +1021,11 @@ def _required(row: dict[str, Any], key: str) -> str:
         raise ValueError(f"missing required narrative repository value: {key}")
     return value
 
+
 def _clean(value: Any) -> str | None:
     text = str(value or "").strip()
     return text or None
+
 
 def _int(value: Any) -> int | None:
     try:
@@ -1018,14 +1033,17 @@ def _int(value: Any) -> int | None:
     except (TypeError, ValueError):
         return None
 
+
 def _float(value: Any) -> float | None:
     try:
         return float(value)
     except (TypeError, ValueError):
         return None
 
+
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
 
 def _commit_if_available(conn: Any) -> None:
     commit = getattr(conn, "commit", None)

@@ -242,9 +242,7 @@ def _public_notification_payload(rule_id: str, raw_payload: Any) -> dict[str, An
 
 def _public_news_agent_brief(value: Any) -> dict[str, Any]:
     payload = {
-        key: item
-        for key, item in _json_object(value).items()
-        if key in _NEWS_AGENT_BRIEF_KEYS and item is not None
+        key: item for key, item in _json_object(value).items() if key in _NEWS_AGENT_BRIEF_KEYS and item is not None
     }
     if "affected_entities" in payload:
         payload["affected_entities"] = _public_news_affected_entities(payload["affected_entities"])

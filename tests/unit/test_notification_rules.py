@@ -1020,13 +1020,13 @@ def test_news_high_signal_allows_market_wide_ready_watch_candidate():
                 "content_tags": ["private_markets"],
                 "signal": {
                     "direction": "bullish",
-                        "alert_eligibility": {
-                            "in_app_eligible": True,
-                            "external_push_ready": True,
-                            "external_push_basis": "agent_brief",
-                            "decision_class": "watch",
-                            "market_scope": market_scope,
-                        },
+                    "alert_eligibility": {
+                        "in_app_eligible": True,
+                        "external_push_ready": True,
+                        "external_push_basis": "agent_brief",
+                        "decision_class": "watch",
+                        "market_scope": market_scope,
+                    },
                 },
                 "token_impacts": [{"symbol": "SPCX", "score": 90}],
                 "agent_brief": {

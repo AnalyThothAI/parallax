@@ -28,9 +28,9 @@ def test_narrative_llm_provider_client_and_prompts_are_removed() -> None:
     model_execution = SRC / "integrations" / "model_execution"
     narrative_domain = SRC / "domains" / "narrative_intel"
     provider_wiring = (SRC / "app" / "runtime" / "provider_wiring" / "__init__.py").read_text(encoding="utf-8")
-    model_execution_wiring = (
-        SRC / "app" / "runtime" / "provider_wiring" / "model_execution.py"
-    ).read_text(encoding="utf-8")
+    model_execution_wiring = (SRC / "app" / "runtime" / "provider_wiring" / "model_execution.py").read_text(
+        encoding="utf-8"
+    )
 
     assert not (model_execution / "narrative_intel_agent_client.py").exists()
     assert not (narrative_domain / "prompts" / "mention_semantics.md").exists()

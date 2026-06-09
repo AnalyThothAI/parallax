@@ -2,7 +2,7 @@
 
 **Source:** https://github.com/walkinglabs/learn-harness-engineering/blob/main/docs/zh/resources/openai-advanced/index.md
 **Fetched:** 2026-05-09
-**Cited by:** `docs/superpowers/specs/completed/2026-05-09-harness-engineering-restructure.md`
+**Cited by:** `docs/WORKFLOW.md`
 
 ## Summary
 
@@ -20,6 +20,6 @@ Recommended structure: short routers at the root, governance files under `docs/`
 
 - Routers: `AGENTS.md`, `CLAUDE.md` (≤ 60 lines each).
 - Governance: nine `docs/*.md` files plus `TECH_DEBT.md` (see the routing table in either router).
-- Lane lifecycle: `docs/superpowers/{specs,plans}/{active,completed}/`.
+- Lane lifecycle: `docs/sdd/features/{active,completed}/YYYY-MM-DD-<slug>/`.
 - Support: `docs/references/`, `docs/generated/`.
 - Source layout (`src/parallax/`) is independently aligned with the "mechanical structure" principle and is unchanged by this restructure.

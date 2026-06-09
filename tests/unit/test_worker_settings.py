@@ -163,6 +163,7 @@ def test_narrative_realtime_workers_reject_matched_scope():
     with pytest.raises(ValidationError, match=r"must contain only|must be exactly"):
         NarrativeAdmissionWorkerSettings(scopes=("matched",))
 
+
 def test_default_workers_yaml_hard_cuts_narrative_llm_workers() -> None:
     text = default_workers_yaml()
     payload = yaml.safe_load(text)

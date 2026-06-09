@@ -39,10 +39,12 @@ def test_runtime_source_does_not_reference_retired_macro_serving_contracts() -> 
     assert offenders == []
 
 
-def test_completed_docs_do_not_republish_retired_cex_run_serving_instructions() -> None:
+def test_canonical_docs_do_not_republish_retired_cex_run_serving_instructions() -> None:
     docs = (
-        ROOT / "docs" / "superpowers" / "plans" / "completed" / "2026-05-21-cex-binance-hard-cut-plan-cn.md",
-        ROOT / "docs" / "superpowers" / "specs" / "completed" / "2026-05-21-binance-usdt-perp-oi-radar-worker-cn.md",
+        ROOT / "docs" / "ARCHITECTURE.md",
+        ROOT / "docs" / "WORKERS.md",
+        ROOT / "docs" / "CONTRACTS.md",
+        ROOT / "docs" / "references" / "POSTGRES_PERFORMANCE.md",
     )
     offenders: list[str] = []
     for path in docs:

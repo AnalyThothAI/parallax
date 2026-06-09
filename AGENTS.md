@@ -37,7 +37,7 @@ Frontend CSS is harness-constrained, not convention-only. Before changing `web/s
 | Agent task reading matrix and sub-agent handoffs | `docs/agent-playbook/task-reading-matrix.md` |
 | Product LLM agent execution plane | `docs/AGENT_EXECUTION.md` |
 | Module architecture maps | `src/parallax/domains/<domain>/ARCHITECTURE.md`; discover current maps with `find src/parallax/domains -name ARCHITECTURE.md` |
-| Active / done specs & plans | `docs/superpowers/{specs,plans}/{active,completed}/` are planning artefacts; verify against code and canonical docs before treating an old active file as current truth |
+| SDD feature workflow | `docs/sdd/` contains current spec→plan→tasks→verification templates and feature records; old planning archives are not canonical truth |
 | External references & papers | `docs/references/` |
 | Auto-generated artefacts | `docs/generated/` |
 | Tech debt log | `docs/TECH_DEBT.md` |

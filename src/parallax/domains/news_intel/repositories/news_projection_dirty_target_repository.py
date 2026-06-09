@@ -436,6 +436,7 @@ class NewsProjectionDirtyTargetRepository:
         ).fetchone()
         return int(row["count"] if row else 0)
 
+
 def _dirty_records(
     rows: Iterable[Mapping[str, Any]],
     *,

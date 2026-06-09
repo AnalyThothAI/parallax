@@ -949,9 +949,7 @@ def test_token_radar_narrative_read_model_does_not_reuse_1h_digest_for_other_win
 @pytest.mark.architecture
 def test_narrative_runtime_does_not_keep_removed_digest_not_ready_reason() -> None:
     narrative_files = [
-        path
-        for path in (SRC / "domains" / "narrative_intel").rglob("*.py")
-        if "/migrations/" not in path.as_posix()
+        path for path in (SRC / "domains" / "narrative_intel").rglob("*.py") if "/migrations/" not in path.as_posix()
     ]
 
     offenders = [path for path in narrative_files if "digest_not_ready" in path.read_text()]

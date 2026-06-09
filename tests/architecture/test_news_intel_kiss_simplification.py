@@ -277,10 +277,7 @@ def test_news_duplicate_hard_cut_repair_runtime_surface_is_removed() -> None:
         "ops_news_duplicate_hard_cut_repair",
     }
     offenders = [
-        f"{path} contains {token}"
-        for path in forbidden_sources
-        for token in forbidden_tokens
-        if token in _read(path)
+        f"{path} contains {token}" for path in forbidden_sources for token in forbidden_tokens if token in _read(path)
     ]
     assert offenders == []
 
@@ -446,10 +443,7 @@ def test_news_hard_cut_cleanup_runtime_surface_is_removed() -> None:
         "news_intel_hard_cut_runtime_guard",
     }
     offenders = [
-        f"{path} contains {token}"
-        for path in forbidden_sources
-        for token in forbidden_tokens
-        if token in _read(path)
+        f"{path} contains {token}" for path in forbidden_sources for token in forbidden_tokens if token in _read(path)
     ]
     assert offenders == []
 

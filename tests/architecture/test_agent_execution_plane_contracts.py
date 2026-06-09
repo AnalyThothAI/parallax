@@ -226,9 +226,7 @@ def test_pulse_decision_runtime_has_no_database_pool_dependency() -> None:
 
 
 def test_pulse_final_decision_refs_are_not_synthesized_from_packet_inputs() -> None:
-    normalization_text = (
-        SRC / "domains/pulse_lab/services/agent_output_normalization.py"
-    ).read_text(encoding="utf-8")
+    normalization_text = (SRC / "domains/pulse_lab/services/agent_output_normalization.py").read_text(encoding="utf-8")
 
     forbidden_tokens = (
         "_synthesize_missing_supporting_refs",
@@ -240,9 +238,7 @@ def test_pulse_final_decision_refs_are_not_synthesized_from_packet_inputs() -> N
 
 
 def test_pulse_evidence_refs_have_no_fuzzy_or_alias_canonicalization() -> None:
-    normalization_text = (
-        SRC / "domains/pulse_lab/services/agent_output_normalization.py"
-    ).read_text(encoding="utf-8")
+    normalization_text = (SRC / "domains/pulse_lab/services/agent_output_normalization.py").read_text(encoding="utf-8")
 
     forbidden_tokens = (
         "unique_same_type_edit_distance_1",
@@ -267,9 +263,7 @@ def test_pulse_runtime_manifest_uses_agent_runtime_language_not_committee_or_har
 
 
 def test_pulse_finalization_has_no_post_stage_mutable_freshness_health_query() -> None:
-    job_service_text = (
-        SRC / "domains/pulse_lab/services/pulse_candidate_job_service.py"
-    ).read_text(encoding="utf-8")
+    job_service_text = (SRC / "domains/pulse_lab/services/pulse_candidate_job_service.py").read_text(encoding="utf-8")
 
     forbidden_tokens = (
         "PulseFreshnessHealthService",
@@ -280,9 +274,7 @@ def test_pulse_finalization_has_no_post_stage_mutable_freshness_health_query() -
 
 
 def test_pulse_stage_audit_no_longer_dual_writes_safety_net_trace_metadata() -> None:
-    client_text = (SRC / "integrations/model_execution/pulse_decision_agent_client.py").read_text(
-        encoding="utf-8"
-    )
+    client_text = (SRC / "integrations/model_execution/pulse_decision_agent_client.py").read_text(encoding="utf-8")
     decision_types_text = (SRC / "domains/pulse_lab/types/agent_decision.py").read_text(encoding="utf-8")
 
     forbidden_client_tokens = (
@@ -363,16 +355,11 @@ def test_pulse_runtime_uses_single_decision_lane() -> None:
 
 
 def test_pulse_decision_lane_literal_lives_in_runtime_contract_only() -> None:
-    paths = [
-        path
-        for path in SRC.rglob("*.py")
-        if "src/parallax/platform/db/alembic/versions" not in str(path)
-    ]
+    paths = [path for path in SRC.rglob("*.py") if "src/parallax/platform/db/alembic/versions" not in str(path)]
     offenders = [
         str(path.relative_to(ROOT))
         for path in paths
-        if path != SRC / "platform/agent_execution.py"
-        and '"pulse.decision"' in path.read_text(encoding="utf-8")
+        if path != SRC / "platform/agent_execution.py" and '"pulse.decision"' in path.read_text(encoding="utf-8")
     ]
 
     assert offenders == []

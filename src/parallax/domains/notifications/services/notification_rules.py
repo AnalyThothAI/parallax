@@ -768,9 +768,7 @@ def _has_external_channels(channels: tuple[str, ...]) -> bool:
 
 def _news_agent_summary(agent_brief: dict[str, Any]) -> str:
     return _compact_text(
-        agent_brief.get("summary_zh")
-        or agent_brief.get("market_read_zh")
-        or "",
+        agent_brief.get("summary_zh") or agent_brief.get("market_read_zh") or "",
         limit=360,
     )
 
@@ -798,10 +796,7 @@ def _news_external_push_readiness(
 def _news_display_title(row: dict[str, Any], *, agent_brief: dict[str, Any]) -> str:
     display_signal = _news_display_signal(row)
     return _compact_text(
-        agent_brief.get("title_zh")
-        or display_signal.get("title_zh")
-        or row.get("headline")
-        or "News high signal",
+        agent_brief.get("title_zh") or display_signal.get("title_zh") or row.get("headline") or "News high signal",
         limit=96,
     )
 

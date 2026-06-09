@@ -497,23 +497,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/status/narrative-health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Narrative Health */
-        get: operations["narrative_health_api_status_narrative_health_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/stocks-radar": {
         parameters: {
             query?: never;
@@ -770,18 +753,6 @@ export interface components {
         /** ApiEnvelope[LiveMarketData] */
         ApiEnvelope_LiveMarketData_: {
             data?: components["schemas"]["LiveMarketData"] | null;
-            /** Error */
-            error?: string | null;
-            /** Field */
-            field?: string | null;
-            /** Ok */
-            ok: boolean;
-        } & {
-            [key: string]: unknown;
-        };
-        /** ApiEnvelope[NarrativeBacklogHealthData] */
-        ApiEnvelope_NarrativeBacklogHealthData_: {
-            data?: components["schemas"]["NarrativeBacklogHealthData"] | null;
             /** Error */
             error?: string | null;
             /** Field */
@@ -1134,74 +1105,6 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
-        /** NarrativeAdmissionHealth */
-        NarrativeAdmissionHealth: {
-            /**
-             * Current Admissions
-             * @default 0
-             */
-            current_admissions: number;
-            /**
-             * Current Independent Authors
-             * @default 0
-             */
-            current_independent_authors: number;
-            /**
-             * Current Source Events
-             * @default 0
-             */
-            current_source_events: number;
-            /**
-             * Suppressed Admissions
-             * @default 0
-             */
-            suppressed_admissions: number;
-        } & {
-            [key: string]: unknown;
-        };
-        /** NarrativeBacklogHealthData */
-        NarrativeBacklogHealthData: {
-            admissions?: components["schemas"]["NarrativeAdmissionHealth"];
-            /** Digest Reason Counts */
-            digest_reason_counts?: {
-                [key: string]: number;
-            };
-            /** Digest Status Counts */
-            digest_status_counts?: {
-                [key: string]: number;
-            };
-            epoch?: components["schemas"]["NarrativeEpochHealth"];
-            /**
-             * Estimated Digest Drain Seconds
-             * @default 0
-             */
-            estimated_digest_drain_seconds: number;
-            /** Now Ms */
-            now_ms?: number | null;
-            /**
-             * Pending Digest Count
-             * @default 0
-             */
-            pending_digest_count: number;
-            /** Realtime Scopes */
-            realtime_scopes?: string[];
-            /** Realtime Windows */
-            realtime_windows?: string[];
-            /** Recent Runs */
-            recent_runs?: {
-                [key: string]: components["schemas"]["NarrativeRunHealth"];
-            };
-            /** Schema Version */
-            schema_version?: string | null;
-            semantic_backlog?: components["schemas"]["NarrativeSemanticBacklog"];
-            /**
-             * Since Hours
-             * @default 4
-             */
-            since_hours: number;
-        } & {
-            [key: string]: unknown;
-        };
         /** NarrativeCurrentnessData */
         NarrativeCurrentnessData: {
             /**
@@ -1264,152 +1167,6 @@ export interface components {
             display_status: string;
             /** Label */
             label?: string | null;
-        } & {
-            [key: string]: unknown;
-        };
-        /** NarrativeEpochHealth */
-        NarrativeEpochHealth: {
-            /**
-             * Delta Independent Authors
-             * @default 0
-             */
-            delta_independent_authors: number;
-            /**
-             * Delta Source Rows
-             * @default 0
-             */
-            delta_source_rows: number;
-            /** Digest Refresh Deferred By Epoch Policy */
-            digest_refresh_deferred_by_epoch_policy?: {
-                [key: string]: number;
-            };
-            /** Digest Refresh Due By Window */
-            digest_refresh_due_by_window?: {
-                [key: string]: number;
-            };
-            /** Epoch Policy Version */
-            epoch_policy_version?: string | null;
-            /**
-             * Last Ready Digest Count
-             * @default 0
-             */
-            last_ready_digest_count: number;
-            /** Last Ready P50 Age Ms */
-            last_ready_p50_age_ms?: number | null;
-            /** Last Ready P95 Age Ms */
-            last_ready_p95_age_ms?: number | null;
-            /**
-             * Material Delta Due Count
-             * @default 0
-             */
-            material_delta_due_count: number;
-            /**
-             * No Material Delta Deferred Count
-             * @default 0
-             */
-            no_material_delta_deferred_count: number;
-            /**
-             * Unsupported Window Admissions
-             * @default 0
-             */
-            unsupported_window_admissions: number;
-            /**
-             * Updating Snapshot Count
-             * @default 0
-             */
-            updating_snapshot_count: number;
-        } & {
-            [key: string]: unknown;
-        };
-        /** NarrativeRunHealth */
-        NarrativeRunHealth: {
-            /**
-             * Failure
-             * @default 0
-             */
-            failure: number;
-            /**
-             * Success
-             * @default 0
-             */
-            success: number;
-            /**
-             * Timeout
-             * @default 0
-             */
-            timeout: number;
-        } & {
-            [key: string]: unknown;
-        };
-        /** NarrativeSemanticBacklog */
-        NarrativeSemanticBacklog: {
-            /**
-             * Admissions With Missing Semantics
-             * @default 0
-             */
-            admissions_with_missing_semantics: number;
-            /**
-             * Current Source Rows
-             * @default 0
-             */
-            current_source_rows: number;
-            /**
-             * Estimated Semantic Drain Seconds
-             * @default 0
-             */
-            estimated_semantic_drain_seconds: number;
-            /**
-             * Missing Semantic Rows
-             * @default 0
-             */
-            missing_semantic_rows: number;
-            /** Oldest Due Age Ms */
-            oldest_due_age_ms?: number | null;
-            /**
-             * Pending Existing Rows
-             * @default 0
-             */
-            pending_existing_rows: number;
-            /**
-             * Queued
-             * @default 0
-             */
-            queued: number;
-            /**
-             * Retryable
-             * @default 0
-             */
-            retryable: number;
-            /**
-             * Semantic Rows For Current Sources
-             * @default 0
-             */
-            semantic_rows_for_current_sources: number;
-            /**
-             * Stale
-             * @default 0
-             */
-            stale: number;
-            /**
-             * Stale Fingerprint Current Digest Count
-             * @default 0
-             */
-            stale_fingerprint_current_digest_count: number;
-            /**
-             * Suppressed Current Digest Count
-             * @default 0
-             */
-            suppressed_current_digest_count: number;
-            /**
-             * Total Pending
-             * @default 0
-             */
-            total_pending: number;
-            /**
-             * Unavailable
-             * @default 0
-             */
-            unavailable: number;
         } & {
             [key: string]: unknown;
         };
@@ -3768,37 +3525,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiEnvelope_StatusData_"];
-                };
-            };
-        };
-    };
-    narrative_health_api_status_narrative_health_get: {
-        parameters: {
-            query?: {
-                since_hours?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiEnvelope_NarrativeBacklogHealthData_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

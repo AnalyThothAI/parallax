@@ -12,9 +12,7 @@ def test_agent_knowledge_catalog_loads_lightweight_index_before_body() -> None:
     assert "market_research_harness" in index
     assert index["market_research_harness"]["title"] == "Market Research Harness"
     assert "body" not in index["market_research_harness"]
-    assert "PostgreSQL facts and read models are the only product truth" in catalog.load(
-        "market_research_harness"
-    )
+    assert "PostgreSQL facts and read models are the only product truth" in catalog.load("market_research_harness")
 
 
 def test_render_agent_instructions_loads_requested_knowledge_only() -> None:

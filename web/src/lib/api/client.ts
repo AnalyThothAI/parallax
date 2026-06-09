@@ -330,7 +330,9 @@ function normalizeTokenLanes(
     const payload = lane && typeof lane === "object" ? (lane as Record<string, unknown>) : {};
     if (
       options.dropProviderRows &&
-      (payload.provider_signal != null || payload.provider_score != null || payload.provider_grade != null)
+      (payload.provider_signal != null ||
+        payload.provider_score != null ||
+        payload.provider_grade != null)
     ) {
       return [];
     }

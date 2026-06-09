@@ -412,14 +412,17 @@ def test_build_news_page_row_includes_ready_compact_agent_brief() -> None:
         "bull_view": {"strength": "strong", "thesis_zh": "新增需求预期"},
         "bear_view": {"strength": "weak", "thesis_zh": "审批仍不确定"},
     }
-    assert not {
-        "agent_run_id",
-        "schema_version",
-        "prompt_version",
-        "validator_version",
-        "artifact_version_hash",
-        "input_hash",
-    } & row["agent_brief"].keys()
+    assert (
+        not {
+            "agent_run_id",
+            "schema_version",
+            "prompt_version",
+            "validator_version",
+            "artifact_version_hash",
+            "input_hash",
+        }
+        & row["agent_brief"].keys()
+    )
 
 
 def test_page_signal_envelope_separates_provider_agent_display_and_alert() -> None:

@@ -1,6 +1,6 @@
 # Public Contracts
 
-> **Scope.** Owns the user-visible surfaces (config, WebSocket, HTTP, CLI) and the immutability discipline that protects them. Refactors must preserve these contracts; behaviour changes require a versioned spec under `docs/superpowers/specs/active/`.
+> **Scope.** Owns the user-visible surfaces (config, WebSocket, HTTP, CLI) and the immutability discipline that protects them. Refactors must preserve these contracts; behaviour changes require a dated SDD feature under `docs/sdd/features/active/`.
 
 These surfaces change only with a versioned spec — refactors must preserve them.
 

@@ -1991,9 +1991,7 @@ def _normalize_workers_yaml_mapping(data: Mapping[str, Any]) -> dict[str, Any]:
         if isinstance(value, Mapping) and set(value) == {"enabled"} and value.get("enabled") is False:
             payload.pop(key)
             continue
-        raise ValueError(
-            f"retired worker setting {key!r} is no longer supported; remove it from workers.yaml"
-        )
+        raise ValueError(f"retired worker setting {key!r} is no longer supported; remove it from workers.yaml")
     return payload
 
 

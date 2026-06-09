@@ -72,9 +72,7 @@ def test_pulse_agent_desk_synthetic_worker_surface_smoke() -> None:
     assert "tool_calls" not in steps_by_stage["pulse_decision"]["input_json"]
 
     pulse_read = _PulseReadAdapter(repos)
-    detail = SignalPulseService(pulse_read=pulse_read).candidate(
-        candidate_id=candidate["candidate_id"]
-    )
+    detail = SignalPulseService(pulse_read=pulse_read).candidate(candidate_id=candidate["candidate_id"])
     assert detail is not None
     assert detail["decision"]["playbook"]["has_playbook"] is True
     assert detail["decision"]["bull_view"]["strength"] == "moderate"
@@ -154,9 +152,7 @@ def test_pulse_agent_desk_real_postgres_read_model_and_notification_dataflow(tmp
         assert packet_step["response_json"]["evidence_packet_hash"] == stored["evidence_packet_hash"]
         assert "tool_calls" not in steps_by_stage["pulse_decision"]["input_json"]
 
-        detail = SignalPulseService(pulse_read=pulse_read).candidate(
-            candidate_id=ids["candidate_id"]
-        )
+        detail = SignalPulseService(pulse_read=pulse_read).candidate(candidate_id=ids["candidate_id"])
         assert detail is not None
         assert detail["decision"]["playbook"]["has_playbook"] is True
         assert detail["decision"]["bull_view"]["strength"] == "moderate"

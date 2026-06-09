@@ -1964,11 +1964,7 @@ def _macro_snapshot_payload_hash(snapshot: Mapping[str, Any]) -> str:
 
 
 def _macro_daily_brief_payload_hash(brief: Mapping[str, Any]) -> str:
-    payload = {
-        key: value
-        for key, value in dict(brief).items()
-        if key not in {"computed_at_ms"}
-    }
+    payload = {key: value for key, value in dict(brief).items() if key not in {"computed_at_ms"}}
     encoded = json.dumps(postgres_safe_json(payload), sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(encoded.encode()).hexdigest()
 

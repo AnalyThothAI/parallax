@@ -115,7 +115,7 @@ def test_testcontainers_use_observability_postgres_image() -> None:
     helper = (ROOT / "tests" / "postgres_observability_container.py").read_text(encoding="utf-8")
 
     assert "parallax-postgres-observability:18" in helper
-    assert "ops\" / \"postgres\" / \"Dockerfile" in helper
+    assert 'ops" / "postgres" / "Dockerfile' in helper
     assert "shared_preload_libraries=pg_stat_statements,pg_stat_kcache,pg_qualstats,pg_wait_sampling" in helper
 
     for path in (

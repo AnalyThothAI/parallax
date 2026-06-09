@@ -923,7 +923,7 @@ def _dict(value: Any) -> dict[str, Any]:
     if isinstance(value, Mapping):
         return dict(value)
     if is_dataclass(value):
-        return dict(asdict(value))
+        return dict(asdict(cast(Any, value)))
     dump = getattr(value, "model_dump", None)
     if dump is not None:
         return dict(dump(mode="json"))

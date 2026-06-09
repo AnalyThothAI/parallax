@@ -4,27 +4,45 @@
 
 ## Lane sequence
 
-Trivial single-file low-risk edits may go direct. Everything else uses the lanes below.
+Trivial single-file low-risk edits may go direct. Everything else uses one feature
+directory under `docs/sdd/features/active/YYYY-MM-DD-<slug>/` with exactly four
+artifacts:
 
-| Lane | Path | When |
-|------|------|------|
-| Spec | `docs/superpowers/specs/active/YYYY-MM-DD-<slug>.md` (or `…/<slug>/spec.md` for very large work) | Before any non-trivial implementation; answers *why & what*. |
-| Plan | `docs/superpowers/plans/active/YYYY-MM-DD-<slug>.md` (or `…/<slug>/plan.md`) | After spec approval; answers *how & when* with file:line edits. |
-| Tasks | `…/<slug>/tasks.md` | When a plan needs ordered TDD checklists across multiple PRs. |
-| Verification | `…/<slug>/verification.md` (or a "Verification" section in a single-file plan) | Before declaring completion or opening a PR. |
+| Artifact | Path | When |
+|----------|------|------|
+| Spec | `spec.md` | Before any non-trivial implementation; answers *why & what*. |
+| Plan | `plan.md` | After spec approval; answers *how & when* with file:line edits. |
+| Tasks | `tasks.md` | Before implementation; gives a TDD-ordered checklist and handoff boundaries. |
+| Verification | `verification.md` | Before declaring completion or opening a PR. |
 
-Templates live at `docs/superpowers/_templates/`. Copy a template into the appropriate `active/` folder and rename to the dated slug. Naming: `YYYY-MM-DD-<kebab-slug>` matching today's date; keep slugs short and intent-focused.
+Templates live at `docs/sdd/_templates/`. Copy all four templates into the
+feature directory. Naming: `YYYY-MM-DD-<kebab-slug>` matching today's date; keep
+slugs short and intent-focused.
 
-When work ships and verification is recorded, move both the spec and the plan from `active/` to `completed/`. This is a manual step performed in the same PR that records verification.
+For production features or ambiguous work, run the full SDD loop:
 
-`active/` specs and plans are working artefacts, not canonical runtime
-documentation. If an old active file disagrees with `AGENTS.md`, this document,
-`ARCHITECTURE.md`, `WORKERS.md`, the owning domain `ARCHITECTURE.md`, or code,
-trust the canonical docs/code and either update the plan before using it or move
-it to `completed/` with verification. Do not infer current worker behavior from
-an old active plan without re-auditing the implementation.
+```text
+spec -> clarify -> checklist -> plan -> tasks -> analyze -> implement -> verify
+```
 
-Get explicit user approval at each lane boundary; do not write the next lane until the prior is approved.
+Use `clarify` to resolve requirement ambiguity, `checklist` to validate
+requirements quality, and `analyze` to check consistency across spec, plan, and
+tasks before implementation starts. Repeat analysis after implementation when
+the diff changes the contract.
+
+When work ships and verification is recorded, move the whole feature directory
+from `features/active/` to `features/completed/` in the same PR.
+
+SDD artifacts are working records, not canonical runtime documentation. If an
+SDD file disagrees with `AGENTS.md`, this document, `ARCHITECTURE.md`,
+`WORKERS.md`, the owning domain `ARCHITECTURE.md`, or code, trust the canonical
+docs/code and update or supersede the SDD record before using it. Do not infer
+current worker behavior from planning artifacts without re-auditing the
+implementation.
+
+Get explicit user approval at each lane boundary; do not write the next lane
+until the prior is approved, unless the user has already delegated the full
+goal and asked the agent to continue autonomously.
 
 ## Worktree policy
 

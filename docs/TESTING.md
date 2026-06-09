@@ -37,7 +37,7 @@ make check-all
 This runs all three gates (lint+type, unit+architecture+contract, integration+e2e+coverage)
 and is the only command whose output may be pasted as evidence in a verification artefact.
 Exit code 0 + the new `Coverage`, `Skipped tests`, and `E2E golden path` sections in
-`docs/superpowers/_templates/verification-template.md` are required.
+`docs/sdd/_templates/verification-template.md` are required.
 
 UI flows that genuinely cannot be exercised by `make check-all` (subjective UX,
 animations, real-network behaviour) must be exercised manually and recorded under

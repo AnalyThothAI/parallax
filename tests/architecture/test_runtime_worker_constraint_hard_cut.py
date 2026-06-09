@@ -103,6 +103,7 @@ WORKER_CLASSIFICATION: dict[str, str] = {
     "cex_oi_radar_board": "bounded_provider_scheduler",
     "macro_sync": "bounded_provider_scheduler",
     "macro_view_projection": "dirty_target_consumer",
+    "macro_daily_brief_projection": "target_scoped_expansion",
     "pulse_candidate": "dirty_target_consumer",
     "notification_rule": "target_scoped_expansion",
     "notification_delivery": "leased_job_consumer",
