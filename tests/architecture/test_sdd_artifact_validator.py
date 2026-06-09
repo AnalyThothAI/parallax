@@ -92,6 +92,31 @@ def test_feature_rejects_unexpected_artifact_files(tmp_path: Path) -> None:
     assert "unexpected-artifact" in _issue_codes(issues)
 
 
+def test_feature_directory_name_and_date_metadata_are_machine_valid(tmp_path: Path) -> None:
+    invalid_slug = _feature_dir(tmp_path, "active", "freeform-plan")
+    _write_valid_spec(invalid_slug / "spec.md", status="In Progress")
+    _write_valid_plan(invalid_slug / "plan.md", status="In Progress")
+    _write_valid_tasks(invalid_slug / "tasks.md", status="In Progress", task_status="[~]")
+    _write_valid_verification(invalid_slug / "verification.md", status="In Progress")
+
+    mismatched_date = _feature_dir(tmp_path, "active", "2026-06-09-date-mismatch")
+    _write_valid_spec(mismatched_date / "spec.md", status="In Progress")
+    _replace_metadata_field(mismatched_date / "spec.md", "Date", "2026-06-08")
+    _write_valid_plan(mismatched_date / "plan.md", status="In Progress")
+    _write_valid_tasks(
+        mismatched_date / "tasks.md",
+        status="In Progress",
+        touch_set="tests/architecture/test_agent_playbook_contracts.py",
+        task_status="[~]",
+    )
+    _write_valid_verification(mismatched_date / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "feature-slug-invalid" in _issue_codes(issues)
+    assert sum(issue.code == "feature-slug-invalid" for issue in issues) == 2
+
+
 def test_artifact_owning_links_must_point_to_same_feature(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-cross-linked-feature")
     _write_valid_spec(feature / "spec.md", status="In Progress")
@@ -1010,11 +1035,15 @@ def _append_successor_reference(path: Path) -> None:
 
 
 def _replace_metadata_link(path: Path, field_name: str, value: str) -> None:
+    _replace_metadata_field(path, field_name, f"`{value}`")
+
+
+def _replace_metadata_field(path: Path, field_name: str, value: str) -> None:
     needle = f"**{field_name}**:"
     lines = []
     for line in path.read_text(encoding="utf-8").splitlines():
         if line.startswith(needle):
-            lines.append(f"**{field_name}**: `{value}`")
+            lines.append(f"**{field_name}**: {value}")
         else:
             lines.append(line)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")

@@ -26,6 +26,7 @@ FENCED_BLOCK_RE = re.compile(r"```(?:[A-Za-z0-9_-]+)?\n(?P<body>[\s\S]*?)```", r
 COMMAND_LINE_RE = re.compile(r"^\s*\$\s+(?P<command>.+?)\s*$")
 EXIT_CODE_RE = re.compile(r"exit code:\s*(?P<code>-?\d+)\b", re.IGNORECASE)
 SKIPPED_RE = re.compile(r"Number of skipped tests in the run above:\s*(?P<count>\d+)", re.IGNORECASE)
+FEATURE_SLUG_RE = re.compile(r"^(?P<date>\d{4}-\d{2}-\d{2})-[a-z0-9]+(?:-[a-z0-9]+)*$")
 SPEC_AC_RE = re.compile(r"^\s*-\s+AC(?P<number>\d+)\.", re.IGNORECASE | re.MULTILINE)
 PLAN_AC_COMMAND_RE = re.compile(
     r"^\s*-\s+AC(?P<number>\d+)\s*:\s*`(?P<command>[^`]+)`\s*$",
@@ -100,6 +101,7 @@ KNOWN_ISSUE_CODES = (
     "missing-status",
     "missing-artifact",
     "unexpected-artifact",
+    "feature-slug-invalid",
     "artifact-owning-link-mismatch",
     "missing-gate-section",
     "acceptance-numbering-invalid",
@@ -373,6 +375,7 @@ def _read_artifact(root: Path, path: Path, artifact_name: str) -> ArtifactRecord
 def _feature_issues(feature: SddFeature) -> list[SddIssue]:
     issues: list[SddIssue] = []
     issues.extend(_unexpected_artifact_issues(feature))
+    issues.extend(_feature_identity_issues(feature))
     for artifact in feature.artifacts.values():
         issues.extend(_artifact_issues(feature, artifact))
     issues.extend(_artifact_status_mismatch_issues(feature))
@@ -396,6 +399,34 @@ def _unexpected_artifact_issues(feature: SddFeature) -> list[SddIssue]:
         )
         for path in unexpected_paths
     ]
+
+
+def _feature_identity_issues(feature: SddFeature) -> list[SddIssue]:
+    match = FEATURE_SLUG_RE.match(feature.slug)
+    if not match:
+        return [
+            SddIssue(
+                code="feature-slug-invalid",
+                path=feature.relative_path,
+                message="feature directory must match YYYY-MM-DD-kebab-slug",
+            )
+        ]
+
+    expected_date = match.group("date")
+    issues: list[SddIssue] = []
+    for artifact_name in ("spec.md", "plan.md", "verification.md"):
+        artifact = feature.artifacts[artifact_name]
+        date = artifact.fields.get("date", "")
+        if artifact.missing or _is_placeholder(date) or date == expected_date:
+            continue
+        issues.append(
+            _issue(
+                "feature-slug-invalid",
+                artifact,
+                f"{artifact.name} Date must match feature slug date {expected_date}, got {date}",
+            )
+        )
+    return issues
 
 
 def _artifact_status_mismatch_issues(feature: SddFeature) -> list[SddIssue]:
