@@ -6,6 +6,7 @@ import type {
   NewsFactLane,
   NewsItemDetail,
   NewsMarketScope,
+  NewsProviderRating,
   NewsTokenLane,
 } from "@shared/model/newsIntel";
 import { newsLifecycleLabel } from "@shared/model/newsIntel";
@@ -35,6 +36,7 @@ export function NewsItemEvidencePage({ item }: NewsItemEvidencePageProps) {
   const sourceDomains = sourceDomainList(item);
   const marketScope = marketScopeForItem(item);
   const eligibility = item.signal.alert_eligibility;
+  const providerRating = item.provider_rating ?? null;
 
   return (
     <article className="news-evidence-page">
@@ -66,6 +68,11 @@ export function NewsItemEvidencePage({ item }: NewsItemEvidencePageProps) {
           label="Signal"
           value={newsSignalLabel(displaySignal)}
           detail={displaySignal.method || displaySignal.provider || displaySignal.source}
+        />
+        <EvidenceMetric
+          label="Provider rating"
+          value={providerRatingLabel(providerRating)}
+          detail={providerRating?.method || providerRating?.provider}
         />
         <EvidenceMetric
           label="Market scope"
@@ -262,6 +269,7 @@ function AiInterpretation({
 
 function SignalEvidence({ item }: { item: NewsItemDetail }) {
   const displaySignal = item.signal.display_signal;
+  const providerRating = item.provider_rating ?? null;
   return (
     <section className="news-evidence-section">
       <SectionHeading
@@ -276,12 +284,22 @@ function SignalEvidence({ item }: { item: NewsItemDetail }) {
         <FieldRow label="Direction" value={displaySignal.direction} />
         <FieldRow label="Signal" value={displaySignal.signal} />
         <FieldRow label="Status" value={newsSignalStatusLabel(displaySignal)} />
+        <FieldRow label="Provider rating" value={providerRatingLabel(providerRating)} />
+        <FieldRow label="Provider grade" value={providerRating?.grade} />
+        <FieldRow label="Provider method" value={providerRating?.method} />
       </dl>
       <p>
         {displaySignal.summary_zh || displaySignal.summary_en || "No signal summary is present."}
       </p>
     </section>
   );
+}
+
+function providerRatingLabel(rating?: NewsProviderRating | null): string {
+  if (!rating || rating.score == null) {
+    return "not scored";
+  }
+  return `${rating.score}${rating.grade ? ` ${rating.grade}` : ""}`;
 }
 
 function ExecutionGapPanel({ brief }: { brief?: NewsAgentBrief | null }) {

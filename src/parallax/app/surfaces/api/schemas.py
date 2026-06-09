@@ -274,6 +274,16 @@ class NewsSignalSummary(ApiSchema):
     method: str | None = None
 
 
+class NewsProviderRating(ApiSchema):
+    provider: str | None = None
+    status: str | None = None
+    direction: str | None = None
+    signal: str | None = None
+    score: int | None = None
+    grade: str | None = None
+    method: str | None = None
+
+
 class NewsSignalEnvelope(ApiSchema):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -384,6 +394,7 @@ class NewsRow(ApiSchema):
     content_tags: list[str] = Field(default_factory=list)
     content_classification: JsonObject = Field(default_factory=dict)
     signal: NewsSignalEnvelope = Field(default_factory=NewsSignalEnvelope)
+    provider_rating: NewsProviderRating | None = None
     token_impacts: list[NewsTokenLane] = Field(default_factory=list)
     token_lanes: list[NewsTokenLane] = Field(default_factory=list)
     fact_lanes: list[NewsFactLane] = Field(default_factory=list)

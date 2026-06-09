@@ -47,6 +47,16 @@ export type NewsSignalEnvelope = {
   alert_eligibility: NewsAlertEligibility;
 };
 
+export type NewsProviderRating = {
+  provider?: string | null;
+  status?: string | null;
+  direction?: string | null;
+  signal?: string | null;
+  score?: number | null;
+  grade?: string | null;
+  method?: string | null;
+};
+
 export type NewsTokenLane = {
   lane: "resolved" | "attention" | "ignored" | string;
   resolution_status?: string | null;
@@ -168,6 +178,7 @@ export type NewsRow = {
   content_tags?: string[];
   content_classification?: Record<string, unknown>;
   signal: NewsSignalEnvelope;
+  provider_rating?: NewsProviderRating | null;
   token_impacts?: NewsTokenLane[];
   token_lanes: NewsTokenLane[];
   fact_lanes: NewsFactLane[];

@@ -30,6 +30,8 @@ export function NewsTape({ rows, onOpen }: NewsTapeProps) {
         const displayTitle = useAgentTitle
           ? row.agent_brief?.title_zh || displaySignal.title_zh || row.headline
           : displaySignal.title_zh || row.headline;
+        const rating = row.provider_rating;
+        const ratingProvider = rating?.provider?.toUpperCase() || "PROVIDER";
         return (
           <div className="news-tape-row" key={row.row_id}>
             <button
@@ -56,6 +58,15 @@ export function NewsTape({ rows, onOpen }: NewsTapeProps) {
                   <span className={`news-tape-review ${reviewBadge.tone}`}>
                     {reviewBadge.label}
                   </span>
+                  {rating?.score != null ? (
+                    <span
+                      className="news-tape-provider-rating"
+                      title={`${ratingProvider} provider rating ${rating.score}`}
+                    >
+                      <b>{rating.score}</b>
+                      <span>{ratingProvider}</span>
+                    </span>
+                  ) : null}
                   {reviewBadge.detail ? (
                     <span className="news-tape-review-reason" title={reviewBadge.title}>
                       {reviewBadge.detail}

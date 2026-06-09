@@ -2169,6 +2169,7 @@ class NewsRepository:
               source_ids_json AS source_ids,
               source_domains_json AS source_domains,
               signal_json AS signal,
+              provider_rating_json AS provider_rating,
               token_impacts_json AS token_impacts,
               content_class,
               content_tags_json AS content_tags,
@@ -2254,6 +2255,7 @@ class NewsRepository:
               token_lanes_json AS token_lanes,
               fact_lanes_json AS fact_lanes,
               signal_json AS signal,
+              provider_rating_json AS provider_rating,
               token_impacts_json AS token_impacts,
               content_class,
               content_tags_json AS content_tags,
@@ -3845,6 +3847,7 @@ class NewsRepository:
               token_lanes_json AS token_lanes,
               fact_lanes_json AS fact_lanes,
               signal_json AS signal,
+              provider_rating_json AS provider_rating,
               token_impacts_json AS token_impacts,
               content_class,
               content_tags_json AS content_tags,
@@ -3937,6 +3940,7 @@ class NewsRepository:
             "content_tags": _json_list(projected.get("content_tags")),
             "content_classification": _json_dict(projected.get("content_classification")),
             "signal": projected_signal,
+            "provider_rating": _json_dict(projected.get("provider_rating")),
             "token_impacts": _json_list(projected.get("token_impacts")),
             "token_lanes": _json_list(projected.get("token_lanes")),
             "fact_lanes": _json_list(projected.get("fact_lanes")),
@@ -4785,7 +4789,7 @@ class NewsRepository:
                   latest_at_ms, lifecycle_status,
                   headline, summary, source_domain, canonical_url, search_text, token_lanes_json,
                   fact_lanes_json, content_class, content_tags_json, content_classification_json,
-                  source_json, signal_json, token_impacts_json, agent_brief_json,
+                  source_json, signal_json, provider_rating_json, token_impacts_json, agent_brief_json,
                   agent_status, agent_brief_computed_at_ms, computed_at_ms, projection_version,
                   canonical_item_key, duplicate_count, source_ids_json, source_domains_json,
                   provider_article_keys_json, market_scope_json,
@@ -4798,7 +4802,7 @@ class NewsRepository:
                   %(headline)s, %(summary)s, %(source_domain)s, %(canonical_url)s, %(search_text)s,
                   %(token_lanes_json)s,
                   %(fact_lanes_json)s, %(content_class)s, %(content_tags_json)s, %(content_classification_json)s,
-                  %(source_json)s, %(signal_json)s, %(token_impacts_json)s,
+                  %(source_json)s, %(signal_json)s, %(provider_rating_json)s, %(token_impacts_json)s,
                   %(agent_brief_json)s, %(agent_status)s, %(agent_brief_computed_at_ms)s,
                   %(computed_at_ms)s, %(projection_version)s, %(canonical_item_key)s,
                   %(duplicate_count)s, %(source_ids_json)s, %(source_domains_json)s,
@@ -4825,6 +4829,7 @@ class NewsRepository:
                   content_classification_json = EXCLUDED.content_classification_json,
                   source_json = EXCLUDED.source_json,
                   signal_json = EXCLUDED.signal_json,
+                  provider_rating_json = EXCLUDED.provider_rating_json,
                   token_impacts_json = EXCLUDED.token_impacts_json,
                   agent_brief_json = EXCLUDED.agent_brief_json,
                   agent_status = EXCLUDED.agent_status,
@@ -5106,6 +5111,7 @@ def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     agent_status = str(payload.get("agent_status") or "pending")
     signal = payload.get("signal") or {}
     payload["signal_json"] = _json(signal)
+    payload["provider_rating_json"] = _json(payload.get("provider_rating") or {})
     payload["agent_brief_json"] = _json(agent_brief)
     payload["agent_status"] = agent_status
     payload["agent_brief_computed_at_ms"] = (

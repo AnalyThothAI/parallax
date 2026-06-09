@@ -70,6 +70,7 @@ def build_news_page_row(
             agent_admission_status=agent_admission_status,
             market_scope=market_scope,
         ),
+        "provider_rating": _provider_rating_payload(item),
         "token_impacts": [],
         "content_class": item.get("content_class"),
         "content_tags": content_tags,
@@ -92,6 +93,22 @@ def build_news_page_row(
     }
     row["search_text"] = build_news_page_search_text(row)
     return row
+
+
+def _provider_rating_payload(item: Mapping[str, Any]) -> dict[str, Any]:
+    rating = _json_object(item.get("provider_signal_json"))
+    payload = _compact_mapping(
+        {
+            "provider": rating.get("provider"),
+            "status": rating.get("status"),
+            "direction": rating.get("direction"),
+            "signal": rating.get("signal"),
+            "score": _optional_rating_score(rating.get("score")),
+            "grade": rating.get("grade"),
+            "method": rating.get("method"),
+        }
+    )
+    return payload if any(value is not None for value in payload.values()) else {}
 
 
 def _token_lane(row: dict[str, Any]) -> dict[str, Any]:
@@ -430,6 +447,15 @@ def _optional_int(value: Any) -> int | None:
     if value is None:
         return None
     return int(value)
+
+
+def _optional_rating_score(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _stable_id(*parts: str) -> str:

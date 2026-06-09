@@ -165,6 +165,7 @@ function normalizeNewsRow<T extends NewsRow>(row: T): T {
       agentAdmissionStatus,
       marketScope,
     }),
+    provider_rating: normalizeProviderRating(payload.provider_rating),
     token_impacts: normalizeTokenLanes(payload.token_impacts, { dropProviderRows: true }),
     token_lanes: normalizeTokenLanes(payload.token_lanes),
     fact_lanes: normalizeFactLanes(payload.fact_lanes),
@@ -178,6 +179,32 @@ function normalizeNewsRow<T extends NewsRow>(row: T): T {
     agent_admission: agentAdmission,
     agent_representative_news_item_id: stringOrNull(payload.agent_representative_news_item_id),
   };
+}
+
+function normalizeProviderRating(raw: unknown) {
+  const payload = objectOrNull(raw);
+  if (!payload) return null;
+  const rating = {
+    provider: stringOrNull(payload.provider),
+    status: stringOrNull(payload.status),
+    direction: stringOrNull(payload.direction),
+    signal: stringOrNull(payload.signal),
+    score: numberOrNull(payload.score),
+    grade: stringOrNull(payload.grade),
+    method: stringOrNull(payload.method),
+  };
+  if (
+    !rating.provider &&
+    !rating.status &&
+    !rating.direction &&
+    !rating.signal &&
+    rating.score === null &&
+    !rating.grade &&
+    !rating.method
+  ) {
+    return null;
+  }
+  return rating;
 }
 
 function normalizeNewsSource(raw: unknown, row: Record<string, unknown>): NewsSourceSummary | null {

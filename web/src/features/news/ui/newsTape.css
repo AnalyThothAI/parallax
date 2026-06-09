@@ -103,6 +103,30 @@
     text-transform: uppercase;
   }
 
+  .news-tape-provider-rating {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: baseline;
+    gap: 3px;
+    border: 1px solid var(--line-soft);
+    border-radius: 4px;
+    padding: 1px 4px;
+    color: var(--bone);
+    background: rgba(255, 255, 255, 0.05);
+    font-family: var(--mono);
+    line-height: 1.25;
+  }
+
+  .news-tape-provider-rating b {
+    font-size: 10px;
+  }
+
+  .news-tape-provider-rating span {
+    color: var(--dim);
+    font-size: 8px;
+    font-weight: 900;
+  }
+
   .news-tape-review.is-ready {
     border-color: var(--opportunity-line);
     color: var(--opportunity-ink);

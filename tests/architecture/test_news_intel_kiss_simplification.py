@@ -195,15 +195,14 @@ def test_opennews_provider_signal_is_not_news_agent_evidence_or_priority() -> No
     assert offenders == []
 
 
-def test_opennews_provider_signal_is_not_news_page_or_notification_signal() -> None:
-    paths = [
-        "src/parallax/domains/news_intel/services/news_page_projection.py",
-        "src/parallax/domains/notifications/services/notification_rules.py",
-    ]
-    forbidden = {
-        "provider_signal_json",
-        "provider_token_impacts_json",
-        "provider_signal",
+def test_opennews_provider_signal_only_reaches_news_page_as_provider_rating_evidence() -> None:
+    page_projection = _read("src/parallax/domains/news_intel/services/news_page_projection.py")
+    notification_rules = _read("src/parallax/domains/notifications/services/notification_rules.py")
+
+    assert "provider_rating" in page_projection
+    assert "provider_rating" not in notification_rules
+
+    forbidden_everywhere = {
         "provider_score",
         "provider_score_band",
         "provider_status",
@@ -211,7 +210,20 @@ def test_opennews_provider_signal_is_not_news_page_or_notification_signal() -> N
         "_provider_signal_payload",
         "_merge_provider_impact",
     }
-    offenders = [f"{path} contains {token}" for path in paths for token in forbidden if token in _read(path)]
+    forbidden_notification = {
+        "provider_signal_json",
+        "provider_token_impacts_json",
+        "provider_signal",
+    }
+    offenders = [
+        f"page projection contains {token}"
+        for token in forbidden_everywhere
+        if token in page_projection
+    ] + [
+        f"notification rules contains {token}"
+        for token in forbidden_everywhere | forbidden_notification
+        if token in notification_rules
+    ]
     assert offenders == []
 
 

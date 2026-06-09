@@ -2340,7 +2340,8 @@ def test_news_page_provider_rating_migration_adds_read_model_evidence_column() -
         "UPDATE news_page_rows AS rows",
         "jsonb_build_object(",
         "'provider', items.provider_signal_json ->> 'provider'",
-        "'score', (items.provider_signal_json ->> 'score')::integer",
+        "'score', CASE",
+        "THEN (items.provider_signal_json ->> 'score')::integer",
         "rows.news_item_id = items.news_item_id",
         "ANALYZE news_page_rows",
     ):
