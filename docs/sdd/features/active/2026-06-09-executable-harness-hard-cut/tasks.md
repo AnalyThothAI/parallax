@@ -502,6 +502,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 24 — Superseded metadata hard gate
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 23
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD lifecycle semantics and completed-record metadata.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_approval_metadata` — asserts `Superseded` artifacts still require approval metadata.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Superseded records may skip content-section gates, but must still carry required status, date/worktree/branch, approval, and successor metadata.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, completed SDD feature records, SDD lifecycle docs.
+- **Kill/defer criteria**: Stop if old completed records can omit approval metadata or if superseded records are forced to claim fresh verification.
+- **Eval/repair signal**: `missing-approval-metadata`, completed-record drift, and stale generated index.
+- **Implementation**: Move metadata validation before the Superseded content-section early return and backfill completed SDD artifact metadata.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_approval_metadata -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -526,4 +547,5 @@
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_feature_rejects_unexpected_artifact_files -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_completed_tasks_reject_incomplete_dependencies -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_task_evidence_ignores_commands_outside_evidence_sections -q`
+- [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_approval_metadata -q`
 - [ ] `make check-all`

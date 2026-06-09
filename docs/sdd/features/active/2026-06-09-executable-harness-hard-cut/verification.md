@@ -40,6 +40,7 @@ claim is allowed without the corresponding output captured below.
 | AC21 — feature directories contain exactly four artifacts. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_feature_rejects_unexpected_artifact_files -q` passed after first failing RED run; legacy macro SDD attachments were deleted. |
 | AC22 — completed tasks cannot depend on incomplete tasks. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_completed_tasks_reject_incomplete_dependencies -q` passed after first failing RED run; Task 6 dependency was corrected from `Tasks 1-5` to `Tasks 1-4`. |
 | AC23 — completed-task evidence only counts inside evidence sections. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_task_evidence_ignores_commands_outside_evidence_sections -q` passed after first failing RED run. |
+| AC24 — superseded records still carry approval metadata. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_approval_metadata -q` passed after first failing RED run; completed SDD records were backfilled. |
 
 Deviations from spec:
 
@@ -404,6 +405,36 @@ exit code: 0
 
 $ uv run pytest tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py -q
 42 passed in 0.37s
+exit code: 0
+
+$ uv run ruff check scripts/validate_sdd_artifacts.py scripts/regen_sdd_work_index.py tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py
+All checks passed!
+exit code: 0
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_approval_metadata -q
+F                                                                        [100%]
+AssertionError: assert 'missing-approval-metadata' in set()
+exit code: 1
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_approval_metadata -q
+1 passed in 0.02s
+exit code: 0
+
+$ uv run python scripts/validate_sdd_artifacts.py --check
+error: missing-approval-metadata: docs/sdd/features/completed/2026-06-09-macro-intel-redesign/plan.md: missing metadata fields: approved by, approved at
+...
+error: missing-approval-metadata: docs/sdd/features/completed/2026-06-09-sdd-governance-hard-cut/verification.md: missing metadata fields: worktree, approved by, approved at
+exit code: 1
+
+$ uv run python scripts/validate_sdd_artifacts.py --check
+SDD artifact validation passed.
+exit code: 0
+
+$ uv run python scripts/regen_sdd_work_index.py --check
+exit code: 0
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py -q
+43 passed in 0.43s
 exit code: 0
 
 $ uv run ruff check scripts/validate_sdd_artifacts.py scripts/regen_sdd_work_index.py tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py

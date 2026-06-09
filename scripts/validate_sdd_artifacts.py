@@ -414,9 +414,6 @@ def _artifact_issues(feature: SddFeature, artifact: ArtifactRecord) -> list[SddI
     elif feature.state == "completed" and normalized_status not in COMPLETED_STATUSES:
         issues.append(_issue("review-lifecycle", artifact, f"{artifact.status!r} is not valid for completed lane"))
 
-    if normalized_status == "superseded":
-        return issues
-
     missing_fields = [
         field for field in METADATA_REQUIREMENTS[artifact.name] if _is_placeholder(artifact.fields.get(field, ""))
     ]
@@ -424,6 +421,9 @@ def _artifact_issues(feature: SddFeature, artifact: ArtifactRecord) -> list[SddI
         issues.append(
             _issue("missing-approval-metadata", artifact, f"missing metadata fields: {', '.join(missing_fields)}")
         )
+
+    if normalized_status == "superseded":
+        return issues
 
     missing_sections = [section for section in SECTION_REQUIREMENTS[artifact.name] if section not in artifact.text]
     if missing_sections:

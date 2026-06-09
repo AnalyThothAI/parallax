@@ -3,6 +3,8 @@
 **Status**: Superseded
 **Date**: 2026-06-09
 **Owner**: Codex
+**Approved by**: qinghuan
+**Approved at**: 2026-06-09
 **Superseded by**: `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut/`
 **Related**: `docs/FRONTEND.md`, `docs/DESIGN_DISCIPLINE.md`, `src/parallax/domains/macro_intel/ARCHITECTURE.md`
 

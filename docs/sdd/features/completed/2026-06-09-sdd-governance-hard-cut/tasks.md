@@ -3,6 +3,9 @@
 **Status**: Superseded
 **Owning plan**: `docs/sdd/features/completed/2026-06-09-sdd-governance-hard-cut/plan.md`
 **Worktree**: `.worktrees/sdd-v2-hard-cut/`
+**Branch**: `codex/sdd-v2-hard-cut`
+**Approved by**: qinghuan
+**Approved at**: 2026-06-09
 **Superseded by**: `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut/`
 
 ## Tasks

@@ -5,6 +5,9 @@
 **Owning spec**: `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/spec.md`
 **Owning plan**: `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/plan.md`
 **Branch**: `codex/macro-intel-redesign`
+**Worktree**: `.worktrees/macro-intel-redesign/`
+**Approved by**: qinghuan
+**Approved at**: 2026-06-09
 **Superseded by**: `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut/`
 **Diff**: final implementation slice committed on `codex/macro-intel-redesign`
 

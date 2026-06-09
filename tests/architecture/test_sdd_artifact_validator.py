@@ -106,6 +106,26 @@ def test_superseded_feature_requires_machine_readable_successor(tmp_path: Path) 
     assert "superseded-missing-successor" in _issue_codes(issues)
 
 
+def test_superseded_feature_requires_approval_metadata(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "completed", "2026-06-09-superseded-without-approval")
+    successor = _feature_dir(tmp_path, "active", "2026-06-09-successor")
+    _write_valid_spec(successor / "spec.md", status="In Progress")
+    _write_valid_plan(successor / "plan.md", status="In Progress")
+    _write_valid_tasks(successor / "tasks.md", status="In Progress", task_status="[~]")
+    _write_valid_verification(successor / "verification.md", status="In Progress")
+    _write_valid_spec(feature / "spec.md", status="Superseded")
+    _write_valid_plan(feature / "plan.md", status="Superseded")
+    _write_valid_tasks(feature / "tasks.md", status="Superseded")
+    _write_valid_verification(feature / "verification.md", status="Superseded")
+    for artifact_name in ("spec.md", "plan.md", "tasks.md", "verification.md"):
+        _append_machine_successor_reference(feature / artifact_name)
+        _remove_approval_metadata(feature / artifact_name)
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "missing-approval-metadata" in _issue_codes(issues)
+
+
 def test_verified_feature_ignores_old_success_outside_verification_commands(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "completed", "2026-06-09-old-success")
     _write_valid_spec(feature / "spec.md", status="Verified")
@@ -774,12 +794,29 @@ def _append_successor_reference(path: Path) -> None:
     )
 
 
+def _append_machine_successor_reference(path: Path) -> None:
+    path.write_text(
+        path.read_text(encoding="utf-8")
+        + "\n\n**Superseded by**: `docs/sdd/features/active/2026-06-09-successor/`\n",
+        encoding="utf-8",
+    )
+
+
 def _append_prose_successor_reference(path: Path) -> None:
     path.write_text(
         path.read_text(encoding="utf-8")
         + "\n\nThis record was superseded by the current active harness feature.\n",
         encoding="utf-8",
     )
+
+
+def _remove_approval_metadata(path: Path) -> None:
+    lines = [
+        line
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if not line.startswith("**Approved by**:") and not line.startswith("**Approved at**:")
+    ]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _append_notes_command_evidence(path: Path, command: str) -> None:
