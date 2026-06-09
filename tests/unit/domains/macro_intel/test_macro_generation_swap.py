@@ -4,6 +4,7 @@ from parallax.domains.macro_intel.observation_identity import (
     macro_series_current_row_payload_hash,
 )
 from parallax.domains.macro_intel.repositories.macro_intel_repository import (
+    MACRO_VIEW_PROJECTION_VERSION,
     MacroIntelRepository,
     _series_source_signature,
 )
@@ -237,11 +238,19 @@ def test_observation_series_readers_read_current_rows_directly() -> None:
     repo.observations_for_concepts(concept_keys=("asset:spy",), lookback_days=60, limit_per_series=20)
     repo.concept_history_counts(concept_keys=("asset:spy",), lookback_days=60)
 
-    for query, _params in conn.executions:
+    for query, _params in conn.executions[:2]:
         assert "FROM macro_observation_series_rows AS rows" in query
         assert "macro_observation_series_active_generation" not in query
         assert "generation_id" not in query
         assert "FROM macro_observations" not in query
+
+    history_query, history_params = conn.executions[2]
+    assert "FROM macro_observation_series_rows AS rows" in history_query
+    assert "macro_observation_series_active_generation" not in history_query
+    assert "generation_id" not in history_query
+    assert "FROM macro_observations" not in history_query
+    assert "rows.projection_version = %s" in history_query
+    assert history_params == (["asset:spy"], MACRO_VIEW_PROJECTION_VERSION, 60)
 
 
 def _series_row(

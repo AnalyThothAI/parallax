@@ -1011,7 +1011,7 @@ def _json_payload(row: dict[str, Any]) -> dict[str, Any]:
         "source_event_ids_json",
         "degraded_reasons_json",
     ):
-        payload = out.get(key) if out.get(key) is not None else ([] if key.endswith("_ids_json") else {})
+        payload: Any = out.get(key) if out.get(key) is not None else ([] if key.endswith("_ids_json") else {})
         if key == "degraded_reasons_json":
             payload = out.get(key) if out.get(key) is not None else []
         out[key] = Jsonb(_json_ready(payload))

@@ -402,7 +402,7 @@ def _target_type(value: Any) -> TargetType | None:
 def _dex_source_provider(quote: DexTokenQuote) -> MarketTickSourceProvider:
     source_provider = _clean_str(quote.raw.get("source_provider"))
     if source_provider in DEX_QUOTE_SOURCE_PROVIDERS:
-        return source_provider
+        return cast(MarketTickSourceProvider, source_provider)
     return DEX_SOURCE_PROVIDER
 
 

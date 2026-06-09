@@ -7,7 +7,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_result import WorkerResult
@@ -503,7 +503,7 @@ def _target_key(chain_id: str, address: str) -> tuple[str, str]:
 def _dex_source_provider(quote: DexTokenQuote) -> MarketTickSourceProvider:
     source_provider = _clean_str(quote.raw.get("source_provider"))
     if source_provider in DEX_QUOTE_SOURCE_PROVIDERS:
-        return source_provider
+        return cast(MarketTickSourceProvider, source_provider)
     return DEX_SOURCE_PROVIDER
 
 
