@@ -48,6 +48,7 @@ can both miss real process drift and block healthy refactors.
 | Analyze gates must be machine-statused. | Plan `Analyze Gate` result cells must use explicit `Pass:` or `Blocked:` status tokens. |
 | Task dependencies must be executable. | Task dependency references are parsed, unresolved references fail validation, and unmet dependencies block dry-run dispatch. |
 | Subagent return evidence must be executable. | Subagent reports are validated against the owning SDD task for scope adherence, changed-file claims, expected verification command, exit status, and secret hygiene before parent integration. |
+| Task-bound subagent reports must prove reading discipline. | Subagent report validation requires task classification and required-reading evidence for task-bound reports, including root agent instructions, the task reading matrix, and task on-demand context paths. |
 | Parent review outcome must be visible. | Task records expose subagent report and review result fields, and the generated Task Board surfaces review state including `needs-repair`. |
 | Referenced report artifacts must be real. | Delegated task report paths are checked for existence and validated against the task-bound report contract by the SDD validator. |
 | Completed task status must be evidenced. | A `[x]` task requires matching `verification.md` command evidence with exit code 0. |
@@ -132,6 +133,7 @@ can both miss real process drift and block healthy refactors.
 - G42. `make check-all` runs `scripts/regen_ws_protocol.py --check` before integration gates, so stale generated WebSocket docs cannot hide until optional/generated-doc integration checks.
 - G43. `make check-all` runs `scripts/regen_score_versions.py --check` before integration gates, so stale score/version docs cannot hide until optional/generated-doc integration checks.
 - G44. `make check-all` runs every non-DB generated-doc script named by `docs/generated/README.md` with `--check` before integration gates, so generated-doc freshness coverage is source-derived instead of one hard-coded assertion per file.
+- G45. Task-bound subagent reports include task classification and required-reading evidence, so subagents cannot pass the parent integration harness with only generic findings and command output.
 
 ## Non-goals
 
@@ -243,6 +245,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC64. WHEN `docs/generated/ws-protocol.md` drifts from `src/parallax/app/surfaces/api/ws.py` THEN `scripts/regen_ws_protocol.py --check` SHALL exit non-zero and `make check-all` SHALL run that check before integration, e2e, golden, or coverage gates.
 - AC65. WHEN `docs/generated/score-versions.md` drifts from score/version literals in `src/` THEN `scripts/regen_score_versions.py --check` SHALL exit non-zero and `make check-all` SHALL run that check before integration, e2e, golden, or coverage gates.
 - AC66. WHEN `docs/generated/README.md` names any non-DB generator script THEN `make check-all` SHALL run that script with `--check` before integration, e2e, golden, or coverage gates.
+- AC67. WHEN a subagent report is validated against an SDD task THEN it SHALL include task classification and required-reading evidence for `AGENTS.md`, `docs/agent-playbook/task-reading-matrix.md`, and task on-demand context paths.
 
 ## Risks
 

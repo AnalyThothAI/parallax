@@ -20,6 +20,7 @@ SECRET_PATTERNS = (
     re.compile(r"\bpostgres(?:ql)?://", re.IGNORECASE),
     re.compile(r"\b[A-Za-z0-9_]*dsn\s*=", re.IGNORECASE),
 )
+REQUIRED_TASK_BOUND_READING = ("AGENTS.md", "docs/agent-playbook/task-reading-matrix.md")
 
 
 def validate_subagent_report(text: str, *, mode: str, task_fields: Mapping[str, str] | None = None) -> list[str]:
@@ -48,6 +49,8 @@ def validate_subagent_report(text: str, *, mode: str, task_fields: Mapping[str, 
         issues.append("write-allowed reports must list changed files or explicitly say none")
     if task_fields is not None and changed_paths:
         issues.extend(_task_scope_issues(task_fields, changed_paths))
+    if task_fields is not None:
+        issues.extend(_task_required_reading_issues(task_fields, sections.get("required reading evidence", "")))
 
     verification = sections.get("verification evidence", "")
     command_blocks = _command_blocks(verification)
@@ -141,6 +144,27 @@ def _task_verification_issues(task_fields: Mapping[str, str], command_blocks: li
     if not any(exit_code == 0 for _, exit_code in matching_blocks):
         return ["verification command exit code must be 0"]
     return []
+
+
+def _task_required_reading_issues(task_fields: Mapping[str, str], value: str) -> list[str]:
+    issues: list[str] = []
+    if not re.search(r"\btask classification\s*:\s*\S", value, re.IGNORECASE):
+        issues.append("required reading evidence requires `Task classification:`")
+    issues.extend(
+        f"required reading evidence must include `{path}`"
+        for path in REQUIRED_TASK_BOUND_READING
+        if not _mentions_path(value, path)
+    )
+    issues.extend(
+        f"required reading evidence must include task on-demand context path `{path}`"
+        for path in _task_paths(task_fields, "on-demand context")
+        if not _mentions_path(value, path)
+    )
+    return issues
+
+
+def _mentions_path(value: str, path: str) -> bool:
+    return f"`{path}`" in value or path in value
 
 
 def _task_paths(task_fields: Mapping[str, str], field_name: str) -> tuple[str, ...]:

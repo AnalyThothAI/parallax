@@ -26,8 +26,9 @@ Context packet:
 - <paste or link the filled context-packet-template.md>
 
 Report contract:
-- Use headings: `## Findings`, `## Scope Adherence`, `## Changed Files`, `## Verification Evidence`, and `## Remaining Risks`.
+- Use headings: `## Findings`, `## Scope Adherence`, `## Required Reading Evidence`, `## Changed Files`, `## Verification Evidence`, and `## Remaining Risks`.
 - Include `Owned scope: pass`, `Conflict set: pass`, and command output with `exit code:`.
+- For task-bound reports, include `Task classification:`, `AGENTS.md`, `docs/agent-playbook/task-reading-matrix.md`, and required task context paths in `## Required Reading Evidence`.
 - Parent validates the report with `uv run python scripts/validate_subagent_report.py --feature <slug> --task <number> --mode <mode> --report <report.md>`.
 
 Conflict set:
@@ -35,6 +36,7 @@ Conflict set:
 
 Expected output:
 - Findings first, with file paths and evidence.
+- Task classification and required-reading evidence for task-bound reports.
 - Changed files, if write allowed.
 - Remaining risks and open questions.
 - Verification evidence, including command and exit status.

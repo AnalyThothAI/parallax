@@ -1405,6 +1405,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 67 — Task-bound subagent required-reading evidence gate
+
+- **File(s)**: `scripts/subagent_report_contract.py`, `docs/agent-playbook/subagent-handoff-template.md`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 66
+- **Touch set**: `scripts/subagent_report_contract.py`, `docs/agent-playbook/subagent-handoff-template.md`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with docs/agent-playbook for subagent report semantics.
+- **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_requires_task_classification_and_required_reading_evidence`, `tests/architecture/test_agent_playbook_contracts.py::test_subagent_handoff_templates_define_context_and_conflict_contracts` — assert task-bound reports cannot pass without reading evidence and the handoff template names the required report section.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Task-bound subagent reports must include `## Required Reading Evidence` with `Task classification:`, `AGENTS.md`, `docs/agent-playbook/task-reading-matrix.md`, and task on-demand context paths; unbound read-only reports remain lightweight; the validator must not trust prose-only handoff claims.
+- **On-demand context**: `docs/agent-playbook/task-reading-matrix.md`, `docs/agent-playbook/subagent-handoff-template.md`, `scripts/subagent_report_contract.py`, and `scripts/validate_subagent_report.py`.
+- **Kill/defer criteria**: Stop if the fix only updates templates without executable report validation, makes every unbound exploratory report require task metadata, or duplicates the task reading matrix inside the validator.
+- **Eval/repair signal**: subagent report accepted without task classification, missing required-reading evidence, stale handoff template, and SDD generated index drift.
+- **Implementation**: Add a task-bound required-reading evidence check to `scripts/subagent_report_contract.py`, update the handoff template report contract, and cover both validator and template behavior with architecture tests.
+- **Verification**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_requires_task_classification_and_required_reading_evidence tests/architecture/test_agent_playbook_contracts.py::test_subagent_handoff_templates_define_context_and_conflict_contracts -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1473,4 +1494,5 @@
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_ws_protocol_snapshot -q`
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_score_versions_snapshot -q`
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_non_db_generated_snapshots -q`
+- [ ] `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_requires_task_classification_and_required_reading_evidence tests/architecture/test_agent_playbook_contracts.py::test_subagent_handoff_templates_define_context_and_conflict_contracts -q`
 - [ ] `make check-all`

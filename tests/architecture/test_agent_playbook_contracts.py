@@ -130,6 +130,7 @@ def test_subagent_handoff_templates_define_context_and_conflict_contracts() -> N
         "Must read",
         "Do not touch",
         "Report contract",
+        "Required Reading Evidence",
         "validate_subagent_report.py",
         "Expected output",
         "Conflict set",
@@ -461,6 +462,49 @@ def test_subagent_report_validator_accepts_task_bound_report(tmp_path: Path) -> 
 
 
 @pytest.mark.architecture
+def test_subagent_report_validator_requires_task_classification_and_required_reading_evidence(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "validate_subagent_report.py"
+    _write_context_packet_fixture(tmp_path)
+    report = tmp_path / "subagent-report.md"
+    report.write_text(
+        _subagent_report(
+            mode="read-only",
+            changed_files="- none",
+            command="uv run pytest tests/architecture/test_agent_playbook_contracts.py -q",
+            exit_code=0,
+            required_reading_evidence=False,
+        ),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--task",
+            "1",
+            "--mode",
+            "read-only",
+            "--report",
+            str(report),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "required reading evidence requires `Task classification:`" in result.stderr
+    assert "required reading evidence must include `AGENTS.md`" in result.stderr
+    assert "required reading evidence must include `docs/agent-playbook/task-reading-matrix.md`" in result.stderr
+
+
+@pytest.mark.architecture
 def test_subagent_report_validator_rejects_task_bound_scope_and_command_drift(tmp_path: Path) -> None:
     script = ROOT / "scripts" / "validate_subagent_report.py"
     _write_context_packet_fixture(tmp_path)
@@ -763,8 +807,15 @@ def _table_values(text: str, heading: str, *, column: int) -> set[str]:
     return values
 
 
-def _subagent_report(*, mode: str, changed_files: str, command: str, exit_code: int) -> str:
-    return (
+def _subagent_report(
+    *,
+    mode: str,
+    changed_files: str,
+    command: str,
+    exit_code: int,
+    required_reading_evidence: bool = True,
+) -> str:
+    sections = [
         dedent(
             f"""
             # Subagent Report
@@ -779,7 +830,27 @@ def _subagent_report(*, mode: str, changed_files: str, command: str, exit_code: 
 
             - Owned scope: pass
             - Conflict set: pass
+            """
+        ).strip()
+    ]
+    if required_reading_evidence:
+        sections.append(
+            dedent(
+                """
+                ## Required Reading Evidence
 
+                - Task classification: Harness/tests
+                - Required reading checked:
+                  - `AGENTS.md`
+                  - `docs/agent-playbook/task-reading-matrix.md`
+                  - `docs/agent-playbook/context-packet-template.md`
+                """
+            ).strip()
+        )
+
+    sections.append(
+        dedent(
+            f"""
             ## Changed Files
 
             {changed_files}
@@ -797,8 +868,8 @@ def _subagent_report(*, mode: str, changed_files: str, command: str, exit_code: 
             - Integration/e2e gates were not run by instruction.
             """
         ).strip()
-        + "\n"
     )
+    return "\n\n".join(sections) + "\n"
 
 
 def _write_context_packet_fixture(root: Path) -> None:

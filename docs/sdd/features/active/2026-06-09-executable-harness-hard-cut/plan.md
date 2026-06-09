@@ -90,6 +90,7 @@ Known-failing baseline tests:
 - Add a pure filesystem report validator for subagent return packets, with optional `--feature` and `--task` binding.
 - Require stable sections for findings, scope adherence, changed files, verification evidence, and remaining risks.
 - Reject read-only/review-only reports that list changed files, reject write-allowed reports outside the task touch set or inside the conflict set, reject verification sections without the task's expected command and exit status 0, and reject common secret-bearing fields.
+- For task-bound reports, require `## Required Reading Evidence` with task classification, root agent instructions, the task reading matrix, and task on-demand context paths.
 
 ### `tests/architecture/test_agent_playbook_contracts.py`
 
@@ -277,6 +278,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Generated score-version docs are freshness-checked. | Pass: `check-all` runs `scripts/regen_score_versions.py --check` before integration gates. |
 | Generated WebSocket docs are freshness-checked. | Pass: `check-all` runs `scripts/regen_ws_protocol.py --check` before integration gates. |
 | Non-DB generated docs are freshness-checked from the source map. | Pass: architecture tests derive generator scripts from `docs/generated/README.md` and require each non-DB generator to run with `--check` inside `check-all`. |
+| Task-bound subagent reading evidence is executable. | Pass: subagent report validator rejects task-bound reports without task classification, root instructions, reading matrix, and task on-demand context evidence. |
 | Public contracts are source-bound. | Pass: architecture tests compare CONTRACTS worker keys, agent lanes, WS payloads, and News route against current source. |
 | Generated README source map is real. | Pass: architecture tests fail any README source-map row that names a missing generated file, generator script, or source path. |
 | Active touch conflicts are path-aware. | Pass: validator rejects parent/child active touch overlaps when coordination names an unrelated target. |
@@ -363,6 +365,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC64: `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_ws_protocol_snapshot -q`
 - AC65: `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_score_versions_snapshot -q`
 - AC66: `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_non_db_generated_snapshots -q`
+- AC67: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_requires_task_classification_and_required_reading_evidence tests/architecture/test_agent_playbook_contracts.py::test_subagent_handoff_templates_define_context_and_conflict_contracts -q`
 
 ## Verification
 
