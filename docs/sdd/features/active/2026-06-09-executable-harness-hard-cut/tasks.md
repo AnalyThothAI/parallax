@@ -838,6 +838,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 40 — Plan pre-flight metadata gate
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 39
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared Worktree/Branch metadata.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_plan_preflight_worktree_claims_must_match_metadata` — asserts checked Pre-flight setup evidence cannot cite stale Worktree/Branch values.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/docs
+- **Deterministic constraints**: A checked `plan.md` Pre-flight row that claims Worktree/Branch verification must match the same artifact's machine-readable Worktree and Branch metadata.
+- **On-demand context**: `docs/WORKFLOW.md`, active SDD plan records, generated SDD work index.
+- **Kill/defer criteria**: Stop if stale checked setup evidence can survive after Worktree/Branch metadata changes.
+- **Eval/repair signal**: `plan-preflight-metadata-mismatch`, stale generated index, and setup-evidence drift.
+- **Implementation**: Parse checked Worktree/Branch Pre-flight rows, compare them to plan metadata, and correct the active executable-harness pre-flight claim.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_preflight_worktree_claims_must_match_metadata -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -878,4 +899,5 @@
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_spec_compliance_rows_require_matching_command_evidence -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_worktree_branch_metadata_must_be_machine_valid -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_spec_background_requires_source_citations -q`
+- [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_preflight_worktree_claims_must_match_metadata -q`
 - [ ] `make check-all`

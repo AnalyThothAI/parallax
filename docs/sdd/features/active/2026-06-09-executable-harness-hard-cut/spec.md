@@ -164,6 +164,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC37. WHEN a `Verified` `verification.md` Spec compliance row marks an acceptance criterion complete and references a command-shaped backticked command THEN the validator SHALL require matching exit code 0 evidence for that command in canonical evidence sections and report `verified-missing-spec-compliance-evidence` otherwise.
 - AC38. WHEN `plan.md`, `tasks.md`, or `verification.md` declares malformed, template-placeholder, prose, mismatched, or cross-artifact inconsistent Worktree/Branch metadata THEN the validator SHALL report `worktree-metadata-invalid`; execution location metadata must be machine-readable.
 - AC39. WHEN a non-superseded `spec.md` Background claim block lacks an existing repo `path:line` citation or external `https://` source THEN the validator SHALL report `spec-background-uncited`; specs must audit current docs/code or external references before planning.
+- AC40. WHEN a checked `plan.md` Pre-flight row claims a Worktree/Branch verification that disagrees with the artifact's Worktree/Branch metadata THEN the validator SHALL report `plan-preflight-metadata-mismatch`; checked setup evidence cannot preserve stale worktree names.
 
 ## Risks
 

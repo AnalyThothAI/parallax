@@ -45,6 +45,11 @@ PLAN_AC_COMMAND_RE = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 PLAN_ACCEPTANCE_BULLET_RE = re.compile(r"^\s*-\s+.+$", re.MULTILINE)
+PLAN_PREFLIGHT_WORKTREE_RE = re.compile(
+    r"^\s*-\s+\[x\]\s+Worktree exists at `(?P<worktree>[^`]+)` and "
+    r"`git branch --show-current` matches `(?P<branch>[^`]+)`\.?\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
 TASK_NUMBER_RE = re.compile(r"^Task\s+(?P<number>\d+)\b", re.IGNORECASE)
 TASK_DEPENDENCY_RE = re.compile(r"\bTasks?\s+(?P<start>\d+)(?:\s*-\s*(?P<end>\d+))?\b", re.IGNORECASE)
 
@@ -122,6 +127,7 @@ KNOWN_ISSUE_CODES = (
     "feature-slug-invalid",
     "spec-background-uncited",
     "worktree-metadata-invalid",
+    "plan-preflight-metadata-mismatch",
     "artifact-owning-link-mismatch",
     "missing-gate-section",
     "gate-evidence-missing",
@@ -405,6 +411,7 @@ def _feature_issues(feature: SddFeature) -> list[SddIssue]:
     issues.extend(_artifact_status_mismatch_issues(feature))
     if feature.status.lower() == "superseded":
         return issues + _superseded_issues(feature)
+    issues.extend(_plan_preflight_issues(feature))
     issues.extend(_acceptance_command_issues(feature))
     issues.extend(_task_issues(feature))
     if feature.status.lower() == "verified":
@@ -528,6 +535,33 @@ def _artifact_status_mismatch_issues(feature: SddFeature) -> list[SddIssue]:
             "artifact-status-mismatch",
             anchor,
             f"feature artifacts must share one Status value: {status_summary}",
+        )
+    ]
+
+
+def _plan_preflight_issues(feature: SddFeature) -> list[SddIssue]:
+    artifact = feature.artifacts["plan.md"]
+    if artifact.missing:
+        return []
+
+    preflight = _section_text(artifact.text, "## Pre-flight")
+    if not preflight:
+        return []
+
+    expected = _canonical_worktree_pair(artifact.fields.get("branch", ""), artifact.fields.get("worktree", ""))
+    mismatches: list[str] = []
+    for match in PLAN_PREFLIGHT_WORKTREE_RE.finditer(preflight):
+        actual = _canonical_worktree_pair(match.group("branch"), match.group("worktree"))
+        if actual != expected:
+            mismatches.append(f"expected {expected[1]}/{expected[0]}, saw {actual[1]}/{actual[0]}")
+
+    if not mismatches:
+        return []
+    return [
+        _issue(
+            "plan-preflight-metadata-mismatch",
+            artifact,
+            "checked plan pre-flight Worktree/Branch claim must match metadata: " + "; ".join(mismatches),
         )
     ]
 

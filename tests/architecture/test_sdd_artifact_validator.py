@@ -161,6 +161,22 @@ def test_worktree_branch_metadata_must_be_machine_valid(tmp_path: Path) -> None:
     assert sum(issue.code == "worktree-metadata-invalid" for issue in issues) == 2
 
 
+def test_plan_preflight_worktree_claims_must_match_metadata(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-stale-preflight")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _insert_plan_preflight_line(
+        feature / "plan.md",
+        "- [x] Worktree exists at `.worktrees/other` and `git branch --show-current` matches `codex/other`.",
+    )
+    _write_valid_tasks(feature / "tasks.md", status="In Progress", task_status="[~]")
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "plan-preflight-metadata-mismatch" in _issue_codes(issues)
+
+
 def test_spec_background_requires_source_citations(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-uncited-background")
     _write_valid_spec(feature / "spec.md", status="In Progress")
@@ -1186,6 +1202,13 @@ def _replace_section_body(path: Path, heading: str, body_lines: tuple[str, ...])
         path.write_text(prefix + heading + replacement + separator + rest, encoding="utf-8")
         return
     path.write_text(prefix + heading + replacement, encoding="utf-8")
+
+
+def _insert_plan_preflight_line(path: Path, line: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    prefix, rest = text.split("## Analyze Gate", 1)
+    preflight = "\n## Pre-flight\n\n" + line + "\n\n"
+    path.write_text(prefix + preflight + "## Analyze Gate" + rest, encoding="utf-8")
 
 
 def _append_acceptance_criterion(path: Path, number: int) -> None:

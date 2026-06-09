@@ -218,6 +218,7 @@ def _issue_meaning(code: str) -> str:
         "feature-slug-invalid": "Feature directory slug or artifact Date metadata is not machine-valid.",
         "spec-background-uncited": "Spec Background contains claims without repo path:line citations or https sources.",
         "worktree-metadata-invalid": "Worktree and Branch metadata are malformed or inconsistent.",
+        "plan-preflight-metadata-mismatch": "Checked plan pre-flight Worktree/Branch claims disagree with metadata.",
         "artifact-owning-link-mismatch": "Artifact owning links do not point at the same feature's canonical files.",
         "missing-gate-section": (
             "Artifact is missing required clarify, checklist, analyze, task, or verification sections."
