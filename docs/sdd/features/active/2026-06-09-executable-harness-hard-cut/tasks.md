@@ -2434,6 +2434,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 116 — Worker queue-depth tables are strings
+
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 115
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for queue-depth table type validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_queue_depth_tables` — patch one manifest to declare numeric `queue_depth_table` and assert manifest validation raises before table-name `.strip()` errors leak.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `WorkerManifest.queue_depth_table` must be `None` or strict `str` before table hygiene, queue ownership, queue-health, registry, settings, or worker inventory harnesses consume it.
+- **On-demand context**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, and queue-health Worker Inventory docs checks.
+- **Kill/defer criteria**: Stop if queue-depth table declarations intentionally support compatibility metadata objects, if validation only checks generated docs, or if the fix touches worker queue runtime behavior.
+- **Eval/repair signal**: non-string queue-depth table declarations, implementation-detail table-name attribute errors, queue-health harness drift, and SDD generated index drift.
+- **Implementation**: Add manifest validation rejecting non-string `queue_depth_table` values before table hygiene and ownership checks.
+- **Verification**: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_queue_depth_tables -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -2551,4 +2572,5 @@
 - [ ] `uv run pytest tests/architecture/test_src_domain_architecture.py::test_worker_manifest_imports_in_clean_process_without_importlib_util_side_effect -q`
 - [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_malformed_read_model_identity_entries -q`
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_repo_root_has_no_loose_visual_artifacts -q`
+- [ ] `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_queue_depth_tables -q`
 - [ ] `make check-all`

@@ -219,6 +219,7 @@ Known-failing baseline tests:
 - Reject `LEASED_JOB_CONSUMER` manifests that omit `queue_depth_table` before queue-health harnesses trust runtime classification.
 - Reject `BOUNDED_PROVIDER_SCHEDULER` manifests that omit `uses_provider_io` before provider-boundary harnesses trust runtime classification.
 - Reject `queue_depth_table` declarations absent from the same manifest's owned tables before queue-health harnesses consume them.
+- Reject non-string `queue_depth_table` declarations before table hygiene, queue ownership, queue-health, registry, settings, or worker inventory harnesses consume them.
 - Reject non-side-effect worker kinds that declare `side_effect_ledgers` before ownership harnesses consume them.
 - Reject blank `wakes_on` and `wakes_out` channel declarations before listener/notify harnesses consume them.
 - Reject duplicate `wakes_on` and `wakes_out` channel declarations before listener/notify harnesses consume them.
@@ -352,6 +353,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Leased-job consumers declare queue depth tables. | Pass: `_validate_worker_manifests()` raises when a patched `LEASED_JOB_CONSUMER` manifest omits `queue_depth_table`. |
 | Bounded provider schedulers declare provider I/O. | Pass: `_validate_worker_manifests()` raises when a patched `BOUNDED_PROVIDER_SCHEDULER` manifest clears `uses_provider_io`. |
 | Queue depth tables are worker-owned. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares an unowned `queue_depth_table`. |
+| Queue depth tables are strings. | Pass: `_validate_worker_manifests()` raises before blank table checks when a patched manifest declares numeric `queue_depth_table`. |
 | Side-effect ledgers belong to side-effect workers. | Pass: `_validate_worker_manifests()` raises when a patched non-side-effect manifest declares `side_effect_ledgers`. |
 | Wake channels are non-blank. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares a blank `wakes_out` channel. |
 | Wake channels are unique per worker field. | Pass: `_validate_worker_manifests()` raises when a patched manifest repeats a `wakes_on` channel. |
@@ -519,6 +521,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC113: `uv run pytest tests/architecture/test_src_domain_architecture.py::test_worker_manifest_imports_in_clean_process_without_importlib_util_side_effect -q`
 - AC114: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_malformed_read_model_identity_entries -q`
 - AC115: `uv run pytest tests/architecture/test_harness_structure.py::test_repo_root_has_no_loose_visual_artifacts -q`
+- AC116: `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_queue_depth_tables -q`
 
 ## Verification
 

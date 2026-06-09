@@ -928,6 +928,14 @@ def _validate_worker_manifests() -> None:
             f"non-side-effect worker manifests declaring side-effect ledgers: {unexpected_side_effect_ledgers}"
         )
 
+    non_string_queue_depth_tables = {
+        manifest.name: manifest.queue_depth_table
+        for manifest in _WORKER_MANIFESTS
+        if manifest.queue_depth_table is not None and type(manifest.queue_depth_table) is not str
+    }
+    if non_string_queue_depth_tables:
+        raise ValueError(f"non-string worker manifest queue depth tables: {non_string_queue_depth_tables}")
+
     blank_table_declarations = {
         manifest.name: blanks
         for manifest in _WORKER_MANIFESTS

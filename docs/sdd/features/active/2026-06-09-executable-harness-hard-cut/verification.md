@@ -132,6 +132,7 @@ claim is allowed without the corresponding output captured below.
 | AC113 — Worker manifest imports are explicit. | ✅ | `uv run pytest tests/architecture/test_src_domain_architecture.py::test_worker_manifest_imports_in_clean_process_without_importlib_util_side_effect -q` failed RED in a temporary HEAD workspace when `worker_manifest.py` relied on `importlib.util` as an incidental package attribute, then passed after adding an explicit `import importlib.util`. |
 | AC114 — Read-model identity entries are pairs. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_malformed_read_model_identity_entries -q` failed RED when a patched three-field stable identity entry leaked a Python unpacking error, then passed after adding identity-entry arity validation. |
 | AC115 — Root visual artifacts are absent. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_repo_root_has_no_loose_visual_artifacts -q` failed RED in a temporary HEAD workspace with six root PNG artifacts, then passed after adding the root-artifact harness and removing those root PNG files. |
+| AC116 — Queue-depth table declarations are strings. | ✅ | `uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_queue_depth_tables -q` failed RED when a patched numeric `queue_depth_table` leaked to `AttributeError`, then passed after adding queue-depth table type validation. |
 
 Deviations from spec:
 
@@ -1658,6 +1659,15 @@ exit code: 1
 
 $ uv run pytest tests/architecture/test_harness_structure.py::test_repo_root_has_no_loose_visual_artifacts -q
 1 passed in 0.02s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_queue_depth_tables -q
+F                                                                        [100%]
+E   AttributeError: 'int' object has no attribute 'strip'
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_queue_depth_tables -q
+1 passed in 0.52s
 exit code: 0
 ```
 

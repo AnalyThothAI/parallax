@@ -67,6 +67,7 @@ can both miss real process drift and block healthy refactors.
 | Leased-job consumers must declare queue depth tables. | `WorkerManifest` validation rejects `LEASED_JOB_CONSUMER` manifests that omit `queue_depth_table`. |
 | Bounded provider schedulers must declare provider I/O. | `WorkerManifest` validation rejects `BOUNDED_PROVIDER_SCHEDULER` manifests that do not set `uses_provider_io`. |
 | Queue depth tables must be worker-owned. | `WorkerManifest` validation rejects `queue_depth_table` values absent from the same manifest's owned tables. |
+| Queue depth tables must be strings. | `WorkerManifest` validation rejects non-string `queue_depth_table` declarations before table hygiene and queue-health harnesses consume them. |
 | Side-effect ledgers must belong to side-effect workers. | `WorkerManifest` validation rejects non-side-effect worker kinds that declare `side_effect_ledgers`. |
 | Wake channels must be non-blank. | `WorkerManifest` validation rejects blank `wakes_on` and `wakes_out` channel declarations before listener/notify harnesses consume them. |
 | Wake channels must be unique per worker field. | `WorkerManifest` validation rejects duplicate `wakes_on` and `wakes_out` entries before listener/notify harnesses consume them. |
@@ -232,6 +233,7 @@ can both miss real process drift and block healthy refactors.
 - G91. Worker manifest module imports declare `importlib.util` directly, so source-owned manifest validation survives clean-process imports without depending on prior import side effects.
 - G92. Stable read-model identity entries reject malformed arity, so manifest validation owns the table/column pair shape instead of leaking Python unpacking errors.
 - G93. Root-level visual verification artifacts are rejected, so old screenshots cannot remain as loose project files outside owned artifact directories.
+- G94. Queue depth table declarations reject non-string values, so queue-health table hygiene fails with manifest errors instead of implementation-detail attribute errors.
 
 ## Non-goals
 
@@ -392,6 +394,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC113. WHEN `worker_manifest.py` is imported in a clean process where `importlib.util` is not already attached to the imported `importlib` package object THEN the import SHALL succeed without relying on incidental import side effects.
 - AC114. WHEN a `WorkerManifest.current_read_model_identities` entry does not contain exactly the read-model table name and stable identity columns THEN manifest validation SHALL raise before table/column unpacking, ownership, registry, factory, settings, or worker inventory harnesses consume the manifest.
 - AC115. WHEN visual verification artifacts such as PNG, JPG, WEBP, or GIF files exist at the repository root THEN the architecture harness SHALL fail until those loose root artifacts are removed or moved under an owned artifact directory.
+- AC116. WHEN a `WorkerManifest.queue_depth_table` value is neither `None` nor a string THEN manifest validation SHALL raise before table hygiene, queue ownership, queue-health, registry, settings, or worker inventory harnesses consume it.
 
 ## Risks
 
