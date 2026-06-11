@@ -10,7 +10,19 @@
 
 ## Background
 
-The repository previously used a legacy superpowers planning tree and generated an agent work index from those files. The lane had hundreds of historical planning artifacts, many active files with completion-like statuses, and many files without a status line. `docs/WORKFLOW.md` and `docs/TESTING.md` define completion gates, while `tests/architecture/test_harness_structure.py` and `tests/architecture/test_agent_playbook_contracts.py` enforce the documentation harness.
+The repository previously used a legacy superpowers planning tree and generated an agent work index from those files. Current workflow guidance is in docs/WORKFLOW.md:1, while the architecture harness is rooted in tests/architecture/test_harness_structure.py:1 and tests/architecture/test_agent_playbook_contracts.py:1.
+
+## Clarifications
+
+| Question | Answer | Approved by | Approved at |
+|----------|--------|-------------|-------------|
+| How should this historical record close? | It is superseded by the executable harness hard cut and must still satisfy the current SDD artifact shape. | qinghuan | 2026-06-09 |
+
+## Requirement Checklist
+
+| Requirement | Quality gate |
+|-------------|--------------|
+| Historical SDD records remain machine-readable. | Superseded artifacts use current canonical sections and successor metadata. |
 
 ## Problem
 
@@ -39,7 +51,7 @@ The old lane made stale planning artifacts look current and caused `missing-stat
 
 `docs/sdd` owns only current SDD mechanics: templates and feature directories under `features/active` and `features/completed`. A generator scans the feature directories and emits a compact hygiene index. Architecture tests assert that the old lane is absent, current governance does not reference it, templates include required completion sections, and generated docs are clean.
 
-## Acceptance Criteria
+## Acceptance criteria
 
 - AC1. WHEN the harness tests run THEN the system SHALL fail if the legacy planning tree exists or current governance references its old path.
 - AC2. WHEN `uv run python scripts/regen_sdd_work_index.py --check` runs THEN the committed `docs/generated/sdd-work-index.md` SHALL be current and report zero `missing-status` and zero `review-lifecycle`.

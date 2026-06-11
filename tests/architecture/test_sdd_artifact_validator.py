@@ -1346,6 +1346,52 @@ def test_superseded_feature_requires_one_successor(tmp_path: Path) -> None:
     assert "superseded-successor-mismatch" in _issue_codes(issues)
 
 
+def test_superseded_feature_requires_canonical_artifact_sections(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "completed", "2026-06-09-superseded-stale-sections")
+    successor = _feature_dir(tmp_path, "active", "2026-06-09-successor")
+    _write_valid_spec(successor / "spec.md", status="In Progress")
+    _write_valid_plan(successor / "plan.md", status="In Progress")
+    _write_valid_tasks(successor / "tasks.md", status="In Progress", task_status="[~]")
+    _write_valid_verification(successor / "verification.md", status="In Progress")
+    _write_valid_spec(feature / "spec.md", status="Superseded")
+    _write_valid_plan(feature / "plan.md", status="Superseded")
+    _write_valid_tasks(feature / "tasks.md", status="Superseded")
+    _write_valid_verification(feature / "verification.md", status="Superseded")
+    for artifact_name in ("spec.md", "plan.md", "tasks.md", "verification.md"):
+        _append_machine_successor_reference(feature / artifact_name)
+    spec_path = feature / "spec.md"
+    spec_path.write_text(
+        spec_path.read_text(encoding="utf-8").replace("## Acceptance criteria", "## Acceptance Criteria"),
+        encoding="utf-8",
+    )
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "missing-gate-section" in _issue_codes(issues)
+    assert "Acceptance criteria" in "\n".join(issue.message for issue in issues)
+
+
+def test_superseded_feature_rejects_acceptance_command_drift(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "completed", "2026-06-09-superseded-command-drift")
+    successor = _feature_dir(tmp_path, "active", "2026-06-09-successor")
+    _write_valid_spec(successor / "spec.md", status="In Progress")
+    _write_valid_plan(successor / "plan.md", status="In Progress")
+    _write_valid_tasks(successor / "tasks.md", status="In Progress", task_status="[~]")
+    _write_valid_verification(successor / "verification.md", status="In Progress")
+    _write_valid_spec(feature / "spec.md", status="Superseded")
+    _write_valid_plan(feature / "plan.md", status="Superseded")
+    _write_valid_tasks(feature / "tasks.md", status="Superseded")
+    _write_valid_verification(feature / "verification.md", status="Superseded")
+    for artifact_name in ("spec.md", "plan.md", "tasks.md", "verification.md"):
+        _append_machine_successor_reference(feature / artifact_name)
+    _append_acceptance_criterion(feature / "spec.md", 2)
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "acceptance-command-mismatch" in _issue_codes(issues)
+    assert "AC2" in "\n".join(issue.message for issue in issues)
+
+
 def test_verified_feature_ignores_old_success_outside_verification_commands(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "completed", "2026-06-09-old-success")
     _write_valid_spec(feature / "spec.md", status="Verified")

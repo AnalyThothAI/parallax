@@ -10,17 +10,21 @@
 
 ## Background
 
-Macro Intel is a deterministic read-model product. The backend architecture states that macro pages consume `macro_module_view_v3` and render display-ready `module_read`, `module_evidence`, `transmission`, `data_health`, provenance, and related routes without recomputing conclusions in the UI (`src/parallax/domains/macro_intel/ARCHITECTURE.md:98-112`). The frontend contract repeats that `/macro` and child routes read `/api/macro`, `/api/macro/modules/{module_id}`, and module-adjacent endpoints such as asset correlation; macro shell/sidebar code owns navigation and module pages must not recompute macro scoring or module reads (`docs/FRONTEND.md:70-76`).
+Macro Intel is a deterministic read-model product. The backend module map is documented in src/parallax/domains/macro_intel/ARCHITECTURE.md:1, and the frontend guardrails are documented in docs/FRONTEND.md:1. The route shell and macro page sources live under web/src/features/macro/MacroWorkbenchRoute.tsx:1 and web/src/features/macro/ui/pages/MacroOverviewModulePage.tsx:1.
 
-The current route shell is correctly scoped to Macro Intel and passes macro module payloads into page renderers (`web/src/features/macro/MacroWorkbenchRoute.tsx:56-91`). The current page grammar is not yet a coherent product surface:
+This superseded record captured a frontend workbench redesign that has since been absorbed by the executable harness hard cut. The successor record at docs/sdd/features/active/2026-06-09-executable-harness-hard-cut/spec.md:1 owns current SDD harness evidence; this record remains only as machine-readable historical context.
 
-- The overview page renders read, metric strip, market board, transmission, and health as equal panels, so the user must infer the hierarchy instead of reading a clear desk brief first (`web/src/features/macro/ui/pages/MacroOverviewModulePage.tsx:24-54`).
-- Generic leaf pages stack metric strip, chart/table, optional tables, read, transmission, evidence, source table, and data health with the same weight; this makes a module feel like a payload dump rather than an analyst workflow (`web/src/features/macro/ui/pages/MacroLeafModulePage.tsx:35-84`).
-- The asset landing page improved toward a dashboard first structure, but it is still a 500-line page component with grouping, daily brief parsing, correlation query rendering, diagnostics, and local table formatting mixed together (`web/src/features/macro/ui/pages/MacroAssetOverviewPage.tsx:45-148`, `web/src/features/macro/ui/pages/MacroAssetOverviewPage.tsx:159-220`).
-- Rates has a clearer workbench path, but it remains visually separate from generic macro pages and uses a dedicated CSS surface that cannot become the common product grammar without refactoring (`web/src/features/macro/ui/rates/MacroRatesModulePage.tsx:28-37`, `web/src/features/macro/ui/rates/macroRatesWorkbench.css:1-220`).
-- Test coverage still preserves old assumptions in places; the route test currently says mobile and tablet macro pages should not render the module navigation, contradicting the desired clear macro module navigation model (`web/tests/routes/macro.route.test.tsx:193-205`).
+## Clarifications
 
-The current codebase already has reusable primitives, TanStack table support, deterministic chart wrappers, correlation tables, and macro route metadata. The redesign should reuse those capabilities where they fit, but it should not keep old page layouts for compatibility.
+| Question | Answer | Approved by | Approved at |
+|----------|--------|-------------|-------------|
+| Who owns current verification for this historical macro work? | The executable harness hard cut successor owns current verification; this record stays superseded and machine-readable. | qinghuan | 2026-06-09 |
+
+## Requirement Checklist
+
+| Requirement | Quality gate |
+|-------------|--------------|
+| Historical macro redesign context remains parseable. | Superseded artifacts use current canonical SDD sections and structured tasks. |
 
 ## Problem
 

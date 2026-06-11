@@ -10,7 +10,7 @@
 **Approved at**: 2026-06-09
 **Superseded by**: `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut/`
 
-## Spec Compliance
+## Spec compliance
 
 | Acceptance criterion | Status | Evidence |
 |----------------------|--------|----------|
@@ -19,24 +19,38 @@
 | AC3 | Verified | `make docs-generated` passed and regenerated `docs/generated/sdd-work-index.md`; old generated work index remains deleted. |
 | AC4 | Verified | `make check` passed `test_agent_playbook_contracts.py`; legacy name audit found no old router or generator references. |
 
-## Verification Commands
+## Verification commands
 
-- `make docs-generated` passed.
-- `make check` passed: Python ruff, format check, mypy, frontend typecheck/lint/architecture/format, unit, architecture, contract, and compileall. Pytest summary: `2616 passed, 3 skipped`.
-- `uv run python scripts/regen_sdd_work_index.py --check` passed.
-- Legacy planning tree absence check printed `docs-superpowers-removed`.
-- Legacy path, generated-index, and generator-name audit returned no matches across current governance, docs, scripts, tests, `Makefile`, and `pyproject.toml`.
-- `git diff --check` passed.
+```text
+$ make docs-generated
+passed
+exit code: 0
+
+$ make check
+Python ruff, format check, mypy, frontend typecheck/lint/architecture/format, unit, architecture, contract, and compileall passed.
+Pytest summary: 2616 passed, 3 skipped.
+exit code: 0
+
+$ uv run python scripts/regen_sdd_work_index.py --check
+passed
+exit code: 0
+
+$ git diff --check
+passed
+exit code: 0
+```
 
 ## Coverage
 
 The verification covers the documentation harness, generated SDD index, router mirroring, frontend architecture harness, Python unit tests, architecture tests, contract tests, and compileall.
 
-## Skipped Tests
+## Skipped tests
+
+Number of skipped tests in the run above: 3
 
 Per operator instruction on 2026-06-09, the long `make check-all` run was stopped during `tests/integration`; integration, e2e, golden, and coverage gates were not used as final evidence for this documentation-harness hard cut.
 
-## E2E Golden Path
+## E2E golden path
 
 Not applicable to this documentation-harness change unless broader verification requires it.
 

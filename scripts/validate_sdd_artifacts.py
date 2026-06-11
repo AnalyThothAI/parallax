@@ -485,7 +485,7 @@ def _feature_issues(feature: SddFeature) -> list[SddIssue]:
         issues.extend(_artifact_issues(feature, artifact))
     issues.extend(_artifact_status_mismatch_issues(feature))
     if feature.status.lower() == "superseded":
-        return issues + _superseded_issues(feature)
+        issues.extend(_superseded_issues(feature))
     issues.extend(_plan_preflight_issues(feature))
     issues.extend(_acceptance_command_issues(feature))
     issues.extend(_task_issues(feature))
@@ -663,9 +663,6 @@ def _artifact_issues(feature: SddFeature, artifact: ArtifactRecord) -> list[SddI
         )
     issues.extend(_metadata_date_issues(artifact))
     issues.extend(_artifact_owning_link_issues(feature, artifact))
-
-    if normalized_status == "superseded":
-        return issues
 
     missing_sections = [
         section for section in SECTION_REQUIREMENTS[artifact.name] if not has_markdown_section(artifact.text, section)
@@ -1809,17 +1806,6 @@ def _superseded_issues(feature: SddFeature) -> list[SddIssue]:
                 f"Superseded artifacts must share one successor: {summary}",
             )
         )
-    tasks_artifact = feature.artifacts["tasks.md"]
-    if not tasks_artifact.missing and not feature.tasks:
-        issues.append(
-            _issue(
-                "task-missing-coordination-fields",
-                tasks_artifact,
-                "Superseded tasks.md must retain structured Task sections",
-            )
-        )
-    if feature.tasks:
-        issues.extend(_task_numbering_issues(feature))
     return issues
 
 

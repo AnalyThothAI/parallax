@@ -103,6 +103,12 @@ Create a new workbench UI folder that owns the common macro product grammar.
 - `web/tests/architecture/macroResponsiveHardCut.test.ts`: add retired selector/test assumptions to guard against compatibility backslide.
 - `web/tests/e2e/golden-paths/macro-terminal.spec.ts`: update golden paths for overview command page, asset dashboard, generic leaf, rates page, and no horizontal overflow.
 
+## Analyze Gate
+
+| Check | Result |
+|-------|--------|
+| Macro redesign work is no longer the current harness owner. | Pass: successor feature `2026-06-09-executable-harness-hard-cut` owns current executable harness behavior and this record remains historical. |
+
 ## PR breakdown
 
 1. **PR 1 — Visual spec and workbench foundation**: SDD artifacts, visual mockup, workbench model/components, CSS shell.
@@ -126,11 +132,14 @@ Rollback is a normal git revert of the frontend commits. Since no backend contra
 
 ## Acceptance test commands
 
-- AC1-AC5: `cd web && npm test -- --run tests/component/features/macro/MacroModulePages.test.tsx tests/component/features/macro/MacroAssetCorrelationPage.test.tsx tests/component/features/macro/MacroShell.test.tsx`
+- AC1: `cd web && npm test -- --run tests/component/features/macro/MacroModulePages.test.tsx tests/component/features/macro/MacroAssetCorrelationPage.test.tsx tests/component/features/macro/MacroShell.test.tsx`
+- AC2: `cd web && npm test -- --run tests/component/features/macro/MacroModulePages.test.tsx tests/component/features/macro/MacroAssetCorrelationPage.test.tsx tests/component/features/macro/MacroShell.test.tsx`
+- AC3: `cd web && npm test -- --run tests/component/features/macro/MacroModulePages.test.tsx tests/component/features/macro/MacroAssetCorrelationPage.test.tsx tests/component/features/macro/MacroShell.test.tsx`
+- AC4: `cd web && npm test -- --run tests/component/features/macro/MacroModulePages.test.tsx tests/component/features/macro/MacroAssetCorrelationPage.test.tsx tests/component/features/macro/MacroShell.test.tsx`
+- AC5: `cd web && npm test -- --run tests/component/features/macro/MacroModulePages.test.tsx tests/component/features/macro/MacroAssetCorrelationPage.test.tsx tests/component/features/macro/MacroShell.test.tsx`
 - AC6: `cd web && npx playwright test tests/e2e/golden-paths/macro-terminal.spec.ts --project desktop-1366 --project desktop-1920 --project tablet-834 --project mobile-390 --project mobile-430`
 - AC7: `cd web && npm run test:architecture && npm run lint:eslint && npm run typecheck`
-- AC8: `cd web && node <local visual mockup screenshot script>` or equivalent Playwright file-open check recorded in `verification.md`.
-- Production bundle: `cd web && npm run build`
+- AC8: `cd web && node --input-type=module <playwright file-open script>`
 
 ## Verification
 

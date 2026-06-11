@@ -272,6 +272,7 @@ claim is allowed without the corresponding output captured below.
 | AC253 — Task parser is section-scoped. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_fenced_task_sections tests/architecture/test_sdd_artifact_validator.py::test_tasks_must_live_inside_tasks_section -q` failed RED while fenced and appendix task examples passed as executable tasks, then passed after `_parse_tasks()` scoped matching to fenced-block-stripped `## Tasks`. |
 | AC254 — Acceptance coverage is section-scoped. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_acceptance_criteria_must_live_in_acceptance_section tests/architecture/test_sdd_artifact_validator.py::test_plan_acceptance_commands_must_live_in_acceptance_section tests/architecture/test_sdd_artifact_validator.py::test_spec_requires_at_least_one_acceptance_criterion -q` failed RED while appendix ACs and commands passed coverage, then passed after acceptance parsers were scoped to canonical sections. |
 | AC255 — Implement gate forwards structural drift. | ✅ | `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_acceptance_command_drift -q` failed RED while `--gate implement` passed a feature with `plan.md` acceptance-command drift, then passed after implement-gate filtering forwarded all non-`verified-*` validator issues. |
+| AC256 — Superseded records obey the harness. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_canonical_artifact_sections tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_rejects_acceptance_command_drift -q` failed RED while `Superseded` records skipped canonical section and Spec -> Plan coverage checks, then passed after Superseded validation used the normal artifact/task validators plus successor metadata. |
 
 Deviations from spec:
 
@@ -335,6 +336,17 @@ exit code: 1
 $ python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_acceptance_command_drift -q
 .                                                                        [100%]
 1 passed in 0.10s
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_canonical_artifact_sections tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_rejects_acceptance_command_drift -q
+FF                                                                       [100%]
+AssertionError: assert 'missing-gate-section' in set()
+AssertionError: assert 'acceptance-command-mismatch' in set()
+exit code: 1
+
+$ python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_canonical_artifact_sections tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_rejects_acceptance_command_drift -q
+..                                                                       [100%]
+2 passed in 0.07s
 exit code: 0
 
 $ uv run pytest tests/architecture/test_src_domain_architecture.py::test_domain_interfaces_do_not_import_runtime_modules -q

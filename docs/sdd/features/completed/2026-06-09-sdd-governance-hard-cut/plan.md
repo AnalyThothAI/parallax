@@ -21,7 +21,13 @@
 - `AGENTS.md`, `CLAUDE.md`, and root governance docs: replace old planning-lane references with the SDD v2 lane.
 - Delete the legacy planning tree, old work-index generator, and old generated work-index file.
 
-## Acceptance Test Commands
+## Analyze Gate
+
+| Check | Result |
+|-------|--------|
+| Superseded governance work is no longer canonical. | Pass: successor feature `2026-06-09-executable-harness-hard-cut` owns current executable harness behavior. |
+
+## Acceptance test commands
 
 - AC1: `uv run pytest tests/architecture/test_harness_structure.py -q`
 - AC2: `uv run python scripts/regen_sdd_work_index.py --check`

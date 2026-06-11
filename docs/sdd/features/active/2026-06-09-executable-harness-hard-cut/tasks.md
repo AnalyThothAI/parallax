@@ -5375,3 +5375,24 @@
 - **Verification**: `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_acceptance_command_drift -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 256 — Superseded records obey the harness
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 255
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD validator and generated index updates.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_canonical_artifact_sections`, `tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_rejects_acceptance_command_drift` — prove `Superseded` can no longer skip canonical sections or Spec -> Plan acceptance coverage.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Superseded records keep only successor metadata as special semantics; all artifact sections, gate evidence, acceptance coverage, and task field contracts run through the normal validator.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, completed SDD records, Bohr read-only audit, and current SDD templates.
+- **Kill/defer criteria**: Stop if a superseded record with stale headings, missing gate evidence, appendix-only ACs, or unstructured tasks can pass validation.
+- **Eval/repair signal**: `missing-gate-section`, `acceptance-command-mismatch`, old completed-record false green, and successor-only compatibility drift.
+- **Implementation**: Remove Superseded early returns from feature and artifact validation, reduce `_superseded_issues()` to successor metadata, and repair completed records to the current four-artifact structure.
+- **Verification**: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_canonical_artifact_sections tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_rejects_acceptance_command_drift -q`
+- **Review owner**: parent
+- **Status**: [x]

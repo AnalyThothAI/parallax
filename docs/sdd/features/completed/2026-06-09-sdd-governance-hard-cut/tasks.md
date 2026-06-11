@@ -8,6 +8,16 @@
 **Approved at**: 2026-06-09
 **Superseded by**: `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut/`
 
+## Gate Compliance
+
+| Gate | Evidence |
+|------|----------|
+| Clarify | Superseded spec records the successor and historical-scope clarification. |
+| Checklist | Superseded spec keeps the current requirement checklist table. |
+| Analyze | Superseded plan records the successor-owned Analyze Gate. |
+| Implement | Historical tasks remain structured and marked `[!]` because successor work owns the live implementation. |
+| Verify | Verification artifact retains historical evidence without claiming current completion. |
+
 ## Tasks
 
 ### Task 1 - SDD root and legacy-lane harness
@@ -29,7 +39,7 @@
 - **Implementation**: Add failing harness tests for the new `docs/sdd` root and removed legacy planning lane.
 - **Verification**: `uv run pytest tests/architecture/test_harness_structure.py -q`
 - **Review owner**: parent
-- **Status**: [x]
+- **Status**: [!]
 
 ### Task 2 - SDD templates and generated index
 
@@ -50,7 +60,7 @@
 - **Implementation**: Create `docs/sdd` templates, feature artifacts, and the replacement work-index generator.
 - **Verification**: `uv run python scripts/regen_sdd_work_index.py --check`
 - **Review owner**: parent
-- **Status**: [x]
+- **Status**: [!]
 
 ### Task 3 - Governance hard cut
 
@@ -71,7 +81,7 @@
 - **Implementation**: Update root docs, scripts, architecture tests, generated docs, and delete old historical planning docs.
 - **Verification**: `make docs-generated`
 - **Review owner**: parent
-- **Status**: [x]
+- **Status**: [!]
 
 ### Task 4 - Closeout evidence
 
@@ -92,9 +102,9 @@
 - **Implementation**: Regenerate docs, run targeted verification, and move this feature directory to `completed/` after evidence is recorded.
 - **Verification**: `make check`
 - **Review owner**: parent
-- **Status**: [x]
+- **Status**: [!]
 
-## Final Verification
+## Historical closeout notes
 
 - [x] `make docs-generated`
 - [x] `make check`

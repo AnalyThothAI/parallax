@@ -634,6 +634,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC253. WHEN a `### Task` heading appears outside canonical `## Tasks` or inside a fenced code block THEN the SDD validator SHALL ignore it as executable task state and report missing structured tasks if no real task remains.
 - AC254. WHEN acceptance criteria or plan acceptance commands appear outside their canonical sections or inside fenced code blocks THEN the SDD validator SHALL ignore them before old appendix content can satisfy current Spec -> Plan coverage.
 - AC255. WHEN `scripts/check_sdd_gate.py --feature <slug> --gate implement` runs THEN it SHALL reject feature-level SDD structural issues except final `verified-*` evidence issues before stale spec, plan, or task drift can satisfy implementation readiness.
+- AC256. WHEN an SDD feature is marked `Superseded` THEN the validator SHALL still enforce canonical sections, gate evidence, Spec -> Plan acceptance coverage, and structured task fields before old completed records can survive through compatibility escapes.
 
 ## Risks
 
