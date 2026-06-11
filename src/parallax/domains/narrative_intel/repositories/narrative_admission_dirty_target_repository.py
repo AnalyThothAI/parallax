@@ -3,20 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from parallax.platform.current_read_model_payload_hash import stable_current_payload_hash
-
-NARRATIVE_DIRTY_PAYLOAD_LIFECYCLE_FIELDS = frozenset(
-    {
-        "due_at_ms",
-        "leased_until_ms",
-        "lease_owner",
-        "attempt_count",
-        "last_error",
-        "first_dirty_at_ms",
-        "updated_at_ms",
-        "priority",
-    }
-)
+from parallax.platform.current_read_model_payload_hash import stable_dirty_target_payload_hash
 
 
 class _NarrativeDirtyTargetRepository:
@@ -620,11 +607,4 @@ def _priority_value(row: Mapping[str, Any]) -> int:
 
 
 def _payload_hash(payload: Mapping[str, Any]) -> str:
-    stable_payload: dict[str, Any] = {}
-    for key, value in payload.items():
-        if type(key) is not str:
-            raise ValueError(f"current payload hash payload has non-string keys: {(key,)}")
-        if key in NARRATIVE_DIRTY_PAYLOAD_LIFECYCLE_FIELDS:
-            continue
-        stable_payload[key] = value
-    return stable_current_payload_hash(stable_payload)
+    return stable_dirty_target_payload_hash(payload)

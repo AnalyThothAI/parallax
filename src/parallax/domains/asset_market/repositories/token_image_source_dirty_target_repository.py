@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import hashlib
-import json
 from collections.abc import Iterable, Mapping
 from typing import Any
 
 from psycopg.types.json import Jsonb
 
+from parallax.platform.current_read_model_payload_hash import stable_dirty_target_payload_hash
 from parallax.platform.db.json_safety import postgres_safe_json, postgres_safe_text
 
 
@@ -334,7 +334,8 @@ def _target_records(
         target_id = _required_text(target.get("target_id"), field_name="target_id")
         source_provider = _required_text(target.get("source_provider"), field_name="source_provider")
         source_kind = _required_text(target.get("source_kind"), field_name="source_kind")
-        raw_ref_json = postgres_safe_json(target.get("raw_ref_json") or {})
+        raw_ref_payload = target.get("raw_ref_json") or {}
+        raw_ref_json = postgres_safe_json(raw_ref_payload)
         source_watermark_ms = int(target.get("source_watermark_ms") or target.get("observed_at_ms") or now_ms)
         record = {
             "source_url_hash": _source_url_hash(source_url),
@@ -348,7 +349,8 @@ def _target_records(
             "priority": _priority_value(target),
             "due_at_ms": int(target.get("due_at_ms") or default_due_at_ms),
         }
-        record["payload_hash"] = str(target.get("payload_hash") or _payload_hash({**record, "dirty_reason": reason}))
+        hash_payload = {**record, "raw_ref_json": raw_ref_payload, "dirty_reason": reason}
+        record["payload_hash"] = str(target.get("payload_hash") or _payload_hash(hash_payload))
         records[(record["source_url_hash"], target_type, target_id)] = record
     return list(records.values())
 
@@ -451,6 +453,4 @@ def _source_url_hash(source_url: str) -> str:
 
 
 def _payload_hash(payload: Mapping[str, Any]) -> str:
-    safe_payload = postgres_safe_json(dict(payload))
-    encoded = json.dumps(safe_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
+    return stable_dirty_target_payload_hash(payload)

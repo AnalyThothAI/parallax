@@ -4,31 +4,11 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 from parallax.domains.token_intel._constants import TOKEN_RADAR_PROJECTION_VERSION
-from parallax.platform.current_read_model_payload_hash import stable_current_payload_hash
-
-SOURCE_DIRTY_EVENT_LIFECYCLE_FIELDS = frozenset(
-    {
-        "dirty_at_ms",
-        "due_at_ms",
-        "leased_until_ms",
-        "lease_owner",
-        "attempt_count",
-        "updated_at_ms",
-        "first_dirty_at_ms",
-        "last_error",
-    }
-)
+from parallax.platform.current_read_model_payload_hash import stable_dirty_target_payload_hash
 
 
 def source_dirty_event_payload_hash(payload: Mapping[str, Any]) -> str:
-    stable_payload: dict[str, Any] = {}
-    for key, value in payload.items():
-        if type(key) is not str:
-            raise ValueError(f"current payload hash payload has non-string keys: {(key,)}")
-        if key in SOURCE_DIRTY_EVENT_LIFECYCLE_FIELDS:
-            continue
-        stable_payload[key] = value
-    return stable_current_payload_hash(stable_payload)
+    return stable_dirty_target_payload_hash(payload)
 
 
 class TokenRadarSourceDirtyEventRepository:

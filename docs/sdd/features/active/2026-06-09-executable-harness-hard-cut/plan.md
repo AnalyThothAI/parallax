@@ -687,6 +687,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC172: `uv run pytest tests/unit/test_token_radar_dirty_target_repository.py::test_dirty_payload_hash_rejects_legacy_non_string_payload_keys tests/unit/domains/token_intel/test_token_radar_source_dirty_events.py::test_source_dirty_event_payload_hash_rejects_legacy_non_string_payload_keys -q`
 - AC173: `uv run pytest tests/unit/domains/pulse_lab/test_pulse_trigger_dirty_target_repository.py::test_payload_hash_rejects_legacy_non_string_payload_keys tests/unit/domains/pulse_lab/test_pulse_trigger_dirty_target_repository.py::test_payload_hash_ignores_queue_lifecycle_fields -q`
 - AC174: `uv run pytest tests/unit/domains/narrative_intel/test_narrative_dirty_target_repositories.py::test_payload_hash_rejects_legacy_non_string_payload_keys tests/unit/domains/narrative_intel/test_narrative_dirty_target_repositories.py::test_payload_hash_ignores_queue_lifecycle_fields -q`
+- AC175: `uv run pytest tests/unit/domains/asset_market/test_asset_market_dirty_target_payload_hashes.py tests/unit/domains/token_intel/test_token_radar_dirty_target_kinds.py::test_dirty_payload_hash_excludes_queue_lifecycle_fields -q`
 
 ## Verification
 

@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import hashlib
-import json
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from parallax.platform.db.json_safety import postgres_safe_json, postgres_safe_text
+from parallax.platform.current_read_model_payload_hash import stable_dirty_target_payload_hash
+from parallax.platform.db.json_safety import postgres_safe_text
 
 
 class AssetProfileRefreshTargetRepository:
@@ -384,6 +383,4 @@ def _optional_text(value: Any) -> str | None:
 
 
 def _payload_hash(payload: Mapping[str, Any]) -> str:
-    safe_payload = postgres_safe_json(dict(payload))
-    encoded = json.dumps(safe_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
+    return stable_dirty_target_payload_hash(payload)

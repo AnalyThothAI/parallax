@@ -4,6 +4,7 @@ from parallax.domains.token_intel.repositories.token_radar_dirty_target_reposito
     dirty_kind_flags,
     dirty_payload_hash,
 )
+from parallax.platform.current_read_model_payload_hash import PAYLOAD_HASH_HEX_LENGTH, PAYLOAD_HASH_PREFIX
 
 
 def test_dirty_kind_flags_classify_target_queue_reasons() -> None:
@@ -54,5 +55,7 @@ def test_dirty_payload_hash_excludes_queue_lifecycle_fields() -> None:
         "last_error": "different",
     }
 
-    assert dirty_payload_hash(first) == dirty_payload_hash(second)
-    assert len(dirty_payload_hash(first)) == 64
+    payload_hash = dirty_payload_hash(first)
+    assert payload_hash == dirty_payload_hash(second)
+    assert payload_hash.startswith(PAYLOAD_HASH_PREFIX)
+    assert len(payload_hash.removeprefix(PAYLOAD_HASH_PREFIX)) == PAYLOAD_HASH_HEX_LENGTH

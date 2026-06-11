@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from datetime import date, datetime, time
 from decimal import Decimal
 from math import isfinite
@@ -10,6 +10,19 @@ from typing import Any
 
 PAYLOAD_HASH_PREFIX = "sha256:"
 PAYLOAD_HASH_HEX_LENGTH = 64
+DIRTY_TARGET_PAYLOAD_LIFECYCLE_FIELDS = frozenset(
+    {
+        "dirty_at_ms",
+        "due_at_ms",
+        "leased_until_ms",
+        "lease_owner",
+        "attempt_count",
+        "updated_at_ms",
+        "first_dirty_at_ms",
+        "last_error",
+        "priority",
+    }
+)
 
 
 def stable_current_payload_hash(payload: Mapping[str, Any]) -> str:
@@ -24,6 +37,24 @@ def stable_current_payload_hash(payload: Mapping[str, Any]) -> str:
         allow_nan=False,
     ).encode("utf-8")
     return PAYLOAD_HASH_PREFIX + hashlib.sha256(encoded).hexdigest()
+
+
+def stable_dirty_target_payload_hash(
+    payload: Mapping[str, Any],
+    *,
+    lifecycle_fields: Iterable[str] = DIRTY_TARGET_PAYLOAD_LIFECYCLE_FIELDS,
+) -> str:
+    if not isinstance(payload, Mapping):
+        raise ValueError(f"current payload hash payload must be mapping: {payload}")
+    lifecycle_field_set = frozenset(lifecycle_fields)
+    stable_payload: dict[str, Any] = {}
+    for key, value in payload.items():
+        if type(key) is not str:
+            raise ValueError(f"current payload hash payload has non-string keys: {(key,)}")
+        if key in lifecycle_field_set:
+            continue
+        stable_payload[key] = value
+    return stable_current_payload_hash(stable_payload)
 
 
 def _validate_payload_hash_keys(value: Any) -> None:

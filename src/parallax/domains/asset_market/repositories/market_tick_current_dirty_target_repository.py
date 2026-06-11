@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import hashlib
-import json
 from collections.abc import Iterable, Mapping
 from typing import Any, cast
+
+from parallax.platform.current_read_model_payload_hash import stable_dirty_target_payload_hash
 
 
 class MarketTickCurrentDirtyTargetRepository:
@@ -283,8 +283,7 @@ def _target_key(target: Mapping[str, Any] | tuple[str, str]) -> tuple[str, str]:
 
 
 def _payload_hash(payload: Mapping[str, Any]) -> str:
-    payload_json = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
-    return hashlib.sha256(payload_json.encode("utf-8")).hexdigest()
+    return stable_dirty_target_payload_hash(payload)
 
 
 def _claim_records(claims: Iterable[Mapping[str, Any]]) -> list[dict[str, str | int]]:

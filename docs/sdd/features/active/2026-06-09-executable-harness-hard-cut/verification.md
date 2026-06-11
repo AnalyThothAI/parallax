@@ -188,9 +188,10 @@ claim is allowed without the corresponding output captured below.
 | AC169 — Macro observation series row hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/domains/macro_intel/test_macro_observation_identity.py::test_macro_series_current_row_payload_hash_rejects_legacy_raw_payload_keys -q` failed RED when the Macro series row local hash normalizer accepted a non-string `raw_payload_json` key, then passed after replacing the current series row hash path with `stable_current_payload_hash()`. |
 | AC170 — Token Radar stable payload hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/test_token_radar_payload_hash.py::test_hash_rejects_legacy_non_string_payload_keys tests/unit/test_token_radar_payload_hash.py::test_hash_rejects_unordered_payload_containers -q` failed RED when Token Radar stable hashing accepted non-string keys and unordered containers, then passed after delegating final hash generation to `stable_current_payload_hash()` and rejecting compatibility-shaped payloads before canonicalization. |
 | AC171 — Shared current payload hash stays outside runtime imports. | ✅ | `uv run pytest tests/architecture/test_src_domain_architecture.py::test_repositories_and_queries_do_not_import_services_or_runtime -q` failed RED when domain repositories imported the shared hash helper from `parallax.app.runtime.current_read_model_publisher`, then passed after moving the pure hash contract to `parallax.platform.current_read_model_payload_hash` and updating domain imports. |
-| AC172 — Token Radar dirty queue hashes use shared current payload contract. | ✅ | `uv run pytest tests/unit/test_token_radar_dirty_target_repository.py::test_dirty_payload_hash_rejects_legacy_non_string_payload_keys tests/unit/domains/token_intel/test_token_radar_source_dirty_events.py::test_source_dirty_event_payload_hash_rejects_legacy_non_string_payload_keys -q` failed RED when dirty queue hash helpers accepted non-string keys through local key stringification, then passed after filtering lifecycle fields with strict string-key validation and delegating final hash generation to `stable_current_payload_hash()`. |
-| AC173 — Pulse trigger dirty queue hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/domains/pulse_lab/test_pulse_trigger_dirty_target_repository.py::test_payload_hash_rejects_legacy_non_string_payload_keys tests/unit/domains/pulse_lab/test_pulse_trigger_dirty_target_repository.py::test_payload_hash_ignores_queue_lifecycle_fields -q` failed RED when Pulse trigger dirty hashing accepted non-string keys and treated scheduling lifecycle fields as payload drift, then passed after filtering lifecycle fields with strict string-key validation and delegating final hash generation to `stable_current_payload_hash()`. |
-| AC174 — Narrative admission dirty queue hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/domains/narrative_intel/test_narrative_dirty_target_repositories.py::test_payload_hash_rejects_legacy_non_string_payload_keys tests/unit/domains/narrative_intel/test_narrative_dirty_target_repositories.py::test_payload_hash_ignores_queue_lifecycle_fields -q` failed RED when Narrative dirty hashing accepted non-string keys and treated scheduling lifecycle fields as payload drift, then passed after filtering lifecycle fields with strict string-key validation and delegating final hash generation to `stable_current_payload_hash()`. |
+| AC172 — Token Radar dirty queue hashes use shared current payload contract. | ✅ | `uv run pytest tests/unit/test_token_radar_dirty_target_repository.py::test_dirty_payload_hash_rejects_legacy_non_string_payload_keys tests/unit/domains/token_intel/test_token_radar_source_dirty_events.py::test_source_dirty_event_payload_hash_rejects_legacy_non_string_payload_keys -q` failed RED when dirty queue hash helpers accepted non-string keys through local key stringification, then passed after filtering lifecycle fields with strict string-key validation and delegating final hash generation to `stable_dirty_target_payload_hash()`. |
+| AC173 — Pulse trigger dirty queue hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/domains/pulse_lab/test_pulse_trigger_dirty_target_repository.py::test_payload_hash_rejects_legacy_non_string_payload_keys tests/unit/domains/pulse_lab/test_pulse_trigger_dirty_target_repository.py::test_payload_hash_ignores_queue_lifecycle_fields -q` failed RED when Pulse trigger dirty hashing accepted non-string keys and treated scheduling lifecycle fields as payload drift, then passed after filtering lifecycle fields with strict string-key validation and delegating final hash generation to `stable_dirty_target_payload_hash()`. |
+| AC174 — Narrative admission dirty queue hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/domains/narrative_intel/test_narrative_dirty_target_repositories.py::test_payload_hash_rejects_legacy_non_string_payload_keys tests/unit/domains/narrative_intel/test_narrative_dirty_target_repositories.py::test_payload_hash_ignores_queue_lifecycle_fields -q` failed RED when Narrative dirty hashing accepted non-string keys and treated scheduling lifecycle fields as payload drift, then passed after filtering lifecycle fields with strict string-key validation and delegating final hash generation to `stable_dirty_target_payload_hash()`. |
+| AC175 — Asset Market dirty-control-plane hashes use shared dirty payload contract. | ✅ | `uv run pytest tests/unit/domains/asset_market/test_asset_market_dirty_target_payload_hashes.py -q` failed RED when Asset Market dirty queue hashes accepted compatibility-shaped payload keys, treated queue lifecycle fields as payload drift, and sanitized token-image raw refs before validation; it passed after adding `stable_dirty_target_payload_hash()`, switching Asset Market dirty queues to it, and validating raw refs before DB JSON safety. |
 
 Deviations from spec:
 
@@ -3488,6 +3489,33 @@ exit code: 1
 $ uv run pytest tests/unit/domains/narrative_intel/test_narrative_dirty_target_repositories.py::test_payload_hash_rejects_legacy_non_string_payload_keys tests/unit/domains/narrative_intel/test_narrative_dirty_target_repositories.py::test_payload_hash_ignores_queue_lifecycle_fields -q
 ..                                                                       [100%]
 2 passed in 0.25s
+exit code: 0
+
+$ uv run pytest tests/unit/domains/asset_market/test_asset_market_dirty_target_payload_hashes.py -q
+FFFFFFFFF                                                                [100%]
+Failed: DID NOT RAISE <class 'ValueError'>
+TypeError: '<' not supported between instances of 'str' and 'int'
+AssertionError: assert second == first
+exit code: 1
+
+$ uv run pytest tests/unit/domains/asset_market/test_asset_market_dirty_target_payload_hashes.py -q
+.........                                                                [100%]
+9 passed in 0.08s
+exit code: 0
+
+$ uv run pytest tests/unit/domains/token_intel/test_token_radar_dirty_target_kinds.py::test_dirty_payload_hash_excludes_queue_lifecycle_fields -q
+F                                                                        [100%]
+AssertionError: assert 71 == 64
+exit code: 1
+
+$ uv run pytest tests/unit/domains/token_intel/test_token_radar_dirty_target_kinds.py::test_dirty_payload_hash_excludes_queue_lifecycle_fields -q
+.                                                                        [100%]
+1 passed in 0.02s
+exit code: 0
+
+$ uv run pytest tests/unit/domains/asset_market/test_asset_market_dirty_target_payload_hashes.py tests/unit/domains/token_intel/test_token_radar_dirty_target_kinds.py::test_dirty_payload_hash_excludes_queue_lifecycle_fields -q
+..........                                                               [100%]
+10 passed in 0.12s
 exit code: 0
 ```
 

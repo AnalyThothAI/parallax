@@ -4,7 +4,7 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 from parallax.domains.token_intel._constants import TOKEN_RADAR_PROJECTION_VERSION
-from parallax.platform.current_read_model_payload_hash import stable_current_payload_hash
+from parallax.platform.current_read_model_payload_hash import stable_dirty_target_payload_hash
 
 MARKET_DIRTY_MIN_INTERVAL_MS = 60_000
 
@@ -17,20 +17,6 @@ MARKET_DIRTY_REASONS = frozenset(
     }
 )
 REPAIR_DIRTY_REASONS = frozenset({"ops_repair", "ops_events_repair", "projection_catch_up"})
-DIRTY_PAYLOAD_LIFECYCLE_FIELDS = frozenset(
-    {
-        "dirty_at_ms",
-        "due_at_ms",
-        "leased_until_ms",
-        "lease_owner",
-        "attempt_count",
-        "updated_at_ms",
-        "first_dirty_at_ms",
-        "last_error",
-    }
-)
-
-
 def dirty_kind_flags(reason: str) -> dict[str, bool]:
     normalized = str(reason or "").strip()
     repair_dirty = normalized in REPAIR_DIRTY_REASONS or (
@@ -44,14 +30,7 @@ def dirty_kind_flags(reason: str) -> dict[str, bool]:
 
 
 def dirty_payload_hash(payload: Mapping[str, Any]) -> str:
-    stable_payload: dict[str, Any] = {}
-    for key, value in payload.items():
-        if type(key) is not str:
-            raise ValueError(f"current payload hash payload has non-string keys: {(key,)}")
-        if key in DIRTY_PAYLOAD_LIFECYCLE_FIELDS:
-            continue
-        stable_payload[key] = value
-    return stable_current_payload_hash(stable_payload)
+    return stable_dirty_target_payload_hash(payload)
 
 
 class TokenRadarDirtyTargetRepository:
