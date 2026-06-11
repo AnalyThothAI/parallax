@@ -1770,7 +1770,20 @@ def _section_table_rows(text: str, heading: str) -> list[list[str]]:
 
 
 def table_body_rows(section: str) -> list[list[str]]:
-    table_lines = [line.strip() for line in section.splitlines() if line.strip().startswith("|")]
+    body_rows: list[list[str]] = []
+    current_block: list[str] = []
+    for line in section.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("|"):
+            current_block.append(stripped)
+            continue
+        body_rows.extend(_table_block_body_rows(current_block))
+        current_block = []
+    body_rows.extend(_table_block_body_rows(current_block))
+    return body_rows
+
+
+def _table_block_body_rows(table_lines: list[str]) -> list[list[str]]:
     if len(table_lines) < 3 or not _is_table_separator_row(table_lines[1]):
         return []
     header_cells = _table_cells(table_lines[0])

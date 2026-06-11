@@ -4115,3 +4115,24 @@
 - **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_separator_arity_mismatch tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_body_row_arity_mismatch tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_separator_arity_mismatch tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_body_row_arity_mismatch -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 196 — Gate evidence tables are contiguous blocks
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 195
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/spec-template.md`; `docs/sdd/_templates/plan-template.md`
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_non_contiguous_body_rows` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_non_contiguous_body_rows` — prove body rows separated from their header/separator by prose cannot satisfy gate evidence.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Gate evidence rows must come from contiguous Markdown table blocks; parser must not join pipe rows across prose, blank lines, or separate blocks.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, and gate evidence architecture tests.
+- **Kill/defer criteria**: Stop if non-contiguous pipe rows satisfy clarify/checklist/analyze evidence, or if valid contiguous Markdown tables are rejected.
+- **Eval/repair signal**: non-contiguous false green, valid table regression, and drift between gate evidence and analyze gate table parsing.
+- **Implementation**: Refactor `table_body_rows()` to split section text into contiguous pipe-row blocks and evaluate each block independently.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_non_contiguous_body_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_non_contiguous_body_rows -q`
+- **Review owner**: parent
+- **Status**: [x]

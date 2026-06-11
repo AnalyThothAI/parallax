@@ -574,6 +574,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC193. WHEN gate evidence pipe rows put body rows before the Markdown table separator row THEN the validator and gate checker SHALL reject the section as lacking evidence before lifecycle gates can pass.
 - AC194. WHEN gate evidence separator rows contain empty cells or cells without hyphens THEN the validator and gate checker SHALL reject the section as lacking evidence before lifecycle gates can pass.
 - AC195. WHEN gate evidence header, separator, and body rows have mismatched column counts THEN the validator and gate checker SHALL reject the section as lacking evidence before lifecycle gates can pass.
+- AC196. WHEN gate evidence body rows are separated from their header and separator by prose or blank lines THEN the validator and gate checker SHALL reject those rows as outside the Markdown table before lifecycle gates can pass.
 
 ## Risks
 
