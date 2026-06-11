@@ -227,6 +227,7 @@ claim is allowed without the corresponding output captured below.
 | AC208 — Analyze status rows include evidence. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_analyze_gate_rejects_status_without_evidence tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_analyze_status_without_evidence -q` failed RED when `Pass:` without evidence satisfied analysis readiness, then passed after the shared Analyze result predicate required non-placeholder evidence after the status prefix. |
 | AC209 — Gate Compliance rows are exact. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_compliance_rejects_duplicate_gate_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_duplicate_task_gate_compliance -q` failed RED when duplicate `Clarify` rows satisfied implementation readiness, then passed after Gate Compliance evidence required the exact canonical lifecycle sequence. |
 | AC210 — Gate Compliance is a single table block. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_compliance_rejects_split_table_blocks tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_split_task_gate_compliance -q` failed RED when split Gate Compliance table blocks were stitched into a false pass, then passed after Gate Compliance required one canonical table block. |
+| AC211 — Verify gate is first-class. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_missing_check_all_evidence tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_incomplete_spec_compliance tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_complete_spec_compliance_rows -q` failed RED when the CLI rejected `--gate verify` and Verified records accepted pending Spec compliance rows, then passed after verify became a first-class final-evidence gate. |
 
 Deviations from spec:
 
@@ -3999,6 +4000,19 @@ $ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_com
 ..                                                                       [100%]
 2 passed in 0.06s
 exit code: 0
+
+$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_missing_check_all_evidence tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_incomplete_spec_compliance tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_complete_spec_compliance_rows -q
+FFFF                                                                     [100%]
+AssertionError: assert 2 == 1
+AssertionError: assert 2 == 1
+AssertionError: usage: check_sdd_gate.py ... invalid choice: 'verify'
+AssertionError: assert 'verified-incomplete-spec-compliance' in set()
+exit code: 1
+
+$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_missing_check_all_evidence tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_incomplete_spec_compliance tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_complete_spec_compliance_rows -q
+....                                                                     [100%]
+4 passed in 0.18s
+exit code: 0
 ```
 
 ## Diff summary
@@ -4043,6 +4057,7 @@ Files changed:
 - Analyze status evidence requirement: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Exact Gate Compliance row sequence: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Single-block Gate Compliance table: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
+- First-class verify gate: `scripts/check_sdd_gate.py`, `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_agent_playbook_contracts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`.
 - Mechanical frontend Prettier drift cleanup: macro pages, macro component test, `web/vite.config.ts`.
 
 Migrations applied:

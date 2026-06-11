@@ -13,7 +13,7 @@ Parallax routes non-trivial coding-agent work through one SDD feature directory 
 The lane's canonical artifacts are `spec.md` in `docs/WORKFLOW.md:13`, `plan.md` in `docs/WORKFLOW.md:14`,
 `tasks.md` in `docs/WORKFLOW.md:15`, and `verification.md` in `docs/WORKFLOW.md:16`.
 Production work follows `spec -> clarify -> checklist -> plan -> tasks -> analyze -> implement -> verify`
-in `docs/WORKFLOW.md:27`, and completion requires `make check-all` evidence in `docs/WORKFLOW.md:91`.
+in `docs/WORKFLOW.md:27`, and completion requires `make check-all` evidence in `docs/WORKFLOW.md:95`.
 The generated index now renders a `Coordination Board` in `scripts/regen_sdd_work_index.py:86` and a
 `Task Board` in `scripts/regen_sdd_work_index.py:117`.
 
@@ -589,6 +589,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC208. WHEN an Analyze Gate result uses only `Pass:` or `Blocked:` without non-placeholder evidence text after the status THEN the validator and analyze gate checker SHALL report `plan-analyze-gate-invalid` before status-only rows can satisfy analysis readiness.
 - AC209. WHEN `tasks.md` Gate Compliance repeats, reorders, or adds rows beyond the canonical Clarify, Checklist, Analyze, Implement, Verify sequence THEN the validator and implement gate SHALL report `gate-evidence-missing` before non-canonical lifecycle tables can satisfy implementation readiness.
 - AC210. WHEN `tasks.md` Gate Compliance splits canonical lifecycle rows across multiple table blocks THEN the validator and implement gate SHALL report `gate-evidence-missing` before stitched table fragments can satisfy implementation readiness.
+- AC211. WHEN an SDD feature reaches final verification THEN `scripts/check_sdd_gate.py --gate verify` SHALL enforce `verification.md` final evidence, including a successful `make check-all` block and complete Spec compliance rows, before a completion claim can pass.
 
 ## Risks
 

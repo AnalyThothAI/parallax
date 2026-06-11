@@ -48,9 +48,13 @@ uv run python scripts/check_sdd_gate.py --feature <slug> --gate clarify --check
 uv run python scripts/check_sdd_gate.py --feature <slug> --gate checklist --check
 uv run python scripts/check_sdd_gate.py --feature <slug> --gate analyze --check
 uv run python scripts/check_sdd_gate.py --feature <slug> --gate implement --check
+uv run python scripts/check_sdd_gate.py --feature <slug> --gate verify --check
 ```
 
-`make check-all` also runs the non-mutating all-active gate sweep:
+`verify` is the final evidence gate: it checks `verification.md` for a final
+`make check-all` command block, completed Spec compliance rows, skip accounting,
+and contradiction-free completion evidence before a completion claim. `make
+check-all` also runs the non-mutating all-active pre-verify gate sweep:
 
 ```bash
 uv run python scripts/check_sdd_gate.py --all-active --check

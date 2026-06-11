@@ -15,12 +15,22 @@ from scripts.validate_sdd_artifacts import (  # noqa: E402
     scan_sdd_features,
     section_has_gate_evidence,
     validate_sdd_root,
+    verify_gate_evidence_issues,
 )
 from scripts.validate_sdd_artifacts import (  # noqa: E402
     section_text as validated_section_text,
 )
 
-GATES = ("clarify", "checklist", "analyze", "implement")
+PRE_VERIFY_GATES = ("clarify", "checklist", "analyze", "implement")
+GATES = (*PRE_VERIFY_GATES, "verify")
+VERIFY_GATE_VALIDATION_CODES = {
+    "missing-artifact",
+    "missing-status",
+    "missing-approval-metadata",
+    "metadata-date-invalid",
+    "artifact-owning-link-mismatch",
+    "missing-gate-section",
+}
 
 
 def main() -> int:
@@ -58,7 +68,7 @@ def main() -> int:
 
 def _check_all_active(root: Path, gate: str | None) -> int:
     features = [feature for feature in scan_sdd_features(root) if feature.state == "active"]
-    gates = (gate,) if gate else GATES
+    gates = (gate,) if gate else PRE_VERIFY_GATES
     issues = [
         f"{feature.slug} {gate_name}: {issue}"
         for feature in features
@@ -90,6 +100,8 @@ def _gate_issues(root: Path, feature: SddFeature, gate: str) -> list[str]:
         return _section_gate_issues(feature, "spec.md", "## Requirement Checklist", "checklist")
     if gate == "analyze":
         return _analyze_gate_issues(feature)
+    if gate == "verify":
+        return _verify_gate_issues(root, feature)
     return _implement_gate_issues(root, feature)
 
 
@@ -135,6 +147,21 @@ def _is_implement_gate_issue(feature: SddFeature, issue: SddIssue) -> bool:
     if issue.path == f"{feature.relative_path}/tasks.md" and code in {"missing-gate-section", "gate-evidence-missing"}:
         return True
     return code in {"tasks-final-verification-duplicated", "active-touch-conflict"}
+
+
+def _verify_gate_issues(root: Path, feature: SddFeature) -> list[str]:
+    verification_path = f"{feature.relative_path}/verification.md"
+    structural_issues = [
+        issue
+        for issue in validate_sdd_root(root)
+        if issue.path == verification_path and issue.code in VERIFY_GATE_VALIDATION_CODES
+    ]
+    evidence_issues = verify_gate_evidence_issues(feature)
+    return [_format_issue(issue) for issue in (*structural_issues, *evidence_issues)]
+
+
+def _format_issue(issue: SddIssue) -> str:
+    return f"{issue.code}: {issue.path}: {issue.message}"
 
 
 def _section_text(text: str, heading: str) -> str:

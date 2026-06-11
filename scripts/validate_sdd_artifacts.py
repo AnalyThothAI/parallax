@@ -1427,6 +1427,10 @@ def _contiguous_numbering_error(label: str, numbers: list[int]) -> str:
     return f"{label} must be unique and contiguous: expected {expected_summary}, saw {actual_summary}"
 
 
+def verify_gate_evidence_issues(feature: SddFeature) -> list[SddIssue]:
+    return _verified_issues(feature)
+
+
 def _verified_issues(feature: SddFeature) -> list[SddIssue]:
     artifact = feature.artifacts["verification.md"]
     if artifact.missing:
@@ -1463,9 +1467,15 @@ def _verified_issues(feature: SddFeature) -> list[SddIssue]:
 
 def _verified_spec_compliance_issues(artifact: ArtifactRecord) -> list[SddIssue]:
     command_evidence = _command_evidence(_task_evidence_text(artifact.text))
+    incomplete_rows: list[str] = []
     missing_commands: list[str] = []
     for cells in _section_table_rows(artifact.text, "## Spec compliance"):
-        if len(cells) < 3 or not _is_complete_compliance_status(cells[1]):
+        if len(cells) < 3:
+            continue
+        criterion = _clean_value(cells[0]) or "<unnamed criterion>"
+        status = _clean_value(cells[1]) or "<missing status>"
+        if not _is_complete_compliance_status(cells[1]):
+            incomplete_rows.append(f"{criterion} => {status}")
             continue
         commands = [
             _clean_command(match.group(1))
@@ -1478,16 +1488,25 @@ def _verified_spec_compliance_issues(artifact: ArtifactRecord) -> list[SddIssue]
             if not any(exit_code == 0 for exit_code in command_evidence.get(command, ()))
         )
 
-    if not missing_commands:
-        return []
-    return [
-        _issue(
-            "verified-missing-spec-compliance-evidence",
-            artifact,
-            "Verified spec compliance rows lack exit code 0 command evidence: "
-            + ", ".join(dict.fromkeys(missing_commands)),
+    issues: list[SddIssue] = []
+    if incomplete_rows:
+        issues.append(
+            _issue(
+                "verified-incomplete-spec-compliance",
+                artifact,
+                "Verified spec compliance rows must all be complete: " + ", ".join(incomplete_rows),
+            )
         )
-    ]
+    if missing_commands:
+        issues.append(
+            _issue(
+                "verified-missing-spec-compliance-evidence",
+                artifact,
+                "Verified spec compliance rows lack exit code 0 command evidence: "
+                + ", ".join(dict.fromkeys(missing_commands)),
+            )
+        )
+    return issues
 
 
 def _is_complete_compliance_status(value: str) -> bool:

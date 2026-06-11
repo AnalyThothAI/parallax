@@ -4430,3 +4430,24 @@
 - **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_compliance_rejects_split_table_blocks tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_split_task_gate_compliance -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 211 — Verify gate is first-class
+
+- **File(s)**: `scripts/check_sdd_gate.py`, `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_agent_playbook_contracts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 210
+- **Touch set**: `scripts/check_sdd_gate.py`, `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_agent_playbook_contracts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `Makefile`; `docs/sdd/_templates/verification-template.md`
+- **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_missing_check_all_evidence`, `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_incomplete_spec_compliance`, `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence`, and `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_complete_spec_compliance_rows` — prove final verification is a first-class gate and incomplete Spec compliance rows cannot satisfy completion evidence.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `verify` must be an explicit gate choice, reuse validator completion-evidence rules, and require successful `make check-all` plus complete Spec compliance rows.
+- **On-demand context**: `scripts/check_sdd_gate.py`, `scripts/validate_sdd_artifacts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, and verification evidence tests.
+- **Kill/defer criteria**: Stop if `verify` is rejected by the CLI parser, if pending Spec compliance rows pass verification, or if default `--all-active` blocks unfinished active features by running verify implicitly.
+- **Eval/repair signal**: final-evidence false green, CLI/validator semantic drift, and completion-claim gate gaps.
+- **Implementation**: Add a first-class `verify` gate that delegates final-evidence checks to `verify_gate_evidence_issues()` while keeping default all-active sweeps limited to pre-verify gates.
+- **Verification**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_missing_check_all_evidence tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_incomplete_spec_compliance tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_complete_spec_compliance_rows -q`
+- **Review owner**: parent
+- **Status**: [x]
