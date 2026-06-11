@@ -617,6 +617,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC236. WHEN extra final verification commands are written outside fenced blocks in `Verification commands` THEN the validator and verify gate SHALL still reject them before unfenced shell lines can bypass final-evidence parsing.
 - AC237. WHEN final `Verification commands` repeats `make check-all` outside the canonical transcript THEN the validator and verify gate SHALL reject the record before duplicate command sources can masquerade as the single completion command.
 - AC238. WHEN the final `make check-all` transcript contains zero, multiple, or non-zero exit-code lines THEN the validator and verify gate SHALL reject the record before a later `exit code: 0` can overwrite failed evidence in the same command segment.
+- AC239. WHEN final `Verification commands` contains extra fenced output blocks without command lines THEN the validator and verify gate SHALL reject the record before stale transcript output can sit beside the canonical `make check-all` evidence.
 
 ## Risks
 

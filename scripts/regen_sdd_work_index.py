@@ -281,6 +281,9 @@ def _issue_meaning(code: str) -> str:
         "verified-extra-verification-command": (
             "Verified record includes commands other than make check-all in final Verification commands evidence."
         ),
+        "verified-extra-verification-output": (
+            "Verified record includes extra fenced transcript output in final Verification commands evidence."
+        ),
         "verified-missing-spec-compliance-evidence": (
             "Verified spec compliance rows reference commands without matching exit code 0 evidence."
         ),

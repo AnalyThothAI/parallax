@@ -132,6 +132,31 @@ def test_verified_feature_rejects_duplicate_unfenced_make_check_all(tmp_path: Pa
     assert "exactly one `make check-all`" in "\n".join(issue.message for issue in issues)
 
 
+def test_verified_feature_rejects_extra_verification_output_block(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "completed", "2026-06-09-extra-final-output-block")
+    _write_valid_spec(feature / "spec.md", status="Verified")
+    _write_valid_plan(feature / "plan.md", status="Verified")
+    _write_valid_tasks(feature / "tasks.md", status="Verified")
+    _write_valid_verification(feature / "verification.md", status="Verified")
+    verification_path = feature / "verification.md"
+    verification_path.write_text(
+        verification_path.read_text(encoding="utf-8").replace(
+            "## Coverage",
+            "```text\n"
+            "diagnostic output from a separate run\n"
+            "exit code: 1\n"
+            "```\n\n"
+            "## Coverage",
+        ),
+        encoding="utf-8",
+    )
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "verified-extra-verification-output" in _issue_codes(issues)
+    assert "exactly one fenced transcript block" in "\n".join(issue.message for issue in issues)
+
+
 def test_verified_spec_compliance_rows_require_matching_command_evidence(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "completed", "2026-06-09-spec-compliance-without-evidence")
     missing_command = "uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_missing_gate -q"

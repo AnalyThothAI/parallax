@@ -202,6 +202,7 @@ KNOWN_ISSUE_CODES = (
     "tasks-final-verification-duplicated",
     "verified-missing-check-all",
     "verified-extra-verification-command",
+    "verified-extra-verification-output",
     "verified-missing-spec-compliance-evidence",
     "verified-contradicts-evidence",
     "verified-unexplained-skips",
@@ -1465,6 +1466,16 @@ def _verified_issues(feature: SddFeature) -> list[SddIssue]:
                 "Verified records require final make check-all with exactly one exit code 0",
             )
         )
+    verification_blocks = _verification_fenced_blocks(artifact.text)
+    if len(verification_blocks) != 1:
+        issues.append(
+            _issue(
+                "verified-extra-verification-output",
+                artifact,
+                f"Verified Verification commands must contain exactly one fenced transcript block; "
+                f"found {len(verification_blocks)}",
+            )
+        )
     verification_commands = _verification_commands(artifact.text)
     if verification_commands != ["make check-all"]:
         issues.append(
@@ -1941,14 +1952,17 @@ def _clean_command(value: str) -> str:
 
 
 def _verification_make_check_all_block(text: str) -> str | None:
-    section = _section_text(text, "## Verification commands")
-    blocks = [match.group("body").strip() for match in FENCED_BLOCK_RE.finditer(section)]
     make_check_all_segments = [
-        segment for block in blocks for segment in _command_segments(block, "make check-all")
+        segment for block in _verification_fenced_blocks(text) for segment in _command_segments(block, "make check-all")
     ]
     if len(make_check_all_segments) != 1:
         return None
     return make_check_all_segments[0]
+
+
+def _verification_fenced_blocks(text: str) -> list[str]:
+    section = _section_text(text, "## Verification commands")
+    return [match.group("body").strip() for match in FENCED_BLOCK_RE.finditer(section)]
 
 
 def _verification_commands(text: str) -> list[str]:

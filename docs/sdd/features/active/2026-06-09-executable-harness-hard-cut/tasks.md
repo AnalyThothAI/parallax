@@ -5018,3 +5018,24 @@
 - **Verification**: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_multiple_check_all_exit_codes tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_multiple_check_all_exit_codes -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 239 — Final verification commands have one transcript block
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 238
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD verify-gate tests, issue taxonomy, and generated index updates.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_extra_verification_output_block` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_extra_verification_output_block` — prove an extra fenced output block without `$` command lines cannot sit beside the canonical final transcript.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: The final `Verification commands` section must contain exactly one fenced transcript block; additional fenced output blocks must emit `verified-extra-verification-output`.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, and AC235-AC238 final evidence parser tests.
+- **Kill/defer criteria**: Stop if extra fenced output blocks without command lines pass the pure validator or verify gate.
+- **Eval/repair signal**: stale transcript adjacency, output-only false green, and final-evidence dilution.
+- **Implementation**: Add shared final fenced-block discovery, require the final section to have one fenced block, and add issue taxonomy text for `verified-extra-verification-output`.
+- **Verification**: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_extra_verification_output_block tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_extra_verification_output_block -q`
+- **Review owner**: parent
+- **Status**: [x]
