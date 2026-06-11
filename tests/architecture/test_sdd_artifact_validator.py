@@ -1338,6 +1338,29 @@ def test_verified_feature_rejects_fenced_e2e_golden_path(tmp_path: Path) -> None
     assert "verified-e2e-incomplete" in _issue_codes(issues)
 
 
+def test_verified_feature_rejects_golden_skip_switch(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "completed", "2026-06-09-skip-golden")
+    _write_valid_spec(feature / "spec.md", status="Verified")
+    _write_valid_plan(feature / "plan.md", status="Verified")
+    _write_valid_tasks(feature / "tasks.md", status="Verified")
+    _write_valid_verification(feature / "verification.md", status="Verified")
+    verification_path = feature / "verification.md"
+    verification_text = verification_path.read_text(encoding="utf-8")
+    verification_path.write_text(
+        verification_text.replace(
+            "- [x] testcontainers PG and uvicorn subprocess cleaned up",
+            "- [x] testcontainers PG and uvicorn subprocess cleaned up\n"
+            "- [x] SKIP_GOLDEN=1 bypassed the golden lane",
+        ),
+        encoding="utf-8",
+    )
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "verified-e2e-incomplete" in _issue_codes(issues)
+    assert "SKIP_GOLDEN" in "\n".join(issue.message for issue in issues)
+
+
 def test_complete_tasks_require_matching_verification_evidence(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-complete-task-without-evidence")
     _write_valid_spec(feature / "spec.md", status="In Progress")

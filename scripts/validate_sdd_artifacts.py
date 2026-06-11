@@ -160,7 +160,9 @@ CONTRADICTION_PHRASES = (
     "exit code: pending",
     "pending final run",
     "skip_e2e=1",
+    "skip_golden=1",
 )
+RUNTIME_SKIP_SWITCHES = ("SKIP_E2E=1", "SKIP_GOLDEN=1")
 KNOWN_ISSUE_CODES = (
     "review-lifecycle",
     "artifact-status-mismatch",
@@ -1493,14 +1495,15 @@ def _verified_issues(feature: SddFeature) -> list[SddIssue]:
 
 def _verified_e2e_issues(artifact: ArtifactRecord) -> list[SddIssue]:
     section = _text_without_fenced_blocks(_section_text(artifact.text, "## E2E golden path"))
-    if "SKIP_E2E=1" in section:
-        return [
-            _issue(
-                "verified-e2e-incomplete",
-                artifact,
-                "Verified E2E golden path cannot use SKIP_E2E=1 as completion evidence",
-            )
-        ]
+    for skip_switch in RUNTIME_SKIP_SWITCHES:
+        if skip_switch in section:
+            return [
+                _issue(
+                    "verified-e2e-incomplete",
+                    artifact,
+                    f"Verified E2E golden path cannot use {skip_switch} as completion evidence",
+                )
+            ]
 
     missing_or_unchecked = [
         check

@@ -4913,3 +4913,24 @@
 - **Verification**: `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_clis_reject_title_substring_selectors -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 234 — Final runtime evidence rejects golden skip switches
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 233
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD validator and verify-gate tests.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_golden_skip_switch` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_golden_skip_switch` — prove `SKIP_GOLDEN=1` cannot satisfy final runtime evidence.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Final E2E/golden evidence must reject every runtime skip switch in the shared skip-switch set; `SKIP_E2E=1` and `SKIP_GOLDEN=1` must both produce `verified-e2e-incomplete`.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, final verification helper tests, and Pasteur read-only harness audit.
+- **Kill/defer criteria**: Stop if `SKIP_GOLDEN=1` passes the pure validator or verify gate, if `SKIP_E2E=1` regresses, or if skip-switch detection is duplicated in separate branches.
+- **Eval/repair signal**: skipped golden lane false green, final-evidence drift, and verify-gate bypass.
+- **Implementation**: Add a shared runtime skip-switch list used by final E2E/golden evidence validation and include `skip_golden=1` in contradiction detection.
+- **Verification**: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_golden_skip_switch tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_golden_skip_switch -q`
+- **Review owner**: parent
+- **Status**: [x]
