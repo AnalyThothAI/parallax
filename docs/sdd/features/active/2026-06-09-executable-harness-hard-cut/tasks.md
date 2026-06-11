@@ -3842,3 +3842,24 @@
 - **Verification**: `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_runs_executable_sdd_harness tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_all_active_features tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_any_failed_active_feature -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 183 — Implement gate forwards delegated task drift
+
+- **File(s)**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 182
+- **Touch set**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `scripts/validate_sdd_artifacts.py`; `scripts/dispatch_sdd_task.py`; `docs/agent-playbook/subagent-handoff-template.md`
+- **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_delegated_artifact_drift` — proves `--gate implement` must fail when a delegated task points at missing subagent handoff/report artifacts.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Implement gate issue selection must include every `task-*` validator issue plus implementation coordination issues such as `tasks-final-verification-duplicated` and `active-touch-conflict`; it must not maintain a narrow stale allowlist that omits subagent handoff/report drift.
+- **On-demand context**: `scripts/check_sdd_gate.py`, `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_agent_playbook_contracts.py`, and subagent handoff/report validator issue codes.
+- **Kill/defer criteria**: Stop if the implement gate starts reporting clarify/checklist/analyze-only issues, if it masks delegated artifact drift, or if it requires final integration evidence to validate task records.
+- **Eval/repair signal**: false-green implement gate, missing subagent handoff/report artifacts, task issue-code drift, and stale gate CLI allowlists.
+- **Implementation**: Replace the narrow implement-gate task issue tuple with a predicate that forwards all `task-*` issues plus implementation coordination issues.
+- **Verification**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_delegated_artifact_drift -q`
+- **Review owner**: parent
+- **Status**: [x]

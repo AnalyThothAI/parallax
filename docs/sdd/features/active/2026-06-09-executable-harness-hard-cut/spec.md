@@ -561,6 +561,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC180. WHEN a production feature advances through `clarify`, `checklist`, `analyze`, or `implement` THEN each gate SHALL have an explicit non-mutating CLI check that can pass or fail independently of the full SDD validator before the lane is documented as executable.
 - AC181. WHEN `tasks.md` contains a `## Final verification` checklist THEN SDD artifact validation SHALL reject it before task records can duplicate or diverge from the canonical evidence in `verification.md`.
 - AC182. WHEN `make check-all` runs SDD harness gates THEN it SHALL execute a non-mutating all-active `clarify`/`checklist`/`analyze`/`implement` sweep before generated index freshness can pass.
+- AC183. WHEN the `implement` SDD gate checks a feature with delegated subagent handoff or report drift THEN it SHALL fail on the underlying task issue before agent-loop delegation can be treated as executable.
 
 ## Risks
 

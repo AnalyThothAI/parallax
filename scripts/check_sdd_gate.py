@@ -107,24 +107,17 @@ def _analyze_gate_issues(feature: SddFeature) -> list[str]:
 
 def _implement_gate_issues(root: Path, feature: SddFeature) -> list[str]:
     feature_prefix = feature.relative_path + "/"
-    task_issue_codes = (
-        "task-missing-coordination-fields",
-        "task-invalid-coordination-fields",
-        "task-invalid-numbering",
-        "task-invalid-dependencies",
-        "task-missing-agent-loop-fields",
-        "task-invalid-agent-loop-fields",
-        "task-missing-review-fields",
-        "task-invalid-review-fields",
-        "task-complete-missing-review-evidence",
-        "task-complete-missing-failing-test-evidence",
-        "task-complete-missing-verification-evidence",
-    )
     return [
         f"{issue.code}: {issue.path}: {issue.message}"
         for issue in validate_sdd_root(root)
-        if issue.path.startswith(feature_prefix) and issue.code in task_issue_codes
+        if issue.path.startswith(feature_prefix) and _is_implement_gate_issue(issue.code)
     ]
+
+
+def _is_implement_gate_issue(code: str) -> bool:
+    if code.startswith("task-"):
+        return True
+    return code in {"tasks-final-verification-duplicated", "active-touch-conflict"}
 
 
 def _section_text(text: str, heading: str) -> str:

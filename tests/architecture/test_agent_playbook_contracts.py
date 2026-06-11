@@ -448,6 +448,57 @@ def test_sdd_gate_check_cli_rejects_any_failed_active_feature(tmp_path: Path) ->
 
 
 @pytest.mark.architecture
+def test_sdd_gate_check_cli_implement_rejects_delegated_artifact_drift(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "check_sdd_gate.py"
+    assert script.exists()
+    _write_context_packet_fixture(tmp_path)
+    tasks_path = (
+        tmp_path
+        / "docs"
+        / "sdd"
+        / "features"
+        / "active"
+        / "2026-06-09-context-packet-fixture"
+        / "tasks.md"
+    )
+    tasks_text = tasks_path.read_text(encoding="utf-8")
+    tasks_text = tasks_text.replace(
+        "- **Subagent handoff**: not delegated",
+        "- **Subagent handoff**: docs/generated/subagent-handoffs/missing.md",
+        1,
+    )
+    tasks_text = tasks_text.replace(
+        "- **Subagent report**: not delegated",
+        "- **Subagent report**: docs/generated/subagent-reports/missing.md",
+        1,
+    )
+    tasks_text = tasks_text.replace("- **Review result**: parent-reviewed", "- **Review result**: accepted", 1)
+    tasks_path.write_text(tasks_text, encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--gate",
+            "implement",
+            "--check",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "task-missing-subagent-report-artifact" in result.stderr
+    assert "task-missing-subagent-handoff-artifact" in result.stderr
+
+
+@pytest.mark.architecture
 def test_subagent_report_validator_accepts_evidence_report(tmp_path: Path) -> None:
     script = ROOT / "scripts" / "validate_subagent_report.py"
     report = tmp_path / "subagent-report.md"
