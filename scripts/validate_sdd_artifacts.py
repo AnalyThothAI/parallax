@@ -1588,6 +1588,9 @@ def _verified_spec_compliance_issues(feature: SddFeature, artifact: ArtifactReco
         if not _is_complete_compliance_status(cells[1]):
             incomplete_rows.append(f"{criterion} => {status}")
             continue
+        if is_placeholder_table_cell(cells[2]):
+            incomplete_rows.append(f"{criterion} => placeholder evidence")
+            continue
         commands = [
             _clean_command(match.group(1))
             for match in re.finditer(r"`([^`]+)`", cells[2])
@@ -2101,7 +2104,14 @@ def gate_compliance_has_required_rows(rows: list[list[str]]) -> bool:
 
 def is_placeholder_table_cell(value: str) -> bool:
     cleaned = _clean_value(value).lower()
-    return _is_placeholder(value) or cleaned in {"pass / fail", "yyyy-mm-dd"}
+    normalized = cleaned.rstrip(".:")
+    return (
+        _is_placeholder(value)
+        or normalized in PLACEHOLDER_VALUES
+        or normalized.startswith("<")
+        or normalized.endswith(">")
+        or normalized in {"pass / fail", "yyyy-mm-dd"}
+    )
 
 
 def _is_canonical_date_value(value: str) -> bool:

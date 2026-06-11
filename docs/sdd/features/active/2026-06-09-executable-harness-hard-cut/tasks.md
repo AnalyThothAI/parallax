@@ -4619,3 +4619,24 @@
 - **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_concrete_coverage_values tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_placeholder_coverage_value -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 220 — Spec compliance evidence is concrete
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 219
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/verification-template.md`
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_concrete_spec_compliance_evidence` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_placeholder_spec_compliance_evidence` — prove final verification cannot pass when Spec compliance `status` says `Pass` but `Evidence` remains `Pending.`.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: completed Spec compliance rows must have non-placeholder evidence; table placeholder semantics must treat sentence-punctuated placeholders such as `Pending.` as placeholders.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `docs/sdd/_templates/verification-template.md`, and final verification evidence tests.
+- **Kill/defer criteria**: Stop if `Pending`, `Pending.`, `<pending>`, or template evidence can pass by setting only the Spec compliance status cell to `Pass`.
+- **Eval/repair signal**: spec-evidence false green and completion-gate evidence drift.
+- **Implementation**: Reject placeholder Spec compliance evidence cells before command-evidence extraction and normalize table-cell placeholder detection across trailing sentence punctuation.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_concrete_spec_compliance_evidence tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_placeholder_spec_compliance_evidence -q`
+- **Review owner**: parent
+- **Status**: [x]
