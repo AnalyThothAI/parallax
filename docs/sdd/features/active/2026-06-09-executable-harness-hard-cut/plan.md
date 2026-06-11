@@ -704,6 +704,8 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC189: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_required_sections_ignore_fenced_heading_tokens tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_ignores_fenced_heading_tokens -q`
 - AC190: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_required_sections_ignore_tilde_fenced_heading_tokens tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_ignores_tilde_fenced_heading_tokens -q`
 - AC191: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_single_cell_body_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_single_cell_gate_rows -q`
+- AC192: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_tables_without_separator_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_gate_tables_without_separator_rows -q`
+- AC193: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_body_rows_before_separator tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_body_rows_before_separator -q`
 
 ## Verification
 

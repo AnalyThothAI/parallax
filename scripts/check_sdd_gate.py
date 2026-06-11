@@ -14,6 +14,7 @@ from scripts.validate_sdd_artifacts import (  # noqa: E402
     is_placeholder_table_cell,
     is_table_evidence_row,
     scan_sdd_features,
+    table_body_rows,
     validate_sdd_root,
 )
 from scripts.validate_sdd_artifacts import (  # noqa: E402
@@ -142,23 +143,12 @@ def _section_text(text: str, heading: str) -> str:
 
 
 def _has_table_evidence(section: str) -> bool:
-    return any(is_table_evidence_row(cells) for cells in _table_body_rows(section))
-
-
-def _table_body_rows(section: str) -> list[list[str]]:
-    rows = []
-    for line in section.splitlines():
-        stripped = line.strip()
-        if not stripped.startswith("|") or set(stripped) <= {"|", "-", " "}:
-            continue
-        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
-        rows.append(cells)
-    return rows[1:]
+    return any(is_table_evidence_row(cells) for cells in table_body_rows(section))
 
 
 def _invalid_analyze_results(section: str) -> list[str]:
     invalid: list[str] = []
-    for cells in _table_body_rows(section):
+    for cells in table_body_rows(section):
         if len(cells) < 2 or any(is_placeholder_table_cell(cell) for cell in cells):
             continue
         result = cells[1].strip()

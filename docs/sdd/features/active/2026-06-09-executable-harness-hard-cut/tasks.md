@@ -4031,3 +4031,45 @@
 - **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_single_cell_body_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_single_cell_gate_rows -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 192 — Gate evidence tables require separators
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 191
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `docs/sdd/_templates/spec-template.md`; `docs/sdd/_templates/plan-template.md`; `scripts/check_sdd_gate.py`
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_tables_without_separator_rows` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_gate_tables_without_separator_rows` — prove pipe rows without a Markdown separator cannot satisfy gate evidence.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Gate evidence table parsing must require a header followed by a Markdown separator row before body rows can be considered evidence.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, and gate evidence architecture tests.
+- **Kill/defer criteria**: Stop if separator-less pipe text satisfies clarify/checklist/analyze evidence, if valid Markdown tables are rejected, or if the gate CLI retains a local parser.
+- **Eval/repair signal**: separator-less table false green, valid gate evidence regression, and duplicated table-body parsing between gate CLI and full validator.
+- **Implementation**: Add a shared `table_body_rows()` helper in the full validator and use it from `check_sdd_gate.py`.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_tables_without_separator_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_gate_tables_without_separator_rows -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 193 — Gate evidence body rows follow separators
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 192
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `docs/sdd/_templates/spec-template.md`; `docs/sdd/_templates/plan-template.md`; `scripts/check_sdd_gate.py`
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_body_rows_before_separator` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_body_rows_before_separator` — prove body rows before a separator cannot satisfy gate evidence.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Gate evidence body rows must only be parsed after a header row followed immediately by a Markdown separator row.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, and gate evidence architecture tests.
+- **Kill/defer criteria**: Stop if pre-separator body rows satisfy clarify/checklist/analyze evidence, if valid Markdown tables are rejected, or if analyze gate result parsing diverges from gate evidence parsing.
+- **Eval/repair signal**: pre-separator body false green, separator-less table false green, valid gate evidence regression, and duplicated table-body parsing.
+- **Implementation**: Tighten the shared `table_body_rows()` helper to treat the first pipe row as the header, require the second pipe row to be the separator, and return only following non-separator rows.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_body_rows_before_separator tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_body_rows_before_separator -q`
+- **Review owner**: parent
+- **Status**: [x]

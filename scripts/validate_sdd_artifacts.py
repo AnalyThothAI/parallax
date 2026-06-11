@@ -1765,15 +1765,23 @@ def _section_has_non_placeholder_table_row(text: str, heading: str) -> bool:
 
 
 def _section_table_rows(text: str, heading: str) -> list[list[str]]:
-    rows: list[list[str]] = []
     section = _section_text(text, heading)
-    for line in section.splitlines():
-        stripped = line.strip()
-        if not stripped.startswith("|") or "---" in stripped:
-            continue
-        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
-        rows.append(cells)
-    return rows[1:]
+    return table_body_rows(section)
+
+
+def table_body_rows(section: str) -> list[list[str]]:
+    table_lines = [line.strip() for line in section.splitlines() if line.strip().startswith("|")]
+    if len(table_lines) < 3 or not _is_table_separator_row(table_lines[1]):
+        return []
+    return [_table_cells(line) for line in table_lines[2:] if not _is_table_separator_row(line)]
+
+
+def _table_cells(line: str) -> list[str]:
+    return [cell.strip() for cell in line.strip("|").split("|")]
+
+
+def _is_table_separator_row(line: str) -> bool:
+    return bool(line) and set(line) <= {"|", "-", ":", " "}
 
 
 def _is_placeholder_table_cell(value: str) -> bool:
