@@ -2513,6 +2513,96 @@ def test_delegated_tasks_require_handoff_mode_constraints(tmp_path: Path) -> Non
     assert "missing Mode constraints" in " ".join(issue.message for issue in invalid_issues)
 
 
+def test_delegated_tasks_require_embedded_context_packet_mode_constraints(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-embedded-context-mode-constraints")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    report = tmp_path / "docs" / "generated" / "subagent-reports" / "valid.md"
+    report.parent.mkdir(parents=True)
+    report.write_text(
+        "\n".join(
+            [
+                "# Subagent Report",
+                "",
+                "Mode: write-allowed",
+                "",
+                "## Findings",
+                "- Task-bound report evidence.",
+                "",
+                "## Scope Adherence",
+                "- Owned scope: pass",
+                "- Conflict set: pass",
+                "",
+                "## Changed Files",
+                "- `scripts/validate_sdd_artifacts.py`",
+                "",
+                "## Required Reading Evidence",
+                "- Task classification: Harness/tests",
+                "- `AGENTS.md`",
+                "- `docs/agent-playbook/task-reading-matrix.md`",
+                "- `docs/WORKFLOW.md`",
+                "- `docs/sdd/_templates/`",
+                "",
+                "## Verification Evidence",
+                "```text",
+                "$ uv run pytest tests/architecture/test_sdd_artifact_validator.py -q",
+                "passed",
+                "exit code: 0",
+                "```",
+                "",
+                "## Remaining Risks",
+                "- none",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    handoff = tmp_path / "docs" / "generated" / "subagent-handoffs" / "stale-context.md"
+    handoff.parent.mkdir(parents=True)
+    handoff.write_text(
+        "\n".join(
+            [
+                "# Subagent Handoff - 2026-06-09-embedded-context-mode-constraints / Task 1",
+                "",
+                "Mode: write-allowed",
+                "Mode constraints:",
+                "- Write-allowed mode: changed files must stay inside Owned scope and avoid Do not touch.",
+                "",
+                "Context packet:",
+                "",
+                "```md",
+                "# Context Packet - 2026-06-09-embedded-context-mode-constraints / Task 1",
+                "",
+                "Mode: write-allowed",
+                "```",
+                "",
+                "Report contract:",
+                "- Parent validates the report with "
+                "`uv run python scripts/validate_subagent_report.py "
+                "--feature 2026-06-09-embedded-context-mode-constraints "
+                "--task 1 --mode write-allowed --report <report.md>`.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _write_valid_tasks(
+        feature / "tasks.md",
+        status="In Progress",
+        subagent_handoff="docs/generated/subagent-handoffs/stale-context.md",
+        subagent_report="docs/generated/subagent-reports/valid.md",
+        review_result="accepted",
+        task_status="[~]",
+    )
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    invalid_issues = [issue for issue in issues if issue.code == "task-invalid-subagent-handoff-artifact"]
+    assert invalid_issues
+    assert "embedded Context Packet missing Mode constraints" in " ".join(
+        issue.message for issue in invalid_issues
+    )
+
+
 def test_delegated_tasks_validate_report_artifact_against_task(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-invalid-subagent-report")
     _write_valid_spec(feature / "spec.md", status="In Progress")
@@ -3088,6 +3178,10 @@ def _write_valid_subagent_handoff(
                 "",
                 "```md",
                 f"# Context Packet - {feature_slug} / {task_anchor}",
+                "",
+                f"Mode: {mode}",
+                "Mode constraints:",
+                *mode_constraint_lines(mode),
                 "```",
                 "",
                 "Report contract:",

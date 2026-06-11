@@ -32,6 +32,7 @@ The prior executable harness record was an omnibus active ledger with more than 
 | Subagent context packets are dispatch-bound. | Context packet generation rejects completed or dependency-blocked tasks before a subagent can receive stale context. |
 | Subagent mode constraints are deterministic. | Context packet and handoff generation emit mode-specific edit boundaries for read-only, write-allowed, and review-only lanes. |
 | Subagent handoff artifacts enforce mode constraints. | Validator rejects delegated handoff artifacts that omit the mode-specific edit boundary emitted by the generator. |
+| Embedded context packets enforce mode constraints. | Validator rejects delegated handoffs whose embedded Context Packet omits or drifts from the handoff mode boundary. |
 
 ## Acceptance criteria
 
@@ -47,6 +48,7 @@ The prior executable harness record was an omnibus active ledger with more than 
 - AC10. WHEN `scripts/build_agent_context_packet.py` is asked to build context for a completed task or a task with incomplete dependencies THEN it SHALL fail with the same dispatchability reason as `scripts/dispatch_sdd_task.py` before subagents can receive stale or blocked task context.
 - AC11. WHEN `scripts/build_agent_context_packet.py` or `scripts/dispatch_sdd_task.py` emits subagent context THEN it SHALL include mode-specific edit constraints before read-only, write-allowed, or review-only lanes can rely on implicit prompt convention.
 - AC12. WHEN a delegated task references a `Subagent handoff` artifact THEN `scripts/validate_sdd_artifacts.py` SHALL reject it as `task-invalid-subagent-handoff-artifact` unless the artifact contains `Mode constraints:` and the constraint line matching its `Mode:`.
+- AC13. WHEN a delegated handoff artifact embeds a `Context Packet` fenced block THEN `scripts/validate_sdd_artifacts.py` SHALL reject it as `task-invalid-subagent-handoff-artifact` unless the embedded packet has the same `Mode:` and matching `Mode constraints:` as the handoff.
 
 ## Risks
 

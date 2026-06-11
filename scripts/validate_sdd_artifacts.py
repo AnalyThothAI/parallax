@@ -1443,6 +1443,11 @@ def _subagent_handoff_contract_issues(feature: SddFeature, task: TaskRecord, tex
         issues.append("missing matching embedded Context Packet title")
     else:
         _append_handoff_binding_issues(issues, context_match, feature.slug, task_anchor, "context packet title")
+        context_text = _embedded_context_packet_text(text, feature.slug, task_anchor)
+        if context_text is None:
+            issues.append("missing matching embedded Context Packet fenced block")
+        elif mode:
+            _append_context_packet_mode_issues(issues, context_text, mode)
 
     normalized_text = _normalize_handoff_text(text)
     required_tokens = (
@@ -1459,6 +1464,38 @@ def _subagent_handoff_contract_issues(feature: SddFeature, task: TaskRecord, tex
     if missing_tokens:
         issues.append("report validation command missing tokens: " + ", ".join(missing_tokens))
     return issues
+
+
+def _embedded_context_packet_text(text: str, expected_feature: str, expected_task: str) -> str | None:
+    for block_match in FENCED_BLOCK_RE.finditer(text):
+        body = block_match.group("body")
+        context_match = HANDOFF_CONTEXT_PACKET_RE.search(body)
+        if context_match is None:
+            continue
+        actual_feature = " ".join(context_match.group("feature").strip().split())
+        actual_task = " ".join(context_match.group("task").strip().split())
+        if actual_feature == expected_feature and actual_task.lower() == expected_task.lower():
+            return body
+    return None
+
+
+def _append_context_packet_mode_issues(issues: list[str], context_text: str, mode: str) -> None:
+    context_mode_match = HANDOFF_MODE_RE.search(context_text)
+    if context_mode_match is None:
+        issues.append("embedded Context Packet missing Mode line")
+        return
+
+    context_mode = context_mode_match.group("mode").lower()
+    if context_mode != mode:
+        issues.append(f"embedded Context Packet mode must match handoff mode: {mode}")
+
+    if "Mode constraints:" not in context_text:
+        issues.append("embedded Context Packet missing Mode constraints")
+        return
+
+    missing_constraints = [line for line in mode_constraint_lines(mode) if line not in context_text]
+    if missing_constraints:
+        issues.append("embedded Context Packet missing Mode constraints for mode: " + ", ".join(missing_constraints))
 
 
 def _subagent_handoff_mode(feature: SddFeature, task: TaskRecord) -> str | None:
