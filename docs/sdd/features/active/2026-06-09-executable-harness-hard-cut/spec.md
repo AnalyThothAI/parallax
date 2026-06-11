@@ -593,6 +593,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC212. WHEN `verification.md` Spec compliance has no canonical evidence rows THEN the validator and verify gate SHALL report `verified-incomplete-spec-compliance` before an empty completion matrix can satisfy final verification.
 - AC213. WHEN `verification.md` Spec compliance omits any acceptance criterion declared in `spec.md` THEN the validator and verify gate SHALL report `verified-incomplete-spec-compliance` before partial contract coverage can satisfy final verification.
 - AC214. WHEN `verification.md` Coverage rows are missing or remain non-complete THEN the validator and verify gate SHALL report `verified-coverage-incomplete` before coverage placeholders can satisfy final verification.
+- AC215. WHEN `verification.md` E2E golden path omits or leaves unchecked any required runtime signal THEN the validator and verify gate SHALL report `verified-e2e-incomplete` before skipped or not-applicable E2E evidence can satisfy final verification.
 
 ## Risks
 

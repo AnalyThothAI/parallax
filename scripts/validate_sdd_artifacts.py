@@ -97,6 +97,13 @@ GATE_EVIDENCE_HEADERS = {
 SPEC_COMPLIANCE_HEADER = ("Acceptance criterion", "Status", "Evidence")
 COVERAGE_HEADER = ("metric", "value", "threshold", "status")
 GATE_COMPLIANCE_GATES = ("Clarify", "Checklist", "Analyze", "Implement", "Verify")
+E2E_GOLDEN_PATH_CHECKS = (
+    "/readyz returned 200",
+    "writer wrote a row visible to a separate process",
+    "/api/recent returned the injected event",
+    "WS /ws/live pushed within 5s",
+    "testcontainers PG and uvicorn subprocess cleaned up",
+)
 METADATA_REQUIREMENTS = {
     "spec.md": ("status", "date", "owner", "approved by", "approved at"),
     "plan.md": ("status", "date", "owning spec", "worktree", "branch", "approved by", "approved at"),
@@ -1461,12 +1468,47 @@ def _verified_issues(feature: SddFeature) -> list[SddIssue]:
         )
     issues.extend(_verified_spec_compliance_issues(feature, artifact))
     issues.extend(_verified_coverage_issues(artifact))
+    issues.extend(_verified_e2e_issues(artifact))
     skipped_match = SKIPPED_RE.search(artifact.text)
     if skipped_match and int(skipped_match.group("count")) > 0 and not _skipped_rows_are_acceptable(artifact.text):
         issues.append(
             _issue("verified-unexplained-skips", artifact, "Verified record has skipped tests without explanation")
         )
     return issues
+
+
+def _verified_e2e_issues(artifact: ArtifactRecord) -> list[SddIssue]:
+    section = _section_text(artifact.text, "## E2E golden path")
+    if "SKIP_E2E=1" in section:
+        return [
+            _issue(
+                "verified-e2e-incomplete",
+                artifact,
+                "Verified E2E golden path cannot use SKIP_E2E=1 as completion evidence",
+            )
+        ]
+
+    missing_or_unchecked = [
+        check
+        for check in E2E_GOLDEN_PATH_CHECKS
+        if f"- [x] {check}" not in section and f"- [X] {check}" not in section
+    ]
+    unchecked = [line.strip() for line in section.splitlines() if line.strip().startswith("- [ ]")]
+    if not missing_or_unchecked and not unchecked:
+        return []
+
+    parts: list[str] = []
+    if missing_or_unchecked:
+        parts.append("missing checked signals: " + ", ".join(missing_or_unchecked))
+    if unchecked:
+        parts.append("unchecked rows: " + "; ".join(unchecked))
+    return [
+        _issue(
+            "verified-e2e-incomplete",
+            artifact,
+            "Verified E2E golden path must check every required runtime signal: " + "; ".join(parts),
+        )
+    ]
 
 
 def _verified_coverage_issues(artifact: ArtifactRecord) -> list[SddIssue]:

@@ -231,6 +231,7 @@ claim is allowed without the corresponding output captured below.
 | AC212 — Spec compliance rows are required. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_spec_compliance_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_empty_spec_compliance -q` failed RED when empty Spec compliance tables satisfied final verification, then passed after final evidence required a canonical Spec compliance row. |
 | AC213 — Spec compliance covers every AC. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_spec_compliance_for_all_acceptance_criteria tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_partial_spec_compliance -q` failed RED when final verification covered only AC1 while `spec.md` declared AC2, then passed after Spec compliance rows had to match spec acceptance criteria. |
 | AC214 — Coverage rows must pass. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_passing_coverage_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_pending_coverage tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence -q` failed RED when Pending coverage rows satisfied final verification, then passed after Coverage required canonical complete rows. |
+| AC215 — E2E golden path must pass. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_complete_e2e_golden_path tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_incomplete_e2e_golden_path tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence -q` failed RED when unchecked or not-applicable E2E rows satisfied final verification, then passed after all required E2E runtime signals had to be checked. |
 
 Deviations from spec:
 
@@ -4049,6 +4050,17 @@ $ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified
 ...                                                                      [100%]
 3 passed in 0.13s
 exit code: 0
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_complete_e2e_golden_path tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_incomplete_e2e_golden_path tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence -q
+FF.                                                                      [100%]
+AssertionError: assert 'verified-e2e-incomplete' in set()
+AssertionError: assert 0 == 1
+exit code: 1
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_complete_e2e_golden_path tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_incomplete_e2e_golden_path tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence -q
+...                                                                      [100%]
+3 passed in 0.11s
+exit code: 0
 ```
 
 ## Diff summary
@@ -4097,6 +4109,7 @@ Files changed:
 - Required Spec compliance rows: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Full Spec compliance AC coverage: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Verified Coverage row completion: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
+- Verified E2E golden path completion: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Mechanical frontend Prettier drift cleanup: macro pages, macro component test, `web/vite.config.ts`.
 
 Migrations applied:

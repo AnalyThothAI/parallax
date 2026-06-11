@@ -1146,6 +1146,25 @@ def test_verified_feature_requires_passing_coverage_rows(tmp_path: Path) -> None
     assert "line" in "\n".join(issue.message for issue in issues)
 
 
+def test_verified_feature_requires_complete_e2e_golden_path(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "completed", "2026-06-09-incomplete-e2e-golden")
+    _write_valid_spec(feature / "spec.md", status="Verified")
+    _write_valid_plan(feature / "plan.md", status="Verified")
+    _write_valid_tasks(feature / "tasks.md", status="Verified")
+    _write_valid_verification(feature / "verification.md", status="Verified")
+    verification_path = feature / "verification.md"
+    verification_text = verification_path.read_text(encoding="utf-8")
+    verification_path.write_text(
+        verification_text.replace("- [x] WS /ws/live pushed within 5s", "- [ ] WS /ws/live pushed within 5s"),
+        encoding="utf-8",
+    )
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "verified-e2e-incomplete" in _issue_codes(issues)
+    assert "WS /ws/live" in "\n".join(issue.message for issue in issues)
+
+
 def test_complete_tasks_require_matching_verification_evidence(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-complete-task-without-evidence")
     _write_valid_spec(feature / "spec.md", status="In Progress")

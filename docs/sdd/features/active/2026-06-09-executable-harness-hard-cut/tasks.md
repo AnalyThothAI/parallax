@@ -4514,3 +4514,24 @@
 - **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_passing_coverage_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_pending_coverage tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 215 — E2E golden path must pass
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 214
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/verification-template.md`
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_complete_e2e_golden_path` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_incomplete_e2e_golden_path` — prove final verification cannot pass with unchecked or not-applicable E2E rows.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `verification.md` E2E golden path must include checked rows for `/readyz`, writer visibility, `/api/recent`, `/ws/live`, and testcontainer cleanup; `SKIP_E2E=1` cannot be completion evidence.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `docs/sdd/_templates/verification-template.md`, and final verification evidence tests.
+- **Kill/defer criteria**: Stop if unchecked, missing, not-applicable, or skipped E2E evidence can pass final verification.
+- **Eval/repair signal**: E2E-golden false green and completion-gate drift.
+- **Implementation**: Add `_verified_e2e_issues()` to the shared final-evidence helper and require all canonical E2E runtime signals to be checked.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_complete_e2e_golden_path tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_incomplete_e2e_golden_path tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence -q`
+- **Review owner**: parent
+- **Status**: [x]
