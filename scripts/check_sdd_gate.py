@@ -12,6 +12,7 @@ from scripts.validate_sdd_artifacts import (  # noqa: E402
     SddFeature,
     SddIssue,
     is_placeholder_table_cell,
+    is_table_evidence_row,
     scan_sdd_features,
     validate_sdd_root,
 )
@@ -141,10 +142,7 @@ def _section_text(text: str, heading: str) -> str:
 
 
 def _has_table_evidence(section: str) -> bool:
-    return any(
-        cells and all(not is_placeholder_table_cell(cell) for cell in cells)
-        for cells in _table_body_rows(section)
-    )
+    return any(is_table_evidence_row(cells) for cells in _table_body_rows(section))
 
 
 def _table_body_rows(section: str) -> list[list[str]]:

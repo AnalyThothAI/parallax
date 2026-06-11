@@ -569,6 +569,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC188. WHEN required SDD section names appear only as prose or backticked tokens instead of Markdown heading lines THEN the validator and gate checker SHALL treat the section as missing before artifact evidence can be accepted.
 - AC189. WHEN required SDD section names appear inside fenced code blocks THEN the validator and gate checker SHALL ignore those tokens as headings before artifact evidence can be accepted or section bodies can be truncated.
 - AC190. WHEN SDD fenced code blocks use tilde fences (`~~~`) instead of backtick fences THEN the validator and gate checker SHALL apply the same heading-ignore and citation-ignore semantics before gate evidence can pass.
+- AC191. WHEN gate evidence tables contain body rows with fewer than two non-placeholder cells THEN the validator and gate checker SHALL reject the section as lacking evidence before lifecycle gates can pass.
 
 ## Risks
 

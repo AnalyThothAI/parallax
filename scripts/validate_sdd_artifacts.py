@@ -1761,10 +1761,7 @@ def _is_fence_line(line: str) -> bool:
 
 
 def _section_has_non_placeholder_table_row(text: str, heading: str) -> bool:
-    for cells in _section_table_rows(text, heading):
-        if cells and all(not _is_placeholder_table_cell(cell) for cell in cells):
-            return True
-    return False
+    return any(is_table_evidence_row(cells) for cells in _section_table_rows(text, heading))
 
 
 def _section_table_rows(text: str, heading: str) -> list[list[str]]:
@@ -1781,6 +1778,10 @@ def _section_table_rows(text: str, heading: str) -> list[list[str]]:
 
 def _is_placeholder_table_cell(value: str) -> bool:
     return is_placeholder_table_cell(value)
+
+
+def is_table_evidence_row(cells: list[str]) -> bool:
+    return len(cells) >= 2 and all(not _is_placeholder_table_cell(cell) for cell in cells)
 
 
 def is_placeholder_table_cell(value: str) -> bool:

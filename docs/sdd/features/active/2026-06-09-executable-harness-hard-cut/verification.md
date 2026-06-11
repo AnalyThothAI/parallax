@@ -207,6 +207,7 @@ claim is allowed without the corresponding output captured below.
 | AC188 — SDD sections require Markdown heading lines. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_required_sections_must_be_markdown_heading_lines tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_requires_markdown_heading_lines -q` failed RED when backticked `## Clarifications` prose satisfied section detection, then passed after line-level heading parsing was shared by validator and gate CLI. |
 | AC189 — SDD section parser ignores fenced headings. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_required_sections_ignore_fenced_heading_tokens tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_ignores_fenced_heading_tokens -q` failed RED when fenced `## Clarifications` tokens satisfied section detection, then passed after section parsing ignored fenced blocks. |
 | AC190 — SDD fenced parser covers tilde fences. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_required_sections_ignore_tilde_fenced_heading_tokens tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_ignores_tilde_fenced_heading_tokens -q` failed RED when `~~~` fenced headings passed the gate and triggered citation noise, then passed after fence parsing covered both Markdown fence forms. |
+| AC191 — Gate evidence rejects single-cell rows. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_single_cell_body_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_single_cell_gate_rows -q` failed RED when a one-cell body row satisfied gate evidence, then passed after validator and gate CLI shared a multi-cell evidence-row predicate. |
 
 Deviations from spec:
 
@@ -3759,6 +3760,17 @@ $ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_required
 ..                                                                       [100%]
 2 passed in 0.05s
 exit code: 0
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_single_cell_body_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_single_cell_gate_rows -q
+FF                                                                       [100%]
+AssertionError: assert 'gate-evidence-missing' in set()
+AssertionError: assert 0 == 1
+exit code: 1
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_single_cell_body_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_single_cell_gate_rows -q
+..                                                                       [100%]
+2 passed in 0.06s
+exit code: 0
 ```
 
 ## Diff summary
@@ -3783,6 +3795,7 @@ Files changed:
 - SDD section heading-line parsing: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Fence-aware SDD section parsing: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Tilde-fence SDD section parsing: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
+- Multi-cell gate evidence rows: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Mechanical frontend Prettier drift cleanup: macro pages, macro component test, `web/vite.config.ts`.
 
 Migrations applied:

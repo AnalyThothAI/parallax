@@ -4010,3 +4010,24 @@
 - **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_required_sections_ignore_tilde_fenced_heading_tokens tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_ignores_tilde_fenced_heading_tokens -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 191 — Gate evidence rejects single-cell rows
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 190
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `docs/sdd/_templates/spec-template.md`; `docs/sdd/_templates/plan-template.md`; `scripts/check_sdd_gate.py`
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_single_cell_body_rows` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_single_cell_gate_rows` — prove a single non-placeholder table cell cannot satisfy gate evidence.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Gate evidence rows must be table-shaped with at least two non-placeholder cells, and the gate CLI must reuse the validator's row predicate.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, and gate evidence architecture tests.
+- **Kill/defer criteria**: Stop if single-cell rows satisfy clarify/checklist/analyze evidence, if valid multi-cell body rows are rejected, or if gate CLI table evidence semantics drift from the full validator.
+- **Eval/repair signal**: single-cell false green, placeholder false green, and duplicated table-evidence predicates between gate CLI and full validator.
+- **Implementation**: Add `is_table_evidence_row()` in the full validator and use it from `check_sdd_gate.py`.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_single_cell_body_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_single_cell_gate_rows -q`
+- **Review owner**: parent
+- **Status**: [x]
