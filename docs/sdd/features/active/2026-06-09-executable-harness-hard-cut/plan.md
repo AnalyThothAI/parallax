@@ -745,6 +745,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC230: `uv run pytest tests/architecture/test_test_lane_contracts.py tests/architecture/test_worker_runtime_contracts.py -q`
 - AC231: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_validator_cli_fails_on_issues_without_check_flag -q`
 - AC232: `python -m pytest tests/architecture/test_test_lane_contracts.py::test_coverage_report_does_not_hide_empty_source_files -q`
+- AC233: `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_clis_reject_title_substring_selectors -q`
 
 ## Verification
 

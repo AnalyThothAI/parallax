@@ -26,7 +26,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Build a dry-run subagent handoff from an active SDD task")
     parser.add_argument("--root", type=Path, default=ROOT, help="repository root")
     parser.add_argument("--feature", required=True, help="SDD feature slug")
-    parser.add_argument("--task", required=True, help="task number or title substring")
+    parser.add_argument("--task", required=True, help="numeric task number")
     parser.add_argument("--mode", choices=VALID_MODES, default="read-only", help="subagent operating mode")
     args = parser.parse_args(argv)
 
@@ -42,6 +42,10 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     if feature.state != "active":
         print(f"error: dispatch only accepts active SDD features: {args.feature}", file=sys.stderr)
+        return 1
+
+    if not args.task.strip().isdigit():
+        print(f"error: task selector must be a numeric task number: {args.task}", file=sys.stderr)
         return 1
 
     task = _find_task(feature, args.task)
@@ -132,13 +136,9 @@ def _find_feature(features: list[SddFeature], slug: str) -> SddFeature | None:
 
 def _find_task(feature: SddFeature, selector: str) -> TaskRecord | None:
     normalized_selector = selector.strip().lower()
-    if normalized_selector.isdigit():
-        prefix = f"task {normalized_selector}"
-        for task in feature.tasks:
-            if task.title.lower().startswith(prefix):
-                return task
+    prefix = f"task {normalized_selector}"
     for task in feature.tasks:
-        if normalized_selector in task.title.lower():
+        if task.title.lower().startswith(prefix):
             return task
     return None
 

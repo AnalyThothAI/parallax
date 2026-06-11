@@ -317,6 +317,68 @@ def test_sdd_task_dispatch_cli_refuses_unmet_dependencies(tmp_path: Path) -> Non
 
 
 @pytest.mark.architecture
+def test_sdd_task_clis_reject_title_substring_selectors(tmp_path: Path) -> None:
+    _write_context_packet_fixture(tmp_path)
+    report = tmp_path / "subagent-report.md"
+    report.write_text(
+        _subagent_report(
+            mode="read-only",
+            changed_files="- none",
+            command="uv run pytest tests/architecture/test_agent_playbook_contracts.py -q",
+            exit_code=0,
+        ),
+        encoding="utf-8",
+    )
+    commands = (
+        (
+            "build_agent_context_packet.py",
+            [
+                "--mode",
+                "read-only",
+            ],
+        ),
+        (
+            "dispatch_sdd_task.py",
+            [
+                "--mode",
+                "read-only",
+            ],
+        ),
+        (
+            "validate_subagent_report.py",
+            [
+                "--mode",
+                "read-only",
+                "--report",
+                str(report),
+            ],
+        ),
+    )
+
+    for script_name, extra_args in commands:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "scripts" / script_name),
+                "--root",
+                str(tmp_path),
+                "--feature",
+                "2026-06-09-context-packet-fixture",
+                "--task",
+                "Dispatch packet",
+                *extra_args,
+            ],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        assert result.returncode == 1, script_name + "\n" + result.stdout + result.stderr
+        assert "task selector must be a numeric task number" in result.stderr
+
+
+@pytest.mark.architecture
 def test_sdd_gate_check_cli_accepts_individual_gates(tmp_path: Path) -> None:
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()

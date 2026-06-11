@@ -4892,3 +4892,24 @@
 - **Verification**: `python -m pytest tests/architecture/test_test_lane_contracts.py::test_coverage_report_does_not_hide_empty_source_files -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 233 — SDD task selectors are numeric only
+
+- **File(s)**: `scripts/build_agent_context_packet.py`, `scripts/dispatch_sdd_task.py`, `scripts/validate_subagent_report.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 232
+- **Touch set**: `scripts/build_agent_context_packet.py`, `scripts/dispatch_sdd_task.py`, `scripts/validate_subagent_report.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared agent playbook CLI tests and generated index updates.
+- **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_clis_reject_title_substring_selectors` — proves task-bound CLIs cannot select tasks by title substring.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `build_agent_context_packet.py`, `dispatch_sdd_task.py`, and `validate_subagent_report.py` must accept only numeric `--task` selectors; title substrings must fail before selecting any task.
+- **On-demand context**: `scripts/build_agent_context_packet.py`, `scripts/dispatch_sdd_task.py`, `scripts/validate_subagent_report.py`, and Pasteur read-only harness audit.
+- **Kill/defer criteria**: Stop if any task-bound CLI still matches `selector in task.title`, if help text promises title substrings, or if numeric task selectors stop working.
+- **Eval/repair signal**: wrong-task dispatch, context-packet drift, and subagent report validation against the wrong task.
+- **Implementation**: Reject non-digit `--task` values in all task-bound CLIs and remove title-substring fallback loops while preserving numeric task selection.
+- **Verification**: `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_clis_reject_title_substring_selectors -q`
+- **Review owner**: parent
+- **Status**: [x]

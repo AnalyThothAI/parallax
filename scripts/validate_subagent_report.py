@@ -22,7 +22,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Validate a bounded subagent report before parent integration")
     parser.add_argument("--root", type=Path, default=ROOT, help="repository root")
     parser.add_argument("--feature", help="optional SDD feature slug for task-bound validation")
-    parser.add_argument("--task", help="optional task number or title substring for task-bound validation")
+    parser.add_argument("--task", help="optional numeric task number for task-bound validation")
     parser.add_argument("--mode", choices=VALID_MODES, required=True, help="mode used for the subagent handoff")
     parser.add_argument("--report", type=Path, required=True, help="markdown report file to validate")
     args = parser.parse_args(argv)
@@ -44,6 +44,10 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         if feature.state != "active":
             print(f"error: subagent reports bind only to active SDD features: {args.feature}", file=sys.stderr)
+            return 1
+
+        if not args.task.strip().isdigit():
+            print(f"error: task selector must be a numeric task number: {args.task}", file=sys.stderr)
             return 1
 
         task = _find_task(feature, args.task)
@@ -71,13 +75,9 @@ def _find_feature(features: list[SddFeature], slug: str) -> SddFeature | None:
 
 def _find_task(feature: SddFeature, selector: str) -> TaskRecord | None:
     normalized_selector = selector.strip().lower()
-    if normalized_selector.isdigit():
-        prefix = f"task {normalized_selector}"
-        for task in feature.tasks:
-            if task.title.lower().startswith(prefix):
-                return task
+    prefix = f"task {normalized_selector}"
     for task in feature.tasks:
-        if normalized_selector in task.title.lower():
+        if task.title.lower().startswith(prefix):
             return task
     return None
 
