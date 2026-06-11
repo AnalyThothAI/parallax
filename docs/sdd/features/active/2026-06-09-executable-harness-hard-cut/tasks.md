@@ -4199,3 +4199,24 @@
 - **Verification**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_invalid_analyze_result_with_placeholder_check -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 200 — Gate evidence rejects repeated separators
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 199
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/spec-template.md`; `docs/sdd/_templates/plan-template.md`
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_repeated_separator_rows` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_repeated_separator_rows` — prove a second separator row cannot be skipped before accepting later evidence rows.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: A gate evidence table may have exactly one header separator row; separator-shaped rows after the header separator invalidate that table block.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, and gate evidence table parser tests.
+- **Kill/defer criteria**: Stop if repeated separator rows satisfy gate evidence, if valid single-separator Markdown tables are rejected, or if the gate CLI diverges from the shared parser.
+- **Eval/repair signal**: repeated-separator false green, valid-table regression, and validator/gate CLI parser drift.
+- **Implementation**: Tighten `_table_block_body_rows()` so any separator-shaped row after the header separator rejects the whole table block instead of being skipped.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_repeated_separator_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_repeated_separator_rows -q`
+- **Review owner**: parent
+- **Status**: [x]

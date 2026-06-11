@@ -1812,7 +1812,9 @@ def _table_block_body_rows(
     if expected_header is not None and tuple(header_cells) != expected_header:
         return []
     separator_cells = _table_cells(table_lines[1])
-    body_rows = [_table_cells(line) for line in table_lines[2:] if not _is_table_separator_row(line)]
+    if any(_is_table_separator_row(line) for line in table_lines[2:]):
+        return []
+    body_rows = [_table_cells(line) for line in table_lines[2:]]
     if not _table_rows_have_matching_arity([separator_cells, *body_rows], len(header_cells)):
         return []
     return body_rows

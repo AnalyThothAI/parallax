@@ -578,6 +578,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC197. WHEN gate evidence tables use non-canonical headers for their lifecycle section THEN the validator and gate checker SHALL reject the section as lacking evidence before lifecycle gates can pass.
 - AC198. WHEN Analyze Gate contains additional non-canonical Markdown tables THEN the validator and gate checker SHALL ignore those tables for `Pass:` or `Blocked:` result validation before contextual notes can create false lifecycle failures.
 - AC199. WHEN an Analyze Gate canonical row contains an invalid non-placeholder result and placeholder text in another column THEN the gate checker SHALL still reject the row with the validator's Analyze result semantics before placeholder checks can hide lifecycle failures.
+- AC200. WHEN a gate evidence table contains repeated separator rows after the header separator THEN the validator and gate checker SHALL reject the table as lacking evidence before malformed Markdown can satisfy lifecycle gates.
 
 ## Risks
 
