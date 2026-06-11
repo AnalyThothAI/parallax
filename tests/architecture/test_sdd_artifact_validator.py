@@ -1072,6 +1072,27 @@ def test_verified_feature_requires_skipped_table_to_match_skip_count(tmp_path: P
     assert "verified-unexplained-skips" in _issue_codes(issues)
 
 
+def test_verified_feature_requires_canonical_skipped_tests_table(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "completed", "2026-06-09-freeform-skip-table")
+    _write_valid_spec(feature / "spec.md", status="Verified")
+    _write_valid_plan(feature / "plan.md", status="Verified")
+    _write_valid_tasks(feature / "tasks.md", status="Verified")
+    _write_valid_verification(
+        feature / "verification.md",
+        status="Verified",
+        skipped_count="1",
+        skipped_table_rows=(
+            "| qty | note | ok |",
+            "| 1 | existing skip | Yes |",
+        ),
+    )
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "verified-unexplained-skips" in _issue_codes(issues)
+    assert "canonical Skipped tests table" in "\n".join(issue.message for issue in issues)
+
+
 def test_verified_feature_requires_numeric_skipped_test_count(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "completed", "2026-06-09-pending-skip-count")
     _write_valid_spec(feature / "spec.md", status="Verified")

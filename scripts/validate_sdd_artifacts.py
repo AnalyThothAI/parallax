@@ -96,6 +96,7 @@ GATE_EVIDENCE_HEADERS = {
 }
 SPEC_COMPLIANCE_HEADER = ("Acceptance criterion", "Status", "Evidence")
 COVERAGE_HEADER = ("metric", "value", "threshold", "status")
+SKIPPED_TESTS_HEADER = ("count", "reason", "acceptable?")
 GATE_COMPLIANCE_GATES = ("Clarify", "Checklist", "Analyze", "Implement", "Verify")
 E2E_GOLDEN_PATH_CHECKS = (
     "/readyz returned 200",
@@ -1481,7 +1482,11 @@ def _verified_issues(feature: SddFeature) -> list[SddIssue]:
         )
     elif int(skipped_match.group("count")) > 0 and not _skipped_rows_are_acceptable(skipped_section):
         issues.append(
-            _issue("verified-unexplained-skips", artifact, "Verified record has skipped tests without explanation")
+            _issue(
+                "verified-unexplained-skips",
+                artifact,
+                "Verified record has skipped tests without a matching canonical Skipped tests table",
+            )
         )
     return issues
 
@@ -2112,18 +2117,20 @@ def _skipped_rows_are_acceptable(text: str) -> bool:
     if skipped_count == 0:
         return True
 
-    rows = [line for line in text.splitlines() if line.startswith("|") and "---" not in line]
-    data_rows = rows[1:]
+    data_rows = table_body_rows(text, SKIPPED_TESTS_HEADER)
+    if not data_rows:
+        return False
+
     total = 0
-    for row in data_rows:
-        cells = [cell.strip().lower() for cell in row.strip("|").split("|")]
-        if len(cells) < 3:
+    for cells in data_rows:
+        cleaned_cells = [cell.strip().lower() for cell in cells]
+        if len(cleaned_cells) < 3:
             return False
         try:
-            total += int(cells[0])
+            total += int(cleaned_cells[0])
         except ValueError:
             return False
-        if cells[-1] not in {"yes", "acceptable", "true"}:
+        if cleaned_cells[-1] not in {"yes", "acceptable", "true"}:
             return False
     return total == skipped_count
 
