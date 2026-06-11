@@ -38,6 +38,7 @@ The prior executable harness record was an omnibus active ledger with more than 
 | Task selectors are exact. | Context packet, dispatch, and report-validation CLIs bind `--task <number>` to the exact numbered task, not a prefix match. |
 | Subagent reports are task-bound. | Report validation rejects unbound reports so task scope, required reading, and verification commands cannot be skipped. |
 | Task selectors are canonical. | Context packet, dispatch, and report-validation CLIs reject noncanonical numeric selectors such as `01`. |
+| SDD task identifiers are canonical. | Validator rejects noncanonical task headings and dependency references such as `Task 01`. |
 
 ## Acceptance criteria
 
@@ -59,6 +60,7 @@ The prior executable harness record was an omnibus active ledger with more than 
 - AC16. WHEN `scripts/build_agent_context_packet.py`, `scripts/dispatch_sdd_task.py`, or `scripts/validate_subagent_report.py` receives `--task 1` and the task board lists `Task 10` before `Task 1` THEN it SHALL bind to `Task 1` exactly before subagent context, handoff, or report validation can drift through prefix matching.
 - AC17. WHEN `scripts/validate_subagent_report.py` is invoked without both `--feature` and `--task` THEN it SHALL fail before report content validation so subagent reports cannot bypass task-bound scope, required-reading, or verification-command checks.
 - AC18. WHEN `scripts/build_agent_context_packet.py`, `scripts/dispatch_sdd_task.py`, or `scripts/validate_subagent_report.py` receives a noncanonical numeric selector such as `--task 01` THEN it SHALL reject the selector before it can bind to `Task 1`.
+- AC19. WHEN an SDD `tasks.md` record uses a noncanonical task heading or dependency reference such as `Task 01` THEN `scripts/validate_sdd_artifacts.py` SHALL reject it before task identity can alias `Task 1`.
 
 ## Risks
 

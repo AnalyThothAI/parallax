@@ -14,7 +14,7 @@
 | Clarify | Spec contains approved clarification for superseding the omnibus record. |
 | Checklist | Spec records the active-record size bound requirement. |
 | Analyze | Plan Analyze Gate records why active records should remain bounded. |
-| Implement | Tasks 1-18 implement the validator, migration, documentation contract, stale-template cleanup, machine-readable verification status tokens, active lifecycle command hard cut, active placeholder final-evidence rejection, active skipped-test accounting bound, fail-closed final-evidence templates, dispatch-bound context packets, generated subagent mode constraints, validator-enforced handoff mode constraints, embedded context-packet mode constraints, top-level handoff validation scope, exact report validation command enforcement, exact task-number selection, task-bound report validation, and canonical task selector parsing. |
+| Implement | Tasks 1-19 implement the validator, migration, documentation contract, stale-template cleanup, machine-readable verification status tokens, active lifecycle command hard cut, active placeholder final-evidence rejection, active skipped-test accounting bound, fail-closed final-evidence templates, dispatch-bound context packets, generated subagent mode constraints, validator-enforced handoff mode constraints, embedded context-packet mode constraints, top-level handoff validation scope, exact report validation command enforcement, exact task-number selection, task-bound report validation, canonical task selector parsing, and canonical SDD task identity parsing. |
 | Verify | Verification artifact captures RED/GREEN command output. |
 
 ## Tasks
@@ -394,5 +394,26 @@
 - **Eval/repair signal**: noncanonical task selector emits context, handoff, or report validation for a different canonical command.
 - **Implementation**: Add shared canonical task selector validation and reuse it from all subagent task CLIs.
 - **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_clis_reject_noncanonical_numeric_selectors -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 19 - Reject noncanonical SDD task identifiers
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`
+- **Owner**: parent
+- **Depends on**: Task 18
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD validator, task identity semantics, tests, and generated index updates.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_noncanonical_dependency_references` and `tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_noncanonical_number_headings` - prove `Task 01` cannot alias `Task 1` in SDD records.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: SDD task headings and dependency references must use canonical positive integers with no leading zeroes.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`.
+- **Kill/defer criteria**: Stop if `Task 01` remains accepted as an alias for `Task 1` in any SDD record field.
+- **Eval/repair signal**: noncanonical task heading passes validation, dependency aliases a different canonical task, or generated task identity drifts from CLI selector semantics.
+- **Implementation**: Tighten task heading and dependency-reference parsing to canonical task numbers only.
+- **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_noncanonical_dependency_references tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_noncanonical_number_headings -q`
 - **Review owner**: parent
 - **Status**: [x]

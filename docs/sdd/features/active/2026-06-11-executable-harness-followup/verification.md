@@ -31,6 +31,7 @@
 | AC16 - Subagent task selectors are exact. | Pass | `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_clis_match_exact_task_numbers -q` passed after context packet, dispatch, and report-validation CLIs shared exact numeric task lookup; the same test failed RED first because `--task 1` matched a preceding `Task 10`. |
 | AC17 - Subagent reports are task-bound. | Pass | `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_requires_task_binding -q` passed after optional report validation binding was removed; the same test failed RED first because an unbound report returned 0. |
 | AC18 - Subagent task selectors are canonical. | Pass | `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_clis_reject_noncanonical_numeric_selectors -q` passed after shared selector parsing rejected leading zeroes; the same test failed RED first because `--task 01` emitted Task 1 context. |
+| AC19 - SDD task identifiers are canonical. | Pass | `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_noncanonical_dependency_references tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_noncanonical_number_headings -q` passed after task heading and dependency parsing rejected leading zeroes; the same tests failed RED first because `Task 01` either passed or was misreported as `Task 1`. |
 
 ## Verification commands
 
@@ -40,7 +41,7 @@ Not final completion evidence. Final completion still requires `make check-all` 
 
 | metric | value | threshold | status |
 |--------|-------|-----------|--------|
-| agent loop and SDD artifact tests | 240 tests | >= targeted harness tests | Pass |
+| agent loop and SDD artifact tests | 242 tests | >= targeted harness tests | Pass |
 | SDD active gates | 2 active features | all active clarify/checklist/analyze/implement gates pass | Pass |
 
 ## Skipped tests
@@ -763,6 +764,53 @@ exit code: 0
 
 $ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run ruff check scripts/validate_sdd_artifacts.py scripts/build_agent_context_packet.py scripts/dispatch_sdd_task.py scripts/validate_subagent_report.py tests/architecture/test_agent_playbook_contracts.py
 All checks passed!
+exit code: 0
+
+$ git diff --check
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_noncanonical_dependency_references tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_noncanonical_number_headings -q
+FF                                                                       [100%]
+AssertionError: assert 'canonical Task references' in 'Task 1 - Valid unresolved: Task 1'
+AssertionError: assert 'task-invalid-numbering' in set()
+exit code: 1
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_noncanonical_dependency_references tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_noncanonical_number_headings tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_unresolved_dependencies tests/architecture/test_sdd_artifact_validator.py::test_tasks_require_unique_contiguous_numbers tests/architecture/test_sdd_artifact_validator.py::test_completed_tasks_reject_incomplete_dependencies -q
+.....                                                                    [100%]
+5 passed in 0.04s
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_noncanonical_dependency_references tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_noncanonical_number_headings -q
+..                                                                       [100%]
+2 passed in 0.02s
+exit code: 0
+
+$ uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_noncanonical_dependency_references tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_noncanonical_number_headings -q
+..                                                                       [100%]
+2 passed in 0.02s
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run pytest tests/architecture/test_agent_playbook_contracts.py tests/architecture/test_harness_structure.py tests/architecture/test_sdd_artifact_validator.py -q
+........................................................................ [ 29%]
+........................................................................ [ 59%]
+........................................................................ [ 89%]
+..........................                                               [100%]
+242 passed in 12.58s
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run ruff check scripts/validate_sdd_artifacts.py tests/architecture/test_sdd_artifact_validator.py
+All checks passed!
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run python scripts/validate_sdd_artifacts.py
+SDD artifact validation passed.
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run python scripts/regen_sdd_work_index.py --check
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run python scripts/check_sdd_gate.py --all-active
+all active SDD gates passed (clarify/checklist/analyze/implement): 2026-06-09-agent-playbook-skill-hard-cut, 2026-06-11-executable-harness-followup
 exit code: 0
 
 $ git diff --check

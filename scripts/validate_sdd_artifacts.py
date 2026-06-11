@@ -61,10 +61,13 @@ PLAN_PREFLIGHT_WORKTREE_RE = re.compile(
 LEGACY_SDD_LIFECYCLE_CHECK_RE = re.compile(
     r"scripts/(?:validate_sdd_artifacts|check_sdd_gate)\.py[^\n`|;&]*--check"
 )
-TASK_NUMBER_RE = re.compile(r"^Task\s+(?P<number>\d+)\b", re.IGNORECASE)
+TASK_NUMBER_RE = re.compile(r"^Task\s+(?P<number>[1-9]\d*)\b", re.IGNORECASE)
 TASK_SELECTOR_RE = re.compile(r"^[1-9]\d*$")
 TASK_SELECTOR_ERROR = "task selector must be a numeric task number without leading zeroes"
-TASK_DEPENDENCY_RE = re.compile(r"\bTasks?\s+(?P<start>\d+)(?:\s*-\s*(?P<end>\d+))?\b", re.IGNORECASE)
+TASK_DEPENDENCY_RE = re.compile(
+    r"\bTasks?\s+(?P<start>[1-9]\d*)\b(?:\s*-\s*(?P<end>[1-9]\d*)\b)?",
+    re.IGNORECASE,
+)
 HANDOFF_TITLE_RE = re.compile(
     r"^#\s+Subagent Handoff - (?P<feature>[^/\n]+?)\s*/\s*(?P<task>Task\s+\d+)\s*$",
     re.IGNORECASE | re.MULTILINE,
@@ -1133,7 +1136,8 @@ def _task_issues(feature: SddFeature) -> list[SddIssue]:
                 _issue(
                     "task-invalid-dependencies",
                     tasks_artifact,
-                    f"{task.title} has unsupported dependency syntax: {task.fields.get('depends on', '')}",
+                    f"{task.title} has unsupported dependency syntax; use canonical Task references: "
+                    f"{task.fields.get('depends on', '')}",
                 )
             )
         else:
@@ -1212,7 +1216,7 @@ def _task_numbering_issues(feature: SddFeature) -> list[SddIssue]:
             _issue(
                 "task-invalid-numbering",
                 tasks_artifact,
-                "Task headings must start with a machine-readable Task number",
+                "Task headings must start with canonical Task numbers (`Task 1`, no leading zeroes)",
             )
         ]
 

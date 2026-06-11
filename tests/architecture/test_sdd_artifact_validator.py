@@ -2873,6 +2873,24 @@ def test_tasks_reject_unresolved_dependencies(tmp_path: Path) -> None:
     assert "task-invalid-dependencies" in _issue_codes(issues)
 
 
+def test_tasks_reject_noncanonical_dependency_references(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-noncanonical-dependency")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(
+        feature / "tasks.md",
+        status="In Progress",
+        depends_on="Task 01",
+        task_status="[~]",
+    )
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "task-invalid-dependencies" in _issue_codes(issues)
+    assert "canonical Task references" in " ".join(issue.message for issue in issues)
+
+
 def test_tasks_require_unique_contiguous_numbers(tmp_path: Path) -> None:
     duplicate_feature = _feature_dir(tmp_path, "active", "2026-06-09-duplicate-task-number")
     _write_valid_spec(duplicate_feature / "spec.md", status="In Progress")
@@ -2903,6 +2921,24 @@ def test_tasks_require_unique_contiguous_numbers(tmp_path: Path) -> None:
 
     assert "task-invalid-numbering" in _issue_codes(issues)
     assert sum(issue.code == "task-invalid-numbering" for issue in issues) == 2
+
+
+def test_tasks_reject_noncanonical_number_headings(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-noncanonical-task-number")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(feature / "tasks.md", status="In Progress", task_status="[~]")
+    tasks_path = feature / "tasks.md"
+    tasks_path.write_text(
+        tasks_path.read_text(encoding="utf-8").replace("### Task 1 - Valid", "### Task 01 - Valid"),
+        encoding="utf-8",
+    )
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "task-invalid-numbering" in _issue_codes(issues)
+    assert "canonical Task numbers" in " ".join(issue.message for issue in issues)
 
 
 def test_completed_tasks_reject_incomplete_dependencies(tmp_path: Path) -> None:
