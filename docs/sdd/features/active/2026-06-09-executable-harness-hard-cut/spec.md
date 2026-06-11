@@ -592,6 +592,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC211. WHEN an SDD feature reaches final verification THEN `scripts/check_sdd_gate.py --gate verify` SHALL enforce `verification.md` final evidence, including a successful `make check-all` block and complete Spec compliance rows, before a completion claim can pass.
 - AC212. WHEN `verification.md` Spec compliance has no canonical evidence rows THEN the validator and verify gate SHALL report `verified-incomplete-spec-compliance` before an empty completion matrix can satisfy final verification.
 - AC213. WHEN `verification.md` Spec compliance omits any acceptance criterion declared in `spec.md` THEN the validator and verify gate SHALL report `verified-incomplete-spec-compliance` before partial contract coverage can satisfy final verification.
+- AC214. WHEN `verification.md` Coverage rows are missing or remain non-complete THEN the validator and verify gate SHALL report `verified-coverage-incomplete` before coverage placeholders can satisfy final verification.
 
 ## Risks
 

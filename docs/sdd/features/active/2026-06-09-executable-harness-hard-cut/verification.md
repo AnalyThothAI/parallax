@@ -230,6 +230,7 @@ claim is allowed without the corresponding output captured below.
 | AC211 — Verify gate is first-class. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_missing_check_all_evidence tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_incomplete_spec_compliance tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_complete_spec_compliance_rows -q` failed RED when the CLI rejected `--gate verify` and Verified records accepted pending Spec compliance rows, then passed after verify became a first-class final-evidence gate. |
 | AC212 — Spec compliance rows are required. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_spec_compliance_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_empty_spec_compliance -q` failed RED when empty Spec compliance tables satisfied final verification, then passed after final evidence required a canonical Spec compliance row. |
 | AC213 — Spec compliance covers every AC. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_spec_compliance_for_all_acceptance_criteria tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_partial_spec_compliance -q` failed RED when final verification covered only AC1 while `spec.md` declared AC2, then passed after Spec compliance rows had to match spec acceptance criteria. |
+| AC214 — Coverage rows must pass. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_passing_coverage_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_pending_coverage tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence -q` failed RED when Pending coverage rows satisfied final verification, then passed after Coverage required canonical complete rows. |
 
 Deviations from spec:
 
@@ -4037,6 +4038,17 @@ $ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified
 ..                                                                       [100%]
 2 passed in 0.10s
 exit code: 0
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_passing_coverage_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_pending_coverage -q
+FF                                                                       [100%]
+AssertionError: assert 'verified-coverage-incomplete' in set()
+AssertionError: assert 0 == 1
+exit code: 1
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_passing_coverage_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_pending_coverage tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence -q
+...                                                                      [100%]
+3 passed in 0.13s
+exit code: 0
 ```
 
 ## Diff summary
@@ -4084,6 +4096,7 @@ Files changed:
 - First-class verify gate: `scripts/check_sdd_gate.py`, `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_agent_playbook_contracts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`.
 - Required Spec compliance rows: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Full Spec compliance AC coverage: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
+- Verified Coverage row completion: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Mechanical frontend Prettier drift cleanup: macro pages, macro component test, `web/vite.config.ts`.
 
 Migrations applied:

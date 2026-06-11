@@ -95,6 +95,7 @@ GATE_EVIDENCE_HEADERS = {
     "## Gate Compliance": ("Gate", "Evidence"),
 }
 SPEC_COMPLIANCE_HEADER = ("Acceptance criterion", "Status", "Evidence")
+COVERAGE_HEADER = ("metric", "value", "threshold", "status")
 GATE_COMPLIANCE_GATES = ("Clarify", "Checklist", "Analyze", "Implement", "Verify")
 METADATA_REQUIREMENTS = {
     "spec.md": ("status", "date", "owner", "approved by", "approved at"),
@@ -1459,12 +1460,40 @@ def _verified_issues(feature: SddFeature) -> list[SddIssue]:
             _issue("verified-contradicts-evidence", artifact, "Verified command block records non-zero exit code")
         )
     issues.extend(_verified_spec_compliance_issues(feature, artifact))
+    issues.extend(_verified_coverage_issues(artifact))
     skipped_match = SKIPPED_RE.search(artifact.text)
     if skipped_match and int(skipped_match.group("count")) > 0 and not _skipped_rows_are_acceptable(artifact.text):
         issues.append(
             _issue("verified-unexplained-skips", artifact, "Verified record has skipped tests without explanation")
         )
     return issues
+
+
+def _verified_coverage_issues(artifact: ArtifactRecord) -> list[SddIssue]:
+    rows = _section_table_rows(artifact.text, "## Coverage", COVERAGE_HEADER)
+    if not rows:
+        return [
+            _issue(
+                "verified-coverage-incomplete",
+                artifact,
+                "Verified Coverage must contain at least one canonical metric row",
+            )
+        ]
+
+    incomplete_rows = [
+        f"{_clean_value(cells[0]) or '<unnamed metric>'} => {_clean_value(cells[3]) or '<missing status>'}"
+        for cells in rows
+        if len(cells) >= 4 and not _is_complete_compliance_status(cells[3])
+    ]
+    if not incomplete_rows:
+        return []
+    return [
+        _issue(
+            "verified-coverage-incomplete",
+            artifact,
+            "Verified Coverage rows must all be complete: " + ", ".join(incomplete_rows),
+        )
+    ]
 
 
 def _verified_spec_compliance_issues(feature: SddFeature, artifact: ArtifactRecord) -> list[SddIssue]:
