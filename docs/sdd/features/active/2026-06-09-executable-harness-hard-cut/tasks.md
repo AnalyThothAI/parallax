@@ -4388,3 +4388,45 @@
 - **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_analyze_gate_rejects_status_without_evidence tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_analyze_status_without_evidence -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 209 — Gate Compliance rows are exact
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 208
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/tasks-template.md`
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_gate_compliance_rejects_duplicate_gate_rows` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_duplicate_task_gate_compliance` — prove duplicate Gate Compliance rows cannot satisfy the validator or implement gate.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `tasks.md` Gate Compliance rows must exactly match the canonical Clarify, Checklist, Analyze, Implement, Verify sequence with no duplicates, unknown gates, placeholders, or extras.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `docs/sdd/_templates/tasks-template.md`, and implement gate tests.
+- **Kill/defer criteria**: Stop if duplicate, reordered, placeholder, or extra Gate Compliance rows satisfy implementation readiness, or if valid canonical tables are rejected.
+- **Eval/repair signal**: duplicate Gate Compliance false green, lifecycle order drift, and validator/gate CLI semantic drift.
+- **Implementation**: Change Gate Compliance evidence validation from set coverage to exact ordered gate-row matching through the shared `section_has_gate_evidence()` path.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_compliance_rejects_duplicate_gate_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_duplicate_task_gate_compliance -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 210 — Gate Compliance is a single table block
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 209
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/tasks-template.md`
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_gate_compliance_rejects_split_table_blocks` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_split_task_gate_compliance` — prove multiple Gate Compliance table blocks cannot be stitched into a false canonical lifecycle table.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `tasks.md` Gate Compliance must be exactly one canonical table block whose rows match Clarify, Checklist, Analyze, Implement, Verify in order.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `docs/sdd/_templates/tasks-template.md`, and implement gate tests.
+- **Kill/defer criteria**: Stop if split Gate Compliance table blocks satisfy implementation readiness, or if a single canonical table block is rejected.
+- **Eval/repair signal**: stitched table-fragment false green, lifecycle evidence contiguity drift, and validator/gate CLI semantic drift.
+- **Implementation**: Preserve generic multi-table row collection for other evidence sections, but require Gate Compliance to pass through one valid canonical table block before exact row matching.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_compliance_rejects_split_table_blocks tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_split_task_gate_compliance -q`
+- **Review owner**: parent
+- **Status**: [x]

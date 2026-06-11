@@ -1726,6 +1726,120 @@ def test_sdd_gate_check_cli_implement_rejects_incomplete_task_gate_compliance(tm
 
 
 @pytest.mark.architecture
+def test_sdd_gate_check_cli_implement_rejects_duplicate_task_gate_compliance(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "check_sdd_gate.py"
+    assert script.exists()
+    _write_context_packet_fixture(tmp_path)
+    tasks_path = (
+        tmp_path
+        / "docs"
+        / "sdd"
+        / "features"
+        / "active"
+        / "2026-06-09-context-packet-fixture"
+        / "tasks.md"
+    )
+    tasks_text = tasks_path.read_text(encoding="utf-8")
+    before, gate_and_rest = tasks_text.split("## Gate Compliance", 1)
+    _old_gate, rest = gate_and_rest.split("## Tasks", 1)
+    tasks_path.write_text(
+        before
+        + "## Gate Compliance\n\n"
+        + "| Gate | Evidence |\n"
+        + "|------|----------|\n"
+        + "| Clarify | `spec.md` includes `## Clarifications`. |\n"
+        + "| Clarify | duplicate copied row. |\n"
+        + "| Checklist | `spec.md` includes `## Requirement Checklist`. |\n"
+        + "| Analyze | `plan.md` includes `## Analyze Gate`. |\n"
+        + "| Implement | Tasks below are TDD ordered. |\n"
+        + "| Verify | `verification.md` captures command output. |\n\n"
+        + "## Tasks"
+        + rest,
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--gate",
+            "implement",
+            "--check",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "gate-evidence-missing" in result.stderr
+    assert "tasks.md" in result.stderr
+
+
+@pytest.mark.architecture
+def test_sdd_gate_check_cli_implement_rejects_split_task_gate_compliance(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "check_sdd_gate.py"
+    assert script.exists()
+    _write_context_packet_fixture(tmp_path)
+    tasks_path = (
+        tmp_path
+        / "docs"
+        / "sdd"
+        / "features"
+        / "active"
+        / "2026-06-09-context-packet-fixture"
+        / "tasks.md"
+    )
+    tasks_text = tasks_path.read_text(encoding="utf-8")
+    before, gate_and_rest = tasks_text.split("## Gate Compliance", 1)
+    _old_gate, rest = gate_and_rest.split("## Tasks", 1)
+    tasks_path.write_text(
+        before
+        + "## Gate Compliance\n\n"
+        + "| Gate | Evidence |\n"
+        + "|------|----------|\n"
+        + "| Clarify | `spec.md` includes `## Clarifications`. |\n"
+        + "| Checklist | `spec.md` includes `## Requirement Checklist`. |\n\n"
+        + "Split lifecycle evidence must not be stitched together.\n\n"
+        + "| Gate | Evidence |\n"
+        + "|------|----------|\n"
+        + "| Analyze | `plan.md` includes `## Analyze Gate`. |\n"
+        + "| Implement | Tasks below are TDD ordered. |\n"
+        + "| Verify | `verification.md` captures command output. |\n\n"
+        + "## Tasks"
+        + rest,
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--gate",
+            "implement",
+            "--check",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "gate-evidence-missing" in result.stderr
+    assert "tasks.md" in result.stderr
+
+
+@pytest.mark.architecture
 def test_subagent_report_validator_accepts_evidence_report(tmp_path: Path) -> None:
     script = ROOT / "scripts" / "validate_subagent_report.py"
     report = tmp_path / "subagent-report.md"

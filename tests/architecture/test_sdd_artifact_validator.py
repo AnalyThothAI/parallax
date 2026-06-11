@@ -723,6 +723,62 @@ def test_gate_compliance_requires_all_canonical_gate_rows(tmp_path: Path) -> Non
     assert "gate-evidence-missing" in _issue_codes(issues)
 
 
+def test_gate_compliance_rejects_duplicate_gate_rows(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-duplicated-gate-compliance")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(feature / "tasks.md", status="In Progress", task_status="[~]")
+    _replace_section_body(
+        feature / "tasks.md",
+        "## Gate Compliance",
+        (
+            "| Gate | Evidence |",
+            "|------|----------|",
+            "| Clarify | `spec.md` includes `## Clarifications`. |",
+            "| Clarify | duplicate copied row. |",
+            "| Checklist | `spec.md` includes `## Requirement Checklist`. |",
+            "| Analyze | `plan.md` includes `## Analyze Gate`. |",
+            "| Implement | Tasks below are TDD ordered. |",
+            "| Verify | `verification.md` captures command output. |",
+        ),
+    )
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "gate-evidence-missing" in _issue_codes(issues)
+
+
+def test_gate_compliance_rejects_split_table_blocks(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-split-gate-compliance")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(feature / "tasks.md", status="In Progress", task_status="[~]")
+    _replace_section_body(
+        feature / "tasks.md",
+        "## Gate Compliance",
+        (
+            "| Gate | Evidence |",
+            "|------|----------|",
+            "| Clarify | `spec.md` includes `## Clarifications`. |",
+            "| Checklist | `spec.md` includes `## Requirement Checklist`. |",
+            "",
+            "Split lifecycle evidence must not be stitched together.",
+            "",
+            "| Gate | Evidence |",
+            "|------|----------|",
+            "| Analyze | `plan.md` includes `## Analyze Gate`. |",
+            "| Implement | Tasks below are TDD ordered. |",
+            "| Verify | `verification.md` captures command output. |",
+        ),
+    )
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "gate-evidence-missing" in _issue_codes(issues)
+
+
 def test_plan_analyze_gate_rejects_failed_results(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-failed-analyze-gate")
     _write_valid_spec(feature / "spec.md", status="In Progress")

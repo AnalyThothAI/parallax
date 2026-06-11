@@ -1784,15 +1784,21 @@ def _section_has_non_placeholder_table_row(text: str, heading: str) -> bool:
 
 
 def section_has_gate_evidence(text: str, heading: str) -> bool:
-    rows = section_gate_table_rows(text, heading)
     if heading == "## Gate Compliance":
-        return gate_compliance_has_required_rows(rows)
+        blocks = section_gate_table_blocks(text, heading)
+        return len(blocks) == 1 and gate_compliance_has_required_rows(blocks[0])
+    rows = section_gate_table_rows(text, heading)
     return any(is_gate_evidence_row(heading, cells) for cells in rows)
 
 
 def section_gate_table_rows(text: str, heading: str) -> list[list[str]]:
+    return [row for block in section_gate_table_blocks(text, heading) for row in block]
+
+
+def section_gate_table_blocks(text: str, heading: str) -> list[list[list[str]]]:
     expected_header = GATE_EVIDENCE_HEADERS[heading]
-    return _section_table_rows(text, heading, expected_header)
+    section = _section_text(text, heading)
+    return table_body_row_blocks(section, expected_header)
 
 
 def analyze_gate_invalid_results(text: str) -> list[str]:
@@ -1825,6 +1831,14 @@ def _section_table_rows(text: str, heading: str, expected_header: tuple[str, ...
 
 
 def table_body_rows(section: str, expected_header: tuple[str, ...] | None = None) -> list[list[str]]:
+    return [row for block in table_body_row_blocks(section, expected_header) for row in block]
+
+
+def table_body_row_blocks(
+    section: str,
+    expected_header: tuple[str, ...] | None = None,
+) -> list[list[list[str]]]:
+    blocks: list[list[list[str]]] = []
     body_rows: list[list[str]] = []
     current_block: list[str] = []
     for line in section.splitlines():
@@ -1832,10 +1846,14 @@ def table_body_rows(section: str, expected_header: tuple[str, ...] | None = None
         if _is_table_row_line(stripped):
             current_block.append(stripped)
             continue
-        body_rows.extend(_table_block_body_rows(current_block, expected_header))
+        body_rows = _table_block_body_rows(current_block, expected_header)
+        if body_rows:
+            blocks.append(body_rows)
         current_block = []
-    body_rows.extend(_table_block_body_rows(current_block, expected_header))
-    return body_rows
+    body_rows = _table_block_body_rows(current_block, expected_header)
+    if body_rows:
+        blocks.append(body_rows)
+    return blocks
 
 
 def _is_table_row_line(line: str) -> bool:
@@ -1899,16 +1917,13 @@ def is_gate_evidence_row(heading: str, cells: list[str]) -> bool:
 
 
 def gate_compliance_has_required_rows(rows: list[list[str]]) -> bool:
-    required = set(GATE_COMPLIANCE_GATES)
-    seen: set[str] = set()
+    gates: list[str] = []
     for cells in rows:
         if not is_table_evidence_row(cells):
-            continue
-        gate = _clean_value(cells[0])
-        if gate not in required:
             return False
-        seen.add(gate)
-    return seen == required
+        gate = _clean_value(cells[0])
+        gates.append(gate)
+    return tuple(gates) == GATE_COMPLIANCE_GATES
 
 
 def is_placeholder_table_cell(value: str) -> bool:
