@@ -66,6 +66,30 @@ def test_verified_feature_accepts_successful_make_check_all_evidence(tmp_path: P
     assert validate_sdd_root(tmp_path) == []
 
 
+def test_verified_feature_rejects_extra_verification_command(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "completed", "2026-06-09-extra-final-command")
+    _write_valid_spec(feature / "spec.md", status="Verified")
+    _write_valid_plan(feature / "plan.md", status="Verified")
+    _write_valid_tasks(feature / "tasks.md", status="Verified")
+    _write_valid_verification(
+        feature / "verification.md",
+        status="Verified",
+        verification_command_lines=(
+            "$ make check-all",
+            "all checks passed",
+            "exit code: 0",
+            "$ uv run pytest tests/architecture/test_sdd_artifact_validator.py -q",
+            "1 passed in 0.01s",
+            "exit code: 0",
+        ),
+    )
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "verified-extra-verification-command" in _issue_codes(issues)
+    assert "uv run pytest" in "\n".join(issue.message for issue in issues)
+
+
 def test_verified_spec_compliance_rows_require_matching_command_evidence(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "completed", "2026-06-09-spec-compliance-without-evidence")
     missing_command = "uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_missing_gate -q"

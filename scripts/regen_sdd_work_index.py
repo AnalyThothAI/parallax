@@ -278,6 +278,9 @@ def _issue_meaning(code: str) -> str:
             "verification.md."
         ),
         "verified-missing-check-all": "Verified record lacks successful make check-all evidence.",
+        "verified-extra-verification-command": (
+            "Verified record includes commands other than make check-all in final Verification commands evidence."
+        ),
         "verified-missing-spec-compliance-evidence": (
             "Verified spec compliance rows reference commands without matching exit code 0 evidence."
         ),

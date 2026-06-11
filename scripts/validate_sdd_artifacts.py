@@ -201,6 +201,7 @@ KNOWN_ISSUE_CODES = (
     "task-incomplete-in-verified-feature",
     "tasks-final-verification-duplicated",
     "verified-missing-check-all",
+    "verified-extra-verification-command",
     "verified-missing-spec-compliance-evidence",
     "verified-contradicts-evidence",
     "verified-unexplained-skips",
@@ -1459,6 +1460,16 @@ def _verified_issues(feature: SddFeature) -> list[SddIssue]:
         issues.append(
             _issue("verified-missing-check-all", artifact, "Verified records require final make check-all exit code 0")
         )
+    extra_commands = [command for command in _verification_commands(artifact.text) if command != "make check-all"]
+    if extra_commands:
+        issues.append(
+            _issue(
+                "verified-extra-verification-command",
+                artifact,
+                "Verified Verification commands must contain only `make check-all`; extra commands: "
+                + ", ".join(dict.fromkeys(extra_commands)),
+            )
+        )
     if any(phrase in normalized_text for phrase in CONTRADICTION_PHRASES):
         issues.append(
             _issue(
@@ -1929,6 +1940,16 @@ def _verification_make_check_all_block(text: str) -> str | None:
     if len(make_check_all_segments) != 1:
         return None
     return make_check_all_segments[0]
+
+
+def _verification_commands(text: str) -> list[str]:
+    section = _section_text(text, "## Verification commands")
+    return [
+        _clean_command(command_match.group("command"))
+        for block_match in FENCED_BLOCK_RE.finditer(section)
+        for line in block_match.group("body").splitlines()
+        if (command_match := COMMAND_LINE_RE.match(line))
+    ]
 
 
 def _command_segments(block: str, command: str) -> list[str]:

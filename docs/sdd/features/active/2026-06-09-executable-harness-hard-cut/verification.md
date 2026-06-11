@@ -251,6 +251,7 @@ claim is allowed without the corresponding output captured below.
 | AC232 — Coverage keeps empty source files visible. | ✅ | `python -m pytest tests/architecture/test_test_lane_contracts.py::test_coverage_report_does_not_hide_empty_source_files -q` failed RED while `coverage.report.skip_empty` was true, then passed after coverage config set it to false. |
 | AC233 — SDD task selectors are numeric only. | ✅ | `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_clis_reject_title_substring_selectors -q` failed RED while `--task "Dispatch packet"` selected Task 1, then passed after context packet, dispatch, and subagent report CLIs rejected non-numeric task selectors. |
 | AC234 — Final runtime evidence rejects golden skip switches. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_golden_skip_switch tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_golden_skip_switch -q` passed after separate RED runs proved `SKIP_GOLDEN=1` passed both the pure validator and verify gate. |
+| AC235 — Final verification commands are single-source evidence. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_extra_verification_command tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_extra_verification_command -q` passed after separate RED runs proved helper commands in `Verification commands` passed both the pure validator and verify gate. |
 
 Deviations from spec:
 
@@ -4327,6 +4328,21 @@ $ python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verif
 ..                                                                       [100%]
 2 passed in 0.10s
 exit code: 0
+
+$ python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_extra_verification_command -q
+F                                                                        [100%]
+AssertionError: assert 'verified-extra-verification-command' in set()
+exit code: 1
+
+$ python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_extra_verification_command -q
+F                                                                        [100%]
+AssertionError: assert 0 == 1
+exit code: 1
+
+$ python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_extra_verification_command tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_extra_verification_command -q
+..                                                                       [100%]
+2 passed in 0.09s
+exit code: 0
 ```
 
 ## Diff summary
@@ -4395,6 +4411,7 @@ Files changed:
 - Coverage empty-source visibility: `pyproject.toml`, `docs/TESTING.md`, `tests/architecture/test_test_lane_contracts.py`.
 - Numeric-only SDD task selectors: `scripts/build_agent_context_packet.py`, `scripts/dispatch_sdd_task.py`, `scripts/validate_subagent_report.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Final runtime skip-switch rejection: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
+- Final verification single-command evidence: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Mechanical frontend Prettier drift cleanup: macro pages, macro component test, `web/vite.config.ts`.
 
 Migrations applied:
