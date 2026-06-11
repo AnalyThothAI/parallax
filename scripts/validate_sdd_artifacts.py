@@ -40,6 +40,7 @@ LOCAL_CITATION_RE = re.compile(
 URL_CITATION_RE = re.compile(r"https://[^\s`)>\]]+")
 BACKTICK_TOKEN_RE = re.compile(r"`([^`]+)`")
 SPEC_AC_RE = re.compile(r"^\s*-\s+AC(?P<number>\d+)\.", re.IGNORECASE | re.MULTILINE)
+SPEC_COMPLIANCE_AC_RE = re.compile(r"\bAC(?P<number>\d+)\b", re.IGNORECASE)
 SPEC_AC_LINE_RE = re.compile(r"^\s*-\s+AC(?P<number>\d+)\..+$", re.IGNORECASE | re.MULTILINE)
 SPEC_AC_FORMAT_RE = re.compile(
     r"^\s*-\s+AC\d+\.\s+WHEN\s+.+\s+THEN\s+.+\bSHALL\b.+$",
@@ -1457,7 +1458,7 @@ def _verified_issues(feature: SddFeature) -> list[SddIssue]:
         issues.append(
             _issue("verified-contradicts-evidence", artifact, "Verified command block records non-zero exit code")
         )
-    issues.extend(_verified_spec_compliance_issues(artifact))
+    issues.extend(_verified_spec_compliance_issues(feature, artifact))
     skipped_match = SKIPPED_RE.search(artifact.text)
     if skipped_match and int(skipped_match.group("count")) > 0 and not _skipped_rows_are_acceptable(artifact.text):
         issues.append(
@@ -1466,7 +1467,7 @@ def _verified_issues(feature: SddFeature) -> list[SddIssue]:
     return issues
 
 
-def _verified_spec_compliance_issues(artifact: ArtifactRecord) -> list[SddIssue]:
+def _verified_spec_compliance_issues(feature: SddFeature, artifact: ArtifactRecord) -> list[SddIssue]:
     command_evidence = _command_evidence(_task_evidence_text(artifact.text))
     rows = _section_table_rows(artifact.text, "## Spec compliance", SPEC_COMPLIANCE_HEADER)
     if not rows:
@@ -1480,6 +1481,7 @@ def _verified_spec_compliance_issues(artifact: ArtifactRecord) -> list[SddIssue]
 
     incomplete_rows: list[str] = []
     missing_commands: list[str] = []
+    coverage_issue = _spec_compliance_coverage_issue(feature, rows)
     for cells in rows:
         if len(cells) < 3:
             continue
@@ -1500,6 +1502,8 @@ def _verified_spec_compliance_issues(artifact: ArtifactRecord) -> list[SddIssue]
         )
 
     issues: list[SddIssue] = []
+    if coverage_issue:
+        issues.append(_issue("verified-incomplete-spec-compliance", artifact, coverage_issue))
     if incomplete_rows:
         issues.append(
             _issue(
@@ -1518,6 +1522,47 @@ def _verified_spec_compliance_issues(artifact: ArtifactRecord) -> list[SddIssue]
             )
         )
     return issues
+
+
+def _spec_compliance_coverage_issue(feature: SddFeature, rows: list[list[str]]) -> str:
+    spec_artifact = feature.artifacts["spec.md"]
+    if spec_artifact.missing:
+        return ""
+    expected_numbers = _spec_acceptance_numbers(spec_artifact.text)
+    actual_numbers = [_spec_compliance_row_number(cells[0]) for cells in rows if cells]
+    expected = tuple(expected_numbers)
+    actual = tuple(number for number in actual_numbers if number is not None)
+    if actual == expected and len(actual_numbers) == len(actual):
+        return ""
+
+    missing = [number for number in expected_numbers if number not in actual]
+    extra = [number for number in actual if number not in expected]
+    parts: list[str] = []
+    if missing:
+        parts.append("missing " + ", ".join(f"AC{number}" for number in missing))
+    if extra:
+        parts.append("extra " + ", ".join(f"AC{number}" for number in extra))
+    if len(actual) != len(set(actual)):
+        duplicates = [number for number, count in Counter(actual).items() if count > 1]
+        parts.append("duplicate " + ", ".join(f"AC{number}" for number in sorted(duplicates)))
+    unnumbered_count = len(actual_numbers) - len(actual)
+    if unnumbered_count:
+        parts.append(f"{unnumbered_count} row(s) without AC number")
+    if not parts and actual != expected:
+        parts.append(
+            "expected "
+            + ", ".join(f"AC{number}" for number in expected)
+            + " in order, saw "
+            + (", ".join(f"AC{number}" for number in actual) or "none")
+        )
+    return "Verified Spec compliance rows must match spec acceptance criteria: " + "; ".join(parts)
+
+
+def _spec_compliance_row_number(value: str) -> int | None:
+    match = SPEC_COMPLIANCE_AC_RE.search(_clean_value(value))
+    if match is None:
+        return None
+    return int(match.group("number"))
 
 
 def _is_complete_compliance_status(value: str) -> bool:

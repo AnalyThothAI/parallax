@@ -1112,6 +1112,21 @@ def test_verified_feature_requires_spec_compliance_rows(tmp_path: Path) -> None:
     assert "Spec compliance" in "\n".join(issue.message for issue in issues)
 
 
+def test_verified_feature_requires_spec_compliance_for_all_acceptance_criteria(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "completed", "2026-06-09-partial-spec-compliance")
+    _write_valid_spec(feature / "spec.md", status="Verified")
+    _append_acceptance_criterion(feature / "spec.md", 2)
+    _write_valid_plan(feature / "plan.md", status="Verified")
+    _append_acceptance_command(feature / "plan.md", 2)
+    _write_valid_tasks(feature / "tasks.md", status="Verified")
+    _write_valid_verification(feature / "verification.md", status="Verified")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "verified-incomplete-spec-compliance" in _issue_codes(issues)
+    assert "missing AC2" in "\n".join(issue.message for issue in issues)
+
+
 def test_complete_tasks_require_matching_verification_evidence(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-complete-task-without-evidence")
     _write_valid_spec(feature / "spec.md", status="In Progress")

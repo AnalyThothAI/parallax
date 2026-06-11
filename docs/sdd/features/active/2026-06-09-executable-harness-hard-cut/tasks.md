@@ -4472,3 +4472,24 @@
 - **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_spec_compliance_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_empty_spec_compliance -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 213 — Spec compliance covers every AC
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 212
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/verification-template.md`
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_spec_compliance_for_all_acceptance_criteria` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_partial_spec_compliance` — prove final verification cannot pass when `spec.md` declares AC2 but `verification.md` only covers AC1.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `verification.md` Spec compliance row AC numbers must exactly match the acceptance criteria declared in `spec.md`.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, and final verification evidence tests.
+- **Kill/defer criteria**: Stop if `verify` can pass with missing, extra, duplicate, unnumbered, or reordered AC rows.
+- **Eval/repair signal**: partial contract coverage false green and final-evidence gate drift.
+- **Implementation**: Compare canonical Spec compliance AC row numbers against `spec.md` acceptance criterion numbers inside the shared verification evidence helper.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_spec_compliance_for_all_acceptance_criteria tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_partial_spec_compliance -q`
+- **Review owner**: parent
+- **Status**: [x]
