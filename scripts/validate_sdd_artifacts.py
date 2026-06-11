@@ -1793,7 +1793,7 @@ def table_body_rows(section: str, expected_header: tuple[str, ...] | None = None
     current_block: list[str] = []
     for line in section.splitlines():
         stripped = line.strip()
-        if stripped.startswith("|"):
+        if stripped.startswith("|") and stripped.endswith("|"):
             current_block.append(stripped)
             continue
         body_rows.extend(_table_block_body_rows(current_block, expected_header))
