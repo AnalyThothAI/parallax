@@ -312,6 +312,19 @@ def test_golden_lane_uses_dedicated_pytest_marker() -> None:
     assert "pytest.mark.e2e" not in golden_conftest
 
 
+def test_final_runtime_lanes_do_not_expose_skip_env_switches() -> None:
+    checked_paths = (
+        REPO_ROOT / "tests" / "e2e" / "conftest.py",
+        REPO_ROOT / "tests" / "golden" / "conftest.py",
+        DOCS / "sdd" / "_templates" / "verification-template.md",
+    )
+    for path in checked_paths:
+        text = _read(path)
+        assert "SKIP_E2E" not in text
+        assert "SKIP_GOLDEN" not in text
+        assert "cannot serve as verification evidence" not in text
+
+
 def test_makefile_exposes_single_feature_sdd_completion_gate() -> None:
     makefile = _read(REPO_ROOT / "Makefile")
     workflow = _read(DOCS / "WORKFLOW.md")

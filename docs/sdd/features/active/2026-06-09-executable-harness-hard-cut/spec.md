@@ -606,6 +606,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC225. WHEN an operator needs to prove one SDD feature's completion evidence THEN `make check-sdd-completion FEATURE=<slug>` SHALL run `scripts/check_sdd_gate.py --feature <slug> --gate verify --check` before completion semantics can be confused with the repo-wide `make check-all` pre-verify sweep.
 - AC226. WHEN any Makefile pytest target runs with an empty collection THEN the target SHALL return pytest's native empty-collection failure instead of translating exit code 5 into success before empty test lanes can satisfy harness or completion gates.
 - AC227. WHEN the golden corpus lane is selected THEN it SHALL use a dedicated `golden` pytest marker and SHALL NOT be selected by the service-level `e2e` marker before golden-corpus verification can be confused with E2E golden-path verification.
+- AC228. WHEN final E2E or golden runtime dependencies are unavailable THEN their lane fixtures SHALL fail closed with actionable setup guidance and SHALL NOT expose `SKIP_E2E` or `SKIP_GOLDEN` environment switches before skipped runtime lanes can satisfy completion evidence.
 
 ## Risks
 

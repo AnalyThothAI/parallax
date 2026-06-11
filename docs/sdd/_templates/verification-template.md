@@ -83,7 +83,8 @@ Confirm each runtime signal from the spec §6.4 was asserted:
 - [ ] WS /ws/live pushed within 5s
 - [ ] testcontainers PG and uvicorn subprocess cleaned up
 
-If `SKIP_E2E=1` was set, this run cannot serve as completion evidence.
+Runtime-lane dependencies must fail closed with actionable setup guidance; do
+not satisfy this section with environment skip switches.
 
 ## Other commands run (manual UI smoke; only for areas not coverable by tests)
 

@@ -14,6 +14,7 @@
 - E2E tests live under `tests/e2e/`. They exercise the running service boundary and may use testcontainers, subprocesses, and real PostgreSQL.
 - Golden tests live under `tests/golden/`. They exercise curated corpus expectations against the real ingest/projection pipeline, provision PostgreSQL like integration tests, carry the dedicated `golden` pytest marker, and are covered by `make check-all`.
 - Makefile pytest targets must fail on an empty pytest collection; do not translate pytest exit code 5 into success for any test lane.
+- Final runtime lanes must fail closed when Docker, PostgreSQL, or service subprocess dependencies are unavailable; do not add environment skip switches for E2E or golden verification.
 - Business skips are not a long-term state. Do not leave `@pytest.mark.skip` or `pytest.skip(...)` in business tests; move environment-dependent skips into lane conftests or the shared PostgreSQL test harness.
 
 ## Harness Test Taxonomy

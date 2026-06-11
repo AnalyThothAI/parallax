@@ -8,7 +8,8 @@ Three session-scope fixtures:
 A single ws_token (`PARALLAX_E2E_WS_TOKEN`, default "e2e-token") is shared by both
 the uvicorn process and the writer process so HTTP/WS auth lines up.
 
-Setting SKIP_E2E=1 in the environment skips e2e tests with an explicit reason.
+E2E tests fail with actionable setup guidance when the runtime dependencies are
+unavailable; final verification must not be satisfied by an environment skip.
 """
 
 from __future__ import annotations
@@ -69,15 +70,12 @@ def e2e_ws_token() -> str:
 @pytest.fixture(scope="session")
 def e2e_postgres() -> Iterator[str]:
     """Yield a Postgres DSN backed by testcontainers; alembic-migrated."""
-    if os.environ.get("SKIP_E2E") == "1":
-        pytest.skip("SKIP_E2E=1 set; e2e tests skipped (this run cannot serve as verification evidence)")
     if not _docker_available():
         pytest.fail(
             "e2e tests require docker but `docker info` failed. Fix options:\n"
             "  1. Start Docker Desktop / colima / OrbStack and rerun.\n"
-            "  2. Provide an external Postgres at GMGN_E2E_POSTGRES_DSN (TODO: support).\n"
-            "  3. If you intentionally cannot run e2e, set SKIP_E2E=1 — but then this\n"
-            "     run cannot count as a verification artefact.",
+            "  2. Provide an external Postgres at GMGN_E2E_POSTGRES_DSN once that path is implemented.\n"
+            "  3. Do not bypass this lane with an environment skip; an unavailable dependency is a failed gate.",
             pytrace=False,
         )
 

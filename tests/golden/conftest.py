@@ -50,19 +50,13 @@ def _ensure_golden_postgres_dsn() -> Iterator[None]:
         yield
         return
 
-    if os.environ.get("SKIP_GOLDEN") == "1":
-        pytest.skip(
-            "SKIP_GOLDEN=1 set; golden tests skipped (this run cannot serve as verification evidence)",
-            allow_module_level=True,
-        )
-
     if not _docker_available():
         pytest.fail(
             "Golden tests require a reachable Postgres but none was found. Fix options:\n"
             f"  1. Start your local test DB at {existing}.\n"
             "  2. Provide GMGN_TEST_POSTGRES_DSN=postgresql://...\n"
             "  3. Start Docker Desktop / colima / OrbStack and rerun.\n"
-            "  4. If this is intentional, set SKIP_GOLDEN=1, but that run is not final verification.",
+            "  4. Do not bypass this lane with an environment skip; an unavailable dependency is a failed gate.",
             pytrace=False,
         )
 

@@ -4787,3 +4787,24 @@
 - **Verification**: `python -m pytest tests/architecture/test_harness_structure.py::test_golden_lane_uses_dedicated_pytest_marker -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 228 — Final runtime lanes fail closed
+
+- **File(s)**: `docs/TESTING.md`, `docs/sdd/_templates/verification-template.md`, `tests/e2e/conftest.py`, `tests/golden/conftest.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 227
+- **Touch set**: `docs/TESTING.md`, `docs/sdd/_templates/verification-template.md`, `tests/e2e/conftest.py`, `tests/golden/conftest.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for generated SDD index updates.
+- **Failing test first**: `tests/architecture/test_harness_structure.py::test_final_runtime_lanes_do_not_expose_skip_env_switches` — proves E2E/golden runtime lanes and verification templates cannot expose environment skip switches.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: E2E and golden fixtures must fail closed when Docker/PostgreSQL/runtime dependencies are unavailable; final verification templates must not instruct operators to use skip switches.
+- **On-demand context**: `tests/e2e/conftest.py`, `tests/golden/conftest.py`, `docs/sdd/_templates/verification-template.md`, and `docs/TESTING.md`.
+- **Kill/defer criteria**: Stop if `SKIP_E2E`, `SKIP_GOLDEN`, or "cannot serve as verification evidence" skip language remains in runtime-lane fixtures or the verification template.
+- **Eval/repair signal**: skipped-runtime false green, dependency setup failure clarity, and completion-gate evidence drift.
+- **Implementation**: Remove E2E/golden environment skip branches and replace template/docs wording with fail-closed runtime-lane guidance.
+- **Verification**: `python -m pytest tests/architecture/test_harness_structure.py::test_final_runtime_lanes_do_not_expose_skip_env_switches -q`
+- **Review owner**: parent
+- **Status**: [x]
