@@ -554,6 +554,27 @@ def test_gate_evidence_rejects_doubled_boundary_pipes(tmp_path: Path) -> None:
     assert "gate-evidence-missing" in _issue_codes(issues)
 
 
+def test_gate_evidence_rejects_indented_table_rows(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-gate-evidence-indented-table")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _replace_section_body(
+        feature / "spec.md",
+        "## Clarifications",
+        (
+            "    | Question | Answer | Approved by | Approved at |",
+            "    |----------|--------|-------------|-------------|",
+            "    | Should indented tables pass? | No. | qinghuan | 2026-06-09 |",
+        ),
+    )
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(feature / "tasks.md", status="In Progress", task_status="[~]")
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "gate-evidence-missing" in _issue_codes(issues)
+
+
 def test_gate_evidence_rejects_separator_arity_mismatch(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-gate-evidence-separator-arity")
     _write_valid_spec(feature / "spec.md", status="In Progress")

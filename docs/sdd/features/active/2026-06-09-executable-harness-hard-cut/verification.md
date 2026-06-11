@@ -220,6 +220,7 @@ claim is allowed without the corresponding output captured below.
 | AC201 — Gate evidence rejects repeated headers. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_repeated_header_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_repeated_header_rows -q` failed RED when a copied header row in the body satisfied evidence, then passed after repeated header rows invalidated the table block. |
 | AC202 — Gate evidence rows must close pipes. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_unclosed_table_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_unclosed_table_rows -q` failed RED when an unclosed pipe row satisfied evidence, then passed after table parsing required rows to start and end with `|`. |
 | AC203 — Gate evidence rows use single boundary pipes. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_doubled_boundary_pipes tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_doubled_boundary_pipes -q` failed RED when doubled boundary pipes were stripped into canonical-looking cells, then passed after table parsing required single boundary pipes. |
+| AC204 — Gate evidence tables are top-level. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_indented_table_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_indented_table_rows -q` failed RED when indented table rows satisfied evidence, then passed after table parsing preserved leading whitespace. |
 
 Deviations from spec:
 
@@ -3916,6 +3917,17 @@ $ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evi
 ..                                                                       [100%]
 2 passed in 0.06s
 exit code: 0
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_indented_table_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_indented_table_rows -q
+FF                                                                       [100%]
+AssertionError: assert 'gate-evidence-missing' in set()
+AssertionError: assert 0 == 1
+exit code: 1
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_indented_table_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_indented_table_rows -q
+..                                                                       [100%]
+2 passed in 0.05s
+exit code: 0
 ```
 
 ## Diff summary
@@ -3953,6 +3965,7 @@ Files changed:
 - Repeated header gate evidence rejection: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Closed pipe-row gate evidence parsing: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Single-boundary pipe gate evidence parsing: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
+- Top-level gate evidence table parsing: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Mechanical frontend Prettier drift cleanup: macro pages, macro component test, `web/vite.config.ts`.
 
 Migrations applied:

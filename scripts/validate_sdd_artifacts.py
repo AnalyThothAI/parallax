@@ -1792,7 +1792,7 @@ def table_body_rows(section: str, expected_header: tuple[str, ...] | None = None
     body_rows: list[list[str]] = []
     current_block: list[str] = []
     for line in section.splitlines():
-        stripped = line.strip()
+        stripped = line.rstrip()
         if _is_table_row_line(stripped):
             current_block.append(stripped)
             continue
