@@ -424,7 +424,7 @@ def main(argv: list[str] | None = None) -> int:
 
     for issue in issues:
         print(f"{issue.severity}: {issue.code}: {issue.path}: {issue.message}", file=sys.stderr)
-    return 1 if args.check else 0
+    return 1
 
 
 def _read_artifact(root: Path, path: Path, artifact_name: str) -> ArtifactRecord:

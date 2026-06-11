@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from scripts.validate_sdd_artifacts import validate_sdd_root
+from scripts.validate_sdd_artifacts import main, validate_sdd_root
 
 
 def test_verified_feature_requires_successful_make_check_all_evidence(tmp_path: Path) -> None:
@@ -1366,6 +1366,21 @@ def test_complete_tasks_require_matching_verification_evidence(tmp_path: Path) -
     issues = validate_sdd_root(tmp_path)
 
     assert "task-complete-missing-verification-evidence" in _issue_codes(issues)
+
+
+def test_validator_cli_fails_on_issues_without_check_flag(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-cli-soft-mode")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(
+        feature / "tasks.md",
+        status="In Progress",
+        verification="uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_expected_gate -q",
+        task_status="[x]",
+    )
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    assert main(["--root", str(tmp_path)]) == 1
 
 
 def test_complete_tasks_require_failing_test_reference_evidence(tmp_path: Path) -> None:

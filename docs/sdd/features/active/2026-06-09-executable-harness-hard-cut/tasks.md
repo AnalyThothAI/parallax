@@ -4850,3 +4850,24 @@
 - **Verification**: `uv run pytest tests/architecture/test_test_lane_contracts.py tests/architecture/test_worker_runtime_contracts.py -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 231 — SDD validator has no report-only soft mode
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 230
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD validator requirements and generated index updates.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_validator_cli_fails_on_issues_without_check_flag` — proves invalid SDD artifacts cannot print errors and still exit 0 when `--check` is omitted.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `scripts/validate_sdd_artifacts.py` must return non-zero for any validation issue regardless of `--check`; there is no report-only operator path that can satisfy manual harness checks with a green exit code.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, and Pasteur read-only harness audit.
+- **Kill/defer criteria**: Stop if invalid SDD roots can still exit 0, if the test only checks the pure validator without the CLI `main()`, or if current valid repository SDD records fail under the CLI.
+- **Eval/repair signal**: false-green SDD validation, report-only soft mode, and manual harness command drift.
+- **Implementation**: Make the validator CLI return 1 whenever issues are emitted and add a CLI-level regression fixture covering invocation without `--check`.
+- **Verification**: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_validator_cli_fails_on_issues_without_check_flag -q`
+- **Review owner**: parent
+- **Status**: [x]

@@ -743,6 +743,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC228: `python -m pytest tests/architecture/test_harness_structure.py::test_final_runtime_lanes_do_not_expose_skip_env_switches -q`
 - AC229: `python -m pytest tests/architecture/test_harness_structure.py::test_contract_lane_has_no_duplicate_make_alias -q`
 - AC230: `uv run pytest tests/architecture/test_test_lane_contracts.py tests/architecture/test_worker_runtime_contracts.py -q`
+- AC231: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_validator_cli_fails_on_issues_without_check_flag -q`
 
 ## Verification
 
