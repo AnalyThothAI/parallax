@@ -5354,3 +5354,24 @@
 - **Verification**: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_acceptance_criteria_must_live_in_acceptance_section tests/architecture/test_sdd_artifact_validator.py::test_plan_acceptance_commands_must_live_in_acceptance_section tests/architecture/test_sdd_artifact_validator.py::test_spec_requires_at_least_one_acceptance_criterion -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 255 — Implement gate forwards structural drift
+
+- **File(s)**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 254
+- **Touch set**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD gate-check tests and generated index updates.
+- **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_acceptance_command_drift` — proves `--gate implement` cannot pass when `plan.md` acceptance commands drift outside the canonical section.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Implement gate filtering must forward every feature-level SDD validator issue except final `verified-*` evidence issues; no structural issue allowlist may hide spec, plan, or task drift.
+- **On-demand context**: `scripts/check_sdd_gate.py`, `scripts/validate_sdd_artifacts.py`, Bohr read-only audit, and SDD gate CLI tests.
+- **Kill/defer criteria**: Stop if `--gate implement` can pass while `validate_sdd_root()` reports non-`verified-*` issues for the selected feature.
+- **Eval/repair signal**: `acceptance-command-mismatch`, structural false green, stale plan drift, and implement-gate allowlist gaps.
+- **Implementation**: Replace the implement-gate structural allowlist with a `verified-*` final-evidence denylist so pre-verify structural drift is rejected.
+- **Verification**: `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_acceptance_command_drift -q`
+- **Review owner**: parent
+- **Status**: [x]

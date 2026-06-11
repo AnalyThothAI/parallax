@@ -3333,6 +3333,55 @@ def test_sdd_gate_check_cli_implement_rejects_delegated_artifact_drift(tmp_path:
 
 
 @pytest.mark.architecture
+def test_sdd_gate_check_cli_implement_rejects_acceptance_command_drift(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "check_sdd_gate.py"
+    assert script.exists()
+    _write_context_packet_fixture(tmp_path)
+    plan_path = (
+        tmp_path
+        / "docs"
+        / "sdd"
+        / "features"
+        / "active"
+        / "2026-06-09-context-packet-fixture"
+        / "plan.md"
+    )
+    plan_text = plan_path.read_text(encoding="utf-8")
+    plan_path.write_text(
+        plan_text.replace(
+            "## Acceptance test commands\n\n"
+            "- AC1: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q`",
+            "## Acceptance test commands\n\n"
+            "_No current acceptance commands here._\n\n"
+            "## Appendix\n\n"
+            "- AC1: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q`",
+        ),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--gate",
+            "implement",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "acceptance-command-mismatch" in result.stderr
+    assert "plan.md" in result.stderr
+
+
+@pytest.mark.architecture
 def test_sdd_gate_check_cli_implement_rejects_missing_task_gate_compliance(tmp_path: Path) -> None:
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()

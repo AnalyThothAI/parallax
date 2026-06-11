@@ -126,17 +126,12 @@ def _implement_gate_issues(root: Path, feature: SddFeature) -> list[str]:
     return [
         f"{issue.code}: {issue.path}: {issue.message}"
         for issue in _feature_validation_issues(root, feature)
-        if _is_implement_gate_issue(feature, issue)
+        if _is_implement_gate_issue(issue)
     ]
 
 
-def _is_implement_gate_issue(feature: SddFeature, issue: SddIssue) -> bool:
-    code = issue.code
-    if code.startswith("task-"):
-        return True
-    if issue.path == f"{feature.relative_path}/tasks.md" and code in {"missing-gate-section", "gate-evidence-missing"}:
-        return True
-    return code in {"tasks-final-verification-duplicated", "active-touch-conflict"}
+def _is_implement_gate_issue(issue: SddIssue) -> bool:
+    return not issue.code.startswith("verified-")
 
 
 def _verify_gate_issues(root: Path, feature: SddFeature) -> list[str]:
