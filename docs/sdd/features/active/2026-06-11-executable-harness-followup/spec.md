@@ -35,6 +35,7 @@ The prior executable harness record was an omnibus active ledger with more than 
 | Embedded context packets enforce mode constraints. | Validator rejects delegated handoffs whose embedded Context Packet omits or drifts from the handoff mode boundary. |
 | Handoff and embedded context constraints are scoped separately. | Validator ignores fenced blocks when checking top-level handoff mode constraints and report-validation commands. |
 | Handoff report validation is executable. | Validator rejects delegated handoffs that list report-validation tokens without the exact runnable validation command. |
+| Task selectors are exact. | Context packet, dispatch, and report-validation CLIs bind `--task <number>` to the exact numbered task, not a prefix match. |
 
 ## Acceptance criteria
 
@@ -53,6 +54,7 @@ The prior executable harness record was an omnibus active ledger with more than 
 - AC13. WHEN a delegated handoff artifact embeds a `Context Packet` fenced block THEN `scripts/validate_sdd_artifacts.py` SHALL reject it as `task-invalid-subagent-handoff-artifact` unless the embedded packet has the same `Mode:` and matching `Mode constraints:` as the handoff.
 - AC14. WHEN a delegated handoff artifact only contains matching `Mode constraints:` inside its embedded `Context Packet` fenced block THEN `scripts/validate_sdd_artifacts.py` SHALL still reject the handoff as `task-invalid-subagent-handoff-artifact`.
 - AC15. WHEN a delegated handoff artifact mentions `scripts/validate_subagent_report.py`, `--feature`, `--task`, `--mode`, and `--report` as disconnected tokens THEN `scripts/validate_sdd_artifacts.py` SHALL still reject it unless the exact runnable report-validation command is present.
+- AC16. WHEN `scripts/build_agent_context_packet.py`, `scripts/dispatch_sdd_task.py`, or `scripts/validate_subagent_report.py` receives `--task 1` and the task board lists `Task 10` before `Task 1` THEN it SHALL bind to `Task 1` exactly before subagent context, handoff, or report validation can drift through prefix matching.
 
 ## Risks
 

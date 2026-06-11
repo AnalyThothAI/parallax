@@ -28,6 +28,7 @@
 | AC13 - Embedded context packet mode constraints are validated. | Pass | `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_embedded_context_packet_mode_constraints -q` passed after delegated handoff validation required the embedded Context Packet fenced block to carry the same `Mode:` and matching `Mode constraints:`; the same test failed RED first because the validator accepted a stale embedded packet. |
 | AC14 - Top-level handoff constraints are scoped outside fenced blocks. | Pass | `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_top_level_handoff_mode_constraints -q` passed after top-level handoff validation ignored fenced blocks; the same test failed RED first because embedded Context Packet constraints satisfied a missing top-level handoff constraint. |
 | AC15 - Handoff report validation command is exact. | Pass | `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_exact_report_validation_command -q` passed after report-validation command validation changed from token presence to exact runnable top-level command; the same test failed RED first because a token inventory satisfied the old validator. |
+| AC16 - Subagent task selectors are exact. | Pass | `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_clis_match_exact_task_numbers -q` passed after context packet, dispatch, and report-validation CLIs shared exact numeric task lookup; the same test failed RED first because `--task 1` matched a preceding `Task 10`. |
 
 ## Verification commands
 
@@ -37,7 +38,7 @@ Not final completion evidence. Final completion still requires `make check-all` 
 
 | metric | value | threshold | status |
 |--------|-------|-----------|--------|
-| agent loop and SDD artifact tests | 238 tests | >= targeted harness tests | Pass |
+| agent loop and SDD artifact tests | 239 tests | >= targeted harness tests | Pass |
 | SDD active gates | 2 active features | all active clarify/checklist/analyze/implement gates pass | Pass |
 
 ## Skipped tests
@@ -618,6 +619,56 @@ $ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run pytest tests/a
 exit code: 0
 
 $ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run ruff check scripts/agent_mode_constraints.py scripts/build_agent_context_packet.py scripts/dispatch_sdd_task.py scripts/validate_sdd_artifacts.py tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py tests/architecture/test_harness_structure.py
+All checks passed!
+exit code: 0
+
+$ git diff --check
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_clis_match_exact_task_numbers -q
+F                                                                        [100%]
+AssertionError: assert '# Context Packet -...t-fixture / Task 10' not in ...
+exit code: 1
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_clis_match_exact_task_numbers -q
+.                                                                        [100%]
+1 passed in 0.12s
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_clis_reject_title_substring_selectors tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_clis_match_exact_task_numbers -q
+....                                                                     [100%]
+4 passed in 0.29s
+exit code: 0
+
+$ uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_clis_match_exact_task_numbers -q
+.                                                                        [100%]
+1 passed in 0.12s
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run python scripts/regen_sdd_work_index.py
+wrote docs/generated/sdd-work-index.md
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run python scripts/validate_sdd_artifacts.py
+SDD artifact validation passed.
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run python scripts/regen_sdd_work_index.py --check
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run python scripts/check_sdd_gate.py --all-active
+all active SDD gates passed (clarify/checklist/analyze/implement): 2026-06-09-agent-playbook-skill-hard-cut, 2026-06-11-executable-harness-followup
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run pytest tests/architecture/test_agent_playbook_contracts.py tests/architecture/test_harness_structure.py tests/architecture/test_sdd_artifact_validator.py -q
+........................................................................ [ 30%]
+........................................................................ [ 60%]
+........................................................................ [ 90%]
+.......................                                                  [100%]
+239 passed in 12.80s
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run ruff check scripts/validate_sdd_artifacts.py scripts/build_agent_context_packet.py scripts/dispatch_sdd_task.py scripts/validate_subagent_report.py tests/architecture/test_agent_playbook_contracts.py
 All checks passed!
 exit code: 0
 

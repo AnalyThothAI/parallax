@@ -386,6 +386,17 @@ def task_number(task: TaskRecord) -> int | None:
     return int(match.group("number")) if match else None
 
 
+def find_task_by_number(feature: SddFeature, selector: str) -> TaskRecord | None:
+    normalized_selector = selector.strip()
+    if not normalized_selector.isdigit():
+        return None
+    selected_number = int(normalized_selector)
+    for task in feature.tasks:
+        if task_number(task) == selected_number:
+            return task
+    return None
+
+
 def task_dependency_numbers(task: TaskRecord) -> tuple[int, ...] | None:
     raw = task.fields.get("depends on", "")
     value = raw.replace("`", "").strip()

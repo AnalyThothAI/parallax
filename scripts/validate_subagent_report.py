@@ -13,6 +13,7 @@ from scripts.validate_sdd_artifacts import (  # noqa: E402
     SddFeature,
     SddIssue,
     TaskRecord,
+    find_task_by_number,
     scan_sdd_features,
     validate_sdd_root,
 )
@@ -50,7 +51,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: task selector must be a numeric task number: {args.task}", file=sys.stderr)
             return 1
 
-        task = _find_task(feature, args.task)
+        task = find_task_by_number(feature, args.task)
         if task is None:
             print(f"error: task not found in {feature.slug}: {args.task}", file=sys.stderr)
             return 1
@@ -70,15 +71,6 @@ def _find_feature(features: list[SddFeature], slug: str) -> SddFeature | None:
     for feature in features:
         if feature.slug == slug:
             return feature
-    return None
-
-
-def _find_task(feature: SddFeature, selector: str) -> TaskRecord | None:
-    normalized_selector = selector.strip().lower()
-    prefix = f"task {normalized_selector}"
-    for task in feature.tasks:
-        if task.title.lower().startswith(prefix):
-            return task
     return None
 
 

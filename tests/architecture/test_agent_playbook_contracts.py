@@ -516,6 +516,89 @@ def test_sdd_task_clis_reject_title_substring_selectors(tmp_path: Path) -> None:
 
 
 @pytest.mark.architecture
+def test_sdd_task_clis_match_exact_task_numbers(tmp_path: Path) -> None:
+    _write_context_packet_fixture(tmp_path)
+    _move_task_10_before_task_1(tmp_path)
+    report = tmp_path / "subagent-report.md"
+    report.write_text(
+        _subagent_report(
+            mode="read-only",
+            changed_files="- none",
+            command="uv run pytest tests/architecture/test_agent_playbook_contracts.py -q",
+            exit_code=0,
+        ),
+        encoding="utf-8",
+    )
+
+    context_result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "build_agent_context_packet.py"),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--task",
+            "1",
+            "--mode",
+            "read-only",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert context_result.returncode == 0, context_result.stdout + context_result.stderr
+    assert "# Context Packet - 2026-06-09-context-packet-fixture / Task 1" in context_result.stdout
+    assert "# Context Packet - 2026-06-09-context-packet-fixture / Task 10" not in context_result.stdout
+
+    dispatch_result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "dispatch_sdd_task.py"),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--task",
+            "1",
+            "--mode",
+            "read-only",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert dispatch_result.returncode == 0, dispatch_result.stdout + dispatch_result.stderr
+    assert "# Subagent Handoff - 2026-06-09-context-packet-fixture / Task 1" in dispatch_result.stdout
+    assert "# Subagent Handoff - 2026-06-09-context-packet-fixture / Task 10" not in dispatch_result.stdout
+
+    report_result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "validate_subagent_report.py"),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--task",
+            "1",
+            "--mode",
+            "read-only",
+            "--report",
+            str(report),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert report_result.returncode == 0, report_result.stdout + report_result.stderr
+    assert "Subagent report validation passed." in report_result.stdout
+
+
+@pytest.mark.architecture
 def test_sdd_gate_check_cli_accepts_individual_gates(tmp_path: Path) -> None:
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()
@@ -4538,6 +4621,62 @@ def _clone_context_packet_fixture(root: Path, slug: str) -> None:
         text = source_path.read_text(encoding="utf-8")
         text = text.replace(source_slug, slug).replace(source_worktree, target_worktree)
         (target / source_path.name).write_text(text, encoding="utf-8")
+
+
+def _move_task_10_before_task_1(root: Path) -> None:
+    tasks_path = root / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "tasks.md"
+    text = tasks_path.read_text(encoding="utf-8")
+    task_10 = _numbered_context_packet_task(
+        10,
+        title="Prefix collision packet",
+        on_demand_context="docs/agent-playbook/task-10.md",
+        verification="uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_task_10 -q",
+    )
+    task_4_to_9 = "\n".join(
+        _numbered_context_packet_task(
+            number,
+            title=f"Padding task {number}",
+            on_demand_context="docs/agent-playbook/context-packet-template.md",
+            verification="uv run pytest tests/architecture/test_agent_playbook_contracts.py -q",
+        )
+        for number in range(4, 10)
+    )
+    text = text.replace("### Task 1 — Dispatch packet", task_10 + "\n### Task 1 — Dispatch packet", 1)
+    text = text.rstrip() + "\n\n" + task_4_to_9 + "\n"
+    tasks_path.write_text(text, encoding="utf-8")
+
+
+def _numbered_context_packet_task(
+    number: int,
+    *,
+    title: str,
+    on_demand_context: str,
+    verification: str,
+) -> str:
+    return dedent(
+        f"""
+        ### Task {number} — {title}
+
+        - **File(s)**: `scripts/build_agent_context_packet.py`
+        - **Owner**: parent
+        - **Depends on**: none
+        - **Touch set**: `scripts/build_agent_context_packet.py`
+        - **Conflict set**: coordinate with 2026-06-09-other-feature for exact task selector tests.
+        - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py`
+        - **Subagent handoff**: not delegated
+        - **Subagent report**: not delegated
+        - **Review result**: parent-reviewed
+        - **Factory lane**: Harness/tests
+        - **Deterministic constraints**: Task selectors must match the numeric task exactly.
+        - **On-demand context**: `{on_demand_context}`
+        - **Kill/defer criteria**: Stop if `--task 1` can bind to `Task 10`.
+        - **Eval/repair signal**: task selector prefix collision and subagent handoff false binding.
+        - **Implementation**: Exercise exact numeric task selection.
+        - **Verification**: `{verification}`
+        - **Review owner**: parent
+        - **Status**: [~]
+        """
+    ).strip()
 
 
 def _create_context_packet_fixture_paths(root: Path) -> None:

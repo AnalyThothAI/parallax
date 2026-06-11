@@ -14,7 +14,7 @@
 | Clarify | Spec contains approved clarification for superseding the omnibus record. |
 | Checklist | Spec records the active-record size bound requirement. |
 | Analyze | Plan Analyze Gate records why active records should remain bounded. |
-| Implement | Tasks 1-15 implement the validator, migration, documentation contract, stale-template cleanup, machine-readable verification status tokens, active lifecycle command hard cut, active placeholder final-evidence rejection, active skipped-test accounting bound, fail-closed final-evidence templates, dispatch-bound context packets, generated subagent mode constraints, validator-enforced handoff mode constraints, embedded context-packet mode constraints, top-level handoff validation scope, and exact report validation command enforcement. |
+| Implement | Tasks 1-16 implement the validator, migration, documentation contract, stale-template cleanup, machine-readable verification status tokens, active lifecycle command hard cut, active placeholder final-evidence rejection, active skipped-test accounting bound, fail-closed final-evidence templates, dispatch-bound context packets, generated subagent mode constraints, validator-enforced handoff mode constraints, embedded context-packet mode constraints, top-level handoff validation scope, exact report validation command enforcement, and exact task-number selection. |
 | Verify | Verification artifact captures RED/GREEN command output. |
 
 ## Tasks
@@ -331,5 +331,26 @@
 - **Eval/repair signal**: delegated handoff accepted with token inventory, wrong command ordering, missing `uv run python`, or command hidden in fenced content.
 - **Implementation**: Replace token-presence validation with exact top-level command validation.
 - **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_exact_report_validation_command -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 16 - Match exact task numbers across subagent CLIs
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/build_agent_context_packet.py`, `scripts/dispatch_sdd_task.py`, `scripts/validate_subagent_report.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`
+- **Owner**: parent
+- **Depends on**: Task 15
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/build_agent_context_packet.py`, `scripts/dispatch_sdd_task.py`, `scripts/validate_subagent_report.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared agent playbook CLIs, tests, and generated index updates.
+- **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_clis_match_exact_task_numbers` - proves `--task 1` cannot bind to `Task 10` when the task board lists Task 10 first.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Context packet, dispatch, and report-validation CLIs must resolve task selectors through exact numeric task ids, not title-prefix matching.
+- **On-demand context**: `scripts/build_agent_context_packet.py`, `scripts/dispatch_sdd_task.py`, `scripts/validate_subagent_report.py`, `scripts/validate_sdd_artifacts.py`.
+- **Kill/defer criteria**: Stop if any subagent CLI intentionally keeps prefix-based task lookup.
+- **Eval/repair signal**: `--task 1` emits Task 10 context, dispatch handoff titles drift, or report validation checks the wrong task fields.
+- **Implementation**: Add shared exact task lookup to the SDD validator module and reuse it from all subagent task CLIs.
+- **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_clis_match_exact_task_numbers -q`
 - **Review owner**: parent
 - **Status**: [x]
