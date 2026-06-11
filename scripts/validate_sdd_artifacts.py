@@ -1470,7 +1470,15 @@ def _verified_issues(feature: SddFeature) -> list[SddIssue]:
     issues.extend(_verified_coverage_issues(artifact))
     issues.extend(_verified_e2e_issues(artifact))
     skipped_match = SKIPPED_RE.search(artifact.text)
-    if skipped_match and int(skipped_match.group("count")) > 0 and not _skipped_rows_are_acceptable(artifact.text):
+    if skipped_match is None:
+        issues.append(
+            _issue(
+                "verified-unexplained-skips",
+                artifact,
+                "Verified record must include numeric skipped-test count",
+            )
+        )
+    elif int(skipped_match.group("count")) > 0 and not _skipped_rows_are_acceptable(artifact.text):
         issues.append(
             _issue("verified-unexplained-skips", artifact, "Verified record has skipped tests without explanation")
         )
