@@ -11,9 +11,8 @@ if str(ROOT) not in sys.path:
 from scripts.validate_sdd_artifacts import (  # noqa: E402
     SddFeature,
     SddIssue,
-    is_placeholder_table_cell,
+    analyze_gate_invalid_results,
     scan_sdd_features,
-    section_gate_table_rows,
     section_has_gate_evidence,
     validate_sdd_root,
 )
@@ -111,7 +110,7 @@ def _analyze_gate_issues(feature: SddFeature) -> list[str]:
         return [f"missing-gate-section: {artifact.relative_path} missing ## Analyze Gate"]
     if not section_has_gate_evidence(artifact.text, "## Analyze Gate"):
         return [f"gate-evidence-missing: {artifact.relative_path} analyze gate lacks evidence"]
-    invalid_results = _invalid_analyze_results(artifact.text)
+    invalid_results = analyze_gate_invalid_results(artifact.text)
     if invalid_results:
         return [
             f"plan-analyze-gate-invalid: {artifact.relative_path} "
@@ -140,19 +139,6 @@ def _is_implement_gate_issue(feature: SddFeature, issue: SddIssue) -> bool:
 
 def _section_text(text: str, heading: str) -> str:
     return validated_section_text(text, heading)
-
-
-def _invalid_analyze_results(text: str) -> list[str]:
-    invalid: list[str] = []
-    for cells in section_gate_table_rows(text, "## Analyze Gate"):
-        if len(cells) < 2 or any(is_placeholder_table_cell(cell) for cell in cells):
-            continue
-        result = cells[1].strip()
-        if result.startswith(("Pass:", "Blocked:")):
-            continue
-        invalid.append(result)
-    return invalid
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

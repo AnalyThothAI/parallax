@@ -4178,3 +4178,24 @@
 - **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_analyze_gate_ignores_non_canonical_tables tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_ignores_non_canonical_analyze_tables -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 199 — Analyze invalid-result semantics are shared
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 198
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `tests/architecture/test_sdd_artifact_validator.py`; `docs/sdd/_templates/plan-template.md`
+- **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_invalid_analyze_result_with_placeholder_check` — proves placeholder text in the check column cannot hide an invalid Analyze result from the gate CLI.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Analyze result invalid-row detection must live in the full validator and be reused by the gate CLI without a local placeholder-cell shortcut.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, and Analyze Gate CLI tests.
+- **Kill/defer criteria**: Stop if the gate CLI accepts `Warn:` or `Fail:` rows because another cell is placeholder text, if validator and CLI messages drift, or if placeholder result cells stop being ignored as incomplete evidence.
+- **Eval/repair signal**: placeholder-check false green, duplicate Analyze result parser, and validator/gate CLI semantic drift.
+- **Implementation**: Expose `analyze_gate_invalid_results()` from the full validator, use it in both validator issue generation and `check_sdd_gate.py`, and remove the CLI's local Analyze result parser.
+- **Verification**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_invalid_analyze_result_with_placeholder_check -q`
+- **Review owner**: parent
+- **Status**: [x]

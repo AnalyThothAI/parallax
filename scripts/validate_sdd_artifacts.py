@@ -653,18 +653,7 @@ def _tasks_final_verification_issues(artifact: ArtifactRecord) -> list[SddIssue]
 
 
 def _plan_analyze_gate_issues(artifact: ArtifactRecord) -> list[SddIssue]:
-    invalid_results: list[str] = []
-    for cells in section_gate_table_rows(artifact.text, "## Analyze Gate"):
-        if len(cells) < 2:
-            continue
-        result = _clean_value(cells[1])
-        if _is_placeholder_table_cell(result):
-            continue
-        if result.startswith(("Pass:", "Blocked:")):
-            continue
-        check = _clean_value(cells[0]) or "<unnamed check>"
-        invalid_results.append(f"{check} => {result}")
-
+    invalid_results = analyze_gate_invalid_results(artifact.text)
     if not invalid_results:
         return []
     return [
@@ -1777,6 +1766,21 @@ def section_has_gate_evidence(text: str, heading: str) -> bool:
 def section_gate_table_rows(text: str, heading: str) -> list[list[str]]:
     expected_header = GATE_EVIDENCE_HEADERS[heading]
     return _section_table_rows(text, heading, expected_header)
+
+
+def analyze_gate_invalid_results(text: str) -> list[str]:
+    invalid_results: list[str] = []
+    for cells in section_gate_table_rows(text, "## Analyze Gate"):
+        if len(cells) < 2:
+            continue
+        result = _clean_value(cells[1])
+        if _is_placeholder_table_cell(result):
+            continue
+        if result.startswith(("Pass:", "Blocked:")):
+            continue
+        check = _clean_value(cells[0]) or "<unnamed check>"
+        invalid_results.append(f"{check} => {result}")
+    return invalid_results
 
 
 def _section_table_rows(text: str, heading: str, expected_header: tuple[str, ...] | None = None) -> list[list[str]]:
