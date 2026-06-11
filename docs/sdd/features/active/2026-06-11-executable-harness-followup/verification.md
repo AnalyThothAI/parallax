@@ -21,6 +21,7 @@
 | AC6 - Active records use current SDD lifecycle commands. | Pass | `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_active_records_reject_legacy_sdd_lifecycle_check_flags -q` failed RED before active-record lifecycle command validation, then passed after `active-sdd-lifecycle-check-flag-invalid` enforcement and active agent-playbook command cleanup. |
 | AC7 - Active records do not fake final transcripts. | Pass | `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_active_records_reject_placeholder_final_verification_transcripts -q` failed RED before active placeholder-final-evidence validation, then passed after `active-placeholder-final-evidence` enforcement and active agent-playbook transcript cleanup. |
 | AC8 - Active skipped-test accounting is final-run-bound. | Pass | `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_active_records_reject_skipped_count_without_final_evidence -q` failed RED before active skipped-test accounting validation, then passed after `active-skipped-count-without-final-evidence` enforcement and active non-final skip-count cleanup. |
+| AC9 - Verification templates fail closed. | Pass | `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_active_records_reject_template_placeholder_final_verification_transcripts tests/architecture/test_harness_structure.py::test_sdd_verification_template_does_not_embed_fake_final_exit_code -q` failed RED before template placeholder validation and fail-closed template output, then passed after both were enforced. |
 
 ## Verification commands
 
@@ -30,7 +31,7 @@ Not final completion evidence. Final completion still requires `make check-all` 
 
 | metric | value | threshold | status |
 |--------|-------|-----------|--------|
-| architecture and SDD artifact tests | 142 tests | >= targeted harness tests | Pass |
+| architecture and SDD artifact tests | 144 tests | >= targeted harness tests | Pass |
 | SDD active gates | 2 active features | all active clarify/checklist/analyze/implement gates pass | Pass |
 
 ## Skipped tests
@@ -369,6 +370,43 @@ all active SDD gates passed (clarify/checklist/analyze/implement): 2026-06-09-ag
 exit code: 0
 
 $ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run ruff check scripts/validate_sdd_artifacts.py scripts/regen_sdd_work_index.py tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_harness_structure.py
+All checks passed!
+exit code: 0
+
+$ git diff --check
+exit code: 0
+
+$ uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_active_records_reject_template_placeholder_final_verification_transcripts tests/architecture/test_harness_structure.py::test_sdd_verification_template_does_not_embed_fake_final_exit_code -q
+FF                                                                       [100%]
+AssertionError: assert 'active-placeholder-final-evidence' in set()
+AssertionError: assert '<paste full stdout/stderr here after the final successful run>' in ...
+exit code: 1
+
+$ uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_active_records_reject_template_placeholder_final_verification_transcripts tests/architecture/test_harness_structure.py::test_sdd_verification_template_does_not_embed_fake_final_exit_code -q
+..                                                                       [100%]
+2 passed in 0.04s
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run python scripts/validate_sdd_artifacts.py
+SDD artifact validation passed.
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run python scripts/check_sdd_gate.py --all-active
+all active SDD gates passed (clarify/checklist/analyze/implement): 2026-06-09-agent-playbook-skill-hard-cut, 2026-06-11-executable-harness-followup
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run python scripts/regen_sdd_work_index.py
+wrote docs/generated/sdd-work-index.md
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run python scripts/regen_sdd_work_index.py --check
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run pytest tests/architecture/test_harness_structure.py tests/architecture/test_sdd_artifact_validator.py -q
+144 passed in 0.49s
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run ruff check scripts/validate_sdd_artifacts.py tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_harness_structure.py
 All checks passed!
 exit code: 0
 

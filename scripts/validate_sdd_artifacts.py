@@ -179,7 +179,11 @@ CONTRADICTION_PHRASES = (
     "skip_e2e=1",
     "skip_golden=1",
 )
-ACTIVE_PLACEHOLDER_FINAL_EVIDENCE_PHRASES = ("pending final run", "exit code: pending")
+ACTIVE_PLACEHOLDER_FINAL_EVIDENCE_PHRASES = (
+    "pending final run",
+    "exit code: pending",
+    "<paste full stdout/stderr here>",
+)
 RUNTIME_SKIP_SWITCHES = ("SKIP_E2E=1", "SKIP_GOLDEN=1")
 KNOWN_ISSUE_CODES = (
     "review-lifecycle",

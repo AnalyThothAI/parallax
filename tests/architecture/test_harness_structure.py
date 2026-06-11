@@ -272,6 +272,15 @@ def test_sdd_verification_template_uses_machine_readable_status_examples() -> No
     assert "| branch | Not run | >= 70% | Fail |" in template
 
 
+def test_sdd_verification_template_does_not_embed_fake_final_exit_code() -> None:
+    template = _read(SDD / "_templates" / "verification-template.md")
+    verification_commands = template.split("## Verification commands", 1)[1].split("## Coverage", 1)[0]
+
+    assert "<paste full stdout/stderr here after the final successful run>" in verification_commands
+    assert "exit code: <0 after final success>" in verification_commands
+    assert "exit code: 0" not in verification_commands
+
+
 def test_docs_root_governance_files() -> None:
     actual = {p.name for p in DOCS.glob("*.md")}
     assert actual == EXPECTED_GOVERNANCE, f"unexpected docs root contents: {actual ^ EXPECTED_GOVERNANCE}"

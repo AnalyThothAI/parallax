@@ -36,8 +36,8 @@ Paste the FULL output below, including the exit code line.
 
 ```text
 $ make check-all
-<paste full stdout/stderr here>
-exit code: 0
+<paste full stdout/stderr here after the final successful run>
+exit code: <0 after final success>
 ```
 
 If `make check-all` exit code is non-zero, the work is not complete — do not

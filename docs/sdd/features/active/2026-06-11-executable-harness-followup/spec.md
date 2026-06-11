@@ -28,6 +28,7 @@ The prior executable harness record was an omnibus active ledger with more than 
 | Active records use current SDD lifecycle commands. | Validator rejects active records that advertise obsolete lifecycle `--check` flags. |
 | Active records do not fake final transcripts. | Validator rejects placeholder final command transcripts in active `verification.md` records. |
 | Active skipped-test accounting is final-run-bound. | Validator rejects numeric skipped-test counts in active `verification.md` records without successful final `make check-all` evidence. |
+| Verification templates fail closed. | Templates do not embed fake final `exit code: 0` transcripts, and validator rejects copied template transcript placeholders in active records. |
 
 ## Acceptance criteria
 
@@ -39,6 +40,7 @@ The prior executable harness record was an omnibus active ledger with more than 
 - AC6. WHEN an active SDD record advertises `--check` on `scripts/validate_sdd_artifacts.py` or `scripts/check_sdd_gate.py` THEN `scripts/validate_sdd_artifacts.py` SHALL report `active-sdd-lifecycle-check-flag-invalid` before obsolete lifecycle compatibility flags can guide current work.
 - AC7. WHEN an active `verification.md` contains placeholder final transcript text such as `Pending final run` or `exit code: pending` THEN `scripts/validate_sdd_artifacts.py` SHALL report `active-placeholder-final-evidence` before placeholder command output can masquerade as executable evidence.
 - AC8. WHEN an active `verification.md` lacks successful final `make check-all` evidence THEN `scripts/validate_sdd_artifacts.py` SHALL report `active-skipped-count-without-final-evidence` for numeric `Skipped tests` run-above counts before zero-skip claims can masquerade as executable evidence.
+- AC9. WHEN `docs/sdd/_templates/verification-template.md` teaches final command evidence THEN it SHALL fail closed with a non-success exit placeholder, and `scripts/validate_sdd_artifacts.py` SHALL report `active-placeholder-final-evidence` if that transcript placeholder is copied into an active record.
 
 ## Risks
 

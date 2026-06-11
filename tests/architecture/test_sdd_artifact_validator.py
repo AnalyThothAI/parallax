@@ -1736,6 +1736,28 @@ def test_active_records_reject_placeholder_final_verification_transcripts(tmp_pa
     assert "exit code: pending" in messages
 
 
+def test_active_records_reject_template_placeholder_final_verification_transcripts(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-template-final-transcript")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(feature / "tasks.md", status="In Progress")
+    _write_valid_verification(
+        feature / "verification.md",
+        status="In Progress",
+        verification_command_lines=(
+            "$ make check-all",
+            "<paste full stdout/stderr here>",
+            "exit code: 0",
+        ),
+    )
+
+    issues = validate_sdd_root(tmp_path)
+
+    messages = "\n".join(issue.message for issue in issues).lower()
+    assert "active-placeholder-final-evidence" in _issue_codes(issues)
+    assert "<paste full stdout/stderr here>" in messages
+
+
 def test_active_records_reject_skipped_count_without_final_evidence(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-stale-active-skip-count")
     _write_valid_spec(feature / "spec.md", status="In Progress")

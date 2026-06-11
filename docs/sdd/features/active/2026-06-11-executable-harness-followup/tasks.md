@@ -14,7 +14,7 @@
 | Clarify | Spec contains approved clarification for superseding the omnibus record. |
 | Checklist | Spec records the active-record size bound requirement. |
 | Analyze | Plan Analyze Gate records why active records should remain bounded. |
-| Implement | Tasks 1-8 implement the validator, migration, documentation contract, stale-template cleanup, machine-readable verification status tokens, active lifecycle command hard cut, active placeholder final-evidence rejection, and active skipped-test accounting bound. |
+| Implement | Tasks 1-9 implement the validator, migration, documentation contract, stale-template cleanup, machine-readable verification status tokens, active lifecycle command hard cut, active placeholder final-evidence rejection, active skipped-test accounting bound, and fail-closed final-evidence templates. |
 | Verify | Verification artifact captures RED/GREEN command output. |
 
 ## Tasks
@@ -184,5 +184,26 @@
 - **Eval/repair signal**: `active-skipped-count-without-final-evidence`, numeric active skipped-test counts without final evidence, or stale generated issue taxonomy.
 - **Implementation**: Add active skipped-test accounting validation, register the issue code, and replace active non-final zero-skip claims with explicit non-final prose.
 - **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_active_records_reject_skipped_count_without_final_evidence -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 9 - Make verification transcript placeholders fail closed
+
+- **File(s)**: `docs/sdd/_templates/verification-template.md`, `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_harness_structure.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`
+- **Owner**: parent
+- **Depends on**: Task 8
+- **Touch set**: `docs/sdd/_templates/verification-template.md`, `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_harness_structure.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD template and generated index updates.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_active_records_reject_template_placeholder_final_verification_transcripts` and `tests/architecture/test_harness_structure.py::test_sdd_verification_template_does_not_embed_fake_final_exit_code` - prove copied template transcripts and fake template exit codes fail.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Verification templates may show where final evidence belongs, but must not include a success-shaped final transcript placeholder.
+- **On-demand context**: `docs/sdd/_templates/verification-template.md`, `scripts/validate_sdd_artifacts.py`, SDD completion gate docs.
+- **Kill/defer criteria**: Stop if operators intentionally need templates that pass when copied unchanged.
+- **Eval/repair signal**: copied `<paste full stdout/stderr here>` transcript placeholders, fake template `exit code: 0`, or stale generated index rows.
+- **Implementation**: Add the template placeholder to active placeholder-final-evidence validation and change the verification template command block to use a non-success exit placeholder.
+- **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_active_records_reject_template_placeholder_final_verification_transcripts tests/architecture/test_harness_structure.py::test_sdd_verification_template_does_not_embed_fake_final_exit_code -q`
 - **Review owner**: parent
 - **Status**: [x]
