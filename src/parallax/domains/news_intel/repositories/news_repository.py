@@ -11,6 +11,7 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
+from parallax.app.runtime.current_read_model_publisher import stable_current_payload_hash
 from parallax.domains.news_intel._constants import (
     NEWS_ITEM_AGENT_ADMISSION_VERSION,
     NEWS_ITEM_BRIEF_SCHEMA_VERSION,
@@ -43,7 +44,6 @@ from parallax.domains.news_intel.types.news_story_identity import NewsStoryIdent
 from parallax.domains.news_intel.types.news_url_identity import public_url_identity_policy, url_identity_kind
 from parallax.domains.news_intel.types.source_classification import normalize_string_tuple
 from parallax.domains.news_intel.types.source_quality_policy import window_ms_for_label
-from parallax.platform.db.json_safety import postgres_safe_json
 
 _DEFAULT_SOURCE_CLAIM_LEASE_MS = 60_000
 _REDACTED = "<redacted>"
@@ -4160,7 +4160,9 @@ class NewsRepository:
         changed_status_source_ids: list[str] = []
         for row in rows:
             payload = _source_quality_payload(row)
-            payload["payload_hash"] = _stable_payload_hash(payload, exclude=_PUBLICATION_METADATA_FIELDS)
+            payload["payload_hash"] = _current_read_model_payload_hash(
+                payload, exclude=_PUBLICATION_METADATA_FIELDS
+            )
             self.conn.execute(
                 """
                 INSERT INTO news_source_quality_rows (
@@ -4787,7 +4789,9 @@ class NewsRepository:
         unchanged = 0
         for payload in row_payloads:
             payload["search_text"] = build_news_page_search_text(payload)
-            payload["payload_hash"] = _stable_payload_hash(payload, exclude=_PUBLICATION_METADATA_FIELDS)
+            payload["payload_hash"] = _current_read_model_payload_hash(
+                payload, exclude=_PUBLICATION_METADATA_FIELDS
+            )
             returned = self.conn.execute(
                 """
                 INSERT INTO news_page_rows (
@@ -6323,24 +6327,19 @@ def _json(value: Any) -> Jsonb:
     return Jsonb(value, dumps=lambda item: json.dumps(item, ensure_ascii=False, sort_keys=True))
 
 
-def _stable_payload_hash(payload: Mapping[str, Any], *, exclude: set[str]) -> str:
-    normalized = {str(key): _stable_json_value(value) for key, value in payload.items() if str(key) not in exclude}
-    encoded = json.dumps(
-        postgres_safe_json(normalized),
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
+def _current_read_model_payload_hash(payload: Mapping[str, Any], *, exclude: set[str]) -> str:
+    return stable_current_payload_hash(
+        {key: _current_hash_payload_value(value) for key, value in payload.items() if key not in exclude}
     )
-    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
-def _stable_json_value(value: Any) -> Any:
+def _current_hash_payload_value(value: Any) -> Any:
     if isinstance(value, Jsonb):
-        return _stable_json_value(value.obj)
+        return _current_hash_payload_value(value.obj)
     if isinstance(value, Mapping):
-        return {str(key): _stable_json_value(item) for key, item in value.items()}
+        return {key: _current_hash_payload_value(item) for key, item in value.items()}
     if isinstance(value, list | tuple):
-        return [_stable_json_value(item) for item in value]
+        return [_current_hash_payload_value(item) for item in value]
     return value
 
 

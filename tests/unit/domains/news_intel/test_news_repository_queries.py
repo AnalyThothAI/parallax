@@ -74,6 +74,19 @@ def test_agent_admission_context_loader_uses_narrow_news_item_payloads() -> None
     assert "story_items.story_key = items.story_key" not in conn.sql
 
 
+def test_news_page_row_payload_hash_rejects_legacy_story_keys_before_write() -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+    row = _valid_news_page_row()
+    row["story"] = {123: "legacy"}
+
+    with pytest.raises(ValueError, match="current payload hash payload has non-string keys"):
+        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row], commit=True)
+
+    assert not any("INSERT INTO news_page_rows" in sql for sql, _params in conn.statements)
+    assert conn.params is None or "INSERT INTO news_page_rows" not in conn.sql
+
+
 def test_unprocessed_item_loader_selects_provider_article_keys_for_story_identity() -> None:
     conn = CapturingConnection()
     repo = NewsRepository(conn)
@@ -423,6 +436,50 @@ def _valid_agent_admission_payload() -> dict[str, object]:
         "representative_news_item_id": "news-1",
         "basis": {"market_scope": ["crypto"]},
         "version": "news_item_agent_admission_v1",
+    }
+
+
+def _valid_news_page_row() -> dict[str, object]:
+    return {
+        "row_id": "row-news-1",
+        "news_item_id": "news-1",
+        "representative_news_item_id": "news-1",
+        "story_key": "story:news-1",
+        "story": {
+            "member_news_item_ids": ["news-1"],
+            "member_count": 1,
+            "source_ids": ["source-1"],
+        },
+        "latest_at_ms": 1_779_000_000_000,
+        "lifecycle_status": "ready",
+        "headline": "Bitcoin ETF flows jump",
+        "summary": "ETF flow update",
+        "source_domain": "example.com",
+        "canonical_url": "https://example.com/news-1",
+        "token_lanes": [],
+        "fact_lanes": [],
+        "content_class": "market_moving",
+        "content_tags": ["etf"],
+        "content_classification": {"status": "classified"},
+        "source": {"source_id": "source-1", "source_domain": "example.com"},
+        "signal": {"display_signal": "neutral"},
+        "provider_rating": {},
+        "token_impacts": [],
+        "agent_brief": {"status": "pending"},
+        "agent_status": "pending",
+        "agent_brief_computed_at_ms": None,
+        "computed_at_ms": 1_779_000_000_000,
+        "projection_version": "news_page_rows_v5",
+        "canonical_item_key": "news-1",
+        "duplicate_count": 0,
+        "source_ids_json": [],
+        "source_domains_json": [],
+        "provider_article_keys_json": [],
+        "market_scope": {"primary": "crypto"},
+        "agent_admission": _valid_agent_admission_payload(),
+        "agent_admission_status": "needs_review",
+        "agent_admission_reason": "pending",
+        "agent_representative_news_item_id": "news-1",
     }
 
 

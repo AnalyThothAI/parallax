@@ -4,6 +4,8 @@ import json
 from contextlib import contextmanager
 from types import SimpleNamespace
 
+import pytest
+
 from parallax.domains.news_intel.repositories.news_repository import NewsRepository, _source_status_payload
 from parallax.domains.news_intel.runtime.news_source_quality_projection_worker import (
     NewsSourceQualityProjectionWorker,
@@ -438,6 +440,40 @@ def test_replace_source_quality_rows_updates_source_status_freshness() -> None:
     assert "source_quality_status IS DISTINCT FROM %s" in status_update
     assert status_params == ("healthy", NOW_MS, "coindesk", "healthy")
     assert conn.commits == 1
+
+
+def test_source_quality_payload_hash_rejects_legacy_diagnostics_keys() -> None:
+    conn = CapturingQualityConnection()
+    repo = NewsRepository(conn)
+
+    with pytest.raises(ValueError, match="current payload hash payload has non-string keys"):
+        repo.replace_source_quality_rows(
+            rows=[
+                {
+                    "row_id": "news-source-quality:coindesk:24h",
+                    "source_id": "coindesk",
+                    "window": "24h",
+                    "computed_at_ms": NOW_MS,
+                    "fetch_success_rate": 1,
+                    "items_fetched": 10,
+                    "items_inserted": 8,
+                    "duplicate_rate": 0.2,
+                    "process_success_rate": 1,
+                    "resolved_token_rate": 0.75,
+                    "attention_rate": 0.25,
+                    "accepted_fact_rate": 0.5,
+                    "brief_ready_rate": 0.5,
+                    "median_lag_ms": 500,
+                    "quality_score": 82.5,
+                    "diagnostics_json": {123: "legacy"},
+                    "projection_version": SOURCE_QUALITY_PROJECTION_VERSION,
+                }
+            ],
+            commit=True,
+        )
+
+    assert conn.calls == []
+    assert conn.commits == 0
 
 
 def test_source_quality_repository_query_uses_narrow_item_and_fact_hotpaths() -> None:

@@ -179,6 +179,8 @@ claim is allowed without the corresponding output captured below.
 | AC160 — CEX detail hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py::test_detail_payload_hash_rejects_legacy_level_band_keys -q` failed RED when the CEX detail local normalizer stringified `level_bands` keys, then passed after replacing the local normalizer with shared `stable_current_payload_hash()` and updating overfitted migration-golden numeric tests. |
 | AC161 — CEX detail source refs reject legacy keys before filtering. | ✅ | `uv run pytest tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py::test_detail_payload_hash_rejects_legacy_source_ref_keys -q` failed RED when source-ref metadata filtering stringified a non-string key, then passed after validating source-ref keys before filtering. |
 | AC162 — Token profile current hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/domains/asset_market/test_token_profile_current_repository.py::test_token_profile_current_payload_hash_rejects_legacy_source_payload_keys -q` failed RED when the profile-current local hash normalizer accepted a non-string `source_payload_json` key, then passed after validating JSON payload blocks before sanitation and replacing the local normalizer with `stable_current_payload_hash()`. |
+| AC163 — News source-quality hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/domains/news_intel/test_source_quality_projection.py::test_source_quality_payload_hash_rejects_legacy_diagnostics_keys -q` failed RED when the News local hash normalizer accepted a non-string `diagnostics_json` key, then passed after replacing the local normalizer with `stable_current_payload_hash()` and strict `Jsonb` unwrapping. |
+| AC164 — News page-row hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/domains/news_intel/test_news_repository_queries.py::test_news_page_row_payload_hash_rejects_legacy_story_keys_before_write -q` failed RED when page-row hashing bypassed shared current payload validation and reached the insert path, then passed after restoring `stable_current_payload_hash()` for page-row hashes. |
 
 Deviations from spec:
 
@@ -3215,6 +3217,41 @@ exit code: 0
 $ uv run pytest tests/architecture/test_worker_runtime_contracts.py::test_token_profile_current_owns_image_source_admission tests/architecture/test_worker_runtime_contracts.py::test_read_model_single_writers -q
 ...................                                                      [100%]
 19 passed in 1.40s
+exit code: 0
+
+$ uv run pytest tests/unit/domains/news_intel/test_source_quality_projection.py::test_source_quality_payload_hash_rejects_legacy_diagnostics_keys -q
+F                                                                        [100%]
+Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/unit/domains/news_intel/test_source_quality_projection.py::test_source_quality_payload_hash_rejects_legacy_diagnostics_keys -q
+.                                                                        [100%]
+1 passed in 0.17s
+exit code: 0
+
+$ uv run pytest tests/unit/domains/news_intel/test_news_repository_queries.py::test_news_page_row_payload_hash_rejects_legacy_story_keys_before_write -q
+F                                                                        [100%]
+KeyError: 'inserted'
+exit code: 1
+
+$ uv run pytest tests/unit/domains/news_intel/test_news_repository_queries.py::test_news_page_row_payload_hash_rejects_legacy_story_keys_before_write -q
+.                                                                        [100%]
+1 passed in 0.18s
+exit code: 0
+
+$ uv run pytest tests/unit/domains/news_intel/test_source_quality_projection.py tests/unit/domains/news_intel/test_news_repository_queries.py -q
+..............................                                           [100%]
+30 passed in 0.18s
+exit code: 0
+
+$ uv run pytest tests/unit/domains/news_intel/test_news_projection_dirty_targets.py::test_source_quality_worker_enqueues_page_dirty_when_source_quality_status_changes tests/unit/domains/news_intel/test_news_projection_dirty_targets.py::test_page_projection_worker_loads_only_claimed_news_item_targets_and_marks_done_with_tokens -q
+..                                                                       [100%]
+2 passed in 0.36s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_projection_worker_idle_cost_contract.py tests/architecture/test_worker_runtime_contracts.py::test_news_page_projection_manifest_uses_row_id_identity tests/architecture/test_worker_runtime_contracts.py::test_worker_manifest_declares_dirty_target_consumers -q
+.....                                                                    [100%]
+5 passed in 0.71s
 exit code: 0
 
 $ uv run python scripts/validate_sdd_artifacts.py --check

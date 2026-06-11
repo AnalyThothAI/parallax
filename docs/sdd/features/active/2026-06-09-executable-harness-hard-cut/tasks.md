@@ -3421,6 +3421,48 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 163 — News source-quality hash uses shared current payload contract
+
+- **File(s)**: `src/parallax/domains/news_intel/repositories/news_repository.py`, `tests/unit/domains/news_intel/test_source_quality_projection.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 162
+- **Touch set**: `src/parallax/domains/news_intel/repositories/news_repository.py`, `tests/unit/domains/news_intel/test_source_quality_projection.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/domains/news_intel/repositories/news_repository.py` for News source-quality current-row payload hash semantics and idempotent writes.
+- **Failing test first**: `tests/unit/domains/news_intel/test_source_quality_projection.py::test_source_quality_payload_hash_rejects_legacy_diagnostics_keys` — call `NewsRepository.replace_source_quality_rows()` with `diagnostics_json` containing a non-string key and assert the shared current payload-key validation raises before the retired local normalizer can stringify compatibility-shaped diagnostics payload keys.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: News source-quality row hashing must use `stable_current_payload_hash()` from `src/parallax/app/runtime/current_read_model_publisher.py`; the repository must not keep a local stable payload hash normalizer that stringifies mapping keys or routes `diagnostics_json` through compatibility sanitation before current payload validation.
+- **On-demand context**: `src/parallax/domains/news_intel/ARCHITECTURE.md`, `src/parallax/domains/news_intel/repositories/news_repository.py`, `tests/unit/domains/news_intel/test_source_quality_projection.py`, and current read-model payload hash idempotency contracts.
+- **Kill/defer criteria**: Stop if News source-quality intentionally supports non-string diagnostics keys, if production source-quality rows require compatibility key stringification at runtime, or if the shared hash helper cannot preserve unchanged hashes for compliant source-quality payloads.
+- **Eval/repair signal**: local `_stable_payload_hash()`, local `_stable_json_value()`, diagnostics key stringification, News source-quality idempotency drift, and SDD generated index drift.
+- **Implementation**: Compute `news_source_quality_rows.payload_hash` with `stable_current_payload_hash()`, unwrap `Jsonb` adapter values without stringifying mapping keys, and delete the repository-local stable payload hash and JSON value normalizers.
+- **Verification**: `uv run pytest tests/unit/domains/news_intel/test_source_quality_projection.py::test_source_quality_payload_hash_rejects_legacy_diagnostics_keys -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 164 — News page-row hash uses shared current payload contract
+
+- **File(s)**: `src/parallax/domains/news_intel/repositories/news_repository.py`, `tests/unit/domains/news_intel/test_news_repository_queries.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 163
+- **Touch set**: `src/parallax/domains/news_intel/repositories/news_repository.py`, `tests/unit/domains/news_intel/test_news_repository_queries.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/domains/news_intel/repositories/news_repository.py` for News page-row current-row payload hash semantics and idempotent writes.
+- **Failing test first**: `tests/unit/domains/news_intel/test_news_repository_queries.py::test_news_page_row_payload_hash_rejects_legacy_story_keys_before_write` — call `NewsRepository.replace_page_rows_for_items()` with a `story` payload containing a non-string key and assert the shared current payload-key validation raises before serving-row insert can consume compatibility-shaped story keys.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: News page-row hashing must use `stable_current_payload_hash()` from `src/parallax/app/runtime/current_read_model_publisher.py`; the repository must not keep a local stable payload hash normalizer that stringifies `story_json`, source, signal, provider-rating, token-impact, market-scope, or agent-admission mapping keys.
+- **On-demand context**: `src/parallax/domains/news_intel/ARCHITECTURE.md`, `src/parallax/domains/news_intel/repositories/news_repository.py`, `tests/unit/domains/news_intel/test_news_repository_queries.py`, and current read-model payload hash idempotency contracts.
+- **Kill/defer criteria**: Stop if News page rows intentionally support non-string story/payload envelope keys, if production page rows require compatibility key stringification at runtime, or if the shared hash helper cannot preserve unchanged hashes for compliant page payloads.
+- **Eval/repair signal**: local `_stable_payload_hash()`, local `_stable_json_value()`, story key stringification, News page-row idempotency drift, and SDD generated index drift.
+- **Implementation**: Compute `news_page_rows.payload_hash` with `stable_current_payload_hash()`, unwrap `Jsonb` adapter values without stringifying mapping keys, and assert legacy story-key payloads are rejected before serving-row writes.
+- **Verification**: `uv run pytest tests/unit/domains/news_intel/test_news_repository_queries.py::test_news_page_row_payload_hash_rejects_legacy_story_keys_before_write -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -3574,4 +3616,6 @@
 - [ ] `uv run pytest tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py::test_detail_payload_hash_rejects_legacy_level_band_keys -q`
 - [ ] `uv run pytest tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py::test_detail_payload_hash_rejects_legacy_source_ref_keys -q`
 - [ ] `uv run pytest tests/unit/domains/asset_market/test_token_profile_current_repository.py::test_token_profile_current_payload_hash_rejects_legacy_source_payload_keys -q`
+- [ ] `uv run pytest tests/unit/domains/news_intel/test_source_quality_projection.py::test_source_quality_payload_hash_rejects_legacy_diagnostics_keys -q`
+- [ ] `uv run pytest tests/unit/domains/news_intel/test_news_repository_queries.py::test_news_page_row_payload_hash_rejects_legacy_story_keys_before_write -q`
 - [ ] `make check-all`
