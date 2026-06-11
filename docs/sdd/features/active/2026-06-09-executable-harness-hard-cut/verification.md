@@ -214,6 +214,7 @@ claim is allowed without the corresponding output captured below.
 | AC195 — Gate evidence table rows share arity. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_separator_arity_mismatch tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_body_row_arity_mismatch tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_separator_arity_mismatch tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_body_row_arity_mismatch -q` failed RED when separator/body rows with mismatched column counts satisfied gate evidence, then passed after table parsing required header/separator/body arity alignment. |
 | AC196 — Gate evidence tables are contiguous blocks. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_non_contiguous_body_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_non_contiguous_body_rows -q` failed RED when parser joined pipe rows across prose, then passed after table parsing evaluated only contiguous pipe-row blocks. |
 | AC197 — Gate evidence headers are canonical. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_wrong_clarification_header tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_wrong_clarification_header -q` failed RED when a generic but valid table header satisfied Clarifications evidence, then passed after gate evidence required canonical section headers. |
+| AC198 — Analyze results use canonical gate rows. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_analyze_gate_ignores_non_canonical_tables tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_ignores_non_canonical_analyze_tables -q` failed RED when non-canonical context tables inside Analyze Gate triggered result-status failures, then passed after Analyze result validation used canonical gate rows only. |
 
 Deviations from spec:
 
@@ -3845,6 +3846,17 @@ $ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evi
 ..                                                                       [100%]
 2 passed in 0.06s
 exit code: 0
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_analyze_gate_ignores_non_canonical_tables tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_ignores_non_canonical_analyze_tables -q
+FF                                                                       [100%]
+AssertionError: assert 'plan-analyze-gate-invalid' not in {'plan-analyze-gate-invalid'}
+AssertionError: plan-analyze-gate-invalid: docs/sdd/features/active/2026-06-09-context-packet-fixture/plan.md analyze gate results must start with Pass: or Blocked: This table is context, not an Analyze Gate result.
+exit code: 1
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_analyze_gate_ignores_non_canonical_tables tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_ignores_non_canonical_analyze_tables -q
+..                                                                       [100%]
+2 passed in 0.05s
+exit code: 0
 ```
 
 ## Diff summary
@@ -3876,6 +3888,7 @@ Files changed:
 - Equal-arity gate evidence tables: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Contiguous gate evidence table blocks: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Canonical gate evidence headers: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
+- Canonical Analyze Gate result rows: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Mechanical frontend Prettier drift cleanup: macro pages, macro component test, `web/vite.config.ts`.
 
 Migrations applied:

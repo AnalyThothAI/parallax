@@ -654,7 +654,7 @@ def _tasks_final_verification_issues(artifact: ArtifactRecord) -> list[SddIssue]
 
 def _plan_analyze_gate_issues(artifact: ArtifactRecord) -> list[SddIssue]:
     invalid_results: list[str] = []
-    for cells in _section_table_rows(artifact.text, "## Analyze Gate"):
+    for cells in section_gate_table_rows(artifact.text, "## Analyze Gate"):
         if len(cells) < 2:
             continue
         result = _clean_value(cells[1])
@@ -1771,8 +1771,12 @@ def _section_has_non_placeholder_table_row(text: str, heading: str) -> bool:
 
 
 def section_has_gate_evidence(text: str, heading: str) -> bool:
+    return any(is_table_evidence_row(cells) for cells in section_gate_table_rows(text, heading))
+
+
+def section_gate_table_rows(text: str, heading: str) -> list[list[str]]:
     expected_header = GATE_EVIDENCE_HEADERS[heading]
-    return any(is_table_evidence_row(cells) for cells in _section_table_rows(text, heading, expected_header))
+    return _section_table_rows(text, heading, expected_header)
 
 
 def _section_table_rows(text: str, heading: str, expected_header: tuple[str, ...] | None = None) -> list[list[str]]:

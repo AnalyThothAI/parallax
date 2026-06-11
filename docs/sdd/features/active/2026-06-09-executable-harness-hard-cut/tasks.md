@@ -4157,3 +4157,24 @@
 - **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_wrong_clarification_header tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_wrong_clarification_header -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 198 — Analyze results use canonical gate rows
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 197
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `docs/sdd/_templates/plan-template.md`; `scripts/check_sdd_gate.py`
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_plan_analyze_gate_ignores_non_canonical_tables` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_ignores_non_canonical_analyze_tables` — prove additional non-canonical tables in `## Analyze Gate` cannot trigger result-status failures.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Analyze result validation must read only rows from the canonical `| Check | Result |` gate table, and the gate CLI must use the same row helper as the full validator.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, and Analyze Gate tests.
+- **Kill/defer criteria**: Stop if non-canonical tables trigger `plan-analyze-gate-invalid`, if failed canonical rows pass, or if gate CLI keeps a separate broad table scan.
+- **Eval/repair signal**: non-canonical table false failure, failed canonical row false green, and validator/gate CLI parser drift.
+- **Implementation**: Add `section_gate_table_rows()` in the full validator, use it for Analyze Gate result validation, and switch `check_sdd_gate.py` to the same helper.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_analyze_gate_ignores_non_canonical_tables tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_ignores_non_canonical_analyze_tables -q`
+- **Review owner**: parent
+- **Status**: [x]

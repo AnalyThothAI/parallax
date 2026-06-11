@@ -427,6 +427,55 @@ def test_sdd_gate_check_cli_rejects_unbounded_analyze_status(tmp_path: Path) -> 
 
 
 @pytest.mark.architecture
+def test_sdd_gate_check_cli_ignores_non_canonical_analyze_tables(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "check_sdd_gate.py"
+    assert script.exists()
+    _write_context_packet_fixture(tmp_path)
+    _create_context_packet_fixture_paths(tmp_path)
+    plan_path = (
+        tmp_path
+        / "docs"
+        / "sdd"
+        / "features"
+        / "active"
+        / "2026-06-09-context-packet-fixture"
+        / "plan.md"
+    )
+    plan_text = plan_path.read_text(encoding="utf-8")
+    plan_path.write_text(
+        plan_text.replace(
+            "## Acceptance test commands",
+            "\n| Note | Value |\n"
+            "|------|-------|\n"
+            "| Non-gate example | This table is context, not an Analyze Gate result. |\n\n"
+            "## Acceptance test commands",
+        ),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--gate",
+            "analyze",
+            "--check",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "analyze gate passed" in result.stdout
+
+
+@pytest.mark.architecture
 def test_sdd_gate_check_cli_rejects_header_only_gate_tables(tmp_path: Path) -> None:
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()
