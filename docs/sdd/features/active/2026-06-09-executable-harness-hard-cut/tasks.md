@@ -4325,3 +4325,24 @@
 - **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_clarification_gate_evidence_rejects_non_canonical_approval_dates tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_non_canonical_clarification_approval_dates -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 206 — Artifact metadata dates are canonical
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 205
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `scripts/regen_sdd_work_index.py`; `docs/sdd/_templates/spec-template.md`; `docs/sdd/_templates/plan-template.md`; `docs/sdd/_templates/tasks-template.md`; `docs/sdd/_templates/verification-template.md`
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_artifact_metadata_dates_require_canonical_real_dates` — proves artifact `Date` and `Approved at` metadata cannot use compact or impossible date values.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Artifact `Date` and `Approved at` fields must be canonical `YYYY-MM-DD` values and parse as real calendar dates before lifecycle metadata is accepted.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, SDD templates, generated SDD index issue-code rows, and SDD artifact validator tests.
+- **Kill/defer criteria**: Stop if compact or impossible dates satisfy metadata validation, if placeholder dates stop reporting missing metadata, or if generated lifecycle flags omit the new issue code.
+- **Eval/repair signal**: metadata false green, issue-code index drift, and regression in valid current SDD artifacts.
+- **Implementation**: Add a `metadata-date-invalid` issue code, validate artifact date metadata through the shared canonical date helper, and reuse the helper from Clarifications gate evidence.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_artifact_metadata_dates_require_canonical_real_dates -q`
+- **Review owner**: parent
+- **Status**: [x]

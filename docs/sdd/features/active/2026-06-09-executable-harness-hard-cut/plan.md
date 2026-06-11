@@ -718,6 +718,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC203: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_doubled_boundary_pipes tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_doubled_boundary_pipes -q`
 - AC204: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_indented_table_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_indented_table_rows -q`
 - AC205: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_clarification_gate_evidence_rejects_non_canonical_approval_dates tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_non_canonical_clarification_approval_dates -q`
+- AC206: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_artifact_metadata_dates_require_canonical_real_dates -q`
 
 ## Verification
 

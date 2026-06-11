@@ -584,6 +584,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC203. WHEN a gate evidence table row uses doubled boundary pipes such as `|| ... ||` THEN the validator and gate checker SHALL reject the row as table evidence before extra boundary pipes can be stripped into canonical-looking cells.
 - AC204. WHEN a gate evidence table is indented as a code block or nested block THEN the validator and gate checker SHALL reject those rows as table evidence before non-top-level Markdown can satisfy lifecycle gates.
 - AC205. WHEN Clarifications gate evidence uses an approval date outside canonical `YYYY-MM-DD` form THEN the validator and gate checker SHALL reject the row as lacking evidence before freeform or compact dates can satisfy lifecycle gates.
+- AC206. WHEN SDD artifact `Date` or `Approved at` metadata uses compact, freeform, or impossible dates THEN the validator SHALL report `metadata-date-invalid` before lifecycle metadata can satisfy executable SDD gates.
 
 ## Risks
 

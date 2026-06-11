@@ -163,6 +163,7 @@ KNOWN_ISSUE_CODES = (
     "artifact-owning-link-mismatch",
     "missing-gate-section",
     "gate-evidence-missing",
+    "metadata-date-invalid",
     "acceptance-numbering-invalid",
     "acceptance-criterion-format-invalid",
     "acceptance-command-invalid",
@@ -622,6 +623,7 @@ def _artifact_issues(feature: SddFeature, artifact: ArtifactRecord) -> list[SddI
         issues.append(
             _issue("missing-approval-metadata", artifact, f"missing metadata fields: {', '.join(missing_fields)}")
         )
+    issues.extend(_metadata_date_issues(artifact))
     issues.extend(_artifact_owning_link_issues(feature, artifact))
 
     if normalized_status == "superseded":
@@ -650,6 +652,25 @@ def _tasks_final_verification_issues(artifact: ArtifactRecord) -> list[SddIssue]
             "tasks-final-verification-duplicated",
             artifact,
             "tasks.md must not maintain a Final verification checklist; put command evidence in verification.md",
+        )
+    ]
+
+
+def _metadata_date_issues(artifact: ArtifactRecord) -> list[SddIssue]:
+    invalid_fields = [
+        f"{artifact.name} {field}"
+        for field in ("date", "approved at")
+        if field in METADATA_REQUIREMENTS[artifact.name]
+        and not _is_placeholder(artifact.fields.get(field, ""))
+        and not _is_canonical_date_value(artifact.fields[field])
+    ]
+    if not invalid_fields:
+        return []
+    return [
+        _issue(
+            "metadata-date-invalid",
+            artifact,
+            "metadata date fields must use canonical YYYY-MM-DD real dates: " + ", ".join(invalid_fields),
         )
     ]
 
@@ -1860,7 +1881,7 @@ def is_gate_evidence_row(heading: str, cells: list[str]) -> bool:
     if not is_table_evidence_row(cells):
         return False
     if heading == "## Clarifications":
-        return len(cells) >= 4 and _is_iso_date_cell(cells[3])
+        return len(cells) >= 4 and _is_canonical_date_value(cells[3])
     return True
 
 
@@ -1869,7 +1890,7 @@ def is_placeholder_table_cell(value: str) -> bool:
     return _is_placeholder(value) or cleaned in {"pass / fail", "yyyy-mm-dd"}
 
 
-def _is_iso_date_cell(value: str) -> bool:
+def _is_canonical_date_value(value: str) -> bool:
     cleaned = _clean_value(value)
     if not ISO_DATE_RE.fullmatch(cleaned):
         return False

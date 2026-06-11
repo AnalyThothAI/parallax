@@ -222,6 +222,7 @@ claim is allowed without the corresponding output captured below.
 | AC203 — Gate evidence rows use single boundary pipes. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_doubled_boundary_pipes tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_doubled_boundary_pipes -q` failed RED when doubled boundary pipes were stripped into canonical-looking cells, then passed after table parsing required single boundary pipes. |
 | AC204 — Gate evidence tables are top-level. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_indented_table_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_indented_table_rows -q` failed RED when indented table rows satisfied evidence, then passed after table parsing preserved leading whitespace. |
 | AC205 — Clarification approvals use canonical dates. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_clarification_gate_evidence_rejects_non_canonical_approval_dates tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_non_canonical_clarification_approval_dates -q` failed RED when `20260609` satisfied Clarifications evidence, then passed after shared gate evidence validation required canonical `YYYY-MM-DD` approval dates. |
+| AC206 — Artifact metadata dates are canonical. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_artifact_metadata_dates_require_canonical_real_dates -q` failed RED with only `feature-slug-invalid`, then passed after artifact metadata validation emitted `metadata-date-invalid` for compact or impossible date values. |
 
 Deviations from spec:
 
@@ -3940,6 +3941,16 @@ $ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_clarific
 ..                                                                       [100%]
 2 passed in 0.06s
 exit code: 0
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_artifact_metadata_dates_require_canonical_real_dates -q
+F                                                                        [100%]
+AssertionError: assert 'metadata-date-invalid' in {'feature-slug-invalid'}
+exit code: 1
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_artifact_metadata_dates_require_canonical_real_dates -q
+.                                                                        [100%]
+1 passed in 0.03s
+exit code: 0
 ```
 
 ## Diff summary
@@ -3979,6 +3990,7 @@ Files changed:
 - Single-boundary pipe gate evidence parsing: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Top-level gate evidence table parsing: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Clarification canonical approval dates: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
+- Artifact metadata canonical dates: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`.
 - Mechanical frontend Prettier drift cleanup: macro pages, macro component test, `web/vite.config.ts`.
 
 Migrations applied:

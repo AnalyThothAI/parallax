@@ -154,6 +154,25 @@ def test_feature_directory_name_and_date_metadata_are_machine_valid(tmp_path: Pa
     assert sum(issue.code == "feature-slug-invalid" for issue in issues) == 2
 
 
+def test_artifact_metadata_dates_require_canonical_real_dates(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-non-canonical-metadata-dates")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _replace_metadata_field(feature / "spec.md", "Approved at", "20260609")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _replace_metadata_field(feature / "plan.md", "Date", "20260609")
+    _write_valid_tasks(feature / "tasks.md", status="In Progress", task_status="[~]")
+    _replace_metadata_field(feature / "tasks.md", "Approved at", "2026-99-99")
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "metadata-date-invalid" in _issue_codes(issues)
+    messages = "\n".join(issue.message for issue in issues if issue.code == "metadata-date-invalid")
+    assert "spec.md approved at" in messages
+    assert "plan.md date" in messages
+    assert "tasks.md approved at" in messages
+
+
 def test_worktree_branch_metadata_must_be_machine_valid(tmp_path: Path) -> None:
     template_feature = _feature_dir(tmp_path, "active", "2026-06-09-template-worktree")
     _write_valid_spec(template_feature / "spec.md", status="In Progress")

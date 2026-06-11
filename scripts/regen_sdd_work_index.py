@@ -230,6 +230,7 @@ def _issue_meaning(code: str) -> str:
         "acceptance-command-invalid": "Plan acceptance entries are not command-shaped executable commands.",
         "acceptance-command-mismatch": "Plan acceptance commands do not exactly cover spec acceptance criteria.",
         "missing-approval-metadata": "Artifact lacks machine-readable approval or execution metadata.",
+        "metadata-date-invalid": "Artifact Date or Approved at metadata is not a canonical YYYY-MM-DD real date.",
         "task-missing-coordination-fields": (
             "Task records lack owner, touch set, conflict set, verification, review, or status fields."
         ),
