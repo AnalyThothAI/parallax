@@ -1146,6 +1146,40 @@ def test_verified_feature_requires_make_check_all_own_exit_code_zero(tmp_path: P
     assert "verified-contradicts-evidence" in _issue_codes(issues)
 
 
+def test_verified_feature_rejects_multiple_check_all_exit_codes(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "completed", "2026-06-09-check-all-multiple-exits")
+    helper_command = "uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_helper -q"
+    _write_valid_spec(feature / "spec.md", status="Verified")
+    _write_valid_plan(feature / "plan.md", status="Verified")
+    _write_valid_tasks(feature / "tasks.md", status="Verified", verification=helper_command)
+    _write_valid_verification(
+        feature / "verification.md",
+        status="Verified",
+        verification_command_lines=(
+            "$ make check-all",
+            "integration failed",
+            "exit code: 1",
+            "rerun succeeded",
+            "exit code: 0",
+        ),
+        other_command_lines=(
+            f"$ {helper_command}",
+            "1 passed in 0.01s",
+            "exit code: 0",
+        ),
+    )
+    _replace_spec_compliance_row(
+        feature / "verification.md",
+        f"| AC1 | Pass | `{helper_command}` exited 0. |",
+    )
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "verified-missing-check-all" in _issue_codes(issues)
+    assert "verified-contradicts-evidence" in _issue_codes(issues)
+    assert "exactly one exit code 0" in "\n".join(issue.message for issue in issues)
+
+
 def test_verified_feature_requires_skipped_table_to_match_skip_count(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "completed", "2026-06-09-bad-skips")
     _write_valid_spec(feature / "spec.md", status="Verified")

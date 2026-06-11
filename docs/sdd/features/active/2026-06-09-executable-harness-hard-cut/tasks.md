@@ -4997,3 +4997,24 @@
 - **Verification**: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_duplicate_unfenced_make_check_all tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_duplicate_unfenced_make_check_all -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 238 — Final make-check-all transcript has one exit code
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 237
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD verify-gate tests and generated index updates.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_multiple_check_all_exit_codes` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_multiple_check_all_exit_codes` — prove a later `exit code: 0` in the same `make check-all` segment cannot overwrite an earlier failed exit code.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: The final `make check-all` segment must contain exactly one exit-code line and that code must be 0; non-zero codes in the segment must also produce contradictory evidence.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, command segment helpers, and AC223/AC237 tests.
+- **Kill/defer criteria**: Stop if a final `make check-all` segment with multiple exit-code lines can pass the pure validator or verify gate.
+- **Eval/repair signal**: transcript exit-code overwrite, failed-run false green, and final-evidence dilution.
+- **Implementation**: Parse all exit-code lines in the final `make check-all` segment and require the tuple to equal `(0,)`.
+- **Verification**: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_multiple_check_all_exit_codes tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_multiple_check_all_exit_codes -q`
+- **Review owner**: parent
+- **Status**: [x]

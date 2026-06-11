@@ -1452,13 +1452,18 @@ def _verified_issues(feature: SddFeature) -> list[SddIssue]:
     normalized_text = artifact.text.lower()
     issues: list[SddIssue] = []
     make_check_all = _verification_make_check_all_block(artifact.text)
+    make_check_all_exit_codes = _command_exit_codes(make_check_all) if make_check_all is not None else ()
     if make_check_all is None:
         issues.append(
             _issue("verified-missing-check-all", artifact, "Verified records require make check-all with exit code: 0")
         )
-    elif _command_exit_code(make_check_all) != 0:
+    elif make_check_all_exit_codes != (0,):
         issues.append(
-            _issue("verified-missing-check-all", artifact, "Verified records require final make check-all exit code 0")
+            _issue(
+                "verified-missing-check-all",
+                artifact,
+                "Verified records require final make check-all with exactly one exit code 0",
+            )
         )
     verification_commands = _verification_commands(artifact.text)
     if verification_commands != ["make check-all"]:
@@ -1476,9 +1481,13 @@ def _verified_issues(feature: SddFeature) -> list[SddIssue]:
                 "verified-contradicts-evidence", artifact, "Verified record contains contradictory evidence language"
             )
         )
-    if make_check_all is not None and _command_exit_code(make_check_all) not in {0, None}:
+    if make_check_all is not None and any(exit_code != 0 for exit_code in make_check_all_exit_codes):
         issues.append(
-            _issue("verified-contradicts-evidence", artifact, "Verified command block records non-zero exit code")
+            _issue(
+                "verified-contradicts-evidence",
+                artifact,
+                "Verified command block records non-zero exit code: " + _format_exit_codes(make_check_all_exit_codes),
+            )
         )
     issues.extend(_verified_spec_compliance_issues(feature, artifact))
     issues.extend(_verified_coverage_issues(artifact))
@@ -2202,11 +2211,12 @@ def _is_canonical_date_value(value: str) -> bool:
     return True
 
 
-def _command_exit_code(block: str) -> int | None:
-    matches = list(EXIT_CODE_RE.finditer(block))
-    if not matches:
-        return None
-    return int(matches[-1].group("code"))
+def _command_exit_codes(block: str) -> tuple[int, ...]:
+    return tuple(int(match.group("code")) for match in EXIT_CODE_RE.finditer(block))
+
+
+def _format_exit_codes(exit_codes: tuple[int, ...]) -> str:
+    return ", ".join(str(exit_code) for exit_code in exit_codes) if exit_codes else "<none>"
 
 
 def _skipped_rows_are_acceptable(text: str) -> bool:

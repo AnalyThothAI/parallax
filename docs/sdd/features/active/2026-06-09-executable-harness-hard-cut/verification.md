@@ -254,6 +254,7 @@ claim is allowed without the corresponding output captured below.
 | AC235 — Final verification commands are single-source evidence. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_extra_verification_command tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_extra_verification_command -q` passed after separate RED runs proved helper commands in `Verification commands` passed both the pure validator and verify gate. |
 | AC236 — Final command scan includes unfenced shell lines. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_unfenced_extra_verification_command tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_unfenced_extra_verification_command -q` passed after separate RED runs proved unfenced helper commands in `Verification commands` passed both the pure validator and verify gate. |
 | AC237 — Final verification command sequence is exact. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_duplicate_unfenced_make_check_all tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_duplicate_unfenced_make_check_all -q` passed after separate RED runs proved duplicate unfenced `make check-all` command sources passed both the pure validator and verify gate. |
+| AC238 — Final make-check-all transcript has one exit code. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_multiple_check_all_exit_codes tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_multiple_check_all_exit_codes -q` passed after separate RED runs proved a later `exit code: 0` in the same `make check-all` segment could overwrite an earlier failed exit code. |
 
 Deviations from spec:
 
@@ -4375,6 +4376,21 @@ $ python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verif
 ..                                                                       [100%]
 2 passed in 0.11s
 exit code: 0
+
+$ python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_multiple_check_all_exit_codes -q
+F                                                                        [100%]
+AssertionError: assert 'verified-missing-check-all' in set()
+exit code: 1
+
+$ python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_multiple_check_all_exit_codes -q
+F                                                                        [100%]
+AssertionError: assert 0 == 1
+exit code: 1
+
+$ python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_multiple_check_all_exit_codes tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_multiple_check_all_exit_codes -q
+..                                                                       [100%]
+2 passed in 0.07s
+exit code: 0
 ```
 
 ## Diff summary
@@ -4446,6 +4462,7 @@ Files changed:
 - Final verification single-command evidence: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Final verification unfenced-command scan: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Final verification exact command sequence: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
+- Final make-check-all exit-code tuple validation: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Mechanical frontend Prettier drift cleanup: macro pages, macro component test, `web/vite.config.ts`.
 
 Migrations applied:
