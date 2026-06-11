@@ -3926,3 +3926,24 @@
 - **Verification**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_missing_task_gate_compliance -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 187 — Analyze gate result statuses are bounded
+
+- **File(s)**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 186
+- **Touch set**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `scripts/validate_sdd_artifacts.py`; `docs/sdd/_templates/plan-template.md`; `scripts/check_sdd_gate.py`
+- **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_unbounded_analyze_status` — proves `--gate analyze` fails when an Analyze Gate result starts with `Warn:` instead of `Pass:` or `Blocked:`.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Analyze gate result rows must use the same bounded result prefixes as the full SDD validator; `Fail:`, `Warn:`, prose, and other non-placeholder values must fail the gate.
+- **On-demand context**: `scripts/check_sdd_gate.py`, `scripts/validate_sdd_artifacts.py`, and Analyze Gate tests in `tests/architecture/test_agent_playbook_contracts.py`.
+- **Kill/defer criteria**: Stop if Analyze Gate accepts non-bounded statuses, if placeholder rows count as evidence, or if failed/prose result rows are hidden by another passing row.
+- **Eval/repair signal**: unbounded Analyze result false green, failed Analyze row accepted by gate CLI, and drift from `plan-analyze-gate-invalid`.
+- **Implementation**: Parse Analyze Gate table body rows, skip placeholder rows, and reject every non-placeholder result that does not start with `Pass:` or `Blocked:`.
+- **Verification**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_unbounded_analyze_status tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_failed_analyze_gate -q`
+- **Review owner**: parent
+- **Status**: [x]

@@ -106,8 +106,12 @@ def _analyze_gate_issues(feature: SddFeature) -> list[str]:
         return [f"missing-gate-section: {artifact.relative_path} missing ## Analyze Gate"]
     if not _has_table_evidence(section):
         return [f"gate-evidence-missing: {artifact.relative_path} analyze gate lacks evidence"]
-    if any(_is_failed_result_row(line) for line in section.splitlines()):
-        return [f"plan-analyze-gate-invalid: {artifact.relative_path} analyze gate contains failed result"]
+    invalid_results = _invalid_analyze_results(section)
+    if invalid_results:
+        return [
+            f"plan-analyze-gate-invalid: {artifact.relative_path} "
+            f"analyze gate results must start with Pass: or Blocked: {', '.join(invalid_results)}"
+        ]
     return []
 
 
@@ -136,6 +140,13 @@ def _section_text(text: str, heading: str) -> str:
 
 
 def _has_table_evidence(section: str) -> bool:
+    return any(
+        cells and all(not is_placeholder_table_cell(cell) for cell in cells)
+        for cells in _table_body_rows(section)
+    )
+
+
+def _table_body_rows(section: str) -> list[list[str]]:
     rows = []
     for line in section.splitlines():
         stripped = line.strip()
@@ -143,17 +154,19 @@ def _has_table_evidence(section: str) -> bool:
             continue
         cells = [cell.strip() for cell in stripped.strip("|").split("|")]
         rows.append(cells)
-    return any(cells and all(not is_placeholder_table_cell(cell) for cell in cells) for cells in rows[1:])
+    return rows[1:]
 
 
-def _is_failed_result_row(line: str) -> bool:
-    stripped = line.strip()
-    if not stripped.startswith("|") or set(stripped) <= {"|", "-", " "}:
-        return False
-    cells = [cell.strip().lower() for cell in stripped.strip("|").split("|")]
-    if len(cells) < 2 or cells[0] in {"check", "gate", "requirement"}:
-        return False
-    return cells[1].startswith(("fail", "failed"))
+def _invalid_analyze_results(section: str) -> list[str]:
+    invalid: list[str] = []
+    for cells in _table_body_rows(section):
+        if len(cells) < 2 or any(is_placeholder_table_cell(cell) for cell in cells):
+            continue
+        result = cells[1].strip()
+        if result.startswith(("Pass:", "Blocked:")):
+            continue
+        invalid.append(result)
+    return invalid
 
 
 if __name__ == "__main__":
