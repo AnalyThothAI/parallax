@@ -629,6 +629,8 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC248. WHEN manual agent-playbook templates describe subagent modes or context packet titles THEN they SHALL use the exact executable tokens `read-only`, `write-allowed`, `review-only`, and `# Context Packet - <feature> / Task <number>` before copy-pasted handoffs drift from the CLIs.
 - AC249. WHEN `make check-sdd-completion FEATURE=<slug>` runs THEN it SHALL execute `make check-all` before the single-feature verify gate before pasted transcript checks can serve as report-only completion.
 - AC250. WHEN `scripts/check_sdd_gate.py --feature <slug> --gate verify` runs against a feature with any task not marked `[x]` THEN it SHALL report `task-incomplete-in-completion-gate` before final evidence can hide incomplete work.
+- AC251. WHEN a loose non-hidden file exists directly under `docs/sdd/features/active` or `docs/sdd/features/completed` THEN `scripts/validate_sdd_artifacts.py` SHALL report `unexpected-artifact` before old planning notes can bypass the executable SDD validator.
+- AC252. WHEN a Markdown table appears inside a fenced code block in SDD gate evidence, Spec compliance, or Coverage sections THEN the validator and gate checker SHALL ignore it before examples can satisfy executable evidence requirements.
 
 ## Risks
 

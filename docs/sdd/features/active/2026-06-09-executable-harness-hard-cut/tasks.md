@@ -5270,3 +5270,45 @@
 - **Verification**: `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_incomplete_tasks_with_final_evidence tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 251 — Feature lanes reject loose files
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 250
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD validator and generated index updates.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_feature_lanes_reject_loose_legacy_files` — proves loose files directly under active/completed feature lanes cannot bypass the SDD validator.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `validate_sdd_root()` must reject non-hidden, non-directory children directly under `docs/sdd/features/active` and `docs/sdd/features/completed` with `unexpected-artifact`; hidden lane marker files remain allowed.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_harness_structure.py`, SDD feature lane layout, and local validator RED output.
+- **Kill/defer criteria**: Stop if loose legacy notes can pass the core SDD validator and are caught only by a separate architecture grep.
+- **Eval/repair signal**: `unexpected-artifact`, old planning note drift, and SDD validator false green.
+- **Implementation**: Add direct feature-lane child scanning to the SDD validator before per-feature validation.
+- **Verification**: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_feature_lanes_reject_loose_legacy_files -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 252 — Fenced tables cannot satisfy evidence
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 251
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD validator and generated index updates.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_fenced_table_rows`, `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_fenced_spec_compliance_and_coverage_tables` — prove fenced example tables cannot satisfy lifecycle or final evidence tables.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Every table parsed through `table_body_row_blocks()` must ignore fenced code blocks before Clarifications, Requirement Checklist, Analyze Gate, Gate Compliance, Spec compliance, or Coverage evidence is evaluated.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, Bohr read-only audit, and SDD verification table parsers.
+- **Kill/defer criteria**: Stop if fenced/template Markdown tables can still count as machine evidence in any SDD lifecycle or final verification section.
+- **Eval/repair signal**: `gate-evidence-missing`, `verified-incomplete-spec-compliance`, `verified-coverage-incomplete`, fenced-example false green, and verify-gate drift.
+- **Implementation**: Strip fenced code blocks before table-body parsing so all SDD table evidence call sites share the same fence-aware behavior.
+- **Verification**: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_fenced_table_rows tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_fenced_spec_compliance_and_coverage_tables -q`
+- **Review owner**: parent
+- **Status**: [x]

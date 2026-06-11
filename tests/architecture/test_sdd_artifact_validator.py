@@ -250,6 +250,22 @@ def test_feature_rejects_unexpected_artifact_files(tmp_path: Path) -> None:
     assert "unexpected-artifact" in _issue_codes(issues)
 
 
+def test_feature_lanes_reject_loose_legacy_files(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-clean-feature")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(feature / "tasks.md", status="In Progress", task_status="[~]")
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+    loose_file = tmp_path / "docs" / "sdd" / "features" / "active" / "legacy-note.md"
+    loose_file.write_text("old planning notes\n", encoding="utf-8")
+
+    issues = validate_sdd_root(tmp_path)
+
+    unexpected = [issue for issue in issues if issue.code == "unexpected-artifact"]
+    assert unexpected
+    assert any(issue.path.endswith("features/active/legacy-note.md") for issue in unexpected)
+
+
 def test_tasks_reject_final_verification_checklist_duplication(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-duplicated-final-verification")
     _write_valid_spec(feature / "spec.md", status="In Progress")
@@ -450,6 +466,102 @@ def test_gate_sections_require_non_placeholder_evidence(tmp_path: Path) -> None:
 
     assert "gate-evidence-missing" in _issue_codes(issues)
     assert sum(issue.code == "gate-evidence-missing" for issue in issues) == 4
+
+
+def test_gate_evidence_rejects_fenced_table_rows(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-fenced-gate-tables")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _replace_section_body(
+        feature / "spec.md",
+        "## Clarifications",
+        (
+            "```md",
+            "| Question | Answer | Approved by | Approved at |",
+            "|----------|--------|-------------|-------------|",
+            "| Is this real evidence? | No, it is an example. | qinghuan | 2026-06-09 |",
+            "```",
+        ),
+    )
+    _replace_section_body(
+        feature / "spec.md",
+        "## Requirement Checklist",
+        (
+            "```md",
+            "| Requirement | Quality gate |",
+            "|-------------|--------------|",
+            "| Fenced tables must not count. | Validator rejects examples. |",
+            "```",
+        ),
+    )
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _replace_section_body(
+        feature / "plan.md",
+        "## Analyze Gate",
+        (
+            "```md",
+            "| Check | Result |",
+            "|-------|--------|",
+            "| Evidence scope | Pass: fenced examples are not evidence. |",
+            "```",
+        ),
+    )
+    _write_valid_tasks(feature / "tasks.md", status="In Progress", task_status="[~]")
+    _replace_section_body(
+        feature / "tasks.md",
+        "## Gate Compliance",
+        (
+            "```md",
+            "| Gate | Evidence |",
+            "|------|----------|",
+            "| Clarify | `spec.md` includes `## Clarifications`. |",
+            "| Checklist | `spec.md` includes `## Requirement Checklist`. |",
+            "| Analyze | `plan.md` includes `## Analyze Gate`. |",
+            "| Implement | Tasks below are TDD ordered. |",
+            "| Verify | `verification.md` captures command output. |",
+            "```",
+        ),
+    )
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "gate-evidence-missing" in _issue_codes(issues)
+    assert sum(issue.code == "gate-evidence-missing" for issue in issues) == 4
+
+
+def test_verified_feature_rejects_fenced_spec_compliance_and_coverage_tables(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "completed", "2026-06-09-fenced-final-tables")
+    _write_valid_spec(feature / "spec.md", status="Verified")
+    _write_valid_plan(feature / "plan.md", status="Verified")
+    _write_valid_tasks(feature / "tasks.md", status="Verified")
+    _write_valid_verification(feature / "verification.md", status="Verified")
+    _replace_section_body(
+        feature / "verification.md",
+        "## Spec compliance",
+        (
+            "```md",
+            "| Acceptance criterion | Status | Evidence |",
+            "|----------------------|--------|----------|",
+            "| AC1 | Pass | `make check-all` exited 0. |",
+            "```",
+        ),
+    )
+    _replace_section_body(
+        feature / "verification.md",
+        "## Coverage",
+        (
+            "```md",
+            "| metric | value | threshold | status |",
+            "|--------|-------|-----------|--------|",
+            "| line | 91% | >= 80% | Pass |",
+            "```",
+        ),
+    )
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "verified-incomplete-spec-compliance" in _issue_codes(issues)
+    assert "verified-coverage-incomplete" in _issue_codes(issues)
 
 
 def test_required_sections_must_be_markdown_heading_lines(tmp_path: Path) -> None:

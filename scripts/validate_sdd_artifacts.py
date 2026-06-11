@@ -339,6 +339,7 @@ def scan_sdd_features(root: Path = ROOT) -> list[SddFeature]:
 def validate_sdd_root(root: Path = ROOT) -> list[SddIssue]:
     features = scan_sdd_features(root)
     issues: list[SddIssue] = []
+    issues.extend(_feature_lane_artifact_issues(root))
     for feature in features:
         issues.extend(_feature_issues(feature))
     issues.extend(_active_touch_conflicts(features))
@@ -454,6 +455,25 @@ def _read_artifact(root: Path, path: Path, artifact_name: str) -> ArtifactRecord
         status=_extract_status(text),
         fields=fields,
     )
+
+
+def _feature_lane_artifact_issues(root: Path) -> list[SddIssue]:
+    issues: list[SddIssue] = []
+    for lane in ("active", "completed"):
+        lane_root = root / "docs" / "sdd" / "features" / lane
+        if not lane_root.exists():
+            continue
+        for child in lane_root.iterdir():
+            if child.name.startswith(".") or child.is_dir():
+                continue
+            issues.append(
+                SddIssue(
+                    code="unexpected-artifact",
+                    path=_relative(root, child),
+                    message="feature lanes must contain only feature directories; loose files are not SDD records",
+                )
+            )
+    return issues
 
 
 def _feature_issues(feature: SddFeature) -> list[SddIssue]:
@@ -2150,7 +2170,7 @@ def table_body_row_blocks(
     blocks: list[list[list[str]]] = []
     body_rows: list[list[str]] = []
     current_block: list[str] = []
-    for line in section.splitlines():
+    for line in _text_without_fenced_blocks(section).splitlines():
         stripped = line.rstrip()
         if _is_table_row_line(stripped):
             current_block.append(stripped)

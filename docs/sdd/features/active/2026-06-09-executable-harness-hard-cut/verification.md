@@ -267,6 +267,8 @@ claim is allowed without the corresponding output captured below.
 | AC248 — Manual agent templates use executable tokens. | ✅ | `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_handoff_templates_define_context_and_conflict_contracts -q` failed RED while templates used non-executable mode prose and stale context-packet title shape, then passed after templates matched CLI tokens. |
 | AC249 — Completion target executes check-all. | ✅ | `python -m pytest tests/architecture/test_harness_structure.py::test_makefile_exposes_single_feature_sdd_completion_gate -q` failed RED while `check-sdd-completion` only called the verify gate, then passed after the target ran `$(MAKE) check-all` before single-feature verification. |
 | AC250 — Verify gate rejects incomplete tasks. | ✅ | `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_incomplete_tasks_with_final_evidence tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence -q` failed RED while final evidence could pass with Task 1 and Task 3 still `[~]`, then passed after the verify gate required every task to be `[x]`. |
+| AC251 — Feature lanes reject loose files. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_feature_lanes_reject_loose_legacy_files -q` failed RED while loose files directly under `features/active` were ignored, then passed after the SDD validator scanned lane-root children. |
+| AC252 — Fenced tables cannot satisfy evidence. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_fenced_table_rows tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_fenced_spec_compliance_and_coverage_tables -q` failed RED while fenced Markdown tables passed evidence gates, then passed after table evidence parsing ignored fenced blocks. |
 
 Deviations from spec:
 
@@ -4548,6 +4550,27 @@ exit code: 0
 $ python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_incomplete_tasks_with_final_evidence tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence -q
 ..                                                                       [100%]
 2 passed in 0.09s
+exit code: 0
+
+$ python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_feature_lanes_reject_loose_legacy_files -q
+F                                                                        [100%]
+AssertionError: assert []
+exit code: 1
+
+$ python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_feature_lanes_reject_loose_legacy_files -q
+.                                                                        [100%]
+1 passed in 0.07s
+exit code: 0
+
+$ python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_fenced_table_rows tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_fenced_spec_compliance_and_coverage_tables -q
+FF                                                                       [100%]
+AssertionError: assert 'gate-evidence-missing' in set()
+AssertionError: assert 'verified-incomplete-spec-compliance' in set()
+exit code: 1
+
+$ python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_fenced_table_rows tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_fenced_spec_compliance_and_coverage_tables -q
+..                                                                       [100%]
+2 passed in 0.06s
 exit code: 0
 ```
 
