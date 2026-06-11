@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from parallax.domains.asset_market.repositories.token_profile_current_repository import (
     TokenProfileCurrentRepository,
 )
@@ -23,6 +25,20 @@ def test_token_profile_current_upsert_returns_false_when_payload_unchanged() -> 
     assert first_payload_hash == second_payload_hash
     assert "payload_hash IS DISTINCT FROM excluded.payload_hash" in sql
     assert "RETURNING true AS changed" in sql
+
+
+def test_token_profile_current_payload_hash_rejects_legacy_source_payload_keys() -> None:
+    conn = _ScriptedConnection([{"changed": True}])
+    repo = TokenProfileCurrentRepository(conn)
+    row = _profile_row(target_id="sol:abc", computed_at_ms=1_000)
+    row["source_payload_json"] = {123: "legacy"}
+
+    with pytest.raises(ValueError, match="current payload hash payload has non-string keys"):
+        repo.upsert_current(row, commit=True)
+
+    assert conn.sql == []
+    assert conn.params == []
+    assert conn.commits == 0
 
 
 def _profile_row(*, target_id: str, computed_at_ms: int) -> dict[str, Any]:

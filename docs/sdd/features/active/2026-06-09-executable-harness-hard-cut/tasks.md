@@ -3400,6 +3400,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 162 — Token profile current hash uses shared current payload contract
+
+- **File(s)**: `src/parallax/domains/asset_market/repositories/token_profile_current_repository.py`, `tests/unit/domains/asset_market/test_token_profile_current_repository.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 161
+- **Touch set**: `src/parallax/domains/asset_market/repositories/token_profile_current_repository.py`, `tests/unit/domains/asset_market/test_token_profile_current_repository.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/domains/asset_market/repositories/token_profile_current_repository.py` for token profile current payload hash semantics and current-row idempotency.
+- **Failing test first**: `tests/unit/domains/asset_market/test_token_profile_current_repository.py::test_token_profile_current_payload_hash_rejects_legacy_source_payload_keys` — call `TokenProfileCurrentRepository.upsert_current()` with `source_payload_json` containing a non-string key and assert the shared current payload-key validation raises before `postgres_safe_json()` can stringify compatibility-shaped source payload keys.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: token profile current row hashing must use `stable_current_payload_hash()` from `src/parallax/app/runtime/current_read_model_publisher.py`; JSON payload blocks must be validated before DB JSON sanitation so `source_payload_json` and other nested current payload values cannot preserve legacy non-string keys through key stringification.
+- **On-demand context**: `src/parallax/domains/asset_market/ARCHITECTURE.md`, `src/parallax/domains/asset_market/repositories/token_profile_current_repository.py`, `tests/unit/domains/asset_market/test_token_profile_current_repository.py`, and current read-model payload hash idempotency contracts.
+- **Kill/defer criteria**: Stop if token profile current intentionally supports non-string JSON payload keys, if production source payload rows require compatibility key stringification at runtime, or if the shared hash helper cannot preserve unchanged hashes for compliant profile payloads.
+- **Eval/repair signal**: local `_stable_payload_hash()`, local `_stable_json_value()`, `postgres_safe_json()` key stringification before validation, profile current idempotency drift, and SDD generated index drift.
+- **Implementation**: Validate JSON payload blocks with the shared current payload contract before sanitation, compute `token_profile_current.payload_hash` with `stable_current_payload_hash()`, and delete the repository-local stable payload hash and JSON value normalizers.
+- **Verification**: `uv run pytest tests/unit/domains/asset_market/test_token_profile_current_repository.py::test_token_profile_current_payload_hash_rejects_legacy_source_payload_keys -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -3552,4 +3573,5 @@
 - [ ] `uv run pytest tests/unit/domains/cex_market_intel/test_cex_oi_radar_board_worker.py -q`
 - [ ] `uv run pytest tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py::test_detail_payload_hash_rejects_legacy_level_band_keys -q`
 - [ ] `uv run pytest tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py::test_detail_payload_hash_rejects_legacy_source_ref_keys -q`
+- [ ] `uv run pytest tests/unit/domains/asset_market/test_token_profile_current_repository.py::test_token_profile_current_payload_hash_rejects_legacy_source_payload_keys -q`
 - [ ] `make check-all`

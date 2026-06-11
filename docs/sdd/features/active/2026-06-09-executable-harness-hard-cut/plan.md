@@ -280,6 +280,7 @@ Known-failing baseline tests:
 - Remove the `WorkerScheduler` re-export from `parallax.app.runtime.__init__` so importing shared runtime helper modules from domains does not trigger scheduler import, `worker_manifest` validation, or worker class import cycles.
 - Replace the CEX detail snapshot local payload-hash normalizer with the shared `stable_current_payload_hash()` contract and stop coupling runtime tests to historical migration-golden numeric canonicalization.
 - Reject non-string CEX detail source-ref keys before source-ref metadata filtering can stringify compatibility-shaped payload keys.
+- Replace the token profile current local payload-hash normalizer with the shared `stable_current_payload_hash()` contract and validate JSON payload blocks before `postgres_safe_json()` can stringify compatibility-shaped keys.
 - Import `importlib.util` directly inside `worker_manifest.py` so manifest validation does not depend on prior import side effects in clean processes.
 - Reject loose visual verification artifacts at the repository root and keep screenshots under owned artifact directories.
 - Reject duplicate table names inside each `WorkerManifest` table-declaration field before `owned_tables` dedupes them.
@@ -461,6 +462,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Runtime package imports avoid scheduler side effects. | Pass: importing and running the CEX OI radar board worker test module succeeds after `parallax.app.runtime.__init__` stops importing `WorkerScheduler` during package initialization. |
 | CEX detail payload hashing uses the shared current payload hash contract. | Pass: `_detail_payload_hash()` raises `current payload hash payload has non-string keys` when `level_bands` contains a non-string key, and the repository no longer defines local stable payload hash or generic JSON normalizer functions. |
 | CEX detail source refs keep strict mapping keys. | Pass: `_detail_payload_hash()` raises `current payload hash payload has non-string keys` when `source_refs` contains a non-string key before metadata filtering can stringify it. |
+| Token profile current payload hashing uses the shared current payload hash contract. | Pass: `TokenProfileCurrentRepository.upsert_current()` raises `current payload hash payload has non-string keys` when `source_payload_json` contains a non-string key before JSONB sanitation can stringify it, and the repository no longer defines a local stable payload hash normalizer. |
 | Worker manifest imports are explicit. | Pass: importing `parallax.app.runtime.worker_manifest` in a clean process succeeds even after removing an incidental `importlib.util` package attribute. |
 | Root visual artifacts are absent. | Pass: architecture harness rejects loose root-level PNG/JPG/WEBP/GIF verification artifacts. |
 | Worker table declarations are unique. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares the same table twice inside one table-declaration field. |
@@ -656,6 +658,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC159: `uv run pytest tests/unit/domains/cex_market_intel/test_cex_oi_radar_board_worker.py -q`
 - AC160: `uv run pytest tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py::test_detail_payload_hash_rejects_legacy_level_band_keys -q`
 - AC161: `uv run pytest tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py::test_detail_payload_hash_rejects_legacy_source_ref_keys -q`
+- AC162: `uv run pytest tests/unit/domains/asset_market/test_token_profile_current_repository.py::test_token_profile_current_payload_hash_rejects_legacy_source_payload_keys -q`
 
 ## Verification
 

@@ -131,6 +131,7 @@ can both miss real process drift and block healthy refactors.
 | Runtime package imports must avoid scheduler side effects. | `parallax.app.runtime.__init__` does not import `WorkerScheduler`, `worker_manifest`, or manifest validation while domain code imports shared runtime helpers such as `stable_current_payload_hash()`. |
 | CEX detail payload hashing must use the shared current payload hash contract. | `CexDetailSnapshotRepository` uses `stable_current_payload_hash()` for detail snapshot hashes instead of a local compatibility normalizer or historical migration-golden numeric canonicalizer. |
 | CEX detail source refs must keep strict mapping keys. | Detail snapshot source refs reject non-string keys before source-ref metadata filtering can stringify compatibility-shaped payload keys. |
+| Token profile current payload hashing must use the shared current payload hash contract. | `TokenProfileCurrentRepository` uses `stable_current_payload_hash()` for current profile rows and validates JSON payload blocks before `postgres_safe_json()` can stringify compatibility-shaped keys. |
 | Worker manifest imports must be explicit. | `worker_manifest.py` imports `importlib.util` directly so clean-process manifest validation never depends on incidental package attribute side effects. |
 | Root visual artifacts must be absent. | Architecture harness rejects loose visual verification files at the repository root so screenshots live only under owned artifact directories. |
 | Worker table declarations must be unique. | `WorkerManifest` validation rejects duplicated table names inside each manifest table-declaration field before `owned_tables` dedupes them. |
@@ -530,6 +531,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC159. WHEN a CEX worker module imports repository code that imports shared runtime payload hash helpers THEN package initialization SHALL NOT import `WorkerScheduler`, `worker_manifest`, or run manifest validation before the worker class is fully importable.
 - AC160. WHEN CEX detail snapshot payload hashing receives `level_bands` entries with non-string keys THEN it SHALL raise the shared current payload-key validation error before local key stringification, historical numeric canonicalization, JSON normalization, or detail hash generation consumes compatibility-shaped level-band payloads.
 - AC161. WHEN CEX detail snapshot payload hashing receives `source_refs` entries with non-string keys THEN it SHALL raise the shared current payload-key validation error before source-ref metadata filtering, local key stringification, JSON normalization, or detail hash generation consumes compatibility-shaped source-ref payloads.
+- AC162. WHEN token profile current row hashing receives `source_payload_json` with non-string keys THEN it SHALL raise the shared current payload-key validation error before `postgres_safe_json()`, local key stringification, JSON normalization, or profile current hash generation consumes compatibility-shaped source payloads.
 
 ## Risks
 

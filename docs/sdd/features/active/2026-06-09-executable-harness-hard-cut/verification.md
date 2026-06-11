@@ -178,6 +178,7 @@ claim is allowed without the corresponding output captured below.
 | AC159 — Runtime package imports avoid scheduler side effects. | ✅ | `uv run pytest tests/unit/domains/cex_market_intel/test_cex_oi_radar_board_worker.py -q` failed RED during collection when package-root `WorkerScheduler` re-export triggered `worker_manifest` validation before `CexOiRadarBoardWorker` was fully importable, then passed after removing the scheduler re-export from `parallax.app.runtime.__init__`. |
 | AC160 — CEX detail hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py::test_detail_payload_hash_rejects_legacy_level_band_keys -q` failed RED when the CEX detail local normalizer stringified `level_bands` keys, then passed after replacing the local normalizer with shared `stable_current_payload_hash()` and updating overfitted migration-golden numeric tests. |
 | AC161 — CEX detail source refs reject legacy keys before filtering. | ✅ | `uv run pytest tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py::test_detail_payload_hash_rejects_legacy_source_ref_keys -q` failed RED when source-ref metadata filtering stringified a non-string key, then passed after validating source-ref keys before filtering. |
+| AC162 — Token profile current hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/domains/asset_market/test_token_profile_current_repository.py::test_token_profile_current_payload_hash_rejects_legacy_source_payload_keys -q` failed RED when the profile-current local hash normalizer accepted a non-string `source_payload_json` key, then passed after validating JSON payload blocks before sanitation and replacing the local normalizer with `stable_current_payload_hash()`. |
 
 Deviations from spec:
 
@@ -3181,11 +3182,66 @@ $ uv run pytest tests/architecture/test_cex_oi_kappa_contract.py tests/architect
 47 passed in 0.91s
 exit code: 0
 
+$ uv run pytest tests/unit/domains/asset_market/test_token_profile_current_repository.py::test_token_profile_current_payload_hash_rejects_legacy_source_payload_keys -q
+F                                                                        [100%]
+Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/unit/domains/asset_market/test_token_profile_current_repository.py::test_token_profile_current_payload_hash_rejects_legacy_source_payload_keys -q
+.                                                                        [100%]
+1 passed in 0.09s
+exit code: 0
+
+$ uv run pytest tests/unit/domains/asset_market/test_token_profile_current_repository.py tests/unit/test_token_profile_current_repository.py -q
+.....                                                                    [100%]
+5 passed in 0.08s
+exit code: 0
+
+$ uv run pytest tests/unit/test_token_profile_read_model.py -q
+.....                                                                    [100%]
+5 passed in 0.26s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_runtime_worker_constraint_hard_cut.py -q
+...................................                                      [100%]
+35 passed in 0.66s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_workers_declare_explicit_table_identities_without_fallback tests/architecture/test_worker_manifest_static_contracts.py::test_dirty_target_workers_declare_claim_tables_and_read_model_identity -q
+..                                                                       [100%]
+2 passed in 0.48s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_runtime_contracts.py::test_token_profile_current_owns_image_source_admission tests/architecture/test_worker_runtime_contracts.py::test_read_model_single_writers -q
+...................                                                      [100%]
+19 passed in 1.40s
+exit code: 0
+
 $ uv run python scripts/validate_sdd_artifacts.py --check
 SDD artifact validation passed.
 exit code: 0
 
 $ uv run python scripts/regen_sdd_work_index.py --check
+exit code: 0
+
+$ uv run ruff check src/parallax/domains/asset_market/repositories/token_profile_current_repository.py tests/unit/domains/asset_market/test_token_profile_current_repository.py tests/unit/test_token_profile_current_repository.py
+All checks passed!
+exit code: 0
+
+$ git diff --check
+src/parallax/domains/asset_market/repositories/token_profile_current_repository.py:178: new blank line at EOF.
+exit code: 2
+
+$ uv run pytest tests/unit/domains/asset_market/test_token_profile_current_repository.py tests/unit/test_token_profile_current_repository.py -q
+.....                                                                    [100%]
+5 passed in 0.10s
+exit code: 0
+
+$ uv run ruff check src/parallax/domains/asset_market/repositories/token_profile_current_repository.py tests/unit/domains/asset_market/test_token_profile_current_repository.py tests/unit/test_token_profile_current_repository.py
+All checks passed!
+exit code: 0
+
+$ git diff --check
 exit code: 0
 
 $ uv run ruff check src/parallax/domains/cex_market_intel/repositories/cex_detail_snapshot_repository.py tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py

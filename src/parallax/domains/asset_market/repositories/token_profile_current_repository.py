@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import hashlib
-import json
-from collections.abc import Mapping
 from typing import Any
 
 from psycopg.types.json import Jsonb
 
+from parallax.app.runtime.current_read_model_publisher import stable_current_payload_hash
 from parallax.platform.db.json_safety import postgres_safe_json, postgres_safe_text
 
 _PUBLICATION_METADATA_FIELDS = {"computed_at_ms", "updated_at_ms", "projected_at_ms", "payload_hash"}
@@ -45,7 +43,9 @@ class TokenProfileCurrentRepository:
             "computed_at_ms": computed_at_ms,
             "updated_at_ms": int(row.get("updated_at_ms") or computed_at_ms),
         }
-        payload_hash = _stable_payload_hash(payload, exclude=_PUBLICATION_METADATA_FIELDS)
+        payload_hash = stable_current_payload_hash(
+            {key: value for key, value in payload.items() if key not in _PUBLICATION_METADATA_FIELDS}
+        )
         returned = self.conn.execute(
             """
             INSERT INTO token_profile_current(
@@ -169,27 +169,9 @@ def _clean_text(value: Any) -> str:
 
 
 def _sanitize_json(value: Any) -> Any:
+    stable_current_payload_hash({"json": value})
     return postgres_safe_json(value)
 
 
 def _int_or_none(value: Any) -> int | None:
     return int(value) if value is not None else None
-
-
-def _stable_payload_hash(payload: Mapping[str, Any], *, exclude: set[str]) -> str:
-    normalized = {str(key): _stable_json_value(value) for key, value in payload.items() if str(key) not in exclude}
-    encoded = json.dumps(
-        postgres_safe_json(normalized),
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
-
-
-def _stable_json_value(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return {str(key): _stable_json_value(item) for key, item in value.items()}
-    if isinstance(value, list | tuple):
-        return [_stable_json_value(item) for item in value]
-    return value
