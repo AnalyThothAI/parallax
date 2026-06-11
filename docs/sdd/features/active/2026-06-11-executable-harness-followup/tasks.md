@@ -14,7 +14,7 @@
 | Clarify | Spec contains approved clarification for superseding the omnibus record. |
 | Checklist | Spec records the active-record size bound requirement. |
 | Analyze | Plan Analyze Gate records why active records should remain bounded. |
-| Implement | Tasks 1-22 implement the validator, migration, documentation contract, stale-template cleanup, machine-readable verification status tokens, active lifecycle command hard cut, active placeholder final-evidence rejection, active skipped-test accounting bound, fail-closed final-evidence templates, dispatch-bound context packets, generated subagent mode constraints, validator-enforced handoff mode constraints, embedded context-packet mode constraints, top-level handoff validation scope, exact report validation command enforcement, exact task-number selection, task-bound report validation, canonical task selector parsing, canonical SDD task identity parsing, top-level report mode binding, top-level report section binding, and top-level report claim binding. |
+| Implement | Tasks 1-23 implement the validator, migration, documentation contract, stale-template cleanup, machine-readable verification status tokens, active lifecycle command hard cut, active placeholder final-evidence rejection, active skipped-test accounting bound, fail-closed final-evidence templates, dispatch-bound context packets, generated subagent mode constraints, validator-enforced handoff mode constraints, embedded context-packet mode constraints, top-level handoff validation scope, exact report validation command enforcement, exact task-number selection, task-bound report validation, canonical task selector parsing, canonical SDD task identity parsing, top-level report mode binding, top-level report section binding, top-level report claim binding, and singular report mode binding. |
 | Verify | Verification artifact captures RED/GREEN command output. |
 
 ## Tasks
@@ -478,5 +478,26 @@
 - **Eval/repair signal**: report validation passes when scope or required-reading claims appear only inside a fenced block.
 - **Implementation**: Strip fenced blocks before validating non-verification report claims while preserving fenced command output parsing for Verification Evidence.
 - **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_rejects_scope_and_reading_claims_inside_fenced_blocks -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 23 - Reject ambiguous subagent report modes
+
+- **File(s)**: `scripts/subagent_report_contract.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`
+- **Owner**: parent
+- **Depends on**: Task 22
+- **Touch set**: `scripts/subagent_report_contract.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared subagent report contract semantics, tests, and generated index updates.
+- **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_rejects_multiple_top_level_modes` - proves multiple top-level modes cannot satisfy the report mode binding.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: A subagent report must contain exactly one top-level `Mode:` line and it must match the handoff mode passed to the validator.
+- **On-demand context**: `scripts/subagent_report_contract.py`, `scripts/validate_subagent_report.py`, `tests/architecture/test_agent_playbook_contracts.py`.
+- **Kill/defer criteria**: Stop if any report with multiple top-level modes remains accepted.
+- **Eval/repair signal**: report validation passes when a matching mode appears beside another top-level mode.
+- **Implementation**: Parse all top-level report modes outside fenced blocks and accept only the single expected mode.
+- **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_rejects_multiple_top_level_modes -q`
 - **Review owner**: parent
 - **Status**: [x]

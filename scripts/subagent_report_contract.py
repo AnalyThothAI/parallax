@@ -68,9 +68,13 @@ def validate_subagent_report(text: str, *, mode: str, task_fields: Mapping[str, 
 
 
 def _has_top_level_mode(text: str, mode: str) -> bool:
+    return _top_level_modes(text) == (mode,)
+
+
+def _top_level_modes(text: str) -> tuple[str, ...]:
     unfenced_text = FENCED_BLOCK_RE.sub("", text)
-    pattern = re.compile(rf"^\s*Mode:\s*{re.escape(mode)}\s*$", re.IGNORECASE | re.MULTILINE)
-    return bool(pattern.search(unfenced_text))
+    pattern = re.compile(r"^\s*Mode:\s*(?P<mode>read-only|write-allowed|review-only)\s*$", re.IGNORECASE | re.MULTILINE)
+    return tuple(match.group("mode").lower() for match in pattern.finditer(unfenced_text))
 
 
 def _sections(text: str) -> dict[str, str]:

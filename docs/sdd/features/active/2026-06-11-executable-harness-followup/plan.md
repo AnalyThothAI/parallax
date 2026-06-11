@@ -40,6 +40,7 @@
 - `scripts/subagent_report_contract.py`, `tests/architecture/test_agent_playbook_contracts.py`: require subagent report `Mode:` to be a top-level line outside fenced blocks.
 - `scripts/subagent_report_contract.py`, `tests/architecture/test_agent_playbook_contracts.py`: require subagent report section headings to be top-level lines outside fenced blocks.
 - `scripts/subagent_report_contract.py`, `tests/architecture/test_agent_playbook_contracts.py`: require subagent report scope, changed-files, and required-reading claims to come from non-fenced report text.
+- `scripts/subagent_report_contract.py`, `tests/architecture/test_agent_playbook_contracts.py`: require exactly one top-level subagent report `Mode:` line.
 - `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`: retain historical evidence as superseded.
 - `docs/sdd/features/active/2026-06-11-executable-harness-followup`: own the follow-up active work.
 - `docs/generated/sdd-work-index.md`: regenerate the coordination board.
@@ -74,6 +75,7 @@
 - AC20: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_rejects_mode_inside_fenced_block -q`
 - AC21: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_rejects_sections_inside_fenced_block -q`
 - AC22: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_rejects_scope_and_reading_claims_inside_fenced_blocks -q`
+- AC23: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_rejects_multiple_top_level_modes -q`
 
 ## Verification
 
