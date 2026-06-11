@@ -50,6 +50,12 @@ uv run python scripts/check_sdd_gate.py --feature <slug> --gate analyze --check
 uv run python scripts/check_sdd_gate.py --feature <slug> --gate implement --check
 ```
 
+`make check-all` also runs the non-mutating all-active gate sweep:
+
+```bash
+uv run python scripts/check_sdd_gate.py --all-active --check
+```
+
 When work ships and verification is recorded, move the whole feature directory
 from `features/active/` to `features/completed/` in the same PR.
 

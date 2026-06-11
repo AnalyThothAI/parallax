@@ -13,7 +13,7 @@ Parallax routes non-trivial coding-agent work through one SDD feature directory 
 The lane's canonical artifacts are `spec.md` in `docs/WORKFLOW.md:13`, `plan.md` in `docs/WORKFLOW.md:14`,
 `tasks.md` in `docs/WORKFLOW.md:15`, and `verification.md` in `docs/WORKFLOW.md:16`.
 Production work follows `spec -> clarify -> checklist -> plan -> tasks -> analyze -> implement -> verify`
-in `docs/WORKFLOW.md:27`, and completion requires `make check-all` evidence in `docs/WORKFLOW.md:85`.
+in `docs/WORKFLOW.md:27`, and completion requires `make check-all` evidence in `docs/WORKFLOW.md:91`.
 The generated index now renders a `Coordination Board` in `scripts/regen_sdd_work_index.py:86` and a
 `Task Board` in `scripts/regen_sdd_work_index.py:117`.
 
@@ -560,6 +560,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC179. WHEN active SDD task metadata lists `File(s)` or `Touch set` entries THEN those entries SHALL resolve to current repository paths or matching globs, and deleted artifacts SHALL be recorded only in `Removed file(s)` before generated coordination indexes can advertise stale files as active work surfaces.
 - AC180. WHEN a production feature advances through `clarify`, `checklist`, `analyze`, or `implement` THEN each gate SHALL have an explicit non-mutating CLI check that can pass or fail independently of the full SDD validator before the lane is documented as executable.
 - AC181. WHEN `tasks.md` contains a `## Final verification` checklist THEN SDD artifact validation SHALL reject it before task records can duplicate or diverge from the canonical evidence in `verification.md`.
+- AC182. WHEN `make check-all` runs SDD harness gates THEN it SHALL execute a non-mutating all-active `clarify`/`checklist`/`analyze`/`implement` sweep before generated index freshness can pass.
 
 ## Risks
 

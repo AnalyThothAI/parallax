@@ -289,6 +289,7 @@ def test_make_check_all_runs_executable_sdd_harness() -> None:
     check_all = makefile.split("check-all:", 1)[1].split("\n\n", 1)[0]
 
     assert "scripts/validate_sdd_artifacts.py --check" in check_all
+    assert "scripts/check_sdd_gate.py --all-active --check" in check_all
     assert "scripts/regen_sdd_work_index.py --check" in check_all
 
 

@@ -3821,3 +3821,24 @@
 - **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_final_verification_checklist_duplication tests/architecture/test_agent_playbook_contracts.py::test_tasks_template_does_not_duplicate_final_verification_surface -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 182 — All active SDD gates run in check-all
+
+- **File(s)**: `Makefile`, `scripts/check_sdd_gate.py`, `tests/architecture/test_harness_structure.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 181
+- **Touch set**: `Makefile`, `scripts/check_sdd_gate.py`, `tests/architecture/test_harness_structure.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `scripts/validate_sdd_artifacts.py`; `scripts/regen_sdd_work_index.py`; `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut/tasks.md`
+- **Failing test first**: `tests/architecture/test_harness_structure.py::test_make_check_all_runs_executable_sdd_harness`, `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_all_active_features`, and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_any_failed_active_feature` — prove `check-all` invokes the all-active gate sweep and the CLI checks every active feature rather than only one happy path.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `check-all` must run `scripts/check_sdd_gate.py --all-active --check` before generated index freshness; the all-active CLI must run `clarify`, `checklist`, `analyze`, and `implement` for every active feature and return non-zero if any one feature fails.
+- **On-demand context**: `Makefile`, `scripts/check_sdd_gate.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, and active SDD feature records.
+- **Kill/defer criteria**: Stop if all-active gate checking mutates artifacts, if it replaces full SDD validation, if it only checks the first active feature, or if it requires integration/e2e/golden dependencies.
+- **Eval/repair signal**: missing Makefile gate, CLI argument parser rejection, first-feature-only false green, failed Analyze Gate in any active feature, and SDD docs missing default harness command.
+- **Implementation**: Add `--all-active` to the gate checker, wire it into `check-all`, document the default gate sweep, and keep individual `--feature --gate` checks for lane-local debugging.
+- **Verification**: `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_runs_executable_sdd_harness tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_all_active_features tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_any_failed_active_feature -q`
+- **Review owner**: parent
+- **Status**: [x]

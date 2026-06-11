@@ -198,6 +198,7 @@ claim is allowed without the corresponding output captured below.
 | AC179 — Active SDD current paths exclude removed files. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_missing_current_file_and_touch_paths tests/architecture/test_sdd_artifact_validator.py::test_tasks_allow_removed_file_records_outside_current_touch_surface tests/architecture/test_sdd_artifact_validator.py::test_tasks_allow_current_glob_touch_paths_when_they_match -q` failed RED when active task `File(s)`/`Touch set` paths could advertise missing files and matching glob paths were treated as missing, then passed after adding current path/glob validation, optional `Removed file(s)`, and moving deleted Task61/Task115 paths out of current touch scope. |
 | AC180 — SDD lifecycle gates have first-class CLI checks. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_individual_gates tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_failed_analyze_gate -q` failed RED when no per-gate CLI existed, then passed after adding `scripts/check_sdd_gate.py`, documenting `clarify/checklist/analyze/implement` commands, and binding Analyze failures to gate result cells rather than historical RED/GREEN prose. |
 | AC181 — Tasks do not duplicate final verification evidence. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_final_verification_checklist_duplication tests/architecture/test_agent_playbook_contracts.py::test_tasks_template_does_not_duplicate_final_verification_surface -q` failed RED when task artifacts and the tasks template still allowed `## Final verification`, then passed after adding `tasks-final-verification-duplicated` and removing the duplicate section. |
+| AC182 — All active SDD gates run in `check-all`. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_runs_executable_sdd_harness tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_all_active_features tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_any_failed_active_feature -q` failed RED when `check-all` did not call the gate checker and the CLI rejected `--all-active`, then passed after adding the all-active sweep and Makefile gate. |
 
 Deviations from spec:
 
@@ -3647,6 +3648,21 @@ exit code: 0
 $ if rg -n '^## Final verification\s*$' docs/sdd/features/active docs/sdd/_templates/tasks-template.md; then exit 1; else echo 'no active task/template final-verification headings'; fi
 no active task/template final-verification headings
 exit code: 0
+
+$ uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_runs_executable_sdd_harness tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_all_active_features tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_any_failed_active_feature -q
+FFF                                                                      [100%]
+AssertionError: assert 'scripts/check_sdd_gate.py --all-active --check' in check_all
+check_sdd_gate.py: error: the following arguments are required: --feature, --gate
+exit code: 1
+
+$ uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_runs_executable_sdd_harness tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_all_active_features tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_any_failed_active_feature -q
+...                                                                      [100%]
+3 passed in 0.07s
+exit code: 0
+
+$ uv run python scripts/check_sdd_gate.py --all-active --check
+all active SDD gates passed (clarify/checklist/analyze/implement): 2026-06-09-agent-playbook-skill-hard-cut, 2026-06-09-executable-harness-hard-cut
+exit code: 0
 ```
 
 ## Diff summary
@@ -3662,6 +3678,7 @@ Files changed:
 - Active SDD current-path hard cut: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/_templates/tasks-template.md`.
 - First-class SDD gate checks: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`.
 - Tasks final-verification duplication hard cut: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/_templates/tasks-template.md`.
+- All-active SDD gate sweep: `Makefile`, `scripts/check_sdd_gate.py`, `tests/architecture/test_harness_structure.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`.
 - Mechanical frontend Prettier drift cleanup: macro pages, macro component test, `web/vite.config.ts`.
 
 Migrations applied:

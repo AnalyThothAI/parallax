@@ -387,6 +387,67 @@ def test_sdd_gate_check_cli_rejects_failed_analyze_gate(tmp_path: Path) -> None:
 
 
 @pytest.mark.architecture
+def test_sdd_gate_check_cli_accepts_all_active_features(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "check_sdd_gate.py"
+    assert script.exists()
+    _write_context_packet_fixture(tmp_path)
+    _clone_context_packet_fixture(tmp_path, "2026-06-09-second-context-fixture")
+    _create_context_packet_fixture_paths(tmp_path)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--all-active",
+            "--check",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "all active SDD gates passed" in result.stdout
+    assert "2026-06-09-context-packet-fixture" in result.stdout
+    assert "2026-06-09-second-context-fixture" in result.stdout
+
+
+@pytest.mark.architecture
+def test_sdd_gate_check_cli_rejects_any_failed_active_feature(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "check_sdd_gate.py"
+    assert script.exists()
+    _write_context_packet_fixture(tmp_path)
+    failing_slug = "2026-06-09-second-context-fixture"
+    _clone_context_packet_fixture(tmp_path, failing_slug)
+    _create_context_packet_fixture_paths(tmp_path)
+    plan_path = tmp_path / "docs" / "sdd" / "features" / "active" / failing_slug / "plan.md"
+    plan_text = plan_path.read_text(encoding="utf-8")
+    plan_path.write_text(plan_text.replace("Pass: fixture", "Fail: fixture"), encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--all-active",
+            "--check",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert failing_slug in result.stderr
+    assert "plan-analyze-gate-invalid" in result.stderr
+
+
+@pytest.mark.architecture
 def test_subagent_report_validator_accepts_evidence_report(tmp_path: Path) -> None:
     script = ROOT / "scripts" / "validate_subagent_report.py"
     report = tmp_path / "subagent-report.md"
@@ -1160,6 +1221,19 @@ def _write_context_packet_fixture(root: Path) -> None:
         encoding="utf-8",
     )
     _create_context_packet_fixture_paths(root)
+
+
+def _clone_context_packet_fixture(root: Path, slug: str) -> None:
+    source = root / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture"
+    target = root / "docs" / "sdd" / "features" / "active" / slug
+    target.mkdir(parents=True)
+    source_slug = "2026-06-09-context-packet-fixture"
+    source_worktree = "context-packet-fixture"
+    target_worktree = slug.removeprefix("2026-06-09-")
+    for source_path in source.glob("*.md"):
+        text = source_path.read_text(encoding="utf-8")
+        text = text.replace(source_slug, slug).replace(source_worktree, target_worktree)
+        (target / source_path.name).write_text(text, encoding="utf-8")
 
 
 def _create_context_packet_fixture_paths(root: Path) -> None:

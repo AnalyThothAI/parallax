@@ -14,25 +14,55 @@ GATES = ("clarify", "checklist", "analyze", "implement")
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Check one SDD lifecycle gate for a feature")
+    parser = argparse.ArgumentParser(description="Check SDD lifecycle gates")
     parser.add_argument("--root", type=Path, default=ROOT, help="repository root")
-    parser.add_argument("--feature", required=True, help="feature slug")
-    parser.add_argument("--gate", choices=GATES, required=True, help="gate to check")
+    parser.add_argument("--feature", help="feature slug")
+    parser.add_argument("--all-active", action="store_true", help="check all active feature gates")
+    parser.add_argument("--gate", choices=GATES, help="gate to check")
     parser.add_argument("--check", action="store_true", help="non-mutating check mode")
     args = parser.parse_args()
 
-    feature = _find_feature(args.root, args.feature)
+    if bool(args.feature) == args.all_active:
+        parser.error("provide exactly one of --feature or --all-active")
+    if args.feature and not args.gate:
+        parser.error("--feature requires --gate")
+
+    if args.all_active:
+        return _check_all_active(args.root, args.gate)
+
+    feature = _find_feature(args.root, args.feature or "")
     if feature is None:
         print(f"feature not found: {args.feature}", file=sys.stderr)
         return 1
 
-    issues = _gate_issues(args.root, feature, args.gate)
+    gate = args.gate or ""
+    issues = _gate_issues(args.root, feature, gate)
     if issues:
         for issue in issues:
             print(issue, file=sys.stderr)
         return 1
 
-    print(f"{args.gate} gate passed: {feature.slug}")
+    print(f"{gate} gate passed: {feature.slug}")
+    return 0
+
+
+def _check_all_active(root: Path, gate: str | None) -> int:
+    features = [feature for feature in scan_sdd_features(root) if feature.state == "active"]
+    gates = (gate,) if gate else GATES
+    issues = [
+        f"{feature.slug} {gate_name}: {issue}"
+        for feature in features
+        for gate_name in gates
+        for issue in _gate_issues(root, feature, gate_name)
+    ]
+    if issues:
+        for issue in issues:
+            print(issue, file=sys.stderr)
+        return 1
+
+    slugs = ", ".join(feature.slug for feature in features) or "<none>"
+    gate_summary = gate or "clarify/checklist/analyze/implement"
+    print(f"all active SDD gates passed ({gate_summary}): {slugs}")
     return 0
 
 
