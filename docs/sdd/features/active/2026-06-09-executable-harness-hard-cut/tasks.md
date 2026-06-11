@@ -3905,3 +3905,24 @@
 - **Verification**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_placeholder_gate_rows -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 186 — Implement gate covers tasks gate compliance
+
+- **File(s)**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 185
+- **Touch set**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `scripts/validate_sdd_artifacts.py`; `docs/sdd/_templates/tasks-template.md`; `scripts/dispatch_sdd_task.py`
+- **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_missing_task_gate_compliance` — proves `--gate implement` fails when `tasks.md` omits `## Gate Compliance` while retaining structured task records.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Implement gate must forward `missing-gate-section` and `gate-evidence-missing` only for the feature's `tasks.md`, while leaving spec/plan gate section failures to the clarify/checklist/analyze gates.
+- **On-demand context**: `scripts/check_sdd_gate.py`, `scripts/validate_sdd_artifacts.py`, `docs/sdd/_templates/tasks-template.md`, and gate CLI architecture tests.
+- **Kill/defer criteria**: Stop if implement gate hides missing task gate compliance, if it starts reporting unrelated spec/plan gate issues, or if task records can dispatch without task-level gate evidence.
+- **Eval/repair signal**: missing tasks Gate Compliance false green, gate issue over-broadening, and drift between task dispatch readiness and SDD artifact validation.
+- **Implementation**: Pass the full `SddIssue` into implement-gate issue selection so `tasks.md` artifact gate issues are forwarded without including spec/plan gate failures.
+- **Verification**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_missing_task_gate_compliance -q`
+- **Review owner**: parent
+- **Status**: [x]

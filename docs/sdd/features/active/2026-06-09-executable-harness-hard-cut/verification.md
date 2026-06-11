@@ -202,6 +202,7 @@ claim is allowed without the corresponding output captured below.
 | AC183 — Implement gate forwards delegated task drift. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_delegated_artifact_drift -q` failed RED when `--gate implement` passed despite missing subagent handoff/report artifacts, then passed after forwarding all `task-*` validator issues through the implement gate. |
 | AC184 — Gate evidence rejects header-only tables. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_header_only_gate_tables -q` failed RED when `clarify` passed on a header-only table, then passed after `_has_table_evidence()` skipped table headers and required a non-placeholder body row. |
 | AC185 — Gate evidence shares validator placeholder semantics. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_placeholder_gate_rows -q` failed RED when `<pending>`/`YYYY-MM-DD` placeholder rows satisfied `clarify`, then passed after gate evidence parsing reused `is_placeholder_table_cell()` from the full SDD validator. |
+| AC186 — Implement gate covers tasks gate compliance. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_missing_task_gate_compliance -q` failed RED when `--gate implement` passed despite missing `tasks.md` `## Gate Compliance`, then passed after forwarding tasks artifact gate issues. |
 
 Deviations from spec:
 
@@ -3699,6 +3700,17 @@ $ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_ga
 .                                                                        [100%]
 1 passed in 0.05s
 exit code: 0
+
+$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_missing_task_gate_compliance -q
+F                                                                        [100%]
+AssertionError: assert 0 == 1
+stdout='implement gate passed: 2026-06-09-context-packet-fixture'
+exit code: 1
+
+$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_missing_task_gate_compliance -q
+.                                                                        [100%]
+1 passed in 0.04s
+exit code: 0
 ```
 
 ## Diff summary
@@ -3718,6 +3730,7 @@ Files changed:
 - Implement gate delegated drift forwarding: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Gate evidence header-only hard cut: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Gate placeholder semantics sharing: `scripts/check_sdd_gate.py`, `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_agent_playbook_contracts.py`.
+- Implement gate task compliance forwarding: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Mechanical frontend Prettier drift cleanup: macro pages, macro component test, `web/vite.config.ts`.
 
 Migrations applied:

@@ -564,6 +564,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC183. WHEN the `implement` SDD gate checks a feature with delegated subagent handoff or report drift THEN it SHALL fail on the underlying task issue before agent-loop delegation can be treated as executable.
 - AC184. WHEN a `clarify`, `checklist`, or `analyze` gate section contains only table headers or placeholder rows THEN the gate checker SHALL fail with `gate-evidence-missing` before a header-only table can satisfy executable gate evidence.
 - AC185. WHEN a gate table body row contains placeholder cells such as `<pending>` or `YYYY-MM-DD` THEN the gate checker SHALL reuse the full SDD validator placeholder-cell semantics and fail before template rows can satisfy executable gate evidence.
+- AC186. WHEN the `implement` SDD gate checks a feature whose `tasks.md` is missing `## Gate Compliance` evidence THEN it SHALL fail on the tasks artifact gate issue before task records can be treated as executable.
 
 ## Risks
 

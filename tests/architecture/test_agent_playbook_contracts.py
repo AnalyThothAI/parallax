@@ -598,6 +598,48 @@ def test_sdd_gate_check_cli_implement_rejects_delegated_artifact_drift(tmp_path:
 
 
 @pytest.mark.architecture
+def test_sdd_gate_check_cli_implement_rejects_missing_task_gate_compliance(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "check_sdd_gate.py"
+    assert script.exists()
+    _write_context_packet_fixture(tmp_path)
+    tasks_path = (
+        tmp_path
+        / "docs"
+        / "sdd"
+        / "features"
+        / "active"
+        / "2026-06-09-context-packet-fixture"
+        / "tasks.md"
+    )
+    tasks_text = tasks_path.read_text(encoding="utf-8")
+    before, gate_and_rest = tasks_text.split("## Gate Compliance", 1)
+    _old_gate, rest = gate_and_rest.split("## Tasks", 1)
+    tasks_path.write_text(before + "## Tasks" + rest, encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--gate",
+            "implement",
+            "--check",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "missing-gate-section" in result.stderr
+    assert "tasks.md" in result.stderr
+
+
+@pytest.mark.architecture
 def test_subagent_report_validator_accepts_evidence_report(tmp_path: Path) -> None:
     script = ROOT / "scripts" / "validate_subagent_report.py"
     report = tmp_path / "subagent-report.md"

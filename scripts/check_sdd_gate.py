@@ -10,6 +10,7 @@ if str(ROOT) not in sys.path:
 
 from scripts.validate_sdd_artifacts import (  # noqa: E402
     SddFeature,
+    SddIssue,
     is_placeholder_table_cell,
     scan_sdd_features,
     validate_sdd_root,
@@ -115,12 +116,15 @@ def _implement_gate_issues(root: Path, feature: SddFeature) -> list[str]:
     return [
         f"{issue.code}: {issue.path}: {issue.message}"
         for issue in validate_sdd_root(root)
-        if issue.path.startswith(feature_prefix) and _is_implement_gate_issue(issue.code)
+        if issue.path.startswith(feature_prefix) and _is_implement_gate_issue(feature, issue)
     ]
 
 
-def _is_implement_gate_issue(code: str) -> bool:
+def _is_implement_gate_issue(feature: SddFeature, issue: SddIssue) -> bool:
+    code = issue.code
     if code.startswith("task-"):
+        return True
+    if issue.path == f"{feature.relative_path}/tasks.md" and code in {"missing-gate-section", "gate-evidence-missing"}:
         return True
     return code in {"tasks-final-verification-duplicated", "active-touch-conflict"}
 
