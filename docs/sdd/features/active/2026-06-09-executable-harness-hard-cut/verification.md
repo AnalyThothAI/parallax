@@ -211,6 +211,7 @@ claim is allowed without the corresponding output captured below.
 | AC192 — Gate evidence tables require separators. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_tables_without_separator_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_gate_tables_without_separator_rows -q` failed RED when separator-less pipe rows satisfied gate evidence, then passed after validator and gate CLI shared separator-aware table-body parsing. |
 | AC193 — Gate evidence body rows follow separators. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_body_rows_before_separator tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_body_rows_before_separator -q` failed RED when pre-separator body rows satisfied gate evidence, then passed after table parsing required the second pipe row to be the separator. |
 | AC194 — Gate evidence separators require hyphens. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_empty_separator_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_empty_separator_rows -q` failed RED when an empty separator row satisfied gate evidence, then passed after separator cells required hyphens. |
+| AC195 — Gate evidence table rows share arity. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_separator_arity_mismatch tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_body_row_arity_mismatch tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_separator_arity_mismatch tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_body_row_arity_mismatch -q` failed RED when separator/body rows with mismatched column counts satisfied gate evidence, then passed after table parsing required header/separator/body arity alignment. |
 
 Deviations from spec:
 
@@ -3807,6 +3808,19 @@ $ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evi
 ..                                                                       [100%]
 2 passed in 0.05s
 exit code: 0
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_separator_arity_mismatch tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_body_row_arity_mismatch tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_separator_arity_mismatch tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_body_row_arity_mismatch -q
+FFFF                                                                     [100%]
+AssertionError: assert 'gate-evidence-missing' in set()
+AssertionError: assert 'gate-evidence-missing' in set()
+AssertionError: assert 0 == 1
+AssertionError: assert 0 == 1
+exit code: 1
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_separator_arity_mismatch tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_body_row_arity_mismatch tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_separator_arity_mismatch tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_body_row_arity_mismatch -q
+....                                                                     [100%]
+4 passed in 0.08s
+exit code: 0
 ```
 
 ## Diff summary
@@ -3835,6 +3849,7 @@ Files changed:
 - Separator-aware gate evidence parsing: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Strict gate evidence table order: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Hyphen-bearing gate table separators: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
+- Equal-arity gate evidence tables: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Mechanical frontend Prettier drift cleanup: macro pages, macro component test, `web/vite.config.ts`.
 
 Migrations applied:

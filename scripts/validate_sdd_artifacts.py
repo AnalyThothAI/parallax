@@ -1773,11 +1773,20 @@ def table_body_rows(section: str) -> list[list[str]]:
     table_lines = [line.strip() for line in section.splitlines() if line.strip().startswith("|")]
     if len(table_lines) < 3 or not _is_table_separator_row(table_lines[1]):
         return []
-    return [_table_cells(line) for line in table_lines[2:] if not _is_table_separator_row(line)]
+    header_cells = _table_cells(table_lines[0])
+    separator_cells = _table_cells(table_lines[1])
+    body_rows = [_table_cells(line) for line in table_lines[2:] if not _is_table_separator_row(line)]
+    if not _table_rows_have_matching_arity([separator_cells, *body_rows], len(header_cells)):
+        return []
+    return body_rows
 
 
 def _table_cells(line: str) -> list[str]:
     return [cell.strip() for cell in line.strip("|").split("|")]
+
+
+def _table_rows_have_matching_arity(rows: list[list[str]], expected_count: int) -> bool:
+    return expected_count > 0 and all(len(row) == expected_count for row in rows)
 
 
 def _is_table_separator_row(line: str) -> bool:
