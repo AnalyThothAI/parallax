@@ -9,6 +9,7 @@ from typing import Any, NotRequired, TypedDict, cast
 
 from psycopg.types.json import Jsonb
 
+from parallax.app.runtime.current_read_model_publisher import stable_current_payload_hash
 from parallax.domains.macro_intel._constants import MACRO_VIEW_PROJECTION_VERSION
 from parallax.domains.macro_intel.observation_identity import (
     macro_observation_fact_payload_hash,
@@ -1969,8 +1970,7 @@ def _macro_snapshot_payload_hash(snapshot: Mapping[str, Any]) -> str:
 
 def _macro_daily_brief_payload_hash(brief: Mapping[str, Any]) -> str:
     payload = {key: value for key, value in dict(brief).items() if key not in {"computed_at_ms"}}
-    encoded = json.dumps(postgres_safe_json(payload), sort_keys=True, separators=(",", ":"), default=str)
-    return hashlib.sha256(encoded.encode()).hexdigest()
+    return stable_current_payload_hash(payload)
 
 
 def _macro_projection_dirty_payload_hash(

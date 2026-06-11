@@ -3505,6 +3505,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 167 — Macro daily brief hash uses shared current payload contract
+
+- **File(s)**: `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`, `tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 166
+- **Touch set**: `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`, `tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py` for Macro daily brief current-row payload hash semantics and idempotent writes.
+- **Failing test first**: `tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_daily_brief_payload_hash_rejects_legacy_payload_keys` — call `_macro_daily_brief_payload_hash()` with a non-string payload key and assert the shared current payload-key validation raises before the retired local normalizer can stringify compatibility-shaped daily brief payload keys.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Macro daily brief row hashing must use `stable_current_payload_hash()` from `src/parallax/app/runtime/current_read_model_publisher.py`; the repository must not hash current `macro_daily_briefs` payloads through `postgres_safe_json()`, local key stringification, or generic `default=str` value conversion.
+- **On-demand context**: `src/parallax/domains/macro_intel/ARCHITECTURE.md`, `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`, `tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py`, and current read-model payload hash idempotency contracts.
+- **Kill/defer criteria**: Stop if Macro daily briefs intentionally support non-string payload keys, if production daily brief payloads require compatibility key stringification at runtime, or if the shared hash helper cannot preserve unchanged hashes for compliant daily brief payloads.
+- **Eval/repair signal**: `_macro_daily_brief_payload_hash()` using `postgres_safe_json()`, local key stringification, generic `default=str`, Macro daily brief idempotency drift, and SDD generated index drift.
+- **Implementation**: Compute `macro_daily_briefs.payload_hash` with `stable_current_payload_hash()` while continuing to exclude `computed_at_ms` from the product payload hash.
+- **Verification**: `uv run pytest tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_daily_brief_payload_hash_rejects_legacy_payload_keys -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -3662,4 +3683,5 @@
 - [ ] `uv run pytest tests/unit/domains/news_intel/test_news_repository_queries.py::test_news_page_row_payload_hash_rejects_legacy_story_keys_before_write -q`
 - [ ] `uv run pytest tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py::test_admission_payload_hash_rejects_legacy_payload_keys -q`
 - [ ] `uv run pytest tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py::test_admission_payload_hash_rejects_jsonb_like_legacy_adapter_values -q`
+- [ ] `uv run pytest tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_daily_brief_payload_hash_rejects_legacy_payload_keys -q`
 - [ ] `make check-all`

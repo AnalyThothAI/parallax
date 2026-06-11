@@ -3,6 +3,8 @@ from __future__ import annotations
 import inspect
 from datetime import date
 
+import pytest
+
 from parallax.domains.macro_intel.repositories.macro_intel_repository import (
     MacroIntelRepository,
     _macro_daily_brief_payload_hash,
@@ -229,6 +231,22 @@ def test_upsert_macro_daily_brief_is_stable_key_payload_hash_read_model() -> Non
     assert "WHERE macro_daily_briefs.payload_hash IS DISTINCT FROM excluded.payload_hash" in normalized_source
     assert '"computed_at_ms"' in hash_source
     assert "if key not in" in hash_source
+    assert "stable_current_payload_hash" in hash_source
+    assert "postgres_safe_json" not in hash_source
+
+
+def test_macro_daily_brief_payload_hash_rejects_legacy_payload_keys() -> None:
+    with pytest.raises(ValueError, match="current payload hash payload has non-string keys"):
+        _macro_daily_brief_payload_hash(
+            {
+                "brief_key": "assets_today",
+                "projection_version": "macro_regime_v4",
+                "status": "ready",
+                "headline": "Liquidity improving",
+                "payload_json": {"status": "ready"},
+                123: "legacy",
+            }
+        )
 
 
 def test_record_run_methods_write_hard_cut_observation_counts_and_watermarks() -> None:

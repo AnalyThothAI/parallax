@@ -183,6 +183,7 @@ claim is allowed without the corresponding output captured below.
 | AC164 — News page-row hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/domains/news_intel/test_news_repository_queries.py::test_news_page_row_payload_hash_rejects_legacy_story_keys_before_write -q` failed RED when page-row hashing bypassed shared current payload validation and reached the insert path, then passed after restoring `stable_current_payload_hash()` for page-row hashes. |
 | AC165 — Narrative admission hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py::test_admission_payload_hash_rejects_legacy_payload_keys -q` failed RED when the Narrative local hash normalizer accepted a non-string admission payload key, then passed after replacing the local normalizer with `stable_current_payload_hash()` and strict `Jsonb` unwrapping. |
 | AC166 — Narrative admission hash unwraps only real Jsonb adapters. | ✅ | `uv run pytest tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py::test_admission_payload_hash_rejects_jsonb_like_legacy_adapter_values -q` failed RED when generic `obj` attribute unwrapping accepted a Jsonb-like object, then passed after restricting adapter unwrapping to real `Jsonb` instances. |
+| AC167 — Macro daily brief hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_daily_brief_payload_hash_rejects_legacy_payload_keys -q` failed RED when the Macro daily brief local hash normalizer accepted a non-string payload key, then passed after replacing it with `stable_current_payload_hash()` while continuing to exclude `computed_at_ms`. |
 
 Deviations from spec:
 
@@ -3284,6 +3285,31 @@ exit code: 0
 $ uv run pytest tests/unit/domains/narrative_intel -q
 ......................................                                   [100%]
 38 passed in 0.24s
+exit code: 0
+
+$ uv run pytest tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_daily_brief_payload_hash_rejects_legacy_payload_keys -q
+F                                                                        [100%]
+Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_daily_brief_payload_hash_rejects_legacy_payload_keys -q
+.                                                                        [100%]
+1 passed in 0.09s
+exit code: 0
+
+$ uv run pytest tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py -q
+..................                                                       [100%]
+18 passed in 0.14s
+exit code: 0
+
+$ uv run pytest tests/unit/domains/macro_intel/test_macro_view_projection_worker.py tests/unit/domains/macro_intel/test_macro_sync_service.py -q
+.......................                                                  [100%]
+23 passed in 0.80s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_macro_kappa_contract.py tests/architecture/test_worker_runtime_contracts.py::test_read_model_single_writers tests/architecture/test_runtime_worker_constraint_hard_cut.py -q
+.......................................................                  [100%]
+55 passed in 1.57s
 exit code: 0
 
 $ uv run python scripts/validate_sdd_artifacts.py --check

@@ -284,6 +284,7 @@ Known-failing baseline tests:
 - Replace the News source-quality and page-row local payload-hash normalizer with the shared `stable_current_payload_hash()` contract and keep only strict `Jsonb` adapter unwrapping that preserves mapping keys before validation.
 - Replace the Narrative admission local payload-hash normalizer with the shared `stable_current_payload_hash()` contract and keep only strict `Jsonb` adapter unwrapping that preserves mapping keys before validation.
 - Reject Narrative admission Jsonb-like adapter objects that only expose an `obj` attribute before generic adapter unwrapping can preserve compatibility-shaped payloads.
+- Replace the Macro daily brief local payload-hash normalizer with the shared `stable_current_payload_hash()` contract so current `macro_daily_briefs` hashes reject compatibility-shaped payload keys before `postgres_safe_json()` or generic `default=str` conversion.
 - Import `importlib.util` directly inside `worker_manifest.py` so manifest validation does not depend on prior import side effects in clean processes.
 - Reject loose visual verification artifacts at the repository root and keep screenshots under owned artifact directories.
 - Reject duplicate table names inside each `WorkerManifest` table-declaration field before `owned_tables` dedupes them.
@@ -470,6 +471,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | News page-row payload hashing uses the shared current payload hash contract. | Pass: `NewsRepository.replace_page_rows_for_items()` raises `current payload hash payload has non-string keys` when `story` contains a non-string key before serving-row insert, and the repository no longer defines a local stable payload hash normalizer. |
 | Narrative admission payload hashing uses the shared current payload hash contract. | Pass: `admission_payload_hash()` raises `current payload hash payload has non-string keys` when the admission payload contains a non-string key, and the repository no longer defines a local stable payload hash normalizer. |
 | Narrative admission hash unwrapping is Jsonb-only. | Pass: `admission_payload_hash()` raises `current payload hash payload has unsupported values` when an arbitrary object exposes an `obj` attribute but is not a real `Jsonb` adapter. |
+| Macro daily brief payload hashing uses the shared current payload hash contract. | Pass: `_macro_daily_brief_payload_hash()` raises `current payload hash payload has non-string keys` when a current brief payload contains a non-string key, and the function no longer hashes through `postgres_safe_json()` or generic `default=str` conversion. |
 | Worker manifest imports are explicit. | Pass: importing `parallax.app.runtime.worker_manifest` in a clean process succeeds even after removing an incidental `importlib.util` package attribute. |
 | Root visual artifacts are absent. | Pass: architecture harness rejects loose root-level PNG/JPG/WEBP/GIF verification artifacts. |
 | Worker table declarations are unique. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares the same table twice inside one table-declaration field. |
@@ -670,6 +672,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC164: `uv run pytest tests/unit/domains/news_intel/test_news_repository_queries.py::test_news_page_row_payload_hash_rejects_legacy_story_keys_before_write -q`
 - AC165: `uv run pytest tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py::test_admission_payload_hash_rejects_legacy_payload_keys -q`
 - AC166: `uv run pytest tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py::test_admission_payload_hash_rejects_jsonb_like_legacy_adapter_values -q`
+- AC167: `uv run pytest tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_daily_brief_payload_hash_rejects_legacy_payload_keys -q`
 
 ## Verification
 
