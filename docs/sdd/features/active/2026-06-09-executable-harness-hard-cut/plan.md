@@ -766,6 +766,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC251: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_feature_lanes_reject_loose_legacy_files -q`
 - AC252: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_fenced_table_rows tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_fenced_spec_compliance_and_coverage_tables -q`
 - AC253: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_fenced_task_sections tests/architecture/test_sdd_artifact_validator.py::test_tasks_must_live_inside_tasks_section -q`
+- AC254: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_acceptance_criteria_must_live_in_acceptance_section tests/architecture/test_sdd_artifact_validator.py::test_plan_acceptance_commands_must_live_in_acceptance_section tests/architecture/test_sdd_artifact_validator.py::test_spec_requires_at_least_one_acceptance_criterion -q`
 
 ## Verification
 

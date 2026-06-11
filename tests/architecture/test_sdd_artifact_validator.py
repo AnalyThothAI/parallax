@@ -1153,6 +1153,75 @@ def test_acceptance_criteria_require_when_then_shall_format(tmp_path: Path) -> N
     assert "acceptance-criterion-format-invalid" in _issue_codes(issues)
 
 
+def test_acceptance_criteria_must_live_in_acceptance_section(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-ac-outside-section")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _replace_section_body(
+        feature / "spec.md",
+        "## Acceptance criteria",
+        (
+            "_No current acceptance criteria here._",
+            "",
+            "## Appendix",
+            "",
+            "- AC1. WHEN stale appendix evidence exists THEN the harness SHALL ignore it.",
+        ),
+    )
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(feature / "tasks.md", status="In Progress", task_status="[~]")
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "acceptance-numbering-invalid" in _issue_codes(issues)
+
+
+def test_plan_acceptance_commands_must_live_in_acceptance_section(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-command-outside-section")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _replace_section_body(
+        feature / "plan.md",
+        "## Acceptance test commands",
+        (
+            "_No current acceptance commands here._",
+            "",
+            "## Appendix",
+            "",
+            "- AC1: `uv run pytest tests/architecture/test_sdd_artifact_validator.py`",
+        ),
+    )
+    _write_valid_tasks(feature / "tasks.md", status="In Progress", task_status="[~]")
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "acceptance-command-mismatch" in _issue_codes(issues)
+    assert any("missing commands for AC1" in issue.message for issue in issues)
+
+
+def test_spec_requires_at_least_one_acceptance_criterion(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-empty-acceptance")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _replace_section_body(
+        feature / "spec.md",
+        "## Acceptance criteria",
+        ("_No current acceptance criteria here._",),
+    )
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _replace_section_body(
+        feature / "plan.md",
+        "## Acceptance test commands",
+        ("_No current acceptance commands here._",),
+    )
+    _write_valid_tasks(feature / "tasks.md", status="In Progress", task_status="[~]")
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "acceptance-numbering-invalid" in _issue_codes(issues)
+
+
 def test_acceptance_criteria_and_commands_require_contiguous_numbers(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-ac-number-gap")
     _write_valid_spec(feature / "spec.md", status="In Progress")

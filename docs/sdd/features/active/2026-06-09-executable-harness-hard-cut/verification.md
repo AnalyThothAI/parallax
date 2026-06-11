@@ -270,6 +270,7 @@ claim is allowed without the corresponding output captured below.
 | AC251 — Feature lanes reject loose files. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_feature_lanes_reject_loose_legacy_files -q` failed RED while loose files directly under `features/active` were ignored, then passed after the SDD validator scanned lane-root children. |
 | AC252 — Fenced tables cannot satisfy evidence. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_fenced_table_rows tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_fenced_spec_compliance_and_coverage_tables -q` failed RED while fenced Markdown tables passed evidence gates, then passed after table evidence parsing ignored fenced blocks. |
 | AC253 — Task parser is section-scoped. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_fenced_task_sections tests/architecture/test_sdd_artifact_validator.py::test_tasks_must_live_inside_tasks_section -q` failed RED while fenced and appendix task examples passed as executable tasks, then passed after `_parse_tasks()` scoped matching to fenced-block-stripped `## Tasks`. |
+| AC254 — Acceptance coverage is section-scoped. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_acceptance_criteria_must_live_in_acceptance_section tests/architecture/test_sdd_artifact_validator.py::test_plan_acceptance_commands_must_live_in_acceptance_section tests/architecture/test_sdd_artifact_validator.py::test_spec_requires_at_least_one_acceptance_criterion -q` failed RED while appendix ACs and commands passed coverage, then passed after acceptance parsers were scoped to canonical sections. |
 
 Deviations from spec:
 
@@ -4583,6 +4584,18 @@ exit code: 1
 $ python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_fenced_task_sections tests/architecture/test_sdd_artifact_validator.py::test_tasks_must_live_inside_tasks_section -q
 ..                                                                       [100%]
 2 passed in 0.06s
+exit code: 0
+
+$ python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_acceptance_criteria_must_live_in_acceptance_section tests/architecture/test_sdd_artifact_validator.py::test_plan_acceptance_commands_must_live_in_acceptance_section tests/architecture/test_sdd_artifact_validator.py::test_spec_requires_at_least_one_acceptance_criterion -q
+FFF                                                                      [100%]
+AssertionError: assert 'acceptance-numbering-invalid' in set()
+AssertionError: assert 'acceptance-command-mismatch' in set()
+AssertionError: assert 'acceptance-numbering-invalid' in set()
+exit code: 1
+
+$ python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_acceptance_criteria_must_live_in_acceptance_section tests/architecture/test_sdd_artifact_validator.py::test_plan_acceptance_commands_must_live_in_acceptance_section tests/architecture/test_sdd_artifact_validator.py::test_spec_requires_at_least_one_acceptance_criterion -q
+...                                                                      [100%]
+3 passed in 0.06s
 exit code: 0
 ```
 

@@ -745,6 +745,14 @@ def _acceptance_command_issues(feature: SddFeature) -> list[SddIssue]:
     plan_commands = _plan_acceptance_commands(plan_artifact.text)
     plan_number_sequence = [number for number, _command in plan_commands]
     issues: list[SddIssue] = []
+    if not spec_number_sequence:
+        issues.append(
+            _issue(
+                "acceptance-numbering-invalid",
+                spec_artifact,
+                "spec acceptance criteria must contain at least one current AC row",
+            )
+        )
     invalid_criteria = _invalid_acceptance_criterion_lines(spec_artifact.text)
     if invalid_criteria:
         issues.append(
@@ -1437,26 +1445,29 @@ def _command_evidence(text: str) -> dict[str, tuple[int, ...]]:
 
 
 def _spec_acceptance_numbers(text: str) -> list[int]:
-    return [int(match.group("number")) for match in SPEC_AC_RE.finditer(text)]
+    section = _text_without_fenced_blocks(_section_text(text, "## Acceptance criteria"))
+    return [int(match.group("number")) for match in SPEC_AC_RE.finditer(section)]
 
 
 def _invalid_acceptance_criterion_lines(text: str) -> list[str]:
+    section = _text_without_fenced_blocks(_section_text(text, "## Acceptance criteria"))
     return [
         match.group(0).strip()
-        for match in SPEC_AC_LINE_RE.finditer(text)
+        for match in SPEC_AC_LINE_RE.finditer(section)
         if not SPEC_AC_FORMAT_RE.match(match.group(0))
     ]
 
 
 def _plan_acceptance_commands(text: str) -> list[tuple[int, str]]:
+    section = _text_without_fenced_blocks(_section_text(text, "## Acceptance test commands"))
     return [
         (int(match.group("number")), _clean_command(match.group("command")))
-        for match in PLAN_AC_COMMAND_RE.finditer(text)
+        for match in PLAN_AC_COMMAND_RE.finditer(section)
     ]
 
 
 def _invalid_plan_acceptance_command_lines(text: str) -> list[str]:
-    section = _section_text(text, "## Acceptance test commands")
+    section = _text_without_fenced_blocks(_section_text(text, "## Acceptance test commands"))
     return [
         line.strip()
         for line in PLAN_ACCEPTANCE_BULLET_RE.findall(section)

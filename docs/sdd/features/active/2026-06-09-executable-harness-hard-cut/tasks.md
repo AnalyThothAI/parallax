@@ -5333,3 +5333,24 @@
 - **Verification**: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_fenced_task_sections tests/architecture/test_sdd_artifact_validator.py::test_tasks_must_live_inside_tasks_section -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 254 — Acceptance coverage is section-scoped
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 253
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD validator and generated index updates.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_acceptance_criteria_must_live_in_acceptance_section`, `tests/architecture/test_sdd_artifact_validator.py::test_plan_acceptance_commands_must_live_in_acceptance_section`, `tests/architecture/test_sdd_artifact_validator.py::test_spec_requires_at_least_one_acceptance_criterion` — prove stale appendix ACs and commands cannot satisfy current Spec -> Plan coverage.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Acceptance criterion parsing must use only fenced-block-stripped `## Acceptance criteria`; plan command parsing must use only fenced-block-stripped `## Acceptance test commands`; specs must expose at least one current AC row.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, Bohr read-only audit, Spec -> Plan command coverage tests, and SDD plan template expectations.
+- **Kill/defer criteria**: Stop if appendix, notes, or fenced examples can satisfy AC numbering, format, or command-coverage checks.
+- **Eval/repair signal**: `acceptance-numbering-invalid`, `acceptance-command-mismatch`, stale appendix false green, and Spec -> Plan coverage drift.
+- **Implementation**: Scope AC and plan command regexes to their canonical sections and reject specs with no current acceptance criteria.
+- **Verification**: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_acceptance_criteria_must_live_in_acceptance_section tests/architecture/test_sdd_artifact_validator.py::test_plan_acceptance_commands_must_live_in_acceptance_section tests/architecture/test_sdd_artifact_validator.py::test_spec_requires_at_least_one_acceptance_criterion -q`
+- **Review owner**: parent
+- **Status**: [x]
