@@ -494,7 +494,62 @@ def test_sdd_gate_check_cli_requires_markdown_heading_lines(tmp_path: Path) -> N
         "The fixture spec is grounded by its own source record",
         "The fixture spec mentions `## Clarifications` in prose and is grounded by its own source record",
     )
-    spec_text = spec_text.replace("\n## Clarifications\n", "\nClarifications\n", 1)
+    before_heading, after_heading = spec_text.rsplit("\n## Clarifications\n", 1)
+    spec_text = before_heading + "\nClarifications\n" + after_heading
+    spec_path.write_text(spec_text, encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--gate",
+            "clarify",
+            "--check",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "missing-gate-section" in result.stderr
+
+
+@pytest.mark.architecture
+def test_sdd_gate_check_cli_ignores_fenced_heading_tokens(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "check_sdd_gate.py"
+    assert script.exists()
+    _write_context_packet_fixture(tmp_path)
+    spec_path = (
+        tmp_path
+        / "docs"
+        / "sdd"
+        / "features"
+        / "active"
+        / "2026-06-09-context-packet-fixture"
+        / "spec.md"
+    )
+    spec_text = spec_path.read_text(encoding="utf-8")
+    spec_text = spec_text.replace(
+        "The fixture spec is grounded by its own source record",
+        "\n".join(
+            [
+                "The fixture spec is grounded by its own source record",
+                "",
+                "```text",
+                "## Clarifications",
+                "```",
+                "",
+            ]
+        ),
+    )
+    before_heading, after_heading = spec_text.rsplit("\n## Clarifications\n", 1)
+    spec_text = before_heading + "\nClarifications\n" + after_heading
     spec_path.write_text(spec_text, encoding="utf-8")
 
     result = subprocess.run(

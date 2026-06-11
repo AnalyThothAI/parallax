@@ -302,7 +302,43 @@ def test_required_sections_must_be_markdown_heading_lines(tmp_path: Path) -> Non
         "The fixture spec is grounded by its own source record",
         "The fixture spec mentions `## Clarifications` in prose and is grounded by its own source record",
     )
-    spec_text = spec_text.replace("\n## Clarifications\n", "\nClarifications\n", 1)
+    before_heading, after_heading = spec_text.rsplit("\n## Clarifications\n", 1)
+    spec_text = before_heading + "\nClarifications\n" + after_heading
+    spec_path.write_text(spec_text, encoding="utf-8")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(feature / "tasks.md", status="In Progress", task_status="[~]")
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "missing-gate-section" in _issue_codes(issues)
+    messages = "\n".join(issue.message for issue in issues if issue.code == "missing-gate-section")
+    assert "## Clarifications" in messages
+
+
+def test_required_sections_ignore_fenced_heading_tokens(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-fenced-heading-token")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    spec_path = feature / "spec.md"
+    spec_text = spec_path.read_text(encoding="utf-8")
+    cited_sentence = (
+        "The fixture spec is grounded by its own source record "
+        f"(`{_feature_relative_dir(spec_path)}/spec.md:1`)."
+    )
+    spec_text = spec_text.replace(
+        cited_sentence,
+        "\n".join(
+            [
+                cited_sentence,
+                "",
+                "```text",
+                "## Clarifications",
+                "```",
+            ]
+        ),
+    )
+    before_heading, after_heading = spec_text.rsplit("\n## Clarifications\n", 1)
+    spec_text = before_heading + "\nClarifications\n" + after_heading
     spec_path.write_text(spec_text, encoding="utf-8")
     _write_valid_plan(feature / "plan.md", status="In Progress")
     _write_valid_tasks(feature / "tasks.md", status="In Progress", task_status="[~]")

@@ -3968,3 +3968,24 @@
 - **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_required_sections_must_be_markdown_heading_lines tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_requires_markdown_heading_lines -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 189 — SDD section parser ignores fenced headings
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 188
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/spec-template.md`; `docs/sdd/_templates/verification-template.md`
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_required_sections_ignore_fenced_heading_tokens` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_ignores_fenced_heading_tokens` — prove fenced `## Clarifications` text cannot satisfy a missing Markdown heading.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Section heading detection and section-body termination must ignore fenced code blocks, so command output, examples, and code snippets cannot create or close SDD sections.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, and SDD/gate section parser tests.
+- **Kill/defer criteria**: Stop if fenced heading tokens satisfy required sections, if fenced output truncates `verification.md` command evidence, or if gate CLI diverges from validator section parsing.
+- **Eval/repair signal**: fenced-heading false green, section-body truncation, and validator/gate CLI parser drift.
+- **Implementation**: Track fenced code blocks in the shared section parser when finding headings and when scanning for the next section boundary.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_required_sections_ignore_fenced_heading_tokens tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_ignores_fenced_heading_tokens -q`
+- **Review owner**: parent
+- **Status**: [x]

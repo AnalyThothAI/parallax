@@ -1728,8 +1728,13 @@ def section_text(text: str, heading: str) -> str:
     if start_index is None:
         return ""
     body: list[str] = []
+    in_fenced_block = False
     for line in lines[start_index + 1 :]:
-        if line.strip().startswith("## "):
+        if _is_fence_line(line):
+            in_fenced_block = not in_fenced_block
+            body.append(line)
+            continue
+        if not in_fenced_block and line.strip().startswith("## "):
             break
         body.append(line)
     return "\n".join(body)
@@ -1740,10 +1745,18 @@ def has_markdown_section(text: str, heading: str) -> bool:
 
 
 def _section_heading_index(lines: list[str], heading: str) -> int | None:
+    in_fenced_block = False
     for index, line in enumerate(lines):
-        if line.strip() == heading:
+        if _is_fence_line(line):
+            in_fenced_block = not in_fenced_block
+            continue
+        if not in_fenced_block and line.strip() == heading:
             return index
     return None
+
+
+def _is_fence_line(line: str) -> bool:
+    return line.strip().startswith("```")
 
 
 def _section_has_non_placeholder_table_row(text: str, heading: str) -> bool:
