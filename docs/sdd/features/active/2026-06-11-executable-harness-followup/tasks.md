@@ -14,7 +14,7 @@
 | Clarify | Spec contains approved clarification for superseding the omnibus record. |
 | Checklist | Spec records the active-record size bound requirement. |
 | Analyze | Plan Analyze Gate records why active records should remain bounded. |
-| Implement | Tasks 1-14 implement the validator, migration, documentation contract, stale-template cleanup, machine-readable verification status tokens, active lifecycle command hard cut, active placeholder final-evidence rejection, active skipped-test accounting bound, fail-closed final-evidence templates, dispatch-bound context packets, generated subagent mode constraints, validator-enforced handoff mode constraints, embedded context-packet mode constraints, and top-level handoff validation scope. |
+| Implement | Tasks 1-15 implement the validator, migration, documentation contract, stale-template cleanup, machine-readable verification status tokens, active lifecycle command hard cut, active placeholder final-evidence rejection, active skipped-test accounting bound, fail-closed final-evidence templates, dispatch-bound context packets, generated subagent mode constraints, validator-enforced handoff mode constraints, embedded context-packet mode constraints, top-level handoff validation scope, and exact report validation command enforcement. |
 | Verify | Verification artifact captures RED/GREEN command output. |
 
 ## Tasks
@@ -310,5 +310,26 @@
 - **Eval/repair signal**: top-level handoff missing `Mode constraints:` but passing because embedded context contains them, or report command token checks satisfied from fenced content.
 - **Implementation**: Validate top-level handoff obligations against text with fenced blocks removed while keeping embedded Context Packet validation separate.
 - **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_top_level_handoff_mode_constraints -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 15 - Require exact report validation command
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`
+- **Owner**: parent
+- **Depends on**: Task 14
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD validator, delegated-handoff fixtures, and generated index updates.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_exact_report_validation_command` - proves token inventories cannot satisfy report validation command requirements.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Delegated handoff artifacts must include the exact top-level command `uv run python scripts/validate_subagent_report.py --feature <slug> --task <number> --mode <mode> --report <report.md>`; disconnected tokens do not satisfy the contract.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `scripts/validate_subagent_report.py`.
+- **Kill/defer criteria**: Stop if report-validation command enforcement intentionally remains token-only.
+- **Eval/repair signal**: delegated handoff accepted with token inventory, wrong command ordering, missing `uv run python`, or command hidden in fenced content.
+- **Implementation**: Replace token-presence validation with exact top-level command validation.
+- **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_exact_report_validation_command -q`
 - **Review owner**: parent
 - **Status**: [x]

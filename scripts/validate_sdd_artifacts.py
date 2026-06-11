@@ -1450,21 +1450,19 @@ def _subagent_handoff_contract_issues(feature: SddFeature, task: TaskRecord, tex
         elif mode:
             _append_context_packet_mode_issues(issues, context_text, mode)
 
-    normalized_text = _normalize_handoff_text(top_level_text)
-    required_tokens = (
-        "scripts/validate_subagent_report.py",
-        "--feature",
-        feature.slug,
-        "--task",
-        task_anchor.removeprefix("Task "),
-        "--mode",
-        mode,
-        "--report",
-    )
-    missing_tokens = [token for token in required_tokens if token and token not in normalized_text]
-    if missing_tokens:
-        issues.append("report validation command missing tokens: " + ", ".join(missing_tokens))
+    if mode:
+        expected_command = _expected_report_validation_command(feature.slug, task_anchor, mode)
+        if expected_command not in _normalize_handoff_text(top_level_text):
+            issues.append(f"report validation command must be exact: {expected_command}")
     return issues
+
+
+def _expected_report_validation_command(feature_slug: str, task_anchor: str, mode: str) -> str:
+    task_number_text = task_anchor.removeprefix("Task ")
+    return (
+        "uv run python scripts/validate_subagent_report.py "
+        f"--feature {feature_slug} --task {task_number_text} --mode {mode} --report <report.md>"
+    )
 
 
 def _embedded_context_packet_text(text: str, expected_feature: str, expected_task: str) -> str | None:
