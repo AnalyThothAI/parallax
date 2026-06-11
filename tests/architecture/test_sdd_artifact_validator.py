@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 from scripts.validate_sdd_artifacts import main, validate_sdd_root
 
 
@@ -1578,6 +1580,13 @@ def test_validator_cli_fails_on_issues_without_check_flag(tmp_path: Path) -> Non
     _write_valid_verification(feature / "verification.md", status="In Progress")
 
     assert main(["--root", str(tmp_path)]) == 1
+
+
+def test_validator_cli_rejects_legacy_check_flag() -> None:
+    with pytest.raises(SystemExit) as exc:
+        main(["--check"])
+
+    assert exc.value.code == 2
 
 
 def test_complete_tasks_require_failing_test_reference_evidence(tmp_path: Path) -> None:

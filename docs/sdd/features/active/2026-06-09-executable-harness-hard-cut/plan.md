@@ -23,7 +23,7 @@ Known-failing baseline tests:
 
 ### `scripts/validate_sdd_artifacts.py`
 
-- Create a pure filesystem validator with `scan_sdd_features(root: Path)`, `validate_sdd_root(root: Path)`, and a `--check` CLI.
+- Create a pure filesystem validator with `scan_sdd_features(root: Path)`, `validate_sdd_root(root: Path)`, and a default fail-closed CLI.
 - Emit deterministic issue codes for missing gate sections, missing approval metadata, incomplete task fields, false `Verified` evidence, stale generated index, and active touch/conflict overlap.
 - Treat active touch-set parent/child path overlaps as conflicts and require coordination that names the overlapping feature slug or path.
 - Validate `Owning spec` and `Owning plan` links point at the same feature's canonical artifacts before trusting the lifecycle record.
@@ -303,7 +303,7 @@ Known-failing baseline tests:
 
 ### `Makefile`
 
-- Add `uv run python scripts/validate_sdd_artifacts.py --check` and keep `uv run python scripts/regen_sdd_work_index.py --check` in `check-all`.
+- Add `uv run python scripts/validate_sdd_artifacts.py` and keep `uv run python scripts/regen_sdd_work_index.py --check` in `check-all`.
 - Add `uv run python scripts/regen_cli_help.py --check` to `check-all` before integration, e2e, golden, and coverage gates.
 
 ### `docs/CONTRACTS.md`
@@ -756,6 +756,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC241: `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_verification_template_keeps_completion_gate_outside_final_command_section -q`
 - AC242: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_positive_skipped_count_with_placeholder_reason tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_positive_skipped_count_with_placeholder_reason -q`
 - AC243: `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_tasks_template_keeps_one_task_for_single_pr_work -q`
+- AC244: `python -m pytest tests/architecture/test_harness_structure.py::test_make_check_all_runs_executable_sdd_harness tests/architecture/test_harness_structure.py::test_makefile_exposes_single_feature_sdd_completion_gate tests/architecture/test_sdd_artifact_validator.py::test_validator_cli_rejects_legacy_check_flag tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_legacy_check_flag -q`
 
 ## Verification
 

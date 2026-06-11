@@ -288,8 +288,10 @@ def test_make_check_all_runs_executable_sdd_harness() -> None:
     makefile = _read(REPO_ROOT / "Makefile")
     check_all = makefile.split("check-all:", 1)[1].split("\n\n", 1)[0]
 
-    assert "scripts/validate_sdd_artifacts.py --check" in check_all
-    assert "scripts/check_sdd_gate.py --all-active --check" in check_all
+    assert "scripts/validate_sdd_artifacts.py" in check_all
+    assert "scripts/validate_sdd_artifacts.py --check" not in check_all
+    assert "scripts/check_sdd_gate.py --all-active" in check_all
+    assert "scripts/check_sdd_gate.py --all-active --check" not in check_all
     assert "scripts/regen_sdd_work_index.py --check" in check_all
 
 
@@ -343,7 +345,8 @@ def test_makefile_exposes_single_feature_sdd_completion_gate() -> None:
 
     assert "check-sdd-completion" in makefile.split(".PHONY:", 1)[1].split("\n", 1)[0]
     assert 'test -n "$(FEATURE)"' in completion_target
-    assert 'scripts/check_sdd_gate.py --feature "$(FEATURE)" --gate verify --check' in completion_target
+    assert 'scripts/check_sdd_gate.py --feature "$(FEATURE)" --gate verify' in completion_target
+    assert 'scripts/check_sdd_gate.py --feature "$(FEATURE)" --gate verify --check' not in completion_target
     assert "make check-sdd-completion FEATURE=<slug>" in workflow
     assert "make check-sdd-completion FEATURE=<slug>" in sdd_readme
 

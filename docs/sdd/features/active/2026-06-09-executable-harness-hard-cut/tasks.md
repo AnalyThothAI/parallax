@@ -31,7 +31,7 @@
 - **Subagent report**: not delegated
 - **Review result**: parent-reviewed
 - **Factory lane**: Harness/tests
-- **Deterministic constraints**: `uv run python scripts/validate_sdd_artifacts.py --check`, deterministic issue codes, no `Verified` status without full `make check-all` evidence.
+- **Deterministic constraints**: `uv run python scripts/validate_sdd_artifacts.py`, deterministic issue codes, no `Verified` status without full `make check-all` evidence.
 - **On-demand context**: `docs/sdd/README.md`, `docs/WORKFLOW.md`, active/completed records under `docs/sdd/features/`.
 - **Kill/defer criteria**: Stop on false `Verified` evidence, missing approval metadata, or validator/index circular drift.
 - **Eval/repair signal**: `task-missing-coordination-fields`, `task-missing-agent-loop-fields`, `verified-missing-check-all`, and review defect reports.
@@ -3834,7 +3834,7 @@
 - **Subagent report**: not delegated
 - **Review result**: parent-reviewed
 - **Factory lane**: Harness/tests
-- **Deterministic constraints**: `check-all` must run `scripts/check_sdd_gate.py --all-active --check` before generated index freshness; the all-active CLI must run `clarify`, `checklist`, `analyze`, and `implement` for every active feature and return non-zero if any one feature fails.
+- **Deterministic constraints**: `check-all` must run `scripts/check_sdd_gate.py --all-active` before generated index freshness; the all-active CLI must run `clarify`, `checklist`, `analyze`, and `implement` for every active feature and return non-zero if any one feature fails.
 - **On-demand context**: `Makefile`, `scripts/check_sdd_gate.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, and active SDD feature records.
 - **Kill/defer criteria**: Stop if all-active gate checking mutates artifacts, if it replaces full SDD validation, if it only checks the first active feature, or if it requires integration/e2e/golden dependencies.
 - **Eval/repair signal**: missing Makefile gate, CLI argument parser rejection, first-feature-only false green, failed Analyze Gate in any active feature, and SDD docs missing default harness command.
@@ -4737,7 +4737,7 @@
 - **Subagent report**: not delegated
 - **Review result**: parent-reviewed
 - **Factory lane**: Harness/tests
-- **Deterministic constraints**: The completion gate target must require `FEATURE`, call `scripts/check_sdd_gate.py --feature "$(FEATURE)" --gate verify --check`, and remain distinct from the repo-wide `make check-all` transcript run.
+- **Deterministic constraints**: The completion gate target must require `FEATURE`, call `scripts/check_sdd_gate.py --feature "$(FEATURE)" --gate verify`, and remain distinct from the repo-wide `make check-all` transcript run.
 - **On-demand context**: `Makefile`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/verification-template.md`, and `scripts/check_sdd_gate.py`.
 - **Kill/defer criteria**: Stop if the target runs all active features, mutates artifacts, hides missing `FEATURE`, or makes `make check-all` the only completion semantics.
 - **Eval/repair signal**: completion-doc drift, false completion claims, and failed single-feature verify gate.
@@ -4863,7 +4863,7 @@
 - **Subagent report**: not delegated
 - **Review result**: parent-reviewed
 - **Factory lane**: Harness/tests
-- **Deterministic constraints**: `scripts/validate_sdd_artifacts.py` must return non-zero for any validation issue regardless of `--check`; there is no report-only operator path that can satisfy manual harness checks with a green exit code.
+- **Deterministic constraints**: `scripts/validate_sdd_artifacts.py` must return non-zero for any validation issue by default; there is no report-only operator path that can satisfy manual harness checks with a green exit code.
 - **On-demand context**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, and Pasteur read-only harness audit.
 - **Kill/defer criteria**: Stop if invalid SDD roots can still exit 0, if the test only checks the pure validator without the CLI `main()`, or if current valid repository SDD records fail under the CLI.
 - **Eval/repair signal**: false-green SDD validation, report-only soft mode, and manual harness command drift.
@@ -5121,5 +5121,26 @@
 - **Eval/repair signal**: taskless-template drift, missing-artifact false starts, and four-artifact harness mismatch.
 - **Implementation**: Replace taskless single-PR wording with one-task artifact guidance and add an architecture template contract test.
 - **Verification**: `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_tasks_template_keeps_one_task_for_single_pr_work -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 244 — SDD lifecycle CLIs reject legacy check mode
+
+- **File(s)**: `Makefile`, `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_harness_structure.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/README.md`, `docs/agent-playbook/factory-operating-model.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 243
+- **Touch set**: `Makefile`, `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_harness_structure.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/README.md`, `docs/agent-playbook/factory-operating-model.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD workflow docs and generated index updates.
+- **Failing test first**: `tests/architecture/test_harness_structure.py::test_make_check_all_runs_executable_sdd_harness`, `tests/architecture/test_harness_structure.py::test_makefile_exposes_single_feature_sdd_completion_gate`, `tests/architecture/test_sdd_artifact_validator.py::test_validator_cli_rejects_legacy_check_flag`, and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_legacy_check_flag` — prove the obsolete SDD `--check` flag no longer appears in Make targets or argparse.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: SDD lifecycle CLIs fail closed by default; `--check` remains only on generated-doc freshness CLIs where it still selects non-mutating stale-output checks.
+- **On-demand context**: `Makefile`, `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, SDD workflow docs, and Feynman read-only audit.
+- **Kill/defer criteria**: Stop if `--check` is still accepted by `validate_sdd_artifacts.py` or `check_sdd_gate.py`, or if Make/docs continue to advertise it for SDD lifecycle commands.
+- **Eval/repair signal**: compatibility-mode drift, report-only false green, and stale operator command examples.
+- **Implementation**: Remove `--check` from the SDD lifecycle argparse surfaces, Make targets, live workflow docs, and gate-check test invocations while keeping generated-doc `--check` gates intact.
+- **Verification**: `python -m pytest tests/architecture/test_harness_structure.py::test_make_check_all_runs_executable_sdd_harness tests/architecture/test_harness_structure.py::test_makefile_exposes_single_feature_sdd_completion_gate tests/architecture/test_sdd_artifact_validator.py::test_validator_cli_rejects_legacy_check_flag tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_legacy_check_flag -q`
 - **Review owner**: parent
 - **Status**: [x]

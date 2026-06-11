@@ -40,7 +40,6 @@ def main() -> int:
     parser.add_argument("--feature", help="feature slug")
     parser.add_argument("--all-active", action="store_true", help="check all active feature gates")
     parser.add_argument("--gate", choices=GATES, help="gate to check")
-    parser.add_argument("--check", action="store_true", help="non-mutating check mode")
     args = parser.parse_args()
 
     if bool(args.feature) == args.all_active:

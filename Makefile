@@ -54,11 +54,11 @@ test-contract: ## run only tests/contract/ (OpenAPI drift; populated in P4)
 
 check-sdd-completion: ## verify one SDD feature completion gate (requires FEATURE=<slug>)
 	@test -n "$(FEATURE)" || (echo "FEATURE=<slug> is required" >&2; exit 2)
-	@uv run python scripts/check_sdd_gate.py --feature "$(FEATURE)" --gate verify --check
+	@uv run python scripts/check_sdd_gate.py --feature "$(FEATURE)" --gate verify
 
 check-all: ## the only command that may produce verification-artefact evidence (gates 1+2+3)
-	@uv run python scripts/validate_sdd_artifacts.py --check
-	@uv run python scripts/check_sdd_gate.py --all-active --check
+	@uv run python scripts/validate_sdd_artifacts.py
+	@uv run python scripts/check_sdd_gate.py --all-active
 	@uv run python scripts/regen_sdd_work_index.py --check
 	@uv run python scripts/regen_cli_help.py --check
 	@uv run python scripts/regen_score_versions.py --check

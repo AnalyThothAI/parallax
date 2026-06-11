@@ -25,7 +25,7 @@ Deterministic constraints are always loaded or enforced by harness:
 
 - `AGENTS.md` / `CLAUDE.md` route agents to canonical docs without duplicating rules.
 - `docs/WORKFLOW.md` owns SDD lane mechanics, worktree policy, and completion gates.
-- `scripts/validate_sdd_artifacts.py --check` fails false completion claims, missing gate sections, missing task fields, and active touch conflicts.
+- `scripts/validate_sdd_artifacts.py` fails false completion claims, missing gate sections, missing task fields, and active touch conflicts.
 - `scripts/regen_sdd_work_index.py --check` keeps the coordination board current.
 - `scripts/build_agent_context_packet.py` generates bounded subagent context from a validated active SDD task.
 - `scripts/dispatch_sdd_task.py` generates a dry-run subagent handoff and refuses completed or non-dispatchable tasks.

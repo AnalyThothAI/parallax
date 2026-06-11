@@ -42,14 +42,14 @@ harness as `unexpected-artifact`.
 Run the executable harness after changing any SDD record:
 
 ```bash
-uv run python scripts/validate_sdd_artifacts.py --check
-uv run python scripts/check_sdd_gate.py --feature <slug> --gate clarify --check
-uv run python scripts/check_sdd_gate.py --feature <slug> --gate checklist --check
-uv run python scripts/check_sdd_gate.py --feature <slug> --gate analyze --check
-uv run python scripts/check_sdd_gate.py --feature <slug> --gate implement --check
-uv run python scripts/check_sdd_gate.py --feature <slug> --gate verify --check
+uv run python scripts/validate_sdd_artifacts.py
+uv run python scripts/check_sdd_gate.py --feature <slug> --gate clarify
+uv run python scripts/check_sdd_gate.py --feature <slug> --gate checklist
+uv run python scripts/check_sdd_gate.py --feature <slug> --gate analyze
+uv run python scripts/check_sdd_gate.py --feature <slug> --gate implement
+uv run python scripts/check_sdd_gate.py --feature <slug> --gate verify
 make check-sdd-completion FEATURE=<slug>
-uv run python scripts/check_sdd_gate.py --all-active --check
+uv run python scripts/check_sdd_gate.py --all-active
 uv run python scripts/regen_sdd_work_index.py --check
 uv run python scripts/build_agent_context_packet.py --feature <slug> --task <number> --mode read-only
 uv run python scripts/dispatch_sdd_task.py --feature <slug> --task <number> --mode read-only
@@ -80,6 +80,6 @@ count.
 Run this check after changing the lane:
 
 ```bash
-uv run python scripts/validate_sdd_artifacts.py --check
+uv run python scripts/validate_sdd_artifacts.py
 uv run python scripts/regen_sdd_work_index.py --check
 ```

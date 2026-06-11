@@ -260,6 +260,7 @@ claim is allowed without the corresponding output captured below.
 | AC241 — Verification template separates completion gate evidence. | ✅ | `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_verification_template_keeps_completion_gate_outside_final_command_section -q` failed RED while the template kept `make check-sdd-completion` inside `## Verification commands`, then passed after the completion-gate transcript moved to `## Completion gate`. |
 | AC242 — Final evidence requires zero skipped tests. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_positive_skipped_count_with_placeholder_reason tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_positive_skipped_count_with_placeholder_reason -q` failed RED while `| 1 | Pending | Yes |` passed final skip evidence, then passed after positive skipped-test counts were rejected. |
 | AC243 — Tasks template preserves the four-artifact contract. | ✅ | `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_tasks_template_keeps_one_task_for_single_pr_work -q` failed RED while the template said to skip `tasks.md` for single-PR work, then passed after the template required a one-task artifact. |
+| AC244 — SDD lifecycle CLIs reject legacy check mode. | ✅ | `python -m pytest tests/architecture/test_harness_structure.py::test_make_check_all_runs_executable_sdd_harness tests/architecture/test_harness_structure.py::test_makefile_exposes_single_feature_sdd_completion_gate tests/architecture/test_sdd_artifact_validator.py::test_validator_cli_rejects_legacy_check_flag tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_legacy_check_flag -q` failed RED while Make targets and argparse still accepted SDD `--check`, then passed after the lifecycle CLIs failed closed by default and rejected the old flag. |
 
 Deviations from spec:
 
@@ -4466,6 +4467,19 @@ exit code: 1
 $ python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_tasks_template_keeps_one_task_for_single_pr_work -q
 .                                                                        [100%]
 1 passed in 0.02s
+exit code: 0
+
+$ python -m pytest tests/architecture/test_harness_structure.py::test_make_check_all_runs_executable_sdd_harness tests/architecture/test_harness_structure.py::test_makefile_exposes_single_feature_sdd_completion_gate tests/architecture/test_sdd_artifact_validator.py::test_validator_cli_rejects_legacy_check_flag tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_legacy_check_flag -q
+FFFF                                                                     [100%]
+AssertionError: assert 'scripts/validate_sdd_artifacts.py --check' not in check_all
+AssertionError: assert 'scripts/check_sdd_gate.py --feature "$(FEATURE)" --gate verify --check' not in completion_target
+Failed: DID NOT RAISE <class 'SystemExit'>
+AssertionError: assert 0 == 2
+exit code: 1
+
+$ python -m pytest tests/architecture/test_harness_structure.py::test_make_check_all_runs_executable_sdd_harness tests/architecture/test_harness_structure.py::test_makefile_exposes_single_feature_sdd_completion_gate tests/architecture/test_sdd_artifact_validator.py::test_validator_cli_rejects_legacy_check_flag tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_legacy_check_flag -q
+....                                                                     [100%]
+4 passed in 0.10s
 exit code: 0
 ```
 

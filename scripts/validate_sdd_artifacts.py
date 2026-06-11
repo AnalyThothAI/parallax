@@ -418,7 +418,6 @@ def task_dependencies_satisfied(feature: SddFeature, task: TaskRecord) -> bool:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Validate executable SDD feature records")
     parser.add_argument("--root", type=Path, default=ROOT, help="repository root to validate")
-    parser.add_argument("--check", action="store_true", help="exit non-zero when issues are present")
     args = parser.parse_args(argv)
 
     issues = validate_sdd_root(args.root)

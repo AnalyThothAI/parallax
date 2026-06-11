@@ -35,7 +35,7 @@ the diff changes the contract.
 The loop is executable. Feature records must carry machine-readable
 `Approved by`, `Approved at`, `Worktree`, `Branch`, `Touch set`, `Conflict set`,
 task verification, and review-owner fields. `uv run python
-scripts/validate_sdd_artifacts.py --check` fails false `Verified` records,
+scripts/validate_sdd_artifacts.py` fails false `Verified` records,
 missing gate sections, prose-only `Superseded` successors, incomplete task
 coordination fields, and overlapping active touch sets without an explicit
 coordination rule.
@@ -44,11 +44,11 @@ Each production-feature gate can also be checked directly before moving to the
 next lane:
 
 ```bash
-uv run python scripts/check_sdd_gate.py --feature <slug> --gate clarify --check
-uv run python scripts/check_sdd_gate.py --feature <slug> --gate checklist --check
-uv run python scripts/check_sdd_gate.py --feature <slug> --gate analyze --check
-uv run python scripts/check_sdd_gate.py --feature <slug> --gate implement --check
-uv run python scripts/check_sdd_gate.py --feature <slug> --gate verify --check
+uv run python scripts/check_sdd_gate.py --feature <slug> --gate clarify
+uv run python scripts/check_sdd_gate.py --feature <slug> --gate checklist
+uv run python scripts/check_sdd_gate.py --feature <slug> --gate analyze
+uv run python scripts/check_sdd_gate.py --feature <slug> --gate implement
+uv run python scripts/check_sdd_gate.py --feature <slug> --gate verify
 make check-sdd-completion FEATURE=<slug>
 ```
 
@@ -62,7 +62,7 @@ transcript. `make check-all` still produces the final command transcript and
 also runs the non-mutating all-active pre-verify gate sweep:
 
 ```bash
-uv run python scripts/check_sdd_gate.py --all-active --check
+uv run python scripts/check_sdd_gate.py --all-active
 ```
 
 When work ships and verification is recorded, move the whole feature directory
@@ -95,7 +95,7 @@ Do not claim a task is complete, fixed, or passing until all of the following
 are true and have been written into the verification artefact:
 
 - The implementation matches the approved spec; deviations are documented.
-- `uv run python scripts/validate_sdd_artifacts.py --check` exited 0, and
+- `uv run python scripts/validate_sdd_artifacts.py` exited 0, and
   `uv run python scripts/regen_sdd_work_index.py --check` exited 0.
 - `make check-all` exited 0 in the worktree, AND the verification artefact contains
   its full output (no abridging) plus the new `Coverage`, `Skipped tests`, and

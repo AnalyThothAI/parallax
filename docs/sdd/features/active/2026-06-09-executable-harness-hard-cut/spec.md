@@ -195,7 +195,7 @@ can both miss real process drift and block healthy refactors.
 
 ## Goals
 
-- G1. A `Verified` SDD artifact set with missing or contradicted `make check-all` evidence fails `uv run python scripts/validate_sdd_artifacts.py --check`.
+- G1. A `Verified` SDD artifact set with missing or contradicted `make check-all` evidence fails `uv run python scripts/validate_sdd_artifacts.py`.
 - G2. A filled `tasks.md` without owner, touch set, conflict set, verification command, review owner, or task status fails the same validator.
 - G3. `docs/generated/sdd-work-index.md` renders a coordination board with owner, worktree, branch, touch set, conflict set, blocked state, and verification status.
 - G4. Tests that rely on SQL shape can use a query-contract helper to assert semantic SQL contracts without exact alias or whitespace coupling.
@@ -370,7 +370,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 
 ## Interface contracts
 
-- CLI: `uv run python scripts/validate_sdd_artifacts.py --check` exits 0 when all SDD records satisfy the executable harness and exits 1 with issue lines otherwise.
+- CLI: `uv run python scripts/validate_sdd_artifacts.py` exits 0 when all SDD records satisfy the executable harness and exits 1 with issue lines otherwise.
 - CLI: `uv run python scripts/regen_sdd_work_index.py --check` fails when `docs/generated/sdd-work-index.md` is stale.
 - CLI: `uv run python scripts/build_agent_context_packet.py --feature <slug> --task <number> --mode <mode>` prints a bounded subagent context packet from active SDD task metadata.
 - CLI: `uv run python scripts/dispatch_sdd_task.py --feature <slug> --task <number> --mode <mode>` prints a dry-run handoff prompt and refuses completed, non-dispatchable, or dependency-blocked tasks.
@@ -603,13 +603,13 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC222. WHEN `verification.md` E2E golden path puts the required checked runtime signals inside a fenced code block THEN the validator and verify gate SHALL report `verified-e2e-incomplete` before example snippets can satisfy final verification.
 - AC223. WHEN `verification.md` records `$ make check-all` with a non-zero exit code followed by another command with `exit code: 0` in the same fenced block THEN the validator and verify gate SHALL report `verified-missing-check-all` before helper success can satisfy final verification.
 - AC224. WHEN `docs/generated/sdd-work-index.md` renders the Task Board THEN each task row SHALL expose `Kill/defer criteria` and `Eval/repair signal` before agent-loop repair pressure can hide inside long task records.
-- AC225. WHEN an operator needs to prove one SDD feature's completion evidence THEN `make check-sdd-completion FEATURE=<slug>` SHALL run `scripts/check_sdd_gate.py --feature <slug> --gate verify --check` before completion semantics can be confused with the repo-wide `make check-all` pre-verify sweep.
+- AC225. WHEN an operator needs to prove one SDD feature's completion evidence THEN `make check-sdd-completion FEATURE=<slug>` SHALL run `scripts/check_sdd_gate.py --feature <slug> --gate verify` before completion semantics can be confused with the repo-wide `make check-all` pre-verify sweep.
 - AC226. WHEN any Makefile pytest target runs with an empty collection THEN the target SHALL return pytest's native empty-collection failure instead of translating exit code 5 into success before empty test lanes can satisfy harness or completion gates.
 - AC227. WHEN the golden corpus lane is selected THEN it SHALL use a dedicated `golden` pytest marker and SHALL NOT be selected by the service-level `e2e` marker before golden-corpus verification can be confused with E2E golden-path verification.
 - AC228. WHEN final E2E or golden runtime dependencies are unavailable THEN their lane fixtures SHALL fail closed with actionable setup guidance and SHALL NOT expose `SKIP_E2E` or `SKIP_GOLDEN` environment switches before skipped runtime lanes can satisfy completion evidence.
 - AC229. WHEN operators run contract tests from Make THEN `test-contract` SHALL be the only contract-test entrypoint and the old `contract-check` alias SHALL NOT remain in `.PHONY` or as a target before duplicate harness entrypoints can drift.
 - AC230. WHEN architecture tests discover missing source modules, worker runtimes, manifests, or empty parametrized contract inputs THEN they SHALL fail closed and SHALL NOT call `pytest.skip(...)`, use `@pytest.mark.skip`, rely on pytest empty-parameter-set skips, or keep empty follow-up worker skip allowlists before architecture contracts can hide incomplete runtime ownership.
-- AC231. WHEN `scripts/validate_sdd_artifacts.py` detects any SDD issue THEN the CLI SHALL exit non-zero even when `--check` is omitted before report-only soft mode can satisfy harness commands or manual operator checks.
+- AC231. WHEN `scripts/validate_sdd_artifacts.py` detects any SDD issue THEN the CLI SHALL exit non-zero by default before report-only soft mode can satisfy harness commands or manual operator checks.
 - AC232. WHEN coverage evidence is generated THEN empty source files SHALL remain visible in coverage reports and `coverage.report.skip_empty` SHALL be false before empty modules can disappear from completion evidence.
 - AC233. WHEN SDD task-bound CLIs select a task THEN `--task` SHALL accept only numeric task numbers and SHALL reject title substrings before context packets, dispatch handoffs, or subagent reports can bind to the wrong task as titles evolve.
 - AC234. WHEN final E2E/golden-path evidence contains runtime skip switches THEN the validator and verify gate SHALL reject both `SKIP_E2E=1` and `SKIP_GOLDEN=1` before skipped runtime lanes can satisfy completion evidence.
@@ -622,6 +622,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC241. WHEN the SDD verification template documents the single-feature completion gate THEN it SHALL keep `make check-sdd-completion` outside `## Verification commands` before template users can generate evidence that the final verify parser rejects.
 - AC242. WHEN `verification.md` declares any skipped tests in final evidence THEN the validator and verify gate SHALL reject the record before acceptable-skip tables can satisfy completion evidence.
 - AC243. WHEN the SDD tasks template describes single-PR work THEN it SHALL require a one-task `tasks.md` artifact before template wording can bypass the four-artifact harness contract.
+- AC244. WHEN a caller passes the legacy `--check` flag to an SDD lifecycle CLI THEN argparse SHALL reject it before compatibility mode flags can imply a report-only or optional harness path.
 
 ## Risks
 
