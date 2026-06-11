@@ -798,7 +798,7 @@ def _citation_blocks(section: str) -> list[str]:
     in_fenced_block = False
     for line in section.splitlines():
         stripped = line.strip()
-        if stripped.startswith("```"):
+        if _is_fence_line(line):
             in_fenced_block = not in_fenced_block
             continue
         if in_fenced_block:
@@ -1756,7 +1756,8 @@ def _section_heading_index(lines: list[str], heading: str) -> int | None:
 
 
 def _is_fence_line(line: str) -> bool:
-    return line.strip().startswith("```")
+    stripped = line.strip()
+    return stripped.startswith("```") or stripped.startswith("~~~")
 
 
 def _section_has_non_placeholder_table_row(text: str, heading: str) -> bool:

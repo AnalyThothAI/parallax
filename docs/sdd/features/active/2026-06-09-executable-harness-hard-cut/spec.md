@@ -568,6 +568,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC187. WHEN the `analyze` SDD gate checks Analyze Gate result rows THEN every non-placeholder result SHALL start with `Pass:` or `Blocked:` before the feature can advance past analysis.
 - AC188. WHEN required SDD section names appear only as prose or backticked tokens instead of Markdown heading lines THEN the validator and gate checker SHALL treat the section as missing before artifact evidence can be accepted.
 - AC189. WHEN required SDD section names appear inside fenced code blocks THEN the validator and gate checker SHALL ignore those tokens as headings before artifact evidence can be accepted or section bodies can be truncated.
+- AC190. WHEN SDD fenced code blocks use tilde fences (`~~~`) instead of backtick fences THEN the validator and gate checker SHALL apply the same heading-ignore and citation-ignore semantics before gate evidence can pass.
 
 ## Risks
 

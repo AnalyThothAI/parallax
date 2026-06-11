@@ -3989,3 +3989,24 @@
 - **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_required_sections_ignore_fenced_heading_tokens tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_ignores_fenced_heading_tokens -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 190 — SDD fenced parser covers tilde fences
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 189
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/spec-template.md`; `docs/sdd/_templates/verification-template.md`
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_required_sections_ignore_tilde_fenced_heading_tokens` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_ignores_tilde_fenced_heading_tokens` — prove `~~~` fenced `## Clarifications` text cannot satisfy a missing Markdown heading.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Markdown fence parsing must treat backtick and tilde fences identically for section heading detection and background citation scanning.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, and SDD/gate section parser tests.
+- **Kill/defer criteria**: Stop if tilde-fenced heading tokens satisfy required sections, if tilde-fenced examples create uncited-background noise, or if gate CLI diverges from validator section parsing.
+- **Eval/repair signal**: tilde-fence false green, fenced citation false positive, and validator/gate CLI parser drift.
+- **Implementation**: Reuse the shared fence-line helper for citation scanning and expand it to recognize both backtick and tilde Markdown fences.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_required_sections_ignore_tilde_fenced_heading_tokens tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_ignores_tilde_fenced_heading_tokens -q`
+- **Review owner**: parent
+- **Status**: [x]
