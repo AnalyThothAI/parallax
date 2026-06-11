@@ -474,6 +474,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Narrative admission hash unwrapping is Jsonb-only. | Pass: `admission_payload_hash()` raises `current payload hash payload has unsupported values` when an arbitrary object exposes an `obj` attribute but is not a real `Jsonb` adapter. |
 | Macro daily brief payload hashing uses the shared current payload hash contract. | Pass: `_macro_daily_brief_payload_hash()` raises `current payload hash payload has non-string keys` when a current brief payload contains a non-string key, and the function no longer hashes through `postgres_safe_json()` or generic `default=str` conversion. |
 | Macro view snapshot payload hashing uses the shared current payload hash contract. | Pass: `_macro_snapshot_payload_hash()` raises `current payload hash payload has non-string keys` when `features_json` contains a non-string key, and the function no longer hashes through `postgres_safe_json()` or generic `default=str` conversion. |
+| Macro observation series row payload hashing uses the shared current payload hash contract. | Pass: `macro_series_current_row_payload_hash()` raises `current payload hash payload has non-string keys` when current row `raw_payload_json` contains a non-string key, and the function no longer hashes series rows through the local `_stable_payload_hash()` compatibility normalizer. |
 | Worker manifest imports are explicit. | Pass: importing `parallax.app.runtime.worker_manifest` in a clean process succeeds even after removing an incidental `importlib.util` package attribute. |
 | Root visual artifacts are absent. | Pass: architecture harness rejects loose root-level PNG/JPG/WEBP/GIF verification artifacts. |
 | Worker table declarations are unique. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares the same table twice inside one table-declaration field. |
@@ -676,6 +677,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC166: `uv run pytest tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py::test_admission_payload_hash_rejects_jsonb_like_legacy_adapter_values -q`
 - AC167: `uv run pytest tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_daily_brief_payload_hash_rejects_legacy_payload_keys -q`
 - AC168: `uv run pytest tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_snapshot_payload_hash_rejects_legacy_feature_keys -q`
+- AC169: `uv run pytest tests/unit/domains/macro_intel/test_macro_observation_identity.py::test_macro_series_current_row_payload_hash_rejects_legacy_raw_payload_keys -q`
 
 ## Verification
 

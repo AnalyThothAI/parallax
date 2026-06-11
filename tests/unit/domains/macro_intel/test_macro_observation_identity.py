@@ -89,3 +89,14 @@ def test_macro_series_current_row_payload_hash_ignores_projection_runtime_metada
     )
     assert base_hash != macro_series_current_row_payload_hash(row | {"series_rank": 2})
     assert base_hash.startswith("sha256:")
+
+
+def test_macro_series_current_row_payload_hash_rejects_legacy_raw_payload_keys() -> None:
+    row = _observation(
+        projection_version="macro_regime_v4",
+        series_rank=1,
+        raw_payload_json={123: "legacy-key", "value": 3.51},
+    )
+
+    with pytest.raises(ValueError, match="current payload hash payload has non-string keys"):
+        macro_series_current_row_payload_hash(row)

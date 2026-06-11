@@ -3547,6 +3547,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 169 — Macro observation series row hash uses shared current payload contract
+
+- **File(s)**: `src/parallax/domains/macro_intel/observation_identity.py`, `tests/unit/domains/macro_intel/test_macro_observation_identity.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 168
+- **Touch set**: `src/parallax/domains/macro_intel/observation_identity.py`, `tests/unit/domains/macro_intel/test_macro_observation_identity.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/domains/macro_intel/observation_identity.py` for Macro observation series current-row payload hash semantics; coordinate with `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py` for Macro observation series unchanged-write detection.
+- **Failing test first**: `tests/unit/domains/macro_intel/test_macro_observation_identity.py::test_macro_series_current_row_payload_hash_rejects_legacy_raw_payload_keys` — call `macro_series_current_row_payload_hash()` with `raw_payload_json` containing a non-string key and assert the shared current payload-key validation raises before the retired local normalizer can stringify compatibility-shaped series-row payload keys.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Macro observation series row hashing must use `stable_current_payload_hash()` from `src/parallax/app/runtime/current_read_model_publisher.py`; the current read model hash path must not use the local `_stable_payload_hash()` / `_json_ready()` compatibility normalizer that stringifies mapping keys, sorts unordered containers, or generically ISO-formats values.
+- **On-demand context**: `src/parallax/domains/macro_intel/ARCHITECTURE.md`, `src/parallax/domains/macro_intel/observation_identity.py`, `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`, `tests/unit/domains/macro_intel/test_macro_observation_identity.py`, and current read-model payload hash idempotency contracts.
+- **Kill/defer criteria**: Stop if Macro observation series rows intentionally support non-string `raw_payload_json` keys, if production current rows require compatibility key stringification at runtime, or if the shared hash helper cannot preserve unchanged hashes for compliant series-row payloads.
+- **Eval/repair signal**: `macro_series_current_row_payload_hash()` using local `_stable_payload_hash()`, local `_json_ready()` key stringification, unordered-container sorting, generic ISO formatting, Macro series row idempotency drift, and SDD generated index drift.
+- **Implementation**: Compute `macro_observation_series_rows.payload_hash` with `stable_current_payload_hash()` while preserving the explicit current series row payload field list and leaving `macro_observation_fact_payload_hash()` for fact payload semantics.
+- **Verification**: `uv run pytest tests/unit/domains/macro_intel/test_macro_observation_identity.py::test_macro_series_current_row_payload_hash_rejects_legacy_raw_payload_keys -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -3706,4 +3727,5 @@
 - [ ] `uv run pytest tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py::test_admission_payload_hash_rejects_jsonb_like_legacy_adapter_values -q`
 - [ ] `uv run pytest tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_daily_brief_payload_hash_rejects_legacy_payload_keys -q`
 - [ ] `uv run pytest tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_snapshot_payload_hash_rejects_legacy_feature_keys -q`
+- [ ] `uv run pytest tests/unit/domains/macro_intel/test_macro_observation_identity.py::test_macro_series_current_row_payload_hash_rejects_legacy_raw_payload_keys -q`
 - [ ] `make check-all`

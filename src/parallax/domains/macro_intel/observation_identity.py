@@ -8,6 +8,8 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
+from parallax.app.runtime.current_read_model_publisher import stable_current_payload_hash
+
 _MACRO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _NON_FACT_RAW_PAYLOAD_KEYS = {
     "fetch_ts",
@@ -81,7 +83,7 @@ def macro_series_current_row_payload_hash(row: Mapping[str, Any]) -> str:
         "source_ts": row.get("source_ts"),
         "raw_payload_json": row.get("raw_payload_json") or row.get("raw_payload") or {},
     }
-    return _stable_payload_hash(payload)
+    return stable_current_payload_hash(payload)
 
 
 def _stable_payload_hash(payload: Mapping[str, Any]) -> str:
