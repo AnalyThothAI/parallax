@@ -265,6 +265,8 @@ claim is allowed without the corresponding output captured below.
 | AC246 — Generated handoffs include required-reading evidence contract. | ✅ | `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task -q` failed RED while generated handoffs omitted `## Required Reading Evidence`, then passed after dispatcher output listed the exact required-reading evidence fields and paths. |
 | AC247 — Validator issue codes are registered for lifecycle flags. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_validator_issue_codes_are_registered_for_generated_lifecycle_index -q` failed RED while `verified-incomplete-spec-compliance`, `verified-coverage-incomplete`, and `verified-e2e-incomplete` were emitted but unregistered, then passed after the taxonomy and generated meanings included them. |
 | AC248 — Manual agent templates use executable tokens. | ✅ | `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_handoff_templates_define_context_and_conflict_contracts -q` failed RED while templates used non-executable mode prose and stale context-packet title shape, then passed after templates matched CLI tokens. |
+| AC249 — Completion target executes check-all. | ✅ | `python -m pytest tests/architecture/test_harness_structure.py::test_makefile_exposes_single_feature_sdd_completion_gate -q` failed RED while `check-sdd-completion` only called the verify gate, then passed after the target ran `$(MAKE) check-all` before single-feature verification. |
+| AC250 — Verify gate rejects incomplete tasks. | ✅ | `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_incomplete_tasks_with_final_evidence tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence -q` failed RED while final evidence could pass with Task 1 and Task 3 still `[~]`, then passed after the verify gate required every task to be `[x]`. |
 
 Deviations from spec:
 
@@ -4525,6 +4527,27 @@ exit code: 1
 $ python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_handoff_templates_define_context_and_conflict_contracts -q
 .                                                                        [100%]
 1 passed in 0.02s
+exit code: 0
+
+$ python -m pytest tests/architecture/test_harness_structure.py::test_makefile_exposes_single_feature_sdd_completion_gate tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_incomplete_tasks_with_final_evidence -q
+FF                                                                       [100%]
+AssertionError: assert '$(MAKE) check-all' in completion_target
+AssertionError: assert 0 == 1
+exit code: 1
+
+$ python -m pytest tests/architecture/test_harness_structure.py::test_makefile_exposes_single_feature_sdd_completion_gate tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_incomplete_tasks_with_final_evidence tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence -q
+...                                                                      [100%]
+3 passed in 0.12s
+exit code: 0
+
+$ python -m pytest tests/architecture/test_harness_structure.py::test_makefile_exposes_single_feature_sdd_completion_gate -q
+.                                                                        [100%]
+1 passed in 0.01s
+exit code: 0
+
+$ python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_incomplete_tasks_with_final_evidence tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence -q
+..                                                                       [100%]
+2 passed in 0.09s
 exit code: 0
 ```
 

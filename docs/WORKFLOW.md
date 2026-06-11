@@ -55,9 +55,10 @@ make check-sdd-completion FEATURE=<slug>
 `verify` is the final evidence gate: it runs full feature-level SDD artifact
 validation, then checks `verification.md` for a final `make check-all` command
 block, completed Spec compliance rows, skip accounting, zero skipped tests, and
-contradiction-free completion evidence before a completion claim. `make
-check-sdd-completion FEATURE=<slug>` is the Make target for that single-feature
-completion gate; record its output under
+contradiction-free completion evidence before a completion claim; every task in
+the feature must be `[x]`. `make check-sdd-completion FEATURE=<slug>` is the
+Make target for final completion: it reruns `make check-all` in the current
+checkout and then runs the single-feature verify gate. Record its output under
 `## Completion gate`, not inside the final `## Verification commands`
 transcript. `make check-all` still produces the final command transcript and
 also runs the non-mutating all-active pre-verify gate sweep:

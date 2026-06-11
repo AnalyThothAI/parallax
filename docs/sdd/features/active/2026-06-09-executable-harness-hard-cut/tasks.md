@@ -4732,14 +4732,14 @@
 - **Depends on**: Task 224
 - **Touch set**: `Makefile`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/verification-template.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD workflow docs and generated index.
-- **Failing test first**: `tests/architecture/test_harness_structure.py::test_makefile_exposes_single_feature_sdd_completion_gate` — proves Makefile and docs expose `make check-sdd-completion FEATURE=<slug>` as the single-feature verify gate.
+- **Failing test first**: `tests/architecture/test_harness_structure.py::test_makefile_exposes_single_feature_sdd_completion_gate` — proves Makefile and docs expose `make check-sdd-completion FEATURE=<slug>` as the final single-feature completion gate.
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated
 - **Review result**: parent-reviewed
 - **Factory lane**: Harness/tests
-- **Deterministic constraints**: The completion gate target must require `FEATURE`, call `scripts/check_sdd_gate.py --feature "$(FEATURE)" --gate verify`, and remain distinct from the repo-wide `make check-all` transcript run.
+- **Deterministic constraints**: The completion gate target must require `FEATURE` and call `scripts/check_sdd_gate.py --feature "$(FEATURE)" --gate verify`.
 - **On-demand context**: `Makefile`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/verification-template.md`, and `scripts/check_sdd_gate.py`.
-- **Kill/defer criteria**: Stop if the target runs all active features, mutates artifacts, hides missing `FEATURE`, or makes `make check-all` the only completion semantics.
+- **Kill/defer criteria**: Stop if the target hides missing `FEATURE` or makes `make check-all` the only completion semantics without the single-feature verify gate.
 - **Eval/repair signal**: completion-doc drift, false completion claims, and failed single-feature verify gate.
 - **Implementation**: Add `check-sdd-completion` to Makefile and document it as the single-feature completion gate in workflow docs and the verification template.
 - **Verification**: `uv run pytest tests/architecture/test_harness_structure.py::test_makefile_exposes_single_feature_sdd_completion_gate -q`
@@ -5226,5 +5226,47 @@
 - **Eval/repair signal**: copy/paste-invalid handoffs, mode-token drift, and context packet template/source mismatch.
 - **Implementation**: Update the handoff mode placeholder and context packet title template, with architecture test coverage.
 - **Verification**: `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_handoff_templates_define_context_and_conflict_contracts -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 249 — Completion target executes check-all
+
+- **File(s)**: `Makefile`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/verification-template.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 248
+- **Touch set**: `Makefile`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/verification-template.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD workflow docs and generated index updates.
+- **Failing test first**: `tests/architecture/test_harness_structure.py::test_makefile_exposes_single_feature_sdd_completion_gate` — proves `check-sdd-completion` must execute `$(MAKE) check-all` before the single-feature verify gate.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `make check-sdd-completion FEATURE=<slug>` must require `FEATURE`, run `$(MAKE) check-all`, then run `scripts/check_sdd_gate.py --feature "$(FEATURE)" --gate verify`; the architecture test must not execute integration lanes.
+- **On-demand context**: `Makefile`, completion-gate workflow docs, `tests/architecture/test_harness_structure.py`, and Avicenna read-only audit.
+- **Kill/defer criteria**: Stop if the completion target only parses existing transcript evidence or if it places the single-feature verify gate before `check-all`.
+- **Eval/repair signal**: report-only false green, pasted-transcript completion, and stale final evidence.
+- **Implementation**: Wire `check-sdd-completion` to run `$(MAKE) check-all` before the verify gate and update workflow/template docs.
+- **Verification**: `python -m pytest tests/architecture/test_harness_structure.py::test_makefile_exposes_single_feature_sdd_completion_gate -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 250 — Verify gate rejects incomplete tasks
+
+- **File(s)**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/verification-template.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 249
+- **Touch set**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/verification-template.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD verify-gate tests and generated index updates.
+- **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_incomplete_tasks_with_final_evidence` — proves valid final evidence cannot pass while any task remains `[~]` or `[ ]`.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: The verify gate must report `task-incomplete-in-completion-gate` for any selected feature whose tasks are not all `[x]`; complete tasks remain subject to validator review and evidence checks.
+- **On-demand context**: `scripts/check_sdd_gate.py`, `scripts/validate_sdd_artifacts.py`, verify-gate tests, and Avicenna read-only audit.
+- **Kill/defer criteria**: Stop if a feature with successful final evidence but incomplete task statuses can pass `--gate verify`.
+- **Eval/repair signal**: incomplete-task false green, pasted final evidence masking work state, and completion-gate report-only drift.
+- **Implementation**: Add completion-only task status checks to `check_sdd_gate.py` and update the positive verify fixture to mark all tasks `[x]`.
+- **Verification**: `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_incomplete_tasks_with_final_evidence tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence -q`
 - **Review owner**: parent
 - **Status**: [x]

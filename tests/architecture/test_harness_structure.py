@@ -345,8 +345,10 @@ def test_makefile_exposes_single_feature_sdd_completion_gate() -> None:
 
     assert "check-sdd-completion" in makefile.split(".PHONY:", 1)[1].split("\n", 1)[0]
     assert 'test -n "$(FEATURE)"' in completion_target
+    assert "$(MAKE) check-all" in completion_target
     assert 'scripts/check_sdd_gate.py --feature "$(FEATURE)" --gate verify' in completion_target
     assert 'scripts/check_sdd_gate.py --feature "$(FEATURE)" --gate verify --check' not in completion_target
+    assert completion_target.index("$(MAKE) check-all") < completion_target.index("scripts/check_sdd_gate.py")
     assert "make check-sdd-completion FEATURE=<slug>" in workflow
     assert "make check-sdd-completion FEATURE=<slug>" in sdd_readme
 

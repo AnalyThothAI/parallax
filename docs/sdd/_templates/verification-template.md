@@ -76,9 +76,10 @@ not satisfy this section with environment skip switches.
 
 ## Completion gate
 
-After filling the sections above, run the single-feature completion gate and
-record its output here. This command is meta-verification; do not paste it into
-`## Verification commands`.
+After filling the sections above and completing every task as `[x]`, run the
+single-feature completion gate and record its command plus final exit status
+here. This command reruns `make check-all` before the feature verify gate; keep
+the full `make check-all` transcript in `## Verification commands`, not here.
 
 ```text
 $ make check-sdd-completion FEATURE=<slug>

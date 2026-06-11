@@ -530,6 +530,67 @@ def test_sdd_gate_check_cli_verify_rejects_non_verification_artifact_drift(tmp_p
 
 
 @pytest.mark.architecture
+def test_sdd_gate_check_cli_verify_rejects_incomplete_tasks_with_final_evidence(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "check_sdd_gate.py"
+    assert script.exists()
+    _write_context_packet_fixture(tmp_path)
+    _create_context_packet_fixture_paths(tmp_path)
+    verification_path = (
+        tmp_path
+        / "docs"
+        / "sdd"
+        / "features"
+        / "active"
+        / "2026-06-09-context-packet-fixture"
+        / "verification.md"
+    )
+    verification_text = verification_path.read_text(encoding="utf-8")
+    verification_text = verification_text.replace(
+        "| AC1 | In Progress | Pending. |",
+        "| AC1 | Pass | `make check-all` exited 0. |",
+    )
+    verification_text = verification_text.replace(
+        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\n"
+        "Pending.",
+        "$ make check-all\nall checks passed\nexit code: 0",
+    )
+    verification_text = verification_text.replace(
+        "| line | Pending | >= 80% | Pending |",
+        "| line | 91% | >= 80% | Pass |",
+    )
+    verification_text = verification_text.replace(
+        "- [ ] Not applicable.",
+        "- [x] /readyz returned 200\n"
+        "- [x] writer wrote a row visible to a separate process\n"
+        "- [x] /api/recent returned the injected event\n"
+        "- [x] WS /ws/live pushed within 5s\n"
+        "- [x] testcontainers PG and uvicorn subprocess cleaned up",
+    )
+    verification_path.write_text(verification_text, encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--gate",
+            "verify",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "task-incomplete-in-completion-gate" in result.stderr
+    assert "Task 1" in result.stderr
+
+
+@pytest.mark.architecture
 def test_sdd_gate_check_cli_verify_rejects_failed_check_all_before_helper_success(tmp_path: Path) -> None:
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()
@@ -581,6 +642,19 @@ def test_sdd_gate_check_cli_verify_rejects_failed_check_all_before_helper_succes
         ),
     )
     verification_path.write_text(verification_text, encoding="utf-8")
+    tasks_path = (
+        tmp_path
+        / "docs"
+        / "sdd"
+        / "features"
+        / "active"
+        / "2026-06-09-context-packet-fixture"
+        / "tasks.md"
+    )
+    tasks_path.write_text(
+        tasks_path.read_text(encoding="utf-8").replace("- **Status**: [~]", "- **Status**: [x]"),
+        encoding="utf-8",
+    )
 
     result = subprocess.run(
         [
@@ -1942,6 +2016,11 @@ def test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence(tmp_path: Pa
         "- [x] testcontainers PG and uvicorn subprocess cleaned up",
     )
     verification_path.write_text(verification_text, encoding="utf-8")
+    tasks_path = verification_path.with_name("tasks.md")
+    tasks_path.write_text(
+        tasks_path.read_text(encoding="utf-8").replace("- **Status**: [~]", "- **Status**: [x]"),
+        encoding="utf-8",
+    )
 
     result = subprocess.run(
         [

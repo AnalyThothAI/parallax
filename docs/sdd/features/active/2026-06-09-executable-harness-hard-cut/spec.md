@@ -13,7 +13,7 @@ Parallax routes non-trivial coding-agent work through one SDD feature directory 
 The lane's canonical artifacts are `spec.md` in `docs/WORKFLOW.md:13`, `plan.md` in `docs/WORKFLOW.md:14`,
 `tasks.md` in `docs/WORKFLOW.md:15`, and `verification.md` in `docs/WORKFLOW.md:16`.
 Production work follows `spec -> clarify -> checklist -> plan -> tasks -> analyze -> implement -> verify`
-in `docs/WORKFLOW.md:27`, and completion requires `make check-all` evidence in `docs/WORKFLOW.md:101`.
+in `docs/WORKFLOW.md:27`, and completion requires `make check-all` evidence in `docs/WORKFLOW.md:102`.
 The generated index now renders a `Coordination Board` in `scripts/regen_sdd_work_index.py:86` and a
 `Task Board` in `scripts/regen_sdd_work_index.py:117`.
 
@@ -603,7 +603,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC222. WHEN `verification.md` E2E golden path puts the required checked runtime signals inside a fenced code block THEN the validator and verify gate SHALL report `verified-e2e-incomplete` before example snippets can satisfy final verification.
 - AC223. WHEN `verification.md` records `$ make check-all` with a non-zero exit code followed by another command with `exit code: 0` in the same fenced block THEN the validator and verify gate SHALL report `verified-missing-check-all` before helper success can satisfy final verification.
 - AC224. WHEN `docs/generated/sdd-work-index.md` renders the Task Board THEN each task row SHALL expose `Kill/defer criteria` and `Eval/repair signal` before agent-loop repair pressure can hide inside long task records.
-- AC225. WHEN an operator needs to prove one SDD feature's completion evidence THEN `make check-sdd-completion FEATURE=<slug>` SHALL run `scripts/check_sdd_gate.py --feature <slug> --gate verify` before completion semantics can be confused with the repo-wide `make check-all` pre-verify sweep.
+- AC225. WHEN an operator needs to prove one SDD feature's completion evidence THEN `make check-sdd-completion FEATURE=<slug>` SHALL require `FEATURE` and run `scripts/check_sdd_gate.py --feature <slug> --gate verify` before completion semantics can be confused with the repo-wide all-active pre-verify sweep.
 - AC226. WHEN any Makefile pytest target runs with an empty collection THEN the target SHALL return pytest's native empty-collection failure instead of translating exit code 5 into success before empty test lanes can satisfy harness or completion gates.
 - AC227. WHEN the golden corpus lane is selected THEN it SHALL use a dedicated `golden` pytest marker and SHALL NOT be selected by the service-level `e2e` marker before golden-corpus verification can be confused with E2E golden-path verification.
 - AC228. WHEN final E2E or golden runtime dependencies are unavailable THEN their lane fixtures SHALL fail closed with actionable setup guidance and SHALL NOT expose `SKIP_E2E` or `SKIP_GOLDEN` environment switches before skipped runtime lanes can satisfy completion evidence.
@@ -627,6 +627,8 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC246. WHEN `scripts/dispatch_sdd_task.py` renders a task-bound subagent handoff THEN the report contract SHALL include `## Required Reading Evidence`, `Task classification:`, `AGENTS.md`, `docs/agent-playbook/task-reading-matrix.md`, and the task on-demand context paths before generated handoffs can produce reports the validator rejects.
 - AC247. WHEN `scripts/validate_sdd_artifacts.py` emits an issue code THEN that code SHALL be registered in `KNOWN_ISSUE_CODES` and the generated lifecycle flag taxonomy before new validator failures can disappear from `docs/generated/sdd-work-index.md`.
 - AC248. WHEN manual agent-playbook templates describe subagent modes or context packet titles THEN they SHALL use the exact executable tokens `read-only`, `write-allowed`, `review-only`, and `# Context Packet - <feature> / Task <number>` before copy-pasted handoffs drift from the CLIs.
+- AC249. WHEN `make check-sdd-completion FEATURE=<slug>` runs THEN it SHALL execute `make check-all` before the single-feature verify gate before pasted transcript checks can serve as report-only completion.
+- AC250. WHEN `scripts/check_sdd_gate.py --feature <slug> --gate verify` runs against a feature with any task not marked `[x]` THEN it SHALL report `task-incomplete-in-completion-gate` before final evidence can hide incomplete work.
 
 ## Risks
 

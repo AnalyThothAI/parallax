@@ -54,6 +54,7 @@ test-contract: ## run only tests/contract/ (OpenAPI drift; populated in P4)
 
 check-sdd-completion: ## verify one SDD feature completion gate (requires FEATURE=<slug>)
 	@test -n "$(FEATURE)" || (echo "FEATURE=<slug> is required" >&2; exit 2)
+	@$(MAKE) check-all
 	@uv run python scripts/check_sdd_gate.py --feature "$(FEATURE)" --gate verify
 
 check-all: ## the only command that may produce verification-artefact evidence (gates 1+2+3)

@@ -142,7 +142,21 @@ def _is_implement_gate_issue(feature: SddFeature, issue: SddIssue) -> bool:
 def _verify_gate_issues(root: Path, feature: SddFeature) -> list[str]:
     structural_issues = _feature_validation_issues(root, feature)
     evidence_issues = verify_gate_evidence_issues(feature)
-    return [_format_issue(issue) for issue in (*structural_issues, *evidence_issues)]
+    completion_issues = _completion_task_issues(feature)
+    return [_format_issue(issue) for issue in (*structural_issues, *evidence_issues)] + completion_issues
+
+
+def _completion_task_issues(feature: SddFeature) -> list[str]:
+    incomplete_tasks = [
+        task.title for task in feature.tasks if task.fields.get("status", "").strip().lower() != "[x]"
+    ]
+    if not incomplete_tasks:
+        return []
+    return [
+        "task-incomplete-in-completion-gate: "
+        f"{feature.relative_path}/tasks.md: completion gate requires every task status [x]: "
+        + ", ".join(incomplete_tasks)
+    ]
 
 
 def _feature_validation_issues(root: Path, feature: SddFeature) -> list[SddIssue]:

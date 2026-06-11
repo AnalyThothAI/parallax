@@ -39,18 +39,35 @@ harness as `unexpected-artifact`.
     it under `## Completion gate`.
 11. Move the feature directory from `active/` to `completed/`.
 
-Run the executable harness after changing any SDD record:
+Run these checks after changing SDD records or generated SDD coordination data:
 
 ```bash
 uv run python scripts/validate_sdd_artifacts.py
+uv run python scripts/check_sdd_gate.py --all-active
+uv run python scripts/regen_sdd_work_index.py --check
+```
+
+Run the relevant lane gate before moving a feature through that lane:
+
+```bash
 uv run python scripts/check_sdd_gate.py --feature <slug> --gate clarify
 uv run python scripts/check_sdd_gate.py --feature <slug> --gate checklist
 uv run python scripts/check_sdd_gate.py --feature <slug> --gate analyze
 uv run python scripts/check_sdd_gate.py --feature <slug> --gate implement
 uv run python scripts/check_sdd_gate.py --feature <slug> --gate verify
+```
+
+Run the final completion target only when the feature is ready to claim
+completion; this target reruns `make check-all` and then verifies the selected
+feature:
+
+```bash
 make check-sdd-completion FEATURE=<slug>
-uv run python scripts/check_sdd_gate.py --all-active
-uv run python scripts/regen_sdd_work_index.py --check
+```
+
+Run these only for delegated task handoffs:
+
+```bash
 uv run python scripts/build_agent_context_packet.py --feature <slug> --task <number> --mode read-only
 uv run python scripts/dispatch_sdd_task.py --feature <slug> --task <number> --mode read-only
 uv run python scripts/validate_subagent_report.py --feature <slug> --task <number> --mode read-only --report <report.md>
@@ -59,16 +76,17 @@ uv run python scripts/validate_subagent_report.py --feature <slug> --task <numbe
 The gate checker gives the Spec Kit-style `clarify`, `checklist`, `analyze`,
 `implement`, and `verify` lanes first-class non-mutating checks. `verify` runs
 full feature-level SDD artifact validation before checking final
-`verification.md` evidence; the default all-active sweep remains pre-verify so
-unfinished active feature records can keep moving. `make check-sdd-completion
-FEATURE=<slug>` is the Make target for the single-feature verify gate, while
-`make check-all` runs the all-active sweep before generated index freshness and
-produces the final command transcript. Final completion evidence must report
-zero skipped tests. The completion gate transcript is meta-verification and
-belongs under `## Completion gate`, not the final `## Verification commands`
-section. The full validator still rejects false `Verified` records, missing
-gate sections, missing approval metadata, incomplete task coordination fields,
-and active touch-set conflicts without an explicit coordination rule.
+`verification.md` evidence and requires every task to be `[x]`; the default
+all-active sweep remains pre-verify so unfinished active feature records can
+keep moving. `make check-sdd-completion FEATURE=<slug>` reruns `make check-all`
+before the single-feature verify gate, while `make check-all` runs the
+all-active sweep before generated index freshness and produces the final command
+transcript. Final completion evidence must report zero skipped tests. The
+completion gate transcript is meta-verification and belongs under
+`## Completion gate`, not the final `## Verification commands` section. The full
+validator still rejects false `Verified` records, missing gate sections, missing
+approval metadata, incomplete task coordination fields, and active touch-set
+conflicts without an explicit coordination rule.
 
 ## Status Rules
 
