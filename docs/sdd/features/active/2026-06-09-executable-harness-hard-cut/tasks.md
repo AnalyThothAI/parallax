@@ -3358,6 +3358,48 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 160 — CEX detail hash uses shared current payload contract
+
+- **File(s)**: `src/parallax/domains/cex_market_intel/repositories/cex_detail_snapshot_repository.py`, `tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 159
+- **Touch set**: `src/parallax/domains/cex_market_intel/repositories/cex_detail_snapshot_repository.py`, `tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/domains/cex_market_intel/repositories/cex_detail_snapshot_repository.py` for CEX detail snapshot payload hash semantics and current-row idempotency.
+- **Failing test first**: `tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py::test_detail_payload_hash_rejects_legacy_level_band_keys` — call `_detail_payload_hash()` with a `level_bands` mapping that has a non-string key and assert the shared current payload-key validation raises before local key stringification or historical migration-golden numeric canonicalization can preserve compatibility-shaped level-band payloads.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: CEX detail snapshot hashing must use `stable_current_payload_hash()` from `src/parallax/app/runtime/current_read_model_publisher.py`; the repository must not keep local generic payload hash or JSON normalizer functions that stringify mapping keys, sort unordered containers, accept arbitrary `isoformat()` values, or force runtime hashes to match historical migration-golden numeric compatibility.
+- **On-demand context**: `src/parallax/domains/cex_market_intel/ARCHITECTURE.md`, `src/parallax/domains/cex_market_intel/repositories/cex_detail_snapshot_repository.py`, `tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py`, and current read-model payload hash idempotency contracts.
+- **Kill/defer criteria**: Stop if CEX detail hashes intentionally require domain-local compatibility normalization, if existing production rows must be backfilled before strict hash validation, or if the shared hash helper cannot preserve unchanged hashes for compliant detail payloads.
+- **Eval/repair signal**: local `_stable_payload_hash()`, local `_json_ready()`, level-band key stringification, set/frozenset sorting, generic `isoformat()` payload values, migration-golden numeric canonicalization coupling, CEX detail idempotency drift, and SDD generated index drift.
+- **Implementation**: Import and use `stable_current_payload_hash()` inside `_detail_payload_hash()`, remove local CEX detail `_stable_payload_hash()`, `_json_ready()`, and generic numeric canonicalizer compatibility, and update overfitted migration-golden tests to assert current product timestamp behavior without preserving the historical hash algorithm.
+- **Verification**: `uv run pytest tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py::test_detail_payload_hash_rejects_legacy_level_band_keys -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 161 — CEX detail source refs reject legacy keys before filtering
+
+- **File(s)**: `src/parallax/domains/cex_market_intel/repositories/cex_detail_snapshot_repository.py`, `tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 160
+- **Touch set**: `src/parallax/domains/cex_market_intel/repositories/cex_detail_snapshot_repository.py`, `tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/domains/cex_market_intel/repositories/cex_detail_snapshot_repository.py` for CEX detail source-ref filtering and payload hash key validation semantics.
+- **Failing test first**: `tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py::test_detail_payload_hash_rejects_legacy_source_ref_keys` — call `_detail_payload_hash()` with a `source_refs` mapping that has a non-string key and assert the shared current payload-key validation raises before source-ref metadata filtering can stringify compatibility-shaped payload keys.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: source-ref metadata filtering must require strict string keys before filtering `_HASH_METADATA_FIELDS`; it must not call `str(key)` to preserve legacy source-ref payload shapes.
+- **On-demand context**: `src/parallax/domains/cex_market_intel/ARCHITECTURE.md`, `src/parallax/domains/cex_market_intel/repositories/cex_detail_snapshot_repository.py`, `tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py`, and current read-model payload hash idempotency contracts.
+- **Kill/defer criteria**: Stop if non-string source-ref keys are an intentional CEX detail read-model contract, if the source-ref filtering layer must accept legacy JSON-ish shapes, or if rejecting them breaks compliant builder output.
+- **Eval/repair signal**: source-ref key stringification, metadata filtering before validation, CEX detail payload hash idempotency drift, and SDD generated index drift.
+- **Implementation**: Validate source-ref mapping keys as strict strings before metadata filtering and raise the same current payload hash non-string-key error for legacy source-ref keys.
+- **Verification**: `uv run pytest tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py::test_detail_payload_hash_rejects_legacy_source_ref_keys -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -3508,4 +3550,6 @@
 - [ ] `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_unordered_payload_containers -q`
 - [ ] `uv run pytest tests/unit/domains/cex_market_intel/test_cex_oi_radar_repository.py::test_board_payload_hash_rejects_legacy_score_component_keys -q`
 - [ ] `uv run pytest tests/unit/domains/cex_market_intel/test_cex_oi_radar_board_worker.py -q`
+- [ ] `uv run pytest tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py::test_detail_payload_hash_rejects_legacy_level_band_keys -q`
+- [ ] `uv run pytest tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py::test_detail_payload_hash_rejects_legacy_source_ref_keys -q`
 - [ ] `make check-all`

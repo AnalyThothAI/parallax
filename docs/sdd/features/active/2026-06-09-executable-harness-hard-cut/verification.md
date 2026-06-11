@@ -176,6 +176,8 @@ claim is allowed without the corresponding output captured below.
 | AC157 — Stable payload hash rejects unordered payload containers. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_unordered_payload_containers -q` failed RED when set/frozenset payload values were sorted into hashes, then passed after rejecting unordered containers and removing set/frozenset sorting from `_json_ready()`. |
 | AC158 — CEX board hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/domains/cex_market_intel/test_cex_oi_radar_repository.py::test_board_payload_hash_rejects_legacy_score_component_keys -q` failed RED when the CEX local hash normalizer stringified `score_components` keys, then passed after replacing it with shared `stable_current_payload_hash()` and deleting the local normalizer. |
 | AC159 — Runtime package imports avoid scheduler side effects. | ✅ | `uv run pytest tests/unit/domains/cex_market_intel/test_cex_oi_radar_board_worker.py -q` failed RED during collection when package-root `WorkerScheduler` re-export triggered `worker_manifest` validation before `CexOiRadarBoardWorker` was fully importable, then passed after removing the scheduler re-export from `parallax.app.runtime.__init__`. |
+| AC160 — CEX detail hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py::test_detail_payload_hash_rejects_legacy_level_band_keys -q` failed RED when the CEX detail local normalizer stringified `level_bands` keys, then passed after replacing the local normalizer with shared `stable_current_payload_hash()` and updating overfitted migration-golden numeric tests. |
+| AC161 — CEX detail source refs reject legacy keys before filtering. | ✅ | `uv run pytest tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py::test_detail_payload_hash_rejects_legacy_source_ref_keys -q` failed RED when source-ref metadata filtering stringified a non-string key, then passed after validating source-ref keys before filtering. |
 
 Deviations from spec:
 
@@ -3106,6 +3108,87 @@ $ uv run pytest tests/architecture/test_cex_oi_kappa_contract.py tests/architect
 exit code: 0
 
 $ uv run ruff check src/parallax/app/runtime/__init__.py src/parallax/domains/cex_market_intel/repositories/cex_oi_radar_repository.py tests/unit/domains/cex_market_intel/test_cex_oi_radar_repository.py src/parallax/app/runtime/current_read_model_publisher.py tests/architecture/test_worker_manifest_static_contracts.py
+All checks passed!
+exit code: 0
+
+$ git diff --check
+exit code: 0
+
+$ uv run pytest tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py::test_detail_payload_hash_rejects_legacy_level_band_keys -q
+F                                                                        [100%]
+E       Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py::test_detail_payload_hash_rejects_legacy_level_band_keys -q
+.                                                                        [100%]
+1 passed in 0.14s
+exit code: 0
+
+$ uv run pytest tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py -q
+...FFF.....                                                              [100%]
+E       AssertionError: assert 'sha256:44200...56b00aeb22706' == 'sha256:6284d...fb7ea9badf4cd'
+E       AssertionError: assert 'sha256:b3fe5...ed96ecc3569e0' == 'sha256:6284d...fb7ea9badf4cd'
+E       AssertionError: assert 'sha256:b3fe5...ed96ecc3569e0' == 'sha256:6284d...fb7ea9badf4cd'
+exit code: 1
+
+$ uv run pytest tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py -q
+..........                                                               [100%]
+10 passed in 0.11s
+exit code: 0
+
+$ uv run pytest tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py::test_detail_payload_hash_rejects_legacy_source_ref_keys -q
+F                                                                        [100%]
+E       Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py::test_detail_payload_hash_rejects_legacy_level_band_keys tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py::test_detail_payload_hash_rejects_legacy_source_ref_keys -q
+..                                                                       [100%]
+2 passed in 0.16s
+exit code: 0
+
+$ uv run pytest tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py::test_detail_payload_hash_rejects_legacy_source_ref_keys -q
+.                                                                        [100%]
+1 passed in 0.13s
+exit code: 0
+
+$ uv run pytest tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py -q
+...........                                                              [100%]
+11 passed in 0.17s
+exit code: 0
+
+$ uv run pytest tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py::test_detail_payload_hash_rejects_legacy_level_band_keys -q
+.                                                                        [100%]
+1 passed in 0.19s
+exit code: 0
+
+$ uv run pytest tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py::test_detail_payload_hash_rejects_legacy_source_ref_keys -q
+.                                                                        [100%]
+1 passed in 0.15s
+exit code: 0
+
+$ uv run pytest tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py -q
+...........                                                              [100%]
+11 passed in 0.20s
+exit code: 0
+
+$ uv run pytest tests/unit/domains/cex_market_intel/test_cex_oi_radar_repository.py tests/unit/domains/cex_market_intel/test_cex_oi_radar_board_worker.py -q
+....................                                                     [100%]
+20 passed in 0.21s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_cex_oi_kappa_contract.py tests/architecture/test_worker_manifest_static_contracts.py tests/architecture/test_worker_runtime_contracts.py::test_cex_oi_radar_runtime_uses_current_board_lifecycle tests/architecture/test_worker_runtime_contracts.py::test_cex_oi_radar_manifest_uses_current_board_lifecycle -q
+...............................................                          [100%]
+47 passed in 0.91s
+exit code: 0
+
+$ uv run python scripts/validate_sdd_artifacts.py --check
+SDD artifact validation passed.
+exit code: 0
+
+$ uv run python scripts/regen_sdd_work_index.py --check
+exit code: 0
+
+$ uv run ruff check src/parallax/domains/cex_market_intel/repositories/cex_detail_snapshot_repository.py tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py
 All checks passed!
 exit code: 0
 

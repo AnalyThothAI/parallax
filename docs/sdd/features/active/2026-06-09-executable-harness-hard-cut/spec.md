@@ -129,6 +129,8 @@ can both miss real process drift and block healthy refactors.
 | Stable payload hash containers must be ordered. | `stable_current_payload_hash()` rejects set and frozenset payload values before `_json_ready()` can sort unordered compatibility containers into serving hashes. |
 | CEX board payload hashing must use the shared current payload hash contract. | `CexOiRadarRepository` uses `stable_current_payload_hash()` for board publication hashes instead of a local compatibility normalizer that stringifies keys, sorts unordered containers, or accepts arbitrary `isoformat()` payload values. |
 | Runtime package imports must avoid scheduler side effects. | `parallax.app.runtime.__init__` does not import `WorkerScheduler`, `worker_manifest`, or manifest validation while domain code imports shared runtime helpers such as `stable_current_payload_hash()`. |
+| CEX detail payload hashing must use the shared current payload hash contract. | `CexDetailSnapshotRepository` uses `stable_current_payload_hash()` for detail snapshot hashes instead of a local compatibility normalizer or historical migration-golden numeric canonicalizer. |
+| CEX detail source refs must keep strict mapping keys. | Detail snapshot source refs reject non-string keys before source-ref metadata filtering can stringify compatibility-shaped payload keys. |
 | Worker manifest imports must be explicit. | `worker_manifest.py` imports `importlib.util` directly so clean-process manifest validation never depends on incidental package attribute side effects. |
 | Root visual artifacts must be absent. | Architecture harness rejects loose visual verification files at the repository root so screenshots live only under owned artifact directories. |
 | Worker table declarations must be unique. | `WorkerManifest` validation rejects duplicated table names inside each manifest table-declaration field before `owned_tables` dedupes them. |
@@ -320,6 +322,8 @@ can both miss real process drift and block healthy refactors.
 - G135. Stable current payload hashing rejects unordered set and frozenset payload containers before JSON normalization can sort compatibility-shaped values into serving hashes.
 - G136. CEX OI radar board publication hashing uses the shared stable current payload hash contract instead of a local compatibility normalizer.
 - G137. Runtime package initialization stays side-effect-light so domain imports of shared runtime helpers do not trigger scheduler import, worker manifest validation, or worker class import cycles.
+- G138. CEX detail snapshot hashing uses the shared stable current payload hash contract instead of a local compatibility normalizer or migration-golden numeric canonicalizer.
+- G139. CEX detail snapshot source-ref filtering rejects non-string source-ref keys before metadata filtering can stringify compatibility-shaped payload keys.
 
 ## Non-goals
 
@@ -524,6 +528,8 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC157. WHEN `stable_current_payload_hash()` receives a mapping payload containing set or frozenset values THEN it SHALL raise a dedicated payload-container validation error before JSON normalization, container sorting, or hash generation consumes unordered compatibility-shaped payload containers.
 - AC158. WHEN CEX OI radar board publication payload hashing receives row `score_components` with non-string keys THEN it SHALL raise the shared current payload-key validation error before local key stringification, JSON normalization, or board hash generation consumes compatibility-shaped score component payloads.
 - AC159. WHEN a CEX worker module imports repository code that imports shared runtime payload hash helpers THEN package initialization SHALL NOT import `WorkerScheduler`, `worker_manifest`, or run manifest validation before the worker class is fully importable.
+- AC160. WHEN CEX detail snapshot payload hashing receives `level_bands` entries with non-string keys THEN it SHALL raise the shared current payload-key validation error before local key stringification, historical numeric canonicalization, JSON normalization, or detail hash generation consumes compatibility-shaped level-band payloads.
+- AC161. WHEN CEX detail snapshot payload hashing receives `source_refs` entries with non-string keys THEN it SHALL raise the shared current payload-key validation error before source-ref metadata filtering, local key stringification, JSON normalization, or detail hash generation consumes compatibility-shaped source-ref payloads.
 
 ## Risks
 

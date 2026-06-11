@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import hashlib
-import json
-import math
 from collections.abc import Mapping
-from decimal import Decimal
 from typing import Any
 
 from psycopg.types.json import Jsonb
+
+from parallax.app.runtime.current_read_model_publisher import stable_current_payload_hash
 
 _HASH_METADATA_FIELDS = {
     "computed_at_ms",
@@ -182,7 +180,7 @@ def _detail_payload_hash(snapshot: Mapping[str, Any]) -> str:
         "source_refs": _source_refs_for_hash(snapshot),
         "observed_at_ms": _provider_observed_at_ms(snapshot),
     }
-    return _stable_payload_hash(payload)
+    return stable_current_payload_hash(payload)
 
 
 def _source_refs_for_hash(snapshot: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -194,37 +192,15 @@ def _source_refs_for_hash(snapshot: Mapping[str, Any]) -> list[dict[str, Any]]:
             continue
         ref_payload: dict[str, Any] = {}
         for key, value in ref.items():
-            key_text = str(key)
-            if key_text in _HASH_METADATA_FIELDS:
+            if type(key) is not str:
+                raise ValueError(f"current payload hash payload has non-string keys: {(key,)}")
+            if key in _HASH_METADATA_FIELDS:
                 continue
-            if key_text == "observed_at_ms" and provider_observed_at_ms is None:
+            if key == "observed_at_ms" and provider_observed_at_ms is None:
                 continue
-            ref_payload[key_text] = value
+            ref_payload[key] = value
         source_refs.append(ref_payload)
     return source_refs
-
-
-def _stable_payload_hash(payload: Mapping[str, Any]) -> str:
-    encoded = json.dumps(_json_ready(payload), sort_keys=True, separators=(",", ":"), allow_nan=False)
-    return "sha256:" + hashlib.sha256(encoded.encode("utf-8")).hexdigest()
-
-
-def _json_ready(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return {str(key): _json_ready(inner) for key, inner in value.items()}
-    if isinstance(value, tuple | list):
-        return [_json_ready(inner) for inner in value]
-    if isinstance(value, set | frozenset):
-        return sorted(_json_ready(inner) for inner in value)
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, Decimal):
-        return _canonical_number(value)
-    if isinstance(value, int | float):
-        return _canonical_number(value)
-    if hasattr(value, "isoformat"):
-        return value.isoformat()
-    return value
 
 
 def _provider_observed_at_ms(snapshot: Mapping[str, Any]) -> int | None:
@@ -240,21 +216,6 @@ def _provider_observed_at_ms(snapshot: Mapping[str, Any]) -> int | None:
     if computed_at_ms is not None and observed_at_ms == computed_at_ms:
         return None
     return observed_at_ms
-
-
-def _canonical_number(value: int | float | Decimal) -> str:
-    if isinstance(value, float):
-        if not math.isfinite(value):
-            return str(value)
-        number = Decimal(str(value))
-    else:
-        number = Decimal(value)
-    text = format(number.normalize(), "f")
-    if "." in text:
-        text = text.rstrip("0").rstrip(".")
-    if text == "-0":
-        return "0"
-    return text or "0"
 
 
 def _list_payload(value: Any) -> list[Any]:
