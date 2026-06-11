@@ -253,6 +253,7 @@ claim is allowed without the corresponding output captured below.
 | AC234 — Final runtime evidence rejects golden skip switches. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_golden_skip_switch tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_golden_skip_switch -q` passed after separate RED runs proved `SKIP_GOLDEN=1` passed both the pure validator and verify gate. |
 | AC235 — Final verification commands are single-source evidence. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_extra_verification_command tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_extra_verification_command -q` passed after separate RED runs proved helper commands in `Verification commands` passed both the pure validator and verify gate. |
 | AC236 — Final command scan includes unfenced shell lines. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_unfenced_extra_verification_command tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_unfenced_extra_verification_command -q` passed after separate RED runs proved unfenced helper commands in `Verification commands` passed both the pure validator and verify gate. |
+| AC237 — Final verification command sequence is exact. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_duplicate_unfenced_make_check_all tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_duplicate_unfenced_make_check_all -q` passed after separate RED runs proved duplicate unfenced `make check-all` command sources passed both the pure validator and verify gate. |
 
 Deviations from spec:
 
@@ -4359,6 +4360,21 @@ $ python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verif
 ..                                                                       [100%]
 2 passed in 0.09s
 exit code: 0
+
+$ python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_duplicate_unfenced_make_check_all -q
+F                                                                        [100%]
+AssertionError: assert 'verified-extra-verification-command' in set()
+exit code: 1
+
+$ python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_duplicate_unfenced_make_check_all -q
+F                                                                        [100%]
+AssertionError: assert 0 == 1
+exit code: 1
+
+$ python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_duplicate_unfenced_make_check_all tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_duplicate_unfenced_make_check_all -q
+..                                                                       [100%]
+2 passed in 0.11s
+exit code: 0
 ```
 
 ## Diff summary
@@ -4429,6 +4445,7 @@ Files changed:
 - Final runtime skip-switch rejection: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Final verification single-command evidence: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Final verification unfenced-command scan: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
+- Final verification exact command sequence: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Mechanical frontend Prettier drift cleanup: macro pages, macro component test, `web/vite.config.ts`.
 
 Migrations applied:

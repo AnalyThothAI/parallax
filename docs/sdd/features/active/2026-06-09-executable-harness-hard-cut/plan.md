@@ -749,6 +749,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC234: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_golden_skip_switch tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_golden_skip_switch -q`
 - AC235: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_extra_verification_command tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_extra_verification_command -q`
 - AC236: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_unfenced_extra_verification_command tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_unfenced_extra_verification_command -q`
+- AC237: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_duplicate_unfenced_make_check_all tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_duplicate_unfenced_make_check_all -q`
 
 ## Verification
 

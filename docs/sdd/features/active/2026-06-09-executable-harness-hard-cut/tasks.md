@@ -4976,3 +4976,24 @@
 - **Verification**: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_unfenced_extra_verification_command tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_unfenced_extra_verification_command -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 237 — Final verification command sequence is exact
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 236
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD verify-gate tests and generated index updates.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_duplicate_unfenced_make_check_all` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_duplicate_unfenced_make_check_all` — prove a second unfenced `$ make check-all` cannot bypass the extra-command guard by using the allowed command name.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: The final verification command sequence must equal exactly one `make check-all`; duplicates of the allowed command must fail like helper commands.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, AC235/AC236 tests, and final evidence parser helpers.
+- **Kill/defer criteria**: Stop if duplicate `$ make check-all` lines in final `Verification commands` pass the pure validator or verify gate.
+- **Eval/repair signal**: duplicate completion-command source, final-evidence dilution, and false Verified records.
+- **Implementation**: Compare the parsed final command sequence to `["make check-all"]` and include duplicate counts in the failure message.
+- **Verification**: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_duplicate_unfenced_make_check_all tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_duplicate_unfenced_make_check_all -q`
+- **Review owner**: parent
+- **Status**: [x]

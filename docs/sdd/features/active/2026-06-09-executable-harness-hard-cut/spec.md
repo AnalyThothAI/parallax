@@ -615,6 +615,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC234. WHEN final E2E/golden-path evidence contains runtime skip switches THEN the validator and verify gate SHALL reject both `SKIP_E2E=1` and `SKIP_GOLDEN=1` before skipped runtime lanes can satisfy completion evidence.
 - AC235. WHEN a Verified record's final `Verification commands` section contains any command other than a single `make check-all` THEN the validator and verify gate SHALL reject the record before helper commands or partial lane reruns can dilute completion evidence.
 - AC236. WHEN extra final verification commands are written outside fenced blocks in `Verification commands` THEN the validator and verify gate SHALL still reject them before unfenced shell lines can bypass final-evidence parsing.
+- AC237. WHEN final `Verification commands` repeats `make check-all` outside the canonical transcript THEN the validator and verify gate SHALL reject the record before duplicate command sources can masquerade as the single completion command.
 
 ## Risks
 

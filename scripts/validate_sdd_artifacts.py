@@ -1460,14 +1460,14 @@ def _verified_issues(feature: SddFeature) -> list[SddIssue]:
         issues.append(
             _issue("verified-missing-check-all", artifact, "Verified records require final make check-all exit code 0")
         )
-    extra_commands = [command for command in _verification_commands(artifact.text) if command != "make check-all"]
-    if extra_commands:
+    verification_commands = _verification_commands(artifact.text)
+    if verification_commands != ["make check-all"]:
         issues.append(
             _issue(
                 "verified-extra-verification-command",
                 artifact,
-                "Verified Verification commands must contain only `make check-all`; extra commands: "
-                + ", ".join(dict.fromkeys(extra_commands)),
+                "Verified Verification commands must contain exactly one `make check-all`; found commands: "
+                + (_format_command_list(verification_commands) if verification_commands else "<none>"),
             )
         )
     if any(phrase in normalized_text for phrase in CONTRADICTION_PHRASES):
@@ -1949,6 +1949,14 @@ def _verification_commands(text: str) -> list[str]:
         for line in section.splitlines()
         if (command_match := COMMAND_LINE_RE.match(line))
     ]
+
+
+def _format_command_list(commands: list[str]) -> str:
+    counts = Counter(commands)
+    return ", ".join(
+        f"{command} x{count}" if count > 1 else command
+        for command, count in counts.items()
+    )
 
 
 def _command_segments(block: str, command: str) -> list[str]:
