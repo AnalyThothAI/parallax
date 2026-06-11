@@ -40,6 +40,7 @@ The prior executable harness record was an omnibus active ledger with more than 
 | Task selectors are canonical. | Context packet, dispatch, and report-validation CLIs reject noncanonical numeric selectors such as `01`. |
 | SDD task identifiers are canonical. | Validator rejects noncanonical task headings and dependency references such as `Task 01`. |
 | Subagent report modes are top-level bindings. | Report validation rejects `Mode:` evidence hidden inside fenced blocks. |
+| Subagent report sections are top-level bindings. | Report validation rejects required section headings hidden inside fenced blocks. |
 
 ## Acceptance criteria
 
@@ -63,6 +64,7 @@ The prior executable harness record was an omnibus active ledger with more than 
 - AC18. WHEN `scripts/build_agent_context_packet.py`, `scripts/dispatch_sdd_task.py`, or `scripts/validate_subagent_report.py` receives a noncanonical numeric selector such as `--task 01` THEN it SHALL reject the selector before it can bind to `Task 1`.
 - AC19. WHEN an SDD `tasks.md` record uses a noncanonical task heading or dependency reference such as `Task 01` THEN `scripts/validate_sdd_artifacts.py` SHALL reject it before task identity can alias `Task 1`.
 - AC20. WHEN a subagent report contains the expected `Mode:` only inside a fenced block THEN `scripts/validate_subagent_report.py` SHALL reject the report before embedded examples can satisfy the top-level handoff mode binding.
+- AC21. WHEN a subagent report contains required `##` report sections only inside a fenced block THEN `scripts/validate_subagent_report.py` SHALL reject the report before embedded examples can satisfy the report contract.
 
 ## Risks
 

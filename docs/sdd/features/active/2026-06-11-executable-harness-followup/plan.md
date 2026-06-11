@@ -38,6 +38,7 @@
 - `scripts/validate_sdd_artifacts.py`, `scripts/build_agent_context_packet.py`, `scripts/dispatch_sdd_task.py`, `scripts/validate_subagent_report.py`, `tests/architecture/test_agent_playbook_contracts.py`: reject noncanonical task selectors such as `--task 01` before they can bind to `Task 1`.
 - `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`: reject noncanonical SDD task headings and dependency references such as `Task 01` before they can alias `Task 1`.
 - `scripts/subagent_report_contract.py`, `tests/architecture/test_agent_playbook_contracts.py`: require subagent report `Mode:` to be a top-level line outside fenced blocks.
+- `scripts/subagent_report_contract.py`, `tests/architecture/test_agent_playbook_contracts.py`: require subagent report section headings to be top-level lines outside fenced blocks.
 - `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`: retain historical evidence as superseded.
 - `docs/sdd/features/active/2026-06-11-executable-harness-followup`: own the follow-up active work.
 - `docs/generated/sdd-work-index.md`: regenerate the coordination board.
@@ -70,6 +71,7 @@
 - AC18: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_clis_reject_noncanonical_numeric_selectors -q`
 - AC19: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_noncanonical_dependency_references tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_noncanonical_number_headings -q`
 - AC20: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_rejects_mode_inside_fenced_block -q`
+- AC21: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_rejects_sections_inside_fenced_block -q`
 
 ## Verification
 

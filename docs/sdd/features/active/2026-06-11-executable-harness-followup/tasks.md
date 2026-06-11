@@ -14,7 +14,7 @@
 | Clarify | Spec contains approved clarification for superseding the omnibus record. |
 | Checklist | Spec records the active-record size bound requirement. |
 | Analyze | Plan Analyze Gate records why active records should remain bounded. |
-| Implement | Tasks 1-20 implement the validator, migration, documentation contract, stale-template cleanup, machine-readable verification status tokens, active lifecycle command hard cut, active placeholder final-evidence rejection, active skipped-test accounting bound, fail-closed final-evidence templates, dispatch-bound context packets, generated subagent mode constraints, validator-enforced handoff mode constraints, embedded context-packet mode constraints, top-level handoff validation scope, exact report validation command enforcement, exact task-number selection, task-bound report validation, canonical task selector parsing, canonical SDD task identity parsing, and top-level report mode binding. |
+| Implement | Tasks 1-21 implement the validator, migration, documentation contract, stale-template cleanup, machine-readable verification status tokens, active lifecycle command hard cut, active placeholder final-evidence rejection, active skipped-test accounting bound, fail-closed final-evidence templates, dispatch-bound context packets, generated subagent mode constraints, validator-enforced handoff mode constraints, embedded context-packet mode constraints, top-level handoff validation scope, exact report validation command enforcement, exact task-number selection, task-bound report validation, canonical task selector parsing, canonical SDD task identity parsing, top-level report mode binding, and top-level report section binding. |
 | Verify | Verification artifact captures RED/GREEN command output. |
 
 ## Tasks
@@ -436,5 +436,26 @@
 - **Eval/repair signal**: report validation passes when `Mode:` appears only inside a fenced block.
 - **Implementation**: Strip fenced blocks before checking the report mode line and require a top-level `Mode: <mode>` match.
 - **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_rejects_mode_inside_fenced_block -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 21 - Bind subagent report sections outside fenced blocks
+
+- **File(s)**: `scripts/subagent_report_contract.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`
+- **Owner**: parent
+- **Depends on**: Task 20
+- **Touch set**: `scripts/subagent_report_contract.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared subagent report contract semantics, tests, and generated index updates.
+- **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_rejects_sections_inside_fenced_block` - proves fenced report examples cannot satisfy required report sections.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Subagent report `##` headings must be top-level lines outside fenced blocks; fenced examples may not satisfy required sections.
+- **On-demand context**: `scripts/subagent_report_contract.py`, `scripts/validate_subagent_report.py`, `tests/architecture/test_agent_playbook_contracts.py`.
+- **Kill/defer criteria**: Stop if fenced report examples remain accepted as required section evidence.
+- **Eval/repair signal**: report validation passes when required `##` headings appear only inside a fenced block.
+- **Implementation**: Ignore fenced-block headings when parsing report sections while preserving fenced command output inside top-level Verification Evidence.
+- **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_rejects_sections_inside_fenced_block -q`
 - **Review owner**: parent
 - **Status**: [x]

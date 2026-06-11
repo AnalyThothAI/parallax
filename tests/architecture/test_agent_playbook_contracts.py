@@ -4062,6 +4062,83 @@ def test_subagent_report_validator_rejects_mode_inside_fenced_block(tmp_path: Pa
 
 
 @pytest.mark.architecture
+def test_subagent_report_validator_rejects_sections_inside_fenced_block(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "validate_subagent_report.py"
+    _write_context_packet_fixture(tmp_path)
+    report = tmp_path / "subagent-report.md"
+    report.write_text(
+        dedent(
+            """
+            # Subagent Report
+
+            Mode: read-only
+
+            ```md
+            ## Findings
+
+            - Findings are hidden in an example block.
+
+            ## Scope Adherence
+
+            - Owned scope: pass
+            - Conflict set: pass
+
+            ## Required Reading Evidence
+
+            - Task classification: Harness/tests
+            - Required reading checked:
+              - `AGENTS.md`
+              - `docs/agent-playbook/task-reading-matrix.md`
+              - `docs/agent-playbook/context-packet-template.md`
+
+            ## Changed Files
+
+            - none
+
+            ## Remaining Risks
+
+            - none
+            ```
+
+            ## Verification Evidence
+
+            ```text
+            $ uv run pytest tests/architecture/test_agent_playbook_contracts.py -q
+            command output recorded
+            exit code: 0
+            ```
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--task",
+            "1",
+            "--mode",
+            "read-only",
+            "--report",
+            str(report),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "missing or empty section: ## Findings" in result.stderr
+
+
+@pytest.mark.architecture
 def test_subagent_report_validator_requires_task_classification_and_required_reading_evidence(tmp_path: Path) -> None:
     script = ROOT / "scripts" / "validate_subagent_report.py"
     _write_context_packet_fixture(tmp_path)

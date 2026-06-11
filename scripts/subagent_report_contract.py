@@ -73,7 +73,8 @@ def _has_top_level_mode(text: str, mode: str) -> bool:
 
 
 def _sections(text: str) -> dict[str, str]:
-    matches = list(SECTION_RE.finditer(text))
+    fenced_spans = _fenced_block_spans(text)
+    matches = [match for match in SECTION_RE.finditer(text) if not _inside_spans(match.start(), fenced_spans)]
     sections: dict[str, str] = {}
     for index, match in enumerate(matches):
         start = match.end()
@@ -81,6 +82,14 @@ def _sections(text: str) -> dict[str, str]:
         title = " ".join(match.group("title").strip().lower().split())
         sections[title] = text[start:end].strip()
     return sections
+
+
+def _fenced_block_spans(text: str) -> tuple[tuple[int, int], ...]:
+    return tuple((match.start(), match.end()) for match in FENCED_BLOCK_RE.finditer(text))
+
+
+def _inside_spans(position: int, spans: tuple[tuple[int, int], ...]) -> bool:
+    return any(start <= position < end for start, end in spans)
 
 
 def _section_has_content(value: str) -> bool:
