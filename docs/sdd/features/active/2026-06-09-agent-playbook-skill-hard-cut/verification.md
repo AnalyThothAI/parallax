@@ -33,11 +33,8 @@ Deviations from plan:
 
 The only command whose output may be pasted as completion evidence is `make check-all`. Paste the full output below, including the exit code line, before moving this feature to `completed`.
 
-```text
-$ make check-all
-Pending final run.
-exit code: pending
-```
+Not final completion evidence. Final completion still requires a fresh
+`make check-all` transcript before this feature moves to `completed`.
 
 ## Coverage
 

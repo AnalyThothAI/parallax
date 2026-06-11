@@ -179,6 +179,7 @@ CONTRADICTION_PHRASES = (
     "skip_e2e=1",
     "skip_golden=1",
 )
+ACTIVE_PLACEHOLDER_FINAL_EVIDENCE_PHRASES = ("pending final run", "exit code: pending")
 RUNTIME_SKIP_SWITCHES = ("SKIP_E2E=1", "SKIP_GOLDEN=1")
 KNOWN_ISSUE_CODES = (
     "review-lifecycle",
@@ -233,6 +234,7 @@ KNOWN_ISSUE_CODES = (
     "active-touch-conflict",
     "active-feature-too-large",
     "active-sdd-lifecycle-check-flag-invalid",
+    "active-placeholder-final-evidence",
 )
 
 
@@ -512,6 +514,7 @@ def _feature_issues(feature: SddFeature) -> list[SddIssue]:
     issues.extend(_task_issues(feature))
     issues.extend(_active_feature_size_issues(feature))
     issues.extend(_active_sdd_lifecycle_check_flag_issues(feature))
+    issues.extend(_active_placeholder_final_evidence_issues(feature))
     if feature.status.lower() == "verified":
         issues.extend(_verified_issues(feature))
     return issues
@@ -549,6 +552,26 @@ def _active_sdd_lifecycle_check_flag_issues(feature: SddFeature) -> list[SddIssu
             feature.artifacts["tasks.md"],
             "active SDD records must not advertise legacy SDD lifecycle --check flags: "
             + "; ".join(dict.fromkeys(offenders)),
+        )
+    ]
+
+
+def _active_placeholder_final_evidence_issues(feature: SddFeature) -> list[SddIssue]:
+    if feature.state != "active":
+        return []
+    artifact = feature.artifacts["verification.md"]
+    if artifact.missing:
+        return []
+    section = _section_text(artifact.text, "## Verification commands").lower()
+    placeholders = [phrase for phrase in ACTIVE_PLACEHOLDER_FINAL_EVIDENCE_PHRASES if phrase in section]
+    if not placeholders:
+        return []
+    return [
+        _issue(
+            "active-placeholder-final-evidence",
+            artifact,
+            "active verification commands must not contain placeholder final transcript evidence: "
+            + ", ".join(placeholders),
         )
     ]
 

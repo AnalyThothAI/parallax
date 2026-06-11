@@ -14,7 +14,7 @@
 | Clarify | Spec contains approved clarification for superseding the omnibus record. |
 | Checklist | Spec records the active-record size bound requirement. |
 | Analyze | Plan Analyze Gate records why active records should remain bounded. |
-| Implement | Tasks 1-6 implement the validator, migration, documentation contract, stale-template cleanup, machine-readable verification status tokens, and active lifecycle command hard cut. |
+| Implement | Tasks 1-7 implement the validator, migration, documentation contract, stale-template cleanup, machine-readable verification status tokens, active lifecycle command hard cut, and active placeholder final-evidence rejection. |
 | Verify | Verification artifact captures RED/GREEN command output. |
 
 ## Tasks
@@ -142,5 +142,26 @@
 - **Eval/repair signal**: `active-sdd-lifecycle-check-flag-invalid`, active records with stale lifecycle commands, or stale generated issue taxonomy.
 - **Implementation**: Add an active-record lifecycle-command validator, register the issue code, and update active agent-playbook SDD evidence to use the current fail-closed validator command.
 - **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_active_records_reject_legacy_sdd_lifecycle_check_flags -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 7 - Reject placeholder final transcripts in active verification records
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut/verification.md`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`
+- **Owner**: parent
+- **Depends on**: Task 6
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut/verification.md`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared active verification cleanup and generated index updates.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_active_records_reject_placeholder_final_verification_transcripts` — proves active records reject placeholder final command transcripts.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Active `verification.md` records may state that final completion evidence is not yet available, but must not contain placeholder `$ make check-all` transcripts or `exit code: pending`.
+- **On-demand context**: active SDD verification records, `scripts/validate_sdd_artifacts.py`, generated issue taxonomy.
+- **Kill/defer criteria**: Stop if active records need placeholder command output to satisfy required sections.
+- **Eval/repair signal**: `active-placeholder-final-evidence`, placeholder final transcript text, or stale generated issue taxonomy.
+- **Implementation**: Add an active-record placeholder-final-evidence validator, register the issue code, and replace the active agent-playbook placeholder transcript with explicit non-final prose.
+- **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_active_records_reject_placeholder_final_verification_transcripts -q`
 - **Review owner**: parent
 - **Status**: [x]

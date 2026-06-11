@@ -307,6 +307,7 @@ def _issue_meaning(code: str) -> str:
         "active-sdd-lifecycle-check-flag-invalid": (
             "Active records advertise obsolete SDD lifecycle --check flags."
         ),
+        "active-placeholder-final-evidence": "Active records contain placeholder final verification transcripts.",
     }
     return meanings[code]
 

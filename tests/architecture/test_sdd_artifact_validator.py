@@ -1713,6 +1713,29 @@ def test_active_records_reject_legacy_sdd_lifecycle_check_flags(tmp_path: Path) 
     assert "check_sdd_gate.py --all-active --check" in "\n".join(issue.message for issue in issues)
 
 
+def test_active_records_reject_placeholder_final_verification_transcripts(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-placeholder-final-transcript")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(feature / "tasks.md", status="In Progress")
+    _write_valid_verification(
+        feature / "verification.md",
+        status="In Progress",
+        verification_command_lines=(
+            "$ make check-all",
+            "Pending final run.",
+            "exit code: pending",
+        ),
+    )
+
+    issues = validate_sdd_root(tmp_path)
+
+    messages = "\n".join(issue.message for issue in issues).lower()
+    assert "active-placeholder-final-evidence" in _issue_codes(issues)
+    assert "pending final run" in messages
+    assert "exit code: pending" in messages
+
+
 def test_verified_feature_requires_concrete_spec_compliance_evidence(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "completed", "2026-06-09-placeholder-spec-evidence")
     _write_valid_spec(feature / "spec.md", status="Verified")
