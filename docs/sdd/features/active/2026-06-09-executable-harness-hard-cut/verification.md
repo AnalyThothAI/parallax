@@ -186,6 +186,8 @@ claim is allowed without the corresponding output captured below.
 | AC167 — Macro daily brief hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_daily_brief_payload_hash_rejects_legacy_payload_keys -q` failed RED when the Macro daily brief local hash normalizer accepted a non-string payload key, then passed after replacing it with `stable_current_payload_hash()` while continuing to exclude `computed_at_ms`. |
 | AC168 — Macro view snapshot hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_snapshot_payload_hash_rejects_legacy_feature_keys -q` failed RED when the Macro snapshot local hash normalizer accepted a non-string `features_json` key, then passed after replacing it with `stable_current_payload_hash()` while preserving the explicit snapshot payload field list. |
 | AC169 — Macro observation series row hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/domains/macro_intel/test_macro_observation_identity.py::test_macro_series_current_row_payload_hash_rejects_legacy_raw_payload_keys -q` failed RED when the Macro series row local hash normalizer accepted a non-string `raw_payload_json` key, then passed after replacing the current series row hash path with `stable_current_payload_hash()`. |
+| AC170 — Token Radar stable payload hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/test_token_radar_payload_hash.py::test_hash_rejects_legacy_non_string_payload_keys tests/unit/test_token_radar_payload_hash.py::test_hash_rejects_unordered_payload_containers -q` failed RED when Token Radar stable hashing accepted non-string keys and unordered containers, then passed after delegating final hash generation to `stable_current_payload_hash()` and rejecting compatibility-shaped payloads before canonicalization. |
+| AC171 — Shared current payload hash stays outside runtime imports. | ✅ | `uv run pytest tests/architecture/test_src_domain_architecture.py::test_repositories_and_queries_do_not_import_services_or_runtime -q` failed RED when domain repositories imported the shared hash helper from `parallax.app.runtime.current_read_model_publisher`, then passed after moving the pure hash contract to `parallax.platform.current_read_model_payload_hash` and updating domain imports. |
 
 Deviations from spec:
 
@@ -3392,6 +3394,65 @@ exit code: 1
 
 $ uv run python scripts/regen_sdd_work_index.py
 wrote docs/generated/sdd-work-index.md
+exit code: 0
+
+$ uv run pytest tests/unit/test_token_radar_payload_hash.py::test_hash_rejects_legacy_non_string_payload_keys tests/unit/test_token_radar_payload_hash.py::test_hash_rejects_unordered_payload_containers -q
+FAILED tests/unit/test_token_radar_payload_hash.py::test_hash_rejects_legacy_non_string_payload_keys
+FAILED tests/unit/test_token_radar_payload_hash.py::test_hash_rejects_unordered_payload_containers
+exit code: 1
+
+$ uv run pytest tests/unit/test_token_radar_payload_hash.py::test_hash_rejects_legacy_non_string_payload_keys tests/unit/test_token_radar_payload_hash.py::test_hash_rejects_unordered_payload_containers -q
+..                                                                       [100%]
+2 passed in 0.08s
+exit code: 0
+
+$ uv run pytest tests/unit/test_token_radar_payload_hash.py -q
+.....                                                                    [100%]
+5 passed in 0.07s
+exit code: 0
+
+$ uv run pytest tests/unit/test_token_radar_repository.py -q
+............................                                             [100%]
+28 passed in 0.22s
+exit code: 0
+
+$ uv run pytest tests/unit/test_token_radar_projection.py::test_projection_downstream_payload_hash_ignores_factor_snapshot_computed_at_noise tests/unit/test_token_radar_projection.py::test_current_row_builder_sets_scalar_score_and_quality_without_legacy_blocks -q
+..                                                                       [100%]
+2 passed in 0.26s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_token_radar_publication_state_hard_cut.py tests/architecture/test_token_radar_sql_surface_inventory_contract.py tests/architecture/test_worker_runtime_contracts.py::test_read_model_single_writers -q
+............................                                             [100%]
+28 passed in 1.74s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_src_domain_architecture.py -q
+FAILED tests/architecture/test_src_domain_architecture.py::test_repositories_and_queries_do_not_import_services_or_runtime
+exit code: 1
+
+$ uv run pytest tests/architecture/test_src_domain_architecture.py::test_repositories_and_queries_do_not_import_services_or_runtime -q
+.                                                                        [100%]
+1 passed in 0.16s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_src_domain_architecture.py -q
+.........................                                                [100%]
+25 passed in 2.83s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py -q
+............................................                             [100%]
+44 passed in 0.39s
+exit code: 0
+
+$ uv run pytest tests/unit/test_token_radar_payload_hash.py tests/unit/test_token_radar_repository.py tests/unit/test_token_radar_projection.py::test_projection_downstream_payload_hash_ignores_factor_snapshot_computed_at_noise tests/unit/test_token_radar_projection.py::test_current_row_builder_sets_scalar_score_and_quality_without_legacy_blocks -q
+...................................                                      [100%]
+35 passed in 0.24s
+exit code: 0
+
+$ uv run pytest tests/unit/domains/cex_market_intel/test_cex_oi_radar_repository.py::test_board_payload_hash_rejects_legacy_score_component_keys tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py::test_detail_payload_hash_rejects_legacy_level_band_keys tests/unit/domains/asset_market/test_token_profile_current_repository.py::test_token_profile_current_payload_hash_rejects_legacy_source_payload_keys tests/unit/domains/news_intel/test_source_quality_projection.py::test_source_quality_payload_hash_rejects_legacy_diagnostics_keys tests/unit/domains/news_intel/test_news_repository_queries.py::test_news_page_row_payload_hash_rejects_legacy_story_keys_before_write tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py::test_admission_payload_hash_rejects_legacy_payload_keys tests/unit/domains/macro_intel/test_macro_observation_identity.py::test_macro_series_current_row_payload_hash_rejects_legacy_raw_payload_keys -q
+.......                                                                  [100%]
+7 passed in 0.18s
 exit code: 0
 ```
 

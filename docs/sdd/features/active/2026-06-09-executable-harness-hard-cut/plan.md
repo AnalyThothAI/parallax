@@ -286,6 +286,8 @@ Known-failing baseline tests:
 - Reject Narrative admission Jsonb-like adapter objects that only expose an `obj` attribute before generic adapter unwrapping can preserve compatibility-shaped payloads.
 - Replace the Macro daily brief local payload-hash normalizer with the shared `stable_current_payload_hash()` contract so current `macro_daily_briefs` hashes reject compatibility-shaped payload keys before `postgres_safe_json()` or generic `default=str` conversion.
 - Replace the Macro view snapshot local payload-hash normalizer with the shared `stable_current_payload_hash()` contract so current `macro_view_snapshots` hashes reject compatibility-shaped nested snapshot keys before `postgres_safe_json()` or generic `default=str` conversion.
+- Replace Token Radar stable payload hash finalization with the shared `stable_current_payload_hash()` contract while keeping only product-specific canonical removal of `factor_snapshot_json.provenance.computed_at_ms`.
+- Move the shared current payload hash contract to `src/parallax/platform/current_read_model_payload_hash.py` so domain repositories and services can use it without importing `app.runtime`.
 - Import `importlib.util` directly inside `worker_manifest.py` so manifest validation does not depend on prior import side effects in clean processes.
 - Reject loose visual verification artifacts at the repository root and keep screenshots under owned artifact directories.
 - Reject duplicate table names inside each `WorkerManifest` table-declaration field before `owned_tables` dedupes them.
@@ -475,6 +477,8 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Macro daily brief payload hashing uses the shared current payload hash contract. | Pass: `_macro_daily_brief_payload_hash()` raises `current payload hash payload has non-string keys` when a current brief payload contains a non-string key, and the function no longer hashes through `postgres_safe_json()` or generic `default=str` conversion. |
 | Macro view snapshot payload hashing uses the shared current payload hash contract. | Pass: `_macro_snapshot_payload_hash()` raises `current payload hash payload has non-string keys` when `features_json` contains a non-string key, and the function no longer hashes through `postgres_safe_json()` or generic `default=str` conversion. |
 | Macro observation series row payload hashing uses the shared current payload hash contract. | Pass: `macro_series_current_row_payload_hash()` raises `current payload hash payload has non-string keys` when current row `raw_payload_json` contains a non-string key, and the function no longer hashes series rows through the local `_stable_payload_hash()` compatibility normalizer. |
+| Token Radar stable payload hashing uses the shared current payload hash contract. | Pass: `stable_token_radar_payload_hash()` raises shared current payload validation errors when Token Radar payloads contain non-string keys or unordered containers, while still ignoring the product-ephemeral factor snapshot `computed_at_ms` path. |
+| Shared current payload hashing stays outside runtime imports. | Pass: `tests/architecture/test_src_domain_architecture.py::test_repositories_and_queries_do_not_import_services_or_runtime` passes after domain repositories import the shared hash contract from `parallax.platform.current_read_model_payload_hash` instead of `parallax.app.runtime.current_read_model_publisher`. |
 | Worker manifest imports are explicit. | Pass: importing `parallax.app.runtime.worker_manifest` in a clean process succeeds even after removing an incidental `importlib.util` package attribute. |
 | Root visual artifacts are absent. | Pass: architecture harness rejects loose root-level PNG/JPG/WEBP/GIF verification artifacts. |
 | Worker table declarations are unique. | Pass: `_validate_worker_manifests()` raises when a patched manifest declares the same table twice inside one table-declaration field. |
@@ -678,6 +682,8 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC167: `uv run pytest tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_daily_brief_payload_hash_rejects_legacy_payload_keys -q`
 - AC168: `uv run pytest tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_snapshot_payload_hash_rejects_legacy_feature_keys -q`
 - AC169: `uv run pytest tests/unit/domains/macro_intel/test_macro_observation_identity.py::test_macro_series_current_row_payload_hash_rejects_legacy_raw_payload_keys -q`
+- AC170: `uv run pytest tests/unit/test_token_radar_payload_hash.py::test_hash_rejects_legacy_non_string_payload_keys tests/unit/test_token_radar_payload_hash.py::test_hash_rejects_unordered_payload_containers -q`
+- AC171: `uv run pytest tests/architecture/test_src_domain_architecture.py::test_repositories_and_queries_do_not_import_services_or_runtime -q`
 
 ## Verification
 

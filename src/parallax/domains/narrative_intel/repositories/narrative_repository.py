@@ -8,7 +8,6 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
-from parallax.app.runtime.current_read_model_publisher import stable_current_payload_hash
 from parallax.domains.narrative_intel._constants import NARRATIVE_SCHEMA_VERSION
 from parallax.domains.narrative_intel.services.fingerprints import (
     source_fingerprint as build_source_fingerprint,
@@ -18,6 +17,7 @@ from parallax.domains.narrative_intel.types.narrative_currentness import (
     unsupported_digest_sentinel,
 )
 from parallax.domains.narrative_intel.types.narrative_epoch_policy import DIGEST_WINDOWS
+from parallax.platform.current_read_model_payload_hash import stable_current_payload_hash
 
 _SEMANTIC_COVERAGE_KEYS = (
     "source_event_count",

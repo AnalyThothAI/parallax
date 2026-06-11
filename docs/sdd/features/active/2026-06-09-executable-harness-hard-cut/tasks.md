@@ -3328,7 +3328,7 @@
 - **Subagent report**: not delegated
 - **Review result**: parent-reviewed
 - **Factory lane**: Harness/tests
-- **Deterministic constraints**: CEX board publication hashing must use `stable_current_payload_hash()` from `src/parallax/app/runtime/current_read_model_publisher.py`; the domain repository must not keep a local payload hash normalizer that stringifies mapping keys, sorts unordered containers, or accepts arbitrary `isoformat()` payload values.
+- **Deterministic constraints**: CEX board publication hashing must use `stable_current_payload_hash()` from `src/parallax/platform/current_read_model_payload_hash.py`; the domain repository must not keep a local payload hash normalizer that stringifies mapping keys, sorts unordered containers, or accepts arbitrary `isoformat()` payload values.
 - **On-demand context**: `src/parallax/domains/cex_market_intel/ARCHITECTURE.md`, `src/parallax/domains/cex_market_intel/repositories/cex_oi_radar_repository.py`, `tests/unit/domains/cex_market_intel/test_cex_oi_radar_repository.py`, and current read-model payload hash idempotency contracts.
 - **Kill/defer criteria**: Stop if CEX board hashes intentionally require domain-local compatibility normalization, if existing production rows must be backfilled before strict hash validation, or if the shared hash helper cannot preserve unchanged hashes for compliant board payloads.
 - **Eval/repair signal**: local `_stable_current_payload_hash()`, local `_json_ready()`, score component key stringification, set/frozenset sorting, generic `isoformat()` payload values, CEX board idempotency drift, and SDD generated index drift.
@@ -3370,7 +3370,7 @@
 - **Subagent report**: not delegated
 - **Review result**: parent-reviewed
 - **Factory lane**: Harness/tests
-- **Deterministic constraints**: CEX detail snapshot hashing must use `stable_current_payload_hash()` from `src/parallax/app/runtime/current_read_model_publisher.py`; the repository must not keep local generic payload hash or JSON normalizer functions that stringify mapping keys, sort unordered containers, accept arbitrary `isoformat()` values, or force runtime hashes to match historical migration-golden numeric compatibility.
+- **Deterministic constraints**: CEX detail snapshot hashing must use `stable_current_payload_hash()` from `src/parallax/platform/current_read_model_payload_hash.py`; the repository must not keep local generic payload hash or JSON normalizer functions that stringify mapping keys, sort unordered containers, accept arbitrary `isoformat()` values, or force runtime hashes to match historical migration-golden numeric compatibility.
 - **On-demand context**: `src/parallax/domains/cex_market_intel/ARCHITECTURE.md`, `src/parallax/domains/cex_market_intel/repositories/cex_detail_snapshot_repository.py`, `tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py`, and current read-model payload hash idempotency contracts.
 - **Kill/defer criteria**: Stop if CEX detail hashes intentionally require domain-local compatibility normalization, if existing production rows must be backfilled before strict hash validation, or if the shared hash helper cannot preserve unchanged hashes for compliant detail payloads.
 - **Eval/repair signal**: local `_stable_payload_hash()`, local `_json_ready()`, level-band key stringification, set/frozenset sorting, generic `isoformat()` payload values, migration-golden numeric canonicalization coupling, CEX detail idempotency drift, and SDD generated index drift.
@@ -3412,7 +3412,7 @@
 - **Subagent report**: not delegated
 - **Review result**: parent-reviewed
 - **Factory lane**: Harness/tests
-- **Deterministic constraints**: token profile current row hashing must use `stable_current_payload_hash()` from `src/parallax/app/runtime/current_read_model_publisher.py`; JSON payload blocks must be validated before DB JSON sanitation so `source_payload_json` and other nested current payload values cannot preserve legacy non-string keys through key stringification.
+- **Deterministic constraints**: token profile current row hashing must use `stable_current_payload_hash()` from `src/parallax/platform/current_read_model_payload_hash.py`; JSON payload blocks must be validated before DB JSON sanitation so `source_payload_json` and other nested current payload values cannot preserve legacy non-string keys through key stringification.
 - **On-demand context**: `src/parallax/domains/asset_market/ARCHITECTURE.md`, `src/parallax/domains/asset_market/repositories/token_profile_current_repository.py`, `tests/unit/domains/asset_market/test_token_profile_current_repository.py`, and current read-model payload hash idempotency contracts.
 - **Kill/defer criteria**: Stop if token profile current intentionally supports non-string JSON payload keys, if production source payload rows require compatibility key stringification at runtime, or if the shared hash helper cannot preserve unchanged hashes for compliant profile payloads.
 - **Eval/repair signal**: local `_stable_payload_hash()`, local `_stable_json_value()`, `postgres_safe_json()` key stringification before validation, profile current idempotency drift, and SDD generated index drift.
@@ -3433,7 +3433,7 @@
 - **Subagent report**: not delegated
 - **Review result**: parent-reviewed
 - **Factory lane**: Harness/tests
-- **Deterministic constraints**: News source-quality row hashing must use `stable_current_payload_hash()` from `src/parallax/app/runtime/current_read_model_publisher.py`; the repository must not keep a local stable payload hash normalizer that stringifies mapping keys or routes `diagnostics_json` through compatibility sanitation before current payload validation.
+- **Deterministic constraints**: News source-quality row hashing must use `stable_current_payload_hash()` from `src/parallax/platform/current_read_model_payload_hash.py`; the repository must not keep a local stable payload hash normalizer that stringifies mapping keys or routes `diagnostics_json` through compatibility sanitation before current payload validation.
 - **On-demand context**: `src/parallax/domains/news_intel/ARCHITECTURE.md`, `src/parallax/domains/news_intel/repositories/news_repository.py`, `tests/unit/domains/news_intel/test_source_quality_projection.py`, and current read-model payload hash idempotency contracts.
 - **Kill/defer criteria**: Stop if News source-quality intentionally supports non-string diagnostics keys, if production source-quality rows require compatibility key stringification at runtime, or if the shared hash helper cannot preserve unchanged hashes for compliant source-quality payloads.
 - **Eval/repair signal**: local `_stable_payload_hash()`, local `_stable_json_value()`, diagnostics key stringification, News source-quality idempotency drift, and SDD generated index drift.
@@ -3454,7 +3454,7 @@
 - **Subagent report**: not delegated
 - **Review result**: parent-reviewed
 - **Factory lane**: Harness/tests
-- **Deterministic constraints**: News page-row hashing must use `stable_current_payload_hash()` from `src/parallax/app/runtime/current_read_model_publisher.py`; the repository must not keep a local stable payload hash normalizer that stringifies `story_json`, source, signal, provider-rating, token-impact, market-scope, or agent-admission mapping keys.
+- **Deterministic constraints**: News page-row hashing must use `stable_current_payload_hash()` from `src/parallax/platform/current_read_model_payload_hash.py`; the repository must not keep a local stable payload hash normalizer that stringifies `story_json`, source, signal, provider-rating, token-impact, market-scope, or agent-admission mapping keys.
 - **On-demand context**: `src/parallax/domains/news_intel/ARCHITECTURE.md`, `src/parallax/domains/news_intel/repositories/news_repository.py`, `tests/unit/domains/news_intel/test_news_repository_queries.py`, and current read-model payload hash idempotency contracts.
 - **Kill/defer criteria**: Stop if News page rows intentionally support non-string story/payload envelope keys, if production page rows require compatibility key stringification at runtime, or if the shared hash helper cannot preserve unchanged hashes for compliant page payloads.
 - **Eval/repair signal**: local `_stable_payload_hash()`, local `_stable_json_value()`, story key stringification, News page-row idempotency drift, and SDD generated index drift.
@@ -3475,7 +3475,7 @@
 - **Subagent report**: not delegated
 - **Review result**: parent-reviewed
 - **Factory lane**: Harness/tests
-- **Deterministic constraints**: Narrative admission row hashing must use `stable_current_payload_hash()` from `src/parallax/app/runtime/current_read_model_publisher.py`; the repository must not keep a local stable payload hash normalizer that stringifies mapping keys, sorts unordered containers, or relies on generic `default=str` value conversion.
+- **Deterministic constraints**: Narrative admission row hashing must use `stable_current_payload_hash()` from `src/parallax/platform/current_read_model_payload_hash.py`; the repository must not keep a local stable payload hash normalizer that stringifies mapping keys, sorts unordered containers, or relies on generic `default=str` value conversion.
 - **On-demand context**: `src/parallax/domains/narrative_intel/ARCHITECTURE.md`, `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`, `tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py`, and current read-model payload hash idempotency contracts.
 - **Kill/defer criteria**: Stop if Narrative admissions intentionally support non-string payload keys, if production admissions require compatibility key stringification at runtime, or if the shared hash helper cannot preserve unchanged hashes for compliant admission payloads.
 - **Eval/repair signal**: local `_stable_payload_hash()`, local `_json_ready()`, key stringification, unordered-container sorting, generic `default=str` value conversion, Narrative admission idempotency drift, and SDD generated index drift.
@@ -3517,7 +3517,7 @@
 - **Subagent report**: not delegated
 - **Review result**: parent-reviewed
 - **Factory lane**: Harness/tests
-- **Deterministic constraints**: Macro daily brief row hashing must use `stable_current_payload_hash()` from `src/parallax/app/runtime/current_read_model_publisher.py`; the repository must not hash current `macro_daily_briefs` payloads through `postgres_safe_json()`, local key stringification, or generic `default=str` value conversion.
+- **Deterministic constraints**: Macro daily brief row hashing must use `stable_current_payload_hash()` from `src/parallax/platform/current_read_model_payload_hash.py`; the repository must not hash current `macro_daily_briefs` payloads through `postgres_safe_json()`, local key stringification, or generic `default=str` value conversion.
 - **On-demand context**: `src/parallax/domains/macro_intel/ARCHITECTURE.md`, `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`, `tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py`, and current read-model payload hash idempotency contracts.
 - **Kill/defer criteria**: Stop if Macro daily briefs intentionally support non-string payload keys, if production daily brief payloads require compatibility key stringification at runtime, or if the shared hash helper cannot preserve unchanged hashes for compliant daily brief payloads.
 - **Eval/repair signal**: `_macro_daily_brief_payload_hash()` using `postgres_safe_json()`, local key stringification, generic `default=str`, Macro daily brief idempotency drift, and SDD generated index drift.
@@ -3538,7 +3538,7 @@
 - **Subagent report**: not delegated
 - **Review result**: parent-reviewed
 - **Factory lane**: Harness/tests
-- **Deterministic constraints**: Macro view snapshot row hashing must use `stable_current_payload_hash()` from `src/parallax/app/runtime/current_read_model_publisher.py`; the repository must not hash current `macro_view_snapshots` payloads through `postgres_safe_json()`, local key stringification, or generic `default=str` value conversion.
+- **Deterministic constraints**: Macro view snapshot row hashing must use `stable_current_payload_hash()` from `src/parallax/platform/current_read_model_payload_hash.py`; the repository must not hash current `macro_view_snapshots` payloads through `postgres_safe_json()`, local key stringification, or generic `default=str` value conversion.
 - **On-demand context**: `src/parallax/domains/macro_intel/ARCHITECTURE.md`, `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`, `tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py`, and current read-model payload hash idempotency contracts.
 - **Kill/defer criteria**: Stop if Macro view snapshots intentionally support non-string snapshot JSON keys, if production snapshot payloads require compatibility key stringification at runtime, or if the shared hash helper cannot preserve unchanged hashes for compliant snapshot payloads.
 - **Eval/repair signal**: `_macro_snapshot_payload_hash()` using `postgres_safe_json()`, local key stringification, generic `default=str`, Macro snapshot idempotency drift, and SDD generated index drift.
@@ -3559,12 +3559,54 @@
 - **Subagent report**: not delegated
 - **Review result**: parent-reviewed
 - **Factory lane**: Harness/tests
-- **Deterministic constraints**: Macro observation series row hashing must use `stable_current_payload_hash()` from `src/parallax/app/runtime/current_read_model_publisher.py`; the current read model hash path must not use the local `_stable_payload_hash()` / `_json_ready()` compatibility normalizer that stringifies mapping keys, sorts unordered containers, or generically ISO-formats values.
+- **Deterministic constraints**: Macro observation series row hashing must use `stable_current_payload_hash()` from `src/parallax/platform/current_read_model_payload_hash.py`; the current read model hash path must not use the local `_stable_payload_hash()` / `_json_ready()` compatibility normalizer that stringifies mapping keys, sorts unordered containers, or generically ISO-formats values.
 - **On-demand context**: `src/parallax/domains/macro_intel/ARCHITECTURE.md`, `src/parallax/domains/macro_intel/observation_identity.py`, `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`, `tests/unit/domains/macro_intel/test_macro_observation_identity.py`, and current read-model payload hash idempotency contracts.
 - **Kill/defer criteria**: Stop if Macro observation series rows intentionally support non-string `raw_payload_json` keys, if production current rows require compatibility key stringification at runtime, or if the shared hash helper cannot preserve unchanged hashes for compliant series-row payloads.
 - **Eval/repair signal**: `macro_series_current_row_payload_hash()` using local `_stable_payload_hash()`, local `_json_ready()` key stringification, unordered-container sorting, generic ISO formatting, Macro series row idempotency drift, and SDD generated index drift.
 - **Implementation**: Compute `macro_observation_series_rows.payload_hash` with `stable_current_payload_hash()` while preserving the explicit current series row payload field list and leaving `macro_observation_fact_payload_hash()` for fact payload semantics.
 - **Verification**: `uv run pytest tests/unit/domains/macro_intel/test_macro_observation_identity.py::test_macro_series_current_row_payload_hash_rejects_legacy_raw_payload_keys -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 170 — Token Radar stable hash uses shared current payload contract
+
+- **File(s)**: `src/parallax/domains/token_intel/services/token_radar_payload_hash.py`, `tests/unit/test_token_radar_payload_hash.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 169
+- **Touch set**: `src/parallax/domains/token_intel/services/token_radar_payload_hash.py`, `tests/unit/test_token_radar_payload_hash.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/domains/token_intel/services/token_radar_payload_hash.py` for Token Radar current payload hash canonicalization semantics; coordinate with `src/parallax/domains/token_intel/repositories/token_radar_repository.py` for current row payload hash and stable generation semantics; coordinate with `src/parallax/domains/token_intel/services/token_radar_projection.py` for downstream dirty-target payload hash semantics.
+- **Failing test first**: `tests/unit/test_token_radar_payload_hash.py::test_hash_rejects_legacy_non_string_payload_keys` and `tests/unit/test_token_radar_payload_hash.py::test_hash_rejects_unordered_payload_containers` — call `stable_token_radar_payload_hash()` with compatibility-shaped non-string mapping keys and unordered containers and assert shared current payload validation raises before Token Radar canonicalization can stringify or sort them into serving hashes.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Token Radar current payload hashing must use `stable_current_payload_hash()` from `src/parallax/platform/current_read_model_payload_hash.py` after product-specific canonical removal of `factor_snapshot_json.provenance.computed_at_ms`; the helper must not keep local final hash generation, mapping-key stringification, unordered-container sorting, or generic adapter-object unwrapping before current row, stable generation, Pulse trigger, Narrative admission, token profile current, or capture-tier dirty-target hashes are generated.
+- **On-demand context**: `src/parallax/domains/token_intel/ARCHITECTURE.md`, `src/parallax/domains/token_intel/services/token_radar_payload_hash.py`, `src/parallax/domains/token_intel/repositories/token_radar_repository.py`, `src/parallax/domains/token_intel/services/token_radar_projection.py`, `tests/unit/test_token_radar_payload_hash.py`, and current read-model payload hash idempotency contracts.
+- **Kill/defer criteria**: Stop if Token Radar payload hashes intentionally support non-string JSON keys or unordered containers, if production current rows require compatibility key stringification at runtime, or if the shared hash helper cannot preserve the product-required factor snapshot computed timestamp exclusion for compliant payloads.
+- **Eval/repair signal**: local Token Radar sha256 JSON dump, local canonical key stringification, unordered-container sorting, generic `.obj` unwrapping, token_radar_current_rows idempotency drift, downstream dirty-target hash drift, stable generation id drift, and SDD generated index drift.
+- **Implementation**: Delegate `stable_token_radar_payload_hash()` final hash generation to `stable_current_payload_hash()`, reject non-string keys and unordered containers before canonicalization, unwrap only real `Jsonb` adapters, and keep the existing factor snapshot computed timestamp exclusion.
+- **Verification**: `uv run pytest tests/unit/test_token_radar_payload_hash.py::test_hash_rejects_legacy_non_string_payload_keys tests/unit/test_token_radar_payload_hash.py::test_hash_rejects_unordered_payload_containers -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 171 — Shared current hash exits runtime import boundary
+
+- **File(s)**: `src/parallax/platform/current_read_model_payload_hash.py`, `src/parallax/app/runtime/current_read_model_publisher.py`, `src/parallax/domains/news_intel/repositories/news_repository.py`, `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`, `src/parallax/domains/asset_market/repositories/token_profile_current_repository.py`, `src/parallax/domains/cex_market_intel/repositories/cex_detail_snapshot_repository.py`, `src/parallax/domains/cex_market_intel/repositories/cex_oi_radar_repository.py`, `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`, `src/parallax/domains/macro_intel/observation_identity.py`, `src/parallax/domains/token_intel/services/token_radar_payload_hash.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 170
+- **Touch set**: `src/parallax/platform/current_read_model_payload_hash.py`, `src/parallax/app/runtime/current_read_model_publisher.py`, `src/parallax/domains/news_intel/repositories/news_repository.py`, `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`, `src/parallax/domains/asset_market/repositories/token_profile_current_repository.py`, `src/parallax/domains/cex_market_intel/repositories/cex_detail_snapshot_repository.py`, `src/parallax/domains/cex_market_intel/repositories/cex_oi_radar_repository.py`, `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`, `src/parallax/domains/macro_intel/observation_identity.py`, `src/parallax/domains/token_intel/services/token_radar_payload_hash.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for current read-model publisher row hashing semantics; coordinate with `src/parallax/platform/current_read_model_payload_hash.py` for shared current payload hash contract ownership; coordinate with `tests/architecture/test_src_domain_architecture.py` for repository upward-import boundary semantics.
+- **Failing test first**: `tests/architecture/test_src_domain_architecture.py::test_repositories_and_queries_do_not_import_services_or_runtime` — run the repository/query upward-import architecture gate and assert domain repositories no longer import the shared current payload hash helper from `parallax.app.runtime.current_read_model_publisher`.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: The pure current payload hash contract must live below app/runtime in `src/parallax/platform/current_read_model_payload_hash.py`; domain repositories and services may import that platform helper, while `CurrentReadModelPublisher` remains in `src/parallax/app/runtime/current_read_model_publisher.py` and delegates row payload hashing to the platform helper. No domain repository or query may import `parallax.app.runtime.current_read_model_publisher` for shared payload hash behavior.
+- **On-demand context**: `tests/architecture/test_src_domain_architecture.py`, `src/parallax/platform/current_read_model_payload_hash.py`, `src/parallax/app/runtime/current_read_model_publisher.py`, current hash-consuming repositories, and shared payload hash SDD tasks.
+- **Kill/defer criteria**: Stop if platform helpers are forbidden in domain repositories, if `CurrentReadModelPublisher` cannot delegate without duplicating hash logic, or if moving the pure hash contract changes validation errors or current payload hash shape for compliant payloads.
+- **Eval/repair signal**: repository upward-import architecture failures, domain imports of `parallax.app.runtime.current_read_model_publisher`, duplicated stable payload hash logic, publisher row payload hash drift, and SDD generated index drift.
+- **Implementation**: Move `stable_current_payload_hash()`, payload-hash constants, recursive payload validation, and JSON canonicalization into `src/parallax/platform/current_read_model_payload_hash.py`; update runtime publisher, domain repositories/services, and tests to import the platform helper while preserving `CurrentReadModelPublisher` behavior.
+- **Verification**: `uv run pytest tests/architecture/test_src_domain_architecture.py::test_repositories_and_queries_do_not_import_services_or_runtime -q`
 - **Review owner**: parent
 - **Status**: [x]
 
@@ -3728,4 +3770,6 @@
 - [ ] `uv run pytest tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_daily_brief_payload_hash_rejects_legacy_payload_keys -q`
 - [ ] `uv run pytest tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_snapshot_payload_hash_rejects_legacy_feature_keys -q`
 - [ ] `uv run pytest tests/unit/domains/macro_intel/test_macro_observation_identity.py::test_macro_series_current_row_payload_hash_rejects_legacy_raw_payload_keys -q`
+- [ ] `uv run pytest tests/unit/test_token_radar_payload_hash.py::test_hash_rejects_legacy_non_string_payload_keys tests/unit/test_token_radar_payload_hash.py::test_hash_rejects_unordered_payload_containers -q`
+- [ ] `uv run pytest tests/architecture/test_src_domain_architecture.py::test_repositories_and_queries_do_not_import_services_or_runtime -q`
 - [ ] `make check-all`

@@ -8,7 +8,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from parallax.app.runtime.current_read_model_publisher import stable_current_payload_hash
+from parallax.platform.current_read_model_payload_hash import stable_current_payload_hash
 
 _MACRO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _NON_FACT_RAW_PAYLOAD_KEYS = {

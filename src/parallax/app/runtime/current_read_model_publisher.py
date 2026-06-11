@@ -1,16 +1,10 @@
 from __future__ import annotations
 
-import hashlib
-import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date, datetime, time
-from decimal import Decimal
-from math import isfinite
 from typing import Any
 
-PAYLOAD_HASH_PREFIX = "sha256:"
-PAYLOAD_HASH_HEX_LENGTH = 64
+from parallax.platform import current_read_model_payload_hash
 
 FORBIDDEN_SERVING_IDENTITY_COLUMNS = frozenset(
     {
@@ -23,20 +17,6 @@ FORBIDDEN_SERVING_IDENTITY_COLUMNS = frozenset(
         "published_at_ms",
     }
 )
-
-
-def stable_current_payload_hash(payload: Mapping[str, Any]) -> str:
-    if not isinstance(payload, Mapping):
-        raise ValueError(f"current payload hash payload must be mapping: {payload}")
-    _validate_payload_hash_keys(payload)
-    _validate_payload_hash_values(payload)
-    encoded = json.dumps(
-        _json_ready(dict(payload)),
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    ).encode("utf-8")
-    return PAYLOAD_HASH_PREFIX + hashlib.sha256(encoded).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,7 +102,7 @@ class CurrentReadModelPublisher:
             if missing_payload_columns:
                 raise ValueError(f"current read model row missing payload columns: {missing_payload_columns}")
             payload = {key: row[key] for key in self.payload_columns}
-        return stable_current_payload_hash(payload)
+        return current_read_model_payload_hash.stable_current_payload_hash(payload)
 
     def changed_rows(
         self,
@@ -193,52 +173,9 @@ def _validate_row_columns(row: Mapping[str, Any]) -> None:
 
 
 def _is_payload_hash(value: str) -> bool:
-    if not value.startswith(PAYLOAD_HASH_PREFIX):
+    if not value.startswith(current_read_model_payload_hash.PAYLOAD_HASH_PREFIX):
         return False
-    digest = value[len(PAYLOAD_HASH_PREFIX) :]
-    return len(digest) == PAYLOAD_HASH_HEX_LENGTH and all(character in "0123456789abcdef" for character in digest)
-
-
-def _validate_payload_hash_keys(value: Any) -> None:
-    if isinstance(value, Mapping):
-        non_string_keys = tuple(key for key in value if type(key) is not str)
-        if non_string_keys:
-            raise ValueError(f"current payload hash payload has non-string keys: {non_string_keys}")
-        for inner in value.values():
-            _validate_payload_hash_keys(inner)
-        return
-    if isinstance(value, tuple | list):
-        for inner in value:
-            _validate_payload_hash_keys(inner)
-
-
-def _validate_payload_hash_values(value: Any) -> None:
-    if isinstance(value, Mapping):
-        for inner in value.values():
-            _validate_payload_hash_values(inner)
-        return
-    if isinstance(value, tuple | list):
-        for inner in value:
-            _validate_payload_hash_values(inner)
-        return
-    if isinstance(value, set | frozenset):
-        raise ValueError(f"current payload hash payload has unsupported containers: {value}")
-    if isinstance(value, float) and not isfinite(value):
-        raise ValueError(f"current payload hash payload has non-finite numbers: {value}")
-    if isinstance(value, Decimal) and not value.is_finite():
-        raise ValueError(f"current payload hash payload has non-finite numbers: {value}")
-    if value is None or isinstance(value, str | int | float | Decimal | date | datetime | time):
-        return
-    raise ValueError(f"current payload hash payload has unsupported values: {value}")
-
-
-def _json_ready(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return {key: _json_ready(inner) for key, inner in value.items()}
-    if isinstance(value, tuple | list):
-        return [_json_ready(inner) for inner in value]
-    if isinstance(value, Decimal):
-        return str(value.normalize())
-    if isinstance(value, date | datetime | time):
-        return value.isoformat()
-    return value
+    digest = value[len(current_read_model_payload_hash.PAYLOAD_HASH_PREFIX) :]
+    return len(digest) == current_read_model_payload_hash.PAYLOAD_HASH_HEX_LENGTH and all(
+        character in "0123456789abcdef" for character in digest
+    )

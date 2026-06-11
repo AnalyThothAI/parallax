@@ -4,7 +4,7 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
-from parallax.app.runtime.current_read_model_publisher import stable_current_payload_hash
+from parallax.platform.current_read_model_payload_hash import stable_current_payload_hash
 from parallax.platform.db.json_safety import postgres_safe_json, postgres_safe_text
 
 _PUBLICATION_METADATA_FIELDS = {"computed_at_ms", "updated_at_ms", "projected_at_ms", "payload_hash"}

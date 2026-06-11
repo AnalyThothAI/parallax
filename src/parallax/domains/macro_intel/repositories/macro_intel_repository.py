@@ -9,7 +9,6 @@ from typing import Any, NotRequired, TypedDict, cast
 
 from psycopg.types.json import Jsonb
 
-from parallax.app.runtime.current_read_model_publisher import stable_current_payload_hash
 from parallax.domains.macro_intel._constants import MACRO_VIEW_PROJECTION_VERSION
 from parallax.domains.macro_intel.observation_identity import (
     macro_observation_fact_payload_hash,
@@ -17,6 +16,7 @@ from parallax.domains.macro_intel.observation_identity import (
     macro_series_current_row_payload_hash,
     normalize_macro_date,
 )
+from parallax.platform.current_read_model_payload_hash import stable_current_payload_hash
 from parallax.platform.db.json_safety import postgres_safe_json
 
 

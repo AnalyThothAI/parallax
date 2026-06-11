@@ -11,7 +11,6 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
-from parallax.app.runtime.current_read_model_publisher import stable_current_payload_hash
 from parallax.domains.news_intel._constants import (
     NEWS_ITEM_AGENT_ADMISSION_VERSION,
     NEWS_ITEM_BRIEF_SCHEMA_VERSION,
@@ -44,6 +43,7 @@ from parallax.domains.news_intel.types.news_story_identity import NewsStoryIdent
 from parallax.domains.news_intel.types.news_url_identity import public_url_identity_policy, url_identity_kind
 from parallax.domains.news_intel.types.source_classification import normalize_string_tuple
 from parallax.domains.news_intel.types.source_quality_policy import window_ms_for_label
+from parallax.platform.current_read_model_payload_hash import stable_current_payload_hash
 
 _DEFAULT_SOURCE_CLAIM_LEASE_MS = 60_000
 _REDACTED = "<redacted>"

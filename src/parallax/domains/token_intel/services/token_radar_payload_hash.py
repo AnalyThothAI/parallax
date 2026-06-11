@@ -1,28 +1,24 @@
 from __future__ import annotations
 
-import hashlib
-import json
 from collections.abc import Mapping
 from decimal import Decimal
 from typing import Any
+
+from psycopg.types.json import Jsonb
+
+from parallax.platform.current_read_model_payload_hash import stable_current_payload_hash
 
 EPHEMERAL_FACTOR_SNAPSHOT_PATH = "factor_snapshot_json.provenance.computed_at_ms"
 
 
 def canonical_token_radar_payload(payload: Any) -> Any:
-    """Return JSON-ready Token Radar payload data for stable hashing."""
-    raw = getattr(payload, "obj", payload)
+    """Return Token Radar payload data with product-ephemeral fields removed."""
+    raw = _unwrap_jsonb(payload)
     return _canonical_value(raw, path=(), root_token_factor_snapshot=_is_token_factor_snapshot(raw))
 
 
 def stable_token_radar_payload_hash(payload: Any) -> str:
-    encoded = json.dumps(
-        canonical_token_radar_payload(payload),
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=True,
-    )
-    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+    return stable_current_payload_hash(canonical_token_radar_payload(payload))
 
 
 def _canonical_value(
@@ -31,20 +27,21 @@ def _canonical_value(
     path: tuple[str, ...],
     root_token_factor_snapshot: bool = False,
 ) -> Any:
-    raw = getattr(value, "obj", value)
+    raw = _unwrap_jsonb(value)
     if isinstance(raw, Decimal):
         return float(raw)
     if isinstance(raw, Mapping):
         out: dict[str, Any] = {}
         for key, item in raw.items():
-            key_str = str(key)
-            item_path = (*path, key_str)
+            if type(key) is not str:
+                raise ValueError(f"current payload hash payload has non-string keys: {(key,)}")
+            item_path = (*path, key)
             if _is_ephemeral_factor_snapshot_computed_at_path(
                 item_path,
                 root_token_factor_snapshot=root_token_factor_snapshot,
             ):
                 continue
-            out[key_str] = _canonical_value(
+            out[key] = _canonical_value(
                 item,
                 path=item_path,
                 root_token_factor_snapshot=root_token_factor_snapshot,
@@ -55,12 +52,15 @@ def _canonical_value(
             _canonical_value(item, path=(*path, str(index)), root_token_factor_snapshot=root_token_factor_snapshot)
             for index, item in enumerate(raw)
         ]
-    if isinstance(raw, set):
-        return [
-            _canonical_value(item, path=(*path, str(index)), root_token_factor_snapshot=root_token_factor_snapshot)
-            for index, item in enumerate(sorted(raw, key=repr))
-        ]
+    if isinstance(raw, set | frozenset):
+        raise ValueError(f"current payload hash payload has unsupported containers: {raw}")
     return raw
+
+
+def _unwrap_jsonb(value: Any) -> Any:
+    if isinstance(value, Jsonb):
+        return value.obj
+    return value
 
 
 def _is_ephemeral_factor_snapshot_computed_at_path(
