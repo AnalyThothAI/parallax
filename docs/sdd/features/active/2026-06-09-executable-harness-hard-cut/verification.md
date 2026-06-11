@@ -243,6 +243,7 @@ claim is allowed without the corresponding output captured below.
 | AC224 — Task Board exposes repair pressure. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board -q` failed RED before the generated Task Board exposed `Kill/defer criteria` and `Eval/repair signal`, then passed after index generation rendered those columns. |
 | AC225 — Completion gate has a Make target. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_makefile_exposes_single_feature_sdd_completion_gate -q` failed RED before `check-sdd-completion` existed, then passed after the Make target and docs were added. |
 | AC226 — Makefile pytest targets reject empty collections. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_makefile_pytest_targets_do_not_accept_empty_collections -q` failed RED while Makefile pytest targets translated pytest exit code 5 into success, then passed after those compatibility shims were removed. |
+| AC227 — Golden corpus has a dedicated marker. | ✅ | `python -m pytest tests/architecture/test_harness_structure.py::test_golden_lane_uses_dedicated_pytest_marker -q` failed RED while golden corpus tests used the e2e marker, then passed after `test-golden` and `tests/golden/` moved to `golden`; collect-only checks proved `-m golden` selects the corpus and `-m e2e` does not. |
 
 Deviations from spec:
 
@@ -4196,6 +4197,33 @@ $ uv run pytest tests/architecture/test_harness_structure.py::test_makefile_pyte
 .                                                                        [100%]
 1 passed in 0.01s
 exit code: 0
+
+$ uv run pytest tests/architecture/test_harness_structure.py::test_golden_lane_uses_dedicated_pytest_marker -q
+F                                                                        [100%]
+AssertionError: assert '"golden: curated corpus tests against the real ingest/projection pipeline' in '[project]\nname = "parallax"\n...'
+exit code: 1
+
+$ UV_NO_SYNC=1 uv run pytest tests/architecture/test_harness_structure.py::test_golden_lane_uses_dedicated_pytest_marker -q
+.                                                                        [100%]
+1 passed in 0.02s
+exit code: 0
+
+$ python -m pytest tests/architecture/test_harness_structure.py::test_golden_lane_uses_dedicated_pytest_marker -q
+.                                                                        [100%]
+1 passed in 0.02s
+exit code: 0
+
+$ UV_NO_SYNC=1 uv run python -m pytest tests/golden --collect-only -m golden -q
+tests/golden/test_token_radar_corpus.py::test_versa_symbol_and_ca_build_one_intent
+tests/golden/test_token_radar_corpus.py::test_unresolved_attention_never_projects_as_driver
+tests/golden/test_token_radar_corpus.py::test_address_like_payload_symbol_does_not_mask_missing_real_symbol
+tests/golden/test_token_radar_corpus.py::test_gmgn_payload_identity_does_not_project_market_snapshot_into_radar
+4 tests collected in 0.49s
+exit code: 0
+
+$ UV_NO_SYNC=1 uv run python -m pytest tests/golden --collect-only -m e2e -q
+no tests collected (4 deselected) in 0.49s
+exit code: 5
 ```
 
 ## Diff summary
@@ -4256,6 +4284,7 @@ Files changed:
 - Generated Task Board repair-pressure visibility: `scripts/regen_sdd_work_index.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/generated/sdd-work-index.md`.
 - Single-feature SDD completion Make target: `Makefile`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/verification-template.md`, `tests/architecture/test_harness_structure.py`.
 - Makefile pytest targets reject empty pytest collections: `Makefile`, `docs/TESTING.md`, `tests/architecture/test_harness_structure.py`.
+- Dedicated golden corpus pytest marker: `Makefile`, `docs/TESTING.md`, `tests/conftest.py`, `tests/golden/conftest.py`, `tests/architecture/test_harness_structure.py`.
 - Mechanical frontend Prettier drift cleanup: macro pages, macro component test, `web/vite.config.ts`.
 
 Migrations applied:

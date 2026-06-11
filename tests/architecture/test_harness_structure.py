@@ -299,6 +299,19 @@ def test_makefile_pytest_targets_do_not_accept_empty_collections() -> None:
     assert "; ec=$$?" not in makefile
 
 
+def test_golden_lane_uses_dedicated_pytest_marker() -> None:
+    makefile = _read(REPO_ROOT / "Makefile")
+    root_conftest = _read(REPO_ROOT / "tests" / "conftest.py")
+    golden_conftest = _read(REPO_ROOT / "tests" / "golden" / "conftest.py")
+    golden_target = makefile.split("test-golden:", 1)[1].split("\n\n", 1)[0]
+
+    assert '"golden"' in root_conftest
+    assert "-m golden" in golden_target
+    assert "-m e2e" not in golden_target
+    assert "pytest.mark.golden" in golden_conftest
+    assert "pytest.mark.e2e" not in golden_conftest
+
+
 def test_makefile_exposes_single_feature_sdd_completion_gate() -> None:
     makefile = _read(REPO_ROOT / "Makefile")
     workflow = _read(DOCS / "WORKFLOW.md")

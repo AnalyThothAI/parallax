@@ -4766,3 +4766,24 @@
 - **Verification**: `uv run pytest tests/architecture/test_harness_structure.py::test_makefile_pytest_targets_do_not_accept_empty_collections -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 227 — Golden corpus has a dedicated marker
+
+- **File(s)**: `Makefile`, `docs/TESTING.md`, `tests/conftest.py`, `tests/golden/conftest.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 226
+- **Touch set**: `Makefile`, `docs/TESTING.md`, `tests/conftest.py`, `tests/golden/conftest.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for generated SDD index updates.
+- **Failing test first**: `tests/architecture/test_harness_structure.py::test_golden_lane_uses_dedicated_pytest_marker` — proves the golden corpus lane cannot keep using the service-level e2e marker.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `test-golden` must select `-m golden`, golden corpus collection must auto-mark `pytest.mark.golden`, and service-level `-m e2e` must not select `tests/golden/`.
+- **On-demand context**: `Makefile`, `tests/conftest.py`, `tests/golden/conftest.py`, `tests/e2e/conftest.py`, and `docs/TESTING.md`.
+- **Kill/defer criteria**: Stop if golden corpus tests remain selected by `-m e2e`, if `test-golden` keeps a marker alias, or if marker registration is split between undocumented compatibility paths.
+- **Eval/repair signal**: marker-lane false positives, golden/e2e verification ambiguity, and completion-gate evidence drift.
+- **Implementation**: Register the `golden` pytest marker, mark `tests/golden/` with it, switch `test-golden` to `-m golden`, and document the dedicated lane.
+- **Verification**: `python -m pytest tests/architecture/test_harness_structure.py::test_golden_lane_uses_dedicated_pytest_marker -q`
+- **Review owner**: parent
+- **Status**: [x]

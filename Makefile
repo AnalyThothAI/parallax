@@ -44,7 +44,7 @@ test-e2e: ## run only tests/e2e/ (running service boundary)
 	@uv run python -m pytest tests/e2e -m e2e
 
 test-golden: ## run only tests/golden/ (real Postgres golden corpus)
-	@uv run python -m pytest tests/golden -m e2e
+	@uv run python -m pytest tests/golden -m golden
 
 test-architecture: ## run only tests/architecture/ (AST/grep checks)
 	@uv run python -m pytest tests/architecture -m architecture
