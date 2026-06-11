@@ -85,6 +85,12 @@ GATE_EVIDENCE_SECTIONS = {
     "plan.md": ("## Analyze Gate",),
     "tasks.md": ("## Gate Compliance",),
 }
+GATE_EVIDENCE_HEADERS = {
+    "## Clarifications": ("Question", "Answer", "Approved by", "Approved at"),
+    "## Requirement Checklist": ("Requirement", "Quality gate"),
+    "## Analyze Gate": ("Check", "Result"),
+    "## Gate Compliance": ("Gate", "Evidence"),
+}
 METADATA_REQUIREMENTS = {
     "spec.md": ("status", "date", "owner", "approved by", "approved at"),
     "plan.md": ("status", "date", "owning spec", "worktree", "branch", "approved by", "approved at"),
@@ -757,7 +763,7 @@ def _gate_evidence_issues(artifact: ArtifactRecord) -> list[SddIssue]:
     for heading in GATE_EVIDENCE_SECTIONS.get(artifact.name, ()):
         if not has_markdown_section(artifact.text, heading):
             continue
-        if _section_has_non_placeholder_table_row(artifact.text, heading):
+        if section_has_gate_evidence(artifact.text, heading):
             continue
         issues.append(
             _issue(
@@ -1761,15 +1767,20 @@ def _is_fence_line(line: str) -> bool:
 
 
 def _section_has_non_placeholder_table_row(text: str, heading: str) -> bool:
-    return any(is_table_evidence_row(cells) for cells in _section_table_rows(text, heading))
+    return section_has_gate_evidence(text, heading)
 
 
-def _section_table_rows(text: str, heading: str) -> list[list[str]]:
+def section_has_gate_evidence(text: str, heading: str) -> bool:
+    expected_header = GATE_EVIDENCE_HEADERS[heading]
+    return any(is_table_evidence_row(cells) for cells in _section_table_rows(text, heading, expected_header))
+
+
+def _section_table_rows(text: str, heading: str, expected_header: tuple[str, ...] | None = None) -> list[list[str]]:
     section = _section_text(text, heading)
-    return table_body_rows(section)
+    return table_body_rows(section, expected_header)
 
 
-def table_body_rows(section: str) -> list[list[str]]:
+def table_body_rows(section: str, expected_header: tuple[str, ...] | None = None) -> list[list[str]]:
     body_rows: list[list[str]] = []
     current_block: list[str] = []
     for line in section.splitlines():
@@ -1777,16 +1788,21 @@ def table_body_rows(section: str) -> list[list[str]]:
         if stripped.startswith("|"):
             current_block.append(stripped)
             continue
-        body_rows.extend(_table_block_body_rows(current_block))
+        body_rows.extend(_table_block_body_rows(current_block, expected_header))
         current_block = []
-    body_rows.extend(_table_block_body_rows(current_block))
+    body_rows.extend(_table_block_body_rows(current_block, expected_header))
     return body_rows
 
 
-def _table_block_body_rows(table_lines: list[str]) -> list[list[str]]:
+def _table_block_body_rows(
+    table_lines: list[str],
+    expected_header: tuple[str, ...] | None = None,
+) -> list[list[str]]:
     if len(table_lines) < 3 or not _is_table_separator_row(table_lines[1]):
         return []
     header_cells = _table_cells(table_lines[0])
+    if expected_header is not None and tuple(header_cells) != expected_header:
+        return []
     separator_cells = _table_cells(table_lines[1])
     body_rows = [_table_cells(line) for line in table_lines[2:] if not _is_table_separator_row(line)]
     if not _table_rows_have_matching_arity([separator_cells, *body_rows], len(header_cells)):

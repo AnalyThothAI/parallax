@@ -213,6 +213,7 @@ claim is allowed without the corresponding output captured below.
 | AC194 — Gate evidence separators require hyphens. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_empty_separator_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_empty_separator_rows -q` failed RED when an empty separator row satisfied gate evidence, then passed after separator cells required hyphens. |
 | AC195 — Gate evidence table rows share arity. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_separator_arity_mismatch tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_body_row_arity_mismatch tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_separator_arity_mismatch tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_body_row_arity_mismatch -q` failed RED when separator/body rows with mismatched column counts satisfied gate evidence, then passed after table parsing required header/separator/body arity alignment. |
 | AC196 — Gate evidence tables are contiguous blocks. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_non_contiguous_body_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_non_contiguous_body_rows -q` failed RED when parser joined pipe rows across prose, then passed after table parsing evaluated only contiguous pipe-row blocks. |
+| AC197 — Gate evidence headers are canonical. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_wrong_clarification_header tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_wrong_clarification_header -q` failed RED when a generic but valid table header satisfied Clarifications evidence, then passed after gate evidence required canonical section headers. |
 
 Deviations from spec:
 
@@ -3833,6 +3834,17 @@ $ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evi
 ..                                                                       [100%]
 2 passed in 0.06s
 exit code: 0
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_wrong_clarification_header tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_wrong_clarification_header -q
+FF                                                                       [100%]
+AssertionError: assert 'gate-evidence-missing' in set()
+AssertionError: assert 0 == 1
+exit code: 1
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_wrong_clarification_header tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_wrong_clarification_header -q
+..                                                                       [100%]
+2 passed in 0.06s
+exit code: 0
 ```
 
 ## Diff summary
@@ -3863,6 +3875,7 @@ Files changed:
 - Hyphen-bearing gate table separators: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Equal-arity gate evidence tables: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Contiguous gate evidence table blocks: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
+- Canonical gate evidence headers: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Mechanical frontend Prettier drift cleanup: macro pages, macro component test, `web/vite.config.ts`.
 
 Migrations applied:

@@ -4136,3 +4136,24 @@
 - **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_non_contiguous_body_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_non_contiguous_body_rows -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 197 — Gate evidence headers are canonical
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 196
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `docs/sdd/_templates/spec-template.md`; `docs/sdd/_templates/plan-template.md`; `docs/sdd/_templates/tasks-template.md`
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_wrong_clarification_header` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_wrong_clarification_header` — prove a valid table with generic headers cannot satisfy Clarifications evidence.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Gate evidence tables must match the canonical header tuple for Clarifications, Requirement Checklist, Analyze Gate, and Gate Compliance.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `docs/sdd/_templates/spec-template.md`, `docs/sdd/_templates/plan-template.md`, `docs/sdd/_templates/tasks-template.md`, and gate evidence tests.
+- **Kill/defer criteria**: Stop if non-canonical headers satisfy lifecycle gates, if valid template headers are rejected, or if gate CLI keeps a local evidence predicate.
+- **Eval/repair signal**: wrong-header false green, template header regression, and drift between full validator and gate CLI evidence semantics.
+- **Implementation**: Add a canonical gate header map in the full validator, evaluate gate evidence through `section_has_gate_evidence()`, and use the same helper from `check_sdd_gate.py`.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_wrong_clarification_header tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_wrong_clarification_header -q`
+- **Review owner**: parent
+- **Status**: [x]

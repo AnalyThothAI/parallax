@@ -12,8 +12,8 @@ from scripts.validate_sdd_artifacts import (  # noqa: E402
     SddFeature,
     SddIssue,
     is_placeholder_table_cell,
-    is_table_evidence_row,
     scan_sdd_features,
+    section_has_gate_evidence,
     table_body_rows,
     validate_sdd_root,
 )
@@ -99,7 +99,7 @@ def _section_gate_issues(feature: SddFeature, artifact_name: str, heading: str, 
     section = _section_text(artifact.text, heading)
     if not section.strip():
         return [f"missing-gate-section: {artifact.relative_path} missing {heading}"]
-    if not _has_table_evidence(section):
+    if not section_has_gate_evidence(artifact.text, heading):
         return [f"gate-evidence-missing: {artifact.relative_path} {gate} gate lacks evidence"]
     return []
 
@@ -109,7 +109,7 @@ def _analyze_gate_issues(feature: SddFeature) -> list[str]:
     section = _section_text(artifact.text, "## Analyze Gate")
     if not section.strip():
         return [f"missing-gate-section: {artifact.relative_path} missing ## Analyze Gate"]
-    if not _has_table_evidence(section):
+    if not section_has_gate_evidence(artifact.text, "## Analyze Gate"):
         return [f"gate-evidence-missing: {artifact.relative_path} analyze gate lacks evidence"]
     invalid_results = _invalid_analyze_results(section)
     if invalid_results:
@@ -140,10 +140,6 @@ def _is_implement_gate_issue(feature: SddFeature, issue: SddIssue) -> bool:
 
 def _section_text(text: str, heading: str) -> str:
     return validated_section_text(text, heading)
-
-
-def _has_table_evidence(section: str) -> bool:
-    return any(is_table_evidence_row(cells) for cells in table_body_rows(section))
 
 
 def _invalid_analyze_results(section: str) -> list[str]:
