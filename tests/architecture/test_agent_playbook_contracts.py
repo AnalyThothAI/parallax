@@ -21,6 +21,10 @@ from scripts.validate_sdd_artifacts import (
 
 ROOT = Path(__file__).resolve().parents[2]
 PLAYBOOK = ROOT / "docs" / "agent-playbook"
+NON_FINAL_SKIPPED_ACCOUNTING = (
+    "Not final completion evidence. Skipped-test accounting will be recorded with\n"
+    "the final `make check-all` run."
+)
 
 
 def _read(path: Path) -> str:
@@ -218,6 +222,64 @@ def test_context_packet_cli(tmp_path: Path) -> None:
 
     for forbidden_phrase in ("<task", "<path>", "<pending>", "~/.parallax/", "token=", "cookie=", "dsn="):
         assert forbidden_phrase not in result.stdout.lower()
+
+
+@pytest.mark.architecture
+def test_context_packet_cli_refuses_completed_task(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "build_agent_context_packet.py"
+    assert script.exists()
+    _write_context_packet_fixture(tmp_path)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--task",
+            "2",
+            "--mode",
+            "read-only",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "already complete" in result.stderr
+
+
+@pytest.mark.architecture
+def test_context_packet_cli_refuses_unmet_dependencies(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "build_agent_context_packet.py"
+    assert script.exists()
+    _write_context_packet_fixture(tmp_path)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--task",
+            "3",
+            "--mode",
+            "read-only",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "dependencies are not complete" in result.stderr
 
 
 @pytest.mark.architecture
@@ -489,7 +551,7 @@ def test_sdd_gate_check_cli_verify_rejects_non_verification_artifact_drift(tmp_p
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
-        "| line | Pending | >= 80% | Pending |",
+        "| line | Pending | >= 80% | Fail |",
         "| line | 91% | >= 80% | Pass |",
     )
     verification_text = verification_text.replace(
@@ -555,7 +617,7 @@ def test_sdd_gate_check_cli_verify_rejects_incomplete_tasks_with_final_evidence(
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
-        "| line | Pending | >= 80% | Pending |",
+        "| line | Pending | >= 80% | Fail |",
         "| line | 91% | >= 80% | Pass |",
     )
     verification_text = verification_text.replace(
@@ -626,7 +688,7 @@ def test_sdd_gate_check_cli_verify_rejects_failed_check_all_before_helper_succes
         ),
     )
     verification_text = verification_text.replace(
-        "| line | Pending | >= 80% | Pending |",
+        "| line | Pending | >= 80% | Fail |",
         "| line | 91% | >= 80% | Pass |",
     )
     verification_text = verification_text.replace(
@@ -712,7 +774,7 @@ def test_sdd_gate_check_cli_verify_rejects_multiple_check_all_exit_codes(tmp_pat
         ),
     )
     verification_text = verification_text.replace(
-        "| line | Pending | >= 80% | Pending |",
+        "| line | Pending | >= 80% | Fail |",
         "| line | 91% | >= 80% | Pass |",
     )
     verification_text = verification_text.replace(
@@ -831,7 +893,7 @@ def test_sdd_gate_check_cli_verify_rejects_placeholder_spec_compliance_evidence(
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
-        "| line | Pending | >= 80% | Pending |",
+        "| line | Pending | >= 80% | Fail |",
         "| line | 91% | >= 80% | Pass |",
     )
     verification_text = verification_text.replace(
@@ -892,7 +954,7 @@ def test_sdd_gate_check_cli_verify_rejects_prose_only_spec_compliance_evidence(t
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
-        "| line | Pending | >= 80% | Pending |",
+        "| line | Pending | >= 80% | Fail |",
         "| line | 91% | >= 80% | Pass |",
     )
     verification_text = verification_text.replace(
@@ -959,7 +1021,7 @@ def test_sdd_gate_check_cli_verify_rejects_empty_spec_compliance(tmp_path: Path)
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
-        "| line | Pending | >= 80% | Pending |",
+        "| line | Pending | >= 80% | Fail |",
         "| line | 91% | >= 80% | Pass |",
     )
     verification_path.write_text(verification_text, encoding="utf-8")
@@ -1017,7 +1079,7 @@ def test_sdd_gate_check_cli_verify_rejects_partial_spec_compliance(tmp_path: Pat
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
-        "| line | Pending | >= 80% | Pending |",
+        "| line | Pending | >= 80% | Fail |",
         "| line | 91% | >= 80% | Pass |",
     )
     verification_path.write_text(verification_text, encoding="utf-8")
@@ -1119,7 +1181,7 @@ def test_sdd_gate_check_cli_verify_rejects_placeholder_coverage_value(tmp_path: 
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
-        "| line | Pending | >= 80% | Pending |",
+        "| line | Pending | >= 80% | Fail |",
         "| line | Pending | >= 80% | Pass |",
     )
     verification_text = verification_text.replace(
@@ -1180,7 +1242,7 @@ def test_sdd_gate_check_cli_verify_rejects_incomplete_e2e_golden_path(tmp_path: 
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
-        "| line | Pending | >= 80% | Pending |",
+        "| line | Pending | >= 80% | Fail |",
         "| line | 91% | >= 80% | Pass |",
     )
     verification_path.write_text(verification_text, encoding="utf-8")
@@ -1233,7 +1295,7 @@ def test_sdd_gate_check_cli_verify_rejects_fenced_e2e_golden_path(tmp_path: Path
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
-        "| line | Pending | >= 80% | Pending |",
+        "| line | Pending | >= 80% | Fail |",
         "| line | 91% | >= 80% | Pass |",
     )
     verification_text = verification_text.replace(
@@ -1299,7 +1361,7 @@ def test_sdd_gate_check_cli_verify_rejects_golden_skip_switch(tmp_path: Path) ->
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
-        "| line | Pending | >= 80% | Pending |",
+        "| line | Pending | >= 80% | Fail |",
         "| line | 91% | >= 80% | Pass |",
     )
     verification_text = verification_text.replace(
@@ -1367,7 +1429,7 @@ def test_sdd_gate_check_cli_verify_rejects_extra_verification_command(tmp_path: 
         "1 passed in 0.01s\nexit code: 0",
     )
     verification_text = verification_text.replace(
-        "| line | Pending | >= 80% | Pending |",
+        "| line | Pending | >= 80% | Fail |",
         "| line | 91% | >= 80% | Pass |",
     )
     verification_text = verification_text.replace(
@@ -1436,7 +1498,7 @@ def test_sdd_gate_check_cli_verify_rejects_unfenced_extra_verification_command(t
         "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py -q\n\n## Other commands run",
     )
     verification_text = verification_text.replace(
-        "| line | Pending | >= 80% | Pending |",
+        "| line | Pending | >= 80% | Fail |",
         "| line | 91% | >= 80% | Pass |",
     )
     verification_text = verification_text.replace(
@@ -1505,7 +1567,7 @@ def test_sdd_gate_check_cli_verify_rejects_duplicate_unfenced_make_check_all(tmp
         "$ make check-all\n\n## Other commands run",
     )
     verification_text = verification_text.replace(
-        "| line | Pending | >= 80% | Pending |",
+        "| line | Pending | >= 80% | Fail |",
         "| line | 91% | >= 80% | Pass |",
     )
     verification_text = verification_text.replace(
@@ -1578,7 +1640,7 @@ def test_sdd_gate_check_cli_verify_rejects_extra_verification_output_block(tmp_p
         "## Other commands run",
     )
     verification_text = verification_text.replace(
-        "| line | Pending | >= 80% | Pending |",
+        "| line | Pending | >= 80% | Fail |",
         "| line | 91% | >= 80% | Pass |",
     )
     verification_text = verification_text.replace(
@@ -1653,7 +1715,7 @@ def test_sdd_gate_check_cli_verify_rejects_duplicate_verification_commands_secti
         "## Other commands run",
     )
     verification_text = verification_text.replace(
-        "| line | Pending | >= 80% | Pending |",
+        "| line | Pending | >= 80% | Fail |",
         "| line | 91% | >= 80% | Pass |",
     )
     verification_text = verification_text.replace(
@@ -1718,11 +1780,11 @@ def test_sdd_gate_check_cli_verify_rejects_pending_skipped_count(tmp_path: Path)
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
-        "| line | Pending | >= 80% | Pending |",
+        "| line | Pending | >= 80% | Fail |",
         "| line | 91% | >= 80% | Pass |",
     )
     verification_text = verification_text.replace(
-        "Number of skipped tests in the run above: 0",
+        NON_FINAL_SKIPPED_ACCOUNTING,
         "Number of skipped tests in the run above: Pending",
     )
     verification_text = verification_text.replace(
@@ -1783,12 +1845,12 @@ def test_sdd_gate_check_cli_verify_rejects_positive_skipped_count_with_freeform_
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
-        "| line | Pending | >= 80% | Pending |",
+        "| line | Pending | >= 80% | Fail |",
         "| line | 91% | >= 80% | Pass |",
     )
     verification_text = verification_text.replace(
         "## Skipped tests\n\n"
-        "Number of skipped tests in the run above: 0\n\n"
+        f"{NON_FINAL_SKIPPED_ACCOUNTING}\n\n"
         "## E2E golden path",
         "## Skipped tests\n\n"
         "Number of skipped tests in the run above: 1\n\n"
@@ -1856,12 +1918,12 @@ def test_sdd_gate_check_cli_verify_rejects_positive_skipped_count_with_placehold
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
-        "| line | Pending | >= 80% | Pending |",
+        "| line | Pending | >= 80% | Fail |",
         "| line | 91% | >= 80% | Pass |",
     )
     verification_text = verification_text.replace(
         "## Skipped tests\n\n"
-        "Number of skipped tests in the run above: 0\n\n"
+        f"{NON_FINAL_SKIPPED_ACCOUNTING}\n\n"
         "## E2E golden path",
         "## Skipped tests\n\n"
         "Number of skipped tests in the run above: 1\n\n"
@@ -1935,12 +1997,12 @@ def test_sdd_gate_check_cli_verify_rejects_skipped_count_outside_skipped_section
         "1 passed in 0.01s",
     )
     verification_text = verification_text.replace(
-        "| line | Pending | >= 80% | Pending |",
+        "| line | Pending | >= 80% | Fail |",
         "| line | 91% | >= 80% | Pass |",
     )
     verification_text = verification_text.replace(
         "## Skipped tests\n\n"
-        "Number of skipped tests in the run above: 0\n\n"
+        f"{NON_FINAL_SKIPPED_ACCOUNTING}\n\n"
         "## E2E golden path",
         "## Skipped tests\n\n"
         "Number of skipped tests in the run above: Pending\n\n"
@@ -2004,8 +2066,12 @@ def test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence(tmp_path: Pa
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
-        "| line | Pending | >= 80% | Pending |",
+        "| line | Pending | >= 80% | Fail |",
         "| line | 91% | >= 80% | Pass |",
+    )
+    verification_text = verification_text.replace(
+        NON_FINAL_SKIPPED_ACCOUNTING,
+        "Number of skipped tests in the run above: 0",
     )
     verification_text = verification_text.replace(
         "- [ ] Not applicable.",
@@ -4378,11 +4444,12 @@ def _write_context_packet_fixture(root: Path) -> None:
 
             | metric | value | threshold | status |
             |--------|-------|-----------|--------|
-            | line | Pending | >= 80% | Pending |
+            | line | Pending | >= 80% | Fail |
 
             ## Skipped tests
 
-            Number of skipped tests in the run above: 0
+            Not final completion evidence. Skipped-test accounting will be recorded with
+            the final `make check-all` run.
 
             ## E2E golden path
 

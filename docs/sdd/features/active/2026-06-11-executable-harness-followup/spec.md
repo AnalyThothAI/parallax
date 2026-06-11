@@ -29,6 +29,7 @@ The prior executable harness record was an omnibus active ledger with more than 
 | Active records do not fake final transcripts. | Validator rejects placeholder final command transcripts in active `verification.md` records. |
 | Active skipped-test accounting is final-run-bound. | Validator rejects numeric skipped-test counts in active `verification.md` records without successful final `make check-all` evidence. |
 | Verification templates fail closed. | Templates do not embed fake final `exit code: 0` transcripts, and validator rejects copied template transcript placeholders in active records. |
+| Subagent context packets are dispatch-bound. | Context packet generation rejects completed or dependency-blocked tasks before a subagent can receive stale context. |
 
 ## Acceptance criteria
 
@@ -41,6 +42,7 @@ The prior executable harness record was an omnibus active ledger with more than 
 - AC7. WHEN an active `verification.md` contains placeholder final transcript text such as `Pending final run` or `exit code: pending` THEN `scripts/validate_sdd_artifacts.py` SHALL report `active-placeholder-final-evidence` before placeholder command output can masquerade as executable evidence.
 - AC8. WHEN an active `verification.md` lacks successful final `make check-all` evidence THEN `scripts/validate_sdd_artifacts.py` SHALL report `active-skipped-count-without-final-evidence` for numeric `Skipped tests` run-above counts before zero-skip claims can masquerade as executable evidence.
 - AC9. WHEN `docs/sdd/_templates/verification-template.md` teaches final command evidence THEN it SHALL fail closed with a non-success exit placeholder, and `scripts/validate_sdd_artifacts.py` SHALL report `active-placeholder-final-evidence` if that transcript placeholder is copied into an active record.
+- AC10. WHEN `scripts/build_agent_context_packet.py` is asked to build context for a completed task or a task with incomplete dependencies THEN it SHALL fail with the same dispatchability reason as `scripts/dispatch_sdd_task.py` before subagents can receive stale or blocked task context.
 
 ## Risks
 

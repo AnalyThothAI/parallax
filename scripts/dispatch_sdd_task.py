@@ -9,17 +9,14 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.build_agent_context_packet import VALID_MODES, render_context_packet  # noqa: E402
+from scripts.build_agent_context_packet import VALID_MODES, render_context_packet, task_dispatch_issues  # noqa: E402
 from scripts.validate_sdd_artifacts import (  # noqa: E402
     SddFeature,
     SddIssue,
     TaskRecord,
     scan_sdd_features,
-    task_incomplete_dependencies,
     validate_sdd_root,
 )
-
-DISPATCHABLE_STATUSES = {"[ ]", "[~]"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -53,18 +50,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: task not found in {feature.slug}: {args.task}", file=sys.stderr)
         return 1
 
-    status = task.fields.get("status", "").strip().lower()
-    if status == "[x]":
-        print(f"error: task is already complete and cannot be dispatched: {task.title}", file=sys.stderr)
-        return 1
-    if status not in DISPATCHABLE_STATUSES:
-        print(f"error: task status is not dispatchable ({status or 'missing'}): {task.title}", file=sys.stderr)
-        return 1
-
-    incomplete_dependencies = task_incomplete_dependencies(feature, task)
-    if incomplete_dependencies:
-        dependencies = ", ".join(f"Task {dependency}" for dependency in incomplete_dependencies)
-        print(f"error: dependencies are not complete for {task.title}: {dependencies}", file=sys.stderr)
+    dispatch_issues = task_dispatch_issues(feature, task)
+    if dispatch_issues:
+        for issue in dispatch_issues:
+            print(f"error: {issue}", file=sys.stderr)
         return 1
 
     print(render_handoff(feature, task, args.mode))

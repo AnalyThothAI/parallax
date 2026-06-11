@@ -14,10 +14,12 @@ from scripts.validate_sdd_artifacts import (  # noqa: E402
     SddIssue,
     TaskRecord,
     scan_sdd_features,
+    task_incomplete_dependencies,
     validate_sdd_root,
 )
 
 VALID_MODES = ("read-only", "write-allowed", "review-only")
+DISPATCHABLE_STATUSES = {"[ ]", "[~]"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -52,8 +54,28 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: task not found in {feature.slug}: {args.task}", file=sys.stderr)
         return 1
 
+    dispatch_issues = task_dispatch_issues(feature, task)
+    if dispatch_issues:
+        for issue in dispatch_issues:
+            print(f"error: {issue}", file=sys.stderr)
+        return 1
+
     print(render_context_packet(feature, task, args.mode))
     return 0
+
+
+def task_dispatch_issues(feature: SddFeature, task: TaskRecord) -> list[str]:
+    status = task.fields.get("status", "").strip().lower()
+    if status == "[x]":
+        return [f"task is already complete and cannot be dispatched: {task.title}"]
+    if status not in DISPATCHABLE_STATUSES:
+        return [f"task status is not dispatchable ({status or 'missing'}): {task.title}"]
+
+    incomplete_dependencies = task_incomplete_dependencies(feature, task)
+    if incomplete_dependencies:
+        dependencies = ", ".join(f"Task {dependency}" for dependency in incomplete_dependencies)
+        return [f"dependencies are not complete for {task.title}: {dependencies}"]
+    return []
 
 
 def render_context_packet(feature: SddFeature, task: TaskRecord, mode: str) -> str:

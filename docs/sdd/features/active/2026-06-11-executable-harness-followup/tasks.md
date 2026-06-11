@@ -14,7 +14,7 @@
 | Clarify | Spec contains approved clarification for superseding the omnibus record. |
 | Checklist | Spec records the active-record size bound requirement. |
 | Analyze | Plan Analyze Gate records why active records should remain bounded. |
-| Implement | Tasks 1-9 implement the validator, migration, documentation contract, stale-template cleanup, machine-readable verification status tokens, active lifecycle command hard cut, active placeholder final-evidence rejection, active skipped-test accounting bound, and fail-closed final-evidence templates. |
+| Implement | Tasks 1-10 implement the validator, migration, documentation contract, stale-template cleanup, machine-readable verification status tokens, active lifecycle command hard cut, active placeholder final-evidence rejection, active skipped-test accounting bound, fail-closed final-evidence templates, and dispatch-bound context packets. |
 | Verify | Verification artifact captures RED/GREEN command output. |
 
 ## Tasks
@@ -205,5 +205,26 @@
 - **Eval/repair signal**: copied `<paste full stdout/stderr here>` transcript placeholders, fake template `exit code: 0`, or stale generated index rows.
 - **Implementation**: Add the template placeholder to active placeholder-final-evidence validation and change the verification template command block to use a non-success exit placeholder.
 - **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_active_records_reject_template_placeholder_final_verification_transcripts tests/architecture/test_harness_structure.py::test_sdd_verification_template_does_not_embed_fake_final_exit_code -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 10 - Bind context packet generation to dispatchability
+
+- **File(s)**: `scripts/build_agent_context_packet.py`, `scripts/dispatch_sdd_task.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`
+- **Owner**: parent
+- **Depends on**: Task 9
+- **Touch set**: `scripts/build_agent_context_packet.py`, `scripts/dispatch_sdd_task.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared agent playbook CLI tests and generated index updates.
+- **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli_refuses_completed_task` and `tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli_refuses_unmet_dependencies` - prove context packets cannot be generated for non-dispatchable tasks.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Context packets and subagent handoffs must share one dispatchability rule: `[ ]` or `[~]` status only, with complete dependencies.
+- **On-demand context**: `scripts/build_agent_context_packet.py`, `scripts/dispatch_sdd_task.py`, `tests/architecture/test_agent_playbook_contracts.py`.
+- **Kill/defer criteria**: Stop if context packets intentionally remain available for completed or dependency-blocked tasks.
+- **Eval/repair signal**: context packet CLI accepting a completed task, accepting a dependency-blocked task, or dispatcher/context-packet guard drift.
+- **Implementation**: Move dispatchability checks into the context-packet module and reuse them from the dispatcher.
+- **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli_refuses_completed_task tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli_refuses_unmet_dependencies -q`
 - **Review owner**: parent
 - **Status**: [x]

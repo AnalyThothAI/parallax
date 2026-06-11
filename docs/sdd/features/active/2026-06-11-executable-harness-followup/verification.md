@@ -22,6 +22,7 @@
 | AC7 - Active records do not fake final transcripts. | Pass | `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_active_records_reject_placeholder_final_verification_transcripts -q` failed RED before active placeholder-final-evidence validation, then passed after `active-placeholder-final-evidence` enforcement and active agent-playbook transcript cleanup. |
 | AC8 - Active skipped-test accounting is final-run-bound. | Pass | `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_active_records_reject_skipped_count_without_final_evidence -q` failed RED before active skipped-test accounting validation, then passed after `active-skipped-count-without-final-evidence` enforcement and active non-final skip-count cleanup. |
 | AC9 - Verification templates fail closed. | Pass | `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_active_records_reject_template_placeholder_final_verification_transcripts tests/architecture/test_harness_structure.py::test_sdd_verification_template_does_not_embed_fake_final_exit_code -q` failed RED before template placeholder validation and fail-closed template output, then passed after both were enforced. |
+| AC10 - Subagent context packets are dispatch-bound. | Pass | `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli_refuses_completed_task tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli_refuses_unmet_dependencies -q` failed RED after fixture cleanup because context packets still accepted non-dispatchable tasks, then passed after context packet and dispatcher shared one dispatchability guard. |
 
 ## Verification commands
 
@@ -31,7 +32,7 @@ Not final completion evidence. Final completion still requires `make check-all` 
 
 | metric | value | threshold | status |
 |--------|-------|-----------|--------|
-| architecture and SDD artifact tests | 144 tests | >= targeted harness tests | Pass |
+| agent loop and SDD artifact tests | 232 tests | >= targeted harness tests | Pass |
 | SDD active gates | 2 active features | all active clarify/checklist/analyze/implement gates pass | Pass |
 
 ## Skipped tests
@@ -407,6 +408,44 @@ $ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run pytest tests/a
 exit code: 0
 
 $ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run ruff check scripts/validate_sdd_artifacts.py tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_harness_structure.py
+All checks passed!
+exit code: 0
+
+$ git diff --check
+exit code: 0
+
+$ uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli_refuses_completed_task tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli_refuses_unmet_dependencies -q
+FF                                                                       [100%]
+AssertionError: assert 'already complete' in ...
+AssertionError: assert 'dependencies are not complete' in ...
+exit code: 1
+
+$ uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli_refuses_completed_task tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli_refuses_unmet_dependencies -q
+FF                                                                       [100%]
+AssertionError: assert 0 == 1
+AssertionError: assert 0 == 1
+exit code: 1
+
+$ uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli_refuses_completed_task tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli_refuses_unmet_dependencies tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_refuses_completed_task tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_refuses_unmet_dependencies tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task -q
+......                                                                   [100%]
+6 passed in 0.19s
+exit code: 0
+
+$ uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli_refuses_completed_task tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli_refuses_unmet_dependencies -q
+..                                                                       [100%]
+2 passed in 0.16s
+exit code: 0
+
+$ uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_positive_skipped_count_with_freeform_table tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_positive_skipped_count_with_placeholder_reason tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence -q
+...                                                                      [100%]
+3 passed in 0.17s
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run pytest tests/architecture/test_agent_playbook_contracts.py tests/architecture/test_harness_structure.py tests/architecture/test_sdd_artifact_validator.py -q
+232 passed in 11.66s
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run ruff check scripts/build_agent_context_packet.py scripts/dispatch_sdd_task.py tests/architecture/test_agent_playbook_contracts.py tests/architecture/test_harness_structure.py tests/architecture/test_sdd_artifact_validator.py
 All checks passed!
 exit code: 0
 
