@@ -15,6 +15,7 @@
 - Golden tests live under `tests/golden/`. They exercise curated corpus expectations against the real ingest/projection pipeline, provision PostgreSQL like integration tests, carry the dedicated `golden` pytest marker, and are covered by `make check-all`.
 - Makefile pytest targets must fail on an empty pytest collection; do not translate pytest exit code 5 into success for any test lane.
 - Pytest empty parameter sets must fail at collection; do not leave empty parametrized harness inputs that become skipped pseudo-tests.
+- Coverage reports must include empty source files; do not set `coverage.report.skip_empty = true` because hidden empty modules weaken completion evidence.
 - Final runtime lanes must fail closed when Docker, PostgreSQL, or service subprocess dependencies are unavailable; do not add environment skip switches for E2E or golden verification.
 - Business skips are not a long-term state. Do not leave `@pytest.mark.skip` or `pytest.skip(...)` in business tests; move environment-dependent skips into lane conftests or the shared PostgreSQL test harness.
 - Architecture tests must not call `pytest.skip(...)` or use `@pytest.mark.skip`; missing source modules, worker runtimes, or manifests are contract failures.

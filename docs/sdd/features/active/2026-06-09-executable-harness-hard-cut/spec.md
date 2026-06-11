@@ -610,6 +610,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC229. WHEN operators run contract tests from Make THEN `test-contract` SHALL be the only contract-test entrypoint and the old `contract-check` alias SHALL NOT remain in `.PHONY` or as a target before duplicate harness entrypoints can drift.
 - AC230. WHEN architecture tests discover missing source modules, worker runtimes, manifests, or empty parametrized contract inputs THEN they SHALL fail closed and SHALL NOT call `pytest.skip(...)`, use `@pytest.mark.skip`, rely on pytest empty-parameter-set skips, or keep empty follow-up worker skip allowlists before architecture contracts can hide incomplete runtime ownership.
 - AC231. WHEN `scripts/validate_sdd_artifacts.py` detects any SDD issue THEN the CLI SHALL exit non-zero even when `--check` is omitted before report-only soft mode can satisfy harness commands or manual operator checks.
+- AC232. WHEN coverage evidence is generated THEN empty source files SHALL remain visible in coverage reports and `coverage.report.skip_empty` SHALL be false before empty modules can disappear from completion evidence.
 
 ## Risks
 

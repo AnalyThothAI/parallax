@@ -248,6 +248,7 @@ claim is allowed without the corresponding output captured below.
 | AC229 — Contract lane has one Make entrypoint. | ✅ | `python -m pytest tests/architecture/test_harness_structure.py::test_contract_lane_has_no_duplicate_make_alias -q` failed RED while `contract-check` remained in `.PHONY`, then passed after the duplicate Make target was removed. |
 | AC230 — Architecture harness tests fail closed. | ✅ | `python -m pytest tests/architecture/test_test_lane_contracts.py::test_architecture_tests_do_not_skip_contracts -q` failed RED on worker runtime architecture skips and `python -m pytest tests/architecture/test_test_lane_contracts.py::test_pytest_empty_parameter_sets_fail_at_collect -q` failed RED while pytest could skip empty parametrized sets, then `uv run pytest tests/architecture/test_test_lane_contracts.py tests/architecture/test_worker_runtime_contracts.py -q` passed after skip branches, the empty stubbed-worker allowlist, and the empty runtime-owner parameter source were removed. |
 | AC231 — SDD validator has no report-only soft mode. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_validator_cli_fails_on_issues_without_check_flag -q` failed RED while invalid SDD roots returned 0 without `--check`, then passed after the CLI returned 1 for any emitted issue. |
+| AC232 — Coverage keeps empty source files visible. | ✅ | `python -m pytest tests/architecture/test_test_lane_contracts.py::test_coverage_report_does_not_hide_empty_source_files -q` failed RED while `coverage.report.skip_empty` was true, then passed after coverage config set it to false. |
 
 Deviations from spec:
 
@@ -4288,6 +4289,16 @@ exit code: 0
 $ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run python scripts/validate_sdd_artifacts.py
 SDD artifact validation passed.
 exit code: 0
+
+$ python -m pytest tests/architecture/test_test_lane_contracts.py::test_coverage_report_does_not_hide_empty_source_files -q
+F                                                                        [100%]
+AssertionError: assert True is False
+exit code: 1
+
+$ python -m pytest tests/architecture/test_test_lane_contracts.py::test_coverage_report_does_not_hide_empty_source_files -q
+.                                                                        [100%]
+1 passed in 0.01s
+exit code: 0
 ```
 
 ## Diff summary
@@ -4353,6 +4364,7 @@ Files changed:
 - Single Make contract-test entrypoint: `Makefile`, `tests/architecture/test_harness_structure.py`.
 - Architecture harness fail-closed skip ban and empty-parameter-set hard cut: `pyproject.toml`, `docs/TESTING.md`, `tests/architecture/test_test_lane_contracts.py`, `tests/architecture/test_worker_runtime_contracts.py`.
 - SDD validator soft-mode hard cut: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`.
+- Coverage empty-source visibility: `pyproject.toml`, `docs/TESTING.md`, `tests/architecture/test_test_lane_contracts.py`.
 - Mechanical frontend Prettier drift cleanup: macro pages, macro component test, `web/vite.config.ts`.
 
 Migrations applied:

@@ -4871,3 +4871,24 @@
 - **Verification**: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_validator_cli_fails_on_issues_without_check_flag -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 232 — Coverage keeps empty source files visible
+
+- **File(s)**: `pyproject.toml`, `docs/TESTING.md`, `tests/architecture/test_test_lane_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 231
+- **Touch set**: `pyproject.toml`, `docs/TESTING.md`, `tests/architecture/test_test_lane_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for generated SDD index updates.
+- **Failing test first**: `tests/architecture/test_test_lane_contracts.py::test_coverage_report_does_not_hide_empty_source_files` — proves coverage completion evidence cannot hide empty source modules with `skip_empty = true`.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `tool.coverage.report.skip_empty` must be false and testing docs must forbid hiding empty source files in coverage evidence.
+- **On-demand context**: `pyproject.toml`, `docs/TESTING.md`, `tests/architecture/test_test_lane_contracts.py`, and Dalton read-only test audit.
+- **Kill/defer criteria**: Stop if `skip_empty = true` remains in coverage config, if the guard only scans prose, or if coverage completion evidence can omit empty source modules.
+- **Eval/repair signal**: hidden empty modules, weakened coverage evidence, and coverage false-green risk.
+- **Implementation**: Add a pyproject-backed architecture guard, set `coverage.report.skip_empty = false`, and document that coverage must include empty source files.
+- **Verification**: `python -m pytest tests/architecture/test_test_lane_contracts.py::test_coverage_report_does_not_hide_empty_source_files -q`
+- **Review owner**: parent
+- **Status**: [x]

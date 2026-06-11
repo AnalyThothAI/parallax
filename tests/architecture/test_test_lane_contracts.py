@@ -93,6 +93,12 @@ def test_pytest_empty_parameter_sets_fail_at_collect() -> None:
     assert config["tool"]["pytest"]["ini_options"]["empty_parameter_set_mark"] == "fail_at_collect"
 
 
+def test_coverage_report_does_not_hide_empty_source_files() -> None:
+    config = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
+
+    assert config["tool"]["coverage"]["report"].get("skip_empty") is False
+
+
 def test_integration_tests_do_not_use_fake_runtime_repositories() -> None:
     forbidden_terms = (FAKE_RUNTIME_NAME, FAKE_REPOSITORY_NAME, WITHOUT_POSTGRES_NAME)
     hits = [hit for path in _python_files(TESTS_ROOT / "integration") for hit in _line_hits(path, forbidden_terms)]
