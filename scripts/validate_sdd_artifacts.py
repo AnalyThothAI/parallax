@@ -93,6 +93,7 @@ GATE_EVIDENCE_HEADERS = {
     "## Analyze Gate": ("Check", "Result"),
     "## Gate Compliance": ("Gate", "Evidence"),
 }
+GATE_COMPLIANCE_GATES = ("Clarify", "Checklist", "Analyze", "Implement", "Verify")
 METADATA_REQUIREMENTS = {
     "spec.md": ("status", "date", "owner", "approved by", "approved at"),
     "plan.md": ("status", "date", "owning spec", "worktree", "branch", "approved by", "approved at"),
@@ -1783,7 +1784,10 @@ def _section_has_non_placeholder_table_row(text: str, heading: str) -> bool:
 
 
 def section_has_gate_evidence(text: str, heading: str) -> bool:
-    return any(is_gate_evidence_row(heading, cells) for cells in section_gate_table_rows(text, heading))
+    rows = section_gate_table_rows(text, heading)
+    if heading == "## Gate Compliance":
+        return gate_compliance_has_required_rows(rows)
+    return any(is_gate_evidence_row(heading, cells) for cells in rows)
 
 
 def section_gate_table_rows(text: str, heading: str) -> list[list[str]]:
@@ -1883,6 +1887,19 @@ def is_gate_evidence_row(heading: str, cells: list[str]) -> bool:
     if heading == "## Clarifications":
         return len(cells) >= 4 and _is_canonical_date_value(cells[3])
     return True
+
+
+def gate_compliance_has_required_rows(rows: list[list[str]]) -> bool:
+    required = set(GATE_COMPLIANCE_GATES)
+    seen: set[str] = set()
+    for cells in rows:
+        if not is_table_evidence_row(cells):
+            continue
+        gate = _clean_value(cells[0])
+        if gate not in required:
+            return False
+        seen.add(gate)
+    return seen == required
 
 
 def is_placeholder_table_cell(value: str) -> bool:

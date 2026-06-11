@@ -4346,3 +4346,24 @@
 - **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_artifact_metadata_dates_require_canonical_real_dates -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 207 — Gate Compliance rows are canonical
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 206
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/tasks-template.md`
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_gate_compliance_requires_all_canonical_gate_rows` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_incomplete_task_gate_compliance` — prove partial Gate Compliance rows cannot satisfy the validator or implement gate.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `tasks.md` Gate Compliance must include non-placeholder rows for Clarify, Checklist, Analyze, Implement, and Verify before implement readiness is accepted.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `docs/sdd/_templates/tasks-template.md`, and implement gate tests.
+- **Kill/defer criteria**: Stop if partial or unknown gate rows satisfy implementation readiness, if valid five-row Gate Compliance tables are rejected, or if the gate CLI diverges from the validator.
+- **Eval/repair signal**: partial Gate Compliance false green, fixture drift, and implement gate/validator semantic drift.
+- **Implementation**: Add a canonical Gate Compliance gate set and evaluate `## Gate Compliance` evidence through the shared `section_has_gate_evidence()` path.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_compliance_requires_all_canonical_gate_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_incomplete_task_gate_compliance -q`
+- **Review owner**: parent
+- **Status**: [x]
