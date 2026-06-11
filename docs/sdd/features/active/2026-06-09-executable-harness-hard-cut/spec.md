@@ -13,7 +13,7 @@ Parallax routes non-trivial coding-agent work through one SDD feature directory 
 The lane's canonical artifacts are `spec.md` in `docs/WORKFLOW.md:13`, `plan.md` in `docs/WORKFLOW.md:14`,
 `tasks.md` in `docs/WORKFLOW.md:15`, and `verification.md` in `docs/WORKFLOW.md:16`.
 Production work follows `spec -> clarify -> checklist -> plan -> tasks -> analyze -> implement -> verify`
-in `docs/WORKFLOW.md:27`, and completion requires `make check-all` evidence in `docs/WORKFLOW.md:100`.
+in `docs/WORKFLOW.md:27`, and completion requires `make check-all` evidence in `docs/WORKFLOW.md:101`.
 The generated index now renders a `Coordination Board` in `scripts/regen_sdd_work_index.py:86` and a
 `Task Board` in `scripts/regen_sdd_work_index.py:117`.
 
@@ -623,6 +623,10 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC242. WHEN `verification.md` declares any skipped tests in final evidence THEN the validator and verify gate SHALL reject the record before acceptable-skip tables can satisfy completion evidence.
 - AC243. WHEN the SDD tasks template describes single-PR work THEN it SHALL require a one-task `tasks.md` artifact before template wording can bypass the four-artifact harness contract.
 - AC244. WHEN a caller passes the legacy `--check` flag to an SDD lifecycle CLI THEN argparse SHALL reject it before compatibility mode flags can imply a report-only or optional harness path.
+- AC245. WHEN `scripts/check_sdd_gate.py --feature <slug> --gate verify` runs THEN it SHALL reject any feature-level SDD validator issue, not only `verification.md` issues, before a single-feature completion gate can pass with stale `plan.md` or `tasks.md` artifacts.
+- AC246. WHEN `scripts/dispatch_sdd_task.py` renders a task-bound subagent handoff THEN the report contract SHALL include `## Required Reading Evidence`, `Task classification:`, `AGENTS.md`, `docs/agent-playbook/task-reading-matrix.md`, and the task on-demand context paths before generated handoffs can produce reports the validator rejects.
+- AC247. WHEN `scripts/validate_sdd_artifacts.py` emits an issue code THEN that code SHALL be registered in `KNOWN_ISSUE_CODES` and the generated lifecycle flag taxonomy before new validator failures can disappear from `docs/generated/sdd-work-index.md`.
+- AC248. WHEN manual agent-playbook templates describe subagent modes or context packet titles THEN they SHALL use the exact executable tokens `read-only`, `write-allowed`, `review-only`, and `# Context Packet - <feature> / Task <number>` before copy-pasted handoffs drift from the CLIs.
 
 ## Risks
 

@@ -5,7 +5,7 @@ Use this template when delegating work to a subagent. Keep the prompt narrow and
 ```md
 You are a <read-only scout | implementation worker | reviewer> subagent for Parallax.
 
-Mode: <read-only | write allowed | review only>
+Mode: <read-only | write-allowed | review-only>
 
 Goal:
 - <single concrete outcome>

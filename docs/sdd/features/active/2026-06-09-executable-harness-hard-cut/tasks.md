@@ -5144,3 +5144,87 @@
 - **Verification**: `python -m pytest tests/architecture/test_harness_structure.py::test_make_check_all_runs_executable_sdd_harness tests/architecture/test_harness_structure.py::test_makefile_exposes_single_feature_sdd_completion_gate tests/architecture/test_sdd_artifact_validator.py::test_validator_cli_rejects_legacy_check_flag tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_legacy_check_flag -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 245 — Verify gate forwards feature-level artifact drift
+
+- **File(s)**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 244
+- **Touch set**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD verify-gate tests and generated index updates.
+- **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_non_verification_artifact_drift` — proves valid final evidence cannot hide stale `plan.md` approval metadata from the single-feature completion gate.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `scripts/check_sdd_gate.py --feature <slug> --gate verify` must forward every `validate_sdd_root` issue scoped to the selected feature before checking final evidence; the all-active pre-verify sweep stays limited to pre-verify gates.
+- **On-demand context**: `scripts/check_sdd_gate.py`, `scripts/validate_sdd_artifacts.py`, completion-gate docs, and Socrates/Avicenna read-only audits.
+- **Kill/defer criteria**: Stop if a feature with a valid `verification.md` transcript but invalid `plan.md` or `tasks.md` artifact can pass `--gate verify`.
+- **Eval/repair signal**: single-feature false green, artifact drift hidden by final evidence, and incomplete completion-gate delegation.
+- **Implementation**: Reuse full feature-level SDD validation in the verify gate and update workflow docs to describe completion as feature validation plus final evidence.
+- **Verification**: `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_non_verification_artifact_drift tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 246 — Dispatch handoffs include required-reading report evidence
+
+- **File(s)**: `scripts/dispatch_sdd_task.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 245
+- **Touch set**: `scripts/dispatch_sdd_task.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared subagent handoff tests and generated index updates.
+- **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task` — proves generated handoffs include `## Required Reading Evidence`, `Task classification:`, root agent instructions, the reading matrix, and task context paths.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Dispatcher output must generate a report contract that can satisfy `validate_subagent_report.py` for task-bound reports without relying on hand-edited template memory.
+- **On-demand context**: `scripts/dispatch_sdd_task.py`, `scripts/subagent_report_contract.py`, `tests/architecture/test_agent_playbook_contracts.py`, and Socrates read-only audit.
+- **Kill/defer criteria**: Stop if generated handoffs can ask for reports missing required-reading evidence that the report validator requires.
+- **Eval/repair signal**: generated-handoff/report-validator drift, subagent loop false starts, and task-bound reading evidence omissions.
+- **Implementation**: Add required-reading evidence headings and concrete required paths to `render_handoff()`.
+- **Verification**: `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 247 — Validator issue codes are lifecycle-taxonomy registered
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 246
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD validator taxonomy and generated index updates.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_validator_issue_codes_are_registered_for_generated_lifecycle_index` — proves every literal `_issue("...")` emission is present in `KNOWN_ISSUE_CODES`.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: The generated lifecycle index must have a stable flag row and meaning for every validator issue code emitted by `validate_sdd_artifacts.py`.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, generated SDD index, and Socrates/Avicenna read-only audits.
+- **Kill/defer criteria**: Stop if any emitted validator issue can be absent from lifecycle flags or issue meanings.
+- **Eval/repair signal**: missing lifecycle flag rows, hidden validator failures, and stale generated index taxonomy.
+- **Implementation**: Add an AST architecture test for emitted issue codes, register missing verified issue codes, and add generated index meanings.
+- **Verification**: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_validator_issue_codes_are_registered_for_generated_lifecycle_index -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 248 — Manual agent templates use executable tokens
+
+- **File(s)**: `docs/agent-playbook/subagent-handoff-template.md`, `docs/agent-playbook/context-packet-template.md`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 247
+- **Touch set**: `docs/agent-playbook/subagent-handoff-template.md`, `docs/agent-playbook/context-packet-template.md`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared agent playbook templates and generated index updates.
+- **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_subagent_handoff_templates_define_context_and_conflict_contracts` — proves manual templates use validator-accepted mode tokens and the CLI context packet title shape.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Docs/contracts
+- **Deterministic constraints**: Manual templates must use `read-only`, `write-allowed`, `review-only`, and `# Context Packet - <feature> / Task <number>` exactly so copied handoffs remain compatible with the CLIs.
+- **On-demand context**: `docs/agent-playbook/subagent-handoff-template.md`, `docs/agent-playbook/context-packet-template.md`, `scripts/build_agent_context_packet.py`, and Socrates read-only audit.
+- **Kill/defer criteria**: Stop if manual templates preserve prose mode variants or stale context packet title placeholders.
+- **Eval/repair signal**: copy/paste-invalid handoffs, mode-token drift, and context packet template/source mismatch.
+- **Implementation**: Update the handoff mode placeholder and context packet title template, with architecture test coverage.
+- **Verification**: `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_handoff_templates_define_context_and_conflict_contracts -q`
+- **Review owner**: parent
+- **Status**: [x]

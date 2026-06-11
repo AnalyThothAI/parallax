@@ -757,6 +757,10 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC242: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_positive_skipped_count_with_placeholder_reason tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_positive_skipped_count_with_placeholder_reason -q`
 - AC243: `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_tasks_template_keeps_one_task_for_single_pr_work -q`
 - AC244: `python -m pytest tests/architecture/test_harness_structure.py::test_make_check_all_runs_executable_sdd_harness tests/architecture/test_harness_structure.py::test_makefile_exposes_single_feature_sdd_completion_gate tests/architecture/test_sdd_artifact_validator.py::test_validator_cli_rejects_legacy_check_flag tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_legacy_check_flag -q`
+- AC245: `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_non_verification_artifact_drift tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence -q`
+- AC246: `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task -q`
+- AC247: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_validator_issue_codes_are_registered_for_generated_lifecycle_index -q`
+- AC248: `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_handoff_templates_define_context_and_conflict_contracts -q`
 
 ## Verification
 

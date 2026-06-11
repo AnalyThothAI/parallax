@@ -7,7 +7,7 @@ uv run python scripts/build_agent_context_packet.py --feature <slug> --task <num
 ```
 
 ```md
-# Context Packet - <task slug>
+# Context Packet - <feature> / Task <number>
 
 Current objective:
 - <what the overall task is trying to achieve>

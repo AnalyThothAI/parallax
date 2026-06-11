@@ -290,6 +290,11 @@ def _issue_meaning(code: str) -> str:
         "verified-missing-spec-compliance-evidence": (
             "Verified spec compliance rows reference commands without matching exit code 0 evidence."
         ),
+        "verified-incomplete-spec-compliance": (
+            "Verified record lacks complete Spec compliance rows for every acceptance criterion."
+        ),
+        "verified-coverage-incomplete": "Verified record lacks complete concrete coverage evidence.",
+        "verified-e2e-incomplete": "Verified record lacks every required checked E2E golden-path signal.",
         "verified-contradicts-evidence": "Verified record contains text that contradicts final evidence.",
         "verified-unexplained-skips": "Verified record contains skipped tests or lacks numeric zero-skip evidence.",
         "superseded-missing-successor": (

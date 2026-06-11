@@ -1,11 +1,31 @@
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 
 import pytest
 
-from scripts.validate_sdd_artifacts import main, validate_sdd_root
+from scripts.validate_sdd_artifacts import KNOWN_ISSUE_CODES, main, validate_sdd_root
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_validator_issue_codes_are_registered_for_generated_lifecycle_index() -> None:
+    source = ROOT / "scripts" / "validate_sdd_artifacts.py"
+    tree = ast.parse(source.read_text(encoding="utf-8"))
+    emitted_codes = {
+        node.args[0].value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_issue"
+        and node.args
+        and isinstance(node.args[0], ast.Constant)
+        and isinstance(node.args[0].value, str)
+    }
+
+    assert emitted_codes <= set(KNOWN_ISSUE_CODES)
 
 
 def test_verified_feature_requires_successful_make_check_all_evidence(tmp_path: Path) -> None:

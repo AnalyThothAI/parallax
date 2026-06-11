@@ -127,6 +127,9 @@ def test_subagent_handoff_templates_define_context_and_conflict_contracts() -> N
 
     for required_phrase in (
         "Mode",
+        "read-only",
+        "write-allowed",
+        "review-only",
         "Owned scope",
         "Must read",
         "Do not touch",
@@ -141,6 +144,7 @@ def test_subagent_handoff_templates_define_context_and_conflict_contracts() -> N
 
     for required_phrase in (
         "Truth boundary",
+        "# Context Packet - <feature> / Task <number>",
         "Facts",
         "Read models",
         "Control plane",
@@ -250,6 +254,11 @@ def test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task(tmp_path: Path
         "Do not touch:",
         "Context packet:",
         "Report contract:",
+        "## Required Reading Evidence",
+        "Task classification:",
+        "`AGENTS.md`",
+        "`docs/agent-playbook/task-reading-matrix.md`",
+        "`docs/agent-playbook/context-packet-template.md`",
         "scripts/validate_subagent_report.py",
         "--feature 2026-06-09-context-packet-fixture",
         "--task 1",
@@ -459,6 +468,65 @@ def test_sdd_gate_check_cli_verify_rejects_missing_check_all_evidence(tmp_path: 
     assert result.returncode == 1
     assert "verified-missing-check-all" in result.stderr
     assert "verification.md" in result.stderr
+
+
+@pytest.mark.architecture
+def test_sdd_gate_check_cli_verify_rejects_non_verification_artifact_drift(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "check_sdd_gate.py"
+    assert script.exists()
+    _write_context_packet_fixture(tmp_path)
+    _create_context_packet_fixture_paths(tmp_path)
+    feature_root = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture"
+    verification_path = feature_root / "verification.md"
+    verification_text = verification_path.read_text(encoding="utf-8")
+    verification_text = verification_text.replace(
+        "| AC1 | In Progress | Pending. |",
+        "| AC1 | Pass | `make check-all` exited 0. |",
+    )
+    verification_text = verification_text.replace(
+        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\n"
+        "Pending.",
+        "$ make check-all\nall checks passed\nexit code: 0",
+    )
+    verification_text = verification_text.replace(
+        "| line | Pending | >= 80% | Pending |",
+        "| line | 91% | >= 80% | Pass |",
+    )
+    verification_text = verification_text.replace(
+        "- [ ] Not applicable.",
+        "- [x] /readyz returned 200\n"
+        "- [x] writer wrote a row visible to a separate process\n"
+        "- [x] /api/recent returned the injected event\n"
+        "- [x] WS /ws/live pushed within 5s\n"
+        "- [x] testcontainers PG and uvicorn subprocess cleaned up",
+    )
+    verification_path.write_text(verification_text, encoding="utf-8")
+    plan_path = feature_root / "plan.md"
+    plan_path.write_text(
+        plan_path.read_text(encoding="utf-8").replace("**Approved by**: qinghuan\n", ""),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--gate",
+            "verify",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "missing-approval-metadata" in result.stderr
+    assert "plan.md" in result.stderr
 
 
 @pytest.mark.architecture
@@ -3051,6 +3119,38 @@ def test_sdd_gate_check_cli_accepts_all_active_features(tmp_path: Path) -> None:
     _write_context_packet_fixture(tmp_path)
     _clone_context_packet_fixture(tmp_path, "2026-06-09-second-context-fixture")
     _create_context_packet_fixture_paths(tmp_path)
+    first_tasks = (
+        tmp_path
+        / "docs"
+        / "sdd"
+        / "features"
+        / "active"
+        / "2026-06-09-context-packet-fixture"
+        / "tasks.md"
+    )
+    second_tasks = (
+        tmp_path
+        / "docs"
+        / "sdd"
+        / "features"
+        / "active"
+        / "2026-06-09-second-context-fixture"
+        / "tasks.md"
+    )
+    first_tasks.write_text(
+        first_tasks.read_text(encoding="utf-8").replace(
+            "coordinate with 2026-06-09-other-feature",
+            "coordinate with 2026-06-09-second-context-fixture",
+        ),
+        encoding="utf-8",
+    )
+    second_tasks.write_text(
+        second_tasks.read_text(encoding="utf-8").replace(
+            "coordinate with 2026-06-09-other-feature",
+            "coordinate with 2026-06-09-context-packet-fixture",
+        ),
+        encoding="utf-8",
+    )
 
     result = subprocess.run(
         [

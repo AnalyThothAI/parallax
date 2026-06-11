@@ -23,15 +23,6 @@ from scripts.validate_sdd_artifacts import (  # noqa: E402
 
 PRE_VERIFY_GATES = ("clarify", "checklist", "analyze", "implement")
 GATES = (*PRE_VERIFY_GATES, "verify")
-VERIFY_GATE_VALIDATION_CODES = {
-    "missing-artifact",
-    "missing-status",
-    "missing-approval-metadata",
-    "metadata-date-invalid",
-    "artifact-owning-link-mismatch",
-    "missing-gate-section",
-    "duplicate-gate-section",
-}
 
 
 def main() -> int:
@@ -132,11 +123,10 @@ def _analyze_gate_issues(feature: SddFeature) -> list[str]:
 
 
 def _implement_gate_issues(root: Path, feature: SddFeature) -> list[str]:
-    feature_prefix = feature.relative_path + "/"
     return [
         f"{issue.code}: {issue.path}: {issue.message}"
-        for issue in validate_sdd_root(root)
-        if issue.path.startswith(feature_prefix) and _is_implement_gate_issue(feature, issue)
+        for issue in _feature_validation_issues(root, feature)
+        if _is_implement_gate_issue(feature, issue)
     ]
 
 
@@ -150,14 +140,18 @@ def _is_implement_gate_issue(feature: SddFeature, issue: SddIssue) -> bool:
 
 
 def _verify_gate_issues(root: Path, feature: SddFeature) -> list[str]:
-    verification_path = f"{feature.relative_path}/verification.md"
-    structural_issues = [
-        issue
-        for issue in validate_sdd_root(root)
-        if issue.path == verification_path and issue.code in VERIFY_GATE_VALIDATION_CODES
-    ]
+    structural_issues = _feature_validation_issues(root, feature)
     evidence_issues = verify_gate_evidence_issues(feature)
     return [_format_issue(issue) for issue in (*structural_issues, *evidence_issues)]
+
+
+def _feature_validation_issues(root: Path, feature: SddFeature) -> list[SddIssue]:
+    feature_prefix = feature.relative_path + "/"
+    return [
+        issue
+        for issue in validate_sdd_root(root)
+        if issue.path == feature.relative_path or issue.path.startswith(feature_prefix)
+    ]
 
 
 def _format_issue(issue: SddIssue) -> str:

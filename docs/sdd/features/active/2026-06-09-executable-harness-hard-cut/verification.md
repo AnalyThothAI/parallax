@@ -261,6 +261,10 @@ claim is allowed without the corresponding output captured below.
 | AC242 — Final evidence requires zero skipped tests. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_positive_skipped_count_with_placeholder_reason tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_positive_skipped_count_with_placeholder_reason -q` failed RED while `| 1 | Pending | Yes |` passed final skip evidence, then passed after positive skipped-test counts were rejected. |
 | AC243 — Tasks template preserves the four-artifact contract. | ✅ | `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_tasks_template_keeps_one_task_for_single_pr_work -q` failed RED while the template said to skip `tasks.md` for single-PR work, then passed after the template required a one-task artifact. |
 | AC244 — SDD lifecycle CLIs reject legacy check mode. | ✅ | `python -m pytest tests/architecture/test_harness_structure.py::test_make_check_all_runs_executable_sdd_harness tests/architecture/test_harness_structure.py::test_makefile_exposes_single_feature_sdd_completion_gate tests/architecture/test_sdd_artifact_validator.py::test_validator_cli_rejects_legacy_check_flag tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_legacy_check_flag -q` failed RED while Make targets and argparse still accepted SDD `--check`, then passed after the lifecycle CLIs failed closed by default and rejected the old flag. |
+| AC245 — Verify gate forwards feature-level artifact drift. | ✅ | `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_non_verification_artifact_drift tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence -q` failed RED while a feature with valid final evidence but stale `plan.md` approval metadata passed `--gate verify`, then passed after the verify gate reused full feature-level SDD validation. |
+| AC246 — Generated handoffs include required-reading evidence contract. | ✅ | `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task -q` failed RED while generated handoffs omitted `## Required Reading Evidence`, then passed after dispatcher output listed the exact required-reading evidence fields and paths. |
+| AC247 — Validator issue codes are registered for lifecycle flags. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_validator_issue_codes_are_registered_for_generated_lifecycle_index -q` failed RED while `verified-incomplete-spec-compliance`, `verified-coverage-incomplete`, and `verified-e2e-incomplete` were emitted but unregistered, then passed after the taxonomy and generated meanings included them. |
+| AC248 — Manual agent templates use executable tokens. | ✅ | `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_handoff_templates_define_context_and_conflict_contracts -q` failed RED while templates used non-executable mode prose and stale context-packet title shape, then passed after templates matched CLI tokens. |
 
 Deviations from spec:
 
@@ -4480,6 +4484,47 @@ exit code: 1
 $ python -m pytest tests/architecture/test_harness_structure.py::test_make_check_all_runs_executable_sdd_harness tests/architecture/test_harness_structure.py::test_makefile_exposes_single_feature_sdd_completion_gate tests/architecture/test_sdd_artifact_validator.py::test_validator_cli_rejects_legacy_check_flag tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_legacy_check_flag -q
 ....                                                                     [100%]
 4 passed in 0.10s
+exit code: 0
+
+$ python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_non_verification_artifact_drift -q
+F                                                                        [100%]
+AssertionError: assert 0 == 1
+exit code: 1
+
+$ python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_non_verification_artifact_drift tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence -q
+..                                                                       [100%]
+2 passed in 0.11s
+exit code: 0
+
+$ python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task tests/architecture/test_sdd_artifact_validator.py::test_validator_issue_codes_are_registered_for_generated_lifecycle_index -q
+FF                                                                       [100%]
+AssertionError: assert '## Required Reading Evidence' in result.stdout
+AssertionError: assert {'acceptance-...ismatch', ...} <= {'acceptance-...ismatch', ...}
+exit code: 1
+
+$ python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task tests/architecture/test_sdd_artifact_validator.py::test_validator_issue_codes_are_registered_for_generated_lifecycle_index -q
+..                                                                       [100%]
+2 passed in 0.06s
+exit code: 0
+
+$ python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task -q
+.                                                                        [100%]
+1 passed in 0.07s
+exit code: 0
+
+$ python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_validator_issue_codes_are_registered_for_generated_lifecycle_index -q
+.                                                                        [100%]
+1 passed in 0.04s
+exit code: 0
+
+$ python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_handoff_templates_define_context_and_conflict_contracts -q
+F                                                                        [100%]
+AssertionError: assert 'write-allowed' in '# Subagent Handoff Template\n\nUse this template when delegating work to a subagent. Keep the prompt narrow and self-...'
+exit code: 1
+
+$ python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_handoff_templates_define_context_and_conflict_contracts -q
+.                                                                        [100%]
+1 passed in 0.02s
 exit code: 0
 ```
 

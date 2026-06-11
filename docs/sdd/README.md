@@ -57,18 +57,18 @@ uv run python scripts/validate_subagent_report.py --feature <slug> --task <numbe
 ```
 
 The gate checker gives the Spec Kit-style `clarify`, `checklist`, `analyze`,
-`implement`, and `verify` lanes first-class non-mutating checks. `verify` is the
-final evidence gate for `verification.md`; the default all-active sweep remains
-pre-verify so unfinished active feature records can keep moving. `make
-check-sdd-completion FEATURE=<slug>` is the Make target for the single-feature
-verify gate, while `make check-all` runs the all-active sweep before generated
-index freshness and produces the final command transcript. Final completion
-evidence must report zero skipped tests. The completion gate transcript is
-meta-verification and belongs under `## Completion gate`, not the final
-`## Verification commands` section. The full validator still rejects false
-`Verified` records, missing gate sections, missing approval metadata,
-incomplete task coordination fields, and active touch-set conflicts without an
-explicit coordination rule.
+`implement`, and `verify` lanes first-class non-mutating checks. `verify` runs
+full feature-level SDD artifact validation before checking final
+`verification.md` evidence; the default all-active sweep remains pre-verify so
+unfinished active feature records can keep moving. `make check-sdd-completion
+FEATURE=<slug>` is the Make target for the single-feature verify gate, while
+`make check-all` runs the all-active sweep before generated index freshness and
+produces the final command transcript. Final completion evidence must report
+zero skipped tests. The completion gate transcript is meta-verification and
+belongs under `## Completion gate`, not the final `## Verification commands`
+section. The full validator still rejects false `Verified` records, missing
+gate sections, missing approval metadata, incomplete task coordination fields,
+and active touch-set conflicts without an explicit coordination rule.
 
 ## Status Rules
 

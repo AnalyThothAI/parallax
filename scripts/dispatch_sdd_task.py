@@ -102,8 +102,14 @@ def render_handoff(feature: SddFeature, task: TaskRecord, mode: str) -> str:
         "",
         "Report contract:",
         "- Use headings: `## Findings`, `## Scope Adherence`, `## Changed Files`, "
-        "`## Verification Evidence`, and `## Remaining Risks`.",
+        "`## Required Reading Evidence`, `## Verification Evidence`, and `## Remaining Risks`.",
         "- Include `Owned scope: pass`, `Conflict set: pass`, and command output with `exit code:`.",
+        "- In `## Required Reading Evidence`, include `Task classification:`, `AGENTS.md`, "
+        "`docs/agent-playbook/task-reading-matrix.md`, and all task on-demand context paths.",
+        "- Required reading evidence must mention:",
+        "- `AGENTS.md`",
+        "- `docs/agent-playbook/task-reading-matrix.md`",
+        *_bullet_lines(_split_list_field(task.fields.get("on-demand context", ""))),
         (
             "- Parent validates the report with "
             f"`uv run python scripts/validate_subagent_report.py --feature {feature.slug} "
@@ -112,6 +118,7 @@ def render_handoff(feature: SddFeature, task: TaskRecord, mode: str) -> str:
         "",
         "Expected output:",
         "- Findings first, with file paths and evidence.",
+        "- Task classification and required-reading evidence for task-bound reports.",
         "- Changed files only when mode is write-allowed.",
         "- Remaining risks and open questions.",
         "- Verification evidence, including command and exit status.",

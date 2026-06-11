@@ -52,11 +52,12 @@ uv run python scripts/check_sdd_gate.py --feature <slug> --gate verify
 make check-sdd-completion FEATURE=<slug>
 ```
 
-`verify` is the final evidence gate: it checks `verification.md` for a final
-`make check-all` command block, completed Spec compliance rows, skip accounting,
-zero skipped tests, and contradiction-free completion evidence before a
-completion claim. `make check-sdd-completion FEATURE=<slug>` is the Make target
-for that single-feature completion gate; record its output under
+`verify` is the final evidence gate: it runs full feature-level SDD artifact
+validation, then checks `verification.md` for a final `make check-all` command
+block, completed Spec compliance rows, skip accounting, zero skipped tests, and
+contradiction-free completion evidence before a completion claim. `make
+check-sdd-completion FEATURE=<slug>` is the Make target for that single-feature
+completion gate; record its output under
 `## Completion gate`, not inside the final `## Verification commands`
 transcript. `make check-all` still produces the final command transcript and
 also runs the non-mutating all-active pre-verify gate sweep:
