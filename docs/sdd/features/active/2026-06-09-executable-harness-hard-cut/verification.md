@@ -217,6 +217,7 @@ claim is allowed without the corresponding output captured below.
 | AC198 — Analyze results use canonical gate rows. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_analyze_gate_ignores_non_canonical_tables tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_ignores_non_canonical_analyze_tables -q` failed RED when non-canonical context tables inside Analyze Gate triggered result-status failures, then passed after Analyze result validation used canonical gate rows only. |
 | AC199 — Analyze invalid-result semantics are shared. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_invalid_analyze_result_with_placeholder_check -q` failed RED when the gate CLI skipped an invalid `Warn:` result because the check column was `<pending>`, then passed after the CLI reused the full validator's Analyze result helper. |
 | AC200 — Gate evidence rejects repeated separators. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_repeated_separator_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_repeated_separator_rows -q` failed RED when a repeated separator row was skipped before accepting later evidence, then passed after repeated separators invalidated the table block. |
+| AC201 — Gate evidence rejects repeated headers. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_repeated_header_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_repeated_header_rows -q` failed RED when a copied header row in the body satisfied evidence, then passed after repeated header rows invalidated the table block. |
 
 Deviations from spec:
 
@@ -3880,6 +3881,17 @@ $ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evi
 ..                                                                       [100%]
 2 passed in 0.05s
 exit code: 0
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_repeated_header_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_repeated_header_rows -q
+FF                                                                       [100%]
+AssertionError: assert 'gate-evidence-missing' in set()
+AssertionError: assert 0 == 1
+exit code: 1
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_repeated_header_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_repeated_header_rows -q
+..                                                                       [100%]
+2 passed in 0.05s
+exit code: 0
 ```
 
 ## Diff summary
@@ -3914,6 +3926,7 @@ Files changed:
 - Canonical Analyze Gate result rows: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Shared Analyze Gate invalid-result semantics: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Repeated separator gate evidence rejection: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
+- Repeated header gate evidence rejection: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Mechanical frontend Prettier drift cleanup: macro pages, macro component test, `web/vite.config.ts`.
 
 Migrations applied:

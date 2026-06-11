@@ -1815,6 +1815,8 @@ def _table_block_body_rows(
     if any(_is_table_separator_row(line) for line in table_lines[2:]):
         return []
     body_rows = [_table_cells(line) for line in table_lines[2:]]
+    if any(row == header_cells for row in body_rows):
+        return []
     if not _table_rows_have_matching_arity([separator_cells, *body_rows], len(header_cells)):
         return []
     return body_rows
