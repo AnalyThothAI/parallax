@@ -41,6 +41,7 @@ The prior executable harness record was an omnibus active ledger with more than 
 | SDD task identifiers are canonical. | Validator rejects noncanonical task headings and dependency references such as `Task 01`. |
 | Subagent report modes are top-level bindings. | Report validation rejects `Mode:` evidence hidden inside fenced blocks. |
 | Subagent report sections are top-level bindings. | Report validation rejects required section headings hidden inside fenced blocks. |
+| Subagent report claims are top-level evidence. | Report validation rejects scope and required-reading claims hidden inside fenced blocks. |
 
 ## Acceptance criteria
 
@@ -65,6 +66,7 @@ The prior executable harness record was an omnibus active ledger with more than 
 - AC19. WHEN an SDD `tasks.md` record uses a noncanonical task heading or dependency reference such as `Task 01` THEN `scripts/validate_sdd_artifacts.py` SHALL reject it before task identity can alias `Task 1`.
 - AC20. WHEN a subagent report contains the expected `Mode:` only inside a fenced block THEN `scripts/validate_subagent_report.py` SHALL reject the report before embedded examples can satisfy the top-level handoff mode binding.
 - AC21. WHEN a subagent report contains required `##` report sections only inside a fenced block THEN `scripts/validate_subagent_report.py` SHALL reject the report before embedded examples can satisfy the report contract.
+- AC22. WHEN a subagent report contains scope or required-reading claims only inside fenced blocks THEN `scripts/validate_subagent_report.py` SHALL reject the report before embedded examples can satisfy task-bound report evidence.
 
 ## Risks
 

@@ -31,17 +31,17 @@ def validate_subagent_report(text: str, *, mode: str, task_fields: Mapping[str, 
         issues.append(f"report mode must match handoff mode: {mode}")
 
     missing_sections = [
-        section_name for section_name in REQUIRED_SECTIONS if not _section_has_content(sections.get(section_name, ""))
+        section_name for section_name in REQUIRED_SECTIONS if not _has_required_content(section_name, sections)
     ]
     issues.extend(f"missing or empty section: ## {section_name.title()}" for section_name in missing_sections)
 
-    scope = sections.get("scope adherence", "")
+    scope = _unfenced_text(sections.get("scope adherence", ""))
     if not re.search(r"\bowned scope\s*:\s*pass\b", scope, re.IGNORECASE):
         issues.append("scope adherence requires `Owned scope: pass`")
     if not re.search(r"\bconflict set\s*:\s*pass\b", scope, re.IGNORECASE):
         issues.append("scope adherence requires `Conflict set: pass`")
 
-    changed_files = sections.get("changed files", "")
+    changed_files = _unfenced_text(sections.get("changed files", ""))
     changed_paths = _changed_file_paths(changed_files)
     if mode in {"read-only", "review-only"} and changed_paths:
         issues.append(f"{mode} reports must not list changed files")
@@ -49,7 +49,8 @@ def validate_subagent_report(text: str, *, mode: str, task_fields: Mapping[str, 
         issues.append("write-allowed reports must list changed files or explicitly say none")
     if changed_paths:
         issues.extend(_task_scope_issues(task_fields, changed_paths))
-    issues.extend(_task_required_reading_issues(task_fields, sections.get("required reading evidence", "")))
+    required_reading = _unfenced_text(sections.get("required reading evidence", ""))
+    issues.extend(_task_required_reading_issues(task_fields, required_reading))
 
     verification = sections.get("verification evidence", "")
     command_blocks = _command_blocks(verification)
@@ -90,6 +91,17 @@ def _fenced_block_spans(text: str) -> tuple[tuple[int, int], ...]:
 
 def _inside_spans(position: int, spans: tuple[tuple[int, int], ...]) -> bool:
     return any(start <= position < end for start, end in spans)
+
+
+def _has_required_content(section_name: str, sections: Mapping[str, str]) -> bool:
+    value = sections.get(section_name, "")
+    if section_name == "verification evidence":
+        return _section_has_content(value)
+    return _section_has_content(_unfenced_text(value))
+
+
+def _unfenced_text(value: str) -> str:
+    return FENCED_BLOCK_RE.sub("", value)
 
 
 def _section_has_content(value: str) -> bool:
