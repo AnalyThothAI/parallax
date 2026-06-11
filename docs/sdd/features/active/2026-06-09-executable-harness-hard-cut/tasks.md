@@ -3863,3 +3863,24 @@
 - **Verification**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_delegated_artifact_drift -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 184 — Gate evidence ignores header-only tables
+
+- **File(s)**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 183
+- **Touch set**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `scripts/validate_sdd_artifacts.py`; `docs/sdd/_templates/spec-template.md`; `docs/sdd/_templates/plan-template.md`
+- **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_header_only_gate_tables` — proves `clarify` gate fails when `## Clarifications` contains only a table header and separator.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Gate table evidence must require at least one non-placeholder body row; the header row and separator row never satisfy `clarify`, `checklist`, or `analyze` gate evidence.
+- **On-demand context**: `scripts/check_sdd_gate.py`, `scripts/validate_sdd_artifacts.py`, and gate evidence tests in `tests/architecture/test_agent_playbook_contracts.py`.
+- **Kill/defer criteria**: Stop if the parser accepts header-only tables, if it rejects valid body rows, or if it diverges from the full SDD validator's non-placeholder evidence semantics.
+- **Eval/repair signal**: header-only false green, placeholder-row false green, and drift between gate CLI and full validator evidence parsing.
+- **Implementation**: Change `_has_table_evidence()` to collect table rows, skip the header row, and require a real non-placeholder body row.
+- **Verification**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_header_only_gate_tables -q`
+- **Review owner**: parent
+- **Status**: [x]

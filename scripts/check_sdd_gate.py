@@ -127,11 +127,14 @@ def _section_text(text: str, heading: str) -> str:
 
 
 def _has_table_evidence(section: str) -> bool:
+    rows = []
     for line in section.splitlines():
         stripped = line.strip()
         if not stripped.startswith("|") or set(stripped) <= {"|", "-", " "}:
             continue
         cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+        rows.append(cells)
+    for cells in rows[1:]:
         if cells and all(cell and cell.lower() not in {"pending", "tbd", "todo"} for cell in cells):
             return True
     return False

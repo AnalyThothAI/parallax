@@ -562,6 +562,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC181. WHEN `tasks.md` contains a `## Final verification` checklist THEN SDD artifact validation SHALL reject it before task records can duplicate or diverge from the canonical evidence in `verification.md`.
 - AC182. WHEN `make check-all` runs SDD harness gates THEN it SHALL execute a non-mutating all-active `clarify`/`checklist`/`analyze`/`implement` sweep before generated index freshness can pass.
 - AC183. WHEN the `implement` SDD gate checks a feature with delegated subagent handoff or report drift THEN it SHALL fail on the underlying task issue before agent-loop delegation can be treated as executable.
+- AC184. WHEN a `clarify`, `checklist`, or `analyze` gate section contains only table headers or placeholder rows THEN the gate checker SHALL fail with `gate-evidence-missing` before a header-only table can satisfy executable gate evidence.
 
 ## Risks
 
