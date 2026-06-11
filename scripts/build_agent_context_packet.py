@@ -11,10 +11,12 @@ if str(ROOT) not in sys.path:
 
 from scripts.agent_mode_constraints import VALID_MODES, mode_constraint_lines  # noqa: E402
 from scripts.validate_sdd_artifacts import (  # noqa: E402
+    TASK_SELECTOR_ERROR,
     SddFeature,
     SddIssue,
     TaskRecord,
     find_task_by_number,
+    is_task_number_selector,
     scan_sdd_features,
     task_incomplete_dependencies,
     validate_sdd_root,
@@ -46,8 +48,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: context packets can only be built from active features: {args.feature}", file=sys.stderr)
         return 1
 
-    if not args.task.strip().isdigit():
-        print(f"error: task selector must be a numeric task number: {args.task}", file=sys.stderr)
+    if not is_task_number_selector(args.task):
+        print(f"error: {TASK_SELECTOR_ERROR}: {args.task}", file=sys.stderr)
         return 1
 
     task = find_task_by_number(feature, args.task)

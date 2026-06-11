@@ -14,7 +14,7 @@
 | Clarify | Spec contains approved clarification for superseding the omnibus record. |
 | Checklist | Spec records the active-record size bound requirement. |
 | Analyze | Plan Analyze Gate records why active records should remain bounded. |
-| Implement | Tasks 1-17 implement the validator, migration, documentation contract, stale-template cleanup, machine-readable verification status tokens, active lifecycle command hard cut, active placeholder final-evidence rejection, active skipped-test accounting bound, fail-closed final-evidence templates, dispatch-bound context packets, generated subagent mode constraints, validator-enforced handoff mode constraints, embedded context-packet mode constraints, top-level handoff validation scope, exact report validation command enforcement, exact task-number selection, and task-bound report validation. |
+| Implement | Tasks 1-18 implement the validator, migration, documentation contract, stale-template cleanup, machine-readable verification status tokens, active lifecycle command hard cut, active placeholder final-evidence rejection, active skipped-test accounting bound, fail-closed final-evidence templates, dispatch-bound context packets, generated subagent mode constraints, validator-enforced handoff mode constraints, embedded context-packet mode constraints, top-level handoff validation scope, exact report validation command enforcement, exact task-number selection, task-bound report validation, and canonical task selector parsing. |
 | Verify | Verification artifact captures RED/GREEN command output. |
 
 ## Tasks
@@ -373,5 +373,26 @@
 - **Eval/repair signal**: unbound report validation returns 0, task touch set drift is not checked, or report verification command does not match the selected task.
 - **Implementation**: Remove optional task binding from the CLI and make the report contract require task fields.
 - **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_requires_task_binding -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 18 - Reject noncanonical task selectors
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/build_agent_context_packet.py`, `scripts/dispatch_sdd_task.py`, `scripts/validate_subagent_report.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`
+- **Owner**: parent
+- **Depends on**: Task 17
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/build_agent_context_packet.py`, `scripts/dispatch_sdd_task.py`, `scripts/validate_subagent_report.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared agent playbook CLIs, selector semantics, tests, and generated index updates.
+- **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_clis_reject_noncanonical_numeric_selectors` - proves `--task 01` cannot bind to `Task 1`.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Task selectors must be canonical positive integers with no leading zeroes across context packet, dispatch, and report-validation CLIs.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/build_agent_context_packet.py`, `scripts/dispatch_sdd_task.py`, `scripts/validate_subagent_report.py`.
+- **Kill/defer criteria**: Stop if `--task 01` remains accepted as an alias for `--task 1`.
+- **Eval/repair signal**: noncanonical task selector emits context, handoff, or report validation for a different canonical command.
+- **Implementation**: Add shared canonical task selector validation and reuse it from all subagent task CLIs.
+- **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_clis_reject_noncanonical_numeric_selectors -q`
 - **Review owner**: parent
 - **Status**: [x]

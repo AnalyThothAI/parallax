@@ -15,10 +15,12 @@ from scripts.build_agent_context_packet import (  # noqa: E402
     task_dispatch_issues,
 )
 from scripts.validate_sdd_artifacts import (  # noqa: E402
+    TASK_SELECTOR_ERROR,
     SddFeature,
     SddIssue,
     TaskRecord,
     find_task_by_number,
+    is_task_number_selector,
     scan_sdd_features,
     validate_sdd_root,
 )
@@ -46,8 +48,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: dispatch only accepts active SDD features: {args.feature}", file=sys.stderr)
         return 1
 
-    if not args.task.strip().isdigit():
-        print(f"error: task selector must be a numeric task number: {args.task}", file=sys.stderr)
+    if not is_task_number_selector(args.task):
+        print(f"error: {TASK_SELECTOR_ERROR}: {args.task}", file=sys.stderr)
         return 1
 
     task = find_task_by_number(feature, args.task)
