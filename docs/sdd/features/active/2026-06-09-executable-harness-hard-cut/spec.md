@@ -618,6 +618,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC237. WHEN final `Verification commands` repeats `make check-all` outside the canonical transcript THEN the validator and verify gate SHALL reject the record before duplicate command sources can masquerade as the single completion command.
 - AC238. WHEN the final `make check-all` transcript contains zero, multiple, or non-zero exit-code lines THEN the validator and verify gate SHALL reject the record before a later `exit code: 0` can overwrite failed evidence in the same command segment.
 - AC239. WHEN final `Verification commands` contains extra fenced output blocks without command lines THEN the validator and verify gate SHALL reject the record before stale transcript output can sit beside the canonical `make check-all` evidence.
+- AC240. WHEN any required SDD lifecycle section heading appears more than once THEN the validator and relevant gate SHALL reject the artifact before duplicate headings can hide stale or conflicting evidence from section-local parsers.
 
 ## Risks
 

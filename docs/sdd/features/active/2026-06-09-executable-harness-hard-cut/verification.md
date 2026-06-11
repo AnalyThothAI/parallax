@@ -256,6 +256,7 @@ claim is allowed without the corresponding output captured below.
 | AC237 — Final verification command sequence is exact. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_duplicate_unfenced_make_check_all tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_duplicate_unfenced_make_check_all -q` passed after separate RED runs proved duplicate unfenced `make check-all` command sources passed both the pure validator and verify gate. |
 | AC238 — Final make-check-all transcript has one exit code. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_multiple_check_all_exit_codes tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_multiple_check_all_exit_codes -q` passed after separate RED runs proved a later `exit code: 0` in the same `make check-all` segment could overwrite an earlier failed exit code. |
 | AC239 — Final verification commands have one transcript block. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_extra_verification_output_block tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_extra_verification_output_block -q` passed after separate RED runs proved extra fenced output blocks without command lines passed both the pure validator and verify gate. |
+| AC240 — Required SDD sections are unique. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_duplicate_verification_commands_section tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_duplicate_verification_commands_section -q` passed after separate RED runs proved duplicate `## Verification commands` headings passed both the pure validator and verify gate. |
 
 Deviations from spec:
 
@@ -4407,6 +4408,21 @@ $ python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verif
 ..                                                                       [100%]
 2 passed in 0.05s
 exit code: 0
+
+$ python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_duplicate_verification_commands_section -q
+F                                                                        [100%]
+AssertionError: assert 'duplicate-gate-section' in set()
+exit code: 1
+
+$ python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_duplicate_verification_commands_section -q
+F                                                                        [100%]
+AssertionError: assert 0 == 1
+exit code: 1
+
+$ python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_duplicate_verification_commands_section tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_duplicate_verification_commands_section -q
+..                                                                       [100%]
+2 passed in 0.08s
+exit code: 0
 ```
 
 ## Diff summary
@@ -4480,6 +4496,7 @@ Files changed:
 - Final verification exact command sequence: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Final make-check-all exit-code tuple validation: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Final verification single transcript block: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
+- Required SDD section uniqueness: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Mechanical frontend Prettier drift cleanup: macro pages, macro component test, `web/vite.config.ts`.
 
 Migrations applied:

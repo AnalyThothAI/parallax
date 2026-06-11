@@ -30,6 +30,7 @@ VERIFY_GATE_VALIDATION_CODES = {
     "metadata-date-invalid",
     "artifact-owning-link-mismatch",
     "missing-gate-section",
+    "duplicate-gate-section",
 }
 
 

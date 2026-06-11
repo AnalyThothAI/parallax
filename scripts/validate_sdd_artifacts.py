@@ -176,6 +176,7 @@ KNOWN_ISSUE_CODES = (
     "plan-analyze-gate-invalid",
     "artifact-owning-link-mismatch",
     "missing-gate-section",
+    "duplicate-gate-section",
     "gate-evidence-missing",
     "metadata-date-invalid",
     "acceptance-numbering-invalid",
@@ -650,6 +651,15 @@ def _artifact_issues(feature: SddFeature, artifact: ArtifactRecord) -> list[SddI
     ]
     if missing_sections:
         issues.append(_issue("missing-gate-section", artifact, f"missing sections: {', '.join(missing_sections)}"))
+    duplicate_sections = _duplicate_required_sections(artifact)
+    if duplicate_sections:
+        issues.append(
+            _issue(
+                "duplicate-gate-section",
+                artifact,
+                "required sections must be unique: " + ", ".join(duplicate_sections),
+            )
+        )
     issues.extend(_gate_evidence_issues(artifact))
     if artifact.name == "plan.md":
         issues.extend(_plan_analyze_gate_issues(artifact))
@@ -2037,6 +2047,27 @@ def _text_without_fenced_blocks(text: str) -> str:
 
 def has_markdown_section(text: str, heading: str) -> bool:
     return _section_heading_index(text.splitlines(), heading) is not None
+
+
+def _duplicate_required_sections(artifact: ArtifactRecord) -> list[str]:
+    required_headings = SECTION_REQUIREMENTS.get(artifact.name, ())
+    return [
+        f"{heading} x{count}"
+        for heading in required_headings
+        if (count := _section_heading_count(artifact.text, heading)) > 1
+    ]
+
+
+def _section_heading_count(text: str, heading: str) -> int:
+    count = 0
+    in_fenced_block = False
+    for line in text.splitlines():
+        if _is_fence_line(line):
+            in_fenced_block = not in_fenced_block
+            continue
+        if not in_fenced_block and line.strip() == heading:
+            count += 1
+    return count
 
 
 def _section_heading_index(lines: list[str], heading: str) -> int | None:
