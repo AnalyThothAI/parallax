@@ -15,6 +15,9 @@ from scripts.validate_sdd_artifacts import (  # noqa: E402
     scan_sdd_features,
     validate_sdd_root,
 )
+from scripts.validate_sdd_artifacts import (  # noqa: E402
+    section_text as validated_section_text,
+)
 
 GATES = ("clarify", "checklist", "analyze", "implement")
 
@@ -134,9 +137,7 @@ def _is_implement_gate_issue(feature: SddFeature, issue: SddIssue) -> bool:
 
 
 def _section_text(text: str, heading: str) -> str:
-    if heading not in text:
-        return ""
-    return text.split(heading, 1)[1].split("\n## ", 1)[0]
+    return validated_section_text(text, heading)
 
 
 def _has_table_evidence(section: str) -> bool:

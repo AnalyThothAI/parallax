@@ -293,6 +293,28 @@ def test_gate_sections_require_non_placeholder_evidence(tmp_path: Path) -> None:
     assert sum(issue.code == "gate-evidence-missing" for issue in issues) == 4
 
 
+def test_required_sections_must_be_markdown_heading_lines(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-prose-heading-token")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    spec_path = feature / "spec.md"
+    spec_text = spec_path.read_text(encoding="utf-8")
+    spec_text = spec_text.replace(
+        "The fixture spec is grounded by its own source record",
+        "The fixture spec mentions `## Clarifications` in prose and is grounded by its own source record",
+    )
+    spec_text = spec_text.replace("\n## Clarifications\n", "\nClarifications\n", 1)
+    spec_path.write_text(spec_text, encoding="utf-8")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(feature / "tasks.md", status="In Progress", task_status="[~]")
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "missing-gate-section" in _issue_codes(issues)
+    messages = "\n".join(issue.message for issue in issues if issue.code == "missing-gate-section")
+    assert "## Clarifications" in messages
+
+
 def test_plan_analyze_gate_rejects_failed_results(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-failed-analyze-gate")
     _write_valid_spec(feature / "spec.md", status="In Progress")

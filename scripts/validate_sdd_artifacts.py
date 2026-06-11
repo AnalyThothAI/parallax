@@ -619,7 +619,9 @@ def _artifact_issues(feature: SddFeature, artifact: ArtifactRecord) -> list[SddI
     if normalized_status == "superseded":
         return issues
 
-    missing_sections = [section for section in SECTION_REQUIREMENTS[artifact.name] if section not in artifact.text]
+    missing_sections = [
+        section for section in SECTION_REQUIREMENTS[artifact.name] if not has_markdown_section(artifact.text, section)
+    ]
     if missing_sections:
         issues.append(_issue("missing-gate-section", artifact, f"missing sections: {', '.join(missing_sections)}"))
     issues.extend(_gate_evidence_issues(artifact))
@@ -753,7 +755,7 @@ def _artifact_owning_link_issues(feature: SddFeature, artifact: ArtifactRecord) 
 def _gate_evidence_issues(artifact: ArtifactRecord) -> list[SddIssue]:
     issues: list[SddIssue] = []
     for heading in GATE_EVIDENCE_SECTIONS.get(artifact.name, ()):
-        if heading not in artifact.text:
+        if not has_markdown_section(artifact.text, heading):
             continue
         if _section_has_non_placeholder_table_row(artifact.text, heading):
             continue
@@ -1717,9 +1719,31 @@ def _verification_make_check_all_block(text: str) -> str | None:
 
 
 def _section_text(text: str, heading: str) -> str:
-    if heading not in text:
+    return section_text(text, heading)
+
+
+def section_text(text: str, heading: str) -> str:
+    lines = text.splitlines()
+    start_index = _section_heading_index(lines, heading)
+    if start_index is None:
         return ""
-    return text.split(heading, 1)[1].split("\n## ", 1)[0]
+    body: list[str] = []
+    for line in lines[start_index + 1 :]:
+        if line.strip().startswith("## "):
+            break
+        body.append(line)
+    return "\n".join(body)
+
+
+def has_markdown_section(text: str, heading: str) -> bool:
+    return _section_heading_index(text.splitlines(), heading) is not None
+
+
+def _section_heading_index(lines: list[str], heading: str) -> int | None:
+    for index, line in enumerate(lines):
+        if line.strip() == heading:
+            return index
+    return None
 
 
 def _section_has_non_placeholder_table_row(text: str, heading: str) -> bool:

@@ -566,6 +566,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC185. WHEN a gate table body row contains placeholder cells such as `<pending>` or `YYYY-MM-DD` THEN the gate checker SHALL reuse the full SDD validator placeholder-cell semantics and fail before template rows can satisfy executable gate evidence.
 - AC186. WHEN the `implement` SDD gate checks a feature whose `tasks.md` is missing `## Gate Compliance` evidence THEN it SHALL fail on the tasks artifact gate issue before task records can be treated as executable.
 - AC187. WHEN the `analyze` SDD gate checks Analyze Gate result rows THEN every non-placeholder result SHALL start with `Pass:` or `Blocked:` before the feature can advance past analysis.
+- AC188. WHEN required SDD section names appear only as prose or backticked tokens instead of Markdown heading lines THEN the validator and gate checker SHALL treat the section as missing before artifact evidence can be accepted.
 
 ## Risks
 

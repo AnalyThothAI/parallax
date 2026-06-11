@@ -3947,3 +3947,24 @@
 - **Verification**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_unbounded_analyze_status tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_failed_analyze_gate -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 188 — SDD sections require heading-line matches
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 187
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `docs/sdd/_templates/spec-template.md`; `docs/sdd/_templates/plan-template.md`; `docs/sdd/_templates/tasks-template.md`
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_required_sections_must_be_markdown_heading_lines` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_requires_markdown_heading_lines` — prove backticked `## Clarifications` prose cannot satisfy a missing Markdown heading.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Required section detection and section body extraction must match exact Markdown heading lines, not arbitrary substring tokens inside prose, links, or code spans.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, and SDD section/gate architecture tests.
+- **Kill/defer criteria**: Stop if line-level heading parsing breaks existing valid SDD records, if gate CLI diverges from the full validator, or if prose tokens can still satisfy section existence.
+- **Eval/repair signal**: missing section false green, spec background mis-slicing, gate CLI prose-token false green, and drift between `validate_sdd_artifacts.py` and `check_sdd_gate.py`.
+- **Implementation**: Add shared line-level `section_text()` / `has_markdown_section()` helpers to the full validator and reuse `section_text()` from the gate checker.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_required_sections_must_be_markdown_heading_lines tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_requires_markdown_heading_lines -q`
+- **Review owner**: parent
+- **Status**: [x]

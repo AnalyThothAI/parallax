@@ -204,6 +204,7 @@ claim is allowed without the corresponding output captured below.
 | AC185 — Gate evidence shares validator placeholder semantics. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_placeholder_gate_rows -q` failed RED when `<pending>`/`YYYY-MM-DD` placeholder rows satisfied `clarify`, then passed after gate evidence parsing reused `is_placeholder_table_cell()` from the full SDD validator. |
 | AC186 — Implement gate covers tasks gate compliance. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_missing_task_gate_compliance -q` failed RED when `--gate implement` passed despite missing `tasks.md` `## Gate Compliance`, then passed after forwarding tasks artifact gate issues. |
 | AC187 — Analyze gate result statuses are bounded. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_unbounded_analyze_status tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_failed_analyze_gate -q` failed RED when `Warn:` passed as an Analyze result, then passed after requiring `Pass:` or `Blocked:`. |
+| AC188 — SDD sections require Markdown heading lines. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_required_sections_must_be_markdown_heading_lines tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_requires_markdown_heading_lines -q` failed RED when backticked `## Clarifications` prose satisfied section detection, then passed after line-level heading parsing was shared by validator and gate CLI. |
 
 Deviations from spec:
 
@@ -3723,6 +3724,17 @@ $ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_ga
 ..                                                                       [100%]
 2 passed in 0.07s
 exit code: 0
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_required_sections_must_be_markdown_heading_lines tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_requires_markdown_heading_lines -q
+FF                                                                       [100%]
+AssertionError: assert 'missing-gate-section' in {'spec-background-uncited'}
+AssertionError: assert 0 == 1
+exit code: 1
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_required_sections_must_be_markdown_heading_lines tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_requires_markdown_heading_lines -q
+..                                                                       [100%]
+2 passed in 0.06s
+exit code: 0
 ```
 
 ## Diff summary
@@ -3744,6 +3756,7 @@ Files changed:
 - Gate placeholder semantics sharing: `scripts/check_sdd_gate.py`, `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Implement gate task compliance forwarding: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Analyze gate bounded result status: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`.
+- SDD section heading-line parsing: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Mechanical frontend Prettier drift cleanup: macro pages, macro component test, `web/vite.config.ts`.
 
 Migrations applied:
