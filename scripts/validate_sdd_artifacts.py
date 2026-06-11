@@ -1946,8 +1946,7 @@ def _verification_commands(text: str) -> list[str]:
     section = _section_text(text, "## Verification commands")
     return [
         _clean_command(command_match.group("command"))
-        for block_match in FENCED_BLOCK_RE.finditer(section)
-        for line in block_match.group("body").splitlines()
+        for line in section.splitlines()
         if (command_match := COMMAND_LINE_RE.match(line))
     ]
 
