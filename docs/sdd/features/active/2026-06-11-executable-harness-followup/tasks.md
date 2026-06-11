@@ -42,18 +42,18 @@
 
 ### Task 2 - Document bounded active records
 
-- **File(s)**: `docs/sdd/README.md`, `docs/sdd/_templates/tasks-template.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`
+- **File(s)**: `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/tasks-template.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`
 - **Owner**: parent
 - **Depends on**: Task 1
-- **Touch set**: `docs/sdd/README.md`, `docs/sdd/_templates/tasks-template.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/tasks-template.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD workflow docs and generated index updates.
 - **Failing test first**: `tests/architecture/test_harness_structure.py::test_sdd_docs_describe_bounded_active_feature_records` — proves workflow docs and templates cannot drift from the active task-board bound.
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated
 - **Review result**: parent-reviewed
 - **Factory lane**: Docs/contracts
-- **Deterministic constraints**: README and task template must name `40 structured tasks`, `active-feature-too-large`, and `split or supersede`.
-- **On-demand context**: `docs/sdd/README.md`, `docs/sdd/_templates/tasks-template.md`, `scripts/validate_sdd_artifacts.py`.
+- **Deterministic constraints**: `docs/WORKFLOW.md`, README, and task template must name `40 structured tasks`, `active-feature-too-large`, and `split or supersede`.
+- **On-demand context**: `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/tasks-template.md`, `scripts/validate_sdd_artifacts.py`.
 - **Kill/defer criteria**: Stop if the validator limit is intentionally hidden from operator-facing SDD docs.
 - **Eval/repair signal**: docs/template drift, stale active-record guidance, or `test_sdd_docs_describe_bounded_active_feature_records` failure.
 - **Implementation**: Add SDD workflow guidance for bounded active records and a harness test that imports the validator limit.

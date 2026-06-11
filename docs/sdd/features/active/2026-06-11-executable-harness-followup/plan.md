@@ -18,8 +18,8 @@
 - `scripts/validate_sdd_artifacts.py`: add active feature task-count enforcement.
 - `scripts/regen_sdd_work_index.py`: document the new lifecycle issue code in the generated taxonomy.
 - `tests/architecture/test_sdd_artifact_validator.py`: add RED coverage for oversized active records.
-- `tests/architecture/test_harness_structure.py`: assert README/template guidance names the active-record bound.
-- `docs/sdd/README.md`, `docs/sdd/_templates/tasks-template.md`: document split-or-supersede guidance for active records.
+- `tests/architecture/test_harness_structure.py`: assert workflow/README/template guidance names the active-record bound.
+- `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/tasks-template.md`: document split-or-supersede guidance for active records.
 - `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`: retain historical evidence as superseded.
 - `docs/sdd/features/active/2026-06-11-executable-harness-followup`: own the follow-up active work.
 - `docs/generated/sdd-work-index.md`: regenerate the coordination board.

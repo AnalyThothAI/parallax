@@ -21,12 +21,12 @@ The prior executable harness record was an omnibus active ledger with more than 
 | Requirement | Quality gate |
 |-------------|--------------|
 | Active SDD records stay bounded. | Validator rejects active features with more than 40 tasks. |
-| SDD docs teach the same bound. | Architecture harness rejects README or template drift from the validator limit. |
+| SDD docs teach the same bound. | Architecture harness rejects workflow, README, or template drift from the validator limit. |
 
 ## Acceptance criteria
 
 - AC1. WHEN an active SDD feature grows beyond 40 structured tasks THEN `scripts/validate_sdd_artifacts.py` SHALL report `active-feature-too-large` before omnibus active ledgers can satisfy the executable harness.
-- AC2. WHEN SDD workflow docs or task templates describe active records THEN they SHALL name the 40 structured tasks bound, `active-feature-too-large`, and the split or supersede action before operators can create oversized active ledgers from stale guidance.
+- AC2. WHEN the workflow, SDD README, or task template describes active records THEN they SHALL name the 40 structured tasks bound, `active-feature-too-large`, and the split or supersede action before operators can create oversized active ledgers from stale guidance.
 
 ## Risks
 

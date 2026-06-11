@@ -236,17 +236,21 @@ def test_sdd_root_has_templates_and_feature_lanes_only() -> None:
 
 
 def test_sdd_docs_describe_bounded_active_feature_records() -> None:
-    readme = _read(SDD / "README.md")
-    tasks_template = _read(SDD / "_templates" / "tasks-template.md")
+    documents = (
+        DOCS / "WORKFLOW.md",
+        SDD / "README.md",
+        SDD / "_templates" / "tasks-template.md",
+    )
     required_tokens = (
         f"{MAX_ACTIVE_FEATURE_TASKS} structured tasks",
         "active-feature-too-large",
         "split or supersede",
     )
 
-    for text in (readme, tasks_template):
+    for document in documents:
+        text = _read(document)
         for token in required_tokens:
-            assert token in text
+            assert token in text, f"{document.relative_to(REPO_ROOT)} does not mention {token!r}"
 
 
 def test_docs_root_governance_files() -> None:

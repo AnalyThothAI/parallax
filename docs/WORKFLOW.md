@@ -40,6 +40,13 @@ missing gate sections, prose-only `Superseded` successors, incomplete task
 coordination fields, and overlapping active touch sets without an explicit
 coordination rule.
 
+Active feature records are bounded execution loops, not unbounded project
+ledgers. Keep each active `tasks.md` at or below 40 structured tasks. If the
+work needs more than 40 structured tasks, split or supersede the active record
+and continue in a successor feature; the validator reports
+`active-feature-too-large` before oversized active boards can satisfy the
+harness.
+
 Each production-feature gate can also be checked directly before moving to the
 next lane:
 
