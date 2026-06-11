@@ -1420,21 +1420,22 @@ def _subagent_handoff_contract_issues(feature: SddFeature, task: TaskRecord, tex
     if task_anchor is None:
         return ["task heading is not machine-readable"]
 
+    top_level_text = _text_without_fenced_blocks(text)
     issues: list[str] = []
-    title_match = HANDOFF_TITLE_RE.search(text)
+    title_match = HANDOFF_TITLE_RE.search(top_level_text)
     if title_match is None:
         issues.append("missing matching Subagent Handoff title")
     else:
         _append_handoff_binding_issues(issues, title_match, feature.slug, task_anchor, "handoff title")
 
-    mode_match = HANDOFF_MODE_RE.search(text)
+    mode_match = HANDOFF_MODE_RE.search(top_level_text)
     mode = mode_match.group("mode").lower() if mode_match else ""
     if not mode:
         issues.append("missing valid Mode line")
     else:
-        if "Mode constraints:" not in text:
+        if "Mode constraints:" not in top_level_text:
             issues.append("missing Mode constraints")
-        missing_constraints = [line for line in mode_constraint_lines(mode) if line not in text]
+        missing_constraints = [line for line in mode_constraint_lines(mode) if line not in top_level_text]
         if missing_constraints:
             issues.append("missing Mode constraints for mode: " + ", ".join(missing_constraints))
 
@@ -1449,7 +1450,7 @@ def _subagent_handoff_contract_issues(feature: SddFeature, task: TaskRecord, tex
         elif mode:
             _append_context_packet_mode_issues(issues, context_text, mode)
 
-    normalized_text = _normalize_handoff_text(text)
+    normalized_text = _normalize_handoff_text(top_level_text)
     required_tokens = (
         "scripts/validate_subagent_report.py",
         "--feature",

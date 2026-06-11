@@ -31,6 +31,7 @@
 - `scripts/build_agent_context_packet.py`, `scripts/dispatch_sdd_task.py`, `docs/agent-playbook/context-packet-template.md`, `docs/agent-playbook/subagent-handoff-template.md`, `docs/agent-playbook/factory-operating-model.md`, `tests/architecture/test_agent_playbook_contracts.py`: emit and document mode-specific edit constraints for subagent context and handoff generation.
 - `scripts/agent_mode_constraints.py`, `scripts/build_agent_context_packet.py`, `scripts/dispatch_sdd_task.py`, `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`: share mode constraint text between generators and validator so delegated handoff artifacts cannot omit the matching mode boundary.
 - `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`: validate that delegated handoff artifacts embed a Context Packet fenced block with the same `Mode:` and matching mode constraints as the handoff.
+- `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`: scope top-level handoff validation outside fenced blocks so embedded Context Packet content cannot satisfy top-level handoff constraints or report-validation commands.
 - `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`: retain historical evidence as superseded.
 - `docs/sdd/features/active/2026-06-11-executable-harness-followup`: own the follow-up active work.
 - `docs/generated/sdd-work-index.md`: regenerate the coordination board.
@@ -56,6 +57,7 @@
 - AC11: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli_emits_mode_constraints tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_mode_constraints -q`
 - AC12: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_handoff_mode_constraints -q`
 - AC13: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_embedded_context_packet_mode_constraints -q`
+- AC14: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_top_level_handoff_mode_constraints -q`
 
 ## Verification
 

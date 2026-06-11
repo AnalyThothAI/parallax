@@ -14,7 +14,7 @@
 | Clarify | Spec contains approved clarification for superseding the omnibus record. |
 | Checklist | Spec records the active-record size bound requirement. |
 | Analyze | Plan Analyze Gate records why active records should remain bounded. |
-| Implement | Tasks 1-13 implement the validator, migration, documentation contract, stale-template cleanup, machine-readable verification status tokens, active lifecycle command hard cut, active placeholder final-evidence rejection, active skipped-test accounting bound, fail-closed final-evidence templates, dispatch-bound context packets, generated subagent mode constraints, validator-enforced handoff mode constraints, and embedded context-packet mode constraints. |
+| Implement | Tasks 1-14 implement the validator, migration, documentation contract, stale-template cleanup, machine-readable verification status tokens, active lifecycle command hard cut, active placeholder final-evidence rejection, active skipped-test accounting bound, fail-closed final-evidence templates, dispatch-bound context packets, generated subagent mode constraints, validator-enforced handoff mode constraints, embedded context-packet mode constraints, and top-level handoff validation scope. |
 | Verify | Verification artifact captures RED/GREEN command output. |
 
 ## Tasks
@@ -289,5 +289,26 @@
 - **Eval/repair signal**: stale embedded context packet accepted, embedded mode drift, missing embedded `Mode constraints:`, or handoff validation depending only on top-level fields.
 - **Implementation**: Locate the matching embedded Context Packet fenced block and validate its mode and mode constraints against the handoff.
 - **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_embedded_context_packet_mode_constraints -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 14 - Separate top-level handoff validation from embedded context
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`
+- **Owner**: parent
+- **Depends on**: Task 13
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD validator, delegated-handoff fixtures, and generated index updates.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_top_level_handoff_mode_constraints` - proves embedded Context Packet constraints cannot satisfy missing top-level handoff constraints.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Top-level handoff title, mode constraints, and report-validation command must be validated outside fenced blocks; embedded Context Packet content is validated separately.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `scripts/agent_mode_constraints.py`.
+- **Kill/defer criteria**: Stop if fenced context packet content intentionally remains allowed to satisfy top-level handoff obligations.
+- **Eval/repair signal**: top-level handoff missing `Mode constraints:` but passing because embedded context contains them, or report command token checks satisfied from fenced content.
+- **Implementation**: Validate top-level handoff obligations against text with fenced blocks removed while keeping embedded Context Packet validation separate.
+- **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_top_level_handoff_mode_constraints -q`
 - **Review owner**: parent
 - **Status**: [x]
