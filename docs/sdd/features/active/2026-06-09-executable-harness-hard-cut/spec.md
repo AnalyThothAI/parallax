@@ -581,6 +581,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC200. WHEN a gate evidence table contains repeated separator rows after the header separator THEN the validator and gate checker SHALL reject the table as lacking evidence before malformed Markdown can satisfy lifecycle gates.
 - AC201. WHEN a gate evidence table contains a repeated header row in the body THEN the validator and gate checker SHALL reject the table as lacking evidence before copied headers can satisfy lifecycle gates.
 - AC202. WHEN a gate evidence table row starts with `|` but is not closed with a trailing `|` THEN the validator and gate checker SHALL reject that row as table evidence before partial pipe text can satisfy lifecycle gates.
+- AC203. WHEN a gate evidence table row uses doubled boundary pipes such as `|| ... ||` THEN the validator and gate checker SHALL reject the row as table evidence before extra boundary pipes can be stripped into canonical-looking cells.
 
 ## Risks
 

@@ -1793,13 +1793,17 @@ def table_body_rows(section: str, expected_header: tuple[str, ...] | None = None
     current_block: list[str] = []
     for line in section.splitlines():
         stripped = line.strip()
-        if stripped.startswith("|") and stripped.endswith("|"):
+        if _is_table_row_line(stripped):
             current_block.append(stripped)
             continue
         body_rows.extend(_table_block_body_rows(current_block, expected_header))
         current_block = []
     body_rows.extend(_table_block_body_rows(current_block, expected_header))
     return body_rows
+
+
+def _is_table_row_line(line: str) -> bool:
+    return line.startswith("|") and line.endswith("|") and not line.startswith("||") and not line.endswith("||")
 
 
 def _table_block_body_rows(

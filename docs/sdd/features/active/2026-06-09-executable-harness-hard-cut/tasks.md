@@ -4262,3 +4262,24 @@
 - **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_unclosed_table_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_unclosed_table_rows -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 203 — Gate evidence rows use single boundary pipes
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 202
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/spec-template.md`; `docs/sdd/_templates/plan-template.md`
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_doubled_boundary_pipes` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_doubled_boundary_pipes` — prove doubled boundary pipes cannot be stripped into canonical-looking table cells.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Gate evidence table rows must have exactly one boundary pipe at each edge.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, and gate evidence table parser tests.
+- **Kill/defer criteria**: Stop if doubled boundary pipes satisfy gate evidence, if valid single-boundary rows are rejected, or if the gate CLI diverges from the shared parser.
+- **Eval/repair signal**: doubled-boundary false green, valid-table regression, and validator/gate CLI parser drift.
+- **Implementation**: Add `_is_table_row_line()` and use it from `table_body_rows()` so only rows with single boundary pipes enter table blocks.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_doubled_boundary_pipes tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_doubled_boundary_pipes -q`
+- **Review owner**: parent
+- **Status**: [x]
