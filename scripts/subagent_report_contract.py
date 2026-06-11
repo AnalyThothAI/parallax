@@ -27,7 +27,7 @@ def validate_subagent_report(text: str, *, mode: str, task_fields: Mapping[str, 
     sections = _sections(text)
     issues: list[str] = []
 
-    if f"mode: {mode}" not in text.lower():
+    if not _has_top_level_mode(text, mode):
         issues.append(f"report mode must match handoff mode: {mode}")
 
     missing_sections = [
@@ -64,6 +64,12 @@ def validate_subagent_report(text: str, *, mode: str, task_fields: Mapping[str, 
         issues.append("report must not include secrets, cookies, tokens, passwords, API keys, or DSNs")
 
     return issues
+
+
+def _has_top_level_mode(text: str, mode: str) -> bool:
+    unfenced_text = FENCED_BLOCK_RE.sub("", text)
+    pattern = re.compile(rf"^\s*Mode:\s*{re.escape(mode)}\s*$", re.IGNORECASE | re.MULTILINE)
+    return bool(pattern.search(unfenced_text))
 
 
 def _sections(text: str) -> dict[str, str]:

@@ -14,7 +14,7 @@
 | Clarify | Spec contains approved clarification for superseding the omnibus record. |
 | Checklist | Spec records the active-record size bound requirement. |
 | Analyze | Plan Analyze Gate records why active records should remain bounded. |
-| Implement | Tasks 1-19 implement the validator, migration, documentation contract, stale-template cleanup, machine-readable verification status tokens, active lifecycle command hard cut, active placeholder final-evidence rejection, active skipped-test accounting bound, fail-closed final-evidence templates, dispatch-bound context packets, generated subagent mode constraints, validator-enforced handoff mode constraints, embedded context-packet mode constraints, top-level handoff validation scope, exact report validation command enforcement, exact task-number selection, task-bound report validation, canonical task selector parsing, and canonical SDD task identity parsing. |
+| Implement | Tasks 1-20 implement the validator, migration, documentation contract, stale-template cleanup, machine-readable verification status tokens, active lifecycle command hard cut, active placeholder final-evidence rejection, active skipped-test accounting bound, fail-closed final-evidence templates, dispatch-bound context packets, generated subagent mode constraints, validator-enforced handoff mode constraints, embedded context-packet mode constraints, top-level handoff validation scope, exact report validation command enforcement, exact task-number selection, task-bound report validation, canonical task selector parsing, canonical SDD task identity parsing, and top-level report mode binding. |
 | Verify | Verification artifact captures RED/GREEN command output. |
 
 ## Tasks
@@ -415,5 +415,26 @@
 - **Eval/repair signal**: noncanonical task heading passes validation, dependency aliases a different canonical task, or generated task identity drifts from CLI selector semantics.
 - **Implementation**: Tighten task heading and dependency-reference parsing to canonical task numbers only.
 - **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_noncanonical_dependency_references tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_noncanonical_number_headings -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 20 - Bind subagent report mode outside fenced blocks
+
+- **File(s)**: `scripts/subagent_report_contract.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`
+- **Owner**: parent
+- **Depends on**: Task 19
+- **Touch set**: `scripts/subagent_report_contract.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared subagent report contract semantics, tests, and generated index updates.
+- **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_rejects_mode_inside_fenced_block` - proves fenced report examples cannot satisfy the handoff mode binding.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Subagent report `Mode:` must be a top-level line outside fenced blocks and must match the handoff mode passed to the validator.
+- **On-demand context**: `scripts/subagent_report_contract.py`, `scripts/validate_subagent_report.py`, `tests/architecture/test_agent_playbook_contracts.py`.
+- **Kill/defer criteria**: Stop if fenced report examples remain accepted as mode evidence.
+- **Eval/repair signal**: report validation passes when `Mode:` appears only inside a fenced block.
+- **Implementation**: Strip fenced blocks before checking the report mode line and require a top-level `Mode: <mode>` match.
+- **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_rejects_mode_inside_fenced_block -q`
 - **Review owner**: parent
 - **Status**: [x]

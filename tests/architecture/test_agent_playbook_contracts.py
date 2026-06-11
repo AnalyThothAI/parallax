@@ -4022,6 +4022,46 @@ def test_subagent_report_validator_accepts_task_bound_report(tmp_path: Path) -> 
 
 
 @pytest.mark.architecture
+def test_subagent_report_validator_rejects_mode_inside_fenced_block(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "validate_subagent_report.py"
+    _write_context_packet_fixture(tmp_path)
+    report = tmp_path / "subagent-report.md"
+    report.write_text(
+        _subagent_report(
+            mode="read-only",
+            changed_files="- none",
+            command="uv run pytest tests/architecture/test_agent_playbook_contracts.py -q",
+            exit_code=0,
+        ).replace("Mode: read-only", "```text\nMode: read-only\n```"),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--task",
+            "1",
+            "--mode",
+            "read-only",
+            "--report",
+            str(report),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "report mode must match handoff mode: read-only" in result.stderr
+
+
+@pytest.mark.architecture
 def test_subagent_report_validator_requires_task_classification_and_required_reading_evidence(tmp_path: Path) -> None:
     script = ROOT / "scripts" / "validate_subagent_report.py"
     _write_context_packet_fixture(tmp_path)
