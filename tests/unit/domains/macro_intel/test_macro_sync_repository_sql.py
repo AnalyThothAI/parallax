@@ -8,6 +8,7 @@ import pytest
 from parallax.domains.macro_intel.repositories.macro_intel_repository import (
     MacroIntelRepository,
     _macro_daily_brief_payload_hash,
+    _macro_snapshot_payload_hash,
 )
 
 CONTROL_METHODS = (
@@ -245,6 +246,31 @@ def test_macro_daily_brief_payload_hash_rejects_legacy_payload_keys() -> None:
                 "headline": "Liquidity improving",
                 "payload_json": {"status": "ready"},
                 123: "legacy",
+            }
+        )
+
+
+def test_macro_snapshot_payload_hash_uses_shared_current_payload_contract() -> None:
+    hash_source = inspect.getsource(_macro_snapshot_payload_hash)
+
+    assert "stable_current_payload_hash" in hash_source
+    assert "postgres_safe_json" not in hash_source
+    assert "default=str" not in hash_source
+
+
+def test_macro_snapshot_payload_hash_rejects_legacy_feature_keys() -> None:
+    with pytest.raises(ValueError, match="current payload hash payload has non-string keys"):
+        _macro_snapshot_payload_hash(
+            {
+                "projection_version": "macro_regime_v4",
+                "asof_date": date(2026, 6, 11),
+                "status": "ready",
+                "regime": "risk_on",
+                "overall_score": 64,
+                "features_json": {123: "legacy"},
+                "chain_json": {},
+                "scenario_json": {},
+                "scorecard_json": {},
             }
         )
 

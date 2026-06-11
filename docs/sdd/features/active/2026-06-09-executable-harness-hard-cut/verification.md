@@ -184,6 +184,7 @@ claim is allowed without the corresponding output captured below.
 | AC165 — Narrative admission hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py::test_admission_payload_hash_rejects_legacy_payload_keys -q` failed RED when the Narrative local hash normalizer accepted a non-string admission payload key, then passed after replacing the local normalizer with `stable_current_payload_hash()` and strict `Jsonb` unwrapping. |
 | AC166 — Narrative admission hash unwraps only real Jsonb adapters. | ✅ | `uv run pytest tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py::test_admission_payload_hash_rejects_jsonb_like_legacy_adapter_values -q` failed RED when generic `obj` attribute unwrapping accepted a Jsonb-like object, then passed after restricting adapter unwrapping to real `Jsonb` instances. |
 | AC167 — Macro daily brief hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_daily_brief_payload_hash_rejects_legacy_payload_keys -q` failed RED when the Macro daily brief local hash normalizer accepted a non-string payload key, then passed after replacing it with `stable_current_payload_hash()` while continuing to exclude `computed_at_ms`. |
+| AC168 — Macro view snapshot hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_snapshot_payload_hash_rejects_legacy_feature_keys -q` failed RED when the Macro snapshot local hash normalizer accepted a non-string `features_json` key, then passed after replacing it with `stable_current_payload_hash()` while preserving the explicit snapshot payload field list. |
 
 Deviations from spec:
 
@@ -3297,19 +3298,29 @@ $ uv run pytest tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py
 1 passed in 0.09s
 exit code: 0
 
-$ uv run pytest tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py -q
-..................                                                       [100%]
-18 passed in 0.14s
+$ uv run pytest tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_snapshot_payload_hash_rejects_legacy_feature_keys -q
+F                                                                        [100%]
+Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_snapshot_payload_hash_rejects_legacy_feature_keys -q
+.                                                                        [100%]
+1 passed in 0.11s
 exit code: 0
 
-$ uv run pytest tests/unit/domains/macro_intel/test_macro_view_projection_worker.py tests/unit/domains/macro_intel/test_macro_sync_service.py -q
-.......................                                                  [100%]
-23 passed in 0.80s
+$ uv run pytest tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py -q
+....................                                                     [100%]
+20 passed in 0.12s
+exit code: 0
+
+$ uv run pytest tests/unit/domains/macro_intel/test_macro_view_projection_worker.py tests/unit/domains/macro_intel/test_macro_sync_service.py tests/unit/domains/macro_intel/test_macro_generation_swap.py -q
+..................................                                       [100%]
+34 passed in 0.57s
 exit code: 0
 
 $ uv run pytest tests/architecture/test_macro_kappa_contract.py tests/architecture/test_worker_runtime_contracts.py::test_read_model_single_writers tests/architecture/test_runtime_worker_constraint_hard_cut.py -q
 .......................................................                  [100%]
-55 passed in 1.57s
+55 passed in 1.35s
 exit code: 0
 
 $ uv run python scripts/validate_sdd_artifacts.py --check

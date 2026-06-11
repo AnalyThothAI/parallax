@@ -1964,8 +1964,7 @@ def _macro_snapshot_payload_hash(snapshot: Mapping[str, Any]) -> str:
         "scenario_json": snapshot.get("scenario_json") or {},
         "scorecard_json": snapshot.get("scorecard_json") or {},
     }
-    encoded = json.dumps(postgres_safe_json(payload), sort_keys=True, separators=(",", ":"), default=str)
-    return hashlib.sha256(encoded.encode()).hexdigest()
+    return stable_current_payload_hash(payload)
 
 
 def _macro_daily_brief_payload_hash(brief: Mapping[str, Any]) -> str:
