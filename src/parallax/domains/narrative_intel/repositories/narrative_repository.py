@@ -8,6 +8,7 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
+from parallax.app.runtime.current_read_model_publisher import stable_current_payload_hash
 from parallax.domains.narrative_intel._constants import NARRATIVE_SCHEMA_VERSION
 from parallax.domains.narrative_intel.services.fingerprints import (
     source_fingerprint as build_source_fingerprint,
@@ -948,9 +949,9 @@ def _stable_id(*parts: str) -> str:
 
 
 def admission_payload_hash(payload: dict[str, Any]) -> str:
-    return _stable_payload_hash(
+    return stable_current_payload_hash(
         {
-            key: value
+            key: _current_hash_payload_value(value)
             for key, value in payload.items()
             if key
             not in {
@@ -966,11 +967,6 @@ def admission_payload_hash(payload: dict[str, Any]) -> str:
     )
 
 
-def _stable_payload_hash(payload: dict[str, Any]) -> str:
-    encoded = json.dumps(_json_ready(payload), ensure_ascii=True, sort_keys=True, separators=(",", ":"), default=str)
-    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
-
-
 def _author_count(rows: Sequence[dict[str, Any]]) -> int:
     return len({str(row.get("author_handle") or "").strip() for row in rows if str(row.get("author_handle") or "")})
 
@@ -979,15 +975,14 @@ def _json(value: Any) -> Jsonb:
     return Jsonb(value, dumps=lambda item: json.dumps(item, ensure_ascii=False, sort_keys=True, default=str))
 
 
-def _json_ready(value: Any) -> Any:
-    raw = getattr(value, "obj", value)
-    if isinstance(raw, dict):
-        return {str(key): _json_ready(inner) for key, inner in raw.items()}
-    if isinstance(raw, tuple | list):
-        return [_json_ready(inner) for inner in raw]
-    if isinstance(raw, set | frozenset):
-        return sorted(_json_ready(inner) for inner in raw)
-    return raw
+def _current_hash_payload_value(value: Any) -> Any:
+    if isinstance(value, Jsonb):
+        return _current_hash_payload_value(value.obj)
+    if isinstance(value, dict):
+        return {key: _current_hash_payload_value(inner) for key, inner in value.items()}
+    if isinstance(value, tuple | list):
+        return [_current_hash_payload_value(inner) for inner in value]
+    return value
 
 
 def _json_list(value: Any) -> list[str]:

@@ -181,6 +181,8 @@ claim is allowed without the corresponding output captured below.
 | AC162 — Token profile current hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/domains/asset_market/test_token_profile_current_repository.py::test_token_profile_current_payload_hash_rejects_legacy_source_payload_keys -q` failed RED when the profile-current local hash normalizer accepted a non-string `source_payload_json` key, then passed after validating JSON payload blocks before sanitation and replacing the local normalizer with `stable_current_payload_hash()`. |
 | AC163 — News source-quality hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/domains/news_intel/test_source_quality_projection.py::test_source_quality_payload_hash_rejects_legacy_diagnostics_keys -q` failed RED when the News local hash normalizer accepted a non-string `diagnostics_json` key, then passed after replacing the local normalizer with `stable_current_payload_hash()` and strict `Jsonb` unwrapping. |
 | AC164 — News page-row hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/domains/news_intel/test_news_repository_queries.py::test_news_page_row_payload_hash_rejects_legacy_story_keys_before_write -q` failed RED when page-row hashing bypassed shared current payload validation and reached the insert path, then passed after restoring `stable_current_payload_hash()` for page-row hashes. |
+| AC165 — Narrative admission hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py::test_admission_payload_hash_rejects_legacy_payload_keys -q` failed RED when the Narrative local hash normalizer accepted a non-string admission payload key, then passed after replacing the local normalizer with `stable_current_payload_hash()` and strict `Jsonb` unwrapping. |
+| AC166 — Narrative admission hash unwraps only real Jsonb adapters. | ✅ | `uv run pytest tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py::test_admission_payload_hash_rejects_jsonb_like_legacy_adapter_values -q` failed RED when generic `obj` attribute unwrapping accepted a Jsonb-like object, then passed after restricting adapter unwrapping to real `Jsonb` instances. |
 
 Deviations from spec:
 
@@ -3252,6 +3254,36 @@ exit code: 0
 $ uv run pytest tests/architecture/test_projection_worker_idle_cost_contract.py tests/architecture/test_worker_runtime_contracts.py::test_news_page_projection_manifest_uses_row_id_identity tests/architecture/test_worker_runtime_contracts.py::test_worker_manifest_declares_dirty_target_consumers -q
 .....                                                                    [100%]
 5 passed in 0.71s
+exit code: 0
+
+$ uv run pytest tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py::test_admission_payload_hash_rejects_legacy_payload_keys -q
+F                                                                        [100%]
+Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py::test_admission_payload_hash_rejects_legacy_payload_keys -q
+.                                                                        [100%]
+1 passed in 0.13s
+exit code: 0
+
+$ uv run pytest tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py::test_admission_payload_hash_rejects_jsonb_like_legacy_adapter_values -q
+F                                                                        [100%]
+Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py::test_admission_payload_hash_rejects_jsonb_like_legacy_adapter_values -q
+.                                                                        [100%]
+1 passed in 0.13s
+exit code: 0
+
+$ uv run pytest tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py::test_admission_payload_hash_rejects_legacy_payload_keys tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py::test_admission_payload_hash_rejects_jsonb_like_legacy_adapter_values -q
+..                                                                       [100%]
+2 passed in 0.12s
+exit code: 0
+
+$ uv run pytest tests/unit/domains/narrative_intel -q
+......................................                                   [100%]
+38 passed in 0.24s
 exit code: 0
 
 $ uv run python scripts/validate_sdd_artifacts.py --check

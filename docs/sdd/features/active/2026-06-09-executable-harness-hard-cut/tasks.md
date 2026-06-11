@@ -3463,6 +3463,48 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 165 — Narrative admission hash uses shared current payload contract
+
+- **File(s)**: `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`, `tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 164
+- **Touch set**: `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`, `tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/domains/narrative_intel/repositories/narrative_repository.py` for Narrative admission current-row payload hash semantics and idempotent writes.
+- **Failing test first**: `tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py::test_admission_payload_hash_rejects_legacy_payload_keys` — call `admission_payload_hash()` with a non-string payload key and assert the shared current payload-key validation raises before the retired local normalizer can stringify compatibility-shaped admission payload keys.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Narrative admission row hashing must use `stable_current_payload_hash()` from `src/parallax/app/runtime/current_read_model_publisher.py`; the repository must not keep a local stable payload hash normalizer that stringifies mapping keys, sorts unordered containers, or relies on generic `default=str` value conversion.
+- **On-demand context**: `src/parallax/domains/narrative_intel/ARCHITECTURE.md`, `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`, `tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py`, and current read-model payload hash idempotency contracts.
+- **Kill/defer criteria**: Stop if Narrative admissions intentionally support non-string payload keys, if production admissions require compatibility key stringification at runtime, or if the shared hash helper cannot preserve unchanged hashes for compliant admission payloads.
+- **Eval/repair signal**: local `_stable_payload_hash()`, local `_json_ready()`, key stringification, unordered-container sorting, generic `default=str` value conversion, Narrative admission idempotency drift, and SDD generated index drift.
+- **Implementation**: Compute `narrative_admissions.payload_hash` with `stable_current_payload_hash()`, unwrap `Jsonb` adapter values without stringifying mapping keys, and delete the repository-local stable payload hash and JSON value normalizer.
+- **Verification**: `uv run pytest tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py::test_admission_payload_hash_rejects_legacy_payload_keys -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 166 — Narrative admission hash unwraps only real Jsonb adapters
+
+- **File(s)**: `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`, `tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 165
+- **Touch set**: `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`, `tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/domains/narrative_intel/repositories/narrative_repository.py` for Narrative admission payload adapter unwrapping semantics.
+- **Failing test first**: `tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py::test_admission_payload_hash_rejects_jsonb_like_legacy_adapter_values` — pass an arbitrary object with an `obj` attribute into `admission_payload_hash()` and assert shared current payload validation rejects it instead of generic adapter unwrapping.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Narrative admission hash adapter handling may unwrap only real `psycopg.types.json.Jsonb` values; arbitrary `obj` attribute carriers are unsupported payload values and must reach shared current payload validation.
+- **On-demand context**: `src/parallax/domains/narrative_intel/ARCHITECTURE.md`, `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`, `tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py`, and shared current payload validation semantics.
+- **Kill/defer criteria**: Stop if Narrative admissions intentionally support generic adapter objects, if psycopg `Jsonb` cannot be identified reliably, or if rejecting Jsonb-like values breaks a documented runtime payload source.
+- **Eval/repair signal**: `getattr(value, "obj", value)` generic unwrapping, Jsonb-like test doubles passing as runtime payload truth, unsupported-value validation drift, and SDD generated index drift.
+- **Implementation**: Replace generic `obj` attribute unwrapping with `isinstance(value, Jsonb)` before recursively unwrapping adapter payloads.
+- **Verification**: `uv run pytest tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py::test_admission_payload_hash_rejects_jsonb_like_legacy_adapter_values -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -3618,4 +3660,6 @@
 - [ ] `uv run pytest tests/unit/domains/asset_market/test_token_profile_current_repository.py::test_token_profile_current_payload_hash_rejects_legacy_source_payload_keys -q`
 - [ ] `uv run pytest tests/unit/domains/news_intel/test_source_quality_projection.py::test_source_quality_payload_hash_rejects_legacy_diagnostics_keys -q`
 - [ ] `uv run pytest tests/unit/domains/news_intel/test_news_repository_queries.py::test_news_page_row_payload_hash_rejects_legacy_story_keys_before_write -q`
+- [ ] `uv run pytest tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py::test_admission_payload_hash_rejects_legacy_payload_keys -q`
+- [ ] `uv run pytest tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py::test_admission_payload_hash_rejects_jsonb_like_legacy_adapter_values -q`
 - [ ] `make check-all`
