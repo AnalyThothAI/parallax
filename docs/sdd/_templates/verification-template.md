@@ -17,9 +17,9 @@ The plan and spec are the contract. This file is the evidence the contract was m
 
 | Acceptance criterion | Status | Evidence |
 |----------------------|--------|----------|
-| AC1 — WHEN ... THEN system SHALL ... | ✅ / ❌ | command + expected output |
-| AC2 — WHEN ... THEN system SHALL ... | ✅ / ❌ | ... |
-| AC3 — WHEN ... THEN system SHALL ... | ✅ / ❌ | ... |
+| AC1 - WHEN ... THEN system SHALL ... | Pass | `make check-all` exited 0 and covered AC1. |
+| AC2 - WHEN ... THEN system SHALL ... | Pass | `make check-all` exited 0 and covered AC2. |
+| AC3 - WHEN ... THEN system SHALL ... | Fail | Blocking evidence or deviation. |
 
 Deviations from spec (with reason and user-approved date if any):
 
@@ -47,8 +47,8 @@ file this artefact until it is.
 
 | metric | value | threshold | status |
 |--------|-------|-----------|--------|
-| line   | X.X%  | ≥ 80%     | ✅/❌  |
-| branch | X.X%  | ≥ 70%     | ✅/❌  |
+| line | 91% | >= 80% | Pass |
+| branch | Not run | >= 70% | Fail |
 
 If thresholds were temporarily relaxed in `pyproject.toml [tool.coverage.report]`,
 state the relaxed value and the follow-up entry in `docs/TECH_DEBT.md`.

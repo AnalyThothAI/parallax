@@ -1771,7 +1771,7 @@ def _spec_compliance_row_number(value: str) -> int | None:
 
 def _is_complete_compliance_status(value: str) -> bool:
     cleaned = _clean_value(value).lower()
-    return "\u2705" in value or cleaned in {"pass", "passed", "verified", "met", "complete", "completed", "done"}
+    return cleaned in {"pass", "passed", "verified", "met", "complete", "completed", "done"}
 
 
 def _superseded_issues(feature: SddFeature) -> list[SddIssue]:

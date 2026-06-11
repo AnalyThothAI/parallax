@@ -14,7 +14,7 @@
 | Clarify | Spec contains approved clarification for superseding the omnibus record. |
 | Checklist | Spec records the active-record size bound requirement. |
 | Analyze | Plan Analyze Gate records why active records should remain bounded. |
-| Implement | Tasks 1-3 implement the validator, migration, documentation contract, and stale-template cleanup. |
+| Implement | Tasks 1-4 implement the validator, migration, documentation contract, stale-template cleanup, and machine-readable final status tokens. |
 | Verify | Verification artifact captures RED/GREEN command output. |
 
 ## Tasks
@@ -79,5 +79,26 @@
 - **Eval/repair signal**: stale section anchors, stale template instructions, or `test_sdd_verification_template_avoids_stale_spec_section_anchors` failure.
 - **Implementation**: Replace the fixed `spec §6.4` wording with current-feature-spec guidance and add a harness test for the template contract.
 - **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_harness_structure.py::test_sdd_verification_template_avoids_stale_spec_section_anchors -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 4 - Require machine-readable final evidence status tokens
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `docs/sdd/_templates/verification-template.md`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`
+- **Owner**: parent
+- **Depends on**: Task 3
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `docs/sdd/_templates/verification-template.md`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD template, validator, or generated index updates.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_symbolic_completion_status_tokens` — proves symbolic completion status tokens fail final verification.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Final evidence status cells use machine-readable status words; `✅` and `❌` are not accepted or taught as completion status examples.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `docs/sdd/_templates/verification-template.md`, `tests/architecture/test_sdd_artifact_validator.py`.
+- **Kill/defer criteria**: Stop if current Verified records require symbolic status compatibility.
+- **Eval/repair signal**: symbolic final status tokens, stale emoji template examples, or `test_verified_feature_rejects_symbolic_completion_status_tokens` failure.
+- **Implementation**: Remove checkmark status acceptance from the validator and update verification-template examples to `Pass`/`Fail` with ASCII thresholds.
+- **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_symbolic_completion_status_tokens tests/architecture/test_harness_structure.py::test_sdd_verification_template_uses_machine_readable_status_examples -q`
 - **Review owner**: parent
 - **Status**: [x]

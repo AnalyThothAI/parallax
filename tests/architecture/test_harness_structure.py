@@ -261,6 +261,17 @@ def test_sdd_verification_template_avoids_stale_spec_section_anchors() -> None:
     assert "make check-sdd-completion FEATURE=<slug>" in template
 
 
+def test_sdd_verification_template_uses_machine_readable_status_examples() -> None:
+    template = _read(SDD / "_templates" / "verification-template.md")
+
+    assert "✅" not in template
+    assert "❌" not in template
+    assert "≥" not in template
+    assert "| AC1 - WHEN ... THEN system SHALL ... | Pass |" in template
+    assert "| line | 91% | >= 80% | Pass |" in template
+    assert "| branch | Not run | >= 70% | Fail |" in template
+
+
 def test_docs_root_governance_files() -> None:
     actual = {p.name for p in DOCS.glob("*.md")}
     assert actual == EXPECTED_GOVERNANCE, f"unexpected docs root contents: {actual ^ EXPECTED_GOVERNANCE}"
