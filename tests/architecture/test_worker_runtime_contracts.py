@@ -196,6 +196,7 @@ CONTROL_PLANE_TABLES: dict[str, set[Path]] = {
         SRC / "platform/db/alembic/versions/20260609_0173_news_page_rows_serving_invariants.py",
         SRC / "platform/db/alembic/versions/20260609_0175_news_agent_provider_rating_gate.py",
         SRC / "platform/db/alembic/versions/20260609_0176_news_provider_rating_gate_finalize.py",
+        SRC / "platform/db/alembic/versions/20260612_0177_news_brief_duplicate_cost_hard_cut.py",
     },
     "market_tick_current_dirty_targets": {
         SRC / "domains/asset_market/repositories/market_tick_current_dirty_target_repository.py",

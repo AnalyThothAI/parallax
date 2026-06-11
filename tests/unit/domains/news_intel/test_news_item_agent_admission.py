@@ -172,6 +172,32 @@ def test_similar_story_without_delta_is_covered_skip() -> None:
     assert admission.representative_news_item_id == "news-rep"
 
 
+def test_similar_story_with_pending_representative_brief_is_covered_skip() -> None:
+    admission = decide_news_item_agent_admission(
+        item=_item(story_key="story:hormuz", source_role="news"),
+        entities=[{"normalized_value": "iran", "entity_type": "country"}],
+        token_mentions=[],
+        fact_candidates=[{"event_type": "geopolitical_risk", "validation_status": "accepted"}],
+        context=NewsItemAgentAdmissionContext(
+            story_candidates=[
+                {
+                    "news_item_id": "news-rep",
+                    "story_key": "story:hormuz",
+                    "source_role": "news",
+                    "agent_admission_status": "eligible",
+                    "entities": [{"normalized_value": "iran", "entity_type": "country"}],
+                    "fact_candidates": [{"event_type": "geopolitical_risk", "validation_status": "accepted"}],
+                }
+            ],
+        ),
+        now_ms=NOW_MS,
+    )
+
+    assert admission.eligible is False
+    assert admission.status == "similar_story_covered"
+    assert admission.representative_news_item_id == "news-rep"
+
+
 def test_similar_story_with_official_source_delta_refreshes() -> None:
     admission = decide_news_item_agent_admission(
         item=_item(story_key="story:hormuz", source_role="official_exchange"),

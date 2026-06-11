@@ -744,17 +744,24 @@ class NewsRepository:
         status = "inserted"
         if existing is not None:
             status = "duplicate"
-            if (
+            material_changed = (
                 existing["payload_hash"] != stored_payload_hash
                 or existing["canonical_url"] != stored_canonical_url
                 or dict(existing["raw_payload_json"]) != stored_payload
-                or existing["fetched_at_ms"] != stored_fetched_at_ms
                 or existing["provider_article_id"] != normalized_article_id
                 or existing["provider_article_key"] != normalized_article_key
                 or existing["provider_payload_status"] != normalized_payload_status
                 or existing["provider_published_at_ms"] != normalized_published_at_ms
-                or existing["provider_observed_at_ms"] != normalized_observed_at_ms
-            ):
+            )
+            if not material_changed:
+                if commit:
+                    self.conn.commit()
+                return {
+                    **dict(existing),
+                    "status": "duplicate",
+                    "incoming_provider_payload_status": incoming_payload_status,
+                }
+            if material_changed:
                 status = "updated"
         provider_item_id = (
             str(existing["provider_item_id"]) if existing is not None else f"news-provider-item-{uuid.uuid4().hex}"

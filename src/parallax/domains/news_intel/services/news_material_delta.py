@@ -33,9 +33,6 @@ def decide_news_material_delta(
     _entity_delta(entities, representative_entities, reasons=reasons, evidence=evidence)
     _fact_delta(fact_candidates, representative_fact_candidates, reasons=reasons, evidence=evidence)
     _content_delta(item, representative_item, reasons=reasons, evidence=evidence)
-    if current_brief is None or str(current_brief.get("status") or "").strip().lower() in {"", "failed"}:
-        reasons.append("representative_brief_stale")
-        evidence["current_brief_status"] = str((current_brief or {}).get("status") or "")
 
     return NewsMaterialDelta(has_delta=bool(reasons), reasons=list(dict.fromkeys(reasons)), evidence=evidence)
 

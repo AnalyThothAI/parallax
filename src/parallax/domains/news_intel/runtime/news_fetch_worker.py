@@ -260,6 +260,9 @@ class NewsFetchWorker(WorkerBase):
                 fetched_at_ms=fetched_at_ms,
                 commit=False,
             )
+            if str(provider.get("status") or "") == "duplicate":
+                counts["duplicate"] += 1
+                continue
             item_content_hash = content_hash(
                 observation.title,
                 observation.summary,

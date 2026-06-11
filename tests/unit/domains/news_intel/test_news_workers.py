@@ -104,6 +104,57 @@ def test_news_fetch_worker_fetches_outside_db_session_and_writes_items() -> None
     assert wake_bus.notifications == [{"source_id": "example-rss", "count": 1}]
 
 
+def test_news_fetch_worker_skips_canonical_upsert_for_duplicate_provider_observation() -> None:
+    source = {
+        "source_id": "opennews-news",
+        "provider_type": "opennews",
+        "feed_url": "opennews://news",
+        "source_domain": "6551.io",
+        "source_name": "OpenNews News",
+    }
+    repo = FakeNewsRepository([source])
+    repo.provider_results = [
+        {
+            "provider_item_id": "provider-existing",
+            "provider_article_id": "2367422",
+            "provider_article_key": "opennews:2367422",
+            "status": "duplicate",
+        }
+    ]
+    db = FakeDB(repo)
+    feed = FakeNewsSourceProvider(
+        db,
+        NewsProviderFetchResult(
+            status_code=200,
+            observations=[
+                NewsProviderObservation(
+                    source_item_key="news-2367422",
+                    canonical_url="https://example.com/news/2367422",
+                    title="SpaceX tender offer values company higher",
+                    summary="The article is already stored with the same provider payload.",
+                    body_text="The article is already stored with the same provider payload.",
+                    language="en",
+                    published_at_ms=NOW_MS,
+                    raw_payload={"id": 2367422, "title": "SpaceX tender offer values company higher"},
+                )
+            ],
+        ),
+    )
+    wake_bus = FakeWakeBus()
+    worker = _worker(db=db, feed_client=feed, wake_bus=wake_bus, sources=[source])
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.processed == 0
+    assert repo.provider_items
+    assert repo.news_items == []
+    assert repo.finished_runs[0]["fetched_count"] == 1
+    assert repo.finished_runs[0]["inserted_count"] == 0
+    assert repo.finished_runs[0]["updated_count"] == 0
+    assert repo.finished_runs[0]["duplicate_count"] == 1
+    assert wake_bus.notifications == []
+
+
 def test_news_fetch_worker_treats_not_modified_as_success_without_wake() -> None:
     source = {
         "source_id": "example-rss",
@@ -1539,6 +1590,7 @@ class FakeNewsRepository:
         self.reconciled_sources: list[dict[str, object]] = []
         self.fetch_runs: list[dict[str, object]] = []
         self.provider_items: list[dict[str, object]] = []
+        self.provider_results: list[dict[str, object]] = []
         self.news_items: list[dict[str, object]] = []
         self.finished_runs: list[dict[str, object]] = []
         self.cache_updates: list[dict[str, object]] = []
@@ -1586,6 +1638,8 @@ class FakeNewsRepository:
 
     def upsert_provider_item(self, **payload):
         self.provider_items.append(payload)
+        if self.provider_results:
+            return dict(self.provider_results.pop(0))
         provider_article_id = str(payload["raw_payload"].get("id") or "")
         return {
             "provider_item_id": f"provider-{len(self.provider_items)}",

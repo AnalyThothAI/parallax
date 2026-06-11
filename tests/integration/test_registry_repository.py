@@ -144,6 +144,84 @@ def test_chain_asset_upserts_by_identity_index_when_address_case_differs(tmp_pat
     assert count == 1
 
 
+def test_chain_asset_upsert_repairs_existing_asset_id_when_identity_index_misses(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        registry = RegistryRepository(conn)
+        address = "DQ1WbZKFH6esW7pd4Yrf3SPLf4vTrQnBKbzrmfTQpump"
+        asset_id = f"asset:solana:token:{address}"
+        conn.execute(
+            """
+            INSERT INTO registry_assets(
+              asset_id, project_id, chain_id, token_standard, address, status, first_seen_at_ms, updated_at_ms
+            )
+            VALUES (%s, NULL, 'solana', 'token', %s, 'candidate', %s, %s)
+            """,
+            (asset_id, f"{address} ", 1_778_145_000_000, 1_778_145_000_000),
+        )
+
+        asset = registry.upsert_chain_asset(
+            chain_id="solana",
+            address=address,
+            observed_at_ms=1_778_145_001_000,
+        )
+        stored = conn.execute(
+            "SELECT address, updated_at_ms FROM registry_assets WHERE asset_id = %s",
+            (asset_id,),
+        ).fetchone()
+        count = conn.execute(
+            "SELECT COUNT(*) AS count FROM registry_assets WHERE asset_id = %s",
+            (asset_id,),
+        ).fetchone()["count"]
+    finally:
+        conn.close()
+
+    assert asset["asset_id"] == asset_id
+    assert stored["address"] == address
+    assert stored["updated_at_ms"] == 1_778_145_001_000
+    assert count == 1
+
+
+def test_identity_ensure_asset_repairs_existing_asset_id_when_identity_index_misses(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        identity = IdentityEvidenceRepository(conn)
+        address = "So11111111111111111111111111111111111111112"
+        asset_id = f"asset:solana:token:{address}"
+        conn.execute(
+            """
+            INSERT INTO registry_assets(
+              asset_id, project_id, chain_id, token_standard, address, status, first_seen_at_ms, updated_at_ms
+            )
+            VALUES (%s, NULL, 'solana', 'token', %s, 'candidate', %s, %s)
+            """,
+            (asset_id, f"{address} ", 1_778_145_000_000, 1_778_145_000_000),
+        )
+
+        asset = identity.ensure_asset(
+            chain_id="solana",
+            address=address,
+            observed_at_ms=1_778_145_001_000,
+        )
+        stored = conn.execute(
+            "SELECT address, updated_at_ms FROM registry_assets WHERE asset_id = %s",
+            (asset_id,),
+        ).fetchone()
+        count = conn.execute(
+            "SELECT COUNT(*) AS count FROM registry_assets WHERE asset_id = %s",
+            (asset_id,),
+        ).fetchone()["count"]
+    finally:
+        conn.close()
+
+    assert asset["asset_id"] == asset_id
+    assert stored["address"] == address
+    assert stored["updated_at_ms"] == 1_778_145_001_000
+    assert count == 1
+
+
 def test_registry_repository_writes_and_deactivates_us_equity_symbols(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:

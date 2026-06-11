@@ -269,6 +269,9 @@ NEWS_AGENT_PROVIDER_RATING_GATE_MIGRATION = Path(
 NEWS_PROVIDER_RATING_GATE_FINALIZE_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260609_0176_news_provider_rating_gate_finalize.py"
 )
+NEWS_BRIEF_DUPLICATE_COST_HARD_CUT_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260612_0177_news_brief_duplicate_cost_hard_cut.py"
+)
 TOKEN_PULSE_EQUITY_CPU_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260529_0124_token_pulse_equity_cpu_hard_cut.py"
 )
@@ -2408,6 +2411,42 @@ def test_news_provider_rating_gate_finalize_cleans_race_backlog() -> None:
         'ON CONFLICT (projection_name, target_kind, target_id, "window") DO UPDATE',
         "targets.source_watermark_ms = 0",
         "ANALYZE news_items",
+        "ANALYZE news_projection_dirty_targets",
+    ):
+        assert statement in normalized_text or statement in text
+    assert "def downgrade() -> None:" in text
+    assert "pass" in text.split("def downgrade() -> None:", maxsplit=1)[1]
+
+
+def test_news_brief_duplicate_cost_hard_cut_cleans_retry_backlog() -> None:
+    assert NEWS_BRIEF_DUPLICATE_COST_HARD_CUT_MIGRATION.exists(), (
+        f"{NEWS_BRIEF_DUPLICATE_COST_HARD_CUT_MIGRATION} missing; "
+        "News brief duplicate-cost hard cut must clear stale retry targets"
+    )
+    text = NEWS_BRIEF_DUPLICATE_COST_HARD_CUT_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+
+    for statement in (
+        'revision = "20260612_0177"',
+        'down_revision = "20260609_0176"',
+        "CREATE TEMP TABLE _news_brief_terminal_current_items",
+        "news_item_agent_runs AS runs",
+        "runs.execution_started = true",
+        "runs.status = 'failed'",
+        (
+            "runs.error_class IN ('timeout', 'schema_invalid', 'domain_validation_failed', "
+            "'provider_error', 'transport_error')"
+        ),
+        "INSERT INTO news_item_agent_briefs",
+        "ON CONFLICT (news_item_id) DO UPDATE",
+        "DELETE FROM news_projection_dirty_targets AS targets",
+        "targets.projection_name = 'brief_input'",
+        "briefs.input_hash = targets.payload_hash",
+        "INSERT INTO news_projection_dirty_targets",
+        "'page'",
+        "news_brief_duplicate_cost_hard_cut",
+        "ANALYZE news_item_agent_runs",
+        "ANALYZE news_item_agent_briefs",
         "ANALYZE news_projection_dirty_targets",
     ):
         assert statement in normalized_text or statement in text

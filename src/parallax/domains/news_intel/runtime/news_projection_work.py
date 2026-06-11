@@ -161,10 +161,6 @@ def mark_work_error(
     )
 
 
-def terminalize_work(repos: Any, targets: Iterable[Mapping[str, Any]], **kwargs: Any) -> int:
-    return int(repos.news_projection_dirty_targets.terminalize_targets(targets, **kwargs))
-
-
 def page_news_item_ids(rows: Iterable[Mapping[str, Any]]) -> list[str]:
     return _target_ids(rows, projection_name=PAGE_PROJECTION, target_kind="news_item", require_empty_window=True)
 

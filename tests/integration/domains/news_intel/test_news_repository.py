@@ -21,12 +21,12 @@ from parallax.domains.news_intel._constants import (
 from parallax.domains.news_intel.repositories.news_repository import NewsRepository, news_page_cursor
 from parallax.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
 from parallax.domains.news_intel.services.news_page_projection import build_news_page_row
+from parallax.domains.news_intel.types.news_item_agent_admission import NewsItemAgentAdmission
 from parallax.domains.news_intel.types.news_item_brief import (
     NEWS_ITEM_BRIEF_AGENT_NAME,
     NEWS_ITEM_BRIEF_LANE,
     NEWS_ITEM_BRIEF_WORKFLOW_NAME,
 )
-from parallax.domains.news_intel.types.news_item_agent_admission import NewsItemAgentAdmission
 from parallax.platform.db.postgres_migrations import alembic_config
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
@@ -1619,6 +1619,63 @@ def test_duplicate_observation_edge_returns_updated_for_projection_refresh(tmp_p
 
     assert duplicate_edge_news["status"] == "updated"
     assert repeated_duplicate["status"] == "duplicate"
+
+
+def test_provider_item_same_payload_refetch_is_duplicate_without_timestamp_churn(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        repo.upsert_source(
+            source_id="opennews-news",
+            provider_type="opennews",
+            feed_url="opennews://news",
+            source_domain="6551.io",
+            source_name="OpenNews News",
+            refresh_interval_seconds=10,
+            now_ms=NOW_MS,
+        )
+
+        first_run_id = repo.start_fetch_run(source_id="opennews-news", started_at_ms=NOW_MS)
+        first = repo.upsert_provider_item(
+            source_id="opennews-news",
+            fetch_run_id=first_run_id,
+            source_item_key="news-2367422",
+            canonical_url="https://example.com/news/2367422",
+            payload_hash="payload-same",
+            raw_payload_json={"id": 2367422, "title": "SpaceX tender offer"},
+            fetched_at_ms=NOW_MS,
+            provider_observed_at_ms=NOW_MS,
+        )
+
+        second_run_id = repo.start_fetch_run(source_id="opennews-news", started_at_ms=NOW_MS + 60_000)
+        second = repo.upsert_provider_item(
+            source_id="opennews-news",
+            fetch_run_id=second_run_id,
+            source_item_key="news-2367422",
+            canonical_url="https://example.com/news/2367422",
+            payload_hash="payload-same",
+            raw_payload_json={"id": 2367422, "title": "SpaceX tender offer"},
+            fetched_at_ms=NOW_MS + 60_000,
+            provider_observed_at_ms=NOW_MS + 60_000,
+        )
+        stored = conn.execute(
+            """
+            SELECT fetch_run_id, fetched_at_ms, provider_observed_at_ms
+              FROM news_provider_items
+             WHERE provider_item_id = %s
+            """,
+            (first["provider_item_id"],),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert first["status"] == "inserted"
+    assert second["status"] == "duplicate"
+    assert second["provider_item_id"] == first["provider_item_id"]
+    assert stored["fetch_run_id"] == first_run_id
+    assert stored["fetched_at_ms"] == NOW_MS
+    assert stored["provider_observed_at_ms"] == NOW_MS
 
 
 def test_partial_duplicate_does_not_replace_ready_canonical_representative(tmp_path) -> None:
@@ -3482,7 +3539,7 @@ def test_replace_page_rows_summary_counts_enabled_edges_only(tmp_path) -> None:
     assert row["provider_article_keys_json"] == []
 
 
-def test_news_item_agent_brief_migration_backfills_pending_page_rows(tmp_path) -> None:
+def test_news_item_agent_brief_migration_backfills_pending_then_head_purges_legacy_page_rows(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         conn.execute("DROP SCHEMA IF EXISTS public CASCADE")
@@ -3510,12 +3567,21 @@ def test_news_item_agent_brief_migration_backfills_pending_page_rows(tmp_path) -
             ("row-old-default", news_item_id, NOW_MS, NOW_MS, "news_page_rows_v3"),
         )
         conn.commit()
+        command.upgrade(config, "20260520_0068")
+
+        stored_after_brief_migration = conn.execute(
+            """
+            SELECT agent_status, agent_brief_computed_at_ms, agent_brief_json, projection_version
+              FROM news_page_rows
+             WHERE row_id = 'row-old-default'
+            """
+        ).fetchone()
         command.upgrade(config, "head")
 
         repo = NewsRepository(conn)
-        stored = conn.execute(
+        stored_after_head = conn.execute(
             """
-            SELECT agent_status, agent_brief_computed_at_ms, agent_brief_json, projection_version
+            SELECT row_id
               FROM news_page_rows
              WHERE row_id = 'row-old-default'
             """
@@ -3524,12 +3590,13 @@ def test_news_item_agent_brief_migration_backfills_pending_page_rows(tmp_path) -
     finally:
         conn.close()
 
-    assert dict(stored) == {
+    assert dict(stored_after_brief_migration) == {
         "agent_status": "pending",
         "agent_brief_computed_at_ms": None,
         "agent_brief_json": {"status": "pending"},
         "projection_version": "news_page_rows_v3",
     }
+    assert stored_after_head is None
     assert rows == []
 
 
@@ -4736,8 +4803,7 @@ def test_updating_news_item_clears_stale_item_facts_and_refreshes_page_projectio
     assert fact_count == 0
     assert status == "raw"
     assert page_result.processed == 1
-    assert refreshed_page["token_lanes_json"] == []
-    assert refreshed_page["fact_lanes_json"] == []
+    assert refreshed_page is None
 
 
 def test_update_item_content_classification_persists_materialized_fields(tmp_path) -> None:

@@ -16,7 +16,6 @@ from parallax.domains.news_intel.runtime.news_projection_work import (
     mark_work_done,
     mark_work_error,
     queue_item_brief_depth,
-    terminalize_work,
 )
 from parallax.domains.news_intel.services.news_item_agent_admission import (
     decide_news_item_agent_admission,
@@ -181,13 +180,31 @@ class NewsItemBriefWorker(WorkerBase):
                             current_updates=1,
                         )
                     else:
-                        outcome = await self._process_candidate(
-                            candidate=candidate,
+                        invalid_completed_run = _invalid_completed_run(
+                            candidate,
                             packet=packet,
                             agent_config=agent_config,
-                            now_ms=now,
-                            reservation=reservation,
                         )
+                        if invalid_completed_run is not None:
+                            outcome = await self._record_invalid_completed_run(
+                                run=_dict(invalid_completed_run.get("run")),
+                                packet=packet,
+                                agent_config=agent_config,
+                                errors=_list_of_dicts(invalid_completed_run.get("errors")),
+                                now_ms=now,
+                            )
+                        else:
+                            failed_run = _fresh_failed_run(candidate, packet=packet, agent_config=agent_config)
+                            if failed_run is not None:
+                                outcome = _failed_run_outcome(failed_run)
+                            else:
+                                outcome = await self._process_candidate(
+                                    candidate=candidate,
+                                    packet=packet,
+                                    agent_config=agent_config,
+                                    now_ms=now,
+                                    reservation=reservation,
+                                )
                 except Exception as exc:
                     notes["failed"] += 1
                     await asyncio.to_thread(
@@ -215,6 +232,8 @@ class NewsItemBriefWorker(WorkerBase):
             failed = max(0, int(notes["failed"]) - int(notes["validation_failed"]))
             processed = int(notes["ready"]) + int(notes["insufficient"])
             skipped += int(notes["backpressure"])
+            skipped += int(notes.get("restored_from_failed_run", 0))
+            skipped += int(notes.get("invalid_completed_run", 0))
             return WorkerResult(processed=processed, failed=failed, skipped=skipped, notes=notes)
         finally:
             await _release_reservation(reservation)
@@ -284,12 +303,9 @@ class NewsItemBriefWorker(WorkerBase):
             return _CandidateOutcome(
                 notes={"failed": 1, "validation_failed": 1},
                 current_updates=0,
-                retry_ms=self._retry_ms(),
                 retry_reason="domain_validation_failed",
-                retry_attempt_limited=True,
-                retry_counts_attempt=True,
-                terminal_run_id=run_id,
-                terminal_errors=validation.errors,
+                failed_current_run_id=run_id,
+                failed_current_errors=validation.errors,
             )
 
         payload_dict = validation.payload or {}
@@ -321,6 +337,55 @@ class NewsItemBriefWorker(WorkerBase):
         )
         status = str(validation.status)
         return _CandidateOutcome(notes={status: 1}, current_updates=1)
+
+    async def _record_invalid_completed_run(
+        self,
+        *,
+        run: Mapping[str, Any],
+        packet: NewsItemBriefInputPacket,
+        agent_config: NewsItemBriefAgentConfig,
+        errors: list[dict[str, str]],
+        now_ms: int,
+    ) -> _CandidateOutcome:
+        run_id = self.run_id_factory()
+        audit = _invalid_completed_run_audit(
+            run_id=run_id,
+            source_run=run,
+            packet=packet,
+            agent_config=agent_config,
+        )
+        response_json = _dict(run.get("response_json"))
+        await asyncio.to_thread(
+            self._insert_run,
+            run_id=run_id,
+            packet=packet,
+            agent_config=agent_config,
+            audit=audit,
+            started_at_ms=now_ms,
+            finished_at_ms=now_ms,
+            status="failed",
+            outcome="failed",
+            error_class="domain_validation_failed",
+            error="stored completed news item brief failed current validation",
+            request_json={
+                "packet": packet.model_dump(mode="json"),
+                "audit": audit,
+                "source_run_id": str(run.get("run_id") or ""),
+                "reason": "invalid_completed_run",
+            },
+            response_json=response_json,
+            validation_errors=errors,
+            execution_started=False,
+            output_hash=_output_hash(response_json),
+        )
+        return _CandidateOutcome(
+            notes={"failed": 1, "validation_failed": 1, "invalid_completed_run": 1},
+            current_updates=0,
+            retry_reason="domain_validation_failed",
+            retry_counts_attempt=False,
+            failed_current_run_id=run_id,
+            failed_current_errors=errors,
+        )
 
     async def _record_provider_failure(
         self,
@@ -357,15 +422,13 @@ class NewsItemBriefWorker(WorkerBase):
             validation_errors=[],
             execution_started=resolved_execution_started,
         )
+        error_class = _provider_error_class(error)
         return _CandidateOutcome(
             notes={"failed": 1},
             current_updates=0,
-            retry_ms=self._retry_ms(),
-            retry_reason=_provider_error_class(error),
-            retry_attempt_limited=resolved_execution_started,
-            retry_counts_attempt=resolved_execution_started,
-            terminal_run_id=run_id,
-            terminal_errors=[{"code": _provider_error_class(error), "message": str(error)[:500]}],
+            retry_reason=error_class,
+            failed_current_run_id=run_id,
+            failed_current_errors=[{"code": error_class, "message": str(error)[:500]}],
         )
 
     async def _record_execute_backpressure(
@@ -488,56 +551,25 @@ class NewsItemBriefWorker(WorkerBase):
         agent_config: NewsItemBriefAgentConfig,
         now_ms: int,
     ) -> None:
-        if outcome.force_terminal:
-            terminalized_count = self._terminalize_claimed_target(
-                target,
-                outcome=outcome,
-                packet=packet,
-                now_ms=now_ms,
-                terminal_attempt_count=max(1, int(target.get("attempt_count") or 0)),
-            )
-            if terminalized_count > 0 and outcome.terminal_run_id and outcome.terminal_errors:
-                self._upsert_terminal_failed_current(
-                    run_id=outcome.terminal_run_id,
+        if outcome.retry_ms is None:
+            if outcome.failed_current_run_id and outcome.failed_current_errors:
+                self._upsert_failed_current(
+                    run_id=outcome.failed_current_run_id,
                     packet=packet,
                     agent_config=agent_config,
-                    errors=outcome.terminal_errors,
+                    errors=outcome.failed_current_errors,
                     terminal_reason=outcome.retry_reason,
                     computed_at_ms=now_ms,
                 )
-            return
-        if outcome.retry_ms is None:
             self._mark_targets_done([target], now_ms=now_ms)
             return
-        attempted_now = 1 if outcome.retry_counts_attempt else 0
-        attempt_after_failure = int(target.get("attempt_count") or 0) + attempted_now
-        if not outcome.retry_attempt_limited or attempt_after_failure < self._max_attempts():
-            self._mark_targets_error(
-                [target],
-                error=outcome.retry_reason,
-                retry_ms=outcome.retry_ms,
-                now_ms=now_ms,
-                count_attempt=outcome.retry_counts_attempt,
-            )
-            return
-        terminalized_count = self._terminalize_claimed_target(
-            target,
-            outcome=outcome,
-            packet=packet,
+        self._mark_targets_error(
+            [target],
+            error=outcome.retry_reason,
+            retry_ms=outcome.retry_ms,
             now_ms=now_ms,
-            terminal_attempt_count=attempt_after_failure,
+            count_attempt=outcome.retry_counts_attempt,
         )
-        if terminalized_count <= 0:
-            return
-        if outcome.terminal_run_id and outcome.terminal_errors:
-            self._upsert_terminal_failed_current(
-                run_id=outcome.terminal_run_id,
-                packet=packet,
-                agent_config=agent_config,
-                errors=outcome.terminal_errors,
-                terminal_reason=outcome.retry_reason,
-                computed_at_ms=now_ms,
-            )
 
     def _mark_targets_done(self, targets: Iterable[Mapping[str, Any]], *, now_ms: int) -> None:
         with self._repository_session() as repos:
@@ -560,27 +592,6 @@ class NewsItemBriefWorker(WorkerBase):
                 retry_ms=retry_ms,
                 now_ms=now_ms,
                 count_attempt=count_attempt,
-            )
-
-    def _terminalize_claimed_target(
-        self,
-        target: Mapping[str, Any],
-        *,
-        outcome: _CandidateOutcome,
-        packet: NewsItemBriefInputPacket,
-        now_ms: int,
-        terminal_attempt_count: int | None = None,
-    ) -> int:
-        with self._repository_session() as repos:
-            return terminalize_work(
-                repos,
-                [target],
-                worker_name=self.name,
-                final_reason=outcome.retry_reason,
-                final_reason_bucket=outcome.retry_reason,
-                now_ms=now_ms,
-                semantic_payload_hash=packet.input_hash,
-                terminal_attempt_count=terminal_attempt_count,
             )
 
     def _insert_run(
@@ -691,7 +702,7 @@ class NewsItemBriefWorker(WorkerBase):
             computed_at_ms=computed_at_ms,
         )
 
-    def _upsert_terminal_failed_current(
+    def _upsert_failed_current(
         self,
         *,
         run_id: str,
@@ -718,9 +729,6 @@ class NewsItemBriefWorker(WorkerBase):
     def _batch_size(self) -> int:
         return max(1, int(getattr(self.settings, "batch_size", 5)))
 
-    def _max_attempts(self) -> int:
-        return max(1, int(getattr(self.settings, "max_attempts", 3)))
-
     def _lease_ms(self) -> int:
         return max(1, int(getattr(self.settings, "lease_ms", 120_000)))
 
@@ -739,21 +747,17 @@ class _CandidateOutcome:
         current_updates: int,
         retry_ms: int | None = None,
         retry_reason: str = "",
-        retry_attempt_limited: bool = False,
         retry_counts_attempt: bool = True,
-        force_terminal: bool = False,
-        terminal_run_id: str = "",
-        terminal_errors: list[dict[str, str]] | None = None,
+        failed_current_run_id: str = "",
+        failed_current_errors: list[dict[str, str]] | None = None,
     ) -> None:
         self.notes = dict(notes)
         self.current_updates = int(current_updates)
         self.retry_ms = int(retry_ms) if retry_ms is not None else None
         self.retry_reason = retry_reason or "agent_brief_retry"
-        self.retry_attempt_limited = bool(retry_attempt_limited)
         self.retry_counts_attempt = bool(retry_counts_attempt)
-        self.force_terminal = bool(force_terminal)
-        self.terminal_run_id = str(terminal_run_id or "")
-        self.terminal_errors = list(terminal_errors or [])
+        self.failed_current_run_id = str(failed_current_run_id or "")
+        self.failed_current_errors = list(failed_current_errors or [])
 
 
 def _packet_from_candidate(
@@ -780,8 +784,6 @@ def _current_brief_is_fresh(
     if current is None:
         return False
     status = str(current.get("status") or "")
-    if status == "failed":
-        return False
     if status not in {"ready", "insufficient", "failed"}:
         return False
     if str(current.get("input_hash") or "") != packet.input_hash:
@@ -796,6 +798,88 @@ def _current_brief_is_fresh(
 
 
 def _fresh_completed_run(
+    candidate: Mapping[str, Any],
+    *,
+    packet: NewsItemBriefInputPacket,
+    agent_config: NewsItemBriefAgentConfig,
+) -> dict[str, Any] | None:
+    completed = _completed_run_validation(candidate, packet=packet, agent_config=agent_config)
+    if completed is None:
+        return None
+    run = _dict(completed.get("run"))
+    validation = completed.get("validation")
+    outcome = str(run.get("outcome") or "")
+    if getattr(validation, "publishable", False) and str(getattr(validation, "status", "")) == outcome:
+        return run
+    return None
+
+
+def _invalid_completed_run(
+    candidate: Mapping[str, Any],
+    *,
+    packet: NewsItemBriefInputPacket,
+    agent_config: NewsItemBriefAgentConfig,
+) -> dict[str, Any] | None:
+    completed = _completed_run_validation(candidate, packet=packet, agent_config=agent_config)
+    if completed is None:
+        return None
+    run = _dict(completed.get("run"))
+    validation = completed.get("validation")
+    outcome = str(run.get("outcome") or "")
+    if getattr(validation, "publishable", False) and str(getattr(validation, "status", "")) == outcome:
+        return None
+    errors = _list_of_dicts(getattr(validation, "errors", []))
+    if not errors:
+        errors = [
+            {
+                "code": "completed_run_outcome_mismatch",
+                "message": "completed news item agent run response status does not match its recorded outcome",
+            }
+        ]
+    return {"run": run, "errors": errors}
+
+
+def _fresh_failed_run(
+    candidate: Mapping[str, Any],
+    *,
+    packet: NewsItemBriefInputPacket,
+    agent_config: NewsItemBriefAgentConfig,
+) -> dict[str, Any] | None:
+    run = _optional_dict(candidate.get("latest_run"))
+    if run is None:
+        return None
+    if str(run.get("status") or "") != "failed" or str(run.get("outcome") or "") != "failed":
+        return None
+    if not bool(run.get("execution_started")):
+        return None
+    if str(run.get("input_hash") or "") != packet.input_hash:
+        return None
+    if str(run.get("artifact_version_hash") or "") != agent_config.artifact_version_hash:
+        return None
+    if str(run.get("prompt_version") or "") != agent_config.prompt_version:
+        return None
+    if str(run.get("schema_version") or "") != agent_config.schema_version:
+        return None
+    if str(run.get("validator_version") or "") != agent_config.validator_version:
+        return None
+    if not str(run.get("run_id") or ""):
+        return None
+    return run
+
+
+def _failed_run_outcome(run: Mapping[str, Any]) -> _CandidateOutcome:
+    error_class = str(run.get("error_class") or "agent_brief_failed")
+    error = str(run.get("error") or error_class)
+    return _CandidateOutcome(
+        notes={"restored_from_failed_run": 1},
+        current_updates=0,
+        retry_reason=error_class,
+        failed_current_run_id=str(run.get("run_id") or ""),
+        failed_current_errors=[{"code": error_class, "message": error[:500]}],
+    )
+
+
+def _completed_run_validation(
     candidate: Mapping[str, Any],
     *,
     packet: NewsItemBriefInputPacket,
@@ -822,11 +906,10 @@ def _fresh_completed_run(
     payload = _optional_dict(run.get("response_json"))
     if payload is None:
         return None
-    if str(payload.get("status") or "") != outcome:
-        return None
     if not str(run.get("run_id") or ""):
         return None
-    return run
+    validation = validate_news_item_brief_output(payload=payload, packet=packet, audit=run)
+    return {"run": run, "validation": validation}
 
 
 def _admission_from_candidate(candidate: Mapping[str, Any], *, now_ms: int) -> NewsItemAgentAdmission:
@@ -885,6 +968,37 @@ def _request_json(*, packet: NewsItemBriefInputPacket, audit: Mapping[str, Any])
     return {
         "packet": packet.model_dump(mode="json"),
         "audit": dict(audit),
+    }
+
+
+def _invalid_completed_run_audit(
+    *,
+    run_id: str,
+    source_run: Mapping[str, Any],
+    packet: NewsItemBriefInputPacket,
+    agent_config: NewsItemBriefAgentConfig,
+) -> dict[str, Any]:
+    source_run_id = str(source_run.get("run_id") or "")
+    return {
+        "provider": str(source_run.get("provider") or "deterministic"),
+        "backend": "deterministic_validation",
+        "model": str(source_run.get("model") or agent_config.model),
+        "lane": agent_config.lane,
+        "workflow_name": agent_config.workflow_name,
+        "agent_name": agent_config.agent_name,
+        "prompt_version": agent_config.prompt_version,
+        "schema_version": agent_config.schema_version,
+        "artifact_version_hash": agent_config.artifact_version_hash,
+        "input_hash": packet.input_hash,
+        "output_hash": _output_hash(source_run.get("response_json")),
+        "usage": {},
+        "latency_ms": 0,
+        "trace_metadata": {
+            "run_id": run_id,
+            "news_item_id": packet.news_item.news_item_id,
+            "source_run_id": source_run_id,
+            "deterministic_policy": "invalid_completed_run",
+        },
     }
 
 

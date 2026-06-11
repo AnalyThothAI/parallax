@@ -41,8 +41,8 @@ def test_worker_restores_current_from_completed_run_without_second_model_call() 
     asyncio.run(_test_worker_restores_current_from_completed_run_without_second_model_call())
 
 
-def test_worker_reprocesses_failed_current_even_when_input_hash_matches() -> None:
-    asyncio.run(_test_worker_reprocesses_failed_current_even_when_input_hash_matches())
+def test_worker_skips_failed_current_when_input_hash_matches() -> None:
+    asyncio.run(_test_worker_skips_failed_current_when_input_hash_matches())
 
 
 def test_worker_policy_skips_claimed_target_with_low_provider_rating() -> None:
@@ -210,7 +210,7 @@ async def _test_worker_restores_current_from_completed_run_without_second_model_
     assert result.notes["restored_from_completed_run"] == 1
 
 
-async def _test_worker_reprocesses_failed_current_even_when_input_hash_matches() -> None:
+async def _test_worker_skips_failed_current_when_input_hash_matches() -> None:
     candidate = _candidate()
     provider = FakeBriefProvider(payload=_ready_payload())
     packet = provider.packet_for_candidate(candidate)
@@ -234,12 +234,98 @@ async def _test_worker_reprocesses_failed_current_even_when_input_hash_matches()
 
     result = await worker.run_once()
 
-    assert provider.request_audit_calls
-    assert provider.execution_calls == 1
-    assert db.news.runs[0]["status"] == "completed"
-    assert db.news.briefs[0]["status"] == "ready"
+    assert provider.request_audit_calls == []
+    assert provider.execution_calls == 0
+    assert db.news.runs == []
+    assert db.news.briefs == []
     assert len(db.dirty.done) == 1
-    assert result.processed == 1
+    assert result.processed == 0
+    assert result.skipped == 1
+
+
+def test_worker_revalidates_completed_run_before_restoring_current() -> None:
+    asyncio.run(_test_worker_revalidates_completed_run_before_restoring_current())
+
+
+async def _test_worker_revalidates_completed_run_before_restoring_current() -> None:
+    candidate = _candidate()
+    provider = FakeBriefProvider(payload=_ready_payload())
+    packet = provider.packet_for_candidate(candidate)
+    agent_config = provider.agent_config()
+    invalid_ready_payload = _ready_payload()
+    invalid_ready_payload["summary_zh"] = ""
+    invalid_ready_payload["market_read_zh"] = ""
+    candidate["latest_run"] = {
+        "run_id": "run-existing-invalid-ready",
+        "news_item_id": candidate["item"]["news_item_id"],
+        "status": "completed",
+        "outcome": "ready",
+        "execution_started": True,
+        "input_hash": packet.input_hash,
+        "artifact_version_hash": provider.artifact_version_hash,
+        "prompt_version": packet.prompt_version,
+        "schema_version": packet.schema_version,
+        "validator_version": agent_config.validator_version,
+        "finished_at_ms": NOW_MS - 30_000,
+        "response_json": invalid_ready_payload,
+    }
+    db = FakeDB([candidate])
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert provider.request_audit_calls == []
+    assert provider.execution_calls == 0
+    assert db.news.runs[0]["status"] == "failed"
+    assert db.news.runs[0]["error_class"] == "domain_validation_failed"
+    assert db.news.runs[0]["execution_started"] is False
+    assert db.news.briefs[0]["agent_run_id"] == db.news.runs[0]["run_id"]
+    assert db.news.briefs[0]["status"] == "failed"
+    assert len(db.dirty.done) == 1
+    assert result.processed == 0
+    assert result.notes["invalid_completed_run"] == 1
+
+
+def test_worker_restores_failed_current_from_started_failed_run_without_second_model_call() -> None:
+    asyncio.run(_test_worker_restores_failed_current_from_started_failed_run_without_second_model_call())
+
+
+async def _test_worker_restores_failed_current_from_started_failed_run_without_second_model_call() -> None:
+    candidate = _candidate()
+    provider = FakeBriefProvider(payload=_ready_payload())
+    packet = provider.packet_for_candidate(candidate)
+    agent_config = provider.agent_config()
+    candidate["latest_run"] = {
+        "run_id": "run-existing-timeout",
+        "news_item_id": candidate["item"]["news_item_id"],
+        "status": "failed",
+        "outcome": "failed",
+        "error_class": "timeout",
+        "error": "model timed out",
+        "execution_started": True,
+        "input_hash": packet.input_hash,
+        "artifact_version_hash": provider.artifact_version_hash,
+        "prompt_version": packet.prompt_version,
+        "schema_version": packet.schema_version,
+        "validator_version": agent_config.validator_version,
+        "finished_at_ms": NOW_MS - 30_000,
+    }
+    db = FakeDB([candidate])
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert provider.request_audit_calls == []
+    assert provider.execution_calls == 0
+    assert db.news.runs == []
+    assert db.news.briefs[0]["agent_run_id"] == "run-existing-timeout"
+    assert db.news.briefs[0]["status"] == "failed"
+    assert db.news.briefs[0]["input_hash"] == packet.input_hash
+    assert len(db.dirty.done) == 1
+    assert db.dirty.errors == []
+    assert result.processed == 0
+    assert result.skipped == 1
+    assert result.notes["restored_from_failed_run"] == 1
 
 
 async def _test_worker_policy_skips_claimed_target_with_low_provider_rating() -> None:
@@ -505,13 +591,16 @@ async def _test_worker_provider_error_releases_acquired_reservation() -> None:
     assert result.failed == 1
 
 
-def test_worker_validation_failure_requeues_without_terminal_current() -> None:
-    asyncio.run(_test_worker_validation_failure_requeues_without_terminal_current())
+def test_worker_validation_failure_writes_failed_current_without_retry_or_terminal_event() -> None:
+    asyncio.run(_test_worker_validation_failure_writes_failed_current_without_retry_or_terminal_event())
 
 
-async def _test_worker_validation_failure_requeues_without_terminal_current() -> None:
+async def _test_worker_validation_failure_writes_failed_current_without_retry_or_terminal_event() -> None:
     db = FakeDB([_candidate()])
-    provider = FakeBriefProvider(payload={"status": "ready"})
+    invalid_ready_payload = _ready_payload()
+    invalid_ready_payload["summary_zh"] = ""
+    invalid_ready_payload["market_read_zh"] = ""
+    provider = FakeBriefProvider(payload=invalid_ready_payload)
     wake_bus = FakeWakeBus()
     worker = _worker(db=db, provider=provider, wake_bus=wake_bus)
 
@@ -520,34 +609,32 @@ async def _test_worker_validation_failure_requeues_without_terminal_current() ->
     assert provider.execution_calls == 1
     assert db.news.runs[0]["status"] == "failed"
     assert db.news.runs[0]["outcome"] == "failed"
-    assert db.news.runs[0]["validation_errors_json"][0]["code"] == "schema_invalid"
-    assert len(db.dirty.errors) == 1
-    assert db.dirty.error_kwargs[-1]["count_attempt"] is True
-    assert db.dirty.terminalized == []
-    assert db.news.briefs == []
+    assert db.news.runs[0]["validation_errors_json"][0]["code"] == "missing_publishable_text"
+    assert db.dirty.errors == []
+    assert len(db.dirty.done) == 1
+    assert db.news.briefs[0]["status"] == "failed"
+    assert db.news.briefs[0]["agent_run_id"] == db.news.runs[0]["run_id"]
     assert wake_bus.brief_updates == []
     assert result.failed == 0
     assert result.notes["validation_failed"] == 1
     assert result.notes["ready"] == 0
 
 
-def test_worker_terminalizes_after_max_attempts_without_permanent_dirty_failure() -> None:
-    asyncio.run(_test_worker_terminalizes_after_max_attempts_without_permanent_dirty_failure())
+def test_worker_provider_failure_writes_failed_current_without_retry_after_prior_attempts() -> None:
+    asyncio.run(_test_worker_provider_failure_writes_failed_current_without_retry_after_prior_attempts())
 
 
-async def _test_worker_terminalizes_after_max_attempts_without_permanent_dirty_failure() -> None:
+async def _test_worker_provider_failure_writes_failed_current_without_retry_after_prior_attempts() -> None:
     target = _dirty_target(attempt_count=2)
     db = FakeDB([_candidate()], targets=[target])
     provider = FakeBriefProvider(brief_error=RuntimeError("provider bad output"))
-    worker = _worker(db=db, provider=provider, settings=SimpleNamespace(batch_size=1, max_attempts=3))
+    worker = _worker(db=db, provider=provider, settings=SimpleNamespace(batch_size=1))
 
     result = await worker.run_once()
 
     assert provider.execution_calls == 1
     assert db.dirty.errors == []
-    assert len(db.dirty.terminalized) == 1
-    assert db.dirty.terminalized[0]["terminal_attempt_count"] == 3
-    assert db.dirty.done == []
+    assert len(db.dirty.done) == 1
     assert db.news.briefs[0]["status"] == "failed"
     assert "terminal" not in db.news.briefs[0]["brief_json"]
     assert "终态原因：RuntimeError" in db.news.briefs[0]["brief_json"]["data_gaps"][0]["description_zh"]
@@ -555,23 +642,23 @@ async def _test_worker_terminalizes_after_max_attempts_without_permanent_dirty_f
     assert result.failed == 1
 
 
-def test_worker_skips_terminal_current_when_terminalize_claim_is_stale() -> None:
-    asyncio.run(_test_worker_skips_terminal_current_when_terminalize_claim_is_stale())
+def test_worker_provider_failure_hard_cuts_dirty_target_without_terminal_claim() -> None:
+    asyncio.run(_test_worker_provider_failure_hard_cuts_dirty_target_without_terminal_claim())
 
 
-async def _test_worker_skips_terminal_current_when_terminalize_claim_is_stale() -> None:
+async def _test_worker_provider_failure_hard_cuts_dirty_target_without_terminal_claim() -> None:
     target = _dirty_target(attempt_count=2)
-    db = FakeDB([_candidate()], targets=[target], terminalize_return_count=0)
+    db = FakeDB([_candidate()], targets=[target])
     provider = FakeBriefProvider(brief_error=RuntimeError("provider bad output"))
-    worker = _worker(db=db, provider=provider, settings=SimpleNamespace(batch_size=1, max_attempts=3))
+    worker = _worker(db=db, provider=provider, settings=SimpleNamespace(batch_size=1))
 
     result = await worker.run_once()
 
     assert provider.execution_calls == 1
     assert db.dirty.errors == []
-    assert len(db.dirty.terminalized) == 1
-    assert db.dirty.terminalized[0]["terminal_attempt_count"] == 3
-    assert db.news.briefs == []
+    assert len(db.dirty.done) == 1
+    assert db.news.briefs[0]["agent_run_id"] == db.news.runs[0]["run_id"]
+    assert db.news.briefs[0]["input_hash"] == db.news.runs[0]["input_hash"]
     assert result.failed == 1
 
 
@@ -585,7 +672,6 @@ def _worker(
     provider.db = db
     resolved_settings = SimpleNamespace(
         batch_size=5,
-        max_attempts=3,
         backpressure_cooldown_ms=60_000,
         statement_timeout_seconds=30,
     )
@@ -1020,7 +1106,6 @@ class FakeDB:
         candidates: list[dict[str, Any]],
         *,
         targets: list[dict[str, Any]] | None = None,
-        terminalize_return_count: int | None = None,
     ) -> None:
         self.news = FakeNewsRepository(candidates)
         self.conn = FakeConn()
@@ -1042,7 +1127,6 @@ class FakeDB:
         )
         self.dirty = FakeDirtyRepository(
             resolved_targets,
-            terminalize_return_count=terminalize_return_count,
         )
         self.in_session = False
 
@@ -1113,15 +1197,11 @@ class FakeDirtyRepository:
     def __init__(
         self,
         targets: list[dict[str, Any]] | None = None,
-        *,
-        terminalize_return_count: int | None = None,
     ) -> None:
         self.targets = [dict(target) for target in targets or []]
-        self.terminalize_return_count = terminalize_return_count
         self.enqueued: list[dict[str, Any]] = []
         self.done: list[dict[str, Any]] = []
         self.errors: list[dict[str, Any]] = []
-        self.terminalized: list[dict[str, Any]] = []
         self.error_kwargs: list[dict[str, Any]] = []
         self.claim_thread_ids: list[int] = []
 
@@ -1145,12 +1225,6 @@ class FakeDirtyRepository:
     def mark_error(self, keys: list[dict[str, Any]], **kwargs: Any) -> int:
         self.errors.extend(dict(key) for key in keys)
         self.error_kwargs.append(dict(kwargs))
-        return len(keys)
-
-    def terminalize_targets(self, keys: list[dict[str, Any]], **kwargs: Any) -> int:
-        self.terminalized.append({"keys": [dict(key) for key in keys], **dict(kwargs)})
-        if self.terminalize_return_count is not None:
-            return self.terminalize_return_count
         return len(keys)
 
     def enqueue_targets(self, rows: list[dict[str, Any]], *, reason: str, now_ms: int, commit: bool = True) -> int:

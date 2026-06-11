@@ -59,6 +59,7 @@ def validate_news_item_brief_output(
     payload_dict = _drop_unsupported_market_impacts(payload_dict, packet=packet)
     errors.extend(_evidence_ref_errors(payload_dict, packet=packet))
     errors.extend(_ready_evidence_errors(payload_dict, packet=packet))
+    errors.extend(_ready_publishable_text_errors(payload_dict))
     errors.extend(_unsupported_entity_errors(payload_dict, packet=packet))
     errors.extend(_trading_instruction_errors(payload_dict))
     try:
@@ -101,6 +102,14 @@ def _ready_evidence_errors(payload: dict[str, Any], *, packet: NewsItemBriefInpu
     if any(ref in allowed for ref in _evidence_refs_in_payload(payload)):
         return []
     return [_error("missing_ready_evidence_ref", "ready output requires at least one valid evidence ref")]
+
+
+def _ready_publishable_text_errors(payload: dict[str, Any]) -> list[dict[str, str]]:
+    if payload.get("status") != "ready":
+        return []
+    if str(payload.get("summary_zh") or "").strip() or str(payload.get("market_read_zh") or "").strip():
+        return []
+    return [_error("missing_publishable_text", "ready output requires summary_zh or market_read_zh")]
 
 
 def _drop_unsupported_market_impacts(payload: dict[str, Any], *, packet: NewsItemBriefInputPacket) -> dict[str, Any]:
