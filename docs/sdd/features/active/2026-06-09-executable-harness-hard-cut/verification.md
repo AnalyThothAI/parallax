@@ -197,6 +197,7 @@ claim is allowed without the corresponding output captured below.
 | AC178 — Agent execution docs name live read-only tool contract. | ✅ | `uv run pytest tests/architecture/test_agent_execution_plane_contracts.py::test_agent_execution_doc_names_current_read_tool_contract -q` failed RED when `docs/AGENT_EXECUTION.md` still documented stale `AgentReadTool`, then passed after updating the docs to name the live `ReadOnlySqlAgentTool` source contract. |
 | AC179 — Active SDD current paths exclude removed files. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_missing_current_file_and_touch_paths tests/architecture/test_sdd_artifact_validator.py::test_tasks_allow_removed_file_records_outside_current_touch_surface tests/architecture/test_sdd_artifact_validator.py::test_tasks_allow_current_glob_touch_paths_when_they_match -q` failed RED when active task `File(s)`/`Touch set` paths could advertise missing files and matching glob paths were treated as missing, then passed after adding current path/glob validation, optional `Removed file(s)`, and moving deleted Task61/Task115 paths out of current touch scope. |
 | AC180 — SDD lifecycle gates have first-class CLI checks. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_individual_gates tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_failed_analyze_gate -q` failed RED when no per-gate CLI existed, then passed after adding `scripts/check_sdd_gate.py`, documenting `clarify/checklist/analyze/implement` commands, and binding Analyze failures to gate result cells rather than historical RED/GREEN prose. |
+| AC181 — Tasks do not duplicate final verification evidence. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_final_verification_checklist_duplication tests/architecture/test_agent_playbook_contracts.py::test_tasks_template_does_not_duplicate_final_verification_surface -q` failed RED when task artifacts and the tasks template still allowed `## Final verification`, then passed after adding `tasks-final-verification-duplicated` and removing the duplicate section. |
 
 Deviations from spec:
 
@@ -3600,6 +3601,52 @@ exit code: 0
 $ uv run python scripts/check_sdd_gate.py --feature 2026-06-09-executable-harness-hard-cut --gate implement --check
 implement gate passed: 2026-06-09-executable-harness-hard-cut
 exit code: 0
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_final_verification_checklist_duplication tests/architecture/test_agent_playbook_contracts.py::test_tasks_template_does_not_duplicate_final_verification_surface -q
+FF                                                                       [100%]
+AssertionError: assert 'tasks-final-verification-duplicated' in set()
+AssertionError: assert '## Final verification' not in text
+exit code: 1
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_final_verification_checklist_duplication tests/architecture/test_agent_playbook_contracts.py::test_tasks_template_does_not_duplicate_final_verification_surface -q
+..                                                                       [100%]
+2 passed in 0.03s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_final_verification_checklist_duplication tests/architecture/test_agent_playbook_contracts.py::test_tasks_template_does_not_duplicate_final_verification_surface -q
+..                                                                       [100%]
+2 passed in 0.02s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py -q
+...................................................................F.... [ 96%]
+...                                                                      [100%]
+AssertionError: assert 'make check-all' in tasks-template.md
+exit code: 1
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py -q
+........................................................................ [ 96%]
+...                                                                      [100%]
+75 passed in 4.52s
+exit code: 0
+
+$ uv run python scripts/validate_sdd_artifacts.py --check
+SDD artifact validation passed.
+exit code: 0
+
+$ uv run python scripts/regen_sdd_work_index.py --check
+exit code: 0
+
+$ uv run ruff check scripts/validate_sdd_artifacts.py scripts/regen_sdd_work_index.py tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py
+All checks passed!
+exit code: 0
+
+$ git diff --check
+exit code: 0
+
+$ if rg -n '^## Final verification\s*$' docs/sdd/features/active docs/sdd/_templates/tasks-template.md; then exit 1; else echo 'no active task/template final-verification headings'; fi
+no active task/template final-verification headings
+exit code: 0
 ```
 
 ## Diff summary
@@ -3614,6 +3661,7 @@ Files changed:
 - Agent execution docs/source alignment: `docs/AGENT_EXECUTION.md`, `tests/architecture/test_agent_execution_plane_contracts.py`.
 - Active SDD current-path hard cut: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/_templates/tasks-template.md`.
 - First-class SDD gate checks: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`.
+- Tasks final-verification duplication hard cut: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/_templates/tasks-template.md`.
 - Mechanical frontend Prettier drift cleanup: macro pages, macro component test, `web/vite.config.ts`.
 
 Migrations applied:

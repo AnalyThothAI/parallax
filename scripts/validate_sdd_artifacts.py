@@ -22,6 +22,7 @@ STATUS_RE = re.compile(r"^\s*(?:\*\*)?Status(?:\*\*)?\s*:\s*(.+?)\s*$", re.IGNOR
 FIELD_RE = re.compile(r"^\s*\*\*(?P<name>[^*]+)\*\*\s*:\s*(?P<value>.+?)\s*$")
 TASK_RE = re.compile(r"^###\s+Task\b", re.IGNORECASE | re.MULTILINE)
 TASK_FIELD_RE = re.compile(r"^\s*-\s+\*\*(?P<name>[^*]+)\*\*\s*:\s*(?P<value>.*)$", re.MULTILINE)
+TASKS_FINAL_VERIFICATION_HEADING_RE = re.compile(r"^##\s+Final verification\s*$", re.IGNORECASE | re.MULTILINE)
 TEST_REFERENCE_RE = re.compile(r"(?P<path>(?:tests|web/tests)/[A-Za-z0-9._/\-]+\.(?:py|ts|tsx))(?:::[A-Za-z0-9_]+)?")
 FENCED_BLOCK_RE = re.compile(r"```(?:[A-Za-z0-9_-]+)?\n(?P<body>[\s\S]*?)```", re.MULTILINE)
 COMMAND_LINE_RE = re.compile(r"^\s*\$\s+(?P<command>.+?)\s*$")
@@ -175,6 +176,7 @@ KNOWN_ISSUE_CODES = (
     "task-complete-missing-failing-test-evidence",
     "task-complete-missing-verification-evidence",
     "task-incomplete-in-verified-feature",
+    "tasks-final-verification-duplicated",
     "verified-missing-check-all",
     "verified-missing-spec-compliance-evidence",
     "verified-contradicts-evidence",
@@ -625,7 +627,21 @@ def _artifact_issues(feature: SddFeature, artifact: ArtifactRecord) -> list[SddI
         issues.extend(_plan_analyze_gate_issues(artifact))
     if artifact.name == "spec.md":
         issues.extend(_spec_background_issues(feature, artifact))
+    if artifact.name == "tasks.md":
+        issues.extend(_tasks_final_verification_issues(artifact))
     return issues
+
+
+def _tasks_final_verification_issues(artifact: ArtifactRecord) -> list[SddIssue]:
+    if TASKS_FINAL_VERIFICATION_HEADING_RE.search(artifact.text) is None:
+        return []
+    return [
+        _issue(
+            "tasks-final-verification-duplicated",
+            artifact,
+            "tasks.md must not maintain a Final verification checklist; put command evidence in verification.md",
+        )
+    ]
 
 
 def _plan_analyze_gate_issues(artifact: ArtifactRecord) -> list[SddIssue]:

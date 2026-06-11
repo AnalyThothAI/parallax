@@ -559,6 +559,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC178. WHEN `docs/AGENT_EXECUTION.md` documents the product read-only context registry THEN it SHALL name live source symbols from `src/parallax/platform/agent_read_tools.py` and SHALL reject stale tool class names before product-agent docs can drift from the audited runtime surface.
 - AC179. WHEN active SDD task metadata lists `File(s)` or `Touch set` entries THEN those entries SHALL resolve to current repository paths or matching globs, and deleted artifacts SHALL be recorded only in `Removed file(s)` before generated coordination indexes can advertise stale files as active work surfaces.
 - AC180. WHEN a production feature advances through `clarify`, `checklist`, `analyze`, or `implement` THEN each gate SHALL have an explicit non-mutating CLI check that can pass or fail independently of the full SDD validator before the lane is documented as executable.
+- AC181. WHEN `tasks.md` contains a `## Final verification` checklist THEN SDD artifact validation SHALL reject it before task records can duplicate or diverge from the canonical evidence in `verification.md`.
 
 ## Risks
 

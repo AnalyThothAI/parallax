@@ -110,6 +110,25 @@ def test_feature_rejects_unexpected_artifact_files(tmp_path: Path) -> None:
     assert "unexpected-artifact" in _issue_codes(issues)
 
 
+def test_tasks_reject_final_verification_checklist_duplication(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-duplicated-final-verification")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(feature / "tasks.md", status="In Progress", task_status="[~]")
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+    (feature / "tasks.md").write_text(
+        (feature / "tasks.md").read_text(encoding="utf-8")
+        + "\n\n## Final verification\n\n"
+        + "- [ ] `make check-all`\n"
+        + "- [ ] Paste evidence into `verification.md`.\n",
+        encoding="utf-8",
+    )
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "tasks-final-verification-duplicated" in _issue_codes(issues)
+
+
 def test_feature_directory_name_and_date_metadata_are_machine_valid(tmp_path: Path) -> None:
     invalid_slug = _feature_dir(tmp_path, "active", "freeform-plan")
     _write_valid_spec(invalid_slug / "spec.md", status="In Progress")

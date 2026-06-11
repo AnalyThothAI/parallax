@@ -270,6 +270,10 @@ def _issue_meaning(code: str) -> str:
             "Completed task lacks matching verification command evidence with exit code 0."
         ),
         "task-incomplete-in-verified-feature": "Verified feature contains incomplete task status.",
+        "tasks-final-verification-duplicated": (
+            "tasks.md keeps a duplicate Final verification checklist instead of delegating final evidence to "
+            "verification.md."
+        ),
         "verified-missing-check-all": "Verified record lacks successful make check-all evidence.",
         "verified-missing-spec-compliance-evidence": (
             "Verified spec compliance rows reference commands without matching exit code 0 evidence."

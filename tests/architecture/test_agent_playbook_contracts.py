@@ -669,9 +669,16 @@ def test_tasks_template_has_parallel_subagent_contract_fields() -> None:
         "**On-demand context**",
         "**Kill/defer criteria**",
         "**Eval/repair signal**",
-        "make check-all",
     ):
         assert required_phrase in text
+
+
+@pytest.mark.architecture
+def test_tasks_template_does_not_duplicate_final_verification_surface() -> None:
+    text = _read(ROOT / "docs" / "sdd" / "_templates" / "tasks-template.md")
+
+    assert "## Final verification" not in text
+    assert "After all tasks are `[x] complete`" not in text
 
 
 @pytest.mark.architecture
