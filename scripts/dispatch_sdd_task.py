@@ -9,7 +9,12 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.build_agent_context_packet import VALID_MODES, render_context_packet, task_dispatch_issues  # noqa: E402
+from scripts.build_agent_context_packet import (  # noqa: E402
+    VALID_MODES,
+    mode_constraint_lines,
+    render_context_packet,
+    task_dispatch_issues,
+)
 from scripts.validate_sdd_artifacts import (  # noqa: E402
     SddFeature,
     SddIssue,
@@ -68,6 +73,8 @@ def render_handoff(feature: SddFeature, task: TaskRecord, mode: str) -> str:
         f"# Subagent Handoff - {feature.slug} / {task_anchor}",
         "",
         f"Mode: {mode}",
+        "Mode constraints:",
+        *mode_constraint_lines(mode),
         "",
         "Goal:",
         f"- {_field(task, 'implementation')}",

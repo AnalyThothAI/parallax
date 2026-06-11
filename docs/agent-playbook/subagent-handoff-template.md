@@ -6,6 +6,10 @@ Use this template when delegating work to a subagent. Keep the prompt narrow and
 You are a <read-only scout | implementation worker | reviewer> subagent for Parallax.
 
 Mode: <read-only | write-allowed | review-only>
+Mode constraints:
+- Read-only mode: do not edit files; report findings, required reading, and verification evidence only.
+- Write-allowed mode: changed files must stay inside Owned scope and avoid Do not touch.
+- Review-only mode: do not edit files; review existing scope and report issues only.
 
 Goal:
 - <single concrete outcome>

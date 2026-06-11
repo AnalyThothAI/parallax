@@ -225,6 +225,40 @@ def test_context_packet_cli(tmp_path: Path) -> None:
 
 
 @pytest.mark.architecture
+def test_context_packet_cli_emits_mode_constraints(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "build_agent_context_packet.py"
+    assert script.exists()
+    _write_context_packet_fixture(tmp_path)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--task",
+            "1",
+            "--mode",
+            "read-only",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Mode constraints:" in result.stdout
+    read_only_constraint = (
+        "- Read-only mode: do not edit files; report findings, required reading, and verification evidence only."
+    )
+    assert read_only_constraint in result.stdout
+    assert "Write-allowed mode:" not in result.stdout
+
+
+@pytest.mark.architecture
 def test_context_packet_cli_refuses_completed_task(tmp_path: Path) -> None:
     script = ROOT / "scripts" / "build_agent_context_packet.py"
     assert script.exists()
@@ -328,6 +362,37 @@ def test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task(tmp_path: Path
         "Verification evidence:",
     ):
         assert required_phrase in result.stdout
+
+
+@pytest.mark.architecture
+def test_sdd_task_dispatch_cli_emits_mode_constraints(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "dispatch_sdd_task.py"
+    assert script.exists()
+    _write_context_packet_fixture(tmp_path)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--task",
+            "1",
+            "--mode",
+            "write-allowed",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Mode constraints:" in result.stdout
+    assert "- Write-allowed mode: changed files must stay inside Owned scope and avoid Do not touch." in result.stdout
+    assert "Read-only mode:" not in result.stdout
 
 
 @pytest.mark.architecture

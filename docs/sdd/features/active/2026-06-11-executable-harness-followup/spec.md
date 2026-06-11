@@ -30,6 +30,7 @@ The prior executable harness record was an omnibus active ledger with more than 
 | Active skipped-test accounting is final-run-bound. | Validator rejects numeric skipped-test counts in active `verification.md` records without successful final `make check-all` evidence. |
 | Verification templates fail closed. | Templates do not embed fake final `exit code: 0` transcripts, and validator rejects copied template transcript placeholders in active records. |
 | Subagent context packets are dispatch-bound. | Context packet generation rejects completed or dependency-blocked tasks before a subagent can receive stale context. |
+| Subagent mode constraints are deterministic. | Context packet and handoff generation emit mode-specific edit boundaries for read-only, write-allowed, and review-only lanes. |
 
 ## Acceptance criteria
 
@@ -43,6 +44,7 @@ The prior executable harness record was an omnibus active ledger with more than 
 - AC8. WHEN an active `verification.md` lacks successful final `make check-all` evidence THEN `scripts/validate_sdd_artifacts.py` SHALL report `active-skipped-count-without-final-evidence` for numeric `Skipped tests` run-above counts before zero-skip claims can masquerade as executable evidence.
 - AC9. WHEN `docs/sdd/_templates/verification-template.md` teaches final command evidence THEN it SHALL fail closed with a non-success exit placeholder, and `scripts/validate_sdd_artifacts.py` SHALL report `active-placeholder-final-evidence` if that transcript placeholder is copied into an active record.
 - AC10. WHEN `scripts/build_agent_context_packet.py` is asked to build context for a completed task or a task with incomplete dependencies THEN it SHALL fail with the same dispatchability reason as `scripts/dispatch_sdd_task.py` before subagents can receive stale or blocked task context.
+- AC11. WHEN `scripts/build_agent_context_packet.py` or `scripts/dispatch_sdd_task.py` emits subagent context THEN it SHALL include mode-specific edit constraints before read-only, write-allowed, or review-only lanes can rely on implicit prompt convention.
 
 ## Risks
 

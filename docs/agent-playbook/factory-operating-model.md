@@ -91,7 +91,7 @@ Before dispatching a subagent:
 - Fill `Factory lane`, `Touch set`, `Conflict set`, `Deterministic constraints`, `On-demand context`, `Kill/defer criteria`, and `Eval/repair signal` in `tasks.md`.
 - Generate a bounded context packet with `uv run python scripts/build_agent_context_packet.py --feature <slug> --task <number> --mode <read-only|write-allowed|review-only>`.
 - Generate the final dry-run handoff with `uv run python scripts/dispatch_sdd_task.py --feature <slug> --task <number> --mode <read-only|write-allowed|review-only>`.
-- State whether the subagent is read-only, write-allowed, or review-only.
+- Confirm the generated Mode constraints match the intended lane: read-only and review-only cannot edit files; write-allowed changes stay inside Owned scope and avoid Do not touch.
 - Require verification evidence or a source-backed explanation for why verification cannot run.
 - Require the subagent report to pass `uv run python scripts/validate_subagent_report.py --feature <slug> --task <number> --mode <mode> --report <report.md>`.
 

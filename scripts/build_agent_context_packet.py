@@ -20,6 +20,13 @@ from scripts.validate_sdd_artifacts import (  # noqa: E402
 
 VALID_MODES = ("read-only", "write-allowed", "review-only")
 DISPATCHABLE_STATUSES = {"[ ]", "[~]"}
+MODE_CONSTRAINTS = {
+    "read-only": (
+        "- Read-only mode: do not edit files; report findings, required reading, and verification evidence only.",
+    ),
+    "write-allowed": ("- Write-allowed mode: changed files must stay inside Owned scope and avoid Do not touch.",),
+    "review-only": ("- Review-only mode: do not edit files; review existing scope and report issues only.",),
+}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -87,6 +94,8 @@ def render_context_packet(feature: SddFeature, task: TaskRecord, mode: str) -> s
         f"# Context Packet - {feature.slug} / {task_anchor}",
         "",
         f"Mode: {mode}",
+        "Mode constraints:",
+        *mode_constraint_lines(mode),
         f"Factory lane: {_field(task, 'factory lane')}",
         "",
         "Current objective:",
@@ -133,6 +142,10 @@ def render_context_packet(feature: SddFeature, task: TaskRecord, mode: str) -> s
         "- Credentials and private runtime values are omitted.",
     ]
     return "\n".join(lines)
+
+
+def mode_constraint_lines(mode: str) -> tuple[str, ...]:
+    return MODE_CONSTRAINTS[mode]
 
 
 def _find_feature(features: list[SddFeature], slug: str) -> SddFeature | None:

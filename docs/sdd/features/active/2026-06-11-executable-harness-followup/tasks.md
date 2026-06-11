@@ -14,7 +14,7 @@
 | Clarify | Spec contains approved clarification for superseding the omnibus record. |
 | Checklist | Spec records the active-record size bound requirement. |
 | Analyze | Plan Analyze Gate records why active records should remain bounded. |
-| Implement | Tasks 1-10 implement the validator, migration, documentation contract, stale-template cleanup, machine-readable verification status tokens, active lifecycle command hard cut, active placeholder final-evidence rejection, active skipped-test accounting bound, fail-closed final-evidence templates, and dispatch-bound context packets. |
+| Implement | Tasks 1-11 implement the validator, migration, documentation contract, stale-template cleanup, machine-readable verification status tokens, active lifecycle command hard cut, active placeholder final-evidence rejection, active skipped-test accounting bound, fail-closed final-evidence templates, dispatch-bound context packets, and generated subagent mode constraints. |
 | Verify | Verification artifact captures RED/GREEN command output. |
 
 ## Tasks
@@ -226,5 +226,26 @@
 - **Eval/repair signal**: context packet CLI accepting a completed task, accepting a dependency-blocked task, or dispatcher/context-packet guard drift.
 - **Implementation**: Move dispatchability checks into the context-packet module and reuse them from the dispatcher.
 - **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli_refuses_completed_task tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli_refuses_unmet_dependencies -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 11 - Emit subagent mode constraints
+
+- **File(s)**: `scripts/build_agent_context_packet.py`, `scripts/dispatch_sdd_task.py`, `docs/agent-playbook/context-packet-template.md`, `docs/agent-playbook/subagent-handoff-template.md`, `docs/agent-playbook/factory-operating-model.md`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`
+- **Owner**: parent
+- **Depends on**: Task 10
+- **Touch set**: `scripts/build_agent_context_packet.py`, `scripts/dispatch_sdd_task.py`, `docs/agent-playbook/context-packet-template.md`, `docs/agent-playbook/subagent-handoff-template.md`, `docs/agent-playbook/factory-operating-model.md`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared agent playbook docs and generated index updates.
+- **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli_emits_mode_constraints` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_mode_constraints` - prove subagent context and handoff outputs expose deterministic mode-specific edit constraints.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Generated subagent context must state read-only and review-only no-edit boundaries, while write-allowed changes must stay inside Owned scope and avoid Do not touch.
+- **On-demand context**: `scripts/build_agent_context_packet.py`, `scripts/dispatch_sdd_task.py`, `docs/agent-playbook/subagent-handoff-template.md`, `docs/agent-playbook/context-packet-template.md`.
+- **Kill/defer criteria**: Stop if subagent modes are intentionally kept as prompt-only convention instead of generated constraints.
+- **Eval/repair signal**: missing `Mode constraints:` in generated context packets or handoffs, mode text drift between generator and template, or task handoff output with implicit edit authority.
+- **Implementation**: Add shared mode constraint lines to context-packet generation, reuse them in dry-run handoffs, and update playbook templates/model docs.
+- **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli_emits_mode_constraints tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_mode_constraints -q`
 - **Review owner**: parent
 - **Status**: [x]

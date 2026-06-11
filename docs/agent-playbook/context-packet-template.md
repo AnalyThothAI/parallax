@@ -9,6 +9,12 @@ uv run python scripts/build_agent_context_packet.py --feature <slug> --task <num
 ```md
 # Context Packet - <feature> / Task <number>
 
+Mode: <read-only | write-allowed | review-only>
+Mode constraints:
+- Read-only mode: do not edit files; report findings, required reading, and verification evidence only.
+- Write-allowed mode: changed files must stay inside Owned scope and avoid Do not touch.
+- Review-only mode: do not edit files; review existing scope and report issues only.
+
 Current objective:
 - <what the overall task is trying to achieve>
 
