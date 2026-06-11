@@ -8,7 +8,8 @@
 **Approved by**: <user / delegated goal / pending>
 **Approved at**: <YYYY-MM-DD / pending>
 
-Use this file when a plan spans multiple PRs or when a parallel sub-agent will execute pieces. Skip it for single-PR work.
+Use this file for every SDD feature. For single-PR work, keep a one-task `tasks.md`; do not omit the artifact.
+When a plan spans multiple PRs or when a parallel sub-agent will execute pieces, expand the task list.
 
 Tasks are TDD-ordered: write the failing test first, then the implementation, then run verification. Mark a task `[P]` when it can run in parallel with the previous task without sharing state. When a task is delegated, fill the subagent fields before dispatch.
 

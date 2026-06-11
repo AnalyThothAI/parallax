@@ -4578,24 +4578,24 @@
 - **Review owner**: parent
 - **Status**: [x]
 
-### Task 218 — Skipped-test explanation table is canonical
+### Task 218 — Positive skipped-test count is rejected
 
 - **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 217
 - **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/verification-template.md`
-- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_canonical_skipped_tests_table` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_freeform_skipped_table` — prove final verification cannot pass when skipped-test explanations use freeform pipe rows without the canonical header/separator.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_positive_skipped_test_count_with_freeform_table` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_positive_skipped_count_with_freeform_table` — prove final verification cannot pass when skipped-test evidence declares a positive count.
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated
 - **Review result**: parent-reviewed
 - **Factory lane**: Harness/tests
-- **Deterministic constraints**: skipped-test explanations must use the canonical `count | reason | acceptable?` table parsed by the shared Markdown table helper.
+- **Deterministic constraints**: final skipped-test evidence must report zero skipped tests; explanatory tables cannot turn a positive skipped count into completion evidence.
 - **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `docs/sdd/_templates/verification-template.md`, and final verification evidence tests.
-- **Kill/defer criteria**: Stop if a headerless, separatorless, wrong-header, or freeform skipped-test table can explain nonzero skipped tests.
-- **Eval/repair signal**: skipped-explanation freeform false green and final-evidence table parser drift.
-- **Implementation**: Add `SKIPPED_TESTS_HEADER` and validate skipped-test explanation rows with `table_body_rows()` instead of ad hoc pipe-line scanning.
-- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_canonical_skipped_tests_table tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_freeform_skipped_table -q`
+- **Kill/defer criteria**: Stop if any positive skipped-test count can pass final verification through explanatory table rows.
+- **Eval/repair signal**: skipped-count false green and final-evidence table parser drift.
+- **Implementation**: Reject positive skipped-test counts before explanation tables can satisfy final verification.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_positive_skipped_test_count_with_freeform_table tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_positive_skipped_count_with_freeform_table -q`
 - **Review owner**: parent
 - **Status**: [x]
 
@@ -5058,5 +5058,68 @@
 - **Eval/repair signal**: hidden stale evidence, duplicate-section parser drift, and section-local false greens.
 - **Implementation**: Count required headings outside fenced blocks, emit `duplicate-gate-section`, include it in verify-gate structural codes, and document it in the generated issue taxonomy.
 - **Verification**: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_duplicate_verification_commands_section tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_duplicate_verification_commands_section -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 241 — Verification template separates completion gate evidence
+
+- **File(s)**: `docs/sdd/_templates/verification-template.md`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 240
+- **Touch set**: `docs/sdd/_templates/verification-template.md`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD workflow wording and template contracts.
+- **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_verification_template_keeps_completion_gate_outside_final_command_section` — proves the template does not place `make check-sdd-completion` inside the final `Verification commands` parser surface.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Docs/contracts
+- **Deterministic constraints**: The final `Verification commands` template section must show exactly one fenced `make check-all` transcript; single-feature completion gate output must live under `## Completion gate`.
+- **On-demand context**: `docs/sdd/_templates/verification-template.md`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, and final evidence parser tests.
+- **Kill/defer criteria**: Stop if `make check-sdd-completion` remains in `## Verification commands` or if the template no longer shows a dedicated completion-gate evidence section.
+- **Eval/repair signal**: template/source drift, self-rejecting SDD records, and completion-gate evidence dilution.
+- **Implementation**: Move the single-feature completion-gate transcript to `## Completion gate`, clarify the workflow docs, and add a template contract test.
+- **Verification**: `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_verification_template_keeps_completion_gate_outside_final_command_section -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 242 — Final evidence requires zero skipped tests
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 241
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD verify-gate tests and generated index updates.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_positive_skipped_count_with_placeholder_reason` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_positive_skipped_count_with_placeholder_reason` — prove `| 1 | Pending | Yes |` cannot explain skipped final evidence.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Final completion evidence must report `Number of skipped tests in the run above: 0`; positive skipped-test counts fail even when a table marks them acceptable.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, skipped-test verify gate tests, and Copernicus read-only audit.
+- **Kill/defer criteria**: Stop if any positive skipped-test count can pass the pure validator or verify gate.
+- **Eval/repair signal**: acceptable-skip false green, final-evidence dilution, and subagent audit finding.
+- **Implementation**: Reject positive skipped-test counts in final Verified evidence and remove the acceptable-skips helper path.
+- **Verification**: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_positive_skipped_count_with_placeholder_reason tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_positive_skipped_count_with_placeholder_reason -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 243 — Tasks template preserves the four-artifact contract
+
+- **File(s)**: `docs/sdd/_templates/tasks-template.md`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 242
+- **Touch set**: `docs/sdd/_templates/tasks-template.md`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD template wording and generated index updates.
+- **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_tasks_template_keeps_one_task_for_single_pr_work` — proves the template no longer tells agents to skip `tasks.md` for single-PR work.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Docs/contracts
+- **Deterministic constraints**: Every SDD feature must keep all four artifacts; single-PR work uses a one-task `tasks.md` rather than omitting the task artifact.
+- **On-demand context**: `docs/sdd/_templates/tasks-template.md`, `docs/sdd/README.md`, and Feynman/Lovelace read-only audits.
+- **Kill/defer criteria**: Stop if template wording says to skip `tasks.md`, make tasks optional, or create a taskless SDD record.
+- **Eval/repair signal**: taskless-template drift, missing-artifact false starts, and four-artifact harness mismatch.
+- **Implementation**: Replace taskless single-PR wording with one-task artifact guidance and add an architecture template contract test.
+- **Verification**: `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_tasks_template_keeps_one_task_for_single_pr_work -q`
 - **Review owner**: parent
 - **Status**: [x]

@@ -35,7 +35,8 @@ harness as `unexpected-artifact`.
 8. Validate any returned subagent report and record `Subagent report` plus `Review result` on the task.
 9. Implement in an isolated `.worktrees/<slug>/` worktree.
 10. Fill `verification.md` with evidence, including `make check-all`, then run
-    `make check-sdd-completion FEATURE=<slug>` for the single feature.
+    `make check-sdd-completion FEATURE=<slug>` for the single feature and record
+    it under `## Completion gate`.
 11. Move the feature directory from `active/` to `completed/`.
 
 Run the executable harness after changing any SDD record:
@@ -61,10 +62,13 @@ final evidence gate for `verification.md`; the default all-active sweep remains
 pre-verify so unfinished active feature records can keep moving. `make
 check-sdd-completion FEATURE=<slug>` is the Make target for the single-feature
 verify gate, while `make check-all` runs the all-active sweep before generated
-index freshness and produces the final command transcript. The full validator
-still rejects false `Verified` records, missing gate sections, missing approval
-metadata, incomplete task coordination fields, and active touch-set conflicts
-without an explicit coordination rule.
+index freshness and produces the final command transcript. Final completion
+evidence must report zero skipped tests. The completion gate transcript is
+meta-verification and belongs under `## Completion gate`, not the final
+`## Verification commands` section. The full validator still rejects false
+`Verified` records, missing gate sections, missing approval metadata,
+incomplete task coordination fields, and active touch-set conflicts without an
+explicit coordination rule.
 
 ## Status Rules
 

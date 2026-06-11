@@ -15,6 +15,7 @@ from scripts.validate_sdd_artifacts import (
     SddFeature,
     TaskRecord,
     scan_sdd_features,
+    section_text,
     validate_sdd_root,
 )
 
@@ -1611,7 +1612,7 @@ def test_sdd_gate_check_cli_verify_rejects_pending_skipped_count(tmp_path: Path)
 
 
 @pytest.mark.architecture
-def test_sdd_gate_check_cli_verify_rejects_freeform_skipped_table(tmp_path: Path) -> None:
+def test_sdd_gate_check_cli_verify_rejects_positive_skipped_count_with_freeform_table(tmp_path: Path) -> None:
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()
     _write_context_packet_fixture(tmp_path)
@@ -1679,7 +1680,82 @@ def test_sdd_gate_check_cli_verify_rejects_freeform_skipped_table(tmp_path: Path
 
     assert result.returncode == 1
     assert "verified-unexplained-skips" in result.stderr
-    assert "canonical Skipped tests table" in result.stderr
+    assert "zero skipped tests" in result.stderr
+
+
+@pytest.mark.architecture
+def test_sdd_gate_check_cli_verify_rejects_positive_skipped_count_with_placeholder_reason(
+    tmp_path: Path,
+) -> None:
+    script = ROOT / "scripts" / "check_sdd_gate.py"
+    assert script.exists()
+    _write_context_packet_fixture(tmp_path)
+    _create_context_packet_fixture_paths(tmp_path)
+    verification_path = (
+        tmp_path
+        / "docs"
+        / "sdd"
+        / "features"
+        / "active"
+        / "2026-06-09-context-packet-fixture"
+        / "verification.md"
+    )
+    verification_text = verification_path.read_text(encoding="utf-8")
+    verification_text = verification_text.replace(
+        "| AC1 | In Progress | Pending. |",
+        "| AC1 | Pass | `make check-all` exited 0. |",
+    )
+    verification_text = verification_text.replace(
+        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\n"
+        "Pending.",
+        "$ make check-all\nall checks passed\nexit code: 0",
+    )
+    verification_text = verification_text.replace(
+        "| line | Pending | >= 80% | Pending |",
+        "| line | 91% | >= 80% | Pass |",
+    )
+    verification_text = verification_text.replace(
+        "## Skipped tests\n\n"
+        "Number of skipped tests in the run above: 0\n\n"
+        "## E2E golden path",
+        "## Skipped tests\n\n"
+        "Number of skipped tests in the run above: 1\n\n"
+        "| count | reason | acceptable? |\n"
+        "|-------|--------|-------------|\n"
+        "| 1 | Pending | Yes |\n\n"
+        "## E2E golden path",
+    )
+    verification_text = verification_text.replace(
+        "- [ ] Not applicable.",
+        "- [x] /readyz returned 200\n"
+        "- [x] writer wrote a row visible to a separate process\n"
+        "- [x] /api/recent returned the injected event\n"
+        "- [x] WS /ws/live pushed within 5s\n"
+        "- [x] testcontainers PG and uvicorn subprocess cleaned up",
+    )
+    verification_path.write_text(verification_text, encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--gate",
+            "verify",
+            "--check",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "verified-unexplained-skips" in result.stderr
+    assert "zero skipped tests" in result.stderr
 
 
 @pytest.mark.architecture
@@ -3606,6 +3682,26 @@ def test_tasks_template_does_not_duplicate_final_verification_surface() -> None:
 
     assert "## Final verification" not in text
     assert "After all tasks are `[x] complete`" not in text
+
+
+@pytest.mark.architecture
+def test_tasks_template_keeps_one_task_for_single_pr_work() -> None:
+    text = _read(ROOT / "docs" / "sdd" / "_templates" / "tasks-template.md")
+
+    assert "Skip it for single-PR work" not in text
+    assert "For single-PR work, keep a one-task `tasks.md`" in text
+
+
+@pytest.mark.architecture
+def test_verification_template_keeps_completion_gate_outside_final_command_section() -> None:
+    text = _read(ROOT / "docs" / "sdd" / "_templates" / "verification-template.md")
+    verification_commands = section_text(text, "## Verification commands")
+
+    assert verification_commands.count("```text") == 1
+    assert "$ make check-all" in verification_commands
+    assert "make check-sdd-completion" not in verification_commands
+    assert "## Completion gate" in text
+    assert "$ make check-sdd-completion FEATURE=<slug>" in section_text(text, "## Completion gate")
 
 
 @pytest.mark.architecture

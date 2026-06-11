@@ -291,7 +291,7 @@ def _issue_meaning(code: str) -> str:
             "Verified spec compliance rows reference commands without matching exit code 0 evidence."
         ),
         "verified-contradicts-evidence": "Verified record contains text that contradicts final evidence.",
-        "verified-unexplained-skips": "Verified record has skipped tests without an acceptable explanation.",
+        "verified-unexplained-skips": "Verified record contains skipped tests or lacks numeric zero-skip evidence.",
         "superseded-missing-successor": (
             "Superseded record lacks a machine-readable existing successor path."
         ),

@@ -13,7 +13,7 @@ Parallax routes non-trivial coding-agent work through one SDD feature directory 
 The lane's canonical artifacts are `spec.md` in `docs/WORKFLOW.md:13`, `plan.md` in `docs/WORKFLOW.md:14`,
 `tasks.md` in `docs/WORKFLOW.md:15`, and `verification.md` in `docs/WORKFLOW.md:16`.
 Production work follows `spec -> clarify -> checklist -> plan -> tasks -> analyze -> implement -> verify`
-in `docs/WORKFLOW.md:27`, and completion requires `make check-all` evidence in `docs/WORKFLOW.md:98`.
+in `docs/WORKFLOW.md:27`, and completion requires `make check-all` evidence in `docs/WORKFLOW.md:100`.
 The generated index now renders a `Coordination Board` in `scripts/regen_sdd_work_index.py:86` and a
 `Task Board` in `scripts/regen_sdd_work_index.py:117`.
 
@@ -596,7 +596,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC215. WHEN `verification.md` E2E golden path omits or leaves unchecked any required runtime signal THEN the validator and verify gate SHALL report `verified-e2e-incomplete` before skipped or not-applicable E2E evidence can satisfy final verification.
 - AC216. WHEN `verification.md` Skipped tests evidence omits a numeric skipped-test count or leaves it as non-numeric placeholder text THEN the validator and verify gate SHALL report `verified-unexplained-skips` before pending skipped-test evidence can satisfy final verification.
 - AC217. WHEN a numeric skipped-test count appears outside the `## Skipped tests` section, such as inside `## Other commands run`, THEN the validator and verify gate SHALL ignore that stale count and report `verified-unexplained-skips` unless the Skipped tests section itself contains numeric skipped-test evidence.
-- AC218. WHEN `verification.md` declares one or more skipped tests THEN the validator and verify gate SHALL require a canonical `count | reason | acceptable?` Skipped tests table with a valid separator row before freeform pipe rows can explain skipped-test final evidence.
+- AC218. WHEN `verification.md` declares one or more skipped tests, even with explanatory table rows, THEN the validator and verify gate SHALL report `verified-unexplained-skips` before skipped-test final evidence can satisfy completion.
 - AC219. WHEN `verification.md` Coverage rows keep any canonical cell such as `value` or `threshold` as placeholder text while marking `status` complete THEN the validator and verify gate SHALL report `verified-coverage-incomplete` before placeholder coverage evidence can satisfy final verification.
 - AC220. WHEN `verification.md` Spec compliance rows mark an acceptance criterion complete while the `Evidence` cell remains placeholder text such as `Pending.` THEN the validator and verify gate SHALL report `verified-incomplete-spec-compliance` before placeholder compliance evidence can satisfy final verification.
 - AC221. WHEN `verification.md` Spec compliance rows mark an acceptance criterion complete with prose-only evidence and no command-shaped backticked command THEN the validator and verify gate SHALL report `verified-missing-spec-compliance-evidence` before non-replayable compliance evidence can satisfy final verification.
@@ -619,6 +619,9 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC238. WHEN the final `make check-all` transcript contains zero, multiple, or non-zero exit-code lines THEN the validator and verify gate SHALL reject the record before a later `exit code: 0` can overwrite failed evidence in the same command segment.
 - AC239. WHEN final `Verification commands` contains extra fenced output blocks without command lines THEN the validator and verify gate SHALL reject the record before stale transcript output can sit beside the canonical `make check-all` evidence.
 - AC240. WHEN any required SDD lifecycle section heading appears more than once THEN the validator and relevant gate SHALL reject the artifact before duplicate headings can hide stale or conflicting evidence from section-local parsers.
+- AC241. WHEN the SDD verification template documents the single-feature completion gate THEN it SHALL keep `make check-sdd-completion` outside `## Verification commands` before template users can generate evidence that the final verify parser rejects.
+- AC242. WHEN `verification.md` declares any skipped tests in final evidence THEN the validator and verify gate SHALL reject the record before acceptable-skip tables can satisfy completion evidence.
+- AC243. WHEN the SDD tasks template describes single-PR work THEN it SHALL require a one-task `tasks.md` artifact before template wording can bypass the four-artifact harness contract.
 
 ## Risks
 

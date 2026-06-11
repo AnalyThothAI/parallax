@@ -96,7 +96,6 @@ GATE_EVIDENCE_HEADERS = {
 }
 SPEC_COMPLIANCE_HEADER = ("Acceptance criterion", "Status", "Evidence")
 COVERAGE_HEADER = ("metric", "value", "threshold", "status")
-SKIPPED_TESTS_HEADER = ("count", "reason", "acceptable?")
 GATE_COMPLIANCE_GATES = ("Clarify", "Checklist", "Analyze", "Implement", "Verify")
 E2E_GOLDEN_PATH_CHECKS = (
     "/readyz returned 200",
@@ -1523,12 +1522,13 @@ def _verified_issues(feature: SddFeature) -> list[SddIssue]:
                 "Verified Skipped tests section must include numeric skipped-test count",
             )
         )
-    elif int(skipped_match.group("count")) > 0 and not _skipped_rows_are_acceptable(skipped_section):
+    elif int(skipped_match.group("count")) > 0:
         issues.append(
             _issue(
                 "verified-unexplained-skips",
                 artifact,
-                "Verified record has skipped tests without a matching canonical Skipped tests table",
+                "Verified record must report zero skipped tests; "
+                "positive skipped-test counts cannot serve as completion evidence",
             )
         )
     return issues
@@ -2262,32 +2262,6 @@ def _command_exit_codes(block: str) -> tuple[int, ...]:
 
 def _format_exit_codes(exit_codes: tuple[int, ...]) -> str:
     return ", ".join(str(exit_code) for exit_code in exit_codes) if exit_codes else "<none>"
-
-
-def _skipped_rows_are_acceptable(text: str) -> bool:
-    skipped_match = SKIPPED_RE.search(text)
-    if not skipped_match:
-        return False
-    skipped_count = int(skipped_match.group("count"))
-    if skipped_count == 0:
-        return True
-
-    data_rows = table_body_rows(text, SKIPPED_TESTS_HEADER)
-    if not data_rows:
-        return False
-
-    total = 0
-    for cells in data_rows:
-        cleaned_cells = [cell.strip().lower() for cell in cells]
-        if len(cleaned_cells) < 3:
-            return False
-        try:
-            total += int(cleaned_cells[0])
-        except ValueError:
-            return False
-        if cleaned_cells[-1] not in {"yes", "acceptable", "true"}:
-            return False
-    return total == skipped_count
 
 
 def _first_task_field(tasks: tuple[TaskRecord, ...], field_name: str) -> str | None:

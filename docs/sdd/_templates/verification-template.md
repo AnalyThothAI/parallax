@@ -43,14 +43,6 @@ exit code: 0
 If `make check-all` exit code is non-zero, the work is not complete — do not
 file this artefact until it is.
 
-After pasting the final transcript, run the single-feature completion gate:
-
-```text
-$ make check-sdd-completion FEATURE=<slug>
-verify gate passed: <slug>
-exit code: 0
-```
-
 ## Coverage
 
 | metric | value | threshold | status |
@@ -63,15 +55,11 @@ state the relaxed value and the follow-up entry in `docs/TECH_DEBT.md`.
 
 ## Skipped tests
 
-Number of skipped tests in the run above: <N>
+Number of skipped tests in the run above: 0
 
-If N > 0, list categories and explain why each is acceptable:
-
-| count | reason | acceptable? |
-|-------|--------|-------------|
-|       |        |             |
-
-A run with unexplained skips cannot serve as completion evidence.
+A run with any skipped tests cannot serve as completion evidence. Fix the lane
+or leave the feature in `Review` / `Blocked` until the final run reports zero
+skips.
 
 ## E2E golden path
 
@@ -85,6 +73,18 @@ Confirm each runtime signal from the spec §6.4 was asserted:
 
 Runtime-lane dependencies must fail closed with actionable setup guidance; do
 not satisfy this section with environment skip switches.
+
+## Completion gate
+
+After filling the sections above, run the single-feature completion gate and
+record its output here. This command is meta-verification; do not paste it into
+`## Verification commands`.
+
+```text
+$ make check-sdd-completion FEATURE=<slug>
+verify gate passed: <slug>
+exit code: 0
+```
 
 ## Other commands run (manual UI smoke; only for areas not coverable by tests)
 

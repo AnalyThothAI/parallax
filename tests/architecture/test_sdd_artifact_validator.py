@@ -1232,7 +1232,7 @@ def test_verified_feature_rejects_multiple_check_all_exit_codes(tmp_path: Path) 
     assert "exactly one exit code 0" in "\n".join(issue.message for issue in issues)
 
 
-def test_verified_feature_requires_skipped_table_to_match_skip_count(tmp_path: Path) -> None:
+def test_verified_feature_rejects_positive_skipped_test_count(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "completed", "2026-06-09-bad-skips")
     _write_valid_spec(feature / "spec.md", status="Verified")
     _write_valid_plan(feature / "plan.md", status="Verified")
@@ -1253,7 +1253,29 @@ def test_verified_feature_requires_skipped_table_to_match_skip_count(tmp_path: P
     assert "verified-unexplained-skips" in _issue_codes(issues)
 
 
-def test_verified_feature_requires_canonical_skipped_tests_table(tmp_path: Path) -> None:
+def test_verified_feature_rejects_positive_skipped_count_with_placeholder_reason(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "completed", "2026-06-09-placeholder-skip-reason")
+    _write_valid_spec(feature / "spec.md", status="Verified")
+    _write_valid_plan(feature / "plan.md", status="Verified")
+    _write_valid_tasks(feature / "tasks.md", status="Verified")
+    _write_valid_verification(
+        feature / "verification.md",
+        status="Verified",
+        skipped_count="1",
+        skipped_table_rows=(
+            "| count | reason | acceptable? |",
+            "|-------|--------|-------------|",
+            "| 1 | Pending | Yes |",
+        ),
+    )
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "verified-unexplained-skips" in _issue_codes(issues)
+    assert "zero skipped tests" in "\n".join(issue.message for issue in issues)
+
+
+def test_verified_feature_rejects_positive_skipped_test_count_with_freeform_table(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "completed", "2026-06-09-freeform-skip-table")
     _write_valid_spec(feature / "spec.md", status="Verified")
     _write_valid_plan(feature / "plan.md", status="Verified")
@@ -1271,7 +1293,7 @@ def test_verified_feature_requires_canonical_skipped_tests_table(tmp_path: Path)
     issues = validate_sdd_root(tmp_path)
 
     assert "verified-unexplained-skips" in _issue_codes(issues)
-    assert "canonical Skipped tests table" in "\n".join(issue.message for issue in issues)
+    assert "zero skipped tests" in "\n".join(issue.message for issue in issues)
 
 
 def test_verified_feature_requires_numeric_skipped_test_count(tmp_path: Path) -> None:

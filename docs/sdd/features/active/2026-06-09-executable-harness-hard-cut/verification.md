@@ -234,7 +234,7 @@ claim is allowed without the corresponding output captured below.
 | AC215 — E2E golden path must pass. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_complete_e2e_golden_path tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_incomplete_e2e_golden_path tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence -q` failed RED when unchecked or not-applicable E2E rows satisfied final verification, then passed after all required E2E runtime signals had to be checked. |
 | AC216 — Skipped-test count must be numeric. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_numeric_skipped_test_count tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_pending_skipped_count -q` failed RED when `Pending` skipped-count evidence satisfied final verification, then passed after final evidence required a numeric skipped-test count. |
 | AC217 — Skipped-test count is section-local. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_skipped_count_inside_skipped_tests_section tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_skipped_count_outside_skipped_section -q` failed RED when stale `Other commands run` skipped-count output satisfied final verification, then passed after skipped-test evidence was scoped to `## Skipped tests`. |
-| AC218 — Skipped-test explanation table is canonical. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_canonical_skipped_tests_table tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_freeform_skipped_table -q` failed RED when freeform pipe rows satisfied skipped-test explanations, then passed after skipped-test explanations reused the canonical Markdown table parser. |
+| AC218 — Positive skipped-test count is rejected. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_positive_skipped_test_count_with_freeform_table tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_positive_skipped_count_with_freeform_table -q` passes because positive skipped-test counts now fail final verification before explanatory table rows can satisfy completion evidence. |
 | AC219 — Coverage cells are concrete. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_concrete_coverage_values tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_placeholder_coverage_value -q` failed RED when Coverage `value` stayed `Pending` while `status` was `Pass`, then passed after every canonical Coverage cell had to be non-placeholder. |
 | AC220 — Spec compliance evidence is concrete. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_concrete_spec_compliance_evidence tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_placeholder_spec_compliance_evidence -q` failed RED when Spec compliance `Evidence` stayed `Pending.` while `Status` was `Pass`, then passed after completed rows required non-placeholder evidence and sentence-punctuated placeholders were normalized. |
 | AC221 — Spec compliance evidence is command-shaped. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_command_shaped_spec_compliance_evidence tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_prose_only_spec_compliance_evidence -q` failed RED when prose-only Spec compliance evidence satisfied final verification, then passed after completed rows had to cite command-shaped evidence. |
@@ -257,6 +257,9 @@ claim is allowed without the corresponding output captured below.
 | AC238 — Final make-check-all transcript has one exit code. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_multiple_check_all_exit_codes tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_multiple_check_all_exit_codes -q` passed after separate RED runs proved a later `exit code: 0` in the same `make check-all` segment could overwrite an earlier failed exit code. |
 | AC239 — Final verification commands have one transcript block. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_extra_verification_output_block tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_extra_verification_output_block -q` passed after separate RED runs proved extra fenced output blocks without command lines passed both the pure validator and verify gate. |
 | AC240 — Required SDD sections are unique. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_duplicate_verification_commands_section tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_duplicate_verification_commands_section -q` passed after separate RED runs proved duplicate `## Verification commands` headings passed both the pure validator and verify gate. |
+| AC241 — Verification template separates completion gate evidence. | ✅ | `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_verification_template_keeps_completion_gate_outside_final_command_section -q` failed RED while the template kept `make check-sdd-completion` inside `## Verification commands`, then passed after the completion-gate transcript moved to `## Completion gate`. |
+| AC242 — Final evidence requires zero skipped tests. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_positive_skipped_count_with_placeholder_reason tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_positive_skipped_count_with_placeholder_reason -q` failed RED while `| 1 | Pending | Yes |` passed final skip evidence, then passed after positive skipped-test counts were rejected. |
+| AC243 — Tasks template preserves the four-artifact contract. | ✅ | `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_tasks_template_keeps_one_task_for_single_pr_work -q` failed RED while the template said to skip `tasks.md` for single-PR work, then passed after the template required a one-task artifact. |
 
 Deviations from spec:
 
@@ -4423,6 +4426,47 @@ $ python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verif
 ..                                                                       [100%]
 2 passed in 0.08s
 exit code: 0
+
+$ python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_verification_template_keeps_completion_gate_outside_final_command_section -q
+F                                                                        [100%]
+AssertionError: assert 2 == 1
+exit code: 1
+
+$ python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_verification_template_keeps_completion_gate_outside_final_command_section -q
+.                                                                        [100%]
+1 passed in 0.01s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_positive_skipped_test_count_with_freeform_table tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_positive_skipped_count_with_freeform_table -q
+..                                                                       [100%]
+2 passed in 0.07s
+exit code: 0
+
+$ python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_positive_skipped_count_with_placeholder_reason tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_positive_skipped_count_with_placeholder_reason -q
+FF                                                                       [100%]
+AssertionError: assert 'verified-unexplained-skips' in set()
+AssertionError: assert 0 == 1
+exit code: 1
+
+$ python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_positive_skipped_count_with_placeholder_reason tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_positive_skipped_count_with_placeholder_reason -q
+..                                                                       [100%]
+2 passed in 0.14s
+exit code: 0
+
+$ python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_positive_skipped_test_count tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_positive_skipped_test_count_with_freeform_table tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_numeric_skipped_test_count tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_skipped_count_inside_skipped_tests_section tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_pending_skipped_count tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_positive_skipped_count_with_freeform_table tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_skipped_count_outside_skipped_section -q
+.......                                                                  [100%]
+7 passed in 0.12s
+exit code: 0
+
+$ python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_tasks_template_keeps_one_task_for_single_pr_work -q
+F                                                                        [100%]
+AssertionError: assert 'Skip it for single-PR work' not in '# Tasks — `...tus**: [ ]\n'
+exit code: 1
+
+$ python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_tasks_template_keeps_one_task_for_single_pr_work -q
+.                                                                        [100%]
+1 passed in 0.02s
+exit code: 0
 ```
 
 ## Diff summary
@@ -4474,7 +4518,7 @@ Files changed:
 - Verified E2E golden path completion: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Verified skipped-test numeric count completion: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Verified skipped-test section-local count completion: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
-- Verified skipped-test canonical explanation table completion: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
+- Verified zero-skipped-test completion: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/_templates/verification-template.md`, `docs/WORKFLOW.md`, `docs/sdd/README.md`.
 - Verified concrete Coverage row completion: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Verified concrete Spec compliance evidence completion: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Verified command-shaped Spec compliance evidence completion: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
@@ -4497,6 +4541,7 @@ Files changed:
 - Final make-check-all exit-code tuple validation: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Final verification single transcript block: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Required SDD section uniqueness: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
+- Verification template completion-gate separation: `docs/sdd/_templates/verification-template.md`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Mechanical frontend Prettier drift cleanup: macro pages, macro component test, `web/vite.config.ts`.
 
 Migrations applied:
