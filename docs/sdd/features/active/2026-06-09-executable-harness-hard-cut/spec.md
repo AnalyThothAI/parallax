@@ -563,6 +563,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC182. WHEN `make check-all` runs SDD harness gates THEN it SHALL execute a non-mutating all-active `clarify`/`checklist`/`analyze`/`implement` sweep before generated index freshness can pass.
 - AC183. WHEN the `implement` SDD gate checks a feature with delegated subagent handoff or report drift THEN it SHALL fail on the underlying task issue before agent-loop delegation can be treated as executable.
 - AC184. WHEN a `clarify`, `checklist`, or `analyze` gate section contains only table headers or placeholder rows THEN the gate checker SHALL fail with `gate-evidence-missing` before a header-only table can satisfy executable gate evidence.
+- AC185. WHEN a gate table body row contains placeholder cells such as `<pending>` or `YYYY-MM-DD` THEN the gate checker SHALL reuse the full SDD validator placeholder-cell semantics and fail before template rows can satisfy executable gate evidence.
 
 ## Risks
 

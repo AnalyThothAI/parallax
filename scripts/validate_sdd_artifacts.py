@@ -1742,6 +1742,10 @@ def _section_table_rows(text: str, heading: str) -> list[list[str]]:
 
 
 def _is_placeholder_table_cell(value: str) -> bool:
+    return is_placeholder_table_cell(value)
+
+
+def is_placeholder_table_cell(value: str) -> bool:
     cleaned = _clean_value(value).lower()
     return _is_placeholder(value) or cleaned in {"pass / fail", "yyyy-mm-dd"}
 

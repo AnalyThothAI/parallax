@@ -8,7 +8,12 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.validate_sdd_artifacts import SddFeature, scan_sdd_features, validate_sdd_root  # noqa: E402
+from scripts.validate_sdd_artifacts import (  # noqa: E402
+    SddFeature,
+    is_placeholder_table_cell,
+    scan_sdd_features,
+    validate_sdd_root,
+)
 
 GATES = ("clarify", "checklist", "analyze", "implement")
 
@@ -134,10 +139,7 @@ def _has_table_evidence(section: str) -> bool:
             continue
         cells = [cell.strip() for cell in stripped.strip("|").split("|")]
         rows.append(cells)
-    for cells in rows[1:]:
-        if cells and all(cell and cell.lower() not in {"pending", "tbd", "todo"} for cell in cells):
-            return True
-    return False
+    return any(cells and all(not is_placeholder_table_cell(cell) for cell in cells) for cells in rows[1:])
 
 
 def _is_failed_result_row(line: str) -> bool:

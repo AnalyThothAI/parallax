@@ -3884,3 +3884,24 @@
 - **Verification**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_header_only_gate_tables -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 185 — Gate evidence shares validator placeholder semantics
+
+- **File(s)**: `scripts/check_sdd_gate.py`, `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 184
+- **Touch set**: `scripts/check_sdd_gate.py`, `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `scripts/check_sdd_gate.py`; `scripts/validate_sdd_artifacts.py`; `docs/sdd/_templates/spec-template.md`
+- **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_placeholder_gate_rows` — proves a `clarify` gate row containing `<pending>` and `YYYY-MM-DD` placeholders fails instead of satisfying gate evidence.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Gate CLI evidence parsing must reuse the full SDD validator's placeholder-cell semantics instead of maintaining a smaller local placeholder list.
+- **On-demand context**: `scripts/check_sdd_gate.py`, `scripts/validate_sdd_artifacts.py`, and SDD gate evidence tests.
+- **Kill/defer criteria**: Stop if the gate CLI accepts template placeholder rows, if the full validator and gate CLI drift again, or if valid non-placeholder evidence rows are rejected.
+- **Eval/repair signal**: placeholder-row false green, duplicated placeholder lists, and drift between `check_sdd_gate.py` and `validate_sdd_artifacts.py`.
+- **Implementation**: Expose `is_placeholder_table_cell()` from the full SDD validator and use it inside `check_sdd_gate.py` table evidence parsing.
+- **Verification**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_placeholder_gate_rows -q`
+- **Review owner**: parent
+- **Status**: [x]

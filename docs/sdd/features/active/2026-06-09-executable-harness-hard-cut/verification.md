@@ -201,6 +201,7 @@ claim is allowed without the corresponding output captured below.
 | AC182 — All active SDD gates run in `check-all`. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_runs_executable_sdd_harness tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_all_active_features tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_any_failed_active_feature -q` failed RED when `check-all` did not call the gate checker and the CLI rejected `--all-active`, then passed after adding the all-active sweep and Makefile gate. |
 | AC183 — Implement gate forwards delegated task drift. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_delegated_artifact_drift -q` failed RED when `--gate implement` passed despite missing subagent handoff/report artifacts, then passed after forwarding all `task-*` validator issues through the implement gate. |
 | AC184 — Gate evidence rejects header-only tables. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_header_only_gate_tables -q` failed RED when `clarify` passed on a header-only table, then passed after `_has_table_evidence()` skipped table headers and required a non-placeholder body row. |
+| AC185 — Gate evidence shares validator placeholder semantics. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_placeholder_gate_rows -q` failed RED when `<pending>`/`YYYY-MM-DD` placeholder rows satisfied `clarify`, then passed after gate evidence parsing reused `is_placeholder_table_cell()` from the full SDD validator. |
 
 Deviations from spec:
 
@@ -3687,6 +3688,17 @@ $ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_ga
 .                                                                        [100%]
 1 passed in 0.04s
 exit code: 0
+
+$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_placeholder_gate_rows -q
+F                                                                        [100%]
+AssertionError: assert 0 == 1
+stdout='clarify gate passed: 2026-06-09-context-packet-fixture'
+exit code: 1
+
+$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_placeholder_gate_rows -q
+.                                                                        [100%]
+1 passed in 0.05s
+exit code: 0
 ```
 
 ## Diff summary
@@ -3705,6 +3717,7 @@ Files changed:
 - All-active SDD gate sweep: `Makefile`, `scripts/check_sdd_gate.py`, `tests/architecture/test_harness_structure.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`.
 - Implement gate delegated drift forwarding: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Gate evidence header-only hard cut: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`.
+- Gate placeholder semantics sharing: `scripts/check_sdd_gate.py`, `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Mechanical frontend Prettier drift cleanup: macro pages, macro component test, `web/vite.config.ts`.
 
 Migrations applied:

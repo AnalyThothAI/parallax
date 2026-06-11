@@ -436,6 +436,56 @@ def test_sdd_gate_check_cli_rejects_header_only_gate_tables(tmp_path: Path) -> N
 
 
 @pytest.mark.architecture
+def test_sdd_gate_check_cli_rejects_placeholder_gate_rows(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "check_sdd_gate.py"
+    assert script.exists()
+    _write_context_packet_fixture(tmp_path)
+    spec_path = (
+        tmp_path
+        / "docs"
+        / "sdd"
+        / "features"
+        / "active"
+        / "2026-06-09-context-packet-fixture"
+        / "spec.md"
+    )
+    spec_text = spec_path.read_text(encoding="utf-8")
+    before, clarifications_and_rest = spec_text.split("## Clarifications", 1)
+    _old_clarifications, after_clarifications = clarifications_and_rest.split("## Requirement Checklist", 1)
+    spec_path.write_text(
+        before
+        + "## Clarifications\n\n"
+        + "| Question | Answer | Approved by | Approved at |\n"
+        + "|----------|--------|-------------|-------------|\n"
+        + "| <pending> | <pending> | <pending> | YYYY-MM-DD |\n\n"
+        + "## Requirement Checklist"
+        + after_clarifications,
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--gate",
+            "clarify",
+            "--check",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "gate-evidence-missing" in result.stderr
+
+
+@pytest.mark.architecture
 def test_sdd_gate_check_cli_accepts_all_active_features(tmp_path: Path) -> None:
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()
