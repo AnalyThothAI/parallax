@@ -93,6 +93,7 @@ GATE_EVIDENCE_HEADERS = {
     "## Analyze Gate": ("Check", "Result"),
     "## Gate Compliance": ("Gate", "Evidence"),
 }
+SPEC_COMPLIANCE_HEADER = ("Acceptance criterion", "Status", "Evidence")
 GATE_COMPLIANCE_GATES = ("Clarify", "Checklist", "Analyze", "Implement", "Verify")
 METADATA_REQUIREMENTS = {
     "spec.md": ("status", "date", "owner", "approved by", "approved at"),
@@ -1467,9 +1468,19 @@ def _verified_issues(feature: SddFeature) -> list[SddIssue]:
 
 def _verified_spec_compliance_issues(artifact: ArtifactRecord) -> list[SddIssue]:
     command_evidence = _command_evidence(_task_evidence_text(artifact.text))
+    rows = _section_table_rows(artifact.text, "## Spec compliance", SPEC_COMPLIANCE_HEADER)
+    if not rows:
+        return [
+            _issue(
+                "verified-incomplete-spec-compliance",
+                artifact,
+                "Verified Spec compliance must contain at least one canonical evidence row",
+            )
+        ]
+
     incomplete_rows: list[str] = []
     missing_commands: list[str] = []
-    for cells in _section_table_rows(artifact.text, "## Spec compliance"):
+    for cells in rows:
         if len(cells) < 3:
             continue
         criterion = _clean_value(cells[0]) or "<unnamed criterion>"

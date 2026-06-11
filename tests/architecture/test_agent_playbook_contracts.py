@@ -425,6 +425,62 @@ def test_sdd_gate_check_cli_verify_rejects_incomplete_spec_compliance(tmp_path: 
 
 
 @pytest.mark.architecture
+def test_sdd_gate_check_cli_verify_rejects_empty_spec_compliance(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "check_sdd_gate.py"
+    assert script.exists()
+    _write_context_packet_fixture(tmp_path)
+    _create_context_packet_fixture_paths(tmp_path)
+    verification_path = (
+        tmp_path
+        / "docs"
+        / "sdd"
+        / "features"
+        / "active"
+        / "2026-06-09-context-packet-fixture"
+        / "verification.md"
+    )
+    verification_text = verification_path.read_text(encoding="utf-8")
+    before, spec_and_rest = verification_text.split("## Spec compliance", 1)
+    _old_spec, rest = spec_and_rest.split("## Verification commands", 1)
+    verification_text = (
+        before
+        + "## Spec compliance\n\n"
+        + "| Acceptance criterion | Status | Evidence |\n"
+        + "|----------------------|--------|----------|\n\n"
+        + "## Verification commands"
+        + rest
+    )
+    verification_text = verification_text.replace(
+        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\n"
+        "Pending.",
+        "$ make check-all\nall checks passed\nexit code: 0",
+    )
+    verification_path.write_text(verification_text, encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--gate",
+            "verify",
+            "--check",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "verified-incomplete-spec-compliance" in result.stderr
+    assert "Spec compliance" in result.stderr
+
+
+@pytest.mark.architecture
 def test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence(tmp_path: Path) -> None:
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()

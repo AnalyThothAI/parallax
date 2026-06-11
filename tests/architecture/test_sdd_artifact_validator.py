@@ -1091,6 +1091,27 @@ def test_verified_feature_requires_complete_spec_compliance_rows(tmp_path: Path)
     assert "AC1" in "\n".join(issue.message for issue in issues)
 
 
+def test_verified_feature_requires_spec_compliance_rows(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "completed", "2026-06-09-empty-spec-compliance")
+    _write_valid_spec(feature / "spec.md", status="Verified")
+    _write_valid_plan(feature / "plan.md", status="Verified")
+    _write_valid_tasks(feature / "tasks.md", status="Verified")
+    _write_valid_verification(feature / "verification.md", status="Verified")
+    _replace_section_body(
+        feature / "verification.md",
+        "## Spec compliance",
+        (
+            "| Acceptance criterion | Status | Evidence |",
+            "|----------------------|--------|----------|",
+        ),
+    )
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "verified-incomplete-spec-compliance" in _issue_codes(issues)
+    assert "Spec compliance" in "\n".join(issue.message for issue in issues)
+
+
 def test_complete_tasks_require_matching_verification_evidence(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-complete-task-without-evidence")
     _write_valid_spec(feature / "spec.md", status="In Progress")
