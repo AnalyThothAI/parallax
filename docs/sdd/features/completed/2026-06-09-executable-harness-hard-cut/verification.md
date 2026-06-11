@@ -1,9 +1,10 @@
 # Verification — Executable Harness Hard Cut
 
-**Status**: In Progress
+**Status**: Superseded
+**Superseded by**: `docs/sdd/features/active/2026-06-11-executable-harness-followup/`
 **Date**: 2026-06-09
-**Owning spec**: `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut/spec.md`
-**Owning plan**: `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut/plan.md`
+**Owning spec**: `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut/spec.md`
+**Owning plan**: `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut/plan.md`
 **Branch**: `codex/agent-factory-eval-harness`
 **Worktree**: `.worktrees/agent-factory-eval-harness`
 **Approved by**: qinghuan
@@ -726,7 +727,7 @@ $ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete
 exit code: 0
 
 $ uv run python scripts/validate_sdd_artifacts.py --check
-error: task-invalid-dependencies: docs/sdd/features/active/2026-06-09-executable-harness-hard-cut/tasks.md: Task 6 — Agent factory and eval/repair loop gate complete before dependencies: Task 5
+error: task-invalid-dependencies: docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut/tasks.md: Task 6 — Agent factory and eval/repair loop gate complete before dependencies: Task 5
 exit code: 1
 
 $ uv run python scripts/validate_sdd_artifacts.py --check

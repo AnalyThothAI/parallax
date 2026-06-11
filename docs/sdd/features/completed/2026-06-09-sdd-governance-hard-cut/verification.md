@@ -8,7 +8,7 @@
 **Worktree**: `.worktrees/sdd-v2-hard-cut/`
 **Approved by**: qinghuan
 **Approved at**: 2026-06-09
-**Superseded by**: `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut/`
+**Superseded by**: `docs/sdd/features/active/2026-06-11-executable-harness-followup/`
 
 ## Spec compliance
 

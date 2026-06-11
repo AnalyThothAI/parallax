@@ -8,7 +8,7 @@
 **Worktree**: `.worktrees/macro-intel-redesign/`
 **Approved by**: qinghuan
 **Approved at**: 2026-06-09
-**Superseded by**: `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut/`
+**Superseded by**: `docs/sdd/features/active/2026-06-11-executable-harness-followup/`
 **Diff**: final implementation slice committed on `codex/macro-intel-redesign`
 
 This file records the Macro Intel frontend redesign implementation: shared workbench model/components, overview and generic leaf migration, rates naming/diagnostics convergence, asset overview decomposition, correlation detail convergence, CSS/compatibility deletion, golden-path coverage, and visual review screenshots.

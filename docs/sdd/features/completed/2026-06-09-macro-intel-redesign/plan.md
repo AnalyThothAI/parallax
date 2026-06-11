@@ -7,7 +7,7 @@
 **Branch**: `codex/macro-intel-redesign`
 **Approved by**: qinghuan
 **Approved at**: 2026-06-09
-**Superseded by**: `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut/`
+**Superseded by**: `docs/sdd/features/active/2026-06-11-executable-harness-followup/`
 
 ## Pre-flight
 
@@ -107,7 +107,7 @@ Create a new workbench UI folder that owns the common macro product grammar.
 
 | Check | Result |
 |-------|--------|
-| Macro redesign work is no longer the current harness owner. | Pass: successor feature `2026-06-09-executable-harness-hard-cut` owns current executable harness behavior and this record remains historical. |
+| Macro redesign work is no longer the current harness owner. | Pass: successor feature `2026-06-11-executable-harness-followup` owns current executable harness behavior and this record remains historical. |
 
 ## PR breakdown
 

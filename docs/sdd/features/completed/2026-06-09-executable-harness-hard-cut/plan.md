@@ -1,8 +1,9 @@
 # Plan — Executable Harness Hard Cut
 
-**Status**: In Progress
+**Status**: Superseded
+**Superseded by**: `docs/sdd/features/active/2026-06-11-executable-harness-followup/`
 **Date**: 2026-06-09
-**Owning spec**: `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut/spec.md`
+**Owning spec**: `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut/spec.md`
 **Worktree**: `.worktrees/agent-factory-eval-harness`
 **Branch**: `codex/agent-factory-eval-harness`
 **Approved by**: qinghuan
@@ -772,4 +773,4 @@ This is a development harness hard cut. Rollback is reverting this branch before
 
 ## Verification
 
-Verification evidence lives in `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut/verification.md`.
+Verification evidence lives in `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut/verification.md`.

@@ -39,6 +39,12 @@ harness as `unexpected-artifact`.
     it under `## Completion gate`.
 11. Move the feature directory from `active/` to `completed/`.
 
+Active feature records are bounded execution loops, not omnibus ledgers. Keep
+each active `tasks.md` at or below 40 structured tasks; when the work needs more
+than 40 structured tasks, split or supersede the record and continue in a new
+feature. The validator reports `active-feature-too-large` before oversized
+active records can satisfy the harness.
+
 Run these checks after changing SDD records or generated SDD coordination data:
 
 ```bash

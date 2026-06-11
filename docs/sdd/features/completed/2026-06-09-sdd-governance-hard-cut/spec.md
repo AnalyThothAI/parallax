@@ -6,7 +6,7 @@
 **Approved by**: qinghuan
 **Approved at**: 2026-06-09
 **Related**: `docs/WORKFLOW.md`, `docs/TESTING.md`, `AGENTS.md`, `CLAUDE.md`
-**Superseded by**: `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut/`
+**Superseded by**: `docs/sdd/features/active/2026-06-11-executable-harness-followup/`
 
 ## Background
 

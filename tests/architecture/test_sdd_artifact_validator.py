@@ -1392,6 +1392,46 @@ def test_superseded_feature_rejects_acceptance_command_drift(tmp_path: Path) -> 
     assert "AC2" in "\n".join(issue.message for issue in issues)
 
 
+def test_active_feature_rejects_unbounded_task_board(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-unbounded-active-record")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(feature / "tasks.md", status="In Progress", task_status="[~]")
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+    tasks_path = feature / "tasks.md"
+    tasks_text = tasks_path.read_text(encoding="utf-8")
+    for task_number in range(2, 42):
+        tasks_text += (
+            f"\n\n### Task {task_number} - Bounded slice {task_number}\n\n"
+            "- **File(s)**: `tests/architecture/test_sdd_artifact_validator.py`, "
+            "`scripts/validate_sdd_artifacts.py`\n"
+            "- **Owner**: parent\n"
+            f"- **Depends on**: Task {task_number - 1}\n"
+            "- **Touch set**: `scripts/validate_sdd_artifacts.py`\n"
+            "- **Conflict set**: `scripts/regen_sdd_work_index.py`\n"
+            "- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::"
+            "test_active_feature_rejects_unbounded_task_board` - asserts active records stay bounded.\n"
+            "- **Subagent handoff**: not delegated\n"
+            "- **Subagent report**: not delegated\n"
+            "- **Review result**: parent-reviewed\n"
+            "- **Factory lane**: Harness/tests\n"
+            "- **Deterministic constraints**: Active features stay small enough for a single agent loop.\n"
+            "- **On-demand context**: `docs/sdd/README.md`, `scripts/validate_sdd_artifacts.py`.\n"
+            "- **Kill/defer criteria**: Stop if active records must remain omnibus ledgers.\n"
+            "- **Eval/repair signal**: `active-feature-too-large`.\n"
+            "- **Implementation**: Keep active work in bounded slices.\n"
+            "- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py -q`\n"
+            "- **Review owner**: parent\n"
+            "- **Status**: [~]\n"
+        )
+    tasks_path.write_text(tasks_text, encoding="utf-8")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "active-feature-too-large" in _issue_codes(issues)
+    assert "41 task" in "\n".join(issue.message for issue in issues)
+
+
 def test_verified_feature_ignores_old_success_outside_verification_commands(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "completed", "2026-06-09-old-success")
     _write_valid_spec(feature / "spec.md", status="Verified")

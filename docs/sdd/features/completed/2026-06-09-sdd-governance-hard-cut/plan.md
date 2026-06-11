@@ -7,7 +7,7 @@
 **Branch**: `codex/sdd-v2-hard-cut`
 **Approved by**: qinghuan
 **Approved at**: 2026-06-09
-**Superseded by**: `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut/`
+**Superseded by**: `docs/sdd/features/active/2026-06-11-executable-harness-followup/`
 
 ## File-Level Edits
 
@@ -25,7 +25,7 @@
 
 | Check | Result |
 |-------|--------|
-| Superseded governance work is no longer canonical. | Pass: successor feature `2026-06-09-executable-harness-hard-cut` owns current executable harness behavior. |
+| Superseded governance work is no longer canonical. | Pass: successor feature `2026-06-11-executable-harness-followup` owns current executable harness behavior. |
 
 ## Acceptance test commands
 

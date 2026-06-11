@@ -19,6 +19,7 @@ SDD_FEATURES = ROOT / "docs" / "sdd" / "features"
 ARTIFACTS = ("spec.md", "plan.md", "tasks.md", "verification.md")
 ACTIVE_STATUSES = {"draft", "approved", "in progress", "review", "blocked"}
 COMPLETED_STATUSES = {"verified", "superseded"}
+MAX_ACTIVE_FEATURE_TASKS = 40
 STATUS_RE = re.compile(r"^\s*(?:\*\*)?Status(?:\*\*)?\s*:\s*(.+?)\s*$", re.IGNORECASE)
 FIELD_RE = re.compile(r"^\s*\*\*(?P<name>[^*]+)\*\*\s*:\s*(?P<value>.+?)\s*$")
 TASK_RE = re.compile(r"^###\s+Task\b", re.IGNORECASE | re.MULTILINE)
@@ -212,6 +213,7 @@ KNOWN_ISSUE_CODES = (
     "superseded-missing-successor",
     "superseded-successor-mismatch",
     "active-touch-conflict",
+    "active-feature-too-large",
 )
 
 
@@ -489,9 +491,23 @@ def _feature_issues(feature: SddFeature) -> list[SddIssue]:
     issues.extend(_plan_preflight_issues(feature))
     issues.extend(_acceptance_command_issues(feature))
     issues.extend(_task_issues(feature))
+    issues.extend(_active_feature_size_issues(feature))
     if feature.status.lower() == "verified":
         issues.extend(_verified_issues(feature))
     return issues
+
+
+def _active_feature_size_issues(feature: SddFeature) -> list[SddIssue]:
+    if feature.state != "active" or len(feature.tasks) <= MAX_ACTIVE_FEATURE_TASKS:
+        return []
+    return [
+        _issue(
+            "active-feature-too-large",
+            feature.artifacts["tasks.md"],
+            f"active feature has {len(feature.tasks)} tasks; split or supersede before exceeding "
+            f"{MAX_ACTIVE_FEATURE_TASKS} tasks",
+        )
+    ]
 
 
 def _unexpected_artifact_issues(feature: SddFeature) -> list[SddIssue]:

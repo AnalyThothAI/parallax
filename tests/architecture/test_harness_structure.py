@@ -7,6 +7,8 @@ import os
 import re
 from pathlib import Path
 
+from scripts.validate_sdd_artifacts import MAX_ACTIVE_FEATURE_TASKS
+
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 DOCS = REPO_ROOT / "docs"
 SDD = DOCS / "sdd"
@@ -231,6 +233,20 @@ def test_sdd_root_has_templates_and_feature_lanes_only() -> None:
 
     feature_children = sorted(p.name for p in (SDD / "features").iterdir() if not p.name.startswith("."))
     assert set(feature_children) == {"active", "completed"}, feature_children
+
+
+def test_sdd_docs_describe_bounded_active_feature_records() -> None:
+    readme = _read(SDD / "README.md")
+    tasks_template = _read(SDD / "_templates" / "tasks-template.md")
+    required_tokens = (
+        f"{MAX_ACTIVE_FEATURE_TASKS} structured tasks",
+        "active-feature-too-large",
+        "split or supersede",
+    )
+
+    for text in (readme, tasks_template):
+        for token in required_tokens:
+            assert token in text
 
 
 def test_docs_root_governance_files() -> None:

@@ -1,7 +1,8 @@
 # Tasks — Executable Harness Hard Cut
 
-**Status**: In Progress
-**Owning plan**: `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut/plan.md`
+**Status**: Superseded
+**Superseded by**: `docs/sdd/features/active/2026-06-11-executable-harness-followup/`
+**Owning plan**: `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut/plan.md`
 **Worktree**: `.worktrees/agent-factory-eval-harness`
 **Branch**: `codex/agent-factory-eval-harness`
 **Approved by**: qinghuan
@@ -336,10 +337,10 @@
 
 ### Task 16 — Completed task verification evidence gate
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 15
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD records, generated index, and architecture fixtures.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_complete_tasks_require_matching_verification_evidence` — asserts `[x]` tasks cannot lack matching exit-code evidence.
 - **Subagent handoff**: not delegated
@@ -357,10 +358,10 @@
 
 ### Task 17 — Strict non-delegated token gate
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 16
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared active SDD task records and generated index.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_non_delegated_handoff_rejects_prose_suffix` — asserts `not delegated; prose` cannot pass as a machine token.
 - **Subagent handoff**: not delegated
@@ -378,10 +379,10 @@
 
 ### Task 18 — Delegated handoff artifact validation
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/agent-playbook/factory-operating-model.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/agent-playbook/factory-operating-model.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 17
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/agent-playbook/factory-operating-model.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/agent-playbook/factory-operating-model.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared generated index and delegated-task fixtures.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_handoff_artifact` — asserts delegated handoff paths must resolve to real artifacts.
 - **Subagent handoff**: not delegated
@@ -399,10 +400,10 @@
 
 ### Task 19 — Artifact lifecycle status consistency gate
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 18
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD lifecycle records and generated index.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_feature_rejects_mixed_artifact_statuses` — asserts mixed artifact lifecycle statuses cannot pass.
 - **Subagent handoff**: not delegated
@@ -420,10 +421,10 @@
 
 ### Task 20 — Machine-readable superseded successor gate
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 19
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD lifecycle docs, templates, validator, and generated index.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_machine_readable_successor` — asserts prose-only successor mentions cannot pass.
 - **Subagent handoff**: not delegated
@@ -441,10 +442,10 @@
 
 ### Task 21 — Exact four-artifact feature directory gate
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/README.md`, `docs/sdd/features/completed/2026-06-09-macro-intel-redesign`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/README.md`, `docs/sdd/features/completed/2026-06-09-macro-intel-redesign`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 20
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/README.md`, `docs/sdd/features/completed/2026-06-09-macro-intel-redesign`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/README.md`, `docs/sdd/features/completed/2026-06-09-macro-intel-redesign`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD lifecycle docs, validator, generated index, and completed-record cleanup.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_feature_rejects_unexpected_artifact_files` — asserts extra feature files cannot pass.
 - **Subagent handoff**: not delegated
@@ -462,10 +463,10 @@
 
 ### Task 22 — Completed task dependency completion gate
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 21
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD task dependency semantics and generated index.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_completed_tasks_reject_incomplete_dependencies` — asserts `[x]` tasks cannot depend on incomplete tasks.
 - **Subagent handoff**: not delegated
@@ -483,10 +484,10 @@
 
 ### Task 23 — Completed task evidence section gate
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 22
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD verification semantics and generated index.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_complete_task_evidence_ignores_commands_outside_evidence_sections` — asserts Notes code blocks do not satisfy completed-task evidence.
 - **Subagent handoff**: not delegated
@@ -504,10 +505,10 @@
 
 ### Task 24 — Superseded metadata hard gate
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 23
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD lifecycle semantics and completed-record metadata.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_approval_metadata` — asserts `Superseded` artifacts still require approval metadata.
 - **Subagent handoff**: not delegated
@@ -525,10 +526,10 @@
 
 ### Task 25 — Superseded structured task record gate
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-sdd-governance-hard-cut/tasks.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-sdd-governance-hard-cut/tasks.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 24
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-sdd-governance-hard-cut/tasks.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-sdd-governance-hard-cut/tasks.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD lifecycle semantics and completed-record task structure.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_structured_tasks` — asserts legacy checkbox-only tasks cannot pass as Superseded.
 - **Subagent handoff**: not delegated
@@ -546,10 +547,10 @@
 
 ### Task 26 — Superseded successor consistency gate
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 25
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD lifecycle semantics and generated index.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_one_successor` — asserts one `Superseded` feature cannot split successor paths.
 - **Subagent handoff**: not delegated
@@ -567,10 +568,10 @@
 
 ### Task 27 — Completed task review outcome gate
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 26
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared task review semantics and generated index.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_complete_tasks_require_review_result_evidence` — asserts `[x]` tasks cannot keep `Review result: not delegated`.
 - **Subagent handoff**: not delegated
@@ -588,10 +589,10 @@
 
 ### Task 28 — Task DAG numbering gate
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 27
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared task dependency and dispatch semantics.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_tasks_require_unique_contiguous_numbers` — asserts duplicate or skipped task numbers cannot pass.
 - **Subagent handoff**: not delegated
@@ -609,10 +610,10 @@
 
 ### Task 29 — Artifact owning-link lineage gate
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 28
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD lineage metadata and generated index.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_artifact_owning_links_must_point_to_same_feature` — asserts cross-feature owning links cannot pass.
 - **Subagent handoff**: not delegated
@@ -630,10 +631,10 @@
 
 ### Task 30 — Acceptance command coverage gate
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 29
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD acceptance-command semantics and generated index.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_plan_acceptance_commands_must_cover_spec_acceptance_criteria` — asserts spec ACs cannot lack plan command coverage.
 - **Subagent handoff**: not delegated
@@ -651,10 +652,10 @@
 
 ### Task 31 — Acceptance numbering gate
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 30
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD acceptance-command semantics and generated index.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_acceptance_criteria_and_commands_require_contiguous_numbers` — asserts synchronized AC gaps cannot pass.
 - **Subagent handoff**: not delegated
@@ -672,10 +673,10 @@
 
 ### Task 32 — Acceptance command shape gate
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 31
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD acceptance-command semantics and generated index.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_plan_acceptance_commands_must_be_command_shaped` — asserts prose AC commands cannot pass.
 - **Subagent handoff**: not delegated
@@ -693,10 +694,10 @@
 
 ### Task 33 — Acceptance command exact-line gate
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 32
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD acceptance-command semantics and generated index.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_plan_acceptance_commands_reject_trailing_prose` — asserts command-line escape prose cannot pass.
 - **Subagent handoff**: not delegated
@@ -714,10 +715,10 @@
 
 ### Task 34 — Feature slug/date identity gate
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 33
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD lifecycle flags and generated index.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_feature_directory_name_and_date_metadata_are_machine_valid` — asserts freeform feature slugs and date drift cannot pass.
 - **Subagent handoff**: not delegated
@@ -735,10 +736,10 @@
 
 ### Task 35 — Gate evidence row validator
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 34
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD gate semantics and generated index.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_gate_sections_require_non_placeholder_evidence` — asserts empty copied gate tables cannot pass.
 - **Subagent handoff**: not delegated
@@ -756,10 +757,10 @@
 
 ### Task 36 — Acceptance criterion format gate
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 35
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD acceptance semantics and generated index.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_acceptance_criteria_require_when_then_shall_format` — asserts vague AC prose cannot pass.
 - **Subagent handoff**: not delegated
@@ -777,10 +778,10 @@
 
 ### Task 37 — Verified spec-compliance evidence gate
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 36
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD verification semantics and generated index.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_spec_compliance_rows_require_matching_command_evidence` — asserts a Verified compliance row cannot cite an unproven command.
 - **Subagent handoff**: not delegated
@@ -798,10 +799,10 @@
 
 ### Task 38 — Worktree metadata hard cut
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 37
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared Worktree/Branch metadata and generated index.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_worktree_branch_metadata_must_be_machine_valid` — asserts template placeholders and branch/worktree mismatches cannot pass.
 - **Subagent handoff**: not delegated
@@ -819,10 +820,10 @@
 
 ### Task 39 — Source-backed spec background gate
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 38
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD background/source citations.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_spec_background_requires_source_citations` — asserts uncited Background claims cannot pass.
 - **Subagent handoff**: not delegated
@@ -840,10 +841,10 @@
 
 ### Task 40 — Plan pre-flight metadata gate
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 39
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared Worktree/Branch metadata.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_plan_preflight_worktree_claims_must_match_metadata` — asserts checked Pre-flight setup evidence cannot cite stale Worktree/Branch values.
 - **Subagent handoff**: not delegated
@@ -861,10 +862,10 @@
 
 ### Task 41 — Subagent handoff artifact binding gate
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 40
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared subagent handoff/report semantics.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_validate_handoff_artifact_against_task` — asserts an existing handoff artifact from another feature/task cannot satisfy delegated task evidence.
 - **Subagent handoff**: not delegated
@@ -882,10 +883,10 @@
 
 ### Task 42 — Subagent report mode binding gate
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 41
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared subagent report semantics.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_delegated_report_mode_must_match_handoff_mode` — asserts a report cannot claim `write-allowed` when the handoff granted `read-only`.
 - **Subagent handoff**: not delegated
@@ -903,10 +904,10 @@
 
 ### Task 43 — Factory lane enum gate
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 42
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared factory-lane semantics.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_invalid_factory_lane_values` — asserts freeform or compatibility lane names cannot pass task validation.
 - **Subagent handoff**: not delegated
@@ -924,10 +925,10 @@
 
 ### Task 44 — Analyze gate result token gate
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/_templates/plan-template.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut/plan.md`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/_templates/plan-template.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut/plan.md`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 43
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/_templates/plan-template.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut/plan.md`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/_templates/plan-template.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut/plan.md`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared Analyze Gate status semantics.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_plan_analyze_gate_rejects_failed_results` — asserts `Fail:` Analyze Gate rows cannot pass as implementation-ready evidence.
 - **Subagent handoff**: not delegated
@@ -945,10 +946,10 @@
 
 ### Task 45 — Completed task failing-test evidence gate
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 44
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD validator semantics and generated index.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_complete_tasks_require_failing_test_reference_evidence` — asserts completed tasks cannot declare a failing-test reference that has no successful verification evidence.
 - **Subagent handoff**: not delegated
@@ -966,10 +967,10 @@
 
 ### Task 46 — Generated CLI help freshness gate
 
-- **File(s)**: `Makefile`, `scripts/regen_cli_help.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `Makefile`, `scripts/regen_cli_help.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 45
-- **Touch set**: `Makefile`, `scripts/regen_cli_help.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `Makefile`, `scripts/regen_cli_help.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD index and completion-gate semantics.
 - **Failing test first**: `tests/architecture/test_harness_structure.py::test_make_check_all_checks_cli_help_snapshot` — asserts `check-all` runs the generated CLI help freshness check.
 - **Subagent handoff**: not delegated
@@ -987,10 +988,10 @@
 
 ### Task 47 — Public contracts source-alignment gate
 
-- **File(s)**: `docs/CONTRACTS.md`, `tests/architecture/test_public_contracts_doc_alignment.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `docs/CONTRACTS.md`, `tests/architecture/test_public_contracts_doc_alignment.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 46
-- **Touch set**: `docs/CONTRACTS.md`, `tests/architecture/test_public_contracts_doc_alignment.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `docs/CONTRACTS.md`, `tests/architecture/test_public_contracts_doc_alignment.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `docs/CONTRACTS.md` for shared News route and WebSocket payload semantics.
 - **Failing test first**: `tests/architecture/test_public_contracts_doc_alignment.py::test_contracts_worker_keys_match_manifest_registry` — asserts public runtime contract docs cannot list retired worker keys; the same file covers stale agent lanes, removed WS payload keys, and the old News item detail route.
 - **Subagent handoff**: not delegated
@@ -1008,10 +1009,10 @@
 
 ### Task 48 — Generated README source-map gate
 
-- **File(s)**: `docs/generated/README.md`, `scripts/regen_ws_protocol.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `docs/generated/README.md`, `scripts/regen_ws_protocol.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 47
-- **Touch set**: `docs/generated/README.md`, `scripts/regen_ws_protocol.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `docs/generated/README.md`, `scripts/regen_ws_protocol.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `docs/generated/README.md` for generated docs source-map semantics.
 - **Failing test first**: `tests/architecture/test_harness_structure.py::test_generated_readme_source_map_points_to_existing_paths` — asserts generated-doc source-map rows cannot point at retired or missing source paths.
 - **Subagent handoff**: not delegated
@@ -1029,10 +1030,10 @@
 
 ### Task 49 — Active touch conflict path-awareness gate
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 48
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD validator conflict semantics and generated index.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_active_touch_sets_reject_nested_or_misdirected_coordination` — asserts nested touch-set overlaps and unrelated coordination prose still fail.
 - **Subagent handoff**: not delegated
@@ -1050,10 +1051,10 @@
 
 ### Task 50 — Frontend docs and skill source-alignment gate
 
-- **File(s)**: `docs/FRONTEND.md`, `.agents/skills/parallax-frontend-verification/SKILL.md`, `web/tests/architecture/frontendDocContract.test.ts`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `docs/FRONTEND.md`, `.agents/skills/parallax-frontend-verification/SKILL.md`, `web/tests/architecture/frontendDocContract.test.ts`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 49
-- **Touch set**: `docs/FRONTEND.md`, `.agents/skills/parallax-frontend-verification/SKILL.md`, `web/tests/architecture/frontendDocContract.test.ts`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `docs/FRONTEND.md`, `.agents/skills/parallax-frontend-verification/SKILL.md`, `web/tests/architecture/frontendDocContract.test.ts`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `docs/FRONTEND.md` for frontend architecture documentation and skill semantics.
 - **Failing test first**: `tests/architecture/frontendDocContract.test.ts::frontend documentation contract` — asserts frontend docs and skill cannot drift from CSS architecture constants, shell entrypoint policy, or app navigation source under the `web/` test command.
 - **Subagent handoff**: not delegated
@@ -1071,10 +1072,10 @@
 
 ### Task 51 — Frontend feature-boundary root derivation gate
 
-- **File(s)**: `web/tests/architecture/featureBoundaries.test.ts`, `docs/FRONTEND.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `web/tests/architecture/featureBoundaries.test.ts`, `docs/FRONTEND.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 50
-- **Touch set**: `web/tests/architecture/featureBoundaries.test.ts`, `docs/FRONTEND.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `web/tests/architecture/featureBoundaries.test.ts`, `docs/FRONTEND.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `docs/FRONTEND.md` for frontend architecture documentation and boundary semantics.
 - **Failing test first**: `tests/architecture/featureBoundaries.test.ts::feature boundaries` — asserts the relative-import boundary scan cannot omit current feature roots or keep removed roots under the `web/` test command.
 - **Subagent handoff**: not delegated
@@ -1092,10 +1093,10 @@
 
 ### Task 52 — Frontend data ownership architecture gate
 
-- **File(s)**: `web/tests/architecture/frontendDataOwnership.test.ts`, `docs/FRONTEND.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `web/tests/architecture/frontendDataOwnership.test.ts`, `docs/FRONTEND.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 51
-- **Touch set**: `web/tests/architecture/frontendDataOwnership.test.ts`, `docs/FRONTEND.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `web/tests/architecture/frontendDataOwnership.test.ts`, `docs/FRONTEND.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `docs/FRONTEND.md` for frontend data ownership architecture semantics.
 - **Failing test first**: `tests/architecture/frontendDataOwnership.test.ts::frontend data ownership` — asserts data ownership docs are harness-bound and route/UI source cannot directly own server-state primitives under the `web/` test command.
 - **Subagent handoff**: not delegated
@@ -1113,10 +1114,10 @@
 
 ### Task 53 — Agent router frontend guardrail source-alignment gate
 
-- **File(s)**: `AGENTS.md`, `CLAUDE.md`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `AGENTS.md`, `CLAUDE.md`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 52
-- **Touch set**: `AGENTS.md`, `CLAUDE.md`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `AGENTS.md`, `CLAUDE.md`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `AGENTS.md` for root router shared-block semantics; coordinate with `CLAUDE.md` for root router shared-block semantics.
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_agent_router_frontend_guardrails_match_css_harness` — asserts root agent router frontend guardrails include retired CSS buckets declared by the frontend CSS harness.
 - **Subagent handoff**: not delegated
@@ -1134,10 +1135,10 @@
 
 ### Task 54 — Frontend verification skill data-ownership gate
 
-- **File(s)**: `.agents/skills/parallax-frontend-verification/SKILL.md`, `web/tests/architecture/frontendDocContract.test.ts`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `.agents/skills/parallax-frontend-verification/SKILL.md`, `web/tests/architecture/frontendDocContract.test.ts`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 53
-- **Touch set**: `.agents/skills/parallax-frontend-verification/SKILL.md`, `web/tests/architecture/frontendDocContract.test.ts`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `.agents/skills/parallax-frontend-verification/SKILL.md`, `web/tests/architecture/frontendDocContract.test.ts`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `docs/FRONTEND.md` for frontend verification skill semantics.
 - **Failing test first**: `tests/architecture/frontendDocContract.test.ts::frontend documentation contract` — asserts the frontend verification skill names the data-ownership harness and forbidden route/UI server-state primitives under the `web/` test command.
 - **Subagent handoff**: not delegated
@@ -1155,10 +1156,10 @@
 
 ### Task 55 — Architecture doc test-reference gate
 
-- **File(s)**: `docs/ARCHITECTURE.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `docs/ARCHITECTURE.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 54
-- **Touch set**: `docs/ARCHITECTURE.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `docs/ARCHITECTURE.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `docs/ARCHITECTURE.md` for architecture enforcement-test references.
 - **Failing test first**: `tests/architecture/test_harness_structure.py::test_architecture_doc_test_references_are_path_qualified_and_existing` — asserts `docs/ARCHITECTURE.md` cannot use bare or missing architecture-test references.
 - **Subagent handoff**: not delegated
@@ -1176,10 +1177,10 @@
 
 ### Task 56 — Architecture module map source-completeness gate
 
-- **File(s)**: `docs/ARCHITECTURE.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `docs/ARCHITECTURE.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 55
-- **Touch set**: `docs/ARCHITECTURE.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `docs/ARCHITECTURE.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `docs/ARCHITECTURE.md` for architecture module-map links.
 - **Failing test first**: `tests/architecture/test_harness_structure.py::test_architecture_module_map_links_every_domain_architecture_doc` — asserts the global architecture module map markdown-links every current domain `ARCHITECTURE.md` file.
 - **Subagent handoff**: not delegated
@@ -1197,10 +1198,10 @@
 
 ### Task 57 — Architecture test taxonomy exact-inventory gate
 
-- **File(s)**: `docs/TESTING.md`, `tests/architecture/test_test_lane_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `docs/TESTING.md`, `tests/architecture/test_test_lane_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 56
-- **Touch set**: `docs/TESTING.md`, `tests/architecture/test_test_lane_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `docs/TESTING.md`, `tests/architecture/test_test_lane_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `docs/TESTING.md` for architecture test taxonomy inventory.
 - **Failing test first**: `tests/architecture/test_test_lane_contracts.py::test_architecture_tests_declare_harness_taxonomy` — asserts `docs/TESTING.md` architecture-test taxonomy rows exactly match current `tests/architecture/test_*.py` files.
 - **Subagent handoff**: not delegated
@@ -1218,10 +1219,10 @@
 
 ### Task 58 — Tech debt reference source/test gate
 
-- **File(s)**: `docs/TECH_DEBT.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `docs/TECH_DEBT.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 57
-- **Touch set**: `docs/TECH_DEBT.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `docs/TECH_DEBT.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `docs/TECH_DEBT.md` for active debt reference hygiene.
 - **Failing test first**: `tests/architecture/test_harness_structure.py::test_open_tech_debt_references_current_source_and_test_paths` — asserts open `docs/TECH_DEBT.md` source/test/doc references use self-contained repo-root paths and point at current files and test functions.
 - **Subagent handoff**: not delegated
@@ -1239,10 +1240,10 @@
 
 ### Task 59 — Governance rule overfit split
 
-- **File(s)**: `docs/TECH_DEBT.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `docs/TECH_DEBT.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 58
-- **Touch set**: `docs/TECH_DEBT.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `docs/TECH_DEBT.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `tests/architecture/test_harness_structure.py` for governance rule harness edits.
 - **Failing test first**: `tests/architecture/test_harness_structure.py::test_rule_ownership tests/architecture/test_harness_structure.py::test_routers_have_no_governance_phrases` — asserts governance rules have exactly one owning doc and do not leak into root router prose.
 - **Subagent handoff**: not delegated
@@ -1260,10 +1261,10 @@
 
 ### Task 60 — Evidence entity type shim hard cut
 
-- **File(s)**: `src/parallax/domains/evidence/types/entity.py`, `src/parallax/domains/evidence/services/entity_extractor.py`, `src/parallax/domains/evidence/interfaces.py`, `src/parallax/app/surfaces/api/ws.py`, `tests/unit/test_entity_extractor.py`, `tests/architecture/test_src_domain_architecture.py`, `docs/TECH_DEBT.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/domains/evidence/types/entity.py`, `src/parallax/domains/evidence/services/entity_extractor.py`, `src/parallax/domains/evidence/interfaces.py`, `src/parallax/app/surfaces/api/ws.py`, `tests/unit/test_entity_extractor.py`, `tests/architecture/test_src_domain_architecture.py`, `docs/TECH_DEBT.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 59
-- **Touch set**: `src/parallax/domains/evidence/types/entity.py`, `src/parallax/domains/evidence/services/entity_extractor.py`, `src/parallax/domains/evidence/interfaces.py`, `src/parallax/app/surfaces/api/ws.py`, `tests/unit/test_entity_extractor.py`, `tests/architecture/test_src_domain_architecture.py`, `docs/TECH_DEBT.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/domains/evidence/types/entity.py`, `src/parallax/domains/evidence/services/entity_extractor.py`, `src/parallax/domains/evidence/interfaces.py`, `src/parallax/app/surfaces/api/ws.py`, `tests/unit/test_entity_extractor.py`, `tests/architecture/test_src_domain_architecture.py`, `docs/TECH_DEBT.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/domains/evidence/services/entity_extractor.py` for entity normalization import ownership.
 - **Failing test first**: `tests/architecture/test_src_domain_architecture.py::test_domain_types_do_not_import_upward_layers` — asserts domain `types/` modules cannot import services, repositories, queries, read models, or runtime modules.
 - **Subagent handoff**: not delegated
@@ -1281,10 +1282,10 @@
 
 ### Task 61 — Domain interface runtime import hard cut
 
-- **File(s)**: `src/parallax/domains/token_intel/interfaces.py`, `src/parallax/domains/token_intel/services/token_resolution_refresh.py`, `src/parallax/domains/token_intel/runtime/token_intent_rebuild.py`, `src/parallax/app/surfaces/cli/commands/ops.py`, `tests/unit/test_token_resolution_refresh.py`, `tests/architecture/test_src_domain_architecture.py`, `docs/TECH_DEBT.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/domains/token_intel/interfaces.py`, `src/parallax/domains/token_intel/services/token_resolution_refresh.py`, `src/parallax/domains/token_intel/runtime/token_intent_rebuild.py`, `src/parallax/app/surfaces/cli/commands/ops.py`, `tests/unit/test_token_resolution_refresh.py`, `tests/architecture/test_src_domain_architecture.py`, `docs/TECH_DEBT.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 60
-- **Touch set**: `src/parallax/domains/token_intel/interfaces.py`, `src/parallax/domains/token_intel/services/token_resolution_refresh.py`, `src/parallax/domains/token_intel/runtime/token_intent_rebuild.py`, `src/parallax/app/surfaces/cli/commands/ops.py`, `tests/unit/test_token_resolution_refresh.py`, `tests/architecture/test_src_domain_architecture.py`, `docs/TECH_DEBT.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/domains/token_intel/interfaces.py`, `src/parallax/domains/token_intel/services/token_resolution_refresh.py`, `src/parallax/domains/token_intel/runtime/token_intent_rebuild.py`, `src/parallax/app/surfaces/cli/commands/ops.py`, `tests/unit/test_token_resolution_refresh.py`, `tests/architecture/test_src_domain_architecture.py`, `docs/TECH_DEBT.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Removed file(s)**: `src/parallax/domains/token_intel/runtime/token_resolution_refresh.py`
 - **Conflict set**: coordinate with `src/parallax/domains/token_intel/interfaces.py` for domain interface export ownership.
 - **Failing test first**: `tests/architecture/test_src_domain_architecture.py::test_domain_interfaces_do_not_import_runtime_modules` — asserts domain interface modules cannot import runtime modules.
@@ -1303,10 +1304,10 @@
 
 ### Task 62 — Tech debt duplicate-symbol claim gate
 
-- **File(s)**: `docs/TECH_DEBT.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `docs/TECH_DEBT.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 61
-- **Touch set**: `docs/TECH_DEBT.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `docs/TECH_DEBT.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `docs/TECH_DEBT.md` for active debt row semantics.
 - **Failing test first**: `tests/architecture/test_harness_structure.py::test_open_tech_debt_duplicate_symbol_claims_match_current_sources` — asserts duplicate-symbol debt claims match cited source contents.
 - **Subagent handoff**: not delegated
@@ -1324,10 +1325,10 @@
 
 ### Task 63 — Generated WebSocket protocol type-literal gate
 
-- **File(s)**: `scripts/regen_ws_protocol.py`, `docs/generated/ws-protocol.md`, `docs/generated/README.md`, `docs/TECH_DEBT.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/regen_ws_protocol.py`, `docs/generated/ws-protocol.md`, `docs/generated/README.md`, `docs/TECH_DEBT.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 62
-- **Touch set**: `scripts/regen_ws_protocol.py`, `docs/generated/ws-protocol.md`, `docs/generated/README.md`, `docs/TECH_DEBT.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/regen_ws_protocol.py`, `docs/generated/ws-protocol.md`, `docs/generated/README.md`, `docs/TECH_DEBT.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `docs/generated/README.md` for generated-doc source-map semantics.
 - **Failing test first**: `tests/architecture/test_harness_structure.py::test_generated_ws_protocol_documents_current_type_literals` — asserts generated WebSocket protocol docs include current source `type` literals.
 - **Subagent handoff**: not delegated
@@ -1345,10 +1346,10 @@
 
 ### Task 64 — Generated WebSocket protocol freshness gate
 
-- **File(s)**: `Makefile`, `scripts/regen_ws_protocol.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `Makefile`, `scripts/regen_ws_protocol.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 63
-- **Touch set**: `Makefile`, `scripts/regen_ws_protocol.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `Makefile`, `scripts/regen_ws_protocol.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `Makefile` for check-all generated-doc gates.
 - **Failing test first**: `tests/architecture/test_harness_structure.py::test_make_check_all_checks_ws_protocol_snapshot` — asserts `check-all` runs the WebSocket protocol freshness check.
 - **Subagent handoff**: not delegated
@@ -1366,10 +1367,10 @@
 
 ### Task 65 — Generated score-version freshness gate
 
-- **File(s)**: `Makefile`, `scripts/regen_score_versions.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `Makefile`, `scripts/regen_score_versions.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 64
-- **Touch set**: `Makefile`, `scripts/regen_score_versions.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `Makefile`, `scripts/regen_score_versions.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `Makefile` for check-all generated-doc gates.
 - **Failing test first**: `tests/architecture/test_harness_structure.py::test_make_check_all_checks_score_versions_snapshot` — asserts `check-all` runs the score-version freshness check.
 - **Subagent handoff**: not delegated
@@ -1387,10 +1388,10 @@
 
 ### Task 66 — Source-derived generated-doc freshness gate
 
-- **File(s)**: `Makefile`, `scripts/regen_pulse_agent_desk_decisions.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `Makefile`, `scripts/regen_pulse_agent_desk_decisions.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 65
-- **Touch set**: `Makefile`, `scripts/regen_pulse_agent_desk_decisions.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `Makefile`, `scripts/regen_pulse_agent_desk_decisions.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `Makefile` for check-all generated-doc gates.
 - **Failing test first**: `tests/architecture/test_harness_structure.py::test_make_check_all_checks_non_db_generated_snapshots` — derives generator scripts from `docs/generated/README.md` and requires every non-DB generator to run with `--check` inside `check-all`.
 - **Subagent handoff**: not delegated
@@ -1408,10 +1409,10 @@
 
 ### Task 67 — Task-bound subagent required-reading evidence gate
 
-- **File(s)**: `scripts/subagent_report_contract.py`, `docs/agent-playbook/subagent-handoff-template.md`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/subagent_report_contract.py`, `docs/agent-playbook/subagent-handoff-template.md`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 66
-- **Touch set**: `scripts/subagent_report_contract.py`, `docs/agent-playbook/subagent-handoff-template.md`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/subagent_report_contract.py`, `docs/agent-playbook/subagent-handoff-template.md`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with docs/agent-playbook for subagent report semantics.
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_requires_task_classification_and_required_reading_evidence`, `tests/architecture/test_agent_playbook_contracts.py::test_subagent_handoff_templates_define_context_and_conflict_contracts` — assert task-bound reports cannot pass without reading evidence and the handoff template names the required report section.
 - **Subagent handoff**: not delegated
@@ -1429,11 +1430,11 @@
 
 ### Task 68 — Spec background cited-line relevance gate
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 67
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
-- **Conflict set**: coordinate with docs/sdd/features/active/2026-06-09-executable-harness-hard-cut for SDD background/source citations.
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut for SDD background/source citations.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_spec_background_rejects_stale_local_citation_lines` — asserts a local Background citation cannot pass when the cited line exists but omits the backticked evidence token claimed by the Background block.
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated
@@ -1450,10 +1451,10 @@
 
 ### Task 69 — Worker runtime constraint classification manifest ownership
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_runtime_worker_constraint_hard_cut.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_runtime_worker_constraint_hard_cut.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 68
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_runtime_worker_constraint_hard_cut.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_runtime_worker_constraint_hard_cut.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for worker inventory semantics.
 - **Failing test first**: `tests/architecture/test_runtime_worker_constraint_hard_cut.py::test_every_registered_worker_has_runtime_constraint_classification` — asserts each registered worker declares its runtime constraint on `WorkerManifest`.
 - **Subagent handoff**: not delegated
@@ -1471,10 +1472,10 @@
 
 ### Task 70 — Worker Inventory architecture tests use source manifests
 
-- **File(s)**: `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 69
-- **Touch set**: `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `tests/architecture/test_worker_runtime_contracts.py` for worker runtime test constants.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_architecture_tests_do_not_import_peer_architecture_tests_as_sources` — asserts architecture tests cannot import peer architecture tests as source registries.
 - **Subagent handoff**: not delegated
@@ -1492,10 +1493,10 @@
 
 ### Task 71 — WorkerManifest owns table ownership composition
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 70
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for worker ownership semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_exposes_owned_tables_as_source_contract` — asserts each manifest exposes the deduped owned-table contract and queue-health tables remain inside it.
 - **Subagent handoff**: not delegated
@@ -1513,10 +1514,10 @@
 
 ### Task 72 — WorkerManifest owns read-model writer mapping
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 71
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for read-model writer ownership semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_exposes_read_model_writer_mapping` — asserts `worker_manifest.py` exposes the unique read-model writer map.
 - **Subagent handoff**: not delegated
@@ -1534,10 +1535,10 @@
 
 ### Task 73 — WorkerManifest validates read-model writer uniqueness
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 72
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for read-model writer ownership semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_read_model_writers` — patches duplicate read-model writers and asserts manifest validation rejects them.
 - **Subagent handoff**: not delegated
@@ -1555,10 +1556,10 @@
 
 ### Task 74 — WorkerManifest validates read-model identity ownership
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 73
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for read-model identity semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_unowned_read_model_identities` — patches an unowned `current_read_model_identities` entry and asserts manifest validation rejects it.
 - **Subagent handoff**: not delegated
@@ -1576,10 +1577,10 @@
 
 ### Task 75 — WorkerManifest validates unique read-model identity entries
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 74
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for read-model identity semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_read_model_identity_entries` — patches duplicate `current_read_model_identities` entries for one table and asserts manifest validation rejects them.
 - **Subagent handoff**: not delegated
@@ -1597,10 +1598,10 @@
 
 ### Task 76 — WorkerManifest validates unique table declarations
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 75
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for table-declaration validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_table_declarations` — patches a duplicate `writes_control_plane` table entry and asserts manifest validation rejects it.
 - **Subagent handoff**: not delegated
@@ -1618,10 +1619,10 @@
 
 ### Task 77 — Current read-model identity columns are unique
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_inventory_contract.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_inventory_contract.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 76
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_inventory_contract.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_inventory_contract.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for stable identity validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_read_model_identity_columns` and `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_run_generation_identity_and_skips_unchanged` — patch or construct duplicate stable identity columns and assert validation rejects them.
 - **Subagent handoff**: not delegated
@@ -1639,10 +1640,10 @@
 
 ### Task 78 — WorkerManifest validates non-empty read-model identity columns
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 77
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for stable identity validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_empty_read_model_identity_columns` — patches a current read-model identity entry with an empty identity column tuple and asserts manifest validation rejects it.
 - **Subagent handoff**: not delegated
@@ -1660,10 +1661,10 @@
 
 ### Task 79 — WorkerManifest validates non-blank table declarations
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 78
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for table-declaration validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_table_declarations` — patches a blank `writes_control_plane` table entry and asserts manifest validation rejects it.
 - **Subagent handoff**: not delegated
@@ -1681,10 +1682,10 @@
 
 ### Task 80 — Current read-model identity columns are non-blank
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_inventory_contract.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_inventory_contract.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 79
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_inventory_contract.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_inventory_contract.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for stable identity validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_read_model_identity_columns` and `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_run_generation_identity_and_skips_unchanged` — patch or construct blank stable identity columns and assert validation rejects them.
 - **Subagent handoff**: not delegated
@@ -1702,10 +1703,10 @@
 
 ### Task 81 — Current read-model identity tables are non-blank
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 80
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for stable identity validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_read_model_identity_tables` — patch a stable identity entry with a blank read-model table name and assert manifest validation raises a dedicated blank identity-table error before ownership or missing-identity checks.
 - **Subagent handoff**: not delegated
@@ -1723,10 +1724,10 @@
 
 ### Task 82 — Dirty-target consumers declare dirty targets
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 81
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for runtime constraint validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_dirty_consumers_without_dirty_targets` — patch a `DIRTY_TARGET_CONSUMER` manifest to remove `dirty_target_tables` and assert manifest validation raises a dedicated dirty-target lifecycle error.
 - **Subagent handoff**: not delegated
@@ -1744,10 +1745,10 @@
 
 ### Task 83 — Leased-job consumers declare queue depth tables
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 82
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for runtime constraint validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_leased_consumers_without_queue_depth` — patch a `LEASED_JOB_CONSUMER` manifest to remove `queue_depth_table` and assert manifest validation raises a dedicated leased-job queue-depth error.
 - **Subagent handoff**: not delegated
@@ -1765,10 +1766,10 @@
 
 ### Task 84 — Bounded provider schedulers declare provider I/O
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 83
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for runtime constraint validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_provider_schedulers_without_provider_io` — patch a `BOUNDED_PROVIDER_SCHEDULER` manifest to clear `uses_provider_io` and assert manifest validation raises a dedicated provider-boundary error.
 - **Subagent handoff**: not delegated
@@ -1786,10 +1787,10 @@
 
 ### Task 85 — Queue depth tables are worker-owned
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 84
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for queue ownership validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_unowned_queue_depth_tables` — patch a manifest with `queue_depth_table="unowned_queue_jobs"` and assert manifest validation raises a dedicated queue-depth ownership error.
 - **Subagent handoff**: not delegated
@@ -1807,10 +1808,10 @@
 
 ### Task 86 — Side-effect ledgers belong to side-effect workers
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 85
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for side-effect ledger validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_ledgers_on_non_side_effect_workers` — patch a non-side-effect manifest to declare `side_effect_ledgers` and assert manifest validation raises a dedicated ledger-kind ownership error.
 - **Subagent handoff**: not delegated
@@ -1828,10 +1829,10 @@
 
 ### Task 87 — Wake channels are non-blank
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 86
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for wake-channel validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_wake_channels` — patch a manifest to add a blank `wakes_out` channel and assert manifest validation raises a dedicated wake-channel error.
 - **Subagent handoff**: not delegated
@@ -1849,10 +1850,10 @@
 
 ### Task 88 — Wake channels are unique per worker field
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 87
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for wake-channel validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_wake_channels` — patch a manifest to repeat a `wakes_on` channel and assert manifest validation raises a dedicated wake-channel duplication error.
 - **Subagent handoff**: not delegated
@@ -1870,10 +1871,10 @@
 
 ### Task 89 — Advisory lock keys are unique
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 88
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for advisory-lock validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_advisory_lock_keys` — patch two locked manifests to share one `advisory_lock_key` and assert manifest validation raises a dedicated advisory-lock duplication error.
 - **Subagent handoff**: not delegated
@@ -1891,10 +1892,10 @@
 
 ### Task 90 — Advisory lock keys are non-blank
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 89
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for advisory-lock validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_advisory_lock_keys` — patch a locked manifest to declare a blank `advisory_lock_key` and assert manifest validation raises a dedicated advisory-lock blank-key error.
 - **Subagent handoff**: not delegated
@@ -1912,10 +1913,10 @@
 
 ### Task 91 — Worker identity fields are non-blank
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 90
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for worker identity validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_identity_fields` — patch a manifest to declare a blank `name` and assert manifest validation raises a dedicated identity-field error before registry or docs consumers run.
 - **Subagent handoff**: not delegated
@@ -1933,10 +1934,10 @@
 
 ### Task 92 — Idempotency evidence is non-blank
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 91
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for idempotency evidence validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_idempotency_evidence` — patch a manifest to add a blank `idempotency_evidence` entry and assert manifest validation raises a dedicated evidence error before lifecycle or review consumers run.
 - **Subagent handoff**: not delegated
@@ -1954,10 +1955,10 @@
 
 ### Task 93 — Input contracts are non-empty
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 92
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for input-contract validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_empty_input_contracts` — patch a manifest to declare an empty `input_contract` and assert manifest validation raises before registry, factory, settings, or docs consumers run.
 - **Subagent handoff**: not delegated
@@ -1975,10 +1976,10 @@
 
 ### Task 94 — Input contracts are non-blank
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 93
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for input-contract validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_input_contracts` — patch a manifest to add a blank `input_contract` entry and assert manifest validation raises before registry, factory, settings, or docs consumers run.
 - **Subagent handoff**: not delegated
@@ -1996,10 +1997,10 @@
 
 ### Task 95 — Ordering keys are non-empty
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 94
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for ordering-key validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_empty_ordering_keys` — patch a manifest to declare empty `ordering_keys` and assert manifest validation raises before lifecycle, idempotency, registry, factory, settings, or docs consumers run.
 - **Subagent handoff**: not delegated
@@ -2017,10 +2018,10 @@
 
 ### Task 96 — Ordering keys are non-blank
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 95
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for ordering-key validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_blank_ordering_keys` — patch a manifest to add a blank `ordering_keys` entry and assert manifest validation raises before lifecycle, idempotency, registry, factory, settings, or docs consumers run.
 - **Subagent handoff**: not delegated
@@ -2038,10 +2039,10 @@
 
 ### Task 97 — Ordering keys are unique
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 96
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for ordering-key validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_ordering_keys` — patch a manifest to repeat one `ordering_keys` entry and assert manifest validation raises before lifecycle, idempotency, registry, factory, settings, or docs consumers run.
 - **Subagent handoff**: not delegated
@@ -2059,10 +2060,10 @@
 
 ### Task 98 — Input contracts are unique
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 97
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for input-contract validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_input_contracts` — patch a manifest to repeat one `input_contract` entry and assert manifest validation raises before registry, factory, settings, or docs consumers run.
 - **Subagent handoff**: not delegated
@@ -2080,10 +2081,10 @@
 
 ### Task 99 — Idempotency evidence is unique
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 98
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for idempotency evidence validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_idempotency_evidence` — patch a manifest to repeat one `idempotency_evidence` entry and assert manifest validation raises before lifecycle, ownership, review, or docs consumers run.
 - **Subagent handoff**: not delegated
@@ -2101,10 +2102,10 @@
 
 ### Task 100 — Worker runtime classes are unique
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 99
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for worker identity validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_duplicate_worker_classes` — patch one manifest to reuse another manifest's `worker_class` and assert manifest validation raises before registry, factory, settings, or docs consumers run.
 - **Subagent handoff**: not delegated
@@ -2122,10 +2123,10 @@
 
 ### Task 101 — Worker start priorities are non-negative
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 100
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for scheduler priority validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_negative_start_priorities` — patch one manifest to declare negative `start_priority` and assert manifest validation raises before scheduler, registry, settings, or docs consumers run.
 - **Subagent handoff**: not delegated
@@ -2143,10 +2144,10 @@
 
 ### Task 102 — Worker start priorities are integer bands
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 101
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for scheduler priority validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_integer_start_priorities` — patch one manifest to declare fractional `start_priority` and assert manifest validation raises before scheduler, registry, settings, or docs consumers run.
 - **Subagent handoff**: not delegated
@@ -2164,10 +2165,10 @@
 
 ### Task 103 — Worker factories are real source files
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 102
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for worker factory source-file validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_factory_modules` — patch one manifest to declare missing `factory` and assert manifest validation raises before registry, factory, settings, or docs consumers run.
 - **Subagent handoff**: not delegated
@@ -2185,10 +2186,10 @@
 
 ### Task 104 — Worker class modules resolve
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 103
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for worker class module validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_worker_class_modules` — patch one manifest to declare missing `worker_class` module and assert manifest validation raises before registry, factory, settings, or docs consumers run.
 - **Subagent handoff**: not delegated
@@ -2206,10 +2207,10 @@
 
 ### Task 105 — Worker class names resolve
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 104
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for worker class symbol validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_worker_class_names` — patch one manifest to declare missing class name inside an existing `worker_class` module and assert manifest validation raises before registry, factory, settings, or docs consumers run.
 - **Subagent handoff**: not delegated
@@ -2227,10 +2228,10 @@
 
 ### Task 106 — Worker domains are real source directories
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 105
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for worker domain source-directory validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_missing_domain_directories` — patch one manifest to declare missing `domain` and assert manifest validation raises before registry, factory, settings, or docs consumers run.
 - **Subagent handoff**: not delegated
@@ -2248,10 +2249,10 @@
 
 ### Task 107 — Worker classifications are enum-owned
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 106
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for worker classification enum validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_raw_classification_values` — patch one manifest to declare raw string `lane` and assert manifest validation raises before scheduler, registry, factory, settings, or docs consumers run.
 - **Subagent handoff**: not delegated
@@ -2269,10 +2270,10 @@
 
 ### Task 108 — Provider I/O flags are boolean
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 107
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for provider I/O flag validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_boolean_provider_io_flags` — patch one manifest to declare truthy string `uses_provider_io` and assert manifest validation raises before provider-boundary, registry, settings, or docs consumers run.
 - **Subagent handoff**: not delegated
@@ -2290,10 +2291,10 @@
 
 ### Task 109 — Tuple manifest contracts reject compatibility lists
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 108
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for tuple-valued manifest contract validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_tuple_contract_fields` — patch one manifest to declare list-shaped `input_contract` and assert manifest validation raises before registry, factory, settings, or docs consumers run.
 - **Subagent handoff**: not delegated
@@ -2311,10 +2312,10 @@
 
 ### Task 110 — Tuple string contracts reject non-string entries
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 109
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for tuple-valued manifest entry validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_contract_entries` — patch one manifest to declare numeric `input_contract` entry and assert manifest validation raises before blank, duplicate, registry, factory, settings, or docs consumers run.
 - **Subagent handoff**: not delegated
@@ -2332,10 +2333,10 @@
 
 ### Task 111 — Read-model identity columns are tuples
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 110
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for stable read-model identity column tuple validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_tuple_read_model_identity_columns` — patch one manifest to declare list-shaped stable identity columns and assert manifest validation raises before ownership, registry, factory, settings, or docs consumers run.
 - **Subagent handoff**: not delegated
@@ -2353,10 +2354,10 @@
 
 ### Task 112 — Read-model identity entries are tuples
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 111
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for stable read-model identity entry tuple validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_tuple_read_model_identity_entries` — patch one manifest to declare a list-shaped stable identity entry and assert manifest validation raises before ownership, registry, factory, settings, or docs consumers run.
 - **Subagent handoff**: not delegated
@@ -2374,10 +2375,10 @@
 
 ### Task 113 — Worker manifest import dependency is explicit
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_src_domain_architecture.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_src_domain_architecture.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 112
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_src_domain_architecture.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_src_domain_architecture.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for manifest import dependency semantics.
 - **Failing test first**: `tests/architecture/test_src_domain_architecture.py::test_worker_manifest_imports_in_clean_process_without_importlib_util_side_effect` — import `worker_manifest.py` in a clean subprocess after removing incidental `importlib.util` from the package object and assert import succeeds.
 - **Subagent handoff**: not delegated
@@ -2395,10 +2396,10 @@
 
 ### Task 114 — Read-model identity entries are pairs
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 113
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for stable read-model identity entry arity validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_malformed_read_model_identity_entries` — patch one manifest to declare a three-field stable identity entry and assert manifest validation raises before Python table/column unpacking errors leak.
 - **Subagent handoff**: not delegated
@@ -2416,10 +2417,10 @@
 
 ### Task 115 — Root visual artifacts are rejected
 
-- **File(s)**: `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 114
-- **Touch set**: `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Removed file(s)**: `news-provider-rating-1366.png`, `parallax-macro-assets-after-1366.png`, `parallax-macro-assets-after-390.png`, `parallax-macro-assets-before-1366.png`, `parallax-macro-assets-before-390.png`, `timsun-assets-1366.png`
 - **Conflict set**: coordinate with `tests/architecture/test_harness_structure.py` for root artifact hygiene semantics.
 - **Failing test first**: `tests/architecture/test_harness_structure.py::test_repo_root_has_no_loose_visual_artifacts` — run the new harness against a temporary HEAD workspace with root PNG artifacts still present and assert it fails on those loose files.
@@ -2438,10 +2439,10 @@
 
 ### Task 116 — Worker queue-depth tables are strings
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 115
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for queue-depth table type validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_queue_depth_tables` — patch one manifest to declare numeric `queue_depth_table` and assert manifest validation raises before table-name `.strip()` errors leak.
 - **Subagent handoff**: not delegated
@@ -2459,10 +2460,10 @@
 
 ### Task 117 — Worker advisory lock keys are strings
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 116
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for advisory-lock key type validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_advisory_lock_keys` — patch one manifest to declare numeric `advisory_lock_key` and assert manifest validation raises before lock-key `.strip()` errors leak.
 - **Subagent handoff**: not delegated
@@ -2480,10 +2481,10 @@
 
 ### Task 118 — Worker identity fields are strings
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 117
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for worker identity field type validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_identity_fields` — patch worker identity fields to numeric values and assert manifest validation raises before `.strip()`, `Path`, or import errors leak.
 - **Subagent handoff**: not delegated
@@ -2501,10 +2502,10 @@
 
 ### Task 119 — Read-model identity tables are strings
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 118
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for stable read-model identity table type validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_read_model_identity_tables` — patch one `current_read_model_identities` table name to a numeric value and assert manifest validation raises before table-name `.strip()` errors leak.
 - **Subagent handoff**: not delegated
@@ -2522,10 +2523,10 @@
 
 ### Task 120 — Read-model identity columns are strings
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 119
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for stable read-model identity column type validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_non_string_read_model_identity_columns` — patch one `current_read_model_identities` identity column to a numeric value and assert manifest validation raises before column-name `.strip()` errors leak.
 - **Subagent handoff**: not delegated
@@ -2543,10 +2544,10 @@
 
 ### Task 121 — Publisher identity columns are strings
 
-- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 120
-- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for stable publisher identity column type validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_run_generation_identity_and_skips_unchanged` — construct `CurrentReadModelPublisher` with a numeric stable identity column and assert publisher validation raises before column-name `.strip()` errors leak.
 - **Subagent handoff**: not delegated
@@ -2564,10 +2565,10 @@
 
 ### Task 122 — Publisher payload hash columns are strings
 
-- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 121
-- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for publisher payload hash column type validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_string_payload_hash_column` — construct `CurrentReadModelPublisher` with a numeric `payload_hash_column` and assert publisher validation raises before row hashing or changed-row writes can use it as a serving-row key.
 - **Subagent handoff**: not delegated
@@ -2585,10 +2586,10 @@
 
 ### Task 123 — Publisher payload columns are tuples
 
-- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 122
-- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for publisher payload column tuple validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_tuple_payload_columns` — construct `CurrentReadModelPublisher` with list-shaped `payload_columns` and assert publisher validation raises before payload hashing can treat compatibility lists as payload field declarations.
 - **Subagent handoff**: not delegated
@@ -2606,10 +2607,10 @@
 
 ### Task 124 — Publisher payload column entries are strings
 
-- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 123
-- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for publisher payload column entry type validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_string_payload_columns` — construct `CurrentReadModelPublisher` with a numeric `payload_columns` entry and assert publisher validation raises before payload hashing can look up invalid payload keys.
 - **Subagent handoff**: not delegated
@@ -2627,10 +2628,10 @@
 
 ### Task 125 — Publisher payload column entries are non-blank
 
-- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 124
-- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for publisher payload column blank validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_blank_payload_columns` — construct `CurrentReadModelPublisher` with a blank `payload_columns` entry and assert publisher validation raises before payload hashing can look up empty payload keys.
 - **Subagent handoff**: not delegated
@@ -2648,10 +2649,10 @@
 
 ### Task 126 — Publisher payload hash columns are non-blank
 
-- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 125
-- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for publisher payload hash column blank validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_blank_payload_hash_column` — construct `CurrentReadModelPublisher` with a blank `payload_hash_column` and assert publisher validation raises before changed-row writes can add empty serving-row keys.
 - **Subagent handoff**: not delegated
@@ -2669,10 +2670,10 @@
 
 ### Task 127 — Publisher payload column entries are unique
 
-- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 126
-- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for publisher payload column duplicate validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_duplicate_payload_columns` — construct `CurrentReadModelPublisher` with duplicate `payload_columns` entries and assert publisher validation raises before payload hashing silently collapses repeated payload keys.
 - **Subagent handoff**: not delegated
@@ -2690,10 +2691,10 @@
 
 ### Task 128 — Publisher payload hash columns are not lifecycle columns
 
-- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 127
-- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for publisher payload hash lifecycle-column validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_lifecycle_payload_hash_column` — construct `CurrentReadModelPublisher` with a lifecycle `payload_hash_column` and assert publisher validation raises before changed-row writes can overwrite runtime lifecycle fields.
 - **Subagent handoff**: not delegated
@@ -2711,10 +2712,10 @@
 
 ### Task 129 — Publisher payload columns exclude the payload hash column
 
-- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 128
-- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for publisher payload hash self-reference validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_payload_hash_payload_columns` — construct `CurrentReadModelPublisher` with explicit `payload_columns` containing the configured hash column and assert publisher validation raises before row hashing can self-reference prior serving hashes.
 - **Subagent handoff**: not delegated
@@ -2732,10 +2733,10 @@
 
 ### Task 130 — Publisher payload columns exclude lifecycle columns
 
-- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 129
-- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for publisher payload lifecycle-column validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_lifecycle_payload_columns` — construct `CurrentReadModelPublisher` with explicit lifecycle `payload_columns` and assert publisher validation raises before row hashing can reintroduce run/generation/timestamp drift.
 - **Subagent handoff**: not delegated
@@ -2753,10 +2754,10 @@
 
 ### Task 131 — Publisher payload hash columns are not identity columns
 
-- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 130
-- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for publisher payload hash identity-column validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_identity_payload_hash_column` — construct `CurrentReadModelPublisher` with a `payload_hash_column` that overlaps `identity_columns` and assert publisher validation raises before changed-row writes can overwrite serving identity keys.
 - **Subagent handoff**: not delegated
@@ -2774,10 +2775,10 @@
 
 ### Task 132 — Publisher explicit payload columns must exist in rows
 
-- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 131
-- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for explicit payload row-shape validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_missing_explicit_payload_column` — call `row_payload_hash()` with a row missing one declared explicit payload column and assert hashing raises instead of treating the missing field as `None`.
 - **Subagent handoff**: not delegated
@@ -2795,10 +2796,10 @@
 
 ### Task 133 — Bounded provider schedulers do not declare dirty targets
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 132
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for bounded provider scheduler runtime-constraint validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_provider_schedulers_with_dirty_targets` — patch a `BOUNDED_PROVIDER_SCHEDULER` manifest to declare `dirty_target_tables` and assert manifest validation raises before provider source adapters can masquerade as dirty-target consumers.
 - **Subagent handoff**: not delegated
@@ -2816,10 +2817,10 @@
 
 ### Task 134 — Bounded provider schedulers do not declare queue depth tables
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 133
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for bounded provider scheduler queue-depth validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_provider_schedulers_with_queue_depth` — patch a `BOUNDED_PROVIDER_SCHEDULER` manifest to declare `queue_depth_table` and assert manifest validation raises before provider source adapters can masquerade as leased queue consumers.
 - **Subagent handoff**: not delegated
@@ -2837,10 +2838,10 @@
 
 ### Task 135 — Bounded provider schedulers do not declare queue health tables
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 134
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for bounded provider scheduler queue-health validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_provider_schedulers_with_queue_health_tables` — patch a `BOUNDED_PROVIDER_SCHEDULER` manifest to declare `queue_health_tables` and assert manifest validation raises before provider source adapters can masquerade as queue-health consumers.
 - **Subagent handoff**: not delegated
@@ -2858,10 +2859,10 @@
 
 ### Task 136 — Queue depth tables are control-plane-owned
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 135
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for queue-depth control-plane ownership validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_queue_depth_tables_outside_control_plane` — patch a manifest to point `queue_depth_table` at an owned fact table and assert manifest validation raises before facts or read models can masquerade as leased queues.
 - **Subagent handoff**: not delegated
@@ -2879,10 +2880,10 @@
 
 ### Task 137 — Queue health tables are control-plane-owned
 
-- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 136
-- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_worker_inventory_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for queue-health control-plane ownership validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_inventory_contract.py::test_worker_manifest_validation_rejects_queue_health_tables_outside_control_plane` — patch a manifest to point `queue_health_tables` at an owned read-model table and assert manifest validation raises before facts or read models can masquerade as queue-health surfaces.
 - **Subagent handoff**: not delegated
@@ -2900,10 +2901,10 @@
 
 ### Task 138 — Publisher changed rows require identity columns before hashing
 
-- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 137
-- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for changed-row identity validation order semantics.
 - **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_missing_identity_column_before_payload_hashing` — call `changed_rows()` with a row missing a stable identity column and assert publisher validation raises a dedicated missing-identity error before explicit payload hashing can raise `KeyError`.
 - **Subagent handoff**: not delegated
@@ -2921,10 +2922,10 @@
 
 ### Task 139 — Publisher changed-row batches reject duplicate identities
 
-- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 138
-- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for changed-row batch identity uniqueness semantics.
 - **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_duplicate_row_identities_in_batch` — call `changed_rows()` with two rows sharing one stable identity tuple and assert publisher validation raises before preparing duplicate writes for one current read-model row.
 - **Subagent handoff**: not delegated
@@ -2942,10 +2943,10 @@
 
 ### Task 140 — Publisher missing payload columns use dedicated row-shape errors
 
-- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 139
-- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for explicit payload row-shape validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_missing_explicit_payload_column` — tighten the existing missing explicit payload column test to require a dedicated `current read model row missing payload columns` error instead of raw `KeyError`.
 - **Subagent handoff**: not delegated
@@ -2963,10 +2964,10 @@
 
 ### Task 141 — Publisher changed rows reject non-string row columns
 
-- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 140
-- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for changed-row row-column validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_string_row_columns_before_write_preparation` — call `changed_rows()` with a row containing a non-string key and assert publisher validation raises before write preparation.
 - **Subagent handoff**: not delegated
@@ -2984,10 +2985,10 @@
 
 ### Task 142 — Publisher changed rows reject null identity values
 
-- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 141
-- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for changed-row identity-value validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_null_row_identity_values_before_hashing` — call `changed_rows()` with a row whose stable identity value is `None` and assert publisher validation raises before payload hashing or write preparation.
 - **Subagent handoff**: not delegated
@@ -3005,10 +3006,10 @@
 
 ### Task 143 — Publisher changed rows reject blank identity values
 
-- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 142
-- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for changed-row identity-value validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_blank_row_identity_values_before_hashing` — call `changed_rows()` with a row whose stable identity value is a blank string and assert publisher validation raises before payload hashing or write preparation.
 - **Subagent handoff**: not delegated
@@ -3026,10 +3027,10 @@
 
 ### Task 144 — Publisher identity columns reject list-shaped declarations
 
-- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 143
-- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for publisher identity-column declaration shape validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_tuple_identity_columns` — construct `CurrentReadModelPublisher` with list-shaped stable identity columns and assert publisher construction raises before downstream identity validation consumes it.
 - **Subagent handoff**: not delegated
@@ -3047,10 +3048,10 @@
 
 ### Task 145 — Publisher changed rows reject non-mapping row containers
 
-- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 144
-- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for changed-row row-shape validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_mapping_rows_before_column_validation` — call `changed_rows()` with a list-shaped row and assert publisher validation raises a dedicated mapping error before row-column validation.
 - **Subagent handoff**: not delegated
@@ -3068,10 +3069,10 @@
 
 ### Task 146 — Publisher changed rows reject non-mapping existing hashes
 
-- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 145
-- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for changed-row existing-hash validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_mapping_existing_hashes_before_hash_lookup` — call `changed_rows()` with list-shaped `existing_hashes` and assert publisher validation raises a dedicated mapping error before hash lookup.
 - **Subagent handoff**: not delegated
@@ -3089,10 +3090,10 @@
 
 ### Task 147 — Publisher changed rows reject non-tuple existing-hash identities
 
-- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 146
-- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for changed-row existing-hash identity validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_tuple_existing_hash_identity_keys_before_hash_lookup` — call `changed_rows()` with string-shaped `existing_hashes` keys and assert publisher validation raises before unchanged-row lookup silently misses the stable identity tuple.
 - **Subagent handoff**: not delegated
@@ -3110,10 +3111,10 @@
 
 ### Task 148 — Publisher changed rows reject wrong-arity existing-hash identities
 
-- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 147
-- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for changed-row existing-hash identity arity validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_wrong_arity_existing_hash_identity_keys_before_hash_lookup` — call `changed_rows()` with a tuple-shaped `existing_hashes` key whose arity differs from `identity_columns` and assert publisher validation raises before unchanged-row lookup silently misses the stable identity tuple.
 - **Subagent handoff**: not delegated
@@ -3131,10 +3132,10 @@
 
 ### Task 149 — Publisher changed rows reject non-string existing-hash values
 
-- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 148
-- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for changed-row existing-hash value validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_string_existing_hash_values_before_hash_lookup` — call `changed_rows()` with a numeric `existing_hashes` value and assert publisher validation raises before unchanged-row lookup silently misses the stable hash.
 - **Subagent handoff**: not delegated
@@ -3152,10 +3153,10 @@
 
 ### Task 150 — Publisher changed rows reject malformed existing-hash strings
 
-- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 149
-- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for changed-row existing-hash value-format validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_malformed_existing_hash_values_before_hash_lookup` — call `changed_rows()` with a malformed string `existing_hashes` value and assert publisher validation raises before unchanged-row lookup silently misses the stable hash.
 - **Subagent handoff**: not delegated
@@ -3173,10 +3174,10 @@
 
 ### Task 151 — Publisher changed rows reject malformed row batches
 
-- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 150
-- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for changed-row batch-shape validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_sequence_row_batches_before_row_validation` — call `changed_rows()` with scalar, mapping-shaped, and string-shaped `rows` values and assert publisher validation raises before row validation splits compatibility containers into fake row values.
 - **Subagent handoff**: not delegated
@@ -3194,10 +3195,10 @@
 
 ### Task 152 — Stable payload hash rejects malformed payload containers
 
-- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 151
-- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for stable payload hash input-shape validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_non_mapping_payloads` — call `stable_current_payload_hash()` with scalar, list-of-pairs-shaped, and string-shaped payload values and assert hash validation raises before `dict(...)` coercion can preserve compatibility containers.
 - **Subagent handoff**: not delegated
@@ -3215,10 +3216,10 @@
 
 ### Task 153 — Stable payload hash rejects non-string payload keys
 
-- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 152
-- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for stable payload hash key validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_non_string_payload_keys` — call `stable_current_payload_hash()` with a mapping payload containing a numeric key and assert hash validation raises before JSON normalization can stringify compatibility-shaped mapping keys.
 - **Subagent handoff**: not delegated
@@ -3236,10 +3237,10 @@
 
 ### Task 154 — Stable payload hash rejects nested non-string payload keys
 
-- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 153
-- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for recursive stable payload hash key validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_nested_non_string_payload_keys` — call `stable_current_payload_hash()` with a factor snapshot containing a nested numeric key and assert hash validation raises before JSON normalization can stringify compatibility-shaped nested mapping keys.
 - **Subagent handoff**: not delegated
@@ -3257,10 +3258,10 @@
 
 ### Task 155 — Stable payload hash rejects generic isoformat payload values
 
-- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 154
-- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for stable payload hash value validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_generic_isoformat_payload_values` — call `stable_current_payload_hash()` with an arbitrary object exposing `isoformat()` and assert hash validation raises before generic ISO formatting can preserve compatibility-shaped payload values.
 - **Subagent handoff**: not delegated
@@ -3278,10 +3279,10 @@
 
 ### Task 156 — Stable payload hash rejects non-finite payload numbers
 
-- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 155
-- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for stable payload hash numeric-value validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_non_finite_payload_numbers` — call `stable_current_payload_hash()` with float and Decimal NaN/Infinity values and assert hash validation raises before JSON serialization or Decimal stringification can consume non-finite payload numbers.
 - **Subagent handoff**: not delegated
@@ -3299,10 +3300,10 @@
 
 ### Task 157 — Stable payload hash rejects unordered payload containers
 
-- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 156
-- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for stable payload hash container validation semantics.
 - **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_stable_current_payload_hash_rejects_unordered_payload_containers` — call `stable_current_payload_hash()` with set and frozenset payload values and assert hash validation raises before JSON normalization can sort unordered compatibility containers into serving hashes.
 - **Subagent handoff**: not delegated
@@ -3320,10 +3321,10 @@
 
 ### Task 158 — CEX board hash uses shared current payload contract
 
-- **File(s)**: `src/parallax/domains/cex_market_intel/repositories/cex_oi_radar_repository.py`, `tests/unit/domains/cex_market_intel/test_cex_oi_radar_repository.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/domains/cex_market_intel/repositories/cex_oi_radar_repository.py`, `tests/unit/domains/cex_market_intel/test_cex_oi_radar_repository.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 157
-- **Touch set**: `src/parallax/domains/cex_market_intel/repositories/cex_oi_radar_repository.py`, `tests/unit/domains/cex_market_intel/test_cex_oi_radar_repository.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/domains/cex_market_intel/repositories/cex_oi_radar_repository.py`, `tests/unit/domains/cex_market_intel/test_cex_oi_radar_repository.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/domains/cex_market_intel/repositories/cex_oi_radar_repository.py` for CEX board publication payload hash semantics and current-row idempotency.
 - **Failing test first**: `tests/unit/domains/cex_market_intel/test_cex_oi_radar_repository.py::test_board_payload_hash_rejects_legacy_score_component_keys` — call `_board_payload_hash()` with a row whose `score_components` mapping has a non-string key and assert the shared current payload-key validation raises before local key stringification can preserve compatibility-shaped score component payloads.
 - **Subagent handoff**: not delegated
@@ -3341,10 +3342,10 @@
 
 ### Task 159 — Runtime package init avoids scheduler side effects
 
-- **File(s)**: `src/parallax/app/runtime/__init__.py`, `tests/unit/domains/cex_market_intel/test_cex_oi_radar_board_worker.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/app/runtime/__init__.py`, `tests/unit/domains/cex_market_intel/test_cex_oi_radar_board_worker.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 158
-- **Touch set**: `src/parallax/app/runtime/__init__.py`, `tests/unit/domains/cex_market_intel/test_cex_oi_radar_board_worker.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/app/runtime/__init__.py`, `tests/unit/domains/cex_market_intel/test_cex_oi_radar_board_worker.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/__init__.py` for runtime package export and import side-effect semantics.
 - **Failing test first**: `tests/unit/domains/cex_market_intel/test_cex_oi_radar_board_worker.py::test_cex_oi_radar_board_worker_publishes_current_board` — after CEX board hashing imports the shared runtime payload hash helper, importing the CEX worker module failed during collection before this test could run because `parallax.app.runtime.__init__` imported `WorkerScheduler`, which imported `worker_manifest` and validated manifests before `CexOiRadarBoardWorker` was fully importable.
 - **Subagent handoff**: not delegated
@@ -3362,10 +3363,10 @@
 
 ### Task 160 — CEX detail hash uses shared current payload contract
 
-- **File(s)**: `src/parallax/domains/cex_market_intel/repositories/cex_detail_snapshot_repository.py`, `tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/domains/cex_market_intel/repositories/cex_detail_snapshot_repository.py`, `tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 159
-- **Touch set**: `src/parallax/domains/cex_market_intel/repositories/cex_detail_snapshot_repository.py`, `tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/domains/cex_market_intel/repositories/cex_detail_snapshot_repository.py`, `tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/domains/cex_market_intel/repositories/cex_detail_snapshot_repository.py` for CEX detail snapshot payload hash semantics and current-row idempotency.
 - **Failing test first**: `tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py::test_detail_payload_hash_rejects_legacy_level_band_keys` — call `_detail_payload_hash()` with a `level_bands` mapping that has a non-string key and assert the shared current payload-key validation raises before local key stringification or historical migration-golden numeric canonicalization can preserve compatibility-shaped level-band payloads.
 - **Subagent handoff**: not delegated
@@ -3383,10 +3384,10 @@
 
 ### Task 161 — CEX detail source refs reject legacy keys before filtering
 
-- **File(s)**: `src/parallax/domains/cex_market_intel/repositories/cex_detail_snapshot_repository.py`, `tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/domains/cex_market_intel/repositories/cex_detail_snapshot_repository.py`, `tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 160
-- **Touch set**: `src/parallax/domains/cex_market_intel/repositories/cex_detail_snapshot_repository.py`, `tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/domains/cex_market_intel/repositories/cex_detail_snapshot_repository.py`, `tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/domains/cex_market_intel/repositories/cex_detail_snapshot_repository.py` for CEX detail source-ref filtering and payload hash key validation semantics.
 - **Failing test first**: `tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py::test_detail_payload_hash_rejects_legacy_source_ref_keys` — call `_detail_payload_hash()` with a `source_refs` mapping that has a non-string key and assert the shared current payload-key validation raises before source-ref metadata filtering can stringify compatibility-shaped payload keys.
 - **Subagent handoff**: not delegated
@@ -3404,10 +3405,10 @@
 
 ### Task 162 — Token profile current hash uses shared current payload contract
 
-- **File(s)**: `src/parallax/domains/asset_market/repositories/token_profile_current_repository.py`, `tests/unit/domains/asset_market/test_token_profile_current_repository.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/domains/asset_market/repositories/token_profile_current_repository.py`, `tests/unit/domains/asset_market/test_token_profile_current_repository.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 161
-- **Touch set**: `src/parallax/domains/asset_market/repositories/token_profile_current_repository.py`, `tests/unit/domains/asset_market/test_token_profile_current_repository.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/domains/asset_market/repositories/token_profile_current_repository.py`, `tests/unit/domains/asset_market/test_token_profile_current_repository.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/domains/asset_market/repositories/token_profile_current_repository.py` for token profile current payload hash semantics and current-row idempotency.
 - **Failing test first**: `tests/unit/domains/asset_market/test_token_profile_current_repository.py::test_token_profile_current_payload_hash_rejects_legacy_source_payload_keys` — call `TokenProfileCurrentRepository.upsert_current()` with `source_payload_json` containing a non-string key and assert the shared current payload-key validation raises before `postgres_safe_json()` can stringify compatibility-shaped source payload keys.
 - **Subagent handoff**: not delegated
@@ -3425,10 +3426,10 @@
 
 ### Task 163 — News source-quality hash uses shared current payload contract
 
-- **File(s)**: `src/parallax/domains/news_intel/repositories/news_repository.py`, `tests/unit/domains/news_intel/test_source_quality_projection.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/domains/news_intel/repositories/news_repository.py`, `tests/unit/domains/news_intel/test_source_quality_projection.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 162
-- **Touch set**: `src/parallax/domains/news_intel/repositories/news_repository.py`, `tests/unit/domains/news_intel/test_source_quality_projection.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/domains/news_intel/repositories/news_repository.py`, `tests/unit/domains/news_intel/test_source_quality_projection.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/domains/news_intel/repositories/news_repository.py` for News source-quality current-row payload hash semantics and idempotent writes.
 - **Failing test first**: `tests/unit/domains/news_intel/test_source_quality_projection.py::test_source_quality_payload_hash_rejects_legacy_diagnostics_keys` — call `NewsRepository.replace_source_quality_rows()` with `diagnostics_json` containing a non-string key and assert the shared current payload-key validation raises before the retired local normalizer can stringify compatibility-shaped diagnostics payload keys.
 - **Subagent handoff**: not delegated
@@ -3446,10 +3447,10 @@
 
 ### Task 164 — News page-row hash uses shared current payload contract
 
-- **File(s)**: `src/parallax/domains/news_intel/repositories/news_repository.py`, `tests/unit/domains/news_intel/test_news_repository_queries.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/domains/news_intel/repositories/news_repository.py`, `tests/unit/domains/news_intel/test_news_repository_queries.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 163
-- **Touch set**: `src/parallax/domains/news_intel/repositories/news_repository.py`, `tests/unit/domains/news_intel/test_news_repository_queries.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/domains/news_intel/repositories/news_repository.py`, `tests/unit/domains/news_intel/test_news_repository_queries.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/domains/news_intel/repositories/news_repository.py` for News page-row current-row payload hash semantics and idempotent writes.
 - **Failing test first**: `tests/unit/domains/news_intel/test_news_repository_queries.py::test_news_page_row_payload_hash_rejects_legacy_story_keys_before_write` — call `NewsRepository.replace_page_rows_for_items()` with a `story` payload containing a non-string key and assert the shared current payload-key validation raises before serving-row insert can consume compatibility-shaped story keys.
 - **Subagent handoff**: not delegated
@@ -3467,10 +3468,10 @@
 
 ### Task 165 — Narrative admission hash uses shared current payload contract
 
-- **File(s)**: `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`, `tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`, `tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 164
-- **Touch set**: `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`, `tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`, `tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/domains/narrative_intel/repositories/narrative_repository.py` for Narrative admission current-row payload hash semantics and idempotent writes.
 - **Failing test first**: `tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py::test_admission_payload_hash_rejects_legacy_payload_keys` — call `admission_payload_hash()` with a non-string payload key and assert the shared current payload-key validation raises before the retired local normalizer can stringify compatibility-shaped admission payload keys.
 - **Subagent handoff**: not delegated
@@ -3488,10 +3489,10 @@
 
 ### Task 166 — Narrative admission hash unwraps only real Jsonb adapters
 
-- **File(s)**: `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`, `tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`, `tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 165
-- **Touch set**: `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`, `tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`, `tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/domains/narrative_intel/repositories/narrative_repository.py` for Narrative admission payload adapter unwrapping semantics.
 - **Failing test first**: `tests/unit/domains/narrative_intel/test_narrative_repository_sql_contract.py::test_admission_payload_hash_rejects_jsonb_like_legacy_adapter_values` — pass an arbitrary object with an `obj` attribute into `admission_payload_hash()` and assert shared current payload validation rejects it instead of generic adapter unwrapping.
 - **Subagent handoff**: not delegated
@@ -3509,10 +3510,10 @@
 
 ### Task 167 — Macro daily brief hash uses shared current payload contract
 
-- **File(s)**: `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`, `tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`, `tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 166
-- **Touch set**: `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`, `tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`, `tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py` for Macro daily brief current-row payload hash semantics and idempotent writes.
 - **Failing test first**: `tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_daily_brief_payload_hash_rejects_legacy_payload_keys` — call `_macro_daily_brief_payload_hash()` with a non-string payload key and assert the shared current payload-key validation raises before the retired local normalizer can stringify compatibility-shaped daily brief payload keys.
 - **Subagent handoff**: not delegated
@@ -3530,10 +3531,10 @@
 
 ### Task 168 — Macro view snapshot hash uses shared current payload contract
 
-- **File(s)**: `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`, `tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`, `tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 167
-- **Touch set**: `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`, `tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`, `tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py` for Macro view snapshot current-row payload hash semantics and idempotent writes.
 - **Failing test first**: `tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_snapshot_payload_hash_rejects_legacy_feature_keys` — call `_macro_snapshot_payload_hash()` with `features_json` containing a non-string key and assert the shared current payload-key validation raises before the retired local normalizer can stringify compatibility-shaped snapshot payload keys.
 - **Subagent handoff**: not delegated
@@ -3551,10 +3552,10 @@
 
 ### Task 169 — Macro observation series row hash uses shared current payload contract
 
-- **File(s)**: `src/parallax/domains/macro_intel/observation_identity.py`, `tests/unit/domains/macro_intel/test_macro_observation_identity.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/domains/macro_intel/observation_identity.py`, `tests/unit/domains/macro_intel/test_macro_observation_identity.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 168
-- **Touch set**: `src/parallax/domains/macro_intel/observation_identity.py`, `tests/unit/domains/macro_intel/test_macro_observation_identity.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/domains/macro_intel/observation_identity.py`, `tests/unit/domains/macro_intel/test_macro_observation_identity.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/domains/macro_intel/observation_identity.py` for Macro observation series current-row payload hash semantics; coordinate with `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py` for Macro observation series unchanged-write detection.
 - **Failing test first**: `tests/unit/domains/macro_intel/test_macro_observation_identity.py::test_macro_series_current_row_payload_hash_rejects_legacy_raw_payload_keys` — call `macro_series_current_row_payload_hash()` with `raw_payload_json` containing a non-string key and assert the shared current payload-key validation raises before the retired local normalizer can stringify compatibility-shaped series-row payload keys.
 - **Subagent handoff**: not delegated
@@ -3572,10 +3573,10 @@
 
 ### Task 170 — Token Radar stable hash uses shared current payload contract
 
-- **File(s)**: `src/parallax/domains/token_intel/services/token_radar_payload_hash.py`, `tests/unit/test_token_radar_payload_hash.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/domains/token_intel/services/token_radar_payload_hash.py`, `tests/unit/test_token_radar_payload_hash.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 169
-- **Touch set**: `src/parallax/domains/token_intel/services/token_radar_payload_hash.py`, `tests/unit/test_token_radar_payload_hash.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/domains/token_intel/services/token_radar_payload_hash.py`, `tests/unit/test_token_radar_payload_hash.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/domains/token_intel/services/token_radar_payload_hash.py` for Token Radar current payload hash canonicalization semantics; coordinate with `src/parallax/domains/token_intel/repositories/token_radar_repository.py` for current row payload hash and stable generation semantics; coordinate with `src/parallax/domains/token_intel/services/token_radar_projection.py` for downstream dirty-target payload hash semantics.
 - **Failing test first**: `tests/unit/test_token_radar_payload_hash.py::test_hash_rejects_legacy_non_string_payload_keys` and `tests/unit/test_token_radar_payload_hash.py::test_hash_rejects_unordered_payload_containers` — call `stable_token_radar_payload_hash()` with compatibility-shaped non-string mapping keys and unordered containers and assert shared current payload validation raises before Token Radar canonicalization can stringify or sort them into serving hashes.
 - **Subagent handoff**: not delegated
@@ -3593,10 +3594,10 @@
 
 ### Task 171 — Shared current hash exits runtime import boundary
 
-- **File(s)**: `src/parallax/platform/current_read_model_payload_hash.py`, `src/parallax/app/runtime/current_read_model_publisher.py`, `src/parallax/domains/news_intel/repositories/news_repository.py`, `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`, `src/parallax/domains/asset_market/repositories/token_profile_current_repository.py`, `src/parallax/domains/cex_market_intel/repositories/cex_detail_snapshot_repository.py`, `src/parallax/domains/cex_market_intel/repositories/cex_oi_radar_repository.py`, `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`, `src/parallax/domains/macro_intel/observation_identity.py`, `src/parallax/domains/token_intel/services/token_radar_payload_hash.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/platform/current_read_model_payload_hash.py`, `src/parallax/app/runtime/current_read_model_publisher.py`, `src/parallax/domains/news_intel/repositories/news_repository.py`, `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`, `src/parallax/domains/asset_market/repositories/token_profile_current_repository.py`, `src/parallax/domains/cex_market_intel/repositories/cex_detail_snapshot_repository.py`, `src/parallax/domains/cex_market_intel/repositories/cex_oi_radar_repository.py`, `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`, `src/parallax/domains/macro_intel/observation_identity.py`, `src/parallax/domains/token_intel/services/token_radar_payload_hash.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 170
-- **Touch set**: `src/parallax/platform/current_read_model_payload_hash.py`, `src/parallax/app/runtime/current_read_model_publisher.py`, `src/parallax/domains/news_intel/repositories/news_repository.py`, `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`, `src/parallax/domains/asset_market/repositories/token_profile_current_repository.py`, `src/parallax/domains/cex_market_intel/repositories/cex_detail_snapshot_repository.py`, `src/parallax/domains/cex_market_intel/repositories/cex_oi_radar_repository.py`, `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`, `src/parallax/domains/macro_intel/observation_identity.py`, `src/parallax/domains/token_intel/services/token_radar_payload_hash.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/platform/current_read_model_payload_hash.py`, `src/parallax/app/runtime/current_read_model_publisher.py`, `src/parallax/domains/news_intel/repositories/news_repository.py`, `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`, `src/parallax/domains/asset_market/repositories/token_profile_current_repository.py`, `src/parallax/domains/cex_market_intel/repositories/cex_detail_snapshot_repository.py`, `src/parallax/domains/cex_market_intel/repositories/cex_oi_radar_repository.py`, `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`, `src/parallax/domains/macro_intel/observation_identity.py`, `src/parallax/domains/token_intel/services/token_radar_payload_hash.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for current read-model publisher row hashing semantics; coordinate with `src/parallax/platform/current_read_model_payload_hash.py` for shared current payload hash contract ownership; coordinate with `tests/architecture/test_src_domain_architecture.py` for repository upward-import boundary semantics.
 - **Failing test first**: `tests/architecture/test_src_domain_architecture.py::test_repositories_and_queries_do_not_import_services_or_runtime` — run the repository/query upward-import architecture gate and assert domain repositories no longer import the shared current payload hash helper from `parallax.app.runtime.current_read_model_publisher`.
 - **Subagent handoff**: not delegated
@@ -3614,10 +3615,10 @@
 
 ### Task 172 — Token Radar dirty queues use shared strict payload hash
 
-- **File(s)**: `src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py`, `src/parallax/domains/token_intel/repositories/token_radar_source_dirty_event_repository.py`, `tests/unit/test_token_radar_dirty_target_repository.py`, `tests/unit/domains/token_intel/test_token_radar_source_dirty_events.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py`, `src/parallax/domains/token_intel/repositories/token_radar_source_dirty_event_repository.py`, `tests/unit/test_token_radar_dirty_target_repository.py`, `tests/unit/domains/token_intel/test_token_radar_source_dirty_events.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 171
-- **Touch set**: `src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py`, `src/parallax/domains/token_intel/repositories/token_radar_source_dirty_event_repository.py`, `tests/unit/test_token_radar_dirty_target_repository.py`, `tests/unit/domains/token_intel/test_token_radar_source_dirty_events.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py`, `src/parallax/domains/token_intel/repositories/token_radar_source_dirty_event_repository.py`, `tests/unit/test_token_radar_dirty_target_repository.py`, `tests/unit/domains/token_intel/test_token_radar_source_dirty_events.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py` for dirty-target claim/done semantics; coordinate with `src/parallax/domains/token_intel/services/token_radar_projection.py` for downstream dirty-target payload hash semantics; coordinate with `src/parallax/platform/current_read_model_payload_hash.py` for shared current payload hash validation shape.
 - **Failing test first**: `tests/unit/test_token_radar_dirty_target_repository.py::test_dirty_payload_hash_rejects_legacy_non_string_payload_keys` and `tests/unit/domains/token_intel/test_token_radar_source_dirty_events.py::test_source_dirty_event_payload_hash_rejects_legacy_non_string_payload_keys` — call dirty queue payload hash helpers with compatibility-shaped non-string mapping keys and assert shared current payload validation raises before local key stringification or JSON sanitation.
 - **Subagent handoff**: not delegated
@@ -3635,10 +3636,10 @@
 
 ### Task 173 — Pulse trigger dirty queue hash excludes lifecycle state
 
-- **File(s)**: `src/parallax/domains/pulse_lab/repositories/pulse_trigger_dirty_target_repository.py`, `tests/unit/domains/pulse_lab/test_pulse_trigger_dirty_target_repository.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/domains/pulse_lab/repositories/pulse_trigger_dirty_target_repository.py`, `tests/unit/domains/pulse_lab/test_pulse_trigger_dirty_target_repository.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 172
-- **Touch set**: `src/parallax/domains/pulse_lab/repositories/pulse_trigger_dirty_target_repository.py`, `tests/unit/domains/pulse_lab/test_pulse_trigger_dirty_target_repository.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/domains/pulse_lab/repositories/pulse_trigger_dirty_target_repository.py`, `tests/unit/domains/pulse_lab/test_pulse_trigger_dirty_target_repository.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py` for dirty-trigger claim/done semantics; coordinate with `src/parallax/domains/token_intel/services/token_radar_projection.py` for Pulse trigger enqueue payload semantics; coordinate with `src/parallax/platform/current_read_model_payload_hash.py` for shared current payload hash validation shape.
 - **Failing test first**: `tests/unit/domains/pulse_lab/test_pulse_trigger_dirty_target_repository.py::test_payload_hash_rejects_legacy_non_string_payload_keys` and `tests/unit/domains/pulse_lab/test_pulse_trigger_dirty_target_repository.py::test_payload_hash_ignores_queue_lifecycle_fields` — call the Pulse trigger dirty payload hash helper with compatibility-shaped non-string mapping keys and queue lifecycle drift and assert shared current payload validation plus lifecycle exclusion.
 - **Subagent handoff**: not delegated
@@ -3656,10 +3657,10 @@
 
 ### Task 174 — Narrative admission dirty queue hash excludes lifecycle state
 
-- **File(s)**: `src/parallax/domains/narrative_intel/repositories/narrative_admission_dirty_target_repository.py`, `tests/unit/domains/narrative_intel/test_narrative_dirty_target_repositories.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/domains/narrative_intel/repositories/narrative_admission_dirty_target_repository.py`, `tests/unit/domains/narrative_intel/test_narrative_dirty_target_repositories.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 173
-- **Touch set**: `src/parallax/domains/narrative_intel/repositories/narrative_admission_dirty_target_repository.py`, `tests/unit/domains/narrative_intel/test_narrative_dirty_target_repositories.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/domains/narrative_intel/repositories/narrative_admission_dirty_target_repository.py`, `tests/unit/domains/narrative_intel/test_narrative_dirty_target_repositories.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with `src/parallax/domains/narrative_intel/runtime/narrative_admission_worker.py` for dirty-target claim/done semantics; coordinate with `src/parallax/domains/token_intel/services/token_radar_projection.py` for Narrative admission enqueue payload semantics; coordinate with `src/parallax/platform/current_read_model_payload_hash.py` for shared current payload hash validation shape.
 - **Failing test first**: `tests/unit/domains/narrative_intel/test_narrative_dirty_target_repositories.py::test_payload_hash_rejects_legacy_non_string_payload_keys` and `tests/unit/domains/narrative_intel/test_narrative_dirty_target_repositories.py::test_payload_hash_ignores_queue_lifecycle_fields` — call the Narrative admission dirty payload hash helper with compatibility-shaped non-string mapping keys and queue lifecycle drift and assert shared current payload validation plus lifecycle exclusion.
 - **Subagent handoff**: not delegated
@@ -3677,10 +3678,10 @@
 
 ### Task 175 — Asset Market dirty-control-plane hashes use shared strict payload hash
 
-- **File(s)**: `src/parallax/platform/current_read_model_payload_hash.py`, `src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py`, `src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py`, `src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py`, `src/parallax/domains/asset_market/repositories/asset_profile_refresh_target_repository.py`, `src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py`, `src/parallax/domains/token_intel/repositories/token_radar_source_dirty_event_repository.py`, `src/parallax/domains/pulse_lab/repositories/pulse_trigger_dirty_target_repository.py`, `src/parallax/domains/narrative_intel/repositories/narrative_admission_dirty_target_repository.py`, `tests/unit/domains/asset_market/test_asset_market_dirty_target_payload_hashes.py`, `tests/unit/domains/token_intel/test_token_radar_dirty_target_kinds.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/platform/current_read_model_payload_hash.py`, `src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py`, `src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py`, `src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py`, `src/parallax/domains/asset_market/repositories/asset_profile_refresh_target_repository.py`, `src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py`, `src/parallax/domains/token_intel/repositories/token_radar_source_dirty_event_repository.py`, `src/parallax/domains/pulse_lab/repositories/pulse_trigger_dirty_target_repository.py`, `src/parallax/domains/narrative_intel/repositories/narrative_admission_dirty_target_repository.py`, `tests/unit/domains/asset_market/test_asset_market_dirty_target_payload_hashes.py`, `tests/unit/domains/token_intel/test_token_radar_dirty_target_kinds.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 174
-- **Touch set**: `src/parallax/platform/current_read_model_payload_hash.py`, `src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py`, `src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py`, `src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py`, `src/parallax/domains/asset_market/repositories/asset_profile_refresh_target_repository.py`, `src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py`, `src/parallax/domains/token_intel/repositories/token_radar_source_dirty_event_repository.py`, `src/parallax/domains/pulse_lab/repositories/pulse_trigger_dirty_target_repository.py`, `src/parallax/domains/narrative_intel/repositories/narrative_admission_dirty_target_repository.py`, `tests/unit/domains/asset_market/test_asset_market_dirty_target_payload_hashes.py`, `tests/unit/domains/token_intel/test_token_radar_dirty_target_kinds.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/platform/current_read_model_payload_hash.py`, `src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py`, `src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py`, `src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py`, `src/parallax/domains/asset_market/repositories/asset_profile_refresh_target_repository.py`, `src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py`, `src/parallax/domains/token_intel/repositories/token_radar_source_dirty_event_repository.py`, `src/parallax/domains/pulse_lab/repositories/pulse_trigger_dirty_target_repository.py`, `src/parallax/domains/narrative_intel/repositories/narrative_admission_dirty_target_repository.py`, `tests/unit/domains/asset_market/test_asset_market_dirty_target_payload_hashes.py`, `tests/unit/domains/token_intel/test_token_radar_dirty_target_kinds.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `src/parallax/domains/asset_market/runtime/market_tick_current_projection_worker.py`, `src/parallax/domains/asset_market/runtime/token_profile_current_worker.py`, `src/parallax/domains/asset_market/runtime/token_image_mirror_worker.py`, `src/parallax/domains/asset_market/runtime/asset_profile_refresh_worker.py`, `src/parallax/platform/current_read_model_payload_hash.py`
 - **Failing test first**: `tests/unit/domains/asset_market/test_asset_market_dirty_target_payload_hashes.py::test_asset_market_dirty_payload_hashes_reject_legacy_non_string_keys`, `tests/unit/domains/asset_market/test_asset_market_dirty_target_payload_hashes.py::test_asset_market_dirty_payload_hashes_ignore_queue_lifecycle_fields`, and `tests/unit/domains/asset_market/test_asset_market_dirty_target_payload_hashes.py::test_token_image_source_dirty_target_rejects_legacy_raw_ref_keys_before_json_safety` — parameterize Asset Market dirty queue hash helpers with non-string payload keys, queue lifecycle drift, and token-image `raw_ref_json` compatibility keys and assert shared current payload validation plus lifecycle exclusion before JSON safety.
 - **Subagent handoff**: not delegated
@@ -3698,10 +3699,10 @@
 
 ### Task 176 — Token Capture Tier dirty rank-set fingerprint uses shared strict payload hash
 
-- **File(s)**: `src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py`, `tests/unit/test_token_radar_projection.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py`, `tests/unit/test_token_radar_projection.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 175
-- **Touch set**: `src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py`, `tests/unit/test_token_radar_projection.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py`, `tests/unit/test_token_radar_projection.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `src/parallax/domains/asset_market/runtime/token_capture_tier_worker.py`, `src/parallax/domains/token_intel/services/token_radar_projection.py`, `src/parallax/platform/current_read_model_payload_hash.py`
 - **Failing test first**: `tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_uses_shared_payload_hash_contract`, `tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_rejects_legacy_factor_snapshot_keys`, and `tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_rejects_unordered_payload_containers` — call the rank-set dirty fingerprint with compliant rows, compatibility-shaped nested keys, and unordered containers and assert the shared `sha256:` contract plus strict payload validation.
 - **Subagent handoff**: not delegated
@@ -3719,10 +3720,10 @@
 
 ### Task 177 — Macro projection dirty targets use shared strict dirty payload hash
 
-- **File(s)**: `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`, `tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`, `tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 176
-- **Touch set**: `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`, `tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`, `tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `src/parallax/domains/macro_intel/runtime/macro_view_projection_worker.py`, `src/parallax/platform/current_read_model_payload_hash.py`, `src/parallax/domains/macro_intel/observation_identity.py`
 - **Failing test first**: `tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_enqueue_macro_projection_dirty_target_coalesces_current_target`, `tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_projection_dirty_payload_hash_rejects_legacy_payload_shapes`, `tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_enqueue_macro_projection_dirty_targets_for_changes_groups_by_concept_watermark`, and `tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_projection_dirty_change_payload_hash_rejects_legacy_payload_shapes` — enqueue current and concept dirty targets and call the dirty hash helpers with compatibility-shaped values, asserting the shared `sha256:` dirty payload contract and strict nested-key validation.
 - **Subagent handoff**: not delegated
@@ -3740,10 +3741,10 @@
 
 ### Task 178 — Agent execution docs name the live read-only tool contract
 
-- **File(s)**: `docs/AGENT_EXECUTION.md`, `tests/architecture/test_agent_execution_plane_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `docs/AGENT_EXECUTION.md`, `tests/architecture/test_agent_execution_plane_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 177
-- **Touch set**: `docs/AGENT_EXECUTION.md`, `tests/architecture/test_agent_execution_plane_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `docs/AGENT_EXECUTION.md`, `tests/architecture/test_agent_execution_plane_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `src/parallax/platform/agent_read_tools.py`, `docs/agent-playbook/task-reading-matrix.md`
 - **Failing test first**: `tests/architecture/test_agent_execution_plane_contracts.py::test_agent_execution_doc_names_current_read_tool_contract` — parse `src/parallax/platform/agent_read_tools.py`, require `docs/AGENT_EXECUTION.md` to mention the live `ReadOnlySqlAgentTool` class, and reject the stale `AgentReadTool` class name.
 - **Subagent handoff**: not delegated
@@ -3761,10 +3762,10 @@
 
 ### Task 179 — Active SDD current paths exclude removed files
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/_templates/tasks-template.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/_templates/tasks-template.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 178
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/_templates/tasks-template.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/_templates/tasks-template.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/regen_sdd_work_index.py`; `docs/sdd/_templates/README.md`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_missing_current_file_and_touch_paths`, `tests/architecture/test_sdd_artifact_validator.py::test_tasks_allow_removed_file_records_outside_current_touch_surface`, and `tests/architecture/test_sdd_artifact_validator.py::test_tasks_allow_current_glob_touch_paths_when_they_match` — build active SDD fixtures with stale paths, removed-file records, and matching glob touch paths to prove current coordination surfaces cannot advertise deleted files.
 - **Subagent handoff**: not delegated
@@ -3782,10 +3783,10 @@
 
 ### Task 180 — SDD lifecycle gates have first-class CLI checks
 
-- **File(s)**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 179
-- **Touch set**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/validate_sdd_artifacts.py`; `scripts/dispatch_sdd_task.py`; `scripts/build_agent_context_packet.py`
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_individual_gates` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_failed_analyze_gate` — run a production-style active SDD fixture through `clarify`, `checklist`, `analyze`, and `implement` gate checks and prove a failed Analyze Gate exits non-zero.
 - **Subagent handoff**: not delegated
@@ -3803,11 +3804,11 @@
 
 ### Task 181 — Tasks stop duplicating final verification evidence
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/_templates/tasks-template.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/_templates/tasks-template.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 180
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/_templates/tasks-template.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
-- **Conflict set**: `docs/sdd/_templates/verification-template.md`; `scripts/check_sdd_gate.py`; `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut/verification.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/_templates/tasks-template.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `docs/sdd/_templates/verification-template.md`; `scripts/check_sdd_gate.py`; `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut/verification.md`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_final_verification_checklist_duplication` and `tests/architecture/test_agent_playbook_contracts.py::test_tasks_template_does_not_duplicate_final_verification_surface` — prove active task artifacts and the tasks template cannot maintain a duplicate final verification checklist outside `verification.md`.
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated
@@ -3824,10 +3825,10 @@
 
 ### Task 182 — All active SDD gates run in check-all
 
-- **File(s)**: `Makefile`, `scripts/check_sdd_gate.py`, `tests/architecture/test_harness_structure.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `Makefile`, `scripts/check_sdd_gate.py`, `tests/architecture/test_harness_structure.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 181
-- **Touch set**: `Makefile`, `scripts/check_sdd_gate.py`, `tests/architecture/test_harness_structure.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `Makefile`, `scripts/check_sdd_gate.py`, `tests/architecture/test_harness_structure.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/validate_sdd_artifacts.py`; `scripts/regen_sdd_work_index.py`; `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut/tasks.md`
 - **Failing test first**: `tests/architecture/test_harness_structure.py::test_make_check_all_runs_executable_sdd_harness`, `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_all_active_features`, and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_any_failed_active_feature` — prove `check-all` invokes the all-active gate sweep and the CLI checks every active feature rather than only one happy path.
 - **Subagent handoff**: not delegated
@@ -3845,10 +3846,10 @@
 
 ### Task 183 — Implement gate forwards delegated task drift
 
-- **File(s)**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 182
-- **Touch set**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/validate_sdd_artifacts.py`; `scripts/dispatch_sdd_task.py`; `docs/agent-playbook/subagent-handoff-template.md`
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_delegated_artifact_drift` — proves `--gate implement` must fail when a delegated task points at missing subagent handoff/report artifacts.
 - **Subagent handoff**: not delegated
@@ -3866,10 +3867,10 @@
 
 ### Task 184 — Gate evidence ignores header-only tables
 
-- **File(s)**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 183
-- **Touch set**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/validate_sdd_artifacts.py`; `docs/sdd/_templates/spec-template.md`; `docs/sdd/_templates/plan-template.md`
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_header_only_gate_tables` — proves `clarify` gate fails when `## Clarifications` contains only a table header and separator.
 - **Subagent handoff**: not delegated
@@ -3887,10 +3888,10 @@
 
 ### Task 185 — Gate evidence shares validator placeholder semantics
 
-- **File(s)**: `scripts/check_sdd_gate.py`, `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/check_sdd_gate.py`, `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 184
-- **Touch set**: `scripts/check_sdd_gate.py`, `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/check_sdd_gate.py`, `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/check_sdd_gate.py`; `scripts/validate_sdd_artifacts.py`; `docs/sdd/_templates/spec-template.md`
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_placeholder_gate_rows` — proves a `clarify` gate row containing `<pending>` and `YYYY-MM-DD` placeholders fails instead of satisfying gate evidence.
 - **Subagent handoff**: not delegated
@@ -3908,10 +3909,10 @@
 
 ### Task 186 — Implement gate covers tasks gate compliance
 
-- **File(s)**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 185
-- **Touch set**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/validate_sdd_artifacts.py`; `docs/sdd/_templates/tasks-template.md`; `scripts/dispatch_sdd_task.py`
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_missing_task_gate_compliance` — proves `--gate implement` fails when `tasks.md` omits `## Gate Compliance` while retaining structured task records.
 - **Subagent handoff**: not delegated
@@ -3929,10 +3930,10 @@
 
 ### Task 187 — Analyze gate result statuses are bounded
 
-- **File(s)**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 186
-- **Touch set**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/validate_sdd_artifacts.py`; `docs/sdd/_templates/plan-template.md`; `scripts/check_sdd_gate.py`
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_unbounded_analyze_status` — proves `--gate analyze` fails when an Analyze Gate result starts with `Warn:` instead of `Pass:` or `Blocked:`.
 - **Subagent handoff**: not delegated
@@ -3950,10 +3951,10 @@
 
 ### Task 188 — SDD sections require heading-line matches
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 187
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `docs/sdd/_templates/spec-template.md`; `docs/sdd/_templates/plan-template.md`; `docs/sdd/_templates/tasks-template.md`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_required_sections_must_be_markdown_heading_lines` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_requires_markdown_heading_lines` — prove backticked `## Clarifications` prose cannot satisfy a missing Markdown heading.
 - **Subagent handoff**: not delegated
@@ -3971,10 +3972,10 @@
 
 ### Task 189 — SDD section parser ignores fenced headings
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 188
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/spec-template.md`; `docs/sdd/_templates/verification-template.md`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_required_sections_ignore_fenced_heading_tokens` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_ignores_fenced_heading_tokens` — prove fenced `## Clarifications` text cannot satisfy a missing Markdown heading.
 - **Subagent handoff**: not delegated
@@ -3992,10 +3993,10 @@
 
 ### Task 190 — SDD fenced parser covers tilde fences
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 189
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/spec-template.md`; `docs/sdd/_templates/verification-template.md`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_required_sections_ignore_tilde_fenced_heading_tokens` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_ignores_tilde_fenced_heading_tokens` — prove `~~~` fenced `## Clarifications` text cannot satisfy a missing Markdown heading.
 - **Subagent handoff**: not delegated
@@ -4013,10 +4014,10 @@
 
 ### Task 191 — Gate evidence rejects single-cell rows
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 190
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `docs/sdd/_templates/spec-template.md`; `docs/sdd/_templates/plan-template.md`; `scripts/check_sdd_gate.py`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_single_cell_body_rows` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_single_cell_gate_rows` — prove a single non-placeholder table cell cannot satisfy gate evidence.
 - **Subagent handoff**: not delegated
@@ -4034,10 +4035,10 @@
 
 ### Task 192 — Gate evidence tables require separators
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 191
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `docs/sdd/_templates/spec-template.md`; `docs/sdd/_templates/plan-template.md`; `scripts/check_sdd_gate.py`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_tables_without_separator_rows` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_gate_tables_without_separator_rows` — prove pipe rows without a Markdown separator cannot satisfy gate evidence.
 - **Subagent handoff**: not delegated
@@ -4055,10 +4056,10 @@
 
 ### Task 193 — Gate evidence body rows follow separators
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 192
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `docs/sdd/_templates/spec-template.md`; `docs/sdd/_templates/plan-template.md`; `scripts/check_sdd_gate.py`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_body_rows_before_separator` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_body_rows_before_separator` — prove body rows before a separator cannot satisfy gate evidence.
 - **Subagent handoff**: not delegated
@@ -4076,10 +4077,10 @@
 
 ### Task 194 — Gate evidence separators require hyphens
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 193
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/spec-template.md`; `docs/sdd/_templates/plan-template.md`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_empty_separator_rows` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_empty_separator_rows` — prove empty separator cells cannot satisfy gate evidence.
 - **Subagent handoff**: not delegated
@@ -4097,10 +4098,10 @@
 
 ### Task 195 — Gate evidence table rows share arity
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 194
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/spec-template.md`; `docs/sdd/_templates/plan-template.md`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_separator_arity_mismatch`, `tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_body_row_arity_mismatch`, `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_separator_arity_mismatch`, and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_body_row_arity_mismatch` — prove separator/body rows with mismatched column counts cannot satisfy gate evidence.
 - **Subagent handoff**: not delegated
@@ -4118,10 +4119,10 @@
 
 ### Task 196 — Gate evidence tables are contiguous blocks
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 195
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/spec-template.md`; `docs/sdd/_templates/plan-template.md`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_non_contiguous_body_rows` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_non_contiguous_body_rows` — prove body rows separated from their header/separator by prose cannot satisfy gate evidence.
 - **Subagent handoff**: not delegated
@@ -4139,10 +4140,10 @@
 
 ### Task 197 — Gate evidence headers are canonical
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 196
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `docs/sdd/_templates/spec-template.md`; `docs/sdd/_templates/plan-template.md`; `docs/sdd/_templates/tasks-template.md`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_wrong_clarification_header` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_wrong_clarification_header` — prove a valid table with generic headers cannot satisfy Clarifications evidence.
 - **Subagent handoff**: not delegated
@@ -4160,10 +4161,10 @@
 
 ### Task 198 — Analyze results use canonical gate rows
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 197
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `docs/sdd/_templates/plan-template.md`; `scripts/check_sdd_gate.py`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_plan_analyze_gate_ignores_non_canonical_tables` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_ignores_non_canonical_analyze_tables` — prove additional non-canonical tables in `## Analyze Gate` cannot trigger result-status failures.
 - **Subagent handoff**: not delegated
@@ -4181,10 +4182,10 @@
 
 ### Task 199 — Analyze invalid-result semantics are shared
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 198
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `tests/architecture/test_sdd_artifact_validator.py`; `docs/sdd/_templates/plan-template.md`
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_invalid_analyze_result_with_placeholder_check` — proves placeholder text in the check column cannot hide an invalid Analyze result from the gate CLI.
 - **Subagent handoff**: not delegated
@@ -4202,10 +4203,10 @@
 
 ### Task 200 — Gate evidence rejects repeated separators
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 199
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/spec-template.md`; `docs/sdd/_templates/plan-template.md`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_repeated_separator_rows` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_repeated_separator_rows` — prove a second separator row cannot be skipped before accepting later evidence rows.
 - **Subagent handoff**: not delegated
@@ -4223,10 +4224,10 @@
 
 ### Task 201 — Gate evidence rejects repeated headers
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 200
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/spec-template.md`; `docs/sdd/_templates/plan-template.md`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_repeated_header_rows` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_repeated_header_rows` — prove a copied header row in the body cannot count as evidence.
 - **Subagent handoff**: not delegated
@@ -4244,10 +4245,10 @@
 
 ### Task 202 — Gate evidence rows must close pipes
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 201
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/spec-template.md`; `docs/sdd/_templates/plan-template.md`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_unclosed_table_rows` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_unclosed_table_rows` — prove a partial pipe row without a trailing `|` cannot count as evidence.
 - **Subagent handoff**: not delegated
@@ -4265,10 +4266,10 @@
 
 ### Task 203 — Gate evidence rows use single boundary pipes
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 202
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/spec-template.md`; `docs/sdd/_templates/plan-template.md`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_doubled_boundary_pipes` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_doubled_boundary_pipes` — prove doubled boundary pipes cannot be stripped into canonical-looking table cells.
 - **Subagent handoff**: not delegated
@@ -4286,10 +4287,10 @@
 
 ### Task 204 — Gate evidence tables are top-level
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 203
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/spec-template.md`; `docs/sdd/_templates/plan-template.md`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_indented_table_rows` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_indented_table_rows` — prove indented code-block-style tables cannot count as gate evidence.
 - **Subagent handoff**: not delegated
@@ -4307,10 +4308,10 @@
 
 ### Task 205 — Clarification approvals use canonical dates
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 204
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/spec-template.md`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_clarification_gate_evidence_rejects_non_canonical_approval_dates` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_non_canonical_clarification_approval_dates` — prove compact or freeform `Approved at` values cannot satisfy Clarifications gate evidence.
 - **Subagent handoff**: not delegated
@@ -4328,10 +4329,10 @@
 
 ### Task 206 — Artifact metadata dates are canonical
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 205
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/regen_sdd_work_index.py`; `docs/sdd/_templates/spec-template.md`; `docs/sdd/_templates/plan-template.md`; `docs/sdd/_templates/tasks-template.md`; `docs/sdd/_templates/verification-template.md`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_artifact_metadata_dates_require_canonical_real_dates` — proves artifact `Date` and `Approved at` metadata cannot use compact or impossible date values.
 - **Subagent handoff**: not delegated
@@ -4349,10 +4350,10 @@
 
 ### Task 207 — Gate Compliance rows are canonical
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 206
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/tasks-template.md`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_gate_compliance_requires_all_canonical_gate_rows` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_incomplete_task_gate_compliance` — prove partial Gate Compliance rows cannot satisfy the validator or implement gate.
 - **Subagent handoff**: not delegated
@@ -4370,10 +4371,10 @@
 
 ### Task 208 — Analyze status rows include evidence
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 207
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/plan-template.md`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_plan_analyze_gate_rejects_status_without_evidence` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_analyze_status_without_evidence` — prove status-only Analyze results cannot satisfy the validator or analyze gate.
 - **Subagent handoff**: not delegated
@@ -4391,10 +4392,10 @@
 
 ### Task 209 — Gate Compliance rows are exact
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 208
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/tasks-template.md`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_gate_compliance_rejects_duplicate_gate_rows` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_duplicate_task_gate_compliance` — prove duplicate Gate Compliance rows cannot satisfy the validator or implement gate.
 - **Subagent handoff**: not delegated
@@ -4412,10 +4413,10 @@
 
 ### Task 210 — Gate Compliance is a single table block
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 209
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/tasks-template.md`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_gate_compliance_rejects_split_table_blocks` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_split_task_gate_compliance` — prove multiple Gate Compliance table blocks cannot be stitched into a false canonical lifecycle table.
 - **Subagent handoff**: not delegated
@@ -4433,10 +4434,10 @@
 
 ### Task 211 — Verify gate is first-class
 
-- **File(s)**: `scripts/check_sdd_gate.py`, `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_agent_playbook_contracts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/check_sdd_gate.py`, `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_agent_playbook_contracts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 210
-- **Touch set**: `scripts/check_sdd_gate.py`, `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_agent_playbook_contracts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/check_sdd_gate.py`, `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_agent_playbook_contracts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `Makefile`; `docs/sdd/_templates/verification-template.md`
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_missing_check_all_evidence`, `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_incomplete_spec_compliance`, `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence`, and `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_complete_spec_compliance_rows` — prove final verification is a first-class gate and incomplete Spec compliance rows cannot satisfy completion evidence.
 - **Subagent handoff**: not delegated
@@ -4454,10 +4455,10 @@
 
 ### Task 212 — Spec compliance rows are required
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 211
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/verification-template.md`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_spec_compliance_rows` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_empty_spec_compliance` — prove final verification cannot pass with an empty Spec compliance matrix.
 - **Subagent handoff**: not delegated
@@ -4475,10 +4476,10 @@
 
 ### Task 213 — Spec compliance covers every AC
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 212
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/verification-template.md`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_spec_compliance_for_all_acceptance_criteria` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_partial_spec_compliance` — prove final verification cannot pass when `spec.md` declares AC2 but `verification.md` only covers AC1.
 - **Subagent handoff**: not delegated
@@ -4496,10 +4497,10 @@
 
 ### Task 214 — Coverage rows must pass
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 213
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/verification-template.md`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_passing_coverage_rows` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_pending_coverage` — prove final verification cannot pass with Pending coverage rows even when `make check-all` and Spec compliance pass.
 - **Subagent handoff**: not delegated
@@ -4517,10 +4518,10 @@
 
 ### Task 215 — E2E golden path must pass
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 214
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/verification-template.md`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_complete_e2e_golden_path` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_incomplete_e2e_golden_path` — prove final verification cannot pass with unchecked or not-applicable E2E rows.
 - **Subagent handoff**: not delegated
@@ -4538,10 +4539,10 @@
 
 ### Task 216 — Skipped-test count must be numeric
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 215
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/verification-template.md`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_numeric_skipped_test_count` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_pending_skipped_count` — prove final verification cannot pass when skipped-test evidence leaves the count as `Pending`.
 - **Subagent handoff**: not delegated
@@ -4559,10 +4560,10 @@
 
 ### Task 217 — Skipped-test count is section-local
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 216
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/verification-template.md`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_skipped_count_inside_skipped_tests_section` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_skipped_count_outside_skipped_section` — prove final verification cannot pass when only stale `Other commands run` output has a numeric skipped-test count.
 - **Subagent handoff**: not delegated
@@ -4580,10 +4581,10 @@
 
 ### Task 218 — Positive skipped-test count is rejected
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 217
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/verification-template.md`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_positive_skipped_test_count_with_freeform_table` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_positive_skipped_count_with_freeform_table` — prove final verification cannot pass when skipped-test evidence declares a positive count.
 - **Subagent handoff**: not delegated
@@ -4601,10 +4602,10 @@
 
 ### Task 219 — Coverage cells are concrete
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 218
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/verification-template.md`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_concrete_coverage_values` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_placeholder_coverage_value` — prove final verification cannot pass when Coverage `value` is still `Pending` but `status` says `Pass`.
 - **Subagent handoff**: not delegated
@@ -4622,10 +4623,10 @@
 
 ### Task 220 — Spec compliance evidence is concrete
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 219
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/verification-template.md`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_concrete_spec_compliance_evidence` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_placeholder_spec_compliance_evidence` — prove final verification cannot pass when Spec compliance `status` says `Pass` but `Evidence` remains `Pending.`.
 - **Subagent handoff**: not delegated
@@ -4643,10 +4644,10 @@
 
 ### Task 221 — Spec compliance evidence is command-shaped
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 220
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/verification-template.md`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_command_shaped_spec_compliance_evidence` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_prose_only_spec_compliance_evidence` — prove final verification cannot pass when a complete Spec compliance row has prose-only evidence.
 - **Subagent handoff**: not delegated
@@ -4664,10 +4665,10 @@
 
 ### Task 222 — E2E evidence ignores fenced examples
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 221
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/verification-template.md`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_fenced_e2e_golden_path` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_fenced_e2e_golden_path` — prove final verification cannot pass when the full E2E checklist appears only inside a fenced code block.
 - **Subagent handoff**: not delegated
@@ -4685,10 +4686,10 @@
 
 ### Task 223 — make check-all evidence uses its own exit code
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 222
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/verification-template.md`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_make_check_all_own_exit_code_zero` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_failed_check_all_before_helper_success` — prove final verification cannot pass when `$ make check-all` fails before a later helper command exits 0 in the same fenced block.
 - **Subagent handoff**: not delegated
@@ -4706,10 +4707,10 @@
 
 ### Task 224 — Task Board exposes repair pressure
 
-- **File(s)**: `scripts/regen_sdd_work_index.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/generated/sdd-work-index.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/regen_sdd_work_index.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/generated/sdd-work-index.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 223
-- **Touch set**: `scripts/regen_sdd_work_index.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/generated/sdd-work-index.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Touch set**: `scripts/regen_sdd_work_index.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/generated/sdd-work-index.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for generated SDD index and agent playbook tests.
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board` — proves the generated Task Board must render `Kill/defer criteria` and `Eval/repair signal` columns for every task row.
 - **Subagent handoff**: not delegated
@@ -4727,10 +4728,10 @@
 
 ### Task 225 — Completion gate has a Make target
 
-- **File(s)**: `Makefile`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/verification-template.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `Makefile`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/verification-template.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 224
-- **Touch set**: `Makefile`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/verification-template.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `Makefile`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/verification-template.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD workflow docs and generated index.
 - **Failing test first**: `tests/architecture/test_harness_structure.py::test_makefile_exposes_single_feature_sdd_completion_gate` — proves Makefile and docs expose `make check-sdd-completion FEATURE=<slug>` as the final single-feature completion gate.
 - **Subagent handoff**: not delegated
@@ -4748,10 +4749,10 @@
 
 ### Task 226 — Makefile pytest targets reject empty collections
 
-- **File(s)**: `Makefile`, `docs/TESTING.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `Makefile`, `docs/TESTING.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 225
-- **Touch set**: `Makefile`, `docs/TESTING.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `Makefile`, `docs/TESTING.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for generated SDD index updates.
 - **Failing test first**: `tests/architecture/test_harness_structure.py::test_makefile_pytest_targets_do_not_accept_empty_collections` — proves Makefile pytest targets cannot translate pytest empty-collection exit code 5 into success.
 - **Subagent handoff**: not delegated
@@ -4769,10 +4770,10 @@
 
 ### Task 227 — Golden corpus has a dedicated marker
 
-- **File(s)**: `Makefile`, `docs/TESTING.md`, `tests/conftest.py`, `tests/golden/conftest.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `Makefile`, `docs/TESTING.md`, `tests/conftest.py`, `tests/golden/conftest.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 226
-- **Touch set**: `Makefile`, `docs/TESTING.md`, `tests/conftest.py`, `tests/golden/conftest.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `Makefile`, `docs/TESTING.md`, `tests/conftest.py`, `tests/golden/conftest.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for generated SDD index updates.
 - **Failing test first**: `tests/architecture/test_harness_structure.py::test_golden_lane_uses_dedicated_pytest_marker` — proves the golden corpus lane cannot keep using the service-level e2e marker.
 - **Subagent handoff**: not delegated
@@ -4790,10 +4791,10 @@
 
 ### Task 228 — Final runtime lanes fail closed
 
-- **File(s)**: `docs/TESTING.md`, `docs/sdd/_templates/verification-template.md`, `tests/e2e/conftest.py`, `tests/golden/conftest.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `docs/TESTING.md`, `docs/sdd/_templates/verification-template.md`, `tests/e2e/conftest.py`, `tests/golden/conftest.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 227
-- **Touch set**: `docs/TESTING.md`, `docs/sdd/_templates/verification-template.md`, `tests/e2e/conftest.py`, `tests/golden/conftest.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `docs/TESTING.md`, `docs/sdd/_templates/verification-template.md`, `tests/e2e/conftest.py`, `tests/golden/conftest.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for generated SDD index updates.
 - **Failing test first**: `tests/architecture/test_harness_structure.py::test_final_runtime_lanes_do_not_expose_skip_env_switches` — proves E2E/golden runtime lanes and verification templates cannot expose environment skip switches.
 - **Subagent handoff**: not delegated
@@ -4811,10 +4812,10 @@
 
 ### Task 229 — Contract lane has one Make entrypoint
 
-- **File(s)**: `Makefile`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `Makefile`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 228
-- **Touch set**: `Makefile`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `Makefile`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for generated SDD index updates.
 - **Failing test first**: `tests/architecture/test_harness_structure.py::test_contract_lane_has_no_duplicate_make_alias` — proves the old `contract-check` Make alias cannot remain beside `test-contract`.
 - **Subagent handoff**: not delegated
@@ -4832,10 +4833,10 @@
 
 ### Task 230 — Architecture harness tests fail closed
 
-- **File(s)**: `pyproject.toml`, `tests/architecture/test_test_lane_contracts.py`, `tests/architecture/test_worker_runtime_contracts.py`, `docs/TESTING.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `pyproject.toml`, `tests/architecture/test_test_lane_contracts.py`, `tests/architecture/test_worker_runtime_contracts.py`, `docs/TESTING.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 229
-- **Touch set**: `pyproject.toml`, `tests/architecture/test_test_lane_contracts.py`, `tests/architecture/test_worker_runtime_contracts.py`, `docs/TESTING.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `pyproject.toml`, `tests/architecture/test_test_lane_contracts.py`, `tests/architecture/test_worker_runtime_contracts.py`, `docs/TESTING.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for generated SDD index updates.
 - **Failing test first**: `tests/architecture/test_test_lane_contracts.py::test_architecture_tests_do_not_skip_contracts` and `tests/architecture/test_test_lane_contracts.py::test_pytest_empty_parameter_sets_fail_at_collect` — prove architecture lane contracts cannot hide missing worker runtimes with `pytest.skip(...)` or empty parameter-set skips.
 - **Subagent handoff**: not delegated
@@ -4853,10 +4854,10 @@
 
 ### Task 231 — SDD validator has no report-only soft mode
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 230
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD validator requirements and generated index updates.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_validator_cli_fails_on_issues_without_check_flag` — proves invalid SDD artifacts cannot print errors and still exit 0 when `--check` is omitted.
 - **Subagent handoff**: not delegated
@@ -4874,10 +4875,10 @@
 
 ### Task 232 — Coverage keeps empty source files visible
 
-- **File(s)**: `pyproject.toml`, `docs/TESTING.md`, `tests/architecture/test_test_lane_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `pyproject.toml`, `docs/TESTING.md`, `tests/architecture/test_test_lane_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 231
-- **Touch set**: `pyproject.toml`, `docs/TESTING.md`, `tests/architecture/test_test_lane_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `pyproject.toml`, `docs/TESTING.md`, `tests/architecture/test_test_lane_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for generated SDD index updates.
 - **Failing test first**: `tests/architecture/test_test_lane_contracts.py::test_coverage_report_does_not_hide_empty_source_files` — proves coverage completion evidence cannot hide empty source modules with `skip_empty = true`.
 - **Subagent handoff**: not delegated
@@ -4895,10 +4896,10 @@
 
 ### Task 233 — SDD task selectors are numeric only
 
-- **File(s)**: `scripts/build_agent_context_packet.py`, `scripts/dispatch_sdd_task.py`, `scripts/validate_subagent_report.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/build_agent_context_packet.py`, `scripts/dispatch_sdd_task.py`, `scripts/validate_subagent_report.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 232
-- **Touch set**: `scripts/build_agent_context_packet.py`, `scripts/dispatch_sdd_task.py`, `scripts/validate_subagent_report.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/build_agent_context_packet.py`, `scripts/dispatch_sdd_task.py`, `scripts/validate_subagent_report.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared agent playbook CLI tests and generated index updates.
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_clis_reject_title_substring_selectors` — proves task-bound CLIs cannot select tasks by title substring.
 - **Subagent handoff**: not delegated
@@ -4916,10 +4917,10 @@
 
 ### Task 234 — Final runtime evidence rejects golden skip switches
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 233
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD validator and verify-gate tests.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_golden_skip_switch` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_golden_skip_switch` — prove `SKIP_GOLDEN=1` cannot satisfy final runtime evidence.
 - **Subagent handoff**: not delegated
@@ -4937,10 +4938,10 @@
 
 ### Task 235 — Final verification commands are single-source evidence
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 234
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD verify-gate tests and generated index updates.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_extra_verification_command` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_extra_verification_command` — prove helper commands inside final `Verification commands` cannot satisfy Verified evidence.
 - **Subagent handoff**: not delegated
@@ -4958,10 +4959,10 @@
 
 ### Task 236 — Final verification command scan includes unfenced shell lines
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 235
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD verify-gate tests and generated index updates.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_unfenced_extra_verification_command` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_unfenced_extra_verification_command` — prove unfenced `$ uv run ...` lines inside final `Verification commands` cannot bypass the extra-command guard.
 - **Subagent handoff**: not delegated
@@ -4979,10 +4980,10 @@
 
 ### Task 237 — Final verification command sequence is exact
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 236
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD verify-gate tests and generated index updates.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_duplicate_unfenced_make_check_all` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_duplicate_unfenced_make_check_all` — prove a second unfenced `$ make check-all` cannot bypass the extra-command guard by using the allowed command name.
 - **Subagent handoff**: not delegated
@@ -5000,10 +5001,10 @@
 
 ### Task 238 — Final make-check-all transcript has one exit code
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 237
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD verify-gate tests and generated index updates.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_multiple_check_all_exit_codes` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_multiple_check_all_exit_codes` — prove a later `exit code: 0` in the same `make check-all` segment cannot overwrite an earlier failed exit code.
 - **Subagent handoff**: not delegated
@@ -5021,10 +5022,10 @@
 
 ### Task 239 — Final verification commands have one transcript block
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 238
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD verify-gate tests, issue taxonomy, and generated index updates.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_extra_verification_output_block` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_extra_verification_output_block` — prove an extra fenced output block without `$` command lines cannot sit beside the canonical final transcript.
 - **Subagent handoff**: not delegated
@@ -5042,10 +5043,10 @@
 
 ### Task 240 — Required SDD sections are unique
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 239
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD section semantics, verify-gate tests, issue taxonomy, and generated index updates.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_duplicate_verification_commands_section` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_duplicate_verification_commands_section` — prove duplicate `## Verification commands` headings cannot hide stale failed evidence from section-local parsing.
 - **Subagent handoff**: not delegated
@@ -5063,10 +5064,10 @@
 
 ### Task 241 — Verification template separates completion gate evidence
 
-- **File(s)**: `docs/sdd/_templates/verification-template.md`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `docs/sdd/_templates/verification-template.md`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 240
-- **Touch set**: `docs/sdd/_templates/verification-template.md`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `docs/sdd/_templates/verification-template.md`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD workflow wording and template contracts.
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_verification_template_keeps_completion_gate_outside_final_command_section` — proves the template does not place `make check-sdd-completion` inside the final `Verification commands` parser surface.
 - **Subagent handoff**: not delegated
@@ -5084,10 +5085,10 @@
 
 ### Task 242 — Final evidence requires zero skipped tests
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 241
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD verify-gate tests and generated index updates.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_positive_skipped_count_with_placeholder_reason` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_positive_skipped_count_with_placeholder_reason` — prove `| 1 | Pending | Yes |` cannot explain skipped final evidence.
 - **Subagent handoff**: not delegated
@@ -5105,10 +5106,10 @@
 
 ### Task 243 — Tasks template preserves the four-artifact contract
 
-- **File(s)**: `docs/sdd/_templates/tasks-template.md`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `docs/sdd/_templates/tasks-template.md`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 242
-- **Touch set**: `docs/sdd/_templates/tasks-template.md`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `docs/sdd/_templates/tasks-template.md`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD template wording and generated index updates.
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_tasks_template_keeps_one_task_for_single_pr_work` — proves the template no longer tells agents to skip `tasks.md` for single-PR work.
 - **Subagent handoff**: not delegated
@@ -5126,10 +5127,10 @@
 
 ### Task 244 — SDD lifecycle CLIs reject legacy check mode
 
-- **File(s)**: `Makefile`, `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_harness_structure.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/README.md`, `docs/agent-playbook/factory-operating-model.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `Makefile`, `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_harness_structure.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/README.md`, `docs/agent-playbook/factory-operating-model.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 243
-- **Touch set**: `Makefile`, `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_harness_structure.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/README.md`, `docs/agent-playbook/factory-operating-model.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `Makefile`, `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_harness_structure.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/README.md`, `docs/agent-playbook/factory-operating-model.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD workflow docs and generated index updates.
 - **Failing test first**: `tests/architecture/test_harness_structure.py::test_make_check_all_runs_executable_sdd_harness`, `tests/architecture/test_harness_structure.py::test_makefile_exposes_single_feature_sdd_completion_gate`, `tests/architecture/test_sdd_artifact_validator.py::test_validator_cli_rejects_legacy_check_flag`, and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_legacy_check_flag` — prove the obsolete SDD `--check` flag no longer appears in Make targets or argparse.
 - **Subagent handoff**: not delegated
@@ -5147,10 +5148,10 @@
 
 ### Task 245 — Verify gate forwards feature-level artifact drift
 
-- **File(s)**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 244
-- **Touch set**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD verify-gate tests and generated index updates.
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_non_verification_artifact_drift` — proves valid final evidence cannot hide stale `plan.md` approval metadata from the single-feature completion gate.
 - **Subagent handoff**: not delegated
@@ -5168,10 +5169,10 @@
 
 ### Task 246 — Dispatch handoffs include required-reading report evidence
 
-- **File(s)**: `scripts/dispatch_sdd_task.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/dispatch_sdd_task.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 245
-- **Touch set**: `scripts/dispatch_sdd_task.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/dispatch_sdd_task.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared subagent handoff tests and generated index updates.
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task` — proves generated handoffs include `## Required Reading Evidence`, `Task classification:`, root agent instructions, the reading matrix, and task context paths.
 - **Subagent handoff**: not delegated
@@ -5189,10 +5190,10 @@
 
 ### Task 247 — Validator issue codes are lifecycle-taxonomy registered
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 246
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD validator taxonomy and generated index updates.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_validator_issue_codes_are_registered_for_generated_lifecycle_index` — proves every literal `_issue("...")` emission is present in `KNOWN_ISSUE_CODES`.
 - **Subagent handoff**: not delegated
@@ -5210,10 +5211,10 @@
 
 ### Task 248 — Manual agent templates use executable tokens
 
-- **File(s)**: `docs/agent-playbook/subagent-handoff-template.md`, `docs/agent-playbook/context-packet-template.md`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `docs/agent-playbook/subagent-handoff-template.md`, `docs/agent-playbook/context-packet-template.md`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 247
-- **Touch set**: `docs/agent-playbook/subagent-handoff-template.md`, `docs/agent-playbook/context-packet-template.md`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `docs/agent-playbook/subagent-handoff-template.md`, `docs/agent-playbook/context-packet-template.md`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared agent playbook templates and generated index updates.
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_subagent_handoff_templates_define_context_and_conflict_contracts` — proves manual templates use validator-accepted mode tokens and the CLI context packet title shape.
 - **Subagent handoff**: not delegated
@@ -5231,10 +5232,10 @@
 
 ### Task 249 — Completion target executes check-all
 
-- **File(s)**: `Makefile`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/verification-template.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `Makefile`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/verification-template.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 248
-- **Touch set**: `Makefile`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/verification-template.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `Makefile`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/verification-template.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD workflow docs and generated index updates.
 - **Failing test first**: `tests/architecture/test_harness_structure.py::test_makefile_exposes_single_feature_sdd_completion_gate` — proves `check-sdd-completion` must execute `$(MAKE) check-all` before the single-feature verify gate.
 - **Subagent handoff**: not delegated
@@ -5252,10 +5253,10 @@
 
 ### Task 250 — Verify gate rejects incomplete tasks
 
-- **File(s)**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/verification-template.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/verification-template.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 249
-- **Touch set**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/verification-template.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/verification-template.md`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD verify-gate tests and generated index updates.
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_incomplete_tasks_with_final_evidence` — proves valid final evidence cannot pass while any task remains `[~]` or `[ ]`.
 - **Subagent handoff**: not delegated
@@ -5273,10 +5274,10 @@
 
 ### Task 251 — Feature lanes reject loose files
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 250
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD validator and generated index updates.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_feature_lanes_reject_loose_legacy_files` — proves loose files directly under active/completed feature lanes cannot bypass the SDD validator.
 - **Subagent handoff**: not delegated
@@ -5294,10 +5295,10 @@
 
 ### Task 252 — Fenced tables cannot satisfy evidence
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 251
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD validator and generated index updates.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_fenced_table_rows`, `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_fenced_spec_compliance_and_coverage_tables` — prove fenced example tables cannot satisfy lifecycle or final evidence tables.
 - **Subagent handoff**: not delegated
@@ -5315,10 +5316,10 @@
 
 ### Task 253 — Task parser is section-scoped
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 252
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD validator and generated index updates.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_fenced_task_sections`, `tests/architecture/test_sdd_artifact_validator.py::test_tasks_must_live_inside_tasks_section` — prove task-like examples outside canonical task scope cannot satisfy executable task state.
 - **Subagent handoff**: not delegated
@@ -5336,10 +5337,10 @@
 
 ### Task 254 — Acceptance coverage is section-scoped
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 253
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD validator and generated index updates.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_acceptance_criteria_must_live_in_acceptance_section`, `tests/architecture/test_sdd_artifact_validator.py::test_plan_acceptance_commands_must_live_in_acceptance_section`, `tests/architecture/test_sdd_artifact_validator.py::test_spec_requires_at_least_one_acceptance_criterion` — prove stale appendix ACs and commands cannot satisfy current Spec -> Plan coverage.
 - **Subagent handoff**: not delegated
@@ -5357,10 +5358,10 @@
 
 ### Task 255 — Implement gate forwards structural drift
 
-- **File(s)**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 254
-- **Touch set**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD gate-check tests and generated index updates.
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_acceptance_command_drift` — proves `--gate implement` cannot pass when `plan.md` acceptance commands drift outside the canonical section.
 - **Subagent handoff**: not delegated
@@ -5378,10 +5379,10 @@
 
 ### Task 256 — Superseded records obey the harness
 
-- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`
 - **Owner**: parent
 - **Depends on**: Task 255
-- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/completed`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD validator and generated index updates.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_requires_canonical_artifact_sections`, `tests/architecture/test_sdd_artifact_validator.py::test_superseded_feature_rejects_acceptance_command_drift` — prove `Superseded` can no longer skip canonical sections or Spec -> Plan acceptance coverage.
 - **Subagent handoff**: not delegated

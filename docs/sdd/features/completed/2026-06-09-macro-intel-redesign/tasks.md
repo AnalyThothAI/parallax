@@ -6,7 +6,7 @@
 **Branch**: `codex/macro-intel-redesign`
 **Approved by**: qinghuan
 **Approved at**: 2026-06-09
-**Superseded by**: `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut/`
+**Superseded by**: `docs/sdd/features/active/2026-06-11-executable-harness-followup/`
 
 ## Gate Compliance
 
@@ -26,14 +26,14 @@
 - **Owner**: parent
 - **Depends on**: none
 - **Touch set**: `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/spec.md`
-- **Conflict set**: coordinate with docs/sdd/features/active/2026-06-09-executable-harness-hard-cut for successor-owned harness evidence.
+- **Conflict set**: coordinate with docs/sdd/features/active/2026-06-11-executable-harness-followup for successor-owned harness evidence.
 - **Failing test first**: `web/tests/component/features/macro/MacroModulePages.test.tsx::macro_workbench_contract` - historical design target for macro workbench grammar.
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated
 - **Review result**: parent-reviewed
 - **Factory lane**: Spec/plan
 - **Deterministic constraints**: Historical design evidence must remain in the four canonical SDD artifacts only.
-- **On-demand context**: `docs/FRONTEND.md`, `docs/DESIGN_DISCIPLINE.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`.
+- **On-demand context**: `docs/FRONTEND.md`, `docs/DESIGN_DISCIPLINE.md`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`.
 - **Kill/defer criteria**: Stop if old visual attachments or compatibility archives are required.
 - **Eval/repair signal**: unexpected-artifact or missing successor metadata.
 - **Implementation**: Write the grounded spec and visual target for overview, asset dashboard, generic module, rates, and mobile.
@@ -47,7 +47,7 @@
 - **Owner**: parent
 - **Depends on**: Task 1
 - **Touch set**: `web/tests/component/features/macro/MacroModulePages.test.tsx`, `web/tests/routes/macro.route.test.tsx`
-- **Conflict set**: coordinate with docs/sdd/features/active/2026-06-09-executable-harness-hard-cut for successor-owned harness evidence.
+- **Conflict set**: coordinate with docs/sdd/features/active/2026-06-11-executable-harness-followup for successor-owned harness evidence.
 - **Failing test first**: `web/tests/component/features/macro/MacroModulePages.test.tsx::macro_workbench_contract` - historical grammar assertions preceded production changes.
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated
@@ -68,7 +68,7 @@
 - **Owner**: parent
 - **Depends on**: Task 2
 - **Touch set**: `web/src/features/macro/model/macroWorkbenchModel.ts`, `web/src/features/macro/ui/workbench`
-- **Conflict set**: coordinate with docs/sdd/features/active/2026-06-09-executable-harness-hard-cut for successor-owned harness evidence.
+- **Conflict set**: coordinate with docs/sdd/features/active/2026-06-11-executable-harness-followup for successor-owned harness evidence.
 - **Failing test first**: `web/tests/component/features/macro/MacroModulePages.test.tsx::macro_workbench_contract` - historical tests failed before shared workbench components existed.
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated
@@ -89,7 +89,7 @@
 - **Owner**: parent
 - **Depends on**: Task 3
 - **Touch set**: `web/src/features/macro/ui/pages/MacroOverviewModulePage.tsx`, `web/src/features/macro/ui/pages/MacroLeafModulePage.tsx`, `web/src/features/macro/ui/pages/MacroMarketBoard.tsx`
-- **Conflict set**: coordinate with docs/sdd/features/active/2026-06-09-executable-harness-hard-cut for successor-owned harness evidence.
+- **Conflict set**: coordinate with docs/sdd/features/active/2026-06-11-executable-harness-followup for successor-owned harness evidence.
 - **Failing test first**: `web/tests/component/features/macro/MacroModulePages.test.tsx::macro_workbench_contract` - historical tests asserted new macro regions before migration.
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated
@@ -110,7 +110,7 @@
 - **Owner**: parent
 - **Depends on**: Task 3
 - **Touch set**: `web/src/features/macro/ui/pages/MacroAssetOverviewPage.tsx`, `web/src/features/macro/model/macroAssetOverviewModel.ts`, `web/src/features/macro/ui/assets`
-- **Conflict set**: coordinate with docs/sdd/features/active/2026-06-09-executable-harness-hard-cut for successor-owned harness evidence.
+- **Conflict set**: coordinate with docs/sdd/features/active/2026-06-11-executable-harness-followup for successor-owned harness evidence.
 - **Failing test first**: `web/tests/component/features/macro/MacroModulePages.test.tsx::macro_workbench_contract` - historical asset assertions required dashboard-first rendering.
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated
@@ -131,7 +131,7 @@
 - **Owner**: parent
 - **Depends on**: Task 3
 - **Touch set**: `web/src/features/macro/ui/rates`, `web/src/features/macro/model/macroRatesWorkbenchModel.ts`
-- **Conflict set**: coordinate with docs/sdd/features/active/2026-06-09-executable-harness-hard-cut for successor-owned harness evidence.
+- **Conflict set**: coordinate with docs/sdd/features/active/2026-06-11-executable-harness-followup for successor-owned harness evidence.
 - **Failing test first**: `web/tests/component/features/macro/MacroRatesWorkbench.test.tsx::macro_rates_workbench_contract` - historical rates tests asserted shared read and diagnostics grammar.
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated
@@ -152,7 +152,7 @@
 - **Owner**: parent
 - **Depends on**: Task 3
 - **Touch set**: `web/src/features/macro/ui/pages/MacroMatrixPage.tsx`, `web/src/features/macro/ui/correlation`
-- **Conflict set**: coordinate with docs/sdd/features/active/2026-06-09-executable-harness-hard-cut for successor-owned harness evidence.
+- **Conflict set**: coordinate with docs/sdd/features/active/2026-06-11-executable-harness-followup for successor-owned harness evidence.
 - **Failing test first**: `web/tests/component/features/macro/MacroAssetCorrelationPage.test.tsx::macro_correlation_workbench_contract` - historical correlation tests asserted matrix workspace grammar.
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated
@@ -173,7 +173,7 @@
 - **Owner**: parent
 - **Depends on**: Tasks 4-7
 - **Touch set**: `web/src/features/macro/ui/pages/macroPages.css`, `web/src/features/macro/ui/primitives/macroPanel.css`, `web/tests/architecture/macroResponsiveHardCut.test.ts`
-- **Conflict set**: coordinate with docs/sdd/features/active/2026-06-09-executable-harness-hard-cut for successor-owned harness evidence.
+- **Conflict set**: coordinate with docs/sdd/features/active/2026-06-11-executable-harness-followup for successor-owned harness evidence.
 - **Failing test first**: `web/tests/architecture/macroResponsiveHardCut.test.ts::macro_responsive_hard_cut_contract` - historical architecture test rejected retired macro selectors and stale compatibility assumptions.
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated
@@ -194,7 +194,7 @@
 - **Owner**: parent
 - **Depends on**: Tasks 2-8
 - **Touch set**: `web/tests/e2e/golden-paths/macro-terminal.spec.ts`, `docs/sdd/features/completed/2026-06-09-macro-intel-redesign/verification.md`
-- **Conflict set**: coordinate with docs/sdd/features/active/2026-06-09-executable-harness-hard-cut for successor-owned harness evidence.
+- **Conflict set**: coordinate with docs/sdd/features/active/2026-06-11-executable-harness-followup for successor-owned harness evidence.
 - **Failing test first**: `web/tests/e2e/golden-paths/macro-terminal.spec.ts::macro_terminal_contract` - historical golden path asserted overview, asset, rates, mobile drawer, and no overflow.
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated

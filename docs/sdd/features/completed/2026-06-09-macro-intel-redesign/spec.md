@@ -5,14 +5,14 @@
 **Owner**: Codex
 **Approved by**: qinghuan
 **Approved at**: 2026-06-09
-**Superseded by**: `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut/`
+**Superseded by**: `docs/sdd/features/active/2026-06-11-executable-harness-followup/`
 **Related**: `docs/FRONTEND.md`, `docs/DESIGN_DISCIPLINE.md`, `src/parallax/domains/macro_intel/ARCHITECTURE.md`
 
 ## Background
 
 Macro Intel is a deterministic read-model product. The backend module map is documented in src/parallax/domains/macro_intel/ARCHITECTURE.md:1, and the frontend guardrails are documented in docs/FRONTEND.md:1. The route shell and macro page sources live under web/src/features/macro/MacroWorkbenchRoute.tsx:1 and web/src/features/macro/ui/pages/MacroOverviewModulePage.tsx:1.
 
-This superseded record captured a frontend workbench redesign that has since been absorbed by the executable harness hard cut. The successor record at docs/sdd/features/active/2026-06-09-executable-harness-hard-cut/spec.md:1 owns current SDD harness evidence; this record remains only as machine-readable historical context.
+This superseded record captured a frontend workbench redesign that has since been absorbed by the executable harness hard cut. The successor record at docs/sdd/features/active/2026-06-11-executable-harness-followup/spec.md:1 owns current SDD harness evidence; this record remains only as machine-readable historical context.
 
 ## Clarifications
 

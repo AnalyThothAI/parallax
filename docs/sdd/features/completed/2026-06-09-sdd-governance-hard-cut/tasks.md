@@ -6,7 +6,7 @@
 **Branch**: `codex/sdd-v2-hard-cut`
 **Approved by**: qinghuan
 **Approved at**: 2026-06-09
-**Superseded by**: `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut/`
+**Superseded by**: `docs/sdd/features/active/2026-06-11-executable-harness-followup/`
 
 ## Gate Compliance
 
@@ -26,7 +26,7 @@
 - **Owner**: parent
 - **Depends on**: none
 - **Touch set**: `tests/architecture/test_harness_structure.py`, `docs/sdd`
-- **Conflict set**: `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Conflict set**: `docs/sdd/features/active/2026-06-11-executable-harness-followup`
 - **Failing test first**: `tests/architecture/test_harness_structure.py::test_legacy_superpowers_tree_is_removed` - asserts the old planning lane is gone.
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated
@@ -47,7 +47,7 @@
 - **Owner**: parent
 - **Depends on**: Task 1
 - **Touch set**: `docs/sdd/_templates`, `scripts/regen_sdd_work_index.py`, `docs/generated/sdd-work-index.md`, `tests/architecture/test_agent_playbook_contracts.py`
-- **Conflict set**: `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Conflict set**: `docs/sdd/features/active/2026-06-11-executable-harness-followup`
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_is_generated_and_current` - asserts generated index freshness.
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated
@@ -68,7 +68,7 @@
 - **Owner**: parent
 - **Depends on**: Task 2
 - **Touch set**: `AGENTS.md`, `CLAUDE.md`, `docs/WORKFLOW.md`, `docs/TESTING.md`, `Makefile`, `docs/generated/README.md`
-- **Conflict set**: `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Conflict set**: `docs/sdd/features/active/2026-06-11-executable-harness-followup`
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_router_shared_blocks_match_and_reference_agent_playbook` - asserts router and SDD references.
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated
@@ -89,7 +89,7 @@
 - **Owner**: parent
 - **Depends on**: Tasks 1-3
 - **Touch set**: `docs/sdd/features/completed/2026-06-09-sdd-governance-hard-cut`
-- **Conflict set**: `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Conflict set**: `docs/sdd/features/active/2026-06-11-executable-harness-followup`
 - **Failing test first**: `tests/architecture/test_harness_structure.py::test_current_governance_does_not_reference_legacy_superpowers_paths` - asserts no legacy path references remain.
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated

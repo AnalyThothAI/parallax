@@ -1,6 +1,7 @@
 # Spec — Executable Harness Hard Cut
 
-**Status**: In Progress
+**Status**: Superseded
+**Superseded by**: `docs/sdd/features/active/2026-06-11-executable-harness-followup/`
 **Date**: 2026-06-09
 **Owner**: Codex
 **Approved by**: qinghuan

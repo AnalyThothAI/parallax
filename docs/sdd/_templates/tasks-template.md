@@ -10,6 +10,11 @@
 
 Use this file for every SDD feature. For single-PR work, keep a one-task `tasks.md`; do not omit the artifact.
 When a plan spans multiple PRs or when a parallel sub-agent will execute pieces, expand the task list.
+Active records are bounded execution loops: keep this file at or below 40
+structured tasks while the feature is in `active/`. If implementation needs more
+than 40 structured tasks, split or supersede the record before continuing; the
+validator reports `active-feature-too-large` when an active task board grows too
+large.
 
 Tasks are TDD-ordered: write the failing test first, then the implementation, then run verification. Mark a task `[P]` when it can run in parallel with the previous task without sharing state. When a task is delegated, fill the subagent fields before dispatch.
 
