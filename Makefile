@@ -1,6 +1,6 @@
 PARALLAX := uv run parallax
 
-.PHONY: help sync install uninstall tool-path test lint compile check init config db-migrate db-health serve status recent asset-flow account-alerts token-radar-cex-recover docker-up docker-status docker-logs docker-down docker-shell clean test-unit test-integration test-e2e test-golden test-architecture test-contract check-sdd-completion check-all coverage contract-check regen-contract install-hooks
+.PHONY: help sync install uninstall tool-path test lint compile check init config db-migrate db-health serve status recent asset-flow account-alerts token-radar-cex-recover docker-up docker-status docker-logs docker-down docker-shell clean test-unit test-integration test-e2e test-golden test-architecture test-contract check-sdd-completion check-all coverage regen-contract install-hooks
 
 help: ## show available targets
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "%-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -72,9 +72,6 @@ check-all: ## the only command that may produce verification-artefact evidence (
 
 coverage: ## run coverage report (gates fail_under from pyproject.toml [tool.coverage])
 	@uv run python -m pytest --cov --cov-report=term-missing --cov-config=pyproject.toml -q
-
-contract-check: ## verify OpenAPI types are in sync (gate 2)
-	@uv run python -m pytest tests/contract -m contract
 
 regen-contract: ## regenerate openapi.json + web/src/lib/types/openapi.ts
 	@uv run python scripts/regen_openapi.py

@@ -245,6 +245,7 @@ claim is allowed without the corresponding output captured below.
 | AC226 — Makefile pytest targets reject empty collections. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_makefile_pytest_targets_do_not_accept_empty_collections -q` failed RED while Makefile pytest targets translated pytest exit code 5 into success, then passed after those compatibility shims were removed. |
 | AC227 — Golden corpus has a dedicated marker. | ✅ | `python -m pytest tests/architecture/test_harness_structure.py::test_golden_lane_uses_dedicated_pytest_marker -q` failed RED while golden corpus tests used the e2e marker, then passed after `test-golden` and `tests/golden/` moved to `golden`; collect-only checks proved `-m golden` selects the corpus and `-m e2e` does not. |
 | AC228 — Final runtime lanes fail closed. | ✅ | `python -m pytest tests/architecture/test_harness_structure.py::test_final_runtime_lanes_do_not_expose_skip_env_switches -q` failed RED while E2E/golden fixtures and the verification template exposed skip switches, then passed after those branches and template instructions were removed. |
+| AC229 — Contract lane has one Make entrypoint. | ✅ | `python -m pytest tests/architecture/test_harness_structure.py::test_contract_lane_has_no_duplicate_make_alias -q` failed RED while `contract-check` remained in `.PHONY`, then passed after the duplicate Make target was removed. |
 
 Deviations from spec:
 
@@ -4235,6 +4236,16 @@ $ python -m pytest tests/architecture/test_harness_structure.py::test_final_runt
 .                                                                        [100%]
 1 passed in 0.01s
 exit code: 0
+
+$ python -m pytest tests/architecture/test_harness_structure.py::test_contract_lane_has_no_duplicate_make_alias -q
+F                                                                        [100%]
+AssertionError: assert 'contract-check' not in [...]
+exit code: 1
+
+$ python -m pytest tests/architecture/test_harness_structure.py::test_contract_lane_has_no_duplicate_make_alias -q
+.                                                                        [100%]
+1 passed in 0.01s
+exit code: 0
 ```
 
 ## Diff summary
@@ -4297,6 +4308,7 @@ Files changed:
 - Makefile pytest targets reject empty pytest collections: `Makefile`, `docs/TESTING.md`, `tests/architecture/test_harness_structure.py`.
 - Dedicated golden corpus pytest marker: `Makefile`, `docs/TESTING.md`, `tests/conftest.py`, `tests/golden/conftest.py`, `tests/architecture/test_harness_structure.py`.
 - Final runtime lanes fail closed without skip switches: `docs/TESTING.md`, `docs/sdd/_templates/verification-template.md`, `tests/e2e/conftest.py`, `tests/golden/conftest.py`, `tests/architecture/test_harness_structure.py`.
+- Single Make contract-test entrypoint: `Makefile`, `tests/architecture/test_harness_structure.py`.
 - Mechanical frontend Prettier drift cleanup: macro pages, macro component test, `web/vite.config.ts`.
 
 Migrations applied:

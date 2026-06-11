@@ -4808,3 +4808,24 @@
 - **Verification**: `python -m pytest tests/architecture/test_harness_structure.py::test_final_runtime_lanes_do_not_expose_skip_env_switches -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 229 — Contract lane has one Make entrypoint
+
+- **File(s)**: `Makefile`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 228
+- **Touch set**: `Makefile`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for generated SDD index updates.
+- **Failing test first**: `tests/architecture/test_harness_structure.py::test_contract_lane_has_no_duplicate_make_alias` — proves the old `contract-check` Make alias cannot remain beside `test-contract`.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Contract tests must have one Make entrypoint, `test-contract`; generated contract refresh remains `regen-contract` because docs reference it as the source update command.
+- **On-demand context**: `Makefile`, `tests/contract/test_openapi_drift.py`, and `docs/CONTRACTS.md`.
+- **Kill/defer criteria**: Stop if `contract-check` remains in `.PHONY`, if a duplicate contract-test target survives, or if contract generation is conflated with contract test execution.
+- **Eval/repair signal**: duplicate Make entrypoint drift, stale operator docs, and contract-test false routing.
+- **Implementation**: Remove `contract-check` from `.PHONY` and delete the duplicate target while preserving `test-contract` and `regen-contract`.
+- **Verification**: `python -m pytest tests/architecture/test_harness_structure.py::test_contract_lane_has_no_duplicate_make_alias -q`
+- **Review owner**: parent
+- **Status**: [x]

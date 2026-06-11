@@ -299,6 +299,15 @@ def test_makefile_pytest_targets_do_not_accept_empty_collections() -> None:
     assert "; ec=$$?" not in makefile
 
 
+def test_contract_lane_has_no_duplicate_make_alias() -> None:
+    makefile = _read(REPO_ROOT / "Makefile")
+    phony_targets = makefile.split(".PHONY:", 1)[1].split("\n", 1)[0].split()
+
+    assert "test-contract" in phony_targets
+    assert "contract-check" not in phony_targets
+    assert "\ncontract-check:" not in makefile
+
+
 def test_golden_lane_uses_dedicated_pytest_marker() -> None:
     makefile = _read(REPO_ROOT / "Makefile")
     root_conftest = _read(REPO_ROOT / "tests" / "conftest.py")
