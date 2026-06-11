@@ -36,6 +36,7 @@ The prior executable harness record was an omnibus active ledger with more than 
 | Handoff and embedded context constraints are scoped separately. | Validator ignores fenced blocks when checking top-level handoff mode constraints and report-validation commands. |
 | Handoff report validation is executable. | Validator rejects delegated handoffs that list report-validation tokens without the exact runnable validation command. |
 | Task selectors are exact. | Context packet, dispatch, and report-validation CLIs bind `--task <number>` to the exact numbered task, not a prefix match. |
+| Subagent reports are task-bound. | Report validation rejects unbound reports so task scope, required reading, and verification commands cannot be skipped. |
 
 ## Acceptance criteria
 
@@ -55,6 +56,7 @@ The prior executable harness record was an omnibus active ledger with more than 
 - AC14. WHEN a delegated handoff artifact only contains matching `Mode constraints:` inside its embedded `Context Packet` fenced block THEN `scripts/validate_sdd_artifacts.py` SHALL still reject the handoff as `task-invalid-subagent-handoff-artifact`.
 - AC15. WHEN a delegated handoff artifact mentions `scripts/validate_subagent_report.py`, `--feature`, `--task`, `--mode`, and `--report` as disconnected tokens THEN `scripts/validate_sdd_artifacts.py` SHALL still reject it unless the exact runnable report-validation command is present.
 - AC16. WHEN `scripts/build_agent_context_packet.py`, `scripts/dispatch_sdd_task.py`, or `scripts/validate_subagent_report.py` receives `--task 1` and the task board lists `Task 10` before `Task 1` THEN it SHALL bind to `Task 1` exactly before subagent context, handoff, or report validation can drift through prefix matching.
+- AC17. WHEN `scripts/validate_subagent_report.py` is invoked without both `--feature` and `--task` THEN it SHALL fail before report content validation so subagent reports cannot bypass task-bound scope, required-reading, or verification-command checks.
 
 ## Risks
 

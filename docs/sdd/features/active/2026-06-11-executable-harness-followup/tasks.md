@@ -14,7 +14,7 @@
 | Clarify | Spec contains approved clarification for superseding the omnibus record. |
 | Checklist | Spec records the active-record size bound requirement. |
 | Analyze | Plan Analyze Gate records why active records should remain bounded. |
-| Implement | Tasks 1-16 implement the validator, migration, documentation contract, stale-template cleanup, machine-readable verification status tokens, active lifecycle command hard cut, active placeholder final-evidence rejection, active skipped-test accounting bound, fail-closed final-evidence templates, dispatch-bound context packets, generated subagent mode constraints, validator-enforced handoff mode constraints, embedded context-packet mode constraints, top-level handoff validation scope, exact report validation command enforcement, and exact task-number selection. |
+| Implement | Tasks 1-17 implement the validator, migration, documentation contract, stale-template cleanup, machine-readable verification status tokens, active lifecycle command hard cut, active placeholder final-evidence rejection, active skipped-test accounting bound, fail-closed final-evidence templates, dispatch-bound context packets, generated subagent mode constraints, validator-enforced handoff mode constraints, embedded context-packet mode constraints, top-level handoff validation scope, exact report validation command enforcement, exact task-number selection, and task-bound report validation. |
 | Verify | Verification artifact captures RED/GREEN command output. |
 
 ## Tasks
@@ -352,5 +352,26 @@
 - **Eval/repair signal**: `--task 1` emits Task 10 context, dispatch handoff titles drift, or report validation checks the wrong task fields.
 - **Implementation**: Add shared exact task lookup to the SDD validator module and reuse it from all subagent task CLIs.
 - **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_clis_match_exact_task_numbers -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 17 - Require task-bound subagent report validation
+
+- **File(s)**: `scripts/validate_subagent_report.py`, `scripts/subagent_report_contract.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`
+- **Owner**: parent
+- **Depends on**: Task 16
+- **Touch set**: `scripts/validate_subagent_report.py`, `scripts/subagent_report_contract.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared subagent report validator, report contract tests, and generated index updates.
+- **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_requires_task_binding` - proves unbound reports cannot pass weak generic validation.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `validate_subagent_report.py` must require `--feature` and `--task`; report validation must always run task scope, required-reading, and verification-command checks.
+- **On-demand context**: `scripts/validate_subagent_report.py`, `scripts/subagent_report_contract.py`, `tests/architecture/test_agent_playbook_contracts.py`.
+- **Kill/defer criteria**: Stop if generic unbound subagent reports intentionally remain accepted.
+- **Eval/repair signal**: unbound report validation returns 0, task touch set drift is not checked, or report verification command does not match the selected task.
+- **Implementation**: Remove optional task binding from the CLI and make the report contract require task fields.
+- **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_requires_task_binding -q`
 - **Review owner**: parent
 - **Status**: [x]

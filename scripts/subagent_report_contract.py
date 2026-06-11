@@ -23,7 +23,7 @@ SECRET_PATTERNS = (
 REQUIRED_TASK_BOUND_READING = ("AGENTS.md", "docs/agent-playbook/task-reading-matrix.md")
 
 
-def validate_subagent_report(text: str, *, mode: str, task_fields: Mapping[str, str] | None = None) -> list[str]:
+def validate_subagent_report(text: str, *, mode: str, task_fields: Mapping[str, str]) -> list[str]:
     sections = _sections(text)
     issues: list[str] = []
 
@@ -47,10 +47,9 @@ def validate_subagent_report(text: str, *, mode: str, task_fields: Mapping[str, 
         issues.append(f"{mode} reports must not list changed files")
     if mode == "write-allowed" and not (_says_no_changes(changed_files) or changed_paths):
         issues.append("write-allowed reports must list changed files or explicitly say none")
-    if task_fields is not None and changed_paths:
+    if changed_paths:
         issues.extend(_task_scope_issues(task_fields, changed_paths))
-    if task_fields is not None:
-        issues.extend(_task_required_reading_issues(task_fields, sections.get("required reading evidence", "")))
+    issues.extend(_task_required_reading_issues(task_fields, sections.get("required reading evidence", "")))
 
     verification = sections.get("verification evidence", "")
     command_blocks = _command_blocks(verification)
@@ -58,7 +57,7 @@ def validate_subagent_report(text: str, *, mode: str, task_fields: Mapping[str, 
         issues.append("verification evidence requires a command block with exit code")
     elif not any(block[1] == 0 for block in command_blocks):
         issues.append("verification command exit code must be 0")
-    if task_fields is not None and command_blocks:
+    if command_blocks:
         issues.extend(_task_verification_issues(task_fields, command_blocks))
 
     if any(pattern.search(text) for pattern in SECRET_PATTERNS):

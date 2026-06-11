@@ -3801,7 +3801,7 @@ def test_sdd_gate_check_cli_implement_rejects_split_task_gate_compliance(tmp_pat
 
 
 @pytest.mark.architecture
-def test_subagent_report_validator_accepts_evidence_report(tmp_path: Path) -> None:
+def test_subagent_report_validator_requires_task_binding(tmp_path: Path) -> None:
     script = ROOT / "scripts" / "validate_subagent_report.py"
     report = tmp_path / "subagent-report.md"
     report.write_text(
@@ -3849,13 +3849,14 @@ def test_subagent_report_validator_accepts_evidence_report(tmp_path: Path) -> No
         check=False,
     )
 
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert "Subagent report validation passed." in result.stdout
+    assert result.returncode == 2
+    assert "--feature and --task are required for task-bound validation" in result.stderr
 
 
 @pytest.mark.architecture
 def test_subagent_report_validator_rejects_unverifiable_or_out_of_scope_report(tmp_path: Path) -> None:
     script = ROOT / "scripts" / "validate_subagent_report.py"
+    _write_context_packet_fixture(tmp_path)
     report = tmp_path / "subagent-report.md"
     report.write_text(
         dedent(
@@ -3894,7 +3895,20 @@ def test_subagent_report_validator_rejects_unverifiable_or_out_of_scope_report(t
     )
 
     result = subprocess.run(
-        [sys.executable, str(script), "--mode", "read-only", "--report", str(report)],
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--task",
+            "1",
+            "--mode",
+            "read-only",
+            "--report",
+            str(report),
+        ],
         cwd=ROOT,
         text=True,
         capture_output=True,

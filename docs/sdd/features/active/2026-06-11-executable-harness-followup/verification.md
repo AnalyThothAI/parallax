@@ -29,6 +29,7 @@
 | AC14 - Top-level handoff constraints are scoped outside fenced blocks. | Pass | `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_top_level_handoff_mode_constraints -q` passed after top-level handoff validation ignored fenced blocks; the same test failed RED first because embedded Context Packet constraints satisfied a missing top-level handoff constraint. |
 | AC15 - Handoff report validation command is exact. | Pass | `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_exact_report_validation_command -q` passed after report-validation command validation changed from token presence to exact runnable top-level command; the same test failed RED first because a token inventory satisfied the old validator. |
 | AC16 - Subagent task selectors are exact. | Pass | `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_clis_match_exact_task_numbers -q` passed after context packet, dispatch, and report-validation CLIs shared exact numeric task lookup; the same test failed RED first because `--task 1` matched a preceding `Task 10`. |
+| AC17 - Subagent reports are task-bound. | Pass | `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_requires_task_binding -q` passed after optional report validation binding was removed; the same test failed RED first because an unbound report returned 0. |
 
 ## Verification commands
 
@@ -669,6 +670,51 @@ $ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run pytest tests/a
 exit code: 0
 
 $ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run ruff check scripts/validate_sdd_artifacts.py scripts/build_agent_context_packet.py scripts/dispatch_sdd_task.py scripts/validate_subagent_report.py tests/architecture/test_agent_playbook_contracts.py
+All checks passed!
+exit code: 0
+
+$ git diff --check
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_requires_task_binding tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_rejects_unverifiable_or_out_of_scope_report -q
+F.                                                                       [100%]
+AssertionError: assert 0 == 2
+exit code: 1
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_requires_task_binding tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_rejects_unverifiable_or_out_of_scope_report tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_accepts_task_bound_report tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_requires_task_classification_and_required_reading_evidence tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_rejects_task_bound_scope_and_command_drift -q
+.....                                                                    [100%]
+5 passed in 0.22s
+exit code: 0
+
+$ uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_requires_task_binding -q
+.                                                                        [100%]
+1 passed in 0.06s
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run python scripts/regen_sdd_work_index.py
+wrote docs/generated/sdd-work-index.md
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run python scripts/validate_sdd_artifacts.py
+SDD artifact validation passed.
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run python scripts/regen_sdd_work_index.py --check
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run python scripts/check_sdd_gate.py --all-active
+all active SDD gates passed (clarify/checklist/analyze/implement): 2026-06-09-agent-playbook-skill-hard-cut, 2026-06-11-executable-harness-followup
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run pytest tests/architecture/test_agent_playbook_contracts.py tests/architecture/test_harness_structure.py tests/architecture/test_sdd_artifact_validator.py -q
+........................................................................ [ 30%]
+........................................................................ [ 60%]
+........................................................................ [ 90%]
+.......................                                                  [100%]
+239 passed in 13.25s
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run ruff check scripts/validate_subagent_report.py scripts/subagent_report_contract.py tests/architecture/test_agent_playbook_contracts.py
 All checks passed!
 exit code: 0
 

@@ -34,6 +34,7 @@
 - `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`: scope top-level handoff validation outside fenced blocks so embedded Context Packet content cannot satisfy top-level handoff constraints or report-validation commands.
 - `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`: require delegated handoff artifacts to include the exact runnable subagent-report validation command instead of a token inventory.
 - `scripts/validate_sdd_artifacts.py`, `scripts/build_agent_context_packet.py`, `scripts/dispatch_sdd_task.py`, `scripts/validate_subagent_report.py`, `tests/architecture/test_agent_playbook_contracts.py`: share exact numeric task lookup across context, dispatch, and report-validation CLIs so `--task 1` cannot bind to `Task 10`.
+- `scripts/validate_subagent_report.py`, `scripts/subagent_report_contract.py`, `tests/architecture/test_agent_playbook_contracts.py`: require report validation to bind to an active SDD feature/task so weak unbound reports cannot skip task scope, required reading, or verification command checks.
 - `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`: retain historical evidence as superseded.
 - `docs/sdd/features/active/2026-06-11-executable-harness-followup`: own the follow-up active work.
 - `docs/generated/sdd-work-index.md`: regenerate the coordination board.
@@ -62,6 +63,7 @@
 - AC14: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_top_level_handoff_mode_constraints -q`
 - AC15: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_exact_report_validation_command -q`
 - AC16: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_clis_match_exact_task_numbers -q`
+- AC17: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_requires_task_binding -q`
 
 ## Verification
 
