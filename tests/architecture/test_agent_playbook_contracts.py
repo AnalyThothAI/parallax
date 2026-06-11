@@ -487,6 +487,68 @@ def test_sdd_gate_check_cli_verify_rejects_placeholder_spec_compliance_evidence(
 
 
 @pytest.mark.architecture
+def test_sdd_gate_check_cli_verify_rejects_prose_only_spec_compliance_evidence(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "check_sdd_gate.py"
+    assert script.exists()
+    _write_context_packet_fixture(tmp_path)
+    _create_context_packet_fixture_paths(tmp_path)
+    verification_path = (
+        tmp_path
+        / "docs"
+        / "sdd"
+        / "features"
+        / "active"
+        / "2026-06-09-context-packet-fixture"
+        / "verification.md"
+    )
+    verification_text = verification_path.read_text(encoding="utf-8")
+    verification_text = verification_text.replace(
+        "| AC1 | In Progress | Pending. |",
+        "| AC1 | Pass | Manual review completed. |",
+    )
+    verification_text = verification_text.replace(
+        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\n"
+        "Pending.",
+        "$ make check-all\nall checks passed\nexit code: 0",
+    )
+    verification_text = verification_text.replace(
+        "| line | Pending | >= 80% | Pending |",
+        "| line | 91% | >= 80% | Pass |",
+    )
+    verification_text = verification_text.replace(
+        "- [ ] Not applicable.",
+        "- [x] /readyz returned 200\n"
+        "- [x] writer wrote a row visible to a separate process\n"
+        "- [x] /api/recent returned the injected event\n"
+        "- [x] WS /ws/live pushed within 5s\n"
+        "- [x] testcontainers PG and uvicorn subprocess cleaned up",
+    )
+    verification_path.write_text(verification_text, encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--gate",
+            "verify",
+            "--check",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "verified-missing-spec-compliance-evidence" in result.stderr
+    assert "command-shaped evidence" in result.stderr
+
+
+@pytest.mark.architecture
 def test_sdd_gate_check_cli_verify_rejects_empty_spec_compliance(tmp_path: Path) -> None:
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()

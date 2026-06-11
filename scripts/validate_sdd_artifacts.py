@@ -1579,6 +1579,7 @@ def _verified_spec_compliance_issues(feature: SddFeature, artifact: ArtifactReco
 
     incomplete_rows: list[str] = []
     missing_commands: list[str] = []
+    missing_command_evidence_rows: list[str] = []
     coverage_issue = _spec_compliance_coverage_issue(feature, rows)
     for cells in rows:
         if len(cells) < 3:
@@ -1596,6 +1597,9 @@ def _verified_spec_compliance_issues(feature: SddFeature, artifact: ArtifactReco
             for match in re.finditer(r"`([^`]+)`", cells[2])
             if _looks_like_command(match.group(1))
         ]
+        if not commands:
+            missing_command_evidence_rows.append(criterion)
+            continue
         missing_commands.extend(
             command
             for command in commands
@@ -1620,6 +1624,15 @@ def _verified_spec_compliance_issues(feature: SddFeature, artifact: ArtifactReco
                 artifact,
                 "Verified spec compliance rows lack exit code 0 command evidence: "
                 + ", ".join(dict.fromkeys(missing_commands)),
+            )
+        )
+    if missing_command_evidence_rows:
+        issues.append(
+            _issue(
+                "verified-missing-spec-compliance-evidence",
+                artifact,
+                "Verified spec compliance rows must cite command-shaped evidence: "
+                + ", ".join(dict.fromkeys(missing_command_evidence_rows)),
             )
         )
     return issues

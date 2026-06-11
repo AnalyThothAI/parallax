@@ -599,6 +599,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC218. WHEN `verification.md` declares one or more skipped tests THEN the validator and verify gate SHALL require a canonical `count | reason | acceptable?` Skipped tests table with a valid separator row before freeform pipe rows can explain skipped-test final evidence.
 - AC219. WHEN `verification.md` Coverage rows keep any canonical cell such as `value` or `threshold` as placeholder text while marking `status` complete THEN the validator and verify gate SHALL report `verified-coverage-incomplete` before placeholder coverage evidence can satisfy final verification.
 - AC220. WHEN `verification.md` Spec compliance rows mark an acceptance criterion complete while the `Evidence` cell remains placeholder text such as `Pending.` THEN the validator and verify gate SHALL report `verified-incomplete-spec-compliance` before placeholder compliance evidence can satisfy final verification.
+- AC221. WHEN `verification.md` Spec compliance rows mark an acceptance criterion complete with prose-only evidence and no command-shaped backticked command THEN the validator and verify gate SHALL report `verified-missing-spec-compliance-evidence` before non-replayable compliance evidence can satisfy final verification.
 
 ## Risks
 

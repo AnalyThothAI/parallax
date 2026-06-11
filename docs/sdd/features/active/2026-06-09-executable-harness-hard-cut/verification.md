@@ -237,6 +237,7 @@ claim is allowed without the corresponding output captured below.
 | AC218 — Skipped-test explanation table is canonical. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_canonical_skipped_tests_table tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_freeform_skipped_table -q` failed RED when freeform pipe rows satisfied skipped-test explanations, then passed after skipped-test explanations reused the canonical Markdown table parser. |
 | AC219 — Coverage cells are concrete. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_concrete_coverage_values tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_placeholder_coverage_value -q` failed RED when Coverage `value` stayed `Pending` while `status` was `Pass`, then passed after every canonical Coverage cell had to be non-placeholder. |
 | AC220 — Spec compliance evidence is concrete. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_concrete_spec_compliance_evidence tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_placeholder_spec_compliance_evidence -q` failed RED when Spec compliance `Evidence` stayed `Pending.` while `Status` was `Pass`, then passed after completed rows required non-placeholder evidence and sentence-punctuated placeholders were normalized. |
+| AC221 — Spec compliance evidence is command-shaped. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_command_shaped_spec_compliance_evidence tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_prose_only_spec_compliance_evidence -q` failed RED when prose-only Spec compliance evidence satisfied final verification, then passed after completed rows had to cite command-shaped evidence. |
 
 Deviations from spec:
 
@@ -4127,6 +4128,17 @@ $ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified
 ..                                                                       [100%]
 2 passed in 0.07s
 exit code: 0
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_command_shaped_spec_compliance_evidence tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_prose_only_spec_compliance_evidence -q
+FF                                                                       [100%]
+AssertionError: assert 'verified-missing-spec-compliance-evidence' in set()
+AssertionError: assert 0 == 1
+exit code: 1
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_command_shaped_spec_compliance_evidence tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_prose_only_spec_compliance_evidence -q
+..                                                                       [100%]
+2 passed in 0.06s
+exit code: 0
 ```
 
 ## Diff summary
@@ -4181,6 +4193,7 @@ Files changed:
 - Verified skipped-test canonical explanation table completion: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Verified concrete Coverage row completion: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Verified concrete Spec compliance evidence completion: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
+- Verified command-shaped Spec compliance evidence completion: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Mechanical frontend Prettier drift cleanup: macro pages, macro component test, `web/vite.config.ts`.
 
 Migrations applied:
