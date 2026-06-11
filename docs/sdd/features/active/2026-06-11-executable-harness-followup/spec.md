@@ -24,6 +24,7 @@ The prior executable harness record was an omnibus active ledger with more than 
 | SDD docs teach the same bound. | Architecture harness rejects workflow, README, or template drift from the validator limit. |
 | Verification templates stay current. | Architecture harness rejects stale fixed spec-section anchors in completion evidence templates. |
 | Completion status tokens are machine-readable. | Validator rejects symbolic final-evidence status cells, and templates teach `Pass`/`Fail` examples. |
+| Verification status tokens are lifecycle-wide. | Validator rejects symbolic status cells in active, superseded, and verified `verification.md` tables. |
 
 ## Acceptance criteria
 
@@ -31,6 +32,7 @@ The prior executable harness record was an omnibus active ledger with more than 
 - AC2. WHEN the workflow, SDD README, or task template describes active records THEN they SHALL name the 40 structured tasks bound, `active-feature-too-large`, and the split or supersede action before operators can create oversized active ledgers from stale guidance.
 - AC3. WHEN the verification template describes E2E golden path evidence THEN it SHALL reference the current feature spec instead of a fixed historical section anchor before agents can copy stale completion instructions.
 - AC4. WHEN final verification status cells use symbolic pass/fail tokens such as checkmarks THEN `scripts/validate_sdd_artifacts.py` SHALL reject them, and the verification template SHALL teach machine-readable `Pass`/`Fail` examples instead.
+- AC5. WHEN any SDD `verification.md` Spec compliance or Coverage table uses symbolic or prose-mixed status cells THEN `scripts/validate_sdd_artifacts.py` SHALL report `verification-status-token-invalid` before active or historical records can satisfy the harness.
 
 ## Risks
 

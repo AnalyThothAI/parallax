@@ -23,7 +23,7 @@ This file records the Macro Intel frontend redesign implementation: shared workb
 | AC4 — Rates shares grammar | Met | Rates renders `利率简报`, `关键事实`, `利率主图`, `决策支持`, `利率明细`, `数据诊断`; raw backend keys are excluded before diagnostics. |
 | AC5 — Correlation matrix workbench grammar | Met | Correlation detail renders `相关性简报`, `相关性矩阵`, `相关性证据`, `数据诊断`; matrix and pair evidence use shared correlation components. |
 | AC6 — No overflow at target viewports | Met | Macro responsive audit passes across its internal route/viewport matrix; macro-terminal passes desktop, tablet, and mobile projects. |
-| AC7 — No retired selectors/compat assumptions | Met for current macro frontend | Architecture harness now rejects retired primitive files and old macro metric/read/evidence/health/transmission selectors; lint/architecture passes. |
+| AC7 — No retired selectors/compat assumptions | Met | Current macro frontend architecture harness now rejects retired primitive files and old macro metric/read/evidence/health/transmission selectors; lint/architecture passes. |
 | AC8 — Visual mockup exists and renders | Superseded | Legacy visual/mockup attachments were removed by the SDD four-artifact hard cut; successor record owns current harness evidence. |
 
 Deviations from spec:

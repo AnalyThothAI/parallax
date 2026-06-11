@@ -149,6 +149,20 @@ VALID_FACTORY_LANES = {
     "Risk radar",
     "Final integration",
 }
+VERIFICATION_TABLE_STATUSES = {
+    "pass",
+    "passed",
+    "fail",
+    "failed",
+    "verified",
+    "met",
+    "complete",
+    "completed",
+    "blocked",
+    "in progress",
+    "not applicable",
+    "superseded",
+}
 TASK_REVIEW_FIELDS = ("subagent report", "review result")
 TASK_STATUSES = {"[ ]", "[~]", "[x]", "[!]"}
 TASK_REVIEW_RESULTS = {"not delegated", "parent-reviewed", "accepted", "needs-repair", "blocked"}
@@ -201,6 +215,7 @@ KNOWN_ISSUE_CODES = (
     "task-complete-missing-verification-evidence",
     "task-incomplete-in-verified-feature",
     "tasks-final-verification-duplicated",
+    "verification-status-token-invalid",
     "verified-missing-check-all",
     "verified-extra-verification-command",
     "verified-extra-verification-output",
@@ -701,7 +716,44 @@ def _artifact_issues(feature: SddFeature, artifact: ArtifactRecord) -> list[SddI
         issues.extend(_spec_background_issues(feature, artifact))
     if artifact.name == "tasks.md":
         issues.extend(_tasks_final_verification_issues(artifact))
+    if artifact.name == "verification.md":
+        issues.extend(_verification_status_token_issues(artifact))
     return issues
+
+
+def _verification_status_token_issues(artifact: ArtifactRecord) -> list[SddIssue]:
+    invalid_rows: list[str] = []
+    for cells in _section_table_rows(artifact.text, "## Spec compliance", SPEC_COMPLIANCE_HEADER):
+        if len(cells) < len(SPEC_COMPLIANCE_HEADER):
+            continue
+        status = _clean_value(cells[1])
+        if _valid_verification_table_status(status):
+            continue
+        criterion = _clean_value(cells[0]) or "<unnamed criterion>"
+        invalid_rows.append(f"Spec compliance {criterion} => {status or '<missing status>'}")
+
+    for cells in _section_table_rows(artifact.text, "## Coverage", COVERAGE_HEADER):
+        if len(cells) < len(COVERAGE_HEADER):
+            continue
+        status = _clean_value(cells[3])
+        if _valid_verification_table_status(status):
+            continue
+        metric = _clean_value(cells[0]) or "<unnamed metric>"
+        invalid_rows.append(f"Coverage {metric} => {status or '<missing status>'}")
+
+    if not invalid_rows:
+        return []
+    return [
+        _issue(
+            "verification-status-token-invalid",
+            artifact,
+            "verification table status cells must use machine-readable status words: " + "; ".join(invalid_rows),
+        )
+    ]
+
+
+def _valid_verification_table_status(value: str) -> bool:
+    return _clean_value(value).lower() in VERIFICATION_TABLE_STATUSES
 
 
 def _tasks_final_verification_issues(artifact: ArtifactRecord) -> list[SddIssue]:

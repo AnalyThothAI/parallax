@@ -280,6 +280,7 @@ def _issue_meaning(code: str) -> str:
             "tasks.md keeps a duplicate Final verification checklist instead of delegating final evidence to "
             "verification.md."
         ),
+        "verification-status-token-invalid": "Verification tables use non-machine-readable status tokens.",
         "verified-missing-check-all": "Verified record lacks successful make check-all evidence.",
         "verified-extra-verification-command": (
             "Verified record includes commands other than make check-all in final Verification commands evidence."

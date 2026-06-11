@@ -1663,6 +1663,30 @@ def test_verified_feature_rejects_symbolic_completion_status_tokens(tmp_path: Pa
     assert "verified-coverage-incomplete" in _issue_codes(issues)
 
 
+def test_verification_tables_reject_symbolic_status_tokens_before_final_verification(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-symbolic-active-status")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(feature / "tasks.md", status="In Progress")
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+    verification_path = feature / "verification.md"
+    verification_text = verification_path.read_text(encoding="utf-8")
+    verification_path.write_text(
+        verification_text.replace(
+            "| AC1 | Pass | `make check-all` exited 0. |",
+            "| AC1 | ✅ | `make check-all` exited 0. |",
+        )
+        .replace("| line | 91% | >= 80% | Pass |", "| line | 91% | >= 80% | ❌ |"),
+        encoding="utf-8",
+    )
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "verification-status-token-invalid" in _issue_codes(issues)
+    assert "Spec compliance" in "\n".join(issue.message for issue in issues)
+    assert "Coverage" in "\n".join(issue.message for issue in issues)
+
+
 def test_verified_feature_requires_concrete_spec_compliance_evidence(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "completed", "2026-06-09-placeholder-spec-evidence")
     _write_valid_spec(feature / "spec.md", status="Verified")

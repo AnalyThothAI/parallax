@@ -22,6 +22,7 @@
 - `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/tasks-template.md`: document split-or-supersede guidance for active records.
 - `docs/sdd/_templates/verification-template.md`: remove stale fixed spec-section anchors from E2E evidence guidance.
 - `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`: reject symbolic completion status tokens in final evidence rows.
+- Existing SDD verification records: convert table status cells to bounded machine-readable words.
 - `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`: retain historical evidence as superseded.
 - `docs/sdd/features/active/2026-06-11-executable-harness-followup`: own the follow-up active work.
 - `docs/generated/sdd-work-index.md`: regenerate the coordination board.
@@ -38,6 +39,7 @@
 - AC2: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_harness_structure.py::test_sdd_docs_describe_bounded_active_feature_records -q`
 - AC3: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_harness_structure.py::test_sdd_verification_template_avoids_stale_spec_section_anchors -q`
 - AC4: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_symbolic_completion_status_tokens tests/architecture/test_harness_structure.py::test_sdd_verification_template_uses_machine_readable_status_examples -q`
+- AC5: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_verification_tables_reject_symbolic_status_tokens_before_final_verification -q`
 
 ## Verification
 
