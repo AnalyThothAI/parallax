@@ -3652,6 +3652,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 174 — Narrative admission dirty queue hash excludes lifecycle state
+
+- **File(s)**: `src/parallax/domains/narrative_intel/repositories/narrative_admission_dirty_target_repository.py`, `tests/unit/domains/narrative_intel/test_narrative_dirty_target_repositories.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 173
+- **Touch set**: `src/parallax/domains/narrative_intel/repositories/narrative_admission_dirty_target_repository.py`, `tests/unit/domains/narrative_intel/test_narrative_dirty_target_repositories.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/domains/narrative_intel/runtime/narrative_admission_worker.py` for dirty-target claim/done semantics; coordinate with `src/parallax/domains/token_intel/services/token_radar_projection.py` for Narrative admission enqueue payload semantics; coordinate with `src/parallax/platform/current_read_model_payload_hash.py` for shared current payload hash validation shape.
+- **Failing test first**: `tests/unit/domains/narrative_intel/test_narrative_dirty_target_repositories.py::test_payload_hash_rejects_legacy_non_string_payload_keys` and `tests/unit/domains/narrative_intel/test_narrative_dirty_target_repositories.py::test_payload_hash_ignores_queue_lifecycle_fields` — call the Narrative admission dirty payload hash helper with compatibility-shaped non-string mapping keys and queue lifecycle drift and assert shared current payload validation plus lifecycle exclusion.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Domain implementation
+- **Deterministic constraints**: Narrative admission dirty target queue hashes must keep business trigger fields (`target_type`, `target_id`, `window`, `scope`, `projection_version`, `schema_version`, `source_watermark_ms`, `dirty_reason`) in the stable payload while excluding queue lifecycle/scheduling state (`priority`, `due_at_ms`, `leased_until_ms`, `lease_owner`, `attempt_count`, `last_error`, `first_dirty_at_ms`, `updated_at_ms`). Final hash generation must use `stable_current_payload_hash()` from `src/parallax/platform/current_read_model_payload_hash.py` and must not preserve `postgres_safe_json()`, local key stringification, or repository-local sha256 JSON canonicalization as a compatibility path.
+- **On-demand context**: `src/parallax/domains/narrative_intel/ARCHITECTURE.md`, `docs/WORKER_FLOW.md`, `docs/WORKERS.md`, `docs/agent-playbook/read-model-change-checklist.md`, `src/parallax/domains/narrative_intel/repositories/narrative_admission_dirty_target_repository.py`, `src/parallax/domains/narrative_intel/runtime/narrative_admission_worker.py`, and Narrative dirty-target tests.
+- **Kill/defer criteria**: Stop if Narrative dirty hashes intentionally include scheduling lifecycle state for stale-completion protection, if runtime producers require non-string payload keys, or if shared hash prefix changes break claim/done matching for compliant queue rows.
+- **Eval/repair signal**: Narrative dirty local sha256 JSON dump, `postgres_safe_json()` sanitation before hash, non-string key acceptance, lifecycle fields in queue payload hash, stale completion drift, dirty-target lease reset drift, and SDD generated index drift.
+- **Implementation**: Compute Narrative admission dirty target `payload_hash` values with `stable_current_payload_hash()` after strict lifecycle-field filtering, and add RED tests proving legacy non-string key payloads are rejected and scheduling lifecycle changes do not alter the stable dirty payload hash.
+- **Verification**: `uv run pytest tests/unit/domains/narrative_intel/test_narrative_dirty_target_repositories.py::test_payload_hash_rejects_legacy_non_string_payload_keys tests/unit/domains/narrative_intel/test_narrative_dirty_target_repositories.py::test_payload_hash_ignores_queue_lifecycle_fields -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -3816,4 +3837,5 @@
 - [ ] `uv run pytest tests/architecture/test_src_domain_architecture.py::test_repositories_and_queries_do_not_import_services_or_runtime -q`
 - [ ] `uv run pytest tests/unit/test_token_radar_dirty_target_repository.py::test_dirty_payload_hash_rejects_legacy_non_string_payload_keys tests/unit/domains/token_intel/test_token_radar_source_dirty_events.py::test_source_dirty_event_payload_hash_rejects_legacy_non_string_payload_keys -q`
 - [ ] `uv run pytest tests/unit/domains/pulse_lab/test_pulse_trigger_dirty_target_repository.py::test_payload_hash_rejects_legacy_non_string_payload_keys tests/unit/domains/pulse_lab/test_pulse_trigger_dirty_target_repository.py::test_payload_hash_ignores_queue_lifecycle_fields -q`
+- [ ] `uv run pytest tests/unit/domains/narrative_intel/test_narrative_dirty_target_repositories.py::test_payload_hash_rejects_legacy_non_string_payload_keys tests/unit/domains/narrative_intel/test_narrative_dirty_target_repositories.py::test_payload_hash_ignores_queue_lifecycle_fields -q`
 - [ ] `make check-all`

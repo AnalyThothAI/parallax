@@ -7,6 +7,7 @@ import pytest
 from parallax.app.runtime.repository_session import repositories_for_connection
 from parallax.domains.narrative_intel.repositories.narrative_admission_dirty_target_repository import (
     NarrativeAdmissionDirtyTargetRepository,
+    _payload_hash,
 )
 
 
@@ -83,6 +84,48 @@ def test_enqueue_targets_rejects_incomplete_narrative_target() -> None:
             commit=False,
         )
     assert conn.sql == []
+
+
+def test_payload_hash_rejects_legacy_non_string_payload_keys() -> None:
+    with pytest.raises(ValueError, match="current payload hash payload has non-string keys"):
+        _payload_hash({123: "legacy", "target_type": "Asset", "target_id": "asset-1"})
+
+
+def test_payload_hash_ignores_queue_lifecycle_fields() -> None:
+    first = _payload_hash(
+        {
+            "target_type": "Asset",
+            "target_id": "asset-1",
+            "window": "1h",
+            "scope": "all",
+            "projection_version": "admission-v1",
+            "schema_version": "schema-v1",
+            "source_watermark_ms": 123,
+            "dirty_reason": "token_radar_changed",
+            "priority": 10,
+            "due_at_ms": 100,
+            "leased_until_ms": 200,
+            "attempt_count": 1,
+        }
+    )
+    second = _payload_hash(
+        {
+            "target_type": "Asset",
+            "target_id": "asset-1",
+            "window": "1h",
+            "scope": "all",
+            "projection_version": "admission-v1",
+            "schema_version": "schema-v1",
+            "source_watermark_ms": 123,
+            "dirty_reason": "token_radar_changed",
+            "priority": 90,
+            "due_at_ms": 999,
+            "leased_until_ms": 888,
+            "attempt_count": 3,
+        }
+    )
+
+    assert second == first
 
 
 def test_mark_done_requires_full_stale_completion_token_including_versions() -> None:
