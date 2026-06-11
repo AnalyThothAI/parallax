@@ -24,6 +24,7 @@
 | AC9 - Verification templates fail closed. | Pass | `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_active_records_reject_template_placeholder_final_verification_transcripts tests/architecture/test_harness_structure.py::test_sdd_verification_template_does_not_embed_fake_final_exit_code -q` failed RED before template placeholder validation and fail-closed template output, then passed after both were enforced. |
 | AC10 - Subagent context packets are dispatch-bound. | Pass | `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli_refuses_completed_task tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli_refuses_unmet_dependencies -q` failed RED after fixture cleanup because context packets still accepted non-dispatchable tasks, then passed after context packet and dispatcher shared one dispatchability guard. |
 | AC11 - Subagent mode constraints are generated. | Pass | `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli_emits_mode_constraints tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_mode_constraints -q` passed after shared mode constraint lines were emitted and playbook templates were updated; the same targeted tests failed RED first because context packet and handoff output lacked `Mode constraints:`. |
+| AC12 - Handoff mode constraints are validated. | Pass | `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_handoff_mode_constraints -q` passed after shared mode constraints were extracted and delegated handoff artifact validation required the matching `Mode constraints:` line; the same test failed RED first because the validator accepted a handoff without mode constraints. |
 
 ## Verification commands
 
@@ -33,7 +34,7 @@ Not final completion evidence. Final completion still requires `make check-all` 
 
 | metric | value | threshold | status |
 |--------|-------|-----------|--------|
-| agent loop and SDD artifact tests | 234 tests | >= targeted harness tests | Pass |
+| agent loop and SDD artifact tests | 235 tests | >= targeted harness tests | Pass |
 | SDD active gates | 2 active features | all active clarify/checklist/analyze/implement gates pass | Pass |
 
 ## Skipped tests
@@ -483,5 +484,35 @@ $ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run pytest tests/a
 ........................................................................ [ 92%]
 ..................                                                       [100%]
 234 passed in 11.97s
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_handoff_mode_constraints -q
+F                                                                        [100%]
+AssertionError: assert []
+exit code: 1
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_handoff_mode_constraints -q
+.                                                                        [100%]
+1 passed in 0.13s
+exit code: 0
+
+$ uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_handoff_mode_constraints -q
+.                                                                        [100%]
+1 passed in 0.02s
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run pytest tests/architecture/test_agent_playbook_contracts.py tests/architecture/test_harness_structure.py tests/architecture/test_sdd_artifact_validator.py -q
+........................................................................ [ 30%]
+........................................................................ [ 61%]
+........................................................................ [ 91%]
+...................                                                      [100%]
+235 passed in 12.82s
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run ruff check scripts/agent_mode_constraints.py scripts/build_agent_context_packet.py scripts/dispatch_sdd_task.py scripts/validate_sdd_artifacts.py tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py tests/architecture/test_harness_structure.py
+All checks passed!
+exit code: 0
+
+$ git diff --check
 exit code: 0
 ```

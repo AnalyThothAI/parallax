@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from scripts.agent_mode_constraints import mode_constraint_lines  # noqa: E402
 from scripts.subagent_report_contract import validate_subagent_report  # noqa: E402
 
 SDD_FEATURES = ROOT / "docs" / "sdd" / "features"
@@ -1430,6 +1431,12 @@ def _subagent_handoff_contract_issues(feature: SddFeature, task: TaskRecord, tex
     mode = mode_match.group("mode").lower() if mode_match else ""
     if not mode:
         issues.append("missing valid Mode line")
+    else:
+        if "Mode constraints:" not in text:
+            issues.append("missing Mode constraints")
+        missing_constraints = [line for line in mode_constraint_lines(mode) if line not in text]
+        if missing_constraints:
+            issues.append("missing Mode constraints for mode: " + ", ".join(missing_constraints))
 
     context_match = HANDOFF_CONTEXT_PACKET_RE.search(text)
     if context_match is None:

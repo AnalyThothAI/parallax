@@ -14,7 +14,7 @@
 | Clarify | Spec contains approved clarification for superseding the omnibus record. |
 | Checklist | Spec records the active-record size bound requirement. |
 | Analyze | Plan Analyze Gate records why active records should remain bounded. |
-| Implement | Tasks 1-11 implement the validator, migration, documentation contract, stale-template cleanup, machine-readable verification status tokens, active lifecycle command hard cut, active placeholder final-evidence rejection, active skipped-test accounting bound, fail-closed final-evidence templates, dispatch-bound context packets, and generated subagent mode constraints. |
+| Implement | Tasks 1-12 implement the validator, migration, documentation contract, stale-template cleanup, machine-readable verification status tokens, active lifecycle command hard cut, active placeholder final-evidence rejection, active skipped-test accounting bound, fail-closed final-evidence templates, dispatch-bound context packets, generated subagent mode constraints, and validator-enforced handoff mode constraints. |
 | Verify | Verification artifact captures RED/GREEN command output. |
 
 ## Tasks
@@ -247,5 +247,26 @@
 - **Eval/repair signal**: missing `Mode constraints:` in generated context packets or handoffs, mode text drift between generator and template, or task handoff output with implicit edit authority.
 - **Implementation**: Add shared mode constraint lines to context-packet generation, reuse them in dry-run handoffs, and update playbook templates/model docs.
 - **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli_emits_mode_constraints tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_mode_constraints -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 12 - Validate handoff mode constraints
+
+- **File(s)**: `scripts/agent_mode_constraints.py`, `scripts/build_agent_context_packet.py`, `scripts/dispatch_sdd_task.py`, `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`
+- **Owner**: parent
+- **Depends on**: Task 11
+- **Touch set**: `scripts/agent_mode_constraints.py`, `scripts/build_agent_context_packet.py`, `scripts/dispatch_sdd_task.py`, `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD validator, agent playbook generators, and generated index updates.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_handoff_mode_constraints` - proves delegated handoff artifacts cannot omit generated mode-specific edit constraints.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: The validator and generators must share one mode-constraint source; handoff artifacts must contain `Mode constraints:` and the exact line matching their `Mode:`.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/build_agent_context_packet.py`, `scripts/dispatch_sdd_task.py`, `tests/architecture/test_sdd_artifact_validator.py`.
+- **Kill/defer criteria**: Stop if delegated handoff artifact validation intentionally remains weaker than generated handoff output.
+- **Eval/repair signal**: delegated handoff artifact accepted without `Mode constraints:`, generator/validator mode text drift, or false valid report noise hiding handoff defects.
+- **Implementation**: Extract shared mode constraints, make generators reuse them, and require matching mode constraints in delegated handoff artifact validation.
+- **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_handoff_mode_constraints -q`
 - **Review owner**: parent
 - **Status**: [x]

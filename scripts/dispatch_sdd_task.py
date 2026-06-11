@@ -9,9 +9,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from scripts.agent_mode_constraints import VALID_MODES, mode_constraint_lines  # noqa: E402
 from scripts.build_agent_context_packet import (  # noqa: E402
-    VALID_MODES,
-    mode_constraint_lines,
     render_context_packet,
     task_dispatch_issues,
 )

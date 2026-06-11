@@ -31,6 +31,7 @@ The prior executable harness record was an omnibus active ledger with more than 
 | Verification templates fail closed. | Templates do not embed fake final `exit code: 0` transcripts, and validator rejects copied template transcript placeholders in active records. |
 | Subagent context packets are dispatch-bound. | Context packet generation rejects completed or dependency-blocked tasks before a subagent can receive stale context. |
 | Subagent mode constraints are deterministic. | Context packet and handoff generation emit mode-specific edit boundaries for read-only, write-allowed, and review-only lanes. |
+| Subagent handoff artifacts enforce mode constraints. | Validator rejects delegated handoff artifacts that omit the mode-specific edit boundary emitted by the generator. |
 
 ## Acceptance criteria
 
@@ -45,6 +46,7 @@ The prior executable harness record was an omnibus active ledger with more than 
 - AC9. WHEN `docs/sdd/_templates/verification-template.md` teaches final command evidence THEN it SHALL fail closed with a non-success exit placeholder, and `scripts/validate_sdd_artifacts.py` SHALL report `active-placeholder-final-evidence` if that transcript placeholder is copied into an active record.
 - AC10. WHEN `scripts/build_agent_context_packet.py` is asked to build context for a completed task or a task with incomplete dependencies THEN it SHALL fail with the same dispatchability reason as `scripts/dispatch_sdd_task.py` before subagents can receive stale or blocked task context.
 - AC11. WHEN `scripts/build_agent_context_packet.py` or `scripts/dispatch_sdd_task.py` emits subagent context THEN it SHALL include mode-specific edit constraints before read-only, write-allowed, or review-only lanes can rely on implicit prompt convention.
+- AC12. WHEN a delegated task references a `Subagent handoff` artifact THEN `scripts/validate_sdd_artifacts.py` SHALL reject it as `task-invalid-subagent-handoff-artifact` unless the artifact contains `Mode constraints:` and the constraint line matching its `Mode:`.
 
 ## Risks
 
