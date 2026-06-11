@@ -765,6 +765,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC250: `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_incomplete_tasks_with_final_evidence tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence -q`
 - AC251: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_feature_lanes_reject_loose_legacy_files -q`
 - AC252: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_fenced_table_rows tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_fenced_spec_compliance_and_coverage_tables -q`
+- AC253: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_fenced_task_sections tests/architecture/test_sdd_artifact_validator.py::test_tasks_must_live_inside_tasks_section -q`
 
 ## Verification
 

@@ -5312,3 +5312,24 @@
 - **Verification**: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_fenced_table_rows tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_fenced_spec_compliance_and_coverage_tables -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 253 — Task parser is section-scoped
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 252
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD validator and generated index updates.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_fenced_task_sections`, `tests/architecture/test_sdd_artifact_validator.py::test_tasks_must_live_inside_tasks_section` — prove task-like examples outside canonical task scope cannot satisfy executable task state.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `_parse_tasks()` must parse only the fenced-block-stripped body of `## Tasks`; task-like headings in examples, appendices, notes, or other sections are ignored as executable task records.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, Bohr read-only audit, SDD task field validator tests, and task dispatch CLI expectations.
+- **Kill/defer criteria**: Stop if a full task example in a fenced block or appendix can satisfy `tasks.md` structure without a real task under `## Tasks`.
+- **Eval/repair signal**: `task-missing-coordination-fields`, `task-missing-agent-loop-fields`, fake-task false green, and dispatch binding drift.
+- **Implementation**: Scope task parsing to `## Tasks` and strip fenced blocks before matching `### Task` headings.
+- **Verification**: `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_fenced_task_sections tests/architecture/test_sdd_artifact_validator.py::test_tasks_must_live_inside_tasks_section -q`
+- **Review owner**: parent
+- **Status**: [x]

@@ -269,6 +269,7 @@ claim is allowed without the corresponding output captured below.
 | AC250 — Verify gate rejects incomplete tasks. | ✅ | `python -m pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_incomplete_tasks_with_final_evidence tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence -q` failed RED while final evidence could pass with Task 1 and Task 3 still `[~]`, then passed after the verify gate required every task to be `[x]`. |
 | AC251 — Feature lanes reject loose files. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_feature_lanes_reject_loose_legacy_files -q` failed RED while loose files directly under `features/active` were ignored, then passed after the SDD validator scanned lane-root children. |
 | AC252 — Fenced tables cannot satisfy evidence. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_fenced_table_rows tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_fenced_spec_compliance_and_coverage_tables -q` failed RED while fenced Markdown tables passed evidence gates, then passed after table evidence parsing ignored fenced blocks. |
+| AC253 — Task parser is section-scoped. | ✅ | `python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_fenced_task_sections tests/architecture/test_sdd_artifact_validator.py::test_tasks_must_live_inside_tasks_section -q` failed RED while fenced and appendix task examples passed as executable tasks, then passed after `_parse_tasks()` scoped matching to fenced-block-stripped `## Tasks`. |
 
 Deviations from spec:
 
@@ -4569,6 +4570,17 @@ AssertionError: assert 'verified-incomplete-spec-compliance' in set()
 exit code: 1
 
 $ python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_fenced_table_rows tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_fenced_spec_compliance_and_coverage_tables -q
+..                                                                       [100%]
+2 passed in 0.06s
+exit code: 0
+
+$ python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_fenced_task_sections tests/architecture/test_sdd_artifact_validator.py::test_tasks_must_live_inside_tasks_section -q
+FF                                                                       [100%]
+AssertionError: assert 'task-missing-coordination-fields' in set()
+AssertionError: assert 'task-missing-coordination-fields' in set()
+exit code: 1
+
+$ python -m pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_fenced_task_sections tests/architecture/test_sdd_artifact_validator.py::test_tasks_must_live_inside_tasks_section -q
 ..                                                                       [100%]
 2 passed in 0.06s
 exit code: 0

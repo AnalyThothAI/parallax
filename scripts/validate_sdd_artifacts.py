@@ -1894,11 +1894,12 @@ def _extract_fields(text: str) -> dict[str, str]:
 
 
 def _parse_tasks(text: str) -> list[TaskRecord]:
-    matches = list(TASK_RE.finditer(text))
+    tasks_section = _text_without_fenced_blocks(_section_text(text, "## Tasks"))
+    matches = list(TASK_RE.finditer(tasks_section))
     tasks: list[TaskRecord] = []
     for index, match in enumerate(matches):
-        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
-        block = text[match.start() : end]
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(tasks_section)
+        block = tasks_section[match.start() : end]
         title = block.splitlines()[0].strip("# ").strip()
         fields = {
             field_match.group("name").strip().lower(): _clean_value(field_match.group("value"))

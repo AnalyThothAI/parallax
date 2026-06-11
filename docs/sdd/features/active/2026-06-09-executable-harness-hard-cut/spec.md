@@ -631,6 +631,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC250. WHEN `scripts/check_sdd_gate.py --feature <slug> --gate verify` runs against a feature with any task not marked `[x]` THEN it SHALL report `task-incomplete-in-completion-gate` before final evidence can hide incomplete work.
 - AC251. WHEN a loose non-hidden file exists directly under `docs/sdd/features/active` or `docs/sdd/features/completed` THEN `scripts/validate_sdd_artifacts.py` SHALL report `unexpected-artifact` before old planning notes can bypass the executable SDD validator.
 - AC252. WHEN a Markdown table appears inside a fenced code block in SDD gate evidence, Spec compliance, or Coverage sections THEN the validator and gate checker SHALL ignore it before examples can satisfy executable evidence requirements.
+- AC253. WHEN a `### Task` heading appears outside canonical `## Tasks` or inside a fenced code block THEN the SDD validator SHALL ignore it as executable task state and report missing structured tasks if no real task remains.
 
 ## Risks
 

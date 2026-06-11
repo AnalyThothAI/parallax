@@ -1793,6 +1793,34 @@ def test_complete_tasks_require_review_result_evidence(tmp_path: Path) -> None:
     assert "task-complete-missing-review-evidence" in _issue_codes(issues)
 
 
+def test_tasks_reject_fenced_task_sections(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-fenced-task-section")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(feature / "tasks.md", status="In Progress", task_status="[~]")
+    _move_only_task_into_fenced_block(feature / "tasks.md")
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "task-missing-coordination-fields" in _issue_codes(issues)
+    assert "task-missing-agent-loop-fields" in _issue_codes(issues)
+
+
+def test_tasks_must_live_inside_tasks_section(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-task-outside-section")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(feature / "tasks.md", status="In Progress", task_status="[~]")
+    _move_only_task_after_tasks_section(feature / "tasks.md")
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "task-missing-coordination-fields" in _issue_codes(issues)
+    assert "task-missing-agent-loop-fields" in _issue_codes(issues)
+
+
 def test_tasks_require_filled_coordination_fields(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-loose-tasks")
     _write_valid_spec(feature / "spec.md", status="In Progress")
@@ -2472,6 +2500,25 @@ def _write_valid_tasks(
             target.touch(exist_ok=True)
             continue
         target.mkdir(parents=True, exist_ok=True)
+
+
+def _split_only_task_block(path: Path) -> tuple[str, str]:
+    text = path.read_text(encoding="utf-8")
+    prefix, task_body = text.split("### Task 1 - Valid", 1)
+    return prefix, "### Task 1 - Valid" + task_body
+
+
+def _move_only_task_into_fenced_block(path: Path) -> None:
+    prefix, task_block = _split_only_task_block(path)
+    path.write_text(prefix + "```md\n" + task_block.rstrip() + "\n```\n", encoding="utf-8")
+
+
+def _move_only_task_after_tasks_section(path: Path) -> None:
+    prefix, task_block = _split_only_task_block(path)
+    path.write_text(
+        prefix + "_No task records here._\n\n## Appendix\n\n" + task_block,
+        encoding="utf-8",
+    )
 
 
 def _write_unstructured_superseded_tasks(path: Path) -> None:
