@@ -117,9 +117,9 @@ def render_index(features: list[SddFeature], issues: list[SddIssue]) -> str:
             "## Task Board",
             "",
             "| Feature | Task | Status | Dispatch | Factory lane | Owner | Depends on | Touch set | Conflict set | "
-            "Subagent report | Review result | Verification |",
+            "Kill/defer criteria | Eval/repair signal | Subagent report | Review result | Verification |",
             "|---------|------|--------|----------|--------------|-------|------------|-----------|--------------|"
-            "-----------------|---------------|--------------|",
+            "---------------------|--------------------|-----------------|---------------|--------------|",
         ]
     )
     for feature in sorted(features, key=lambda item: (item.state, item.slug)):
@@ -175,6 +175,8 @@ def _task_row(feature: SddFeature, task: TaskRecord) -> str:
         f"{markdown_escape(_task_field(task, 'depends on'))} | "
         f"{_task_set_cell(task, 'touch set')} | "
         f"{_task_set_cell(task, 'conflict set')} | "
+        f"`{markdown_escape(_task_field(task, 'kill/defer criteria'))}` | "
+        f"`{markdown_escape(_task_field(task, 'eval/repair signal'))}` | "
         f"`{markdown_escape(_task_field(task, 'subagent report'))}` | "
         f"`{markdown_escape(_task_field(task, 'review result'))}` | "
         f"`{markdown_escape(_task_field(task, 'verification'))}` |"

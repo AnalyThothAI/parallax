@@ -377,6 +377,81 @@ def test_sdd_gate_check_cli_verify_rejects_missing_check_all_evidence(tmp_path: 
 
 
 @pytest.mark.architecture
+def test_sdd_gate_check_cli_verify_rejects_failed_check_all_before_helper_success(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "check_sdd_gate.py"
+    assert script.exists()
+    _write_context_packet_fixture(tmp_path)
+    _create_context_packet_fixture_paths(tmp_path)
+    helper_command = "python -c 'print(\"helper\")'"
+    verification_path = (
+        tmp_path
+        / "docs"
+        / "sdd"
+        / "features"
+        / "active"
+        / "2026-06-09-context-packet-fixture"
+        / "verification.md"
+    )
+    verification_text = verification_path.read_text(encoding="utf-8")
+    verification_text = verification_text.replace(
+        "| AC1 | In Progress | Pending. |",
+        f"| AC1 | Pass | `{helper_command}` exited 0. |",
+    )
+    verification_text = verification_text.replace(
+        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\n"
+        "Pending.",
+        "\n".join(
+            [
+                "$ make check-all",
+                "tests failed",
+                "exit code: 2",
+                f"$ {helper_command}",
+                "helper",
+                "exit code: 0",
+            ]
+        ),
+    )
+    verification_text = verification_text.replace(
+        "| line | Pending | >= 80% | Pending |",
+        "| line | 91% | >= 80% | Pass |",
+    )
+    verification_text = verification_text.replace(
+        "- [ ] Not applicable.",
+        "\n".join(
+            [
+                "- [x] /readyz returned 200",
+                "- [x] writer wrote a row visible to a separate process",
+                "- [x] /api/recent returned the injected event",
+                "- [x] WS /ws/live pushed within 5s",
+                "- [x] testcontainers PG and uvicorn subprocess cleaned up",
+            ]
+        ),
+    )
+    verification_path.write_text(verification_text, encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--gate",
+            "verify",
+            "--check",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "verified-missing-check-all" in result.stderr
+
+
+@pytest.mark.architecture
 def test_sdd_gate_check_cli_verify_rejects_incomplete_spec_compliance(tmp_path: Path) -> None:
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()
@@ -831,6 +906,73 @@ def test_sdd_gate_check_cli_verify_rejects_incomplete_e2e_golden_path(tmp_path: 
     assert result.returncode == 1
     assert "verified-e2e-incomplete" in result.stderr
     assert "Not applicable" in result.stderr
+
+
+@pytest.mark.architecture
+def test_sdd_gate_check_cli_verify_rejects_fenced_e2e_golden_path(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "check_sdd_gate.py"
+    assert script.exists()
+    _write_context_packet_fixture(tmp_path)
+    _create_context_packet_fixture_paths(tmp_path)
+    verification_path = (
+        tmp_path
+        / "docs"
+        / "sdd"
+        / "features"
+        / "active"
+        / "2026-06-09-context-packet-fixture"
+        / "verification.md"
+    )
+    verification_text = verification_path.read_text(encoding="utf-8")
+    verification_text = verification_text.replace(
+        "| AC1 | In Progress | Pending. |",
+        "| AC1 | Pass | `make check-all` exited 0. |",
+    )
+    verification_text = verification_text.replace(
+        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\n"
+        "Pending.",
+        "$ make check-all\nall checks passed\nexit code: 0",
+    )
+    verification_text = verification_text.replace(
+        "| line | Pending | >= 80% | Pending |",
+        "| line | 91% | >= 80% | Pass |",
+    )
+    verification_text = verification_text.replace(
+        "- [ ] Not applicable.",
+        "\n".join(
+            [
+                "```text",
+                "- [x] /readyz returned 200",
+                "- [x] writer wrote a row visible to a separate process",
+                "- [x] /api/recent returned the injected event",
+                "- [x] WS /ws/live pushed within 5s",
+                "- [x] testcontainers PG and uvicorn subprocess cleaned up",
+                "```",
+            ]
+        ),
+    )
+    verification_path.write_text(verification_text, encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--gate",
+            "verify",
+            "--check",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "verified-e2e-incomplete" in result.stderr
 
 
 @pytest.mark.architecture
@@ -3025,6 +3167,8 @@ def test_sdd_work_index_renders_task_dispatch_board(tmp_path: Path) -> None:
                     "depends on": "none",
                     "touch set": "scripts/build_agent_context_packet.py",
                     "conflict set": "coordinate with other-feature for context packet docs",
+                    "kill/defer criteria": "Stop if packet validation drifts.",
+                    "eval/repair signal": "context packet CLI failure and review defect",
                     "subagent report": "not delegated",
                     "review result": "parent-reviewed",
                     "verification": "uv run pytest tests/architecture/test_agent_playbook_contracts.py -q",
@@ -3039,6 +3183,8 @@ def test_sdd_work_index_renders_task_dispatch_board(tmp_path: Path) -> None:
                     "depends on": "none",
                     "touch set": "docs/agent-playbook/context-packet-template.md",
                     "conflict set": "docs/agent-playbook/factory-operating-model.md",
+                    "kill/defer criteria": "Stop if completed task dispatches.",
+                    "eval/repair signal": "completed-task dispatch guard failure",
                     "subagent report": "docs/generated/subagent-reports/task-2.md",
                     "review result": "accepted",
                     "verification": "uv run pytest tests/architecture/test_agent_playbook_contracts.py -q",
@@ -3053,6 +3199,8 @@ def test_sdd_work_index_renders_task_dispatch_board(tmp_path: Path) -> None:
                     "depends on": "Task 1",
                     "touch set": "scripts/dispatch_sdd_task.py",
                     "conflict set": "coordinate with other-feature for dispatcher docs",
+                    "kill/defer criteria": "Stop if dependency blocks are hidden.",
+                    "eval/repair signal": "dependency dispatch guard failure",
                     "subagent report": "docs/generated/subagent-reports/task-3.md",
                     "review result": "needs-repair",
                     "verification": "uv run pytest tests/architecture/test_agent_playbook_contracts.py -q",
@@ -3065,9 +3213,14 @@ def test_sdd_work_index_renders_task_dispatch_board(tmp_path: Path) -> None:
 
     assert "## Task Board" in text
     assert (
+        "| Feature | Task | Status | Dispatch | Factory lane | Owner | Depends on | Touch set | Conflict set | "
+        "Kill/defer criteria | Eval/repair signal | Subagent report | Review result | Verification |"
+    ) in text
+    assert (
         "| `fixture` | `Task 1 — Build harness` | `[~]` | `dispatchable` | `Harness/tests` | parent | none | "
         "`scripts/build_agent_context_packet.py` | "
         "`coordinate with other-feature for context packet docs` | "
+        "`Stop if packet validation drifts.` | `context packet CLI failure and review defect` | "
         "`not delegated` | `parent-reviewed` | "
         "`uv run pytest tests/architecture/test_agent_playbook_contracts.py -q` |"
     ) in text
@@ -3075,6 +3228,7 @@ def test_sdd_work_index_renders_task_dispatch_board(tmp_path: Path) -> None:
         "| `fixture` | `Task 2 — Completed docs` | `[x]` | `complete` | `Docs/contracts` | parent | none | "
         "`docs/agent-playbook/context-packet-template.md` | "
         "`docs/agent-playbook/factory-operating-model.md` | "
+        "`Stop if completed task dispatches.` | `completed-task dispatch guard failure` | "
         "`docs/generated/subagent-reports/task-2.md` | `accepted` | "
         "`uv run pytest tests/architecture/test_agent_playbook_contracts.py -q` |"
     ) in text
@@ -3083,6 +3237,7 @@ def test_sdd_work_index_renders_task_dispatch_board(tmp_path: Path) -> None:
         "`Harness/tests` | parent | Task 1 | "
         "`scripts/dispatch_sdd_task.py` | "
         "`coordinate with other-feature for dispatcher docs` | "
+        "`Stop if dependency blocks are hidden.` | `dependency dispatch guard failure` | "
         "`docs/generated/subagent-reports/task-3.md` | `needs-repair` | "
         "`uv run pytest tests/architecture/test_agent_playbook_contracts.py -q` |"
     ) in text

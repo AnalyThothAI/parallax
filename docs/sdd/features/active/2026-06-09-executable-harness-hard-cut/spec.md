@@ -13,7 +13,7 @@ Parallax routes non-trivial coding-agent work through one SDD feature directory 
 The lane's canonical artifacts are `spec.md` in `docs/WORKFLOW.md:13`, `plan.md` in `docs/WORKFLOW.md:14`,
 `tasks.md` in `docs/WORKFLOW.md:15`, and `verification.md` in `docs/WORKFLOW.md:16`.
 Production work follows `spec -> clarify -> checklist -> plan -> tasks -> analyze -> implement -> verify`
-in `docs/WORKFLOW.md:27`, and completion requires `make check-all` evidence in `docs/WORKFLOW.md:95`.
+in `docs/WORKFLOW.md:27`, and completion requires `make check-all` evidence in `docs/WORKFLOW.md:98`.
 The generated index now renders a `Coordination Board` in `scripts/regen_sdd_work_index.py:86` and a
 `Task Board` in `scripts/regen_sdd_work_index.py:117`.
 
@@ -600,6 +600,10 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC219. WHEN `verification.md` Coverage rows keep any canonical cell such as `value` or `threshold` as placeholder text while marking `status` complete THEN the validator and verify gate SHALL report `verified-coverage-incomplete` before placeholder coverage evidence can satisfy final verification.
 - AC220. WHEN `verification.md` Spec compliance rows mark an acceptance criterion complete while the `Evidence` cell remains placeholder text such as `Pending.` THEN the validator and verify gate SHALL report `verified-incomplete-spec-compliance` before placeholder compliance evidence can satisfy final verification.
 - AC221. WHEN `verification.md` Spec compliance rows mark an acceptance criterion complete with prose-only evidence and no command-shaped backticked command THEN the validator and verify gate SHALL report `verified-missing-spec-compliance-evidence` before non-replayable compliance evidence can satisfy final verification.
+- AC222. WHEN `verification.md` E2E golden path puts the required checked runtime signals inside a fenced code block THEN the validator and verify gate SHALL report `verified-e2e-incomplete` before example snippets can satisfy final verification.
+- AC223. WHEN `verification.md` records `$ make check-all` with a non-zero exit code followed by another command with `exit code: 0` in the same fenced block THEN the validator and verify gate SHALL report `verified-missing-check-all` before helper success can satisfy final verification.
+- AC224. WHEN `docs/generated/sdd-work-index.md` renders the Task Board THEN each task row SHALL expose `Kill/defer criteria` and `Eval/repair signal` before agent-loop repair pressure can hide inside long task records.
+- AC225. WHEN an operator needs to prove one SDD feature's completion evidence THEN `make check-sdd-completion FEATURE=<slug>` SHALL run `scripts/check_sdd_gate.py --feature <slug> --gate verify --check` before completion semantics can be confused with the repo-wide `make check-all` pre-verify sweep.
 
 ## Risks
 

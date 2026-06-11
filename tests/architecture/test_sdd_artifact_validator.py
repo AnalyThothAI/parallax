@@ -1051,6 +1051,35 @@ def test_verified_feature_ignores_old_success_outside_verification_commands(tmp_
     assert "verified-contradicts-evidence" in _issue_codes(issues)
 
 
+def test_verified_feature_requires_make_check_all_own_exit_code_zero(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "completed", "2026-06-09-check-all-own-exit")
+    helper_command = "python -c 'print(\"helper\")'"
+    _write_valid_spec(feature / "spec.md", status="Verified")
+    _write_valid_plan(feature / "plan.md", status="Verified")
+    _write_valid_tasks(feature / "tasks.md", status="Verified")
+    _write_valid_verification(
+        feature / "verification.md",
+        status="Verified",
+        verification_command_lines=(
+            "$ make check-all",
+            "tests failed",
+            "exit code: 2",
+            f"$ {helper_command}",
+            "helper",
+            "exit code: 0",
+        ),
+    )
+    _replace_spec_compliance_row(
+        feature / "verification.md",
+        f"| AC1 | Pass | `{helper_command}` exited 0. |",
+    )
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "verified-missing-check-all" in _issue_codes(issues)
+    assert "verified-contradicts-evidence" in _issue_codes(issues)
+
+
 def test_verified_feature_requires_skipped_table_to_match_skip_count(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "completed", "2026-06-09-bad-skips")
     _write_valid_spec(feature / "spec.md", status="Verified")
@@ -1280,6 +1309,33 @@ def test_verified_feature_requires_complete_e2e_golden_path(tmp_path: Path) -> N
 
     assert "verified-e2e-incomplete" in _issue_codes(issues)
     assert "WS /ws/live" in "\n".join(issue.message for issue in issues)
+
+
+def test_verified_feature_rejects_fenced_e2e_golden_path(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "completed", "2026-06-09-fenced-e2e-golden")
+    _write_valid_spec(feature / "spec.md", status="Verified")
+    _write_valid_plan(feature / "plan.md", status="Verified")
+    _write_valid_tasks(feature / "tasks.md", status="Verified")
+    _write_valid_verification(feature / "verification.md", status="Verified")
+    verification_path = feature / "verification.md"
+    verification_text = verification_path.read_text(encoding="utf-8")
+    checklist = "\n".join(
+        [
+            "- [x] /readyz returned 200",
+            "- [x] writer wrote a row visible to a separate process",
+            "- [x] /api/recent returned the injected event",
+            "- [x] WS /ws/live pushed within 5s",
+            "- [x] testcontainers PG and uvicorn subprocess cleaned up",
+        ]
+    )
+    verification_path.write_text(
+        verification_text.replace(checklist, f"```text\n{checklist}\n```"),
+        encoding="utf-8",
+    )
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "verified-e2e-incomplete" in _issue_codes(issues)
 
 
 def test_complete_tasks_require_matching_verification_evidence(tmp_path: Path) -> None:

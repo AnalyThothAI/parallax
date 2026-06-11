@@ -43,6 +43,14 @@ exit code: 0
 If `make check-all` exit code is non-zero, the work is not complete — do not
 file this artefact until it is.
 
+After pasting the final transcript, run the single-feature completion gate:
+
+```text
+$ make check-sdd-completion FEATURE=<slug>
+verify gate passed: <slug>
+exit code: 0
+```
+
 ## Coverage
 
 | metric | value | threshold | status |

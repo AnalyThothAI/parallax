@@ -293,6 +293,20 @@ def test_make_check_all_runs_executable_sdd_harness() -> None:
     assert "scripts/regen_sdd_work_index.py --check" in check_all
 
 
+def test_makefile_exposes_single_feature_sdd_completion_gate() -> None:
+    makefile = _read(REPO_ROOT / "Makefile")
+    workflow = _read(DOCS / "WORKFLOW.md")
+    sdd_readme = _read(DOCS / "sdd" / "README.md")
+    assert "check-sdd-completion:" in makefile
+    completion_target = makefile.split("check-sdd-completion:", 1)[1].split("\n\n", 1)[0]
+
+    assert "check-sdd-completion" in makefile.split(".PHONY:", 1)[1].split("\n", 1)[0]
+    assert 'test -n "$(FEATURE)"' in completion_target
+    assert 'scripts/check_sdd_gate.py --feature "$(FEATURE)" --gate verify --check' in completion_target
+    assert "make check-sdd-completion FEATURE=<slug>" in workflow
+    assert "make check-sdd-completion FEATURE=<slug>" in sdd_readme
+
+
 def test_make_check_all_checks_cli_help_snapshot() -> None:
     makefile = _read(REPO_ROOT / "Makefile")
     check_all = makefile.split("check-all:", 1)[1].split("\n\n", 1)[0]

@@ -1492,7 +1492,7 @@ def _verified_issues(feature: SddFeature) -> list[SddIssue]:
 
 
 def _verified_e2e_issues(artifact: ArtifactRecord) -> list[SddIssue]:
-    section = _section_text(artifact.text, "## E2E golden path")
+    section = _text_without_fenced_blocks(_section_text(artifact.text, "## E2E golden path"))
     if "SKIP_E2E=1" in section:
         return [
             _issue(
@@ -1920,10 +1920,31 @@ def _clean_command(value: str) -> str:
 def _verification_make_check_all_block(text: str) -> str | None:
     section = _section_text(text, "## Verification commands")
     blocks = [match.group("body").strip() for match in FENCED_BLOCK_RE.finditer(section)]
-    make_check_all_blocks = [block for block in blocks if re.search(r"^\$\s*make check-all\s*$", block, re.MULTILINE)]
-    if len(make_check_all_blocks) != 1:
+    make_check_all_segments = [
+        segment for block in blocks for segment in _command_segments(block, "make check-all")
+    ]
+    if len(make_check_all_segments) != 1:
         return None
-    return make_check_all_blocks[0]
+    return make_check_all_segments[0]
+
+
+def _command_segments(block: str, command: str) -> list[str]:
+    lines = block.splitlines()
+    starts = [
+        index
+        for index, line in enumerate(lines)
+        if (match := COMMAND_LINE_RE.match(line)) and _clean_command(match.group("command")) == command
+    ]
+
+    segments: list[str] = []
+    for start in starts:
+        end = len(lines)
+        for index in range(start + 1, len(lines)):
+            if COMMAND_LINE_RE.match(lines[index]):
+                end = index
+                break
+        segments.append("\n".join(lines[start:end]).strip())
+    return segments
 
 
 def _section_text(text: str, heading: str) -> str:
@@ -1946,6 +1967,18 @@ def section_text(text: str, heading: str) -> str:
             break
         body.append(line)
     return "\n".join(body)
+
+
+def _text_without_fenced_blocks(text: str) -> str:
+    lines: list[str] = []
+    in_fenced_block = False
+    for line in text.splitlines():
+        if _is_fence_line(line):
+            in_fenced_block = not in_fenced_block
+            continue
+        if not in_fenced_block:
+            lines.append(line)
+    return "\n".join(lines)
 
 
 def has_markdown_section(text: str, heading: str) -> bool:

@@ -4661,3 +4661,87 @@
 - **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_command_shaped_spec_compliance_evidence tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_prose_only_spec_compliance_evidence -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 222 — E2E evidence ignores fenced examples
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 221
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/verification-template.md`
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_fenced_e2e_golden_path` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_fenced_e2e_golden_path` — prove final verification cannot pass when the full E2E checklist appears only inside a fenced code block.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `verification.md` E2E golden path evidence must be checked Markdown outside fenced code blocks; example snippets and historical command output cannot satisfy runtime signal evidence.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `docs/sdd/_templates/verification-template.md`, and final verification evidence tests.
+- **Kill/defer criteria**: Stop if fenced examples, copied templates, or command-output snippets can satisfy E2E golden-path final evidence.
+- **Eval/repair signal**: fenced-E2E false green and completion-gate evidence drift.
+- **Implementation**: Strip fenced blocks before evaluating the E2E golden-path section and require the canonical checked runtime signals in the remaining Markdown.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_fenced_e2e_golden_path tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_fenced_e2e_golden_path -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 223 — make check-all evidence uses its own exit code
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 222
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/verification-template.md`
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_make_check_all_own_exit_code_zero` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_failed_check_all_before_helper_success` — prove final verification cannot pass when `$ make check-all` fails before a later helper command exits 0 in the same fenced block.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Final verification must parse the `$ make check-all` command segment and bind its status to that segment's own `exit code`, not to later command output in the same fenced block.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `docs/sdd/_templates/verification-template.md`, and final verification evidence tests.
+- **Kill/defer criteria**: Stop if helper commands, repeated command blocks, or later successful exits can satisfy a failed `make check-all` final evidence block.
+- **Eval/repair signal**: check-all exit-code false green and completion-gate evidence drift.
+- **Implementation**: Segment command transcripts by `$ ...` prompt lines before reading the `make check-all` exit code.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_make_check_all_own_exit_code_zero tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_failed_check_all_before_helper_success -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 224 — Task Board exposes repair pressure
+
+- **File(s)**: `scripts/regen_sdd_work_index.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/generated/sdd-work-index.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 223
+- **Touch set**: `scripts/regen_sdd_work_index.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/generated/sdd-work-index.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for generated SDD index and agent playbook tests.
+- **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board` — proves the generated Task Board must render `Kill/defer criteria` and `Eval/repair signal` columns for every task row.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: The generated Task Board must surface repair pressure directly from existing task fields without becoming a second parser or a prose-only dashboard.
+- **On-demand context**: `scripts/regen_sdd_work_index.py`, `scripts/validate_sdd_artifacts.py`, `docs/agent-playbook/factory-operating-model.md`, and the OpenClaw factory-manager transcript notes.
+- **Kill/defer criteria**: Stop if generated output hides kill/defer or eval/repair signals, duplicates validation semantics, or drops dispatch/review columns.
+- **Eval/repair signal**: stale generated index, missing repair-pressure columns, and review defects from multi-agent handoffs.
+- **Implementation**: Add `Kill/defer criteria` and `Eval/repair signal` columns to the generated Task Board rows.
+- **Verification**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 225 — Completion gate has a Make target
+
+- **File(s)**: `Makefile`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/verification-template.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 224
+- **Touch set**: `Makefile`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/verification-template.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD workflow docs and generated index.
+- **Failing test first**: `tests/architecture/test_harness_structure.py::test_makefile_exposes_single_feature_sdd_completion_gate` — proves Makefile and docs expose `make check-sdd-completion FEATURE=<slug>` as the single-feature verify gate.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: The completion gate target must require `FEATURE`, call `scripts/check_sdd_gate.py --feature "$(FEATURE)" --gate verify --check`, and remain distinct from the repo-wide `make check-all` transcript run.
+- **On-demand context**: `Makefile`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/verification-template.md`, and `scripts/check_sdd_gate.py`.
+- **Kill/defer criteria**: Stop if the target runs all active features, mutates artifacts, hides missing `FEATURE`, or makes `make check-all` the only completion semantics.
+- **Eval/repair signal**: completion-doc drift, false completion claims, and failed single-feature verify gate.
+- **Implementation**: Add `check-sdd-completion` to Makefile and document it as the single-feature completion gate in workflow docs and the verification template.
+- **Verification**: `uv run pytest tests/architecture/test_harness_structure.py::test_makefile_exposes_single_feature_sdd_completion_gate -q`
+- **Review owner**: parent
+- **Status**: [x]

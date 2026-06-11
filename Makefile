@@ -1,6 +1,6 @@
 PARALLAX := uv run parallax
 
-.PHONY: help sync install uninstall tool-path test lint compile check init config db-migrate db-health serve status recent asset-flow account-alerts token-radar-cex-recover docker-up docker-status docker-logs docker-down docker-shell clean test-unit test-integration test-e2e test-golden test-architecture test-contract check-all coverage contract-check regen-contract install-hooks
+.PHONY: help sync install uninstall tool-path test lint compile check init config db-migrate db-health serve status recent asset-flow account-alerts token-radar-cex-recover docker-up docker-status docker-logs docker-down docker-shell clean test-unit test-integration test-e2e test-golden test-architecture test-contract check-sdd-completion check-all coverage contract-check regen-contract install-hooks
 
 help: ## show available targets
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "%-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -51,6 +51,10 @@ test-architecture: ## run only tests/architecture/ (AST/grep checks)
 
 test-contract: ## run only tests/contract/ (OpenAPI drift; populated in P4)
 	@uv run python -m pytest tests/contract -m contract; ec=$$?; [ $$ec -eq 5 ] && exit 0 || exit $$ec
+
+check-sdd-completion: ## verify one SDD feature completion gate (requires FEATURE=<slug>)
+	@test -n "$(FEATURE)" || (echo "FEATURE=<slug> is required" >&2; exit 2)
+	@uv run python scripts/check_sdd_gate.py --feature "$(FEATURE)" --gate verify --check
 
 check-all: ## the only command that may produce verification-artefact evidence (gates 1+2+3)
 	@uv run python scripts/validate_sdd_artifacts.py --check

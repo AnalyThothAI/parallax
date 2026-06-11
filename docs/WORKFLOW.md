@@ -49,12 +49,15 @@ uv run python scripts/check_sdd_gate.py --feature <slug> --gate checklist --chec
 uv run python scripts/check_sdd_gate.py --feature <slug> --gate analyze --check
 uv run python scripts/check_sdd_gate.py --feature <slug> --gate implement --check
 uv run python scripts/check_sdd_gate.py --feature <slug> --gate verify --check
+make check-sdd-completion FEATURE=<slug>
 ```
 
 `verify` is the final evidence gate: it checks `verification.md` for a final
 `make check-all` command block, completed Spec compliance rows, skip accounting,
 and contradiction-free completion evidence before a completion claim. `make
-check-all` also runs the non-mutating all-active pre-verify gate sweep:
+check-sdd-completion FEATURE=<slug>` is the Make target for that single-feature
+completion gate. `make check-all` still produces the final command transcript
+and also runs the non-mutating all-active pre-verify gate sweep:
 
 ```bash
 uv run python scripts/check_sdd_gate.py --all-active --check
@@ -95,6 +98,7 @@ are true and have been written into the verification artefact:
 - `make check-all` exited 0 in the worktree, AND the verification artefact contains
   its full output (no abridging) plus the new `Coverage`, `Skipped tests`, and
   `E2E golden path` sections.
+- `make check-sdd-completion FEATURE=<slug>` exited 0 for this feature.
 - The diff was reviewed against the plan.
 - UI flows genuinely outside `make check-all` coverage were exercised manually
   and recorded under `Other commands run`.

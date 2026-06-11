@@ -734,6 +734,10 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC219: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_concrete_coverage_values tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_placeholder_coverage_value -q`
 - AC220: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_concrete_spec_compliance_evidence tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_placeholder_spec_compliance_evidence -q`
 - AC221: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_command_shaped_spec_compliance_evidence tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_prose_only_spec_compliance_evidence -q`
+- AC222: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_fenced_e2e_golden_path tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_fenced_e2e_golden_path -q`
+- AC223: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_make_check_all_own_exit_code_zero tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_failed_check_all_before_helper_success -q`
+- AC224: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board -q`
+- AC225: `uv run pytest tests/architecture/test_harness_structure.py::test_makefile_exposes_single_feature_sdd_completion_gate -q`
 
 ## Verification
 

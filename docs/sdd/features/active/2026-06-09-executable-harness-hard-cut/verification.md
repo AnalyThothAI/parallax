@@ -4139,6 +4139,48 @@ $ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified
 ..                                                                       [100%]
 2 passed in 0.06s
 exit code: 0
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_fenced_e2e_golden_path tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_fenced_e2e_golden_path -q
+FF                                                                       [100%]
+AssertionError: assert 'verified-e2e-incomplete' in set()
+AssertionError: assert 0 == 1
+exit code: 1
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_fenced_e2e_golden_path tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_fenced_e2e_golden_path -q
+..                                                                       [100%]
+2 passed in 0.06s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_make_check_all_own_exit_code_zero tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_failed_check_all_before_helper_success -q
+FF                                                                       [100%]
+AssertionError: assert 'verified-missing-check-all' in set()
+AssertionError: assert 0 == 1
+exit code: 1
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_make_check_all_own_exit_code_zero tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_failed_check_all_before_helper_success -q
+..                                                                       [100%]
+2 passed in 0.07s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board -q
+F                                                                        [100%]
+AssertionError: assert '| Feature | Task | Status | Dispatch | Factory lane | Owner | Depends on | Touch set | Conflict set | Kill/defer criteria | Eval/repair signal | Subagent report | Review result | Verification |' in text
+exit code: 1
+
+$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board -q
+.                                                                        [100%]
+1 passed in 0.02s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_harness_structure.py::test_makefile_exposes_single_feature_sdd_completion_gate -q
+F                                                                        [100%]
+AssertionError: assert 'check-sdd-completion:' in makefile
+exit code: 1
+
+$ uv run pytest tests/architecture/test_harness_structure.py::test_makefile_exposes_single_feature_sdd_completion_gate -q
+.                                                                        [100%]
+1 passed in 0.01s
+exit code: 0
 ```
 
 ## Diff summary
@@ -4194,6 +4236,10 @@ Files changed:
 - Verified concrete Coverage row completion: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Verified concrete Spec compliance evidence completion: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Verified command-shaped Spec compliance evidence completion: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
+- Verified fenced E2E evidence rejection: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
+- Verified make-check-all command segment exit-code binding: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
+- Generated Task Board repair-pressure visibility: `scripts/regen_sdd_work_index.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/generated/sdd-work-index.md`.
+- Single-feature SDD completion Make target: `Makefile`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/verification-template.md`, `tests/architecture/test_harness_structure.py`.
 - Mechanical frontend Prettier drift cleanup: macro pages, macro component test, `web/vite.config.ts`.
 
 Migrations applied:
