@@ -94,11 +94,11 @@
 - **Subagent report**: not delegated
 - **Review result**: parent-reviewed
 - **Factory lane**: Final integration
-- **Deterministic constraints**: `uv run python scripts/validate_sdd_artifacts.py --check` and `uv run python scripts/regen_sdd_work_index.py --check` must pass after both active records are present.
+- **Deterministic constraints**: `uv run python scripts/validate_sdd_artifacts.py` and `uv run python scripts/regen_sdd_work_index.py --check` must pass after both active records are present.
 - **On-demand context**: `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`, `docs/generated/sdd-work-index.md`.
 - **Kill/defer criteria**: Keep the record active if full `make check-all` remains skipped or if active touch conflicts are unresolved.
 - **Eval/repair signal**: `task-missing-agent-loop-fields`, `active-touch-conflict`, stale generated index, and missing final verification evidence.
 - **Implementation**: Add SDD records and regenerate the SDD index.
-- **Verification**: `uv run python scripts/validate_sdd_artifacts.py --check && uv run python scripts/regen_sdd_work_index.py --check`
+- **Verification**: `uv run python scripts/validate_sdd_artifacts.py && uv run python scripts/regen_sdd_work_index.py --check`
 - **Review owner**: parent
 - **Status**: [~]

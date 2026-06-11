@@ -19,7 +19,7 @@ The plan and spec are the contract. This file is the evidence the contract was m
 | AC1 — playbook examples and checklist exist. | Pass | `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_agent_playbook_has_task_examples_and_read_model_checklist -q` passed after implementation. |
 | AC2 — repo-scoped skills exist. | Pass | `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_repo_scoped_agent_skills_cover_high_frequency_workflows -q` passed after implementation. |
 | AC3 — macro history count avoids latest-only filter. | Pass | Targeted macro SQL contract tests passed after implementation. |
-| AC4 — generated SDD index reflects the work. | Pass | `uv run python scripts/validate_sdd_artifacts.py --check` and `uv run python scripts/regen_sdd_work_index.py --check` passed after merge. |
+| AC4 — generated SDD index reflects the work. | Pass | `uv run python scripts/validate_sdd_artifacts.py` and `uv run python scripts/regen_sdd_work_index.py --check` passed after lifecycle command cleanup. |
 
 Deviations from spec:
 
@@ -82,7 +82,7 @@ $ uv run pytest tests/unit/domains/macro_intel/test_macro_migration_contract.py:
 2 passed in 0.20s
 exit code: 0
 
-$ uv run python scripts/validate_sdd_artifacts.py --check
+$ uv run python scripts/validate_sdd_artifacts.py
 SDD artifact validation passed.
 exit code: 0
 

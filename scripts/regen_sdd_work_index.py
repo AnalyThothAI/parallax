@@ -304,6 +304,9 @@ def _issue_meaning(code: str) -> str:
         "superseded-successor-mismatch": "Superseded artifacts in one feature disagree on the successor.",
         "active-touch-conflict": "Active features share touch paths without an explicit coordination rule.",
         "active-feature-too-large": "Active feature has too many task records for a bounded agent loop.",
+        "active-sdd-lifecycle-check-flag-invalid": (
+            "Active records advertise obsolete SDD lifecycle --check flags."
+        ),
     }
     return meanings[code]
 

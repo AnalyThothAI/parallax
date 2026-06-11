@@ -14,7 +14,7 @@
 | Clarify | Spec contains approved clarification for superseding the omnibus record. |
 | Checklist | Spec records the active-record size bound requirement. |
 | Analyze | Plan Analyze Gate records why active records should remain bounded. |
-| Implement | Tasks 1-5 implement the validator, migration, documentation contract, stale-template cleanup, and machine-readable verification status tokens. |
+| Implement | Tasks 1-6 implement the validator, migration, documentation contract, stale-template cleanup, machine-readable verification status tokens, and active lifecycle command hard cut. |
 | Verify | Verification artifact captures RED/GREEN command output. |
 
 ## Tasks
@@ -121,5 +121,26 @@
 - **Eval/repair signal**: `verification-status-token-invalid`, symbolic table status cells, or stale generated issue taxonomy.
 - **Implementation**: Add a lifecycle-wide verification status-token validator, register the issue code, and convert existing SDD verification status cells to machine-readable words.
 - **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_verification_tables_reject_symbolic_status_tokens_before_final_verification -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 6 - Reject obsolete SDD lifecycle --check flags in active records
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut/tasks.md`, `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut/verification.md`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`
+- **Owner**: parent
+- **Depends on**: Task 5
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared active lifecycle command cleanup and generated index updates.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_active_records_reject_legacy_sdd_lifecycle_check_flags` — proves active records reject obsolete SDD lifecycle `--check` flags.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Active records may use `scripts/regen_sdd_work_index.py --check` for generated freshness, but may not advertise `--check` on `scripts/validate_sdd_artifacts.py` or `scripts/check_sdd_gate.py`.
+- **On-demand context**: active SDD records, SDD lifecycle CLIs, generated issue taxonomy.
+- **Kill/defer criteria**: Stop if an active record legitimately requires old report-only lifecycle flags.
+- **Eval/repair signal**: `active-sdd-lifecycle-check-flag-invalid`, active records with stale lifecycle commands, or stale generated issue taxonomy.
+- **Implementation**: Add an active-record lifecycle-command validator, register the issue code, and update active agent-playbook SDD evidence to use the current fail-closed validator command.
+- **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_active_records_reject_legacy_sdd_lifecycle_check_flags -q`
 - **Review owner**: parent
 - **Status**: [x]

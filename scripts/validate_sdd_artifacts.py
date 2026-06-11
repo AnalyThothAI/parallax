@@ -57,6 +57,9 @@ PLAN_PREFLIGHT_WORKTREE_RE = re.compile(
     r"`git branch --show-current` matches `(?P<branch>[^`]+)`\.?\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
+LEGACY_SDD_LIFECYCLE_CHECK_RE = re.compile(
+    r"scripts/(?:validate_sdd_artifacts|check_sdd_gate)\.py[^\n`|;&]*--check"
+)
 TASK_NUMBER_RE = re.compile(r"^Task\s+(?P<number>\d+)\b", re.IGNORECASE)
 TASK_DEPENDENCY_RE = re.compile(r"\bTasks?\s+(?P<start>\d+)(?:\s*-\s*(?P<end>\d+))?\b", re.IGNORECASE)
 HANDOFF_TITLE_RE = re.compile(
@@ -229,6 +232,7 @@ KNOWN_ISSUE_CODES = (
     "superseded-successor-mismatch",
     "active-touch-conflict",
     "active-feature-too-large",
+    "active-sdd-lifecycle-check-flag-invalid",
 )
 
 
@@ -507,6 +511,7 @@ def _feature_issues(feature: SddFeature) -> list[SddIssue]:
     issues.extend(_acceptance_command_issues(feature))
     issues.extend(_task_issues(feature))
     issues.extend(_active_feature_size_issues(feature))
+    issues.extend(_active_sdd_lifecycle_check_flag_issues(feature))
     if feature.status.lower() == "verified":
         issues.extend(_verified_issues(feature))
     return issues
@@ -521,6 +526,29 @@ def _active_feature_size_issues(feature: SddFeature) -> list[SddIssue]:
             feature.artifacts["tasks.md"],
             f"active feature has {len(feature.tasks)} tasks; split or supersede before exceeding "
             f"{MAX_ACTIVE_FEATURE_TASKS} tasks",
+        )
+    ]
+
+
+def _active_sdd_lifecycle_check_flag_issues(feature: SddFeature) -> list[SddIssue]:
+    if feature.state != "active":
+        return []
+    offenders: list[str] = []
+    for artifact in feature.artifacts.values():
+        if artifact.missing:
+            continue
+        for line in artifact.text.splitlines():
+            match = LEGACY_SDD_LIFECYCLE_CHECK_RE.search(line)
+            if match is not None:
+                offenders.append(f"{artifact.name}: {match.group(0)}")
+    if not offenders:
+        return []
+    return [
+        _issue(
+            "active-sdd-lifecycle-check-flag-invalid",
+            feature.artifacts["tasks.md"],
+            "active SDD records must not advertise legacy SDD lifecycle --check flags: "
+            + "; ".join(dict.fromkeys(offenders)),
         )
     ]
 

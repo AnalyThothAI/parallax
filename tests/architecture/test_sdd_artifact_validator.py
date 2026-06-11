@@ -1687,6 +1687,32 @@ def test_verification_tables_reject_symbolic_status_tokens_before_final_verifica
     assert "Coverage" in "\n".join(issue.message for issue in issues)
 
 
+def test_active_records_reject_legacy_sdd_lifecycle_check_flags(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-legacy-sdd-check")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(
+        feature / "tasks.md",
+        status="In Progress",
+        verification="uv run python scripts/validate_sdd_artifacts.py --check",
+    )
+    _write_valid_verification(
+        feature / "verification.md",
+        status="In Progress",
+        other_command_lines=(
+            "$ uv run python scripts/check_sdd_gate.py --all-active --check",
+            "all active SDD gates passed",
+            "exit code: 0",
+        ),
+    )
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "active-sdd-lifecycle-check-flag-invalid" in _issue_codes(issues)
+    assert "validate_sdd_artifacts.py --check" in "\n".join(issue.message for issue in issues)
+    assert "check_sdd_gate.py --all-active --check" in "\n".join(issue.message for issue in issues)
+
+
 def test_verified_feature_requires_concrete_spec_compliance_evidence(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "completed", "2026-06-09-placeholder-spec-evidence")
     _write_valid_spec(feature / "spec.md", status="Verified")
