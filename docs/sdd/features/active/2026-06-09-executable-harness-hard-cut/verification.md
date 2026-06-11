@@ -192,6 +192,7 @@ claim is allowed without the corresponding output captured below.
 | AC173 — Pulse trigger dirty queue hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/domains/pulse_lab/test_pulse_trigger_dirty_target_repository.py::test_payload_hash_rejects_legacy_non_string_payload_keys tests/unit/domains/pulse_lab/test_pulse_trigger_dirty_target_repository.py::test_payload_hash_ignores_queue_lifecycle_fields -q` failed RED when Pulse trigger dirty hashing accepted non-string keys and treated scheduling lifecycle fields as payload drift, then passed after filtering lifecycle fields with strict string-key validation and delegating final hash generation to `stable_dirty_target_payload_hash()`. |
 | AC174 — Narrative admission dirty queue hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/domains/narrative_intel/test_narrative_dirty_target_repositories.py::test_payload_hash_rejects_legacy_non_string_payload_keys tests/unit/domains/narrative_intel/test_narrative_dirty_target_repositories.py::test_payload_hash_ignores_queue_lifecycle_fields -q` failed RED when Narrative dirty hashing accepted non-string keys and treated scheduling lifecycle fields as payload drift, then passed after filtering lifecycle fields with strict string-key validation and delegating final hash generation to `stable_dirty_target_payload_hash()`. |
 | AC175 — Asset Market dirty-control-plane hashes use shared dirty payload contract. | ✅ | `uv run pytest tests/unit/domains/asset_market/test_asset_market_dirty_target_payload_hashes.py -q` failed RED when Asset Market dirty queue hashes accepted compatibility-shaped payload keys, treated queue lifecycle fields as payload drift, and sanitized token-image raw refs before validation; it passed after adding `stable_dirty_target_payload_hash()`, switching Asset Market dirty queues to it, and validating raw refs before DB JSON safety. |
+| AC176 — Token Capture Tier dirty rank-set fingerprint uses shared current payload contract. | ✅ | `uv run pytest tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_uses_shared_payload_hash_contract tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_rejects_legacy_factor_snapshot_keys tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_rejects_unordered_payload_containers -q` failed RED when rank-set fingerprinting emitted bare hex hashes, stringified nested factor-snapshot keys, and accepted unordered containers; it passed after replacing local JSON/sha256 fingerprinting with `stable_current_payload_hash()` and deleting `_json_ready()`. |
 
 Deviations from spec:
 
@@ -3516,6 +3517,22 @@ exit code: 0
 $ uv run pytest tests/unit/domains/asset_market/test_asset_market_dirty_target_payload_hashes.py tests/unit/domains/token_intel/test_token_radar_dirty_target_kinds.py::test_dirty_payload_hash_excludes_queue_lifecycle_fields -q
 ..........                                                               [100%]
 10 passed in 0.12s
+exit code: 0
+
+$ uv run pytest tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_uses_shared_payload_hash_contract tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_rejects_legacy_factor_snapshot_keys tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_rejects_unordered_payload_containers -q
+FFF                                                                      [100%]
+AssertionError: assert False
+Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_uses_shared_payload_hash_contract tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_rejects_legacy_factor_snapshot_keys tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_rejects_unordered_payload_containers -q
+...                                                                      [100%]
+3 passed in 0.21s
+exit code: 0
+
+$ uv run pytest tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_ignores_source_watermark_metadata tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_includes_live_market_key tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_accepts_decimal_rank_scores tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_uses_shared_payload_hash_contract tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_rejects_legacy_factor_snapshot_keys tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_rejects_unordered_payload_containers tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_uses_factor_snapshot_live_market_key -q
+.......                                                                  [100%]
+7 passed in 0.19s
 exit code: 0
 ```
 

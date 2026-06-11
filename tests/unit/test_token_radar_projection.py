@@ -3,6 +3,8 @@ from __future__ import annotations
 from contextlib import contextmanager
 from decimal import Decimal
 
+import pytest
+
 import parallax.domains.token_intel.services.token_radar_projection as token_radar_projection_module
 from parallax.domains.asset_market.repositories.token_capture_tier_dirty_target_repository import (
     token_capture_tier_rank_set_payload_hash,
@@ -28,6 +30,7 @@ from parallax.domains.token_intel.services.token_radar_projection import (
     _rank_key,
     _row_from_target_feature,
 )
+from parallax.platform.current_read_model_payload_hash import PAYLOAD_HASH_HEX_LENGTH, PAYLOAD_HASH_PREFIX
 
 DROPPED_CURRENT_ROW_COLUMNS = {
     "asset_json",
@@ -1141,6 +1144,64 @@ def test_capture_tier_rank_set_fingerprint_accepts_decimal_rank_scores() -> None
             rows=[{**row, "rank_score": 88.5, "score": 88.5}],
         )
     )
+
+
+def test_capture_tier_rank_set_fingerprint_uses_shared_payload_hash_contract() -> None:
+    row = {
+        "target_type": "CexToken",
+        "target_id": "cex-token:btc",
+        "provider": "binance",
+        "native_market_id": "BTCUSDT",
+        "rank": 1,
+        "rank_score": Decimal("88.5"),
+        "lane": "resolved",
+        "quality_status": "ready",
+        "degraded_reasons_json": [],
+    }
+
+    payload_hash = token_capture_tier_rank_set_payload_hash(reason="repair", rows=[row])
+
+    assert payload_hash.startswith(PAYLOAD_HASH_PREFIX)
+    assert len(payload_hash.removeprefix(PAYLOAD_HASH_PREFIX)) == PAYLOAD_HASH_HEX_LENGTH
+
+
+def test_capture_tier_rank_set_fingerprint_rejects_legacy_factor_snapshot_keys() -> None:
+    row = {
+        "target_type": "CexToken",
+        "target_id": "cex-token:btc",
+        "rank": 1,
+        "rank_score": 88,
+        "lane": "resolved",
+        "quality_status": "ready",
+        "degraded_reasons_json": [],
+        "factor_snapshot_json": {
+            "subject": {
+                123: "legacy",
+                "provider": "binance",
+                "native_market_id": "BTCUSDT",
+            }
+        },
+    }
+
+    with pytest.raises(ValueError, match="current payload hash payload has non-string keys"):
+        token_capture_tier_rank_set_payload_hash(reason="repair", rows=[row])
+
+
+def test_capture_tier_rank_set_fingerprint_rejects_unordered_payload_containers() -> None:
+    row = {
+        "target_type": "Asset",
+        "target_id": "asset-1",
+        "chain_id": "solana",
+        "address": "abc",
+        "rank": 1,
+        "rank_score": 88,
+        "lane": "resolved",
+        "quality_status": "ready",
+        "degraded_reasons_json": {"legacy", "unordered"},
+    }
+
+    with pytest.raises(ValueError, match="current payload hash payload has unsupported containers"):
+        token_capture_tier_rank_set_payload_hash(reason="repair", rows=[row])
 
 
 def test_capture_tier_rank_set_fingerprint_uses_factor_snapshot_live_market_key() -> None:

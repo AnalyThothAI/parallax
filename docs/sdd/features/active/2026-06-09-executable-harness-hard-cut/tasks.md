@@ -3694,6 +3694,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 176 — Token Capture Tier dirty rank-set fingerprint uses shared strict payload hash
+
+- **File(s)**: `src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py`, `tests/unit/test_token_radar_projection.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 175
+- **Touch set**: `src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py`, `tests/unit/test_token_radar_projection.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `src/parallax/domains/asset_market/runtime/token_capture_tier_worker.py`, `src/parallax/domains/token_intel/services/token_radar_projection.py`, `src/parallax/platform/current_read_model_payload_hash.py`
+- **Failing test first**: `tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_uses_shared_payload_hash_contract`, `tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_rejects_legacy_factor_snapshot_keys`, and `tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_rejects_unordered_payload_containers` — call the rank-set dirty fingerprint with compliant rows, compatibility-shaped nested keys, and unordered containers and assert the shared `sha256:` contract plus strict payload validation.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Domain implementation
+- **Deterministic constraints**: Token Capture Tier dirty rank-set fingerprints must keep stable business rank fields and live-market keys, continue to ignore `factor_snapshot_json.provenance.computed_at_ms`, continue to normalize numeric rank scores through `_rank_score_payload()`, and use `stable_current_payload_hash()` for final fingerprint generation. The implementation must not preserve `_json_ready()` key stringification, set-to-list conversion, generic adapter unwrapping, or repository-local `json.dumps()`/`hashlib.sha256()` canonicalization as a compatibility path.
+- **On-demand context**: `src/parallax/domains/asset_market/ARCHITECTURE.md`, `docs/WORKER_FLOW.md`, `docs/WORKERS.md`, `docs/agent-playbook/read-model-change-checklist.md`, `src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py`, `src/parallax/domains/asset_market/runtime/token_capture_tier_worker.py`, and rank-set fingerprint tests in `tests/unit/test_token_radar_projection.py`.
+- **Kill/defer criteria**: Stop if rank-set fingerprints intentionally accept non-string factor-snapshot keys from a live producer, if unordered containers are required for compliant rank input rows, or if switching to the shared `sha256:` contract breaks compliant dirty claim/done matching.
+- **Eval/repair signal**: local `_json_ready()` compatibility normalizer, bare 64-character dirty fingerprints, non-string key acceptance, unordered container acceptance, computed-at drift in factor snapshots, rank-set dirty queue claim/done mismatch, and SDD generated index drift.
+- **Implementation**: Replace Token Capture Tier rank-set and row-product local JSON/sha256 fingerprinting with `stable_current_payload_hash()`, delete `_json_ready()`, preserve product-specific stable fields, and add RED tests for shared hash shape plus compatibility payload rejection.
+- **Verification**: `uv run pytest tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_uses_shared_payload_hash_contract tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_rejects_legacy_factor_snapshot_keys tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_rejects_unordered_payload_containers -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -3860,4 +3881,5 @@
 - [ ] `uv run pytest tests/unit/domains/pulse_lab/test_pulse_trigger_dirty_target_repository.py::test_payload_hash_rejects_legacy_non_string_payload_keys tests/unit/domains/pulse_lab/test_pulse_trigger_dirty_target_repository.py::test_payload_hash_ignores_queue_lifecycle_fields -q`
 - [ ] `uv run pytest tests/unit/domains/narrative_intel/test_narrative_dirty_target_repositories.py::test_payload_hash_rejects_legacy_non_string_payload_keys tests/unit/domains/narrative_intel/test_narrative_dirty_target_repositories.py::test_payload_hash_ignores_queue_lifecycle_fields -q`
 - [ ] `uv run pytest tests/unit/domains/asset_market/test_asset_market_dirty_target_payload_hashes.py tests/unit/domains/token_intel/test_token_radar_dirty_target_kinds.py::test_dirty_payload_hash_excludes_queue_lifecycle_fields -q`
+- [ ] `uv run pytest tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_uses_shared_payload_hash_contract tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_rejects_legacy_factor_snapshot_keys tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_rejects_unordered_payload_containers -q`
 - [ ] `make check-all`

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import hashlib
-import json
 from collections.abc import Iterable, Mapping
 from decimal import Decimal
 from typing import Any
+
+from parallax.platform.current_read_model_payload_hash import stable_current_payload_hash
 
 
 class TokenCaptureTierDirtyTargetRepository:
@@ -208,8 +208,7 @@ def token_capture_tier_rank_set_payload_hash(
         "rows": sorted([_rank_row_payload(row, exited=False) for row in rows], key=_rank_payload_sort_key),
         "exited_rows": sorted([_rank_row_payload(row, exited=True) for row in exited_rows], key=_rank_payload_sort_key),
     }
-    encoded = json.dumps(_json_ready(payload), sort_keys=True, separators=(",", ":"), ensure_ascii=True)
-    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+    return stable_current_payload_hash(payload)
 
 
 def _rank_row_payload(row: Mapping[str, Any], *, exited: bool) -> dict[str, Any]:
@@ -226,7 +225,7 @@ def _rank_row_payload(row: Mapping[str, Any], *, exited: bool) -> dict[str, Any]
         "rank_score": _rank_score_payload(row.get("rank_score", row.get("score"))),
         "decision": row.get("decision"),
         "quality_status": row.get("quality_status"),
-        "degraded_reasons_json": _json_ready(row.get("degraded_reasons_json") or []),
+        "degraded_reasons_json": row.get("degraded_reasons_json") or [],
         "exited": bool(exited),
     }
     payload["row_payload_hash"] = _rank_row_product_payload_hash(row, rank_payload=payload)
@@ -271,7 +270,7 @@ def _capture_rank_target(row: Mapping[str, Any], *, source_target_type: str) -> 
 
 
 def _rank_subject(row: Mapping[str, Any]) -> Mapping[str, Any]:
-    snapshot = _json_ready(row.get("factor_snapshot_json"))
+    snapshot = row.get("factor_snapshot_json")
     if not isinstance(snapshot, Mapping):
         return {}
     subject = snapshot.get("subject")
@@ -283,12 +282,11 @@ def _rank_row_product_payload_hash(row: Mapping[str, Any], *, rank_payload: Mapp
         **dict(rank_payload),
         "pricefeed_id": row.get("pricefeed_id"),
         "factor_snapshot_json": _stable_factor_snapshot(row.get("factor_snapshot_json")),
-        "source_event_ids_json": _json_ready(row.get("source_event_ids_json") or []),
-        "data_health_json": _json_ready(row.get("data_health_json") or {}),
-        "resolution_json": _json_ready(row.get("resolution_json") or {}),
+        "source_event_ids_json": row.get("source_event_ids_json") or [],
+        "data_health_json": row.get("data_health_json") or {},
+        "resolution_json": row.get("resolution_json") or {},
     }
-    encoded = json.dumps(_json_ready(payload), sort_keys=True, separators=(",", ":"), ensure_ascii=True)
-    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+    return stable_current_payload_hash(payload)
 
 
 def _rank_score_payload(value: Any) -> str | None:
@@ -302,13 +300,13 @@ def _rank_score_payload(value: Any) -> str | None:
 
 
 def _stable_factor_snapshot(value: Any) -> Any:
-    snapshot = _json_ready(value)
+    snapshot = value
     if not isinstance(snapshot, Mapping):
         return snapshot
     stable = dict(snapshot)
     provenance = stable.get("provenance")
     if isinstance(provenance, Mapping):
-        stable["provenance"] = {key: item for key, item in provenance.items() if str(key) != "computed_at_ms"}
+        stable["provenance"] = {key: item for key, item in provenance.items() if key != "computed_at_ms"}
     return stable
 
 
@@ -328,14 +326,3 @@ def _rank_payload_sort_key(row: Mapping[str, Any]) -> tuple[str, str, str, str, 
         str(row.get("lane") or ""),
         str(row.get("exited") or ""),
     )
-
-
-def _json_ready(value: Any) -> Any:
-    raw = getattr(value, "obj", value)
-    if isinstance(raw, Decimal):
-        return str(raw)
-    if isinstance(raw, Mapping):
-        return {str(key): _json_ready(item) for key, item in raw.items()}
-    if isinstance(raw, list | tuple | set):
-        return [_json_ready(item) for item in raw]
-    return raw
