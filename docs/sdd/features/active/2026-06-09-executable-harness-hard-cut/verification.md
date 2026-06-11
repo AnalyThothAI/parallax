@@ -238,6 +238,11 @@ claim is allowed without the corresponding output captured below.
 | AC219 — Coverage cells are concrete. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_concrete_coverage_values tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_placeholder_coverage_value -q` failed RED when Coverage `value` stayed `Pending` while `status` was `Pass`, then passed after every canonical Coverage cell had to be non-placeholder. |
 | AC220 — Spec compliance evidence is concrete. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_concrete_spec_compliance_evidence tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_placeholder_spec_compliance_evidence -q` failed RED when Spec compliance `Evidence` stayed `Pending.` while `Status` was `Pass`, then passed after completed rows required non-placeholder evidence and sentence-punctuated placeholders were normalized. |
 | AC221 — Spec compliance evidence is command-shaped. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_command_shaped_spec_compliance_evidence tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_prose_only_spec_compliance_evidence -q` failed RED when prose-only Spec compliance evidence satisfied final verification, then passed after completed rows had to cite command-shaped evidence. |
+| AC222 — E2E evidence ignores fenced examples. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_rejects_fenced_e2e_golden_path tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_fenced_e2e_golden_path -q` failed RED when fenced checklist examples satisfied final verification, then passed after E2E evidence stripped fenced blocks. |
+| AC223 — make check-all evidence uses its own exit code. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_make_check_all_own_exit_code_zero tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_failed_check_all_before_helper_success -q` failed RED when later helper success could satisfy failed check-all evidence, then passed after command transcript segmentation. |
+| AC224 — Task Board exposes repair pressure. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board -q` failed RED before the generated Task Board exposed `Kill/defer criteria` and `Eval/repair signal`, then passed after index generation rendered those columns. |
+| AC225 — Completion gate has a Make target. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_makefile_exposes_single_feature_sdd_completion_gate -q` failed RED before `check-sdd-completion` existed, then passed after the Make target and docs were added. |
+| AC226 — Makefile pytest targets reject empty collections. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_makefile_pytest_targets_do_not_accept_empty_collections -q` failed RED while Makefile pytest targets translated pytest exit code 5 into success, then passed after those compatibility shims were removed. |
 
 Deviations from spec:
 
@@ -4181,6 +4186,16 @@ $ uv run pytest tests/architecture/test_harness_structure.py::test_makefile_expo
 .                                                                        [100%]
 1 passed in 0.01s
 exit code: 0
+
+$ uv run pytest tests/architecture/test_harness_structure.py::test_makefile_pytest_targets_do_not_accept_empty_collections -q
+F                                                                        [100%]
+AssertionError: assert '[ $$ec -eq 5 ] && exit 0' not in 'PARALLAX :=...k_index.py\n'
+exit code: 1
+
+$ uv run pytest tests/architecture/test_harness_structure.py::test_makefile_pytest_targets_do_not_accept_empty_collections -q
+.                                                                        [100%]
+1 passed in 0.01s
+exit code: 0
 ```
 
 ## Diff summary
@@ -4240,6 +4255,7 @@ Files changed:
 - Verified make-check-all command segment exit-code binding: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Generated Task Board repair-pressure visibility: `scripts/regen_sdd_work_index.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/generated/sdd-work-index.md`.
 - Single-feature SDD completion Make target: `Makefile`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/_templates/verification-template.md`, `tests/architecture/test_harness_structure.py`.
+- Makefile pytest targets reject empty pytest collections: `Makefile`, `docs/TESTING.md`, `tests/architecture/test_harness_structure.py`.
 - Mechanical frontend Prettier drift cleanup: macro pages, macro component test, `web/vite.config.ts`.
 
 Migrations applied:

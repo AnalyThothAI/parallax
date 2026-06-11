@@ -4745,3 +4745,24 @@
 - **Verification**: `uv run pytest tests/architecture/test_harness_structure.py::test_makefile_exposes_single_feature_sdd_completion_gate -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 226 — Makefile pytest targets reject empty collections
+
+- **File(s)**: `Makefile`, `docs/TESTING.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 225
+- **Touch set**: `Makefile`, `docs/TESTING.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for generated SDD index updates.
+- **Failing test first**: `tests/architecture/test_harness_structure.py::test_makefile_pytest_targets_do_not_accept_empty_collections` — proves Makefile pytest targets cannot translate pytest empty-collection exit code 5 into success.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Makefile pytest targets must call pytest directly so empty collections fail instead of becoming false green harness or verification evidence.
+- **On-demand context**: `Makefile`, `docs/TESTING.md`, `tests/architecture/test_harness_structure.py`, and `docs/sdd/_templates/verification-template.md`.
+- **Kill/defer criteria**: Stop if any pytest target keeps exit-code-5 compatibility, hides an empty collection behind shell conditionals, or weakens `make check-all` completion semantics.
+- **Eval/repair signal**: empty-collection false green, stale Makefile comments, and completion-gate evidence drift.
+- **Implementation**: Remove exit-code-5 success shims from Makefile pytest targets and document that empty collections fail.
+- **Verification**: `uv run pytest tests/architecture/test_harness_structure.py::test_makefile_pytest_targets_do_not_accept_empty_collections -q`
+- **Review owner**: parent
+- **Status**: [x]

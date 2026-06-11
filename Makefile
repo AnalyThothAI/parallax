@@ -31,26 +31,26 @@ check: ## gates 1+2: lint + format + typecheck + unit + arch + contract (no exte
 	@uv run ruff format --check .
 	@uv run mypy src
 	@cd web && npm run typecheck && npm run lint && npm run format:check
-	@uv run python -m pytest tests/unit tests/architecture tests/contract -m "unit or architecture or contract"; ec=$$?; [ $$ec -eq 5 ] && exit 0 || exit $$ec
+	@uv run python -m pytest tests/unit tests/architecture tests/contract -m "unit or architecture or contract"
 	@uv run python -m compileall src tests
 
 test-unit: ## run only tests/unit/
-	@uv run python -m pytest tests/unit -m unit; ec=$$?; [ $$ec -eq 5 ] && exit 0 || exit $$ec
+	@uv run python -m pytest tests/unit -m unit
 
-test-integration: ## run only tests/integration/ (real Postgres required; auto testcontainers in P5)
-	@uv run python -m pytest tests/integration -m integration; ec=$$?; [ $$ec -eq 5 ] && exit 0 || exit $$ec
+test-integration: ## run only tests/integration/ (real PostgreSQL boundary)
+	@uv run python -m pytest tests/integration -m integration
 
-test-e2e: ## run only tests/e2e/ (testcontainers + uvicorn subprocess; populated in P5)
-	@uv run python -m pytest tests/e2e -m e2e; ec=$$?; [ $$ec -eq 5 ] && exit 0 || exit $$ec
+test-e2e: ## run only tests/e2e/ (running service boundary)
+	@uv run python -m pytest tests/e2e -m e2e
 
 test-golden: ## run only tests/golden/ (real Postgres golden corpus)
-	@uv run python -m pytest tests/golden -m e2e; ec=$$?; [ $$ec -eq 5 ] && exit 0 || exit $$ec
+	@uv run python -m pytest tests/golden -m e2e
 
 test-architecture: ## run only tests/architecture/ (AST/grep checks)
-	@uv run python -m pytest tests/architecture -m architecture; ec=$$?; [ $$ec -eq 5 ] && exit 0 || exit $$ec
+	@uv run python -m pytest tests/architecture -m architecture
 
 test-contract: ## run only tests/contract/ (OpenAPI drift; populated in P4)
-	@uv run python -m pytest tests/contract -m contract; ec=$$?; [ $$ec -eq 5 ] && exit 0 || exit $$ec
+	@uv run python -m pytest tests/contract -m contract
 
 check-sdd-completion: ## verify one SDD feature completion gate (requires FEATURE=<slug>)
 	@test -n "$(FEATURE)" || (echo "FEATURE=<slug> is required" >&2; exit 2)

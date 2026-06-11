@@ -604,6 +604,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC223. WHEN `verification.md` records `$ make check-all` with a non-zero exit code followed by another command with `exit code: 0` in the same fenced block THEN the validator and verify gate SHALL report `verified-missing-check-all` before helper success can satisfy final verification.
 - AC224. WHEN `docs/generated/sdd-work-index.md` renders the Task Board THEN each task row SHALL expose `Kill/defer criteria` and `Eval/repair signal` before agent-loop repair pressure can hide inside long task records.
 - AC225. WHEN an operator needs to prove one SDD feature's completion evidence THEN `make check-sdd-completion FEATURE=<slug>` SHALL run `scripts/check_sdd_gate.py --feature <slug> --gate verify --check` before completion semantics can be confused with the repo-wide `make check-all` pre-verify sweep.
+- AC226. WHEN any Makefile pytest target runs with an empty collection THEN the target SHALL return pytest's native empty-collection failure instead of translating exit code 5 into success before empty test lanes can satisfy harness or completion gates.
 
 ## Risks
 

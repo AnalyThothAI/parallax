@@ -293,6 +293,12 @@ def test_make_check_all_runs_executable_sdd_harness() -> None:
     assert "scripts/regen_sdd_work_index.py --check" in check_all
 
 
+def test_makefile_pytest_targets_do_not_accept_empty_collections() -> None:
+    makefile = _read(REPO_ROOT / "Makefile")
+    assert "[ $$ec -eq 5 ] && exit 0" not in makefile
+    assert "; ec=$$?" not in makefile
+
+
 def test_makefile_exposes_single_feature_sdd_completion_gate() -> None:
     makefile = _read(REPO_ROOT / "Makefile")
     workflow = _read(DOCS / "WORKFLOW.md")
