@@ -189,6 +189,7 @@ claim is allowed without the corresponding output captured below.
 | AC170 — Token Radar stable payload hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/test_token_radar_payload_hash.py::test_hash_rejects_legacy_non_string_payload_keys tests/unit/test_token_radar_payload_hash.py::test_hash_rejects_unordered_payload_containers -q` failed RED when Token Radar stable hashing accepted non-string keys and unordered containers, then passed after delegating final hash generation to `stable_current_payload_hash()` and rejecting compatibility-shaped payloads before canonicalization. |
 | AC171 — Shared current payload hash stays outside runtime imports. | ✅ | `uv run pytest tests/architecture/test_src_domain_architecture.py::test_repositories_and_queries_do_not_import_services_or_runtime -q` failed RED when domain repositories imported the shared hash helper from `parallax.app.runtime.current_read_model_publisher`, then passed after moving the pure hash contract to `parallax.platform.current_read_model_payload_hash` and updating domain imports. |
 | AC172 — Token Radar dirty queue hashes use shared current payload contract. | ✅ | `uv run pytest tests/unit/test_token_radar_dirty_target_repository.py::test_dirty_payload_hash_rejects_legacy_non_string_payload_keys tests/unit/domains/token_intel/test_token_radar_source_dirty_events.py::test_source_dirty_event_payload_hash_rejects_legacy_non_string_payload_keys -q` failed RED when dirty queue hash helpers accepted non-string keys through local key stringification, then passed after filtering lifecycle fields with strict string-key validation and delegating final hash generation to `stable_current_payload_hash()`. |
+| AC173 — Pulse trigger dirty queue hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/domains/pulse_lab/test_pulse_trigger_dirty_target_repository.py::test_payload_hash_rejects_legacy_non_string_payload_keys tests/unit/domains/pulse_lab/test_pulse_trigger_dirty_target_repository.py::test_payload_hash_ignores_queue_lifecycle_fields -q` failed RED when Pulse trigger dirty hashing accepted non-string keys and treated scheduling lifecycle fields as payload drift, then passed after filtering lifecycle fields with strict string-key validation and delegating final hash generation to `stable_current_payload_hash()`. |
 
 Deviations from spec:
 
@@ -3464,6 +3465,17 @@ exit code: 1
 $ uv run pytest tests/unit/test_token_radar_dirty_target_repository.py::test_dirty_payload_hash_rejects_legacy_non_string_payload_keys tests/unit/domains/token_intel/test_token_radar_source_dirty_events.py::test_source_dirty_event_payload_hash_rejects_legacy_non_string_payload_keys -q
 ..                                                                       [100%]
 2 passed in 0.29s
+exit code: 0
+
+$ uv run pytest tests/unit/domains/pulse_lab/test_pulse_trigger_dirty_target_repository.py::test_payload_hash_rejects_legacy_non_string_payload_keys tests/unit/domains/pulse_lab/test_pulse_trigger_dirty_target_repository.py::test_payload_hash_ignores_queue_lifecycle_fields -q
+FF                                                                       [100%]
+Failed: DID NOT RAISE <class 'ValueError'>
+AssertionError: assert second == first
+exit code: 1
+
+$ uv run pytest tests/unit/domains/pulse_lab/test_pulse_trigger_dirty_target_repository.py::test_payload_hash_rejects_legacy_non_string_payload_keys tests/unit/domains/pulse_lab/test_pulse_trigger_dirty_target_repository.py::test_payload_hash_ignores_queue_lifecycle_fields -q
+..                                                                       [100%]
+2 passed in 0.24s
 exit code: 0
 ```
 

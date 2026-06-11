@@ -1,11 +1,22 @@
 from __future__ import annotations
 
-import hashlib
-import json
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from parallax.platform.db.json_safety import postgres_safe_json
+from parallax.platform.current_read_model_payload_hash import stable_current_payload_hash
+
+PULSE_TRIGGER_PAYLOAD_LIFECYCLE_FIELDS = frozenset(
+    {
+        "due_at_ms",
+        "leased_until_ms",
+        "lease_owner",
+        "attempt_count",
+        "last_error",
+        "first_dirty_at_ms",
+        "updated_at_ms",
+        "priority",
+    }
+)
 
 
 class PulseTriggerDirtyTargetRepository:
@@ -494,6 +505,11 @@ def _priority_value(row: Mapping[str, Any]) -> int:
 
 
 def _payload_hash(payload: Mapping[str, Any]) -> str:
-    safe_payload = postgres_safe_json(dict(payload))
-    encoded = json.dumps(safe_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
+    stable_payload: dict[str, Any] = {}
+    for key, value in payload.items():
+        if type(key) is not str:
+            raise ValueError(f"current payload hash payload has non-string keys: {(key,)}")
+        if key in PULSE_TRIGGER_PAYLOAD_LIFECYCLE_FIELDS:
+            continue
+        stable_payload[key] = value
+    return stable_current_payload_hash(stable_payload)

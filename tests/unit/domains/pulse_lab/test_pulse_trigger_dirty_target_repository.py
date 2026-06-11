@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from parallax.app.runtime.repository_session import repositories_for_connection
 from parallax.domains.pulse_lab.repositories.pulse_trigger_dirty_target_repository import (
     PulseTriggerDirtyTargetRepository,
+    _payload_hash,
 )
 
 
@@ -91,6 +94,44 @@ def test_claim_due_orders_by_priority_due_and_updated_and_increments_attempts() 
     assert "attempt_count = pulse_trigger_dirty_targets.attempt_count + 1" in sql
     assert conn.params[-1]["leased_until_ms"] == 1_700_000_060_000
     assert conn.params[-1]["lease_owner"] == "pulse-a"
+
+
+def test_payload_hash_rejects_legacy_non_string_payload_keys() -> None:
+    with pytest.raises(ValueError, match="current payload hash payload has non-string keys"):
+        _payload_hash({123: "legacy", "target_type": "Asset", "target_id": "asset-1"})
+
+
+def test_payload_hash_ignores_queue_lifecycle_fields() -> None:
+    first = _payload_hash(
+        {
+            "target_type": "Asset",
+            "target_id": "asset-1",
+            "window": "1h",
+            "scope": "all",
+            "source_watermark_ms": 123,
+            "dirty_reason": "token_radar_changed",
+            "priority": 10,
+            "due_at_ms": 100,
+            "leased_until_ms": 200,
+            "attempt_count": 1,
+        }
+    )
+    second = _payload_hash(
+        {
+            "target_type": "Asset",
+            "target_id": "asset-1",
+            "window": "1h",
+            "scope": "all",
+            "source_watermark_ms": 123,
+            "dirty_reason": "token_radar_changed",
+            "priority": 90,
+            "due_at_ms": 999,
+            "leased_until_ms": 888,
+            "attempt_count": 3,
+        }
+    )
+
+    assert second == first
 
 
 def test_mark_done_requires_full_stale_completion_token() -> None:
