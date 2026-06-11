@@ -1536,11 +1536,24 @@ def _verified_coverage_issues(artifact: ArtifactRecord) -> list[SddIssue]:
             )
         ]
 
-    incomplete_rows = [
-        f"{_clean_value(cells[0]) or '<unnamed metric>'} => {_clean_value(cells[3]) or '<missing status>'}"
-        for cells in rows
-        if len(cells) >= 4 and not _is_complete_compliance_status(cells[3])
-    ]
+    incomplete_rows: list[str] = []
+    for cells in rows:
+        metric = _clean_value(cells[0]) if cells else "<unnamed metric>"
+        if len(cells) < len(COVERAGE_HEADER):
+            incomplete_rows.append(f"{metric or '<unnamed metric>'} => malformed row")
+            continue
+        placeholder_columns = [
+            COVERAGE_HEADER[index]
+            for index, cell in enumerate(cells[: len(COVERAGE_HEADER)])
+            if is_placeholder_table_cell(cell)
+        ]
+        if placeholder_columns:
+            incomplete_rows.append(
+                f"{metric or '<unnamed metric>'} => placeholder {', '.join(placeholder_columns)}"
+            )
+            continue
+        if not _is_complete_compliance_status(cells[3]):
+            incomplete_rows.append(f"{metric or '<unnamed metric>'} => {_clean_value(cells[3]) or '<missing status>'}")
     if not incomplete_rows:
         return []
     return [

@@ -235,6 +235,7 @@ claim is allowed without the corresponding output captured below.
 | AC216 — Skipped-test count must be numeric. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_numeric_skipped_test_count tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_pending_skipped_count -q` failed RED when `Pending` skipped-count evidence satisfied final verification, then passed after final evidence required a numeric skipped-test count. |
 | AC217 — Skipped-test count is section-local. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_skipped_count_inside_skipped_tests_section tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_skipped_count_outside_skipped_section -q` failed RED when stale `Other commands run` skipped-count output satisfied final verification, then passed after skipped-test evidence was scoped to `## Skipped tests`. |
 | AC218 — Skipped-test explanation table is canonical. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_canonical_skipped_tests_table tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_freeform_skipped_table -q` failed RED when freeform pipe rows satisfied skipped-test explanations, then passed after skipped-test explanations reused the canonical Markdown table parser. |
+| AC219 — Coverage cells are concrete. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_concrete_coverage_values tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_placeholder_coverage_value -q` failed RED when Coverage `value` stayed `Pending` while `status` was `Pass`, then passed after every canonical Coverage cell had to be non-placeholder. |
 
 Deviations from spec:
 
@@ -4097,6 +4098,17 @@ $ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified
 ..                                                                       [100%]
 2 passed in 0.06s
 exit code: 0
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_concrete_coverage_values tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_placeholder_coverage_value -q
+FF                                                                       [100%]
+AssertionError: assert 'verified-coverage-incomplete' in set()
+AssertionError: assert 0 == 1
+exit code: 1
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_concrete_coverage_values tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_placeholder_coverage_value -q
+..                                                                       [100%]
+2 passed in 0.06s
+exit code: 0
 ```
 
 ## Diff summary
@@ -4149,6 +4161,7 @@ Files changed:
 - Verified skipped-test numeric count completion: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Verified skipped-test section-local count completion: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Verified skipped-test canonical explanation table completion: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
+- Verified concrete Coverage row completion: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Mechanical frontend Prettier drift cleanup: macro pages, macro component test, `web/vite.config.ts`.
 
 Migrations applied:

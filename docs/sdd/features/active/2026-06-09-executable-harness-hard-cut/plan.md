@@ -731,6 +731,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC216: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_numeric_skipped_test_count tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_pending_skipped_count -q`
 - AC217: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_skipped_count_inside_skipped_tests_section tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_skipped_count_outside_skipped_section -q`
 - AC218: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_canonical_skipped_tests_table tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_freeform_skipped_table -q`
+- AC219: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_concrete_coverage_values tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_placeholder_coverage_value -q`
 
 ## Verification
 

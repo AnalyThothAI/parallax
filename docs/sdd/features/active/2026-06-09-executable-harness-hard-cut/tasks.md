@@ -4598,3 +4598,24 @@
 - **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_canonical_skipped_tests_table tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_freeform_skipped_table -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 219 — Coverage cells are concrete
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 218
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/verification-template.md`
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_concrete_coverage_values` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_placeholder_coverage_value` — prove final verification cannot pass when Coverage `value` is still `Pending` but `status` says `Pass`.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Coverage evidence must use the canonical `metric | value | threshold | status` table and every canonical cell must be non-placeholder before status completion is considered.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `docs/sdd/_templates/verification-template.md`, and final verification evidence tests.
+- **Kill/defer criteria**: Stop if `Pending`, `<pending>`, template, or freeform coverage cells can pass by setting only the status cell to `Pass`.
+- **Eval/repair signal**: coverage-value false green and completion-gate evidence drift.
+- **Implementation**: Check every canonical Coverage row cell with shared placeholder semantics before evaluating complete status.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_concrete_coverage_values tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_verify_rejects_placeholder_coverage_value -q`
+- **Review owner**: parent
+- **Status**: [x]
