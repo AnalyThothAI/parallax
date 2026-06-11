@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import hashlib
-import json
 from collections.abc import Iterable, Mapping
 from typing import Any
 
 from parallax.domains.token_intel._constants import TOKEN_RADAR_PROJECTION_VERSION
-from parallax.platform.db.json_safety import postgres_safe_json
+from parallax.platform.current_read_model_payload_hash import stable_current_payload_hash
 
 MARKET_DIRTY_MIN_INTERVAL_MS = 60_000
 
@@ -46,13 +44,14 @@ def dirty_kind_flags(reason: str) -> dict[str, bool]:
 
 
 def dirty_payload_hash(payload: Mapping[str, Any]) -> str:
-    stable_payload = {
-        str(key): postgres_safe_json(value)
-        for key, value in payload.items()
-        if str(key) not in DIRTY_PAYLOAD_LIFECYCLE_FIELDS
-    }
-    encoded = json.dumps(stable_payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
-    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+    stable_payload: dict[str, Any] = {}
+    for key, value in payload.items():
+        if type(key) is not str:
+            raise ValueError(f"current payload hash payload has non-string keys: {(key,)}")
+        if key in DIRTY_PAYLOAD_LIFECYCLE_FIELDS:
+            continue
+        stable_payload[key] = value
+    return stable_current_payload_hash(stable_payload)
 
 
 class TokenRadarDirtyTargetRepository:

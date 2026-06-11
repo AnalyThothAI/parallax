@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from parallax.app.runtime.repository_session import repositories_for_connection
 from parallax.domains.token_intel.repositories.token_radar_dirty_target_repository import (
     TokenRadarDirtyTargetRepository,
+    dirty_payload_hash,
 )
 from parallax.domains.token_intel.repositories.token_radar_source_dirty_event_repository import (
     TokenRadarSourceDirtyEventRepository,
@@ -55,6 +58,11 @@ def test_enqueue_targets_unions_dirty_kind_flags_on_conflict() -> None:
     assert "ELSE 'mixed'" in sql
     assert conn.params[-1]["market_dirty"] is False
     assert conn.params[-1]["repair_dirty"] is False
+
+
+def test_dirty_payload_hash_rejects_legacy_non_string_payload_keys() -> None:
+    with pytest.raises(ValueError, match="current payload hash payload has non-string keys"):
+        dirty_payload_hash({123: "legacy", "target_type_key": "Asset", "identity_id": "asset-1"})
 
 
 def test_claim_due_uses_skip_locked_and_claims_stale_leases() -> None:

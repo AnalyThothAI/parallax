@@ -3,6 +3,8 @@ from __future__ import annotations
 from importlib import import_module
 from typing import ClassVar
 
+import pytest
+
 
 def test_source_dirty_event_queue_coalesces_by_source_event_edge() -> None:
     module = import_module("parallax.domains.token_intel.repositories.token_radar_source_dirty_event_repository")
@@ -55,6 +57,15 @@ def test_source_dirty_event_payload_hash_ignores_lease_lifecycle() -> None:
     )
 
     assert second == first
+
+
+def test_source_dirty_event_payload_hash_rejects_legacy_non_string_payload_keys() -> None:
+    module = import_module("parallax.domains.token_intel.repositories.token_radar_source_dirty_event_repository")
+
+    with pytest.raises(ValueError, match="current payload hash payload has non-string keys"):
+        module.source_dirty_event_payload_hash(
+            {123: "legacy", "source_event_id": "event-1", "target_type_key": "Asset", "identity_id": "asset-1"}
+        )
 
 
 class _ScriptedConnection:

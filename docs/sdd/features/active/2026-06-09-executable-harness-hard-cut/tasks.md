@@ -3610,6 +3610,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 172 — Token Radar dirty queues use shared strict payload hash
+
+- **File(s)**: `src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py`, `src/parallax/domains/token_intel/repositories/token_radar_source_dirty_event_repository.py`, `tests/unit/test_token_radar_dirty_target_repository.py`, `tests/unit/domains/token_intel/test_token_radar_source_dirty_events.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 171
+- **Touch set**: `src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py`, `src/parallax/domains/token_intel/repositories/token_radar_source_dirty_event_repository.py`, `tests/unit/test_token_radar_dirty_target_repository.py`, `tests/unit/domains/token_intel/test_token_radar_source_dirty_events.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py` for dirty-target claim/done semantics; coordinate with `src/parallax/domains/token_intel/services/token_radar_projection.py` for downstream dirty-target payload hash semantics; coordinate with `src/parallax/platform/current_read_model_payload_hash.py` for shared current payload hash validation shape.
+- **Failing test first**: `tests/unit/test_token_radar_dirty_target_repository.py::test_dirty_payload_hash_rejects_legacy_non_string_payload_keys` and `tests/unit/domains/token_intel/test_token_radar_source_dirty_events.py::test_source_dirty_event_payload_hash_rejects_legacy_non_string_payload_keys` — call dirty queue payload hash helpers with compatibility-shaped non-string mapping keys and assert shared current payload validation raises before local key stringification or JSON sanitation.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Domain implementation
+- **Deterministic constraints**: Token Radar dirty target and source dirty event queue hashes must keep lifecycle fields out of the stable payload, but lifecycle filtering must require string keys first and final hash generation must use `stable_current_payload_hash()` from `src/parallax/platform/current_read_model_payload_hash.py`. The helpers must not call `postgres_safe_json()`, stringify mapping keys, or preserve local `hashlib`/`json.dumps` canonicalization as a compatibility path.
+- **On-demand context**: `src/parallax/domains/token_intel/ARCHITECTURE.md`, `docs/agent-playbook/read-model-change-checklist.md`, `src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py`, `src/parallax/domains/token_intel/repositories/token_radar_source_dirty_event_repository.py`, `tests/unit/test_token_radar_dirty_target_repository.py`, `tests/unit/domains/token_intel/test_token_radar_source_dirty_events.py`, and current read-model payload hash idempotency contracts.
+- **Kill/defer criteria**: Stop if dirty queue hash payloads intentionally accept non-string keys for a live producer, if lifecycle fields need to remain in queue no-op hashes, or if the shared strict hash changes claim/done matching for compliant dirty queue rows.
+- **Eval/repair signal**: dirty queue local sha256 JSON dump, `str(key)` filtering, `postgres_safe_json()` sanitation before hash, queue payload hash drift, claim/done mismatch, source dirty event coalescing drift, and SDD generated index drift.
+- **Implementation**: Compute Token Radar dirty target and source dirty event queue `payload_hash` values with `stable_current_payload_hash()` after strict lifecycle-field filtering, and add RED tests proving legacy non-string key payloads are rejected before compatibility normalization.
+- **Verification**: `uv run pytest tests/unit/test_token_radar_dirty_target_repository.py::test_dirty_payload_hash_rejects_legacy_non_string_payload_keys tests/unit/domains/token_intel/test_token_radar_source_dirty_events.py::test_source_dirty_event_payload_hash_rejects_legacy_non_string_payload_keys -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -3772,4 +3793,5 @@
 - [ ] `uv run pytest tests/unit/domains/macro_intel/test_macro_observation_identity.py::test_macro_series_current_row_payload_hash_rejects_legacy_raw_payload_keys -q`
 - [ ] `uv run pytest tests/unit/test_token_radar_payload_hash.py::test_hash_rejects_legacy_non_string_payload_keys tests/unit/test_token_radar_payload_hash.py::test_hash_rejects_unordered_payload_containers -q`
 - [ ] `uv run pytest tests/architecture/test_src_domain_architecture.py::test_repositories_and_queries_do_not_import_services_or_runtime -q`
+- [ ] `uv run pytest tests/unit/test_token_radar_dirty_target_repository.py::test_dirty_payload_hash_rejects_legacy_non_string_payload_keys tests/unit/domains/token_intel/test_token_radar_source_dirty_events.py::test_source_dirty_event_payload_hash_rejects_legacy_non_string_payload_keys -q`
 - [ ] `make check-all`
