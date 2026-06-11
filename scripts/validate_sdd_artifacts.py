@@ -1469,16 +1469,17 @@ def _verified_issues(feature: SddFeature) -> list[SddIssue]:
     issues.extend(_verified_spec_compliance_issues(feature, artifact))
     issues.extend(_verified_coverage_issues(artifact))
     issues.extend(_verified_e2e_issues(artifact))
-    skipped_match = SKIPPED_RE.search(artifact.text)
+    skipped_section = _section_text(artifact.text, "## Skipped tests")
+    skipped_match = SKIPPED_RE.search(skipped_section)
     if skipped_match is None:
         issues.append(
             _issue(
                 "verified-unexplained-skips",
                 artifact,
-                "Verified record must include numeric skipped-test count",
+                "Verified Skipped tests section must include numeric skipped-test count",
             )
         )
-    elif int(skipped_match.group("count")) > 0 and not _skipped_rows_are_acceptable(artifact.text):
+    elif int(skipped_match.group("count")) > 0 and not _skipped_rows_are_acceptable(skipped_section):
         issues.append(
             _issue("verified-unexplained-skips", artifact, "Verified record has skipped tests without explanation")
         )
@@ -2111,8 +2112,7 @@ def _skipped_rows_are_acceptable(text: str) -> bool:
     if skipped_count == 0:
         return True
 
-    section = _section_text(text, "## Skipped tests")
-    rows = [line for line in section.splitlines() if line.startswith("|") and "---" not in line]
+    rows = [line for line in text.splitlines() if line.startswith("|") and "---" not in line]
     data_rows = rows[1:]
     total = 0
     for row in data_rows:

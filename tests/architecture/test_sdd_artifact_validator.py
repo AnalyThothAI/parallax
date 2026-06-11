@@ -1085,6 +1085,29 @@ def test_verified_feature_requires_numeric_skipped_test_count(tmp_path: Path) ->
     assert "numeric skipped-test count" in "\n".join(issue.message for issue in issues)
 
 
+def test_verified_feature_requires_skipped_count_inside_skipped_tests_section(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "completed", "2026-06-09-stale-skip-count")
+    _write_valid_spec(feature / "spec.md", status="Verified")
+    _write_valid_plan(feature / "plan.md", status="Verified")
+    _write_valid_tasks(feature / "tasks.md", status="Verified")
+    _write_valid_verification(
+        feature / "verification.md",
+        status="Verified",
+        skipped_count="Pending",
+        other_command_lines=(
+            "$ uv run pytest tests/architecture/test_sdd_artifact_validator.py -q",
+            "Number of skipped tests in the run above: 0",
+            "1 passed in 0.01s",
+            "exit code: 0",
+        ),
+    )
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "verified-unexplained-skips" in _issue_codes(issues)
+    assert "Skipped tests section" in "\n".join(issue.message for issue in issues)
+
+
 def test_verified_feature_requires_complete_spec_compliance_rows(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "completed", "2026-06-09-incomplete-spec-compliance")
     _write_valid_spec(feature / "spec.md", status="Verified")

@@ -595,6 +595,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC214. WHEN `verification.md` Coverage rows are missing or remain non-complete THEN the validator and verify gate SHALL report `verified-coverage-incomplete` before coverage placeholders can satisfy final verification.
 - AC215. WHEN `verification.md` E2E golden path omits or leaves unchecked any required runtime signal THEN the validator and verify gate SHALL report `verified-e2e-incomplete` before skipped or not-applicable E2E evidence can satisfy final verification.
 - AC216. WHEN `verification.md` Skipped tests evidence omits a numeric skipped-test count or leaves it as non-numeric placeholder text THEN the validator and verify gate SHALL report `verified-unexplained-skips` before pending skipped-test evidence can satisfy final verification.
+- AC217. WHEN a numeric skipped-test count appears outside the `## Skipped tests` section, such as inside `## Other commands run`, THEN the validator and verify gate SHALL ignore that stale count and report `verified-unexplained-skips` unless the Skipped tests section itself contains numeric skipped-test evidence.
 
 ## Risks
 
