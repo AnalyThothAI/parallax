@@ -744,6 +744,27 @@ def test_plan_analyze_gate_rejects_failed_results(tmp_path: Path) -> None:
     assert "plan-analyze-gate-invalid" in _issue_codes(issues)
 
 
+def test_plan_analyze_gate_rejects_status_without_evidence(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-analyze-gate-status-without-evidence")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _replace_section_body(
+        feature / "plan.md",
+        "## Analyze Gate",
+        (
+            "| Check | Result |",
+            "|-------|--------|",
+            "| Architecture boundary is proven. | Pass: |",
+        ),
+    )
+    _write_valid_tasks(feature / "tasks.md", status="In Progress", task_status="[~]")
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "plan-analyze-gate-invalid" in _issue_codes(issues)
+
+
 def test_plan_analyze_gate_ignores_non_canonical_tables(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-analyze-gate-extra-table")
     _write_valid_spec(feature / "spec.md", status="In Progress")

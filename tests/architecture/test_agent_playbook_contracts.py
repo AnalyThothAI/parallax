@@ -427,6 +427,49 @@ def test_sdd_gate_check_cli_rejects_unbounded_analyze_status(tmp_path: Path) -> 
 
 
 @pytest.mark.architecture
+def test_sdd_gate_check_cli_rejects_analyze_status_without_evidence(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "check_sdd_gate.py"
+    assert script.exists()
+    _write_context_packet_fixture(tmp_path)
+    _create_context_packet_fixture_paths(tmp_path)
+    plan_path = (
+        tmp_path
+        / "docs"
+        / "sdd"
+        / "features"
+        / "active"
+        / "2026-06-09-context-packet-fixture"
+        / "plan.md"
+    )
+    plan_text = plan_path.read_text(encoding="utf-8")
+    plan_path.write_text(
+        plan_text.replace("Pass: fixture only exercises development-agent harness.", "Pass:"),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--gate",
+            "analyze",
+            "--check",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "plan-analyze-gate-invalid" in result.stderr
+
+
+@pytest.mark.architecture
 def test_sdd_gate_check_cli_ignores_non_canonical_analyze_tables(tmp_path: Path) -> None:
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()

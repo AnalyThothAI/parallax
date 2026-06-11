@@ -1803,11 +1803,20 @@ def analyze_gate_invalid_results(text: str) -> list[str]:
         result = _clean_value(cells[1])
         if _is_placeholder_table_cell(result):
             continue
-        if result.startswith(("Pass:", "Blocked:")):
+        if _analyze_result_has_status_evidence(result):
             continue
         check = _clean_value(cells[0]) or "<unnamed check>"
         invalid_results.append(f"{check} => {result}")
     return invalid_results
+
+
+def _analyze_result_has_status_evidence(result: str) -> bool:
+    for status in ("Pass:", "Blocked:"):
+        if not result.startswith(status):
+            continue
+        evidence = result.removeprefix(status).strip()
+        return not _is_placeholder_table_cell(evidence)
+    return False
 
 
 def _section_table_rows(text: str, heading: str, expected_header: tuple[str, ...] | None = None) -> list[list[str]]:

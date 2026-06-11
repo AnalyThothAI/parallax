@@ -4367,3 +4367,24 @@
 - **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_compliance_requires_all_canonical_gate_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_implement_rejects_incomplete_task_gate_compliance -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 208 — Analyze status rows include evidence
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 207
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/plan-template.md`
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_plan_analyze_gate_rejects_status_without_evidence` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_analyze_status_without_evidence` — prove status-only Analyze results cannot satisfy the validator or analyze gate.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Analyze Gate result cells must start with `Pass:` or `Blocked:` and include non-placeholder evidence after the status token.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `docs/sdd/_templates/plan-template.md`, and Analyze Gate tests.
+- **Kill/defer criteria**: Stop if status-only rows satisfy analysis readiness, if valid status-plus-evidence rows are rejected, or if the gate CLI diverges from the validator.
+- **Eval/repair signal**: status-only false green, placeholder evidence drift, and validator/gate CLI semantic drift.
+- **Implementation**: Add a shared Analyze result predicate used by `analyze_gate_invalid_results()` so both the validator and gate CLI require evidence after the status prefix.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_analyze_gate_rejects_status_without_evidence tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_analyze_status_without_evidence -q`
+- **Review owner**: parent
+- **Status**: [x]
