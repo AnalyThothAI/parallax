@@ -308,6 +308,9 @@ def _issue_meaning(code: str) -> str:
             "Active records advertise obsolete SDD lifecycle --check flags."
         ),
         "active-placeholder-final-evidence": "Active records contain placeholder final verification transcripts.",
+        "active-skipped-count-without-final-evidence": (
+            "Active records claim numeric skipped-test counts without final make check-all evidence."
+        ),
     }
     return meanings[code]
 

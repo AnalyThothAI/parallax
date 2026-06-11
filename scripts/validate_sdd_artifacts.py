@@ -235,6 +235,7 @@ KNOWN_ISSUE_CODES = (
     "active-feature-too-large",
     "active-sdd-lifecycle-check-flag-invalid",
     "active-placeholder-final-evidence",
+    "active-skipped-count-without-final-evidence",
 )
 
 
@@ -515,6 +516,7 @@ def _feature_issues(feature: SddFeature) -> list[SddIssue]:
     issues.extend(_active_feature_size_issues(feature))
     issues.extend(_active_sdd_lifecycle_check_flag_issues(feature))
     issues.extend(_active_placeholder_final_evidence_issues(feature))
+    issues.extend(_active_skipped_count_without_final_evidence_issues(feature))
     if feature.status.lower() == "verified":
         issues.extend(_verified_issues(feature))
     return issues
@@ -572,6 +574,29 @@ def _active_placeholder_final_evidence_issues(feature: SddFeature) -> list[SddIs
             artifact,
             "active verification commands must not contain placeholder final transcript evidence: "
             + ", ".join(placeholders),
+        )
+    ]
+
+
+def _active_skipped_count_without_final_evidence_issues(feature: SddFeature) -> list[SddIssue]:
+    if feature.state != "active":
+        return []
+    artifact = feature.artifacts["verification.md"]
+    if artifact.missing:
+        return []
+    skipped_section = _section_text(artifact.text, "## Skipped tests")
+    if SKIPPED_RE.search(skipped_section) is None:
+        return []
+    make_check_all = _verification_make_check_all_block(artifact.text)
+    make_check_all_exit_codes = _command_exit_codes(make_check_all) if make_check_all is not None else ()
+    if make_check_all_exit_codes == (0,):
+        return []
+    return [
+        _issue(
+            "active-skipped-count-without-final-evidence",
+            artifact,
+            "active Skipped tests numeric run-above count requires successful final "
+            "`make check-all` evidence in Verification commands; use non-final prose until that run exists",
         )
     ]
 

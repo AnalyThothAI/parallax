@@ -45,9 +45,8 @@ Not final completion evidence. Final completion still requires a fresh
 
 ## Skipped tests
 
-Number of skipped tests in the run above: 0
-
-If the final run skips tests, list categories and explain why each is acceptable.
+Not final completion evidence. Skipped-test accounting will be recorded with
+the final `make check-all` run.
 
 ## E2E golden path
 

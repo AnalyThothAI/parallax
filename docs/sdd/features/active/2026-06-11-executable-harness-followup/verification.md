@@ -20,6 +20,7 @@
 | AC5 - Verification status tokens are lifecycle-wide. | Pass | `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_verification_tables_reject_symbolic_status_tokens_before_final_verification -q` failed RED before lifecycle-wide verification table status validation, then passed after `verification-status-token-invalid` enforcement and existing SDD status-cell cleanup. |
 | AC6 - Active records use current SDD lifecycle commands. | Pass | `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_active_records_reject_legacy_sdd_lifecycle_check_flags -q` failed RED before active-record lifecycle command validation, then passed after `active-sdd-lifecycle-check-flag-invalid` enforcement and active agent-playbook command cleanup. |
 | AC7 - Active records do not fake final transcripts. | Pass | `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_active_records_reject_placeholder_final_verification_transcripts -q` failed RED before active placeholder-final-evidence validation, then passed after `active-placeholder-final-evidence` enforcement and active agent-playbook transcript cleanup. |
+| AC8 - Active skipped-test accounting is final-run-bound. | Pass | `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_active_records_reject_skipped_count_without_final_evidence -q` failed RED before active skipped-test accounting validation, then passed after `active-skipped-count-without-final-evidence` enforcement and active non-final skip-count cleanup. |
 
 ## Verification commands
 
@@ -29,12 +30,13 @@ Not final completion evidence. Final completion still requires `make check-all` 
 
 | metric | value | threshold | status |
 |--------|-------|-----------|--------|
-| architecture and SDD artifact tests | 141 tests | >= targeted harness tests | Pass |
+| architecture and SDD artifact tests | 142 tests | >= targeted harness tests | Pass |
 | SDD active gates | 2 active features | all active clarify/checklist/analyze/implement gates pass | Pass |
 
 ## Skipped tests
 
-Number of skipped tests in the run above: 0
+Not final completion evidence. Skipped-test accounting will be recorded with
+the final `make check-all` run.
 
 ## E2E golden path
 
@@ -319,6 +321,47 @@ exit code: 0
 
 $ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run pytest tests/architecture/test_harness_structure.py tests/architecture/test_sdd_artifact_validator.py -q
 141 passed in 0.50s
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run python scripts/check_sdd_gate.py --all-active
+all active SDD gates passed (clarify/checklist/analyze/implement): 2026-06-09-agent-playbook-skill-hard-cut, 2026-06-11-executable-harness-followup
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run ruff check scripts/validate_sdd_artifacts.py scripts/regen_sdd_work_index.py tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_harness_structure.py
+All checks passed!
+exit code: 0
+
+$ git diff --check
+exit code: 0
+
+$ uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_active_records_reject_skipped_count_without_final_evidence -q
+F                                                                        [100%]
+AssertionError: assert 'active-skipped-count-without-final-evidence' in set()
+exit code: 1
+
+$ uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_active_records_reject_skipped_count_without_final_evidence -q
+.                                                                        [100%]
+1 passed in 0.03s
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run python scripts/validate_sdd_artifacts.py
+error: active-skipped-count-without-final-evidence: docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut/verification.md: active Skipped tests numeric run-above count requires successful final `make check-all` evidence in Verification commands; use non-final prose until that run exists
+error: active-skipped-count-without-final-evidence: docs/sdd/features/active/2026-06-11-executable-harness-followup/verification.md: active Skipped tests numeric run-above count requires successful final `make check-all` evidence in Verification commands; use non-final prose until that run exists
+exit code: 1
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run python scripts/validate_sdd_artifacts.py
+SDD artifact validation passed.
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run python scripts/regen_sdd_work_index.py
+wrote docs/generated/sdd-work-index.md
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run python scripts/regen_sdd_work_index.py --check
+exit code: 0
+
+$ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run pytest tests/architecture/test_harness_structure.py tests/architecture/test_sdd_artifact_validator.py -q
+142 passed in 0.44s
 exit code: 0
 
 $ UV_NO_SYNC=1 UV_CACHE_DIR=/private/tmp/parallax-uv-cache uv run python scripts/check_sdd_gate.py --all-active

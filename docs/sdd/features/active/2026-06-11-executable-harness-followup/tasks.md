@@ -14,7 +14,7 @@
 | Clarify | Spec contains approved clarification for superseding the omnibus record. |
 | Checklist | Spec records the active-record size bound requirement. |
 | Analyze | Plan Analyze Gate records why active records should remain bounded. |
-| Implement | Tasks 1-7 implement the validator, migration, documentation contract, stale-template cleanup, machine-readable verification status tokens, active lifecycle command hard cut, and active placeholder final-evidence rejection. |
+| Implement | Tasks 1-8 implement the validator, migration, documentation contract, stale-template cleanup, machine-readable verification status tokens, active lifecycle command hard cut, active placeholder final-evidence rejection, and active skipped-test accounting bound. |
 | Verify | Verification artifact captures RED/GREEN command output. |
 
 ## Tasks
@@ -163,5 +163,26 @@
 - **Eval/repair signal**: `active-placeholder-final-evidence`, placeholder final transcript text, or stale generated issue taxonomy.
 - **Implementation**: Add an active-record placeholder-final-evidence validator, register the issue code, and replace the active agent-playbook placeholder transcript with explicit non-final prose.
 - **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_active_records_reject_placeholder_final_verification_transcripts -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 8 - Bind active skipped-test accounting to final evidence
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut/verification.md`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`
+- **Owner**: parent
+- **Depends on**: Task 7
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut/verification.md`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared active verification cleanup and generated index updates.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_active_records_reject_skipped_count_without_final_evidence` - proves active records reject numeric skipped-test counts without final evidence.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Active `verification.md` records may say skipped-test accounting is not final yet, but numeric run-above counts require successful final `make check-all` evidence.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, active SDD verification records, generated issue taxonomy.
+- **Kill/defer criteria**: Stop if active records intentionally need zero-skip completion claims before final evidence exists.
+- **Eval/repair signal**: `active-skipped-count-without-final-evidence`, numeric active skipped-test counts without final evidence, or stale generated issue taxonomy.
+- **Implementation**: Add active skipped-test accounting validation, register the issue code, and replace active non-final zero-skip claims with explicit non-final prose.
+- **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_sdd_artifact_validator.py::test_active_records_reject_skipped_count_without_final_evidence -q`
 - **Review owner**: parent
 - **Status**: [x]
