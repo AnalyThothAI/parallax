@@ -572,6 +572,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC191. WHEN gate evidence tables contain body rows with fewer than two non-placeholder cells THEN the validator and gate checker SHALL reject the section as lacking evidence before lifecycle gates can pass.
 - AC192. WHEN gate evidence pipe rows omit the Markdown table separator row THEN the validator and gate checker SHALL reject the section as lacking evidence before lifecycle gates can pass.
 - AC193. WHEN gate evidence pipe rows put body rows before the Markdown table separator row THEN the validator and gate checker SHALL reject the section as lacking evidence before lifecycle gates can pass.
+- AC194. WHEN gate evidence separator rows contain empty cells or cells without hyphens THEN the validator and gate checker SHALL reject the section as lacking evidence before lifecycle gates can pass.
 
 ## Risks
 

@@ -1781,7 +1781,15 @@ def _table_cells(line: str) -> list[str]:
 
 
 def _is_table_separator_row(line: str) -> bool:
-    return bool(line) and set(line) <= {"|", "-", ":", " "}
+    cells = _table_cells(line)
+    return bool(cells) and all(_is_table_separator_cell(cell) for cell in cells)
+
+
+def _is_table_separator_cell(cell: str) -> bool:
+    stripped = cell.strip()
+    if not stripped:
+        return False
+    return "-" in stripped and set(stripped) <= {"-", ":"}
 
 
 def _is_placeholder_table_cell(value: str) -> bool:

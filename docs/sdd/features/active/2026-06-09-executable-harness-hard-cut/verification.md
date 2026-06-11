@@ -210,6 +210,7 @@ claim is allowed without the corresponding output captured below.
 | AC191 — Gate evidence rejects single-cell rows. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_single_cell_body_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_single_cell_gate_rows -q` failed RED when a one-cell body row satisfied gate evidence, then passed after validator and gate CLI shared a multi-cell evidence-row predicate. |
 | AC192 — Gate evidence tables require separators. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_tables_without_separator_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_gate_tables_without_separator_rows -q` failed RED when separator-less pipe rows satisfied gate evidence, then passed after validator and gate CLI shared separator-aware table-body parsing. |
 | AC193 — Gate evidence body rows follow separators. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_body_rows_before_separator tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_body_rows_before_separator -q` failed RED when pre-separator body rows satisfied gate evidence, then passed after table parsing required the second pipe row to be the separator. |
+| AC194 — Gate evidence separators require hyphens. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_empty_separator_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_empty_separator_rows -q` failed RED when an empty separator row satisfied gate evidence, then passed after separator cells required hyphens. |
 
 Deviations from spec:
 
@@ -3795,6 +3796,17 @@ $ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evi
 ..                                                                       [100%]
 2 passed in 0.05s
 exit code: 0
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_empty_separator_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_empty_separator_rows -q
+FF                                                                       [100%]
+AssertionError: assert 'gate-evidence-missing' in set()
+AssertionError: assert 0 == 1
+exit code: 1
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_empty_separator_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_empty_separator_rows -q
+..                                                                       [100%]
+2 passed in 0.05s
+exit code: 0
 ```
 
 ## Diff summary
@@ -3822,6 +3834,7 @@ Files changed:
 - Multi-cell gate evidence rows: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Separator-aware gate evidence parsing: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Strict gate evidence table order: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
+- Hyphen-bearing gate table separators: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`.
 - Mechanical frontend Prettier drift cleanup: macro pages, macro component test, `web/vite.config.ts`.
 
 Migrations applied:

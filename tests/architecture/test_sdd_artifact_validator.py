@@ -448,6 +448,27 @@ def test_gate_evidence_rejects_body_rows_before_separator(tmp_path: Path) -> Non
     assert "gate-evidence-missing" in _issue_codes(issues)
 
 
+def test_gate_evidence_rejects_empty_separator_rows(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-gate-evidence-empty-separator")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _replace_section_body(
+        feature / "spec.md",
+        "## Clarifications",
+        (
+            "| Question | Answer | Approved by | Approved at |",
+            "| | | | |",
+            "| Should malformed tables pass? | No. | qinghuan | 2026-06-09 |",
+        ),
+    )
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(feature / "tasks.md", status="In Progress", task_status="[~]")
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "gate-evidence-missing" in _issue_codes(issues)
+
+
 def test_plan_analyze_gate_rejects_failed_results(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-failed-analyze-gate")
     _write_valid_spec(feature / "spec.md", status="In Progress")

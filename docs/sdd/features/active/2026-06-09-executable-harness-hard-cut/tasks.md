@@ -4073,3 +4073,24 @@
 - **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_body_rows_before_separator tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_body_rows_before_separator -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 194 — Gate evidence separators require hyphens
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 193
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/spec-template.md`; `docs/sdd/_templates/plan-template.md`
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_empty_separator_rows` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_empty_separator_rows` — prove empty separator cells cannot satisfy gate evidence.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Every table separator cell must contain at least one hyphen and may only use hyphens plus Markdown alignment colons.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, and gate evidence architecture tests.
+- **Kill/defer criteria**: Stop if empty or colon-only separator cells satisfy clarify/checklist/analyze evidence, or if valid Markdown alignment separators are rejected.
+- **Eval/repair signal**: empty-separator false green, valid aligned-table regression, and drift between gate evidence and analyze gate table parsing.
+- **Implementation**: Tighten `_is_table_separator_row()` to validate each separator cell through a hyphen-bearing separator-cell predicate.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_empty_separator_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_empty_separator_rows -q`
+- **Review owner**: parent
+- **Status**: [x]
