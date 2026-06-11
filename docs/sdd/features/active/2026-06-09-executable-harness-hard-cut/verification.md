@@ -246,6 +246,7 @@ claim is allowed without the corresponding output captured below.
 | AC227 — Golden corpus has a dedicated marker. | ✅ | `python -m pytest tests/architecture/test_harness_structure.py::test_golden_lane_uses_dedicated_pytest_marker -q` failed RED while golden corpus tests used the e2e marker, then passed after `test-golden` and `tests/golden/` moved to `golden`; collect-only checks proved `-m golden` selects the corpus and `-m e2e` does not. |
 | AC228 — Final runtime lanes fail closed. | ✅ | `python -m pytest tests/architecture/test_harness_structure.py::test_final_runtime_lanes_do_not_expose_skip_env_switches -q` failed RED while E2E/golden fixtures and the verification template exposed skip switches, then passed after those branches and template instructions were removed. |
 | AC229 — Contract lane has one Make entrypoint. | ✅ | `python -m pytest tests/architecture/test_harness_structure.py::test_contract_lane_has_no_duplicate_make_alias -q` failed RED while `contract-check` remained in `.PHONY`, then passed after the duplicate Make target was removed. |
+| AC230 — Architecture harness tests fail closed. | ✅ | `python -m pytest tests/architecture/test_test_lane_contracts.py::test_architecture_tests_do_not_skip_contracts -q` failed RED on worker runtime architecture skips and `python -m pytest tests/architecture/test_test_lane_contracts.py::test_pytest_empty_parameter_sets_fail_at_collect -q` failed RED while pytest could skip empty parametrized sets, then `uv run pytest tests/architecture/test_test_lane_contracts.py tests/architecture/test_worker_runtime_contracts.py -q` passed after skip branches, the empty stubbed-worker allowlist, and the empty runtime-owner parameter source were removed. |
 
 Deviations from spec:
 
@@ -4246,6 +4247,28 @@ $ python -m pytest tests/architecture/test_harness_structure.py::test_contract_l
 .                                                                        [100%]
 1 passed in 0.01s
 exit code: 0
+
+$ python -m pytest tests/architecture/test_test_lane_contracts.py::test_architecture_tests_do_not_skip_contracts -q
+F                                                                        [100%]
+AssertionError: architecture harness contracts must fail closed instead of skipping:
+tests/architecture/test_worker_runtime_contracts.py:238: pytest.skip(
+tests/architecture/test_worker_runtime_contracts.py:240: pytest.skip(
+tests/architecture/test_worker_runtime_contracts.py:254: pytest.skip(
+tests/architecture/test_worker_runtime_contracts.py:272: pytest.skip(
+exit code: 1
+
+$ python -m pytest tests/architecture/test_test_lane_contracts.py::test_pytest_empty_parameter_sets_fail_at_collect -q
+F                                                                        [100%]
+KeyError: 'empty_parameter_set_mark'
+exit code: 1
+
+$ export UV_NO_SYNC=1
+$ export UV_CACHE_DIR=/private/tmp/parallax-uv-cache
+$ uv run pytest tests/architecture/test_test_lane_contracts.py tests/architecture/test_worker_runtime_contracts.py -q
+........................................................................ [ 72%]
+............................                                             [100%]
+100 passed in 4.32s
+exit code: 0
 ```
 
 ## Diff summary
@@ -4309,6 +4332,7 @@ Files changed:
 - Dedicated golden corpus pytest marker: `Makefile`, `docs/TESTING.md`, `tests/conftest.py`, `tests/golden/conftest.py`, `tests/architecture/test_harness_structure.py`.
 - Final runtime lanes fail closed without skip switches: `docs/TESTING.md`, `docs/sdd/_templates/verification-template.md`, `tests/e2e/conftest.py`, `tests/golden/conftest.py`, `tests/architecture/test_harness_structure.py`.
 - Single Make contract-test entrypoint: `Makefile`, `tests/architecture/test_harness_structure.py`.
+- Architecture harness fail-closed skip ban and empty-parameter-set hard cut: `pyproject.toml`, `docs/TESTING.md`, `tests/architecture/test_test_lane_contracts.py`, `tests/architecture/test_worker_runtime_contracts.py`.
 - Mechanical frontend Prettier drift cleanup: macro pages, macro component test, `web/vite.config.ts`.
 
 Migrations applied:

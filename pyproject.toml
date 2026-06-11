@@ -53,6 +53,7 @@ packages = ["src/parallax"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers --strict-config"
+empty_parameter_set_mark = "fail_at_collect"
 markers = [
   "unit: pure logic, no external dependencies (lives in tests/unit/)",
   "integration: requires real Postgres (lives in tests/integration/)",

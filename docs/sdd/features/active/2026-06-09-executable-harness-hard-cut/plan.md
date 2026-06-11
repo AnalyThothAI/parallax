@@ -742,6 +742,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC227: `python -m pytest tests/architecture/test_harness_structure.py::test_golden_lane_uses_dedicated_pytest_marker -q`
 - AC228: `python -m pytest tests/architecture/test_harness_structure.py::test_final_runtime_lanes_do_not_expose_skip_env_switches -q`
 - AC229: `python -m pytest tests/architecture/test_harness_structure.py::test_contract_lane_has_no_duplicate_make_alias -q`
+- AC230: `uv run pytest tests/architecture/test_test_lane_contracts.py tests/architecture/test_worker_runtime_contracts.py -q`
 
 ## Verification
 

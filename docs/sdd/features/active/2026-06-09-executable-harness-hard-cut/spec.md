@@ -608,6 +608,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC227. WHEN the golden corpus lane is selected THEN it SHALL use a dedicated `golden` pytest marker and SHALL NOT be selected by the service-level `e2e` marker before golden-corpus verification can be confused with E2E golden-path verification.
 - AC228. WHEN final E2E or golden runtime dependencies are unavailable THEN their lane fixtures SHALL fail closed with actionable setup guidance and SHALL NOT expose `SKIP_E2E` or `SKIP_GOLDEN` environment switches before skipped runtime lanes can satisfy completion evidence.
 - AC229. WHEN operators run contract tests from Make THEN `test-contract` SHALL be the only contract-test entrypoint and the old `contract-check` alias SHALL NOT remain in `.PHONY` or as a target before duplicate harness entrypoints can drift.
+- AC230. WHEN architecture tests discover missing source modules, worker runtimes, manifests, or empty parametrized contract inputs THEN they SHALL fail closed and SHALL NOT call `pytest.skip(...)`, use `@pytest.mark.skip`, rely on pytest empty-parameter-set skips, or keep empty follow-up worker skip allowlists before architecture contracts can hide incomplete runtime ownership.
 
 ## Risks
 

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 TESTS_ROOT = REPO_ROOT / "tests"
+PYPROJECT = REPO_ROOT / "pyproject.toml"
 
 ALLOWED_SKIP_PATHS = {
     Path("tests/integration/conftest.py"),
@@ -75,6 +77,20 @@ def test_business_skips_are_not_left_in_place() -> None:
     ]
 
     assert hits == [], "business tests must not keep long-lived skips:\n" + "\n".join(hits)
+
+
+def test_architecture_tests_do_not_skip_contracts() -> None:
+    forbidden_terms = (PYTEST_MARK_SKIP, PYTEST_SKIP_CALL)
+    architecture_paths = _python_files(TESTS_ROOT / "architecture")
+    hits = [hit for path in architecture_paths for hit in _line_hits(path, forbidden_terms)]
+
+    assert hits == [], "architecture harness contracts must fail closed instead of skipping:\n" + "\n".join(hits)
+
+
+def test_pytest_empty_parameter_sets_fail_at_collect() -> None:
+    config = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
+
+    assert config["tool"]["pytest"]["ini_options"]["empty_parameter_set_mark"] == "fail_at_collect"
 
 
 def test_integration_tests_do_not_use_fake_runtime_repositories() -> None:

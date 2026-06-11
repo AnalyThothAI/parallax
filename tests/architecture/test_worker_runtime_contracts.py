@@ -149,8 +149,6 @@ SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
     },
 }
 
-RUNTIME_WRITE_OWNER_ALLOWLISTS: dict[str, set[Path]] = {}
-
 CONTROL_PLANE_TABLES: dict[str, set[Path]] = {
     "pulse_trigger_dirty_targets": {
         SRC / "domains/pulse_lab/repositories/pulse_trigger_dirty_target_repository.py",
@@ -225,20 +223,12 @@ EXPECTED_WORKER_FACTORY_FILES = {
 BOOTSTRAP_RUNTIME_WORKER_IMPORT_ALLOWLIST = {
     "parallax.domains.ingestion.runtime.collector_service",
 }
-STUBBED_TASK_WORKER_QUALIFIED_NAME_FRAGMENTS: tuple[str, ...] = ()
 
 
 @pytest.mark.architecture
 @pytest.mark.parametrize(("worker_key", "qualified_name"), MANIFEST_WORKER_CLASSES.items())
 def test_all_long_running_workers_inherit_worker_base(worker_key: str, qualified_name: str) -> None:
-    try:
-        worker_class = _import_qualified_name(qualified_name)
-    except ModuleNotFoundError as exc:
-        if ".narrative_intel." in qualified_name:
-            pytest.skip(f"{worker_key} runtime is owned by agent A: {exc.name}")
-        if _is_stubbed_task_worker(qualified_name):
-            pytest.skip(f"{worker_key} runtime lands in a follow-up task: {exc.name}")
-        raise
+    worker_class = _import_qualified_name(qualified_name)
 
     assert issubclass(worker_class, WorkerBase), f"{worker_key} must inherit WorkerBase"
 
@@ -247,14 +237,7 @@ def test_all_long_running_workers_inherit_worker_base(worker_key: str, qualified
 def test_long_running_workers_do_not_override_worker_base_run_without_allowlist() -> None:
     violations: list[str] = []
     for worker_key, qualified_name in MANIFEST_WORKER_CLASSES.items():
-        try:
-            worker_class = _import_qualified_name(qualified_name)
-        except ModuleNotFoundError as exc:
-            if ".narrative_intel." in qualified_name:
-                pytest.skip(f"{worker_key} runtime is owned by agent A: {exc.name}")
-            if _is_stubbed_task_worker(qualified_name):
-                continue
-            raise
+        worker_class = _import_qualified_name(qualified_name)
         if "run" in worker_class.__dict__:
             violations.append(f"{worker_key} overrides run()")
 
@@ -265,14 +248,7 @@ def test_long_running_workers_do_not_override_worker_base_run_without_allowlist(
 def test_worker_queue_depth_overrides_are_status_payload_compatible() -> None:
     violations: list[str] = []
     for worker_key, qualified_name in MANIFEST_WORKER_CLASSES.items():
-        try:
-            worker_class = _import_qualified_name(qualified_name)
-        except ModuleNotFoundError as exc:
-            if ".narrative_intel." in qualified_name:
-                pytest.skip(f"{worker_key} runtime is owned by agent A: {exc.name}")
-            if _is_stubbed_task_worker(qualified_name):
-                continue
-            raise
+        worker_class = _import_qualified_name(qualified_name)
         override = worker_class.__dict__.get("_queue_depth")
         if override is None:
             continue
@@ -510,7 +486,7 @@ def test_worker_construction_is_split_into_domain_factories() -> None:
     expected_worker_modules = {
         qualified_name.rpartition(".")[0]
         for key, qualified_name in MANIFEST_WORKER_CLASSES.items()
-        if key != "collector" and not _is_stubbed_task_worker(qualified_name)
+        if key != "collector"
     }
     bootstrap_runtime_worker_imports = sorted(
         module
@@ -796,35 +772,6 @@ def test_dirty_target_control_plane_tables_are_not_read_models() -> None:
 
 
 @pytest.mark.architecture
-@pytest.mark.parametrize("table_name", sorted(RUNTIME_WRITE_OWNER_ALLOWLISTS))
-def test_runtime_table_sql_writes_stay_in_owner_allowlist(table_name: str) -> None:
-    allowlist = RUNTIME_WRITE_OWNER_ALLOWLISTS[table_name]
-    migration_allowlist = {path for path in allowlist if "alembic/versions" in path.as_posix()}
-    runtime_allowlist = allowlist - migration_allowlist
-    write_pattern = re.compile(
-        rf"\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+{re.escape(table_name)}\b",
-        re.IGNORECASE,
-    )
-    violations = [
-        f"{_rel(path)} writes runtime-owned table {table_name}"
-        for path in SRC.rglob("*.py")
-        if path not in runtime_allowlist
-        and "alembic/versions" not in path.as_posix()
-        and not path.is_relative_to(API_ROUTES)
-        and write_pattern.search(path.read_text())
-    ]
-    api_route_violations = [
-        f"{_rel(path)} writes runtime-owned table {table_name}"
-        for path in API_ROUTES.rglob("*.py")
-        if write_pattern.search(path.read_text())
-    ]
-
-    assert all(table_name in path.read_text() for path in migration_allowlist)
-    assert violations == []
-    assert api_route_violations == []
-
-
-@pytest.mark.architecture
 def test_resolution_refresh_dirty_lookup_queue_is_control_plane() -> None:
     assert CONTROL_PLANE_TABLES["token_discovery_dirty_lookup_keys"] == {
         SRC / "domains/asset_market/repositories/discovery_repository.py",
@@ -1016,18 +963,7 @@ def _worker_inventory_keys() -> set[str]:
 
 
 def _worker_runtime_paths() -> list[Path]:
-    paths: list[Path] = []
-    for qualified_name in MANIFEST_WORKER_CLASSES.values():
-        try:
-            paths.append(Path(_module_file(qualified_name)))
-        except ModuleNotFoundError:
-            if ".narrative_intel." not in qualified_name and not _is_stubbed_task_worker(qualified_name):
-                raise
-    return sorted(paths)
-
-
-def _is_stubbed_task_worker(qualified_name: str) -> bool:
-    return any(fragment in qualified_name for fragment in STUBBED_TASK_WORKER_QUALIFIED_NAME_FRAGMENTS)
+    return sorted(Path(_module_file(qualified_name)) for qualified_name in MANIFEST_WORKER_CLASSES.values())
 
 
 def _runtime_provider_openai_paths() -> list[Path]:

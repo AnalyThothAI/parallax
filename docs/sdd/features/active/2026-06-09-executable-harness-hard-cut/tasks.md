@@ -4829,3 +4829,24 @@
 - **Verification**: `python -m pytest tests/architecture/test_harness_structure.py::test_contract_lane_has_no_duplicate_make_alias -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 230 — Architecture harness tests fail closed
+
+- **File(s)**: `pyproject.toml`, `tests/architecture/test_test_lane_contracts.py`, `tests/architecture/test_worker_runtime_contracts.py`, `docs/TESTING.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 229
+- **Touch set**: `pyproject.toml`, `tests/architecture/test_test_lane_contracts.py`, `tests/architecture/test_worker_runtime_contracts.py`, `docs/TESTING.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for generated SDD index updates.
+- **Failing test first**: `tests/architecture/test_test_lane_contracts.py::test_architecture_tests_do_not_skip_contracts` and `tests/architecture/test_test_lane_contracts.py::test_pytest_empty_parameter_sets_fail_at_collect` — prove architecture lane contracts cannot hide missing worker runtimes with `pytest.skip(...)` or empty parameter-set skips.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Architecture tests must fail closed on missing source modules, worker runtimes, manifests, or empty parametrized inputs; no `pytest.skip(...)`, `@pytest.mark.skip`, narrative-agent ownership skip, empty parameter-set skip, or empty stubbed-worker skip allowlist remains in architecture contracts.
+- **On-demand context**: `tests/architecture/test_worker_runtime_contracts.py`, `tests/architecture/test_test_lane_contracts.py`, and `docs/TESTING.md`.
+- **Kill/defer criteria**: Stop if architecture tests can skip missing runtime modules, if pytest empty parametrized sets remain skipped, if a stubbed-worker allowlist remains, or if docs still frame architecture contract gaps as follow-up skips.
+- **Eval/repair signal**: skipped architecture contracts, hidden worker runtime ownership gaps, empty parameter-set pseudo-tests, and false-green harness evidence.
+- **Implementation**: Add a lane-level architecture skip ban, set pytest empty parameter sets to fail at collect, remove worker runtime skip branches, delete the empty runtime-owner parameter source, and document architecture fail-closed behavior.
+- **Verification**: `uv run pytest tests/architecture/test_test_lane_contracts.py tests/architecture/test_worker_runtime_contracts.py -q`
+- **Review owner**: parent
+- **Status**: [x]
