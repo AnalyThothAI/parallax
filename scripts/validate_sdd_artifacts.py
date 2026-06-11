@@ -6,6 +6,7 @@ import sys
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,6 +30,7 @@ COMMAND_LINE_RE = re.compile(r"^\s*\$\s+(?P<command>.+?)\s*$")
 EXIT_CODE_RE = re.compile(r"exit code:\s*(?P<code>-?\d+)\b", re.IGNORECASE)
 SKIPPED_RE = re.compile(r"Number of skipped tests in the run above:\s*(?P<count>\d+)", re.IGNORECASE)
 FEATURE_SLUG_RE = re.compile(r"^(?P<date>\d{4}-\d{2}-\d{2})-[a-z0-9]+(?:-[a-z0-9]+)*$")
+ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 BRANCH_METADATA_RE = re.compile(r"^codex/(?P<slug>[a-z0-9][a-z0-9._-]*)$")
 WORKTREE_METADATA_RE = re.compile(r"^\.worktrees/(?P<slug>[a-z0-9][a-z0-9._-]*)/?$")
 LOCAL_CITATION_RE = re.compile(
@@ -1760,7 +1762,7 @@ def _section_has_non_placeholder_table_row(text: str, heading: str) -> bool:
 
 
 def section_has_gate_evidence(text: str, heading: str) -> bool:
-    return any(is_table_evidence_row(cells) for cells in section_gate_table_rows(text, heading))
+    return any(is_gate_evidence_row(heading, cells) for cells in section_gate_table_rows(text, heading))
 
 
 def section_gate_table_rows(text: str, heading: str) -> list[list[str]]:
@@ -1854,9 +1856,28 @@ def is_table_evidence_row(cells: list[str]) -> bool:
     return len(cells) >= 2 and all(not _is_placeholder_table_cell(cell) for cell in cells)
 
 
+def is_gate_evidence_row(heading: str, cells: list[str]) -> bool:
+    if not is_table_evidence_row(cells):
+        return False
+    if heading == "## Clarifications":
+        return len(cells) >= 4 and _is_iso_date_cell(cells[3])
+    return True
+
+
 def is_placeholder_table_cell(value: str) -> bool:
     cleaned = _clean_value(value).lower()
     return _is_placeholder(value) or cleaned in {"pass / fail", "yyyy-mm-dd"}
+
+
+def _is_iso_date_cell(value: str) -> bool:
+    cleaned = _clean_value(value)
+    if not ISO_DATE_RE.fullmatch(cleaned):
+        return False
+    try:
+        date.fromisoformat(cleaned)
+    except ValueError:
+        return False
+    return True
 
 
 def _command_exit_code(block: str) -> int | None:

@@ -660,6 +660,27 @@ def test_gate_evidence_rejects_wrong_clarification_header(tmp_path: Path) -> Non
     assert "gate-evidence-missing" in _issue_codes(issues)
 
 
+def test_clarification_gate_evidence_rejects_non_canonical_approval_dates(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-non-canonical-clarification-approval")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _replace_section_body(
+        feature / "spec.md",
+        "## Clarifications",
+        (
+            "| Question | Answer | Approved by | Approved at |",
+            "|----------|--------|-------------|-------------|",
+            "| Scope? | Harness only. | qinghuan | 20260609 |",
+        ),
+    )
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(feature / "tasks.md", status="In Progress", task_status="[~]")
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "gate-evidence-missing" in _issue_codes(issues)
+
+
 def test_plan_analyze_gate_rejects_failed_results(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-failed-analyze-gate")
     _write_valid_spec(feature / "spec.md", status="In Progress")

@@ -4304,3 +4304,24 @@
 - **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_gate_evidence_rejects_indented_table_rows tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_indented_table_rows -q`
 - **Review owner**: parent
 - **Status**: [x]
+
+### Task 205 — Clarification approvals use canonical dates
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`
+- **Owner**: parent
+- **Depends on**: Task 204
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `scripts/check_sdd_gate.py`; `docs/sdd/_templates/spec-template.md`
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_clarification_gate_evidence_rejects_non_canonical_approval_dates` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_non_canonical_clarification_approval_dates` — prove compact or freeform `Approved at` values cannot satisfy Clarifications gate evidence.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Clarifications gate rows must include an `Approved at` cell in canonical `YYYY-MM-DD` form and parseable as a real date.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/check_sdd_gate.py`, and Clarifications gate evidence tests.
+- **Kill/defer criteria**: Stop if freeform approval dates satisfy Clarifications evidence, if valid canonical dates are rejected, or if gate CLI evidence semantics diverge from the validator.
+- **Eval/repair signal**: non-canonical date false green, valid-date regression, and validator/gate CLI semantic drift.
+- **Implementation**: Add heading-specific gate evidence row validation and require Clarifications rows to carry a canonical `YYYY-MM-DD` `Approved at` date through the shared `section_has_gate_evidence()` path.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_clarification_gate_evidence_rejects_non_canonical_approval_dates tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_non_canonical_clarification_approval_dates -q`
+- **Review owner**: parent
+- **Status**: [x]
