@@ -40,6 +40,16 @@ missing gate sections, prose-only `Superseded` successors, incomplete task
 coordination fields, and overlapping active touch sets without an explicit
 coordination rule.
 
+Each production-feature gate can also be checked directly before moving to the
+next lane:
+
+```bash
+uv run python scripts/check_sdd_gate.py --feature <slug> --gate clarify --check
+uv run python scripts/check_sdd_gate.py --feature <slug> --gate checklist --check
+uv run python scripts/check_sdd_gate.py --feature <slug> --gate analyze --check
+uv run python scripts/check_sdd_gate.py --feature <slug> --gate implement --check
+```
+
 When work ships and verification is recorded, move the whole feature directory
 from `features/active/` to `features/completed/` in the same PR.
 

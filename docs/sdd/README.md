@@ -41,15 +41,21 @@ Run the executable harness after changing any SDD record:
 
 ```bash
 uv run python scripts/validate_sdd_artifacts.py --check
+uv run python scripts/check_sdd_gate.py --feature <slug> --gate clarify --check
+uv run python scripts/check_sdd_gate.py --feature <slug> --gate checklist --check
+uv run python scripts/check_sdd_gate.py --feature <slug> --gate analyze --check
+uv run python scripts/check_sdd_gate.py --feature <slug> --gate implement --check
 uv run python scripts/regen_sdd_work_index.py --check
 uv run python scripts/build_agent_context_packet.py --feature <slug> --task <number> --mode read-only
 uv run python scripts/dispatch_sdd_task.py --feature <slug> --task <number> --mode read-only
 uv run python scripts/validate_subagent_report.py --feature <slug> --task <number> --mode read-only --report <report.md>
 ```
 
-The validator rejects false `Verified` records, missing clarify/checklist/analyze
-sections, missing approval metadata, incomplete task coordination fields, and
-active touch-set conflicts without an explicit coordination rule.
+The gate checker gives the Spec Kit-style `clarify`, `checklist`, `analyze`,
+and `implement` lanes first-class non-mutating checks. The full validator still
+rejects false `Verified` records, missing gate sections, missing approval
+metadata, incomplete task coordination fields, and active touch-set conflicts
+without an explicit coordination rule.
 
 ## Status Rules
 

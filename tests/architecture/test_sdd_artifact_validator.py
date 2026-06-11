@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from scripts.validate_sdd_artifacts import validate_sdd_root
@@ -684,6 +685,77 @@ def test_tasks_reject_invalid_coordination_field_values(tmp_path: Path) -> None:
     assert "status" in invalid_text
 
 
+def test_tasks_reject_missing_current_file_and_touch_paths(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-missing-current-touch-path")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(
+        feature / "tasks.md",
+        status="In Progress",
+        touch_set="stale-root-artifact.png",
+        task_status="[x]",
+    )
+    (tmp_path / "stale-root-artifact.png").unlink(missing_ok=True)
+    _replace_task_field(
+        feature / "tasks.md",
+        "File(s)",
+        "`tests/architecture/test_sdd_artifact_validator.py`, `stale-root-artifact.png`",
+    )
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    invalid_issues = [issue for issue in issues if issue.code == "task-invalid-coordination-fields"]
+    assert invalid_issues
+    invalid_text = " ".join(issue.message for issue in invalid_issues)
+    assert "file(s)" in invalid_text
+    assert "touch set" in invalid_text
+    assert "stale-root-artifact.png" in invalid_text
+
+
+def test_tasks_allow_removed_file_records_outside_current_touch_surface(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-removed-file-record")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(
+        feature / "tasks.md",
+        status="In Progress",
+        touch_set="tests/architecture/test_sdd_artifact_validator.py",
+        task_status="[x]",
+    )
+    _insert_task_field(
+        feature / "tasks.md",
+        after_field="Touch set",
+        field_name="Removed file(s)",
+        value="`stale-root-artifact.png`",
+    )
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "task-invalid-coordination-fields" not in _issue_codes(issues)
+
+
+def test_tasks_allow_current_glob_touch_paths_when_they_match(tmp_path: Path) -> None:
+    skill_file = tmp_path / ".agents" / "skills" / "macro" / "SKILL.md"
+    skill_file.parent.mkdir(parents=True)
+    skill_file.write_text("# skill\n", encoding="utf-8")
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-current-glob-touch-path")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(
+        feature / "tasks.md",
+        status="In Progress",
+        touch_set=".agents/skills/*/SKILL.md",
+        task_status="[x]",
+    )
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "task-invalid-coordination-fields" not in _issue_codes(issues)
+
+
 def test_tasks_allow_explicit_none_dependency_and_not_delegated_handoff(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-valid-none-values")
     _write_valid_spec(feature / "spec.md", status="In Progress")
@@ -1105,6 +1177,15 @@ def _write_valid_spec(path: Path, *, status: str) -> None:
         ),
         encoding="utf-8",
     )
+def _task_fixture_paths(values: tuple[str, ...]) -> tuple[str, ...]:
+    paths: list[str] = []
+    for value in values:
+        for item in re.split(r"[,;]", value.replace("`", "")):
+            candidate = item.strip()
+            if not candidate or candidate.lower() in {"none", "not delegated"}:
+                continue
+            paths.append(candidate)
+    return tuple(dict.fromkeys(paths))
 
 
 def _write_valid_plan(path: Path, *, status: str, branch: str = "codex/harness") -> None:
@@ -1204,6 +1285,21 @@ def _write_valid_tasks(
         ),
         encoding="utf-8",
     )
+    for repo_path in _task_fixture_paths(
+        (
+            "tests/architecture/test_sdd_artifact_validator.py",
+            "scripts/validate_sdd_artifacts.py",
+            touch_set,
+        )
+    ):
+        if any(character in repo_path for character in "*?[]"):
+            continue
+        target = path.parents[5] / repo_path
+        if target.suffix:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.touch(exist_ok=True)
+            continue
+        target.mkdir(parents=True, exist_ok=True)
 
 
 def _write_unstructured_superseded_tasks(path: Path) -> None:
@@ -1424,6 +1520,31 @@ def _replace_metadata_field(path: Path, field_name: str, value: str) -> None:
             lines.append(f"**{field_name}**: {value}")
         else:
             lines.append(line)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _replace_task_field(path: Path, field_name: str, value: str) -> None:
+    needle = f"- **{field_name}**:"
+    lines = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.startswith(needle):
+            lines.append(f"- **{field_name}**: {value}")
+        else:
+            lines.append(line)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _insert_task_field(path: Path, *, after_field: str, field_name: str, value: str) -> None:
+    needle = f"- **{after_field}**:"
+    lines = []
+    inserted = False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        lines.append(line)
+        if not inserted and line.startswith(needle):
+            lines.append(f"- **{field_name}**: {value}")
+            inserted = True
+    if not inserted:
+        raise AssertionError(f"task field not found: {after_field}")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 

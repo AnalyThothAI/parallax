@@ -864,7 +864,7 @@ def _task_issues(feature: SddFeature) -> list[SddIssue]:
                     f"{task.title} missing fields: {', '.join(missing_fields)}",
                 )
             )
-        invalid_fields = _invalid_task_fields(task)
+        invalid_fields = _invalid_task_fields(task, feature)
         if invalid_fields:
             issues.append(
                 _issue(
@@ -978,7 +978,7 @@ def _task_numbering_issues(feature: SddFeature) -> list[SddIssue]:
     ]
 
 
-def _invalid_task_fields(task: TaskRecord) -> list[str]:
+def _invalid_task_fields(task: TaskRecord, feature: SddFeature) -> list[str]:
     invalid: list[str] = []
     for field_name in ("file(s)", "touch set"):
         value = task.fields.get(field_name, "")
@@ -986,6 +986,19 @@ def _invalid_task_fields(task: TaskRecord) -> list[str]:
             continue
         if not _all_list_items(value, _is_repo_path):
             invalid.append(field_name)
+            continue
+        missing_paths = _missing_current_task_paths(feature, value)
+        if missing_paths:
+            invalid.append(f"{field_name} missing current paths: {', '.join(missing_paths)}")
+
+    removed_files = task.fields.get("removed file(s)", "")
+    if not _is_placeholder(removed_files):
+        if not _all_list_items(removed_files, _is_repo_path):
+            invalid.append("removed file(s)")
+        else:
+            still_present = _present_current_task_paths(feature, removed_files)
+            if still_present:
+                invalid.append(f"removed file(s) still present: {', '.join(still_present)}")
 
     conflict_set = task.fields.get("conflict set", "")
     if not _is_placeholder(conflict_set) and not _valid_conflict_set(conflict_set):
@@ -1003,6 +1016,35 @@ def _invalid_task_fields(task: TaskRecord) -> list[str]:
     if status and status not in TASK_STATUSES:
         invalid.append("status")
     return invalid
+
+
+def _repo_root_for_feature(feature: SddFeature) -> Path:
+    return feature.path.parents[4]
+
+
+def _task_path_items(value: str) -> tuple[str, ...]:
+    items = [item.strip() for item in re.split(r"[,;]", value.replace("`", "")) if item.strip()]
+    return tuple(item for item in items if item.lower() not in {"none", "not delegated"})
+
+
+def _missing_current_task_paths(feature: SddFeature, value: str) -> tuple[str, ...]:
+    if feature.state != "active":
+        return ()
+    root = _repo_root_for_feature(feature)
+    return tuple(path for path in _task_path_items(value) if not _repo_path_exists(root, path))
+
+
+def _present_current_task_paths(feature: SddFeature, value: str) -> tuple[str, ...]:
+    if feature.state != "active":
+        return ()
+    root = _repo_root_for_feature(feature)
+    return tuple(path for path in _task_path_items(value) if _repo_path_exists(root, path))
+
+
+def _repo_path_exists(root: Path, repo_path: str) -> bool:
+    if any(character in repo_path for character in "*?[]"):
+        return any(root.glob(repo_path))
+    return (root / repo_path).exists()
 
 
 def _invalid_agent_loop_fields(task: TaskRecord) -> list[str]:

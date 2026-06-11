@@ -13,7 +13,7 @@ Parallax routes non-trivial coding-agent work through one SDD feature directory 
 The lane's canonical artifacts are `spec.md` in `docs/WORKFLOW.md:13`, `plan.md` in `docs/WORKFLOW.md:14`,
 `tasks.md` in `docs/WORKFLOW.md:15`, and `verification.md` in `docs/WORKFLOW.md:16`.
 Production work follows `spec -> clarify -> checklist -> plan -> tasks -> analyze -> implement -> verify`
-in `docs/WORKFLOW.md:27`, and completion requires `make check-all` evidence in `docs/WORKFLOW.md:75`.
+in `docs/WORKFLOW.md:27`, and completion requires `make check-all` evidence in `docs/WORKFLOW.md:85`.
 The generated index now renders a `Coordination Board` in `scripts/regen_sdd_work_index.py:86` and a
 `Task Board` in `scripts/regen_sdd_work_index.py:117`.
 
@@ -555,6 +555,10 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC174. WHEN Narrative admission dirty target payload hashing receives payloads with non-string keys or queue lifecycle fields such as `priority` and `due_at_ms` THEN it SHALL raise the shared current payload-key validation error for non-string keys and SHALL exclude lifecycle fields from the stable payload before `postgres_safe_json()`, local key stringification, JSON normalization, or dirty queue payload hash generation consumes compatibility-shaped queue state.
 - AC175. WHEN Asset Market dirty-control-plane payload hashing for `market_tick_current_dirty_targets`, `token_profile_current_dirty_targets`, `token_image_source_dirty_targets`, or `asset_profile_refresh_targets` receives payloads with non-string keys or queue lifecycle fields such as `priority`, `due_at_ms`, lease fields, attempt counts, errors, or update timestamps THEN it SHALL raise the shared current payload-key validation error for non-string keys and SHALL exclude lifecycle fields from the stable payload before `postgres_safe_json()`, `default=str`, local key stringification, JSON normalization, or dirty queue payload hash generation consumes compatibility-shaped queue state.
 - AC176. WHEN Token Capture Tier dirty rank-set fingerprinting receives rank payloads with non-string nested keys, unordered containers, or compatibility-shaped factor snapshots THEN it SHALL raise shared current payload validation errors and emit `sha256:`-prefixed stable hashes before local `_json_ready()` key stringification, set-to-list conversion, generic adapter unwrapping, or repository-local JSON/sha256 normalization can generate `token_capture_tier_dirty_targets.payload_hash`.
+- AC177. WHEN Macro projection dirty-control-plane payload hashing for current or concept dirty targets receives compatibility-shaped values with non-string nested keys THEN it SHALL raise shared current payload validation errors and emit `sha256:`-prefixed stable dirty hashes before `postgres_safe_json()`, `default=str`, local key stringification, or repository-local JSON/sha256 normalization can generate `macro_projection_dirty_targets.payload_hash`.
+- AC178. WHEN `docs/AGENT_EXECUTION.md` documents the product read-only context registry THEN it SHALL name live source symbols from `src/parallax/platform/agent_read_tools.py` and SHALL reject stale tool class names before product-agent docs can drift from the audited runtime surface.
+- AC179. WHEN active SDD task metadata lists `File(s)` or `Touch set` entries THEN those entries SHALL resolve to current repository paths or matching globs, and deleted artifacts SHALL be recorded only in `Removed file(s)` before generated coordination indexes can advertise stale files as active work surfaces.
+- AC180. WHEN a production feature advances through `clarify`, `checklist`, `analyze`, or `implement` THEN each gate SHALL have an explicit non-mutating CLI check that can pass or fail independently of the full SDD validator before the lane is documented as executable.
 
 ## Risks
 

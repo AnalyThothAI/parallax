@@ -19,6 +19,7 @@ Tasks are TDD-ordered: write the failing test first, then the implementation, th
 - A task is complete only when its verification command produced the expected output.
 - Use `docs/agent-playbook/subagent-handoff-template.md` for delegated work.
 - The **Touch set** is what the assignee may edit. The **Conflict set** is what they must avoid or coordinate with the parent agent.
+- Keep **File(s)** and **Touch set** limited to current paths or matching globs. When a task deletes files, record them in optional **Removed file(s)** instead of advertising deleted paths as current coordination surfaces.
 
 ## Gate Compliance
 
@@ -38,6 +39,7 @@ Tasks are TDD-ordered: write the failing test first, then the implementation, th
 - **Owner**: `<parent | subagent nickname | person>`
 - **Depends on**: `<none | Task N | external approval>`
 - **Touch set**: `<paths this task may edit>`
+- **Removed file(s)**: `<optional deleted paths, omitted when none>`
 - **Conflict set**: `<paths/concerns this task must not edit without coordination>`
 - **Failing test first**: `tests/<area>/test_<file>.py::<test_name>` — asserts `<observable behaviour>`.
 - **Subagent handoff**: `<not delegated | prompt/link to filled handoff template>`

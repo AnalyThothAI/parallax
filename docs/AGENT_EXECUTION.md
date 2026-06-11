@@ -58,7 +58,7 @@ market-wide `agent_admission` state and `market_scope_json` after claiming work.
 
 Parallax borrows the useful part of agent harness tool catalogs without adding
 a model-driven tool loop. `src/parallax/platform/agent_read_tools.py` declares
-read-only `AgentReadTool` metadata over current read models such as
+read-only `ReadOnlySqlAgentTool` metadata over current read models such as
 `news_item_agent_briefs`, `pulse_candidates`, and `token_radar_current_rows`.
 These tools are not passed to models as callable tools. They are a typed
 catalog for deterministic host-side context assembly, operator inspection, and

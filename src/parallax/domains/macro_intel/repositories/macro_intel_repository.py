@@ -16,7 +16,10 @@ from parallax.domains.macro_intel.observation_identity import (
     macro_series_current_row_payload_hash,
     normalize_macro_date,
 )
-from parallax.platform.current_read_model_payload_hash import stable_current_payload_hash
+from parallax.platform.current_read_model_payload_hash import (
+    stable_current_payload_hash,
+    stable_dirty_target_payload_hash,
+)
 from parallax.platform.db.json_safety import postgres_safe_json
 
 
@@ -1989,8 +1992,7 @@ def _macro_projection_dirty_payload_hash(
         "reason": reason,
         "source_watermark_ms": int(source_watermark_ms),
     }
-    encoded = json.dumps(postgres_safe_json(payload), sort_keys=True, separators=(",", ":"), default=str)
-    return hashlib.sha256(encoded.encode()).hexdigest()
+    return stable_dirty_target_payload_hash(payload)
 
 
 def _macro_projection_dirty_change_targets(
@@ -2057,8 +2059,7 @@ def _macro_projection_dirty_change_payload_hash(
         "source_watermark_date": source_watermark_date,
         "reason": reason,
     }
-    encoded = json.dumps(postgres_safe_json(payload), sort_keys=True, separators=(",", ":"), default=str)
-    return hashlib.sha256(encoded.encode()).hexdigest()
+    return stable_dirty_target_payload_hash(payload)
 
 
 def _macro_projection_dirty_claims(claimed: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:

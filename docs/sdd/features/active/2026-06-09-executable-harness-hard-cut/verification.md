@@ -193,6 +193,10 @@ claim is allowed without the corresponding output captured below.
 | AC174 — Narrative admission dirty queue hash uses shared current payload contract. | ✅ | `uv run pytest tests/unit/domains/narrative_intel/test_narrative_dirty_target_repositories.py::test_payload_hash_rejects_legacy_non_string_payload_keys tests/unit/domains/narrative_intel/test_narrative_dirty_target_repositories.py::test_payload_hash_ignores_queue_lifecycle_fields -q` failed RED when Narrative dirty hashing accepted non-string keys and treated scheduling lifecycle fields as payload drift, then passed after filtering lifecycle fields with strict string-key validation and delegating final hash generation to `stable_dirty_target_payload_hash()`. |
 | AC175 — Asset Market dirty-control-plane hashes use shared dirty payload contract. | ✅ | `uv run pytest tests/unit/domains/asset_market/test_asset_market_dirty_target_payload_hashes.py -q` failed RED when Asset Market dirty queue hashes accepted compatibility-shaped payload keys, treated queue lifecycle fields as payload drift, and sanitized token-image raw refs before validation; it passed after adding `stable_dirty_target_payload_hash()`, switching Asset Market dirty queues to it, and validating raw refs before DB JSON safety. |
 | AC176 — Token Capture Tier dirty rank-set fingerprint uses shared current payload contract. | ✅ | `uv run pytest tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_uses_shared_payload_hash_contract tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_rejects_legacy_factor_snapshot_keys tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_rejects_unordered_payload_containers -q` failed RED when rank-set fingerprinting emitted bare hex hashes, stringified nested factor-snapshot keys, and accepted unordered containers; it passed after replacing local JSON/sha256 fingerprinting with `stable_current_payload_hash()` and deleting `_json_ready()`. |
+| AC177 — Macro projection dirty-control-plane hash uses shared dirty payload contract. | ✅ | `uv run pytest tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_enqueue_macro_projection_dirty_target_coalesces_current_target tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_projection_dirty_payload_hash_rejects_legacy_payload_shapes tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_enqueue_macro_projection_dirty_targets_for_changes_groups_by_concept_watermark tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_projection_dirty_change_payload_hash_rejects_legacy_payload_shapes -q` failed RED when Macro dirty target hashes emitted bare hex hashes and accepted compatibility-shaped nested keys, then passed after delegating current and concept dirty hash generation to `stable_dirty_target_payload_hash()`. |
+| AC178 — Agent execution docs name live read-only tool contract. | ✅ | `uv run pytest tests/architecture/test_agent_execution_plane_contracts.py::test_agent_execution_doc_names_current_read_tool_contract -q` failed RED when `docs/AGENT_EXECUTION.md` still documented stale `AgentReadTool`, then passed after updating the docs to name the live `ReadOnlySqlAgentTool` source contract. |
+| AC179 — Active SDD current paths exclude removed files. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_missing_current_file_and_touch_paths tests/architecture/test_sdd_artifact_validator.py::test_tasks_allow_removed_file_records_outside_current_touch_surface tests/architecture/test_sdd_artifact_validator.py::test_tasks_allow_current_glob_touch_paths_when_they_match -q` failed RED when active task `File(s)`/`Touch set` paths could advertise missing files and matching glob paths were treated as missing, then passed after adding current path/glob validation, optional `Removed file(s)`, and moving deleted Task61/Task115 paths out of current touch scope. |
+| AC180 — SDD lifecycle gates have first-class CLI checks. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_individual_gates tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_failed_analyze_gate -q` failed RED when no per-gate CLI existed, then passed after adding `scripts/check_sdd_gate.py`, documenting `clarify/checklist/analyze/implement` commands, and binding Analyze failures to gate result cells rather than historical RED/GREEN prose. |
 
 Deviations from spec:
 
@@ -3534,6 +3538,68 @@ $ uv run pytest tests/unit/test_token_radar_projection.py::test_capture_tier_ran
 .......                                                                  [100%]
 7 passed in 0.19s
 exit code: 0
+
+$ uv run pytest tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_enqueue_macro_projection_dirty_target_coalesces_current_target tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_projection_dirty_payload_hash_rejects_legacy_payload_shapes tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_enqueue_macro_projection_dirty_targets_for_changes_groups_by_concept_watermark tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_projection_dirty_change_payload_hash_rejects_legacy_payload_shapes -q
+FFFF                                                                     [100%]
+AssertionError: assert False
+Failed: DID NOT RAISE <class 'ValueError'>
+exit code: 1
+
+$ uv run pytest tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_enqueue_macro_projection_dirty_target_coalesces_current_target tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_projection_dirty_payload_hash_rejects_legacy_payload_shapes tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_enqueue_macro_projection_dirty_targets_for_changes_groups_by_concept_watermark tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_projection_dirty_change_payload_hash_rejects_legacy_payload_shapes -q
+....                                                                     [100%]
+4 passed in 0.08s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_agent_execution_plane_contracts.py::test_agent_execution_doc_names_current_read_tool_contract -q
+F                                                                        [100%]
+AssertionError: assert '`ReadOnlySqlAgentTool`' in doc_text
+exit code: 1
+
+$ uv run pytest tests/architecture/test_agent_execution_plane_contracts.py::test_agent_execution_doc_names_current_read_tool_contract -q
+.                                                                        [100%]
+1 passed in 0.01s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_missing_current_file_and_touch_paths tests/architecture/test_sdd_artifact_validator.py::test_tasks_allow_removed_file_records_outside_current_touch_surface -q
+F.                                                                       [100%]
+AssertionError: assert []
+exit code: 1
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_allow_current_glob_touch_paths_when_they_match -q
+F                                                                        [100%]
+AssertionError: assert 'task-invalid-coordination-fields' not in _issue_codes(issues)
+exit code: 1
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_missing_current_file_and_touch_paths tests/architecture/test_sdd_artifact_validator.py::test_tasks_allow_removed_file_records_outside_current_touch_surface tests/architecture/test_sdd_artifact_validator.py::test_tasks_allow_current_glob_touch_paths_when_they_match -q
+...                                                                      [100%]
+3 passed in 0.03s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_individual_gates tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_failed_analyze_gate -q
+FF                                                                       [100%]
+AssertionError: assert False
+exit code: 1
+
+$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_individual_gates tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_failed_analyze_gate -q
+..                                                                       [100%]
+2 passed in 0.24s
+exit code: 0
+
+$ uv run python scripts/check_sdd_gate.py --feature 2026-06-09-executable-harness-hard-cut --gate clarify --check
+clarify gate passed: 2026-06-09-executable-harness-hard-cut
+exit code: 0
+
+$ uv run python scripts/check_sdd_gate.py --feature 2026-06-09-executable-harness-hard-cut --gate checklist --check
+checklist gate passed: 2026-06-09-executable-harness-hard-cut
+exit code: 0
+
+$ uv run python scripts/check_sdd_gate.py --feature 2026-06-09-executable-harness-hard-cut --gate analyze --check
+analyze gate passed: 2026-06-09-executable-harness-hard-cut
+exit code: 0
+
+$ uv run python scripts/check_sdd_gate.py --feature 2026-06-09-executable-harness-hard-cut --gate implement --check
+implement gate passed: 2026-06-09-executable-harness-hard-cut
+exit code: 0
 ```
 
 ## Diff summary
@@ -3544,6 +3610,10 @@ Files changed:
 - Development-agent factory/eval loop: `docs/agent-playbook/factory-operating-model.md`, `docs/agent-playbook/eval-repair-loop.md`, `docs/agent-playbook/task-reading-matrix.md`.
 - Test taxonomy and gate wiring: `docs/TESTING.md`, `docs/WORKFLOW.md`, `Makefile`, architecture tests.
 - SQL query-contract helper and macro request-path hard cut: `tests/support/query_contract.py`, macro repository/tests.
+- Macro dirty-control-plane hard cut: `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`, `tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py`.
+- Agent execution docs/source alignment: `docs/AGENT_EXECUTION.md`, `tests/architecture/test_agent_execution_plane_contracts.py`.
+- Active SDD current-path hard cut: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/_templates/tasks-template.md`.
+- First-class SDD gate checks: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`.
 - Mechanical frontend Prettier drift cleanup: macro pages, macro component test, `web/vite.config.ts`.
 
 Migrations applied:

@@ -317,6 +317,76 @@ def test_sdd_task_dispatch_cli_refuses_unmet_dependencies(tmp_path: Path) -> Non
 
 
 @pytest.mark.architecture
+def test_sdd_gate_check_cli_accepts_individual_gates(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "check_sdd_gate.py"
+    assert script.exists()
+    _write_context_packet_fixture(tmp_path)
+    _create_context_packet_fixture_paths(tmp_path)
+
+    for gate in ("clarify", "checklist", "analyze", "implement"):
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(script),
+                "--root",
+                str(tmp_path),
+                "--feature",
+                "2026-06-09-context-packet-fixture",
+                "--gate",
+                gate,
+                "--check",
+            ],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        assert result.returncode == 0, gate + "\n" + result.stdout + result.stderr
+        assert f"{gate} gate passed" in result.stdout
+
+
+@pytest.mark.architecture
+def test_sdd_gate_check_cli_rejects_failed_analyze_gate(tmp_path: Path) -> None:
+    script = ROOT / "scripts" / "check_sdd_gate.py"
+    assert script.exists()
+    _write_context_packet_fixture(tmp_path)
+    _create_context_packet_fixture_paths(tmp_path)
+    plan_path = (
+        tmp_path
+        / "docs"
+        / "sdd"
+        / "features"
+        / "active"
+        / "2026-06-09-context-packet-fixture"
+        / "plan.md"
+    )
+    plan_text = plan_path.read_text(encoding="utf-8")
+    plan_path.write_text(plan_text.replace("Pass: fixture", "Fail: fixture"), encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--feature",
+            "2026-06-09-context-packet-fixture",
+            "--gate",
+            "analyze",
+            "--check",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "plan-analyze-gate-invalid" in result.stderr
+
+
+@pytest.mark.architecture
 def test_subagent_report_validator_accepts_evidence_report(tmp_path: Path) -> None:
     script = ROOT / "scripts" / "validate_subagent_report.py"
     report = tmp_path / "subagent-report.md"
@@ -1082,6 +1152,18 @@ def _write_context_packet_fixture(root: Path) -> None:
         + "\n",
         encoding="utf-8",
     )
+    _create_context_packet_fixture_paths(root)
+
+
+def _create_context_packet_fixture_paths(root: Path) -> None:
+    for repo_path in (
+        "scripts/build_agent_context_packet.py",
+        "scripts/dispatch_sdd_task.py",
+        "docs/agent-playbook/context-packet-template.md",
+    ):
+        path = root / repo_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch(exist_ok=True)
 
 
 @pytest.mark.architecture

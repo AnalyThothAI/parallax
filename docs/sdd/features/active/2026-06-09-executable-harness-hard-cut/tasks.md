@@ -1281,10 +1281,11 @@
 
 ### Task 61 — Domain interface runtime import hard cut
 
-- **File(s)**: `src/parallax/domains/token_intel/interfaces.py`, `src/parallax/domains/token_intel/services/token_resolution_refresh.py`, `src/parallax/domains/token_intel/runtime/token_resolution_refresh.py`, `src/parallax/domains/token_intel/runtime/token_intent_rebuild.py`, `src/parallax/app/surfaces/cli/commands/ops.py`, `tests/unit/test_token_resolution_refresh.py`, `tests/architecture/test_src_domain_architecture.py`, `docs/TECH_DEBT.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `src/parallax/domains/token_intel/interfaces.py`, `src/parallax/domains/token_intel/services/token_resolution_refresh.py`, `src/parallax/domains/token_intel/runtime/token_intent_rebuild.py`, `src/parallax/app/surfaces/cli/commands/ops.py`, `tests/unit/test_token_resolution_refresh.py`, `tests/architecture/test_src_domain_architecture.py`, `docs/TECH_DEBT.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 60
-- **Touch set**: `src/parallax/domains/token_intel/interfaces.py`, `src/parallax/domains/token_intel/services/token_resolution_refresh.py`, `src/parallax/domains/token_intel/runtime/token_resolution_refresh.py`, `src/parallax/domains/token_intel/runtime/token_intent_rebuild.py`, `src/parallax/app/surfaces/cli/commands/ops.py`, `tests/unit/test_token_resolution_refresh.py`, `tests/architecture/test_src_domain_architecture.py`, `docs/TECH_DEBT.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `src/parallax/domains/token_intel/interfaces.py`, `src/parallax/domains/token_intel/services/token_resolution_refresh.py`, `src/parallax/domains/token_intel/runtime/token_intent_rebuild.py`, `src/parallax/app/surfaces/cli/commands/ops.py`, `tests/unit/test_token_resolution_refresh.py`, `tests/architecture/test_src_domain_architecture.py`, `docs/TECH_DEBT.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Removed file(s)**: `src/parallax/domains/token_intel/runtime/token_resolution_refresh.py`
 - **Conflict set**: coordinate with `src/parallax/domains/token_intel/interfaces.py` for domain interface export ownership.
 - **Failing test first**: `tests/architecture/test_src_domain_architecture.py::test_domain_interfaces_do_not_import_runtime_modules` — asserts domain interface modules cannot import runtime modules.
 - **Subagent handoff**: not delegated
@@ -2415,10 +2416,11 @@
 
 ### Task 115 — Root visual artifacts are rejected
 
-- **File(s)**: `tests/architecture/test_harness_structure.py`, `news-provider-rating-1366.png`, `parallax-macro-assets-after-1366.png`, `parallax-macro-assets-after-390.png`, `parallax-macro-assets-before-1366.png`, `parallax-macro-assets-before-390.png`, `timsun-assets-1366.png`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **File(s)**: `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
 - **Owner**: parent
 - **Depends on**: Task 114
-- **Touch set**: `tests/architecture/test_harness_structure.py`, `news-provider-rating-1366.png`, `parallax-macro-assets-after-1366.png`, `parallax-macro-assets-after-390.png`, `parallax-macro-assets-before-1366.png`, `parallax-macro-assets-before-390.png`, `timsun-assets-1366.png`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Touch set**: `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Removed file(s)**: `news-provider-rating-1366.png`, `parallax-macro-assets-after-1366.png`, `parallax-macro-assets-after-390.png`, `parallax-macro-assets-before-1366.png`, `parallax-macro-assets-before-390.png`, `timsun-assets-1366.png`
 - **Conflict set**: coordinate with `tests/architecture/test_harness_structure.py` for root artifact hygiene semantics.
 - **Failing test first**: `tests/architecture/test_harness_structure.py::test_repo_root_has_no_loose_visual_artifacts` — run the new harness against a temporary HEAD workspace with root PNG artifacts still present and assert it fails on those loose files.
 - **Subagent handoff**: not delegated
@@ -3715,6 +3717,90 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 177 — Macro projection dirty targets use shared strict dirty payload hash
+
+- **File(s)**: `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`, `tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 176
+- **Touch set**: `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`, `tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `src/parallax/domains/macro_intel/runtime/macro_view_projection_worker.py`, `src/parallax/platform/current_read_model_payload_hash.py`, `src/parallax/domains/macro_intel/observation_identity.py`
+- **Failing test first**: `tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_enqueue_macro_projection_dirty_target_coalesces_current_target`, `tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_projection_dirty_payload_hash_rejects_legacy_payload_shapes`, `tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_enqueue_macro_projection_dirty_targets_for_changes_groups_by_concept_watermark`, and `tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_projection_dirty_change_payload_hash_rejects_legacy_payload_shapes` — enqueue current and concept dirty targets and call the dirty hash helpers with compatibility-shaped values, asserting the shared `sha256:` dirty payload contract and strict nested-key validation.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Domain implementation
+- **Deterministic constraints**: Macro projection dirty target hashes must keep stable business control-plane fields (`projection_name`, `projection_version`, `target_kind`, `target_id`, concept/date watermarks, dirty reason, and source watermark) while using `stable_dirty_target_payload_hash()` for final hash generation. The implementation must not preserve `postgres_safe_json()`, `default=str`, local key stringification, or repository-local `json.dumps()`/`hashlib.sha256()` canonicalization as a dirty-target compatibility path.
+- **On-demand context**: `src/parallax/domains/macro_intel/ARCHITECTURE.md`, `docs/WORKER_FLOW.md`, `docs/WORKERS.md`, `docs/agent-playbook/read-model-change-checklist.md`, `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`, and macro dirty queue tests in `tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py`.
+- **Kill/defer criteria**: Stop if Macro producers intentionally require non-string nested dirty-reason payload keys, if compliant dirty claim/done matching cannot accept the shared `sha256:` hash contract, or if current and concept dirty targets need different platform hash semantics.
+- **Eval/repair signal**: bare 64-character Macro dirty target hashes, `_macro_projection_dirty_*_payload_hash()` using `postgres_safe_json()` or `default=str`, compatibility-shaped nested keys being accepted, claim/done payload-hash mismatch, and SDD generated index drift.
+- **Implementation**: Import `stable_dirty_target_payload_hash()` from the platform hash contract, switch current and concept Macro projection dirty hash helpers to it, and add RED tests for shared hash shape plus compatibility payload rejection.
+- **Verification**: `uv run pytest tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_enqueue_macro_projection_dirty_target_coalesces_current_target tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_projection_dirty_payload_hash_rejects_legacy_payload_shapes tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_enqueue_macro_projection_dirty_targets_for_changes_groups_by_concept_watermark tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_projection_dirty_change_payload_hash_rejects_legacy_payload_shapes -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 178 — Agent execution docs name the live read-only tool contract
+
+- **File(s)**: `docs/AGENT_EXECUTION.md`, `tests/architecture/test_agent_execution_plane_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 177
+- **Touch set**: `docs/AGENT_EXECUTION.md`, `tests/architecture/test_agent_execution_plane_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `src/parallax/platform/agent_read_tools.py`, `docs/agent-playbook/task-reading-matrix.md`
+- **Failing test first**: `tests/architecture/test_agent_execution_plane_contracts.py::test_agent_execution_doc_names_current_read_tool_contract` — parse `src/parallax/platform/agent_read_tools.py`, require `docs/AGENT_EXECUTION.md` to mention the live `ReadOnlySqlAgentTool` class, and reject the stale `AgentReadTool` class name.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Docs/contracts
+- **Deterministic constraints**: Product-agent execution docs must name live source symbols for the read-only context registry and must not advertise stale class names that are no longer exported by `agent_read_tools.py`. This is a docs/source alignment gate, not a runtime product-agent tool-loop expansion.
+- **On-demand context**: `docs/AGENT_EXECUTION.md`, `src/parallax/platform/agent_read_tools.py`, `tests/architecture/test_agent_execution_plane_contracts.py`, and `docs/agent-playbook/task-reading-matrix.md`.
+- **Kill/defer criteria**: Stop if the source intentionally reintroduces an `AgentReadTool` compatibility alias, if product agents start receiving callable model tools, or if the read-only registry moves to a different owning module.
+- **Eval/repair signal**: stale `AgentReadTool` references, missing `ReadOnlySqlAgentTool` documentation, read-only registry docs drifting from exported source symbols, and SDD generated index drift.
+- **Implementation**: Add an architecture doc/source alignment test and update `docs/AGENT_EXECUTION.md` to name `ReadOnlySqlAgentTool`.
+- **Verification**: `uv run pytest tests/architecture/test_agent_execution_plane_contracts.py::test_agent_execution_doc_names_current_read_tool_contract -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 179 — Active SDD current paths exclude removed files
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/_templates/tasks-template.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 178
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/_templates/tasks-template.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `scripts/regen_sdd_work_index.py`; `docs/sdd/_templates/README.md`
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_missing_current_file_and_touch_paths`, `tests/architecture/test_sdd_artifact_validator.py::test_tasks_allow_removed_file_records_outside_current_touch_surface`, and `tests/architecture/test_sdd_artifact_validator.py::test_tasks_allow_current_glob_touch_paths_when_they_match` — build active SDD fixtures with stale paths, removed-file records, and matching glob touch paths to prove current coordination surfaces cannot advertise deleted files.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Active task `File(s)` and `Touch set` entries must resolve to current repository paths or matching glob patterns; deleted artifacts belong in optional `Removed file(s)` and must not remain in generated coordination touch surfaces. The generated work index must continue to render only active touch sets.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `docs/sdd/_templates/tasks-template.md`, and active SDD task records for deleted-file tasks.
+- **Kill/defer criteria**: Stop if historical completed records need to advertise deleted files, if a current touch glob intentionally matches nothing, or if the generated index starts rendering removed-file evidence as editable coordination scope.
+- **Eval/repair signal**: missing current path issue, stale root visual artifacts in generated index, deleted runtime shim in active touch set, glob false negative, and SDD generated index drift.
+- **Implementation**: Add active path existence/glob validation, add optional `Removed file(s)` validation, update the tasks template, move deleted Task61/Task115 paths into `Removed file(s)`, and regenerate the SDD work index.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_missing_current_file_and_touch_paths tests/architecture/test_sdd_artifact_validator.py::test_tasks_allow_removed_file_records_outside_current_touch_surface tests/architecture/test_sdd_artifact_validator.py::test_tasks_allow_current_glob_touch_paths_when_they_match -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 180 — SDD lifecycle gates have first-class CLI checks
+
+- **File(s)**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 179
+- **Touch set**: `scripts/check_sdd_gate.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: `scripts/validate_sdd_artifacts.py`; `scripts/dispatch_sdd_task.py`; `scripts/build_agent_context_packet.py`
+- **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_individual_gates` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_failed_analyze_gate` — run a production-style active SDD fixture through `clarify`, `checklist`, `analyze`, and `implement` gate checks and prove a failed Analyze Gate exits non-zero.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `clarify`, `checklist`, `analyze`, and `implement` must be checkable through a non-mutating CLI for one feature without requiring the final verification lane. Analyze failure detection must bind to gate result cells, not historical RED/GREEN evidence text.
+- **On-demand context**: `docs/WORKFLOW.md`, `docs/sdd/README.md`, `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_agent_playbook_contracts.py`, and Spec Kit-style gate sequence references in the active spec background.
+- **Kill/defer criteria**: Stop if the CLI mutates artifacts, if it duplicates final `make check-all` verification semantics, if it accepts failed Analyze rows, or if it replaces the full SDD validator rather than narrowing gate feedback.
+- **Eval/repair signal**: missing gate CLI, Analyze Gate false positive/negative, context fixture path-currentness failure, SDD docs missing command surface, and generated index drift.
+- **Implementation**: Add `scripts/check_sdd_gate.py`, add subprocess architecture tests for pass/fail gate behavior, document the gate commands in `docs/WORKFLOW.md` and `docs/sdd/README.md`, and keep `validate_sdd_artifacts.py` as the full-record validator.
+- **Verification**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_individual_gates tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_failed_analyze_gate -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -3882,4 +3968,8 @@
 - [ ] `uv run pytest tests/unit/domains/narrative_intel/test_narrative_dirty_target_repositories.py::test_payload_hash_rejects_legacy_non_string_payload_keys tests/unit/domains/narrative_intel/test_narrative_dirty_target_repositories.py::test_payload_hash_ignores_queue_lifecycle_fields -q`
 - [ ] `uv run pytest tests/unit/domains/asset_market/test_asset_market_dirty_target_payload_hashes.py tests/unit/domains/token_intel/test_token_radar_dirty_target_kinds.py::test_dirty_payload_hash_excludes_queue_lifecycle_fields -q`
 - [ ] `uv run pytest tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_uses_shared_payload_hash_contract tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_rejects_legacy_factor_snapshot_keys tests/unit/test_token_radar_projection.py::test_capture_tier_rank_set_fingerprint_rejects_unordered_payload_containers -q`
+- [ ] `uv run pytest tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_enqueue_macro_projection_dirty_target_coalesces_current_target tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_projection_dirty_payload_hash_rejects_legacy_payload_shapes tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_enqueue_macro_projection_dirty_targets_for_changes_groups_by_concept_watermark tests/unit/domains/macro_intel/test_macro_sync_repository_sql.py::test_macro_projection_dirty_change_payload_hash_rejects_legacy_payload_shapes -q`
+- [ ] `uv run pytest tests/architecture/test_agent_execution_plane_contracts.py::test_agent_execution_doc_names_current_read_tool_contract -q`
+- [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_missing_current_file_and_touch_paths tests/architecture/test_sdd_artifact_validator.py::test_tasks_allow_removed_file_records_outside_current_touch_surface tests/architecture/test_sdd_artifact_validator.py::test_tasks_allow_current_glob_touch_paths_when_they_match -q`
+- [ ] `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_accepts_individual_gates tests/architecture/test_agent_playbook_contracts.py::test_sdd_gate_check_cli_rejects_failed_analyze_gate -q`
 - [ ] `make check-all`

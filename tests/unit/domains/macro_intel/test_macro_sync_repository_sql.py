@@ -8,6 +8,8 @@ import pytest
 from parallax.domains.macro_intel.repositories.macro_intel_repository import (
     MacroIntelRepository,
     _macro_daily_brief_payload_hash,
+    _macro_projection_dirty_change_payload_hash,
+    _macro_projection_dirty_payload_hash,
     _macro_snapshot_payload_hash,
 )
 
@@ -205,6 +207,19 @@ def test_enqueue_macro_projection_dirty_target_coalesces_current_target() -> Non
     assert params["projection_version"] == "macro_regime_v4"
     assert params["target_kind"] == "current"
     assert params["target_id"] == "current"
+    assert str(params["payload_hash"]).startswith("sha256:")
+
+
+def test_macro_projection_dirty_payload_hash_rejects_legacy_payload_shapes() -> None:
+    with pytest.raises(ValueError, match="current payload hash payload has non-string keys"):
+        _macro_projection_dirty_payload_hash(
+            projection_name="macro_view",
+            projection_version="macro_regime_v4",
+            target_kind="current",
+            target_id="current",
+            reason={123: "legacy"},  # type: ignore[arg-type]
+            source_watermark_ms=1_779_000_000_000,
+        )
 
 
 def test_upsert_observation_updates_only_when_fact_payload_hash_changes() -> None:
@@ -322,6 +337,20 @@ def test_enqueue_macro_projection_dirty_targets_for_changes_groups_by_concept_wa
     assert params["min_observed_ats"] == [date(2026, 5, 27)]
     assert params["max_observed_ats"] == [date(2026, 5, 28)]
     assert params["source_watermark_dates"] == [date(2026, 5, 28)]
+    assert str(params["payload_hashes"][0]).startswith("sha256:")
+
+
+def test_macro_projection_dirty_change_payload_hash_rejects_legacy_payload_shapes() -> None:
+    with pytest.raises(ValueError, match="current payload hash payload has non-string keys"):
+        _macro_projection_dirty_change_payload_hash(
+            projection_name="macro_view",
+            projection_version="macro_regime_v4",
+            concept_key="liquidity:sofr",
+            min_observed_at=date(2026, 5, 27),
+            max_observed_at=date(2026, 5, 28),
+            source_watermark_date=date(2026, 5, 28),
+            reason={123: "legacy"},  # type: ignore[arg-type]
+        )
 
 
 def test_retry_macro_sync_window_terminalizes_when_attempt_budget_is_exhausted() -> None:
