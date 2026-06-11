@@ -14,7 +14,7 @@
 | Clarify | Spec contains approved clarification for superseding the omnibus record. |
 | Checklist | Spec records the active-record size bound requirement. |
 | Analyze | Plan Analyze Gate records why active records should remain bounded. |
-| Implement | Tasks 1-2 implement the validator, migration, and documentation contract. |
+| Implement | Tasks 1-3 implement the validator, migration, documentation contract, and stale-template cleanup. |
 | Verify | Verification artifact captures RED/GREEN command output. |
 
 ## Tasks
@@ -58,5 +58,26 @@
 - **Eval/repair signal**: docs/template drift, stale active-record guidance, or `test_sdd_docs_describe_bounded_active_feature_records` failure.
 - **Implementation**: Add SDD workflow guidance for bounded active records and a harness test that imports the validator limit.
 - **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_harness_structure.py::test_sdd_docs_describe_bounded_active_feature_records -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 3 - Remove stale verification-template section anchors
+
+- **File(s)**: `docs/sdd/_templates/verification-template.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`
+- **Owner**: parent
+- **Depends on**: Task 2
+- **Touch set**: `docs/sdd/_templates/verification-template.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared SDD template or generated index updates.
+- **Failing test first**: `tests/architecture/test_harness_structure.py::test_sdd_verification_template_avoids_stale_spec_section_anchors` — proves verification templates cannot teach historical fixed spec-section anchors.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Docs/contracts
+- **Deterministic constraints**: Verification template E2E guidance must reference the current feature spec, must not mention `§6.4`, and must retain the single-feature completion gate command.
+- **On-demand context**: `docs/sdd/_templates/verification-template.md`, `docs/WORKFLOW.md`, `tests/architecture/test_harness_structure.py`.
+- **Kill/defer criteria**: Stop if E2E evidence is intentionally tied to a fixed spec section by a current canonical doc.
+- **Eval/repair signal**: stale section anchors, stale template instructions, or `test_sdd_verification_template_avoids_stale_spec_section_anchors` failure.
+- **Implementation**: Replace the fixed `spec §6.4` wording with current-feature-spec guidance and add a harness test for the template contract.
+- **Verification**: `uv --cache-dir /private/tmp/parallax-uv-cache run --no-sync pytest tests/architecture/test_harness_structure.py::test_sdd_verification_template_avoids_stale_spec_section_anchors -q`
 - **Review owner**: parent
 - **Status**: [x]

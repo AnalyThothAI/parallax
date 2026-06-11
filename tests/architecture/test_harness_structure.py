@@ -253,6 +253,14 @@ def test_sdd_docs_describe_bounded_active_feature_records() -> None:
             assert token in text, f"{document.relative_to(REPO_ROOT)} does not mention {token!r}"
 
 
+def test_sdd_verification_template_avoids_stale_spec_section_anchors() -> None:
+    template = _read(SDD / "_templates" / "verification-template.md")
+
+    assert "§6.4" not in template
+    assert "current feature spec" in template
+    assert "make check-sdd-completion FEATURE=<slug>" in template
+
+
 def test_docs_root_governance_files() -> None:
     actual = {p.name for p in DOCS.glob("*.md")}
     assert actual == EXPECTED_GOVERNANCE, f"unexpected docs root contents: {actual ^ EXPECTED_GOVERNANCE}"

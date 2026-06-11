@@ -63,7 +63,7 @@ skips.
 
 ## E2E golden path
 
-Confirm each runtime signal from the spec §6.4 was asserted:
+Confirm each runtime signal required by the current feature spec was asserted:
 
 - [ ] /readyz returned 200
 - [ ] writer wrote a row visible to a separate process
