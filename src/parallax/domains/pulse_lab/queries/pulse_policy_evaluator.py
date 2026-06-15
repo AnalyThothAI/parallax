@@ -29,46 +29,45 @@ BACKPRESSURE_JOB_STATUSES = {"pending", "running", "dead"}
 
 def fetch_radar_rows(conn: Any, *, now_ms: int, lookback_hours: int) -> list[dict[str, Any]]:
     since_ms = _since_ms(now_ms=now_ms, lookback_hours=lookback_hours)
-    results: list[dict[str, Any]] = []
-    for window in EVALUATED_WINDOWS:
-        for scope in EVALUATED_SCOPES:
-            rows = conn.execute(
-                """
-                SELECT
-                  token_radar_current_rows."window",
-                  token_radar_current_rows.scope,
-                  token_radar_current_rows.row_id,
-                  COALESCE(
-                    token_radar_current_rows.target_type || ':' || token_radar_current_rows.target_id,
-                    token_radar_current_rows.intent_id,
-                    token_radar_current_rows.event_id,
-                    token_radar_current_rows.row_id
-                  ) AS subject_key,
-                  token_radar_current_rows.decision,
-                  token_radar_current_rows.rank,
-                  token_radar_current_rows.computed_at_ms,
-                  token_radar_current_rows.source_max_received_at_ms,
-                  token_radar_current_rows.factor_snapshot_json,
-                  token_radar_current_rows.source_event_ids_json
-                FROM token_radar_current_rows
-                JOIN token_radar_publication_state AS state
-                  ON state.projection_version = token_radar_current_rows.projection_version
-                 AND state."window" = token_radar_current_rows."window"
-                 AND state.scope = token_radar_current_rows.scope
-                 AND state.venue = token_radar_current_rows.venue
-                 AND state.latest_attempt_status = 'ready'
-                WHERE token_radar_current_rows.projection_version = %s
-                  AND token_radar_current_rows."window" = %s
-                  AND token_radar_current_rows.scope = %s
-                  AND token_radar_current_rows.venue = 'all'
-                  AND state.current_published_at_ms >= %s
-                  AND state.current_published_at_ms <= %s
-                ORDER BY token_radar_current_rows.rank ASC
-                """,
-                (TOKEN_RADAR_PROJECTION_VERSION, window, scope, since_ms, int(now_ms)),
-            ).fetchall()
-            results.extend(dict(row) for row in rows)
-    return results
+    rows = conn.execute(
+        """
+        SELECT
+          token_radar_current_rows."window",
+          token_radar_current_rows.scope,
+          token_radar_current_rows.row_id,
+          COALESCE(
+            token_radar_current_rows.target_type || ':' || token_radar_current_rows.target_id,
+            token_radar_current_rows.intent_id,
+            token_radar_current_rows.event_id,
+            token_radar_current_rows.row_id
+          ) AS subject_key,
+          token_radar_current_rows.decision,
+          token_radar_current_rows.rank,
+          token_radar_current_rows.computed_at_ms,
+          token_radar_current_rows.source_max_received_at_ms,
+          token_radar_current_rows.factor_snapshot_json,
+          token_radar_current_rows.source_event_ids_json
+        FROM token_radar_current_rows
+        JOIN token_radar_publication_state AS state
+          ON state.projection_version = token_radar_current_rows.projection_version
+         AND state."window" = token_radar_current_rows."window"
+         AND state.scope = token_radar_current_rows.scope
+         AND state.venue = token_radar_current_rows.venue
+         AND state.latest_attempt_status = 'ready'
+        WHERE token_radar_current_rows.projection_version = %s
+          AND token_radar_current_rows."window" = ANY(%s)
+          AND token_radar_current_rows.scope = ANY(%s)
+          AND token_radar_current_rows.venue = 'all'
+          AND state.current_published_at_ms >= %s
+          AND state.current_published_at_ms <= %s
+        ORDER BY
+          token_radar_current_rows."window" ASC,
+          token_radar_current_rows.scope ASC,
+          token_radar_current_rows.rank ASC
+        """,
+        (TOKEN_RADAR_PROJECTION_VERSION, list(EVALUATED_WINDOWS), list(EVALUATED_SCOPES), since_ms, int(now_ms)),
+    ).fetchall()
+    return [dict(row) for row in rows]
 
 
 def fetch_candidate_rows(conn: Any, *, now_ms: int, lookback_hours: int) -> list[dict[str, Any]]:

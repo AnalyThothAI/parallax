@@ -783,7 +783,7 @@ Follow-up review found the same optional connection-transaction root in `PulseJo
 
 Follow-up review found the same optional connection-transaction root in `PulseAdmissionRepository.claim_pulse_admission(...)`: admission wrote `pulse_candidate_edge_state`, used `SELECT ... FOR UPDATE`, depended on `_pulse_repository_shared._transaction(conn)`, and fell back to `nullcontext()` when `transaction` support was missing (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:576`, `docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:578`). The target contract is that Pulse admission raises `RuntimeError("pulse_repository_transaction_required")` before edge or budget SQL when `conn.transaction` is missing or not callable, while keeping admission writes inside `with _transaction(self.conn):` (`src/parallax/domains/pulse_lab/repositories/_pulse_repository_shared.py:122`, `src/parallax/domains/pulse_lab/repositories/_pulse_repository_shared.py:124`, `src/parallax/domains/pulse_lab/repositories/_pulse_repository_shared.py:126`, `src/parallax/domains/pulse_lab/repositories/pulse_admission_repository.py:213`, `tests/unit/domains/pulse_lab/test_pulse_admission_repository.py:116`, `tests/architecture/test_pulse_no_compat.py:873`).
 
-Follow-up review found the same optional connection-transaction root in Macro observation-series refresh: `MacroIntelRepository.refresh_observation_series_rows_for_concepts(...)` used `_transaction_context` around `macro_observation_series_rows` and `macro_observation_series_publication_state`, and previously fell back to `nullcontext()` when connection `transaction` support was missing (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:591`). The target contract is that changed current-row delete/insert and publication-state update run inside the connection transaction and fail before SQL when that contract is missing (`src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1345`, `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1351`, `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1352`, `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:2184`, `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:2185`, `tests/architecture/test_macro_no_compatibility_contract.py:224`).
+Follow-up review found the same optional connection-transaction root in Macro observation-series refresh: `MacroIntelRepository.refresh_observation_series_rows_for_concepts(...)` used `_transaction_context` around `macro_observation_series_rows` and `macro_observation_series_publication_state`, and previously fell back to `nullcontext()` when connection `transaction` support was missing (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:591`). The target contract is that changed current-row delete/insert and publication-state update run inside the connection transaction and fail before SQL when that contract is missing (`src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1345`, `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1351`, `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1352`, `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:2262`, `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:2263`, `tests/architecture/test_macro_no_compatibility_contract.py:224`).
 
 Follow-up review found the same repository-owned manual commit root in Macro
 projection dirty-target control-plane mutations: `claim_macro_projection_dirty_targets(...)`,
@@ -1296,16 +1296,18 @@ non-contract `TypeError` for non-callable transaction attributes
 (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:888,
 docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:891,
 docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:892,
-src/parallax/domains/token_intel/services/token_radar_projection.py:609,
-src/parallax/domains/token_intel/services/token_radar_projection.py:1884,
-tests/architecture/test_token_radar_publication_state_hard_cut.py:283).
+src/parallax/domains/token_intel/services/token_radar_projection.py:580,
+src/parallax/domains/token_intel/services/token_radar_projection.py:611,
+src/parallax/domains/token_intel/services/token_radar_projection.py:1977,
+tests/architecture/test_token_radar_publication_state_hard_cut.py:302).
 The target contract is that Token Radar rank publication requires a callable
 connection transaction before current-row/publication-state SQL and fails with
 the projection contract error when that connection contract is absent or
-malformed (src/parallax/domains/token_intel/services/token_radar_projection.py:609,
-src/parallax/domains/token_intel/services/token_radar_projection.py:1884,
-src/parallax/domains/token_intel/services/token_radar_projection.py:1886,
-src/parallax/domains/token_intel/services/token_radar_projection.py:1890).
+malformed (src/parallax/domains/token_intel/services/token_radar_projection.py:611,
+src/parallax/domains/token_intel/services/token_radar_projection.py:1977,
+src/parallax/domains/token_intel/services/token_radar_projection.py:1979,
+src/parallax/domains/token_intel/services/token_radar_projection.py:1981,
+src/parallax/domains/token_intel/services/token_radar_projection.py:1983).
 
 Follow-up hardening found the same optional probe shape in Event Anchor
 repository terminal writes: Root39 had already required
@@ -1964,15 +1966,15 @@ tests/unit/test_token_radar_repository.py:895,
 tests/unit/test_token_radar_dirty_target_repository.py:215,
 tests/unit/domains/token_intel/test_token_radar_source_dirty_events.py:181,
 tests/unit/domains/token_intel/test_token_radar_rank_source_query.py:364,
-tests/architecture/test_token_radar_publication_state_hard_cut.py:754,
-tests/architecture/test_token_radar_publication_state_hard_cut.py:758,
-tests/architecture/test_token_radar_publication_state_hard_cut.py:759,
-tests/architecture/test_token_radar_source_width_contract.py:235,
-tests/architecture/test_token_radar_source_width_contract.py:239,
-tests/architecture/test_token_radar_source_width_contract.py:240,
-tests/architecture/test_token_radar_source_width_contract.py:297,
-tests/architecture/test_token_radar_source_width_contract.py:303,
-tests/architecture/test_token_radar_source_width_contract.py:304).
+tests/architecture/test_token_radar_publication_state_hard_cut.py:771,
+tests/architecture/test_token_radar_publication_state_hard_cut.py:775,
+tests/architecture/test_token_radar_publication_state_hard_cut.py:776,
+tests/architecture/test_token_radar_source_width_contract.py:243,
+tests/architecture/test_token_radar_source_width_contract.py:247,
+tests/architecture/test_token_radar_source_width_contract.py:248,
+tests/architecture/test_token_radar_source_width_contract.py:308,
+tests/architecture/test_token_radar_source_width_contract.py:314,
+tests/architecture/test_token_radar_source_width_contract.py:315).
 
 Follow-up review found the same returned-row-only classification gap in News
 page read-model writes. `replace_page_rows_for_items` writes `news_page_rows`
@@ -4263,6 +4265,7 @@ come from PostgreSQL changed-row evidence rather than application-side
 - AC431. WHEN `NotificationRuleEngine` evaluates watched-account activity THEN the configured `watched_activity_window_ms` SHALL be converted to `since_ms` and passed into `EvidenceRepository.recent_events(...)`, `EvidenceRepository.recent_events(...)` SHALL push that predicate into PostgreSQL as `e.received_at_ms >= %s`, and the notification rule SHALL NOT rely only on service-layer filtering after reading a generic recent watched-event page.
 - AC432. WHEN account-alert rows are read through `AccountAlertService.account_alerts(...)` for API, CLI, or notification rule evaluation THEN callers SHALL pass `now_ms` explicitly, `AccountAlertService` SHALL pass that value through to `SignalRepository.account_alerts(...)`, and `NotificationRuleEngine._watched_account_token_alerts(...)` SHALL use the worker evaluation clock instead of allowing the repository to compute the alert window from wall-clock time.
 - AC433. WHEN public WebSocket `/ws` replays events for subscribed `cas` or `symbols` token filters THEN `_replay_events(...)` SHALL call `EvidenceRepository.recent_events_for_token_filters(...)` once with the total replay limit, the computed per-filter bucket limit, and the normalized CA/symbol keysets; the repository SQL SHALL materialize filters through `unnest(%s::text[], %s::text[], %s::text[]) WITH ORDINALITY`, de-dupe filters, and use `ROW_NUMBER() OVER (PARTITION BY filter_kind, filter_chain, filter_value ...)` to bound each token-filter bucket inside PostgreSQL; and WebSocket replay code SHALL NOT loop over `client.cas` or `client.symbols` to call `recent_events(...)` once per filter.
+- AC434. WHEN `pulse_policy_evaluator.fetch_radar_rows(...)` reads evaluated Token Radar current rows THEN it SHALL query `token_radar_current_rows` once for the evaluated window/scope keysets, the SQL SHALL use `token_radar_current_rows."window" = ANY(%s)` and `token_radar_current_rows.scope = ANY(%s)` while preserving ready publication-state gating, and the evaluator SHALL NOT loop over `EVALUATED_WINDOWS` and `EVALUATED_SCOPES` to issue one radar-current SQL per combination.
 
 ## Risks
 

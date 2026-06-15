@@ -191,6 +191,41 @@ def test_fetch_radar_rows_uses_publication_state_for_ready_current_generation() 
     assert "state.latest_attempt_status = 'ready'" in row_sql
 
 
+def test_fetch_radar_rows_uses_single_window_scope_keyset_sql() -> None:
+    conn = FakeConn(
+        radar_rows=[
+            _radar_row("1h", "all", authors=3, top_share=0.3, watched_mentions=1, computed_at_ms=100),
+            _radar_row("4h", "matched", authors=4, top_share=0.25, watched_mentions=0, computed_at_ms=200),
+        ],
+        candidate_rows=[],
+        run_rows=[],
+        publication_state_rows=[
+            {
+                "window": "1h",
+                "scope": "all",
+                "current_published_at_ms": 1_700_000_000_000,
+                "current_generation_id": "gen-ready",
+                "latest_attempt_status": "ready",
+            },
+            {
+                "window": "4h",
+                "scope": "matched",
+                "current_published_at_ms": 1_700_000_000_000,
+                "current_generation_id": "gen-ready",
+                "latest_attempt_status": "ready",
+            },
+        ],
+    )
+
+    rows = fetch_radar_rows(conn, now_ms=1_700_000_060_000, lookback_hours=24)
+
+    assert len(rows) == 2
+    radar_sql = [sql for sql in conn.executed_sql if "FROM token_radar_current_rows" in sql]
+    assert len(radar_sql) == 1
+    assert '"window" = ANY(%s)' in radar_sql[0]
+    assert "scope = ANY(%s)" in radar_sql[0]
+
+
 def test_fetch_radar_rows_ignores_non_ready_publication_state() -> None:
     conn = FakeConn(
         radar_rows=[_radar_row("1h", "all", authors=3, top_share=0.3, watched_mentions=1, computed_at_ms=100)],
@@ -381,24 +416,20 @@ class FakeConn:
             return FakeCursor(self._rows["pulse_agent_runs"])
         if "FROM pulse_agent_jobs" in sql:
             return FakeCursor(self._rows["pulse_agent_jobs"])
-        if "FROM token_radar_current_rows" in sql and '"window" = %s' in sql and "scope = %s" in sql:
-            window, scope = str(params[1]), str(params[2])
-            state_rows = [
-                row
+        if "FROM token_radar_current_rows" in sql and '"window" = ANY(%s)' in sql and "scope = ANY(%s)" in sql:
+            windows = {str(window) for window in params[1]}
+            scopes = {str(scope) for scope in params[2]}
+            ready_pairs = {
+                (str(row.get("window")), str(row.get("scope")))
                 for row in self._rows["token_radar_publication_state"]
-                if row.get("window") == window
-                and row.get("scope") == scope
+                if row.get("window") in windows
+                and row.get("scope") in scopes
                 and row.get("latest_attempt_status") == "ready"
-            ]
-            if not state_rows:
-                return FakeCursor([])
-            generation_id = state_rows[0].get("current_generation_id")
+            }
             rows = [
                 row
                 for row in self._rows["token_radar_current_rows"]
-                if row.get("window") == window
-                and row.get("scope") == scope
-                and row.get("generation_id", "gen-ready") == generation_id
+                if (str(row.get("window")), str(row.get("scope"))) in ready_pairs
             ]
             return FakeCursor(rows)
         for table, rows in self._rows.items():

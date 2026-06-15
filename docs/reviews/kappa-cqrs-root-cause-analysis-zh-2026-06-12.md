@@ -15649,6 +15649,39 @@ RepositorySession Unit of Work；失败时不能留下半个 snapshot 或半套 
 - 新增 architecture guard，禁止 `/ws` token replay 回到 `for chain, ca in client.cas` / `for symbol in client.symbols` 的 per-filter query 形态。
 - 按当前用户指令，本轮不运行 integration-heavy gate。
 
+### Root438 - Pulse policy evaluator radar rows 按 window/scope 发 12 次 SQL
+
+发现：
+
+- `pulse_policy_evaluator.fetch_candidate_rows(...)`、`fetch_run_rows(...)` 和 `fetch_job_rows(...)` 都已经把 `EVALUATED_WINDOWS` / `EVALUATED_SCOPES` 作为数组 keyset 交给 PostgreSQL。
+- 但 `fetch_radar_rows(...)` 仍然在 Python 里对 4 个 window 和 3 个 scope 做双层循环，每组调用一次 `token_radar_current_rows` + `token_radar_publication_state` 查询。
+- 结果是一次 Pulse policy evaluation 固定产生 12 次 radar-current SQL 读，虽然这些读本质上共享同一 projection_version、venue、ready publication state 和时间窗口谓词。
+
+根因：
+
+- 这不是 worker writer 的事实链路错误，而是 ops/evaluation read surface 的 SQL 预算漂移：评估维度被当成应用层循环，而不是数据库 keyset。
+- 成熟 CQRS 读模型的原则是：读端可以做分析和对照，但查询预算必须由显式 keyset、窗口谓词和 limit 决定；不能让 window/scope 组合数自然变成 round trip 数。
+- PostgreSQL 最佳实践上，这里不需要 12 条 SQL。`window = ANY(%s)` 和 `scope = ANY(%s)` 足以表达同一个有界 evaluated grid，并让 planner 在一次 join/filter/order 内处理 ready publication state。
+
+修复：
+
+- `fetch_radar_rows(...)` 改为单条 `token_radar_current_rows` 查询：
+  - `token_radar_current_rows."window" = ANY(%s)`。
+  - `token_radar_current_rows.scope = ANY(%s)`。
+  - 保留 `state.latest_attempt_status = 'ready'` 和 published-at window gate。
+  - 继续禁止用 `state.current_generation_id = token_radar_current_rows.generation_id` 作为 serving gate。
+  - 排序改为 `window, scope, rank`，让一个 keyset 查询的返回顺序稳定。
+- 单测 FakeConn 改成模拟一次 window/scope keyset 查询，防止旧的逐 window/scope 分支继续被测试替身默默支持。
+- 新增 architecture guard，禁止 `fetch_radar_rows(...)` 回到 `for window in EVALUATED_WINDOWS` / `for scope in EVALUATED_SCOPES` 和单值 `= %s` 形态。
+
+验证：
+
+- RED：focused Pulse policy evaluator 命令初始失败，单测显示 `token_radar_current_rows` 被查询 12 次，architecture guard 抓到双层循环和单值 window/scope SQL。
+- GREEN：同一 focused 命令通过，`2 passed`。
+- 更宽非集成组合通过：Pulse policy evaluator 单元文件 + 新 architecture guard，`11 passed`。
+- Targeted static 通过：相关 production/query/test 文件 ruff clean，生产 query 文件 mypy clean。
+- 按当前用户指令，本轮不运行 integration-heavy gate。
+
 ## 剩余风险和建议
 
 1. 如果 Stocks Radar 需要真实 quote，必须新建 persisted quote fact/current read model，而不是恢复 request-time provider。

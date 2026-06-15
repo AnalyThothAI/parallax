@@ -177,6 +177,23 @@ def test_online_token_radar_paths_do_not_read_private_or_cold_tables() -> None:
     assert violations == []
 
 
+def test_pulse_policy_evaluator_reads_radar_rows_with_single_window_scope_keyset_sql() -> None:
+    source = _function_source(PULSE_POLICY_EVALUATOR, "fetch_radar_rows")
+    forbidden = (
+        "for window in EVALUATED_WINDOWS",
+        "for scope in EVALUATED_SCOPES",
+        'token_radar_current_rows."window" = %s',
+        "token_radar_current_rows.scope = %s",
+    )
+    required = (
+        '"window" = ANY(%s)',
+        "scope = ANY(%s)",
+    )
+
+    assert [token for token in forbidden if token in source] == []
+    assert [token for token in required if token not in source] == []
+
+
 def test_token_radar_product_read_paths_do_not_gate_serving_rows_by_generation_id() -> None:
     forbidden_by_path = {
         TOKEN_RADAR_REPOSITORY: {
