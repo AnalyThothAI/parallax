@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import asdict, is_dataclass
@@ -16,6 +17,9 @@ from parallax.domains.news_intel.runtime.news_item_process_worker import (
 )
 from parallax.domains.news_intel.runtime.news_item_process_worker import (
     _object_payload as _process_worker_object_payload,
+)
+from parallax.domains.news_intel.runtime.news_item_process_worker import (
+    _source_watermark_ms as _process_worker_source_watermark_ms,
 )
 from parallax.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
 from parallax.domains.news_intel.types.source_provider import (
@@ -611,6 +615,7 @@ def test_news_item_process_worker_extracts_mentions_candidates_and_wakes() -> No
         "title": "Coinbase lists $BTC for trading",
         "summary": "Trading starts today",
         "body_text": "",
+        "published_at_ms": NOW_MS - 1_000,
         "processing_attempts": 1,
         "processing_lease_owner": "news_item_process",
     }
@@ -672,6 +677,20 @@ def test_news_item_process_worker_extracts_mentions_candidates_and_wakes() -> No
     assert "tx:release_expired_processing_items" in db.conn.events
     assert "tx:claim_unprocessed_items" in db.conn.events
     assert "tx:mark_item_processed" in db.conn.events
+
+
+def test_news_item_process_source_watermark_requires_persisted_source_time() -> None:
+    signature = inspect.signature(_process_worker_source_watermark_ms)
+
+    assert "fallback_ms" not in signature.parameters
+    assert (
+        _process_worker_source_watermark_ms(
+            {"news_item_id": "news-with-time", "published_at_ms": NOW_MS - 10_000, "fetched_at_ms": NOW_MS - 1_000}
+        )
+        == NOW_MS - 1_000
+    )
+    with pytest.raises(ValueError, match="news_item_process_source_watermark_required"):
+        _process_worker_source_watermark_ms({"news_item_id": "news-missing-time"})
 
 
 def test_news_item_process_worker_requires_repository_session_transaction_before_claiming_items() -> None:
@@ -743,6 +762,7 @@ def test_news_item_process_worker_reads_formal_settings_for_claim_session_and_re
         "title": "Coinbase lists $BTC for trading",
         "summary": "Trading starts today",
         "body_text": "",
+        "published_at_ms": NOW_MS - 1_000,
         "processing_attempts": 1,
         "processing_lease_owner": "news_item_process",
     }
@@ -800,6 +820,7 @@ def test_news_item_process_worker_passes_authority_scope_to_fact_candidates() ->
         "title": "Coinbase lists $BTC for trading",
         "summary": "Trading starts today",
         "body_text": "",
+        "published_at_ms": NOW_MS - 1_000,
         "processing_attempts": 1,
         "processing_lease_owner": "news_item_process",
     }

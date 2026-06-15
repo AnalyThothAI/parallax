@@ -7,6 +7,7 @@ NEWS_INTEL_ROOT = ROOT / "src/parallax/domains/news_intel"
 ROUTES_NEWS = ROOT / "src/parallax/app/surfaces/api/routes_news.py"
 OPENNEWS_CLIENT = ROOT / "src/parallax/integrations/news_feeds/opennews_client.py"
 NEWS_PROVIDER_WIRING = ROOT / "src/parallax/app/runtime/provider_wiring/news.py"
+NEWS_ITEM_PROCESS_WORKER = ROOT / "src/parallax/domains/news_intel/runtime/news_item_process_worker.py"
 
 FORBIDDEN_IMPORTS = (
     "domains.token_intel.runtime",
@@ -84,3 +85,12 @@ def test_news_reliability_docs_pin_opennews_rest_only_worker_contract() -> None:
     assert "OpenNews provider ingestion is REST-only" in text
     assert "must not open short-lived WebSocket subscribe cycles" in text
     assert "separate provider input path" in text
+
+
+def test_news_item_process_source_watermark_has_no_runtime_now_fallback() -> None:
+    text = NEWS_ITEM_PROCESS_WORKER.read_text()
+
+    assert "fallback_ms" not in text
+    assert "_source_watermark_ms(processed_item, fallback_ms=now)" not in text
+    assert "return int(fallback_ms)" not in text
+    assert "news_item_process_source_watermark_required" in text

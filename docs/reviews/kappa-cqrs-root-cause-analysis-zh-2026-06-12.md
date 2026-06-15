@@ -15717,6 +15717,38 @@ RepositorySession Unit of Work；失败时不能留下半个 snapshot 或半套 
 - Targeted static 通过：相关 production/audit/test 文件 ruff clean，`postgres_audit.py` mypy clean。
 - 按当前用户指令，本轮不运行 integration-heavy gate。
 
+### Root440 - News item-process source watermark 用 runtime now 兜底缺失事实时间
+
+发现：
+
+- `NewsItemProcessWorker` 在处理 `news_items` 后会 enqueue page reprojection 和 item brief dirty targets。
+- Dirty target 的 `source_watermark_ms` 原来来自 `_source_watermark_ms(processed_item, fallback_ms=now)`。
+- `_source_watermark_ms(...)` 会优先取 `fetched_at_ms` / `published_at_ms`，但当两者都缺失或非法时直接返回 worker runtime `now`。
+- 这会把一个缺少事实时间的 item 排成“刚刚发生”的 dirty work，影响 `news_projection_dirty_targets` 的 source-watermark 排序/覆盖语义。
+
+根因：
+
+- 这是典型的事实时间和处理时间混淆。`published_at_ms` / `fetched_at_ms` 是 provider/news item 的 persisted source time；`now_ms` 是 worker 处理时钟。
+- 成熟 Kappa/CQRS 的 read-model dirty watermark 应该来自可重放事实，而不是运行时处理时间。否则相同 PostgreSQL 事实在不同重试时间会产生不同的 dirty ordering，难以解释也难以重放。
+- 真实 `NewsRepository` 已经在 canonical item 写入时把缺失 `published_at_ms` 规范化为 `fetched_at_ms`；因此 worker 的 runtime-now fallback 不是必要容错，而是测试/fake 层遗留的兼容兜底。
+
+修复：
+
+- `_source_watermark_ms(...)` 删除 `fallback_ms` 参数。
+- 缺少正数 `fetched_at_ms` 和 `published_at_ms` 时抛出 `news_item_process_source_watermark_required[:news_item_id]`，让 item-process 走现有 retry/terminal 状态机。
+- `enqueue_page_reprojection(...)` 和 `enqueue_item_brief_work(...)` 的 source watermark 均只从 persisted item time 计算。
+- 成功路径测试 fixture 补充 `published_at_ms`，不再靠 worker runtime now 隐式通过。
+- News domain 架构文档声明 item-process dirty targets 必须从 persisted `news_items.published_at_ms` / `fetched_at_ms` 取 source freshness。
+- 新增 architecture guard，禁止 `fallback_ms` 和 `_source_watermark_ms(processed_item, fallback_ms=now)` 回归。
+
+验证：
+
+- RED：focused News item-process watermark 命令初始失败，单测发现 helper 仍暴露 `fallback_ms`，architecture guard 抓到 runtime-now fallback。
+- GREEN：同一 focused 命令通过，`2 passed`。
+- 更宽非集成组合通过：News worker 单元文件、事务 dirty target 测试和新 architecture guard，`42 passed`。
+- Targeted static 通过：相关 worker/test/architecture 文件 ruff clean，`news_item_process_worker.py` mypy clean。
+- 按当前用户指令，本轮不运行 integration-heavy gate。
+
 ## 剩余风险和建议
 
 1. 如果 Stocks Radar 需要真实 quote，必须新建 persisted quote fact/current read model，而不是恢复 request-time provider。

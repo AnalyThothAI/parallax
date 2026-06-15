@@ -186,7 +186,7 @@ class NewsItemProcessWorker(WorkerBase):
                         reason="news_item_processed",
                         now_ms=now,
                         source_watermark_ms_by_news_item_id={
-                            news_item_id: _source_watermark_ms(processed_item, fallback_ms=now)
+                            news_item_id: _source_watermark_ms(processed_item)
                         },
                         commit=False,
                     )
@@ -220,7 +220,7 @@ class NewsItemProcessWorker(WorkerBase):
                                 representative_news_item_id: news_item_agent_brief_priority(item=context_item)
                             },
                             source_watermark_ms_by_news_item_id={
-                                representative_news_item_id: _source_watermark_ms(processed_item, fallback_ms=now)
+                                representative_news_item_id: _source_watermark_ms(processed_item)
                             },
                             reason="news_item_processed",
                             now_ms=now,
@@ -393,7 +393,7 @@ def _processing_lease_owner(item: Mapping[str, Any]) -> str:
     return lease_owner
 
 
-def _source_watermark_ms(item: Mapping[str, Any], *, fallback_ms: int) -> int:
+def _source_watermark_ms(item: Mapping[str, Any]) -> int:
     candidates = [
         _optional_int(item.get("fetched_at_ms")),
         _optional_int(item.get("published_at_ms")),
@@ -401,7 +401,9 @@ def _source_watermark_ms(item: Mapping[str, Any], *, fallback_ms: int) -> int:
     source_values = [value for value in candidates if value is not None]
     if source_values:
         return max(source_values)
-    return int(fallback_ms)
+    news_item_id = str(item.get("news_item_id") or "").strip()
+    suffix = f":{news_item_id}" if news_item_id else ""
+    raise ValueError(f"news_item_process_source_watermark_required{suffix}")
 
 
 def _optional_int(value: Any) -> int | None:
