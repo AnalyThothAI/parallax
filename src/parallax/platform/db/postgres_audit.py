@@ -282,40 +282,58 @@ class ProjectionValidationAudit:
 
     def run(self, *, sample: int) -> dict[str, Any]:
         sample_size = max(0, int(sample))
-        radar_rows = self.conn.execute(
+        row = self.conn.execute(
             """
-            SELECT row_id, intent_id, target_type, target_id
-            FROM token_radar_current_rows
-            WHERE venue = 'all'
-            ORDER BY computed_at_ms DESC, rank ASC
-            LIMIT %s
+            WITH sampled_radar_rows AS (
+              SELECT row_id, intent_id, target_type, target_id
+              FROM token_radar_current_rows
+              WHERE venue = 'all'
+              ORDER BY computed_at_ms DESC, rank ASC
+              LIMIT %s
+            ),
+            reference_counts AS (
+              SELECT
+                COUNT(*) AS checked_count,
+                COUNT(*) FILTER (WHERE intents.intent_id IS NULL) AS missing_intent_count,
+                COUNT(*) FILTER (
+                  WHERE sampled_radar_rows.target_type = 'Asset'
+                    AND sampled_radar_rows.target_id IS NOT NULL
+                    AND sampled_radar_rows.target_id <> ''
+                    AND assets.asset_id IS NULL
+                ) AS missing_asset_count
+              FROM sampled_radar_rows
+              LEFT JOIN token_intents AS intents
+                ON intents.intent_id = sampled_radar_rows.intent_id
+              LEFT JOIN registry_assets AS assets
+                ON sampled_radar_rows.target_type = 'Asset'
+               AND assets.asset_id = sampled_radar_rows.target_id
+            ),
+            latest_radar AS (
+              SELECT MAX(computed_at_ms) AS computed_at_ms
+              FROM token_radar_current_rows
+              WHERE venue = 'all'
+            )
+            SELECT
+              latest_radar.computed_at_ms,
+              COALESCE(reference_counts.checked_count, 0) AS checked_count,
+              (
+                COALESCE(reference_counts.missing_intent_count, 0)
+                + COALESCE(reference_counts.missing_asset_count, 0)
+              ) AS mismatch_count
+            FROM reference_counts
+            CROSS JOIN latest_radar
             """,
             (sample_size,),
-        ).fetchall()
-        missing_refs = 0
-        for row in radar_rows:
-            intent = self.conn.execute(
-                "SELECT 1 AS ok FROM token_intents WHERE intent_id = %s",
-                (row["intent_id"],),
-            ).fetchone()
-            if intent is None:
-                missing_refs += 1
-            if row.get("target_type") == "Asset" and row.get("target_id"):
-                asset = self.conn.execute(
-                    "SELECT 1 AS ok FROM registry_assets WHERE asset_id = %s",
-                    (row["target_id"],),
-                ).fetchone()
-                if asset is None:
-                    missing_refs += 1
-        latest = self.conn.execute(
-            "SELECT MAX(computed_at_ms) AS computed_at_ms FROM token_radar_current_rows WHERE venue = 'all'"
         ).fetchone()
-        status = "ready" if latest and latest["computed_at_ms"] is not None else "projection_missing"
+        checked_count = int(row["checked_count"] if row else 0)
+        missing_refs = int(row["mismatch_count"] if row else 0)
+        latest_computed_at_ms = row["computed_at_ms"] if row else None
+        status = "ready" if latest_computed_at_ms is not None else "projection_missing"
         return {
             "ok": missing_refs == 0,
             "status": status,
             "sample": sample_size,
-            "checked_count": len(radar_rows),
+            "checked_count": checked_count,
             "mismatch_count": missing_refs,
             "checks": {
                 "token_radar_current_rows_missing_refs": missing_refs,

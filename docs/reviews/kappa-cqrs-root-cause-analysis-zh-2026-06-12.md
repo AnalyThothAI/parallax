@@ -15682,6 +15682,41 @@ RepositorySession Unit of Work；失败时不能留下半个 snapshot 或半套 
 - Targeted static 通过：相关 production/query/test 文件 ruff clean，生产 query 文件 mypy clean。
 - 按当前用户指令，本轮不运行 integration-heavy gate。
 
+### Root439 - Projection validation audit 按 Token Radar sample 行逐个查 intent/asset
+
+发现：
+
+- `ProjectionValidationAudit.run(...)` 先从 `token_radar_current_rows` 取 sample rows。
+- 随后对每一行分别执行 `SELECT 1 AS ok FROM token_intents WHERE intent_id = %s`。
+- 当 row 的 `target_type = 'Asset'` 时，又逐行执行 `SELECT 1 AS ok FROM registry_assets WHERE asset_id = %s`。
+- 最后再单独查询 `MAX(computed_at_ms)` 判断 projection 是否存在。
+- 因此 `ops validate-projections --sample N` 的 SQL round trip 数量会变成 `1 + N + asset_rows + 1`，sample 越大，诊断成本越高。
+
+根因：
+
+- 这不是事实写入链路错误，而是 ops validation read surface 把“集合引用完整性校验”写成了应用层逐行 probe。
+- 成熟 Kappa/CQRS 的运维诊断可以采样，但采样后的 referential check 应该在 PostgreSQL 内通过 join/aggregate 一次完成；否则诊断命令本身会成为大表/高 sample 场景下的负载来源。
+- PostgreSQL 最佳实践上，sample keyset、intent 引用、asset 引用和 latest freshness 都能在一个 CTE 查询里表达。`LEFT JOIN` 找缺失引用，`COUNT(*) FILTER` 计算 mismatch bucket，应用层只消费聚合结果。
+
+修复：
+
+- `ProjectionValidationAudit.run(...)` 改为单条 SQL：
+  - `sampled_radar_rows` CTE 负责从 `token_radar_current_rows` 取有界 sample。
+  - `reference_counts` CTE 通过 `LEFT JOIN token_intents` 和 `LEFT JOIN registry_assets` 校验引用。
+  - `COUNT(*) FILTER` 分别统计 missing intent 和 missing asset。
+  - `latest_radar` CTE 同条查询内计算 `MAX(computed_at_ms)`。
+- `checked_count` 和 `mismatch_count` 直接来自 PostgreSQL 聚合，不再由 Python 逐行累加。
+- 新增单元 fake connection 记录 SQL 形状，证明只执行一条 sampled reference SQL。
+- 新增 architecture guard，禁止 `for row in radar_rows` 和 per-row `SELECT 1` 引用 probe 回归。
+
+验证：
+
+- RED：focused ProjectionValidationAudit 命令初始失败，单测没看到 `WITH sampled_radar_rows AS`，architecture guard 抓到逐行 intent/asset probe。
+- GREEN：同一 focused 命令通过，`2 passed`。
+- 更宽非集成组合通过：Postgres audit 单元文件 + 新 architecture guard，`2 passed`。
+- Targeted static 通过：相关 production/audit/test 文件 ruff clean，`postgres_audit.py` mypy clean。
+- 按当前用户指令，本轮不运行 integration-heavy gate。
+
 ## 剩余风险和建议
 
 1. 如果 Stocks Radar 需要真实 quote，必须新建 persisted quote fact/current read model，而不是恢复 request-time provider。

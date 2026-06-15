@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -27,6 +28,19 @@ TOKEN_RADAR_SQL_SURFACES = (
 
 def _text(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
+
+
+def _class_method_source(relpath: str, class_name: str, method_name: str) -> str:
+    text = _text(relpath)
+    tree = ast.parse(text)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and node.name == class_name:
+            for item in node.body:
+                if isinstance(item, ast.FunctionDef) and item.name == method_name:
+                    source = ast.get_source_segment(text, item)
+                    assert source is not None
+                    return source
+    raise AssertionError(f"{class_name}.{method_name} not found in {relpath}")
 
 
 def test_token_radar_sql_surface_inventory_is_explicit() -> None:
@@ -69,3 +83,24 @@ def test_all_current_publication_and_first_seen_sql_is_venue_scoped() -> None:
     assert 'ON CONFLICT(projection_version, "window", scope, venue, target_type_key, identity_id)' in repo
     assert "stable_generation_id(" in repo
     assert '"venue": venue' in repo
+
+
+def test_projection_validation_audit_batches_token_radar_reference_checks() -> None:
+    source = _class_method_source(
+        "src/parallax/platform/db/postgres_audit.py",
+        "ProjectionValidationAudit",
+        "run",
+    )
+    forbidden = (
+        "for row in radar_rows",
+        "SELECT 1 AS ok FROM token_intents WHERE intent_id = %s",
+        "SELECT 1 AS ok FROM registry_assets WHERE asset_id = %s",
+    )
+    required = (
+        "WITH sampled_radar_rows AS",
+        "LEFT JOIN token_intents",
+        "LEFT JOIN registry_assets",
+        "COUNT(*) FILTER",
+    )
+    assert [token for token in forbidden if token in source] == []
+    assert [token for token in required if token not in source] == []
