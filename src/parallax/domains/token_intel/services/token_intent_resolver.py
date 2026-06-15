@@ -26,7 +26,6 @@ class TokenIntentResolver:
         *,
         decision_time_ms: int | None = None,
         persist: bool = False,
-        commit: bool = False,
     ) -> DeterministicResolution:
         now_ms = int(decision_time_ms or _intent_created_at(intent) or 0)
         decision = self.resolver.resolve(
@@ -37,8 +36,6 @@ class TokenIntentResolver:
         )
         if persist:
             self.resolutions.insert_resolution(decision, commit=False)
-            if commit:
-                self.resolutions.conn.commit()
         return decision
 
 

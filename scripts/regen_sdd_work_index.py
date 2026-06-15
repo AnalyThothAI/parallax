@@ -298,15 +298,11 @@ def _issue_meaning(code: str) -> str:
         "verified-e2e-incomplete": "Verified record lacks every required checked E2E golden-path signal.",
         "verified-contradicts-evidence": "Verified record contains text that contradicts final evidence.",
         "verified-unexplained-skips": "Verified record contains skipped tests or lacks numeric zero-skip evidence.",
-        "superseded-missing-successor": (
-            "Superseded record lacks a machine-readable existing successor path."
-        ),
+        "superseded-missing-successor": ("Superseded record lacks a machine-readable existing successor path."),
         "superseded-successor-mismatch": "Superseded artifacts in one feature disagree on the successor.",
         "active-touch-conflict": "Active features share touch paths without an explicit coordination rule.",
         "active-feature-too-large": "Active feature has too many task records for a bounded agent loop.",
-        "active-sdd-lifecycle-check-flag-invalid": (
-            "Active records advertise obsolete SDD lifecycle --check flags."
-        ),
+        "active-sdd-lifecycle-check-flag-invalid": ("Active records advertise obsolete SDD lifecycle --check flags."),
         "active-placeholder-final-evidence": "Active records contain placeholder final verification transcripts.",
         "active-skipped-count-without-final-evidence": (
             "Active records claim numeric skipped-test counts without final make check-all evidence."

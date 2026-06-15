@@ -76,7 +76,7 @@ class PulseDecisionRuntime(Protocol):
         *,
         output_type: type[Any],
         raw_output: Any,
-        evidence_packet: Any,
+        evidence_packet: PulseEvidencePacket,
     ) -> Any: ...
 
     def mark_step_failed(self, step: StageRunAudit, *, error: str) -> StageRunAudit: ...
@@ -147,6 +147,8 @@ class PulseDecisionProvider(Protocol):
         runtime_manifest: dict[str, Any],
         parent_reservation: AgentCapacityReservation | None = None,
     ) -> PulseDecisionResult: ...
+
+    async def aclose(self) -> None: ...
 
 
 __all__ = [

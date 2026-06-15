@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Callable, Mapping
-from contextlib import AbstractContextManager, nullcontext
+from contextlib import AbstractContextManager
 from typing import Any, cast
 
 from psycopg.types.json import Jsonb
@@ -34,9 +34,31 @@ def terminalize_source_row(
     last_attempted_at_ms: int | None = None,
     commit: bool = False,
 ) -> dict[str, Any]:
+    if commit:
+        with _transaction(conn):
+            return terminalize_source_row(
+                conn,
+                worker_name=worker_name,
+                source_table=source_table,
+                target_key=target_key,
+                source_row=source_row,
+                final_status=final_status,
+                final_reason=final_reason,
+                final_reason_bucket=final_reason_bucket,
+                now_ms=now_ms,
+                attempt_count=attempt_count,
+                payload_hash=payload_hash,
+                first_seen_at_ms=first_seen_at_ms,
+                last_attempted_at_ms=last_attempted_at_ms,
+                commit=False,
+            )
     normalized_row = _normalized_source_row(source_row, payload_hash=payload_hash)
     normalized_payload_hash = _payload_hash(normalized_row.get("payload_hash"))
     source_row_hash = _stable_json_hash(normalized_row)
+    row_attempt_count = _terminal_attempt_count(
+        normalized_row,
+        explicit_attempt_count=attempt_count,
+    )
     terminal_generation = _next_terminal_generation(
         conn,
         worker_name=worker_name,
@@ -50,9 +72,6 @@ def terminalize_source_row(
         target_key=target_key,
         source_row_hash=source_row_hash,
         terminal_generation=terminal_generation,
-    )
-    row_attempt_count = int(
-        attempt_count if attempt_count is not None else _optional_int(normalized_row.get("attempt_count")) or 0
     )
     row_first_seen_at_ms = (
         first_seen_at_ms
@@ -85,7 +104,7 @@ def terminalize_source_row(
         "terminalized_at_ms": int(now_ms),
         "terminal_generation": terminal_generation,
     }
-    row = conn.execute(
+    cursor = conn.execute(
         """
         INSERT INTO worker_queue_terminal_events(
           terminal_id,
@@ -144,9 +163,9 @@ def terminalize_source_row(
         RETURNING *
         """,
         params,
-    ).fetchone()
-    if commit:
-        conn.commit()
+    )
+    row = cursor.fetchone()
+    _single_returning_rowcount(cursor, row)
     return _row_dict(row)
 
 
@@ -241,7 +260,7 @@ def resolve_terminal_event(
         transition = None
         if normalized_action == "retry":
             transition = _retry_transition_for(current, retry_transitions)
-        row = conn.execute(
+        cursor = conn.execute(
             """
             UPDATE worker_queue_terminal_events
             SET operator_action = %(operator_action)s,
@@ -256,12 +275,12 @@ def resolve_terminal_event(
                 "operator_reason": normalized_reason,
                 "operator_action_at_ms": int(now_ms),
             },
-        ).fetchone()
+        )
+        row = cursor.fetchone()
+        _single_returning_rowcount(cursor, row)
         resolved = _row_dict(row)
         if transition is not None:
             resolved["transition"] = transition(dict(resolved), now_ms=int(now_ms), reason=normalized_reason)
-    if commit and not hasattr(conn, "transaction"):
-        conn.commit()
     return resolved
 
 
@@ -320,7 +339,7 @@ def _terminal_id(
             _required_text(source_table, "source_table"),
             _required_text(target_key, "target_key"),
             source_row_hash,
-            str(max(1, int(terminal_generation))),
+            str(_required_positive_int(terminal_generation, error_code="queue_terminal_generation_contract_required")),
         )
     )
     return "wqte_" + hashlib.sha256(encoded.encode("utf-8")).hexdigest()
@@ -351,7 +370,7 @@ def _next_terminal_generation(
         },
     ).fetchone()
     if unresolved is not None:
-        return max(1, int(unresolved.get("terminal_generation") or 1))
+        return _terminal_generation_from_row(unresolved)
     row = conn.execute(
         """
         SELECT COALESCE(MAX(terminal_generation), 0) + 1 AS terminal_generation
@@ -368,14 +387,17 @@ def _next_terminal_generation(
             "source_row_hash": source_row_hash,
         },
     ).fetchone()
-    return max(1, int((row or {}).get("terminal_generation") or 1))
+    return _terminal_generation_from_row(row)
 
 
 def _transaction(conn: Any) -> AbstractContextManager[Any]:
-    transaction = getattr(conn, "transaction", None)
-    if callable(transaction):
-        return cast(AbstractContextManager[Any], transaction())
-    return nullcontext()
+    try:
+        transaction = conn.transaction
+    except AttributeError as exc:
+        raise RuntimeError("queue_terminal_transaction_required") from exc
+    if not callable(transaction):
+        raise RuntimeError("queue_terminal_transaction_required")
+    return cast(AbstractContextManager[Any], transaction())
 
 
 def _jsonb(value: Mapping[str, Any]) -> Jsonb:
@@ -395,6 +417,25 @@ def _row_dict(row: Any) -> dict[str, Any]:
     return out
 
 
+def _cursor_rowcount(cursor: Any) -> int:
+    try:
+        rowcount: object = cursor.rowcount
+    except AttributeError as exc:
+        raise TypeError("queue_terminal_rowcount_required") from exc
+    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
+        raise TypeError("queue_terminal_rowcount_invalid")
+    if rowcount < 0:
+        raise TypeError("queue_terminal_rowcount_invalid")
+    return rowcount
+
+
+def _single_returning_rowcount(cursor: Any, row: Any | None) -> int:
+    count = _cursor_rowcount(cursor)
+    if count > 1 or count != int(row is not None):
+        raise TypeError("queue_terminal_rowcount_invalid")
+    return count
+
+
 def _payload_hash(value: Any) -> str:
     return str(value or "").strip()
 
@@ -403,6 +444,50 @@ def _optional_int(value: Any) -> int | None:
     if value is None or value == "":
         return None
     return int(value)
+
+
+def _terminal_attempt_count(
+    source_row: Mapping[str, Any],
+    *,
+    explicit_attempt_count: int | None,
+) -> int:
+    if explicit_attempt_count is not None:
+        return _required_non_negative_int(
+            explicit_attempt_count,
+            error_code="queue_terminal_attempt_contract_required",
+        )
+    try:
+        value = source_row["attempt_count"]
+    except KeyError as exc:
+        raise RuntimeError("queue_terminal_attempt_contract_required") from exc
+    return _required_non_negative_int(value, error_code="queue_terminal_attempt_contract_required")
+
+
+def _terminal_generation_from_row(row: Mapping[str, Any] | None) -> int:
+    if row is None:
+        raise RuntimeError("queue_terminal_generation_contract_required")
+    try:
+        value = row["terminal_generation"]
+    except KeyError as exc:
+        raise RuntimeError("queue_terminal_generation_contract_required") from exc
+    return _required_positive_int(value, error_code="queue_terminal_generation_contract_required")
+
+
+def _required_non_negative_int(value: Any, *, error_code: str) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(error_code) from exc
+    if parsed < 0:
+        raise RuntimeError(error_code)
+    return parsed
+
+
+def _required_positive_int(value: Any, *, error_code: str) -> int:
+    parsed = _required_non_negative_int(value, error_code=error_code)
+    if parsed < 1:
+        raise RuntimeError(error_code)
+    return parsed
 
 
 def _required_text(value: Any, name: str) -> str:

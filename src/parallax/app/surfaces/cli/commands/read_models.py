@@ -5,7 +5,6 @@ from typing import Any
 from parallax.app.surfaces.cli.dependencies import repositories
 from parallax.domains.account_quality.read_models.account_alert_service import AccountAlertService
 from parallax.domains.account_quality.read_models.account_quality_service import AccountQualityService
-from parallax.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
 from parallax.domains.asset_market.read_models.token_profile_read_model import TokenProfileReadModel
 from parallax.domains.token_intel.interfaces import TOKEN_RADAR_DEFAULT_VENUE
 from parallax.domains.token_intel.queries.search_events_query import SearchEventsQuery
@@ -51,6 +50,7 @@ def handle_read_model(args: object) -> tuple[int, dict[str, Any]]:
                     args.query,
                     limit=args.limit,
                     scope=args.scope,
+                    window=args.window,
                     cursor=args.cursor or None,
                 )
             except SearchCursorError:
@@ -86,6 +86,7 @@ def handle_read_model(args: object) -> tuple[int, dict[str, Any]]:
             items = AccountAlertService(signals).account_alerts(
                 window=args.window,
                 limit=args.limit,
+                now_ms=_now_ms(),
                 handles=_handle_set(args.handles),
                 alert_type=args.alert_type,
             )
@@ -93,10 +94,7 @@ def handle_read_model(args: object) -> tuple[int, dict[str, Any]]:
 
         if command == "account-quality":
             handles = sorted(_handle_set(args.handles))
-            data = AccountQualityService(
-                signals=signals,
-                repository=AccountQualityRepository(signals.conn),
-            ).account_quality_for_handles(handles)
+            data = AccountQualityService.from_conn(signals.conn).account_quality_for_handles(handles)
             return 0, {"ok": True, "data": data}
 
         if command == "notification-deliveries":

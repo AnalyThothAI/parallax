@@ -207,10 +207,10 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="asset_market.py",
         lane=WorkerLane.IDENTITY_MARKET_FACT,
         kind=WorkerKind.FACT_LIFECYCLE,
-        runtime_constraint=WorkerRuntimeConstraint.TARGET_SCOPED_EXPANSION,
+        runtime_constraint=WorkerRuntimeConstraint.DIRTY_TARGET_CONSUMER,
         worker_class=("parallax.domains.asset_market.runtime.resolution_refresh_worker.ResolutionRefreshWorker"),
         start_priority=60,
-        input_contract=("token_intents", "asset_identity_resolution backlog"),
+        input_contract=("token_discovery_dirty_lookup_keys",),
         ordering_keys=("target_type", "lookup_key"),
         writes_facts=("asset_identity_*", "token_intent_resolutions"),
         writes_control_plane=(
@@ -219,7 +219,9 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
             "narrative_admission_dirty_targets",
         ),
         idempotency_evidence=("asset identity unique lookup keys", "token_intent_resolutions intent identity"),
+        uses_provider_io=True,
         dirty_target_tables=("token_discovery_dirty_lookup_keys",),
+        queue_depth_table="token_discovery_dirty_lookup_keys",
         wakes_out=("resolution_updated",),
     ),
     WorkerManifest(
@@ -724,9 +726,7 @@ def _validate_worker_manifests() -> None:
         for index, manifest in enumerate(_WORKER_MANIFESTS)
         if (
             invalid_fields := {
-                field_name: value
-                for field_name, value in _identity_field_values(manifest)
-                if type(value) is not str
+                field_name: value for field_name, value in _identity_field_values(manifest) if type(value) is not str
             }
         )
     }
@@ -737,11 +737,7 @@ def _validate_worker_manifests() -> None:
         manifest.name: blanks
         for manifest in _WORKER_MANIFESTS
         if (
-            blanks := {
-                field_name: value
-                for field_name, value in _identity_field_values(manifest)
-                if not value.strip()
-            }
+            blanks := {field_name: value for field_name, value in _identity_field_values(manifest) if not value.strip()}
         )
     }
     if blank_identity_fields:
@@ -1116,9 +1112,7 @@ def _validate_worker_manifests() -> None:
         if manifest.queue_depth_table is not None and manifest.queue_depth_table not in manifest.writes_control_plane
     }
     if missing_queue_depth_control_owner:
-        raise ValueError(
-            f"queue depth tables missing from writes_control_plane: {missing_queue_depth_control_owner}"
-        )
+        raise ValueError(f"queue depth tables missing from writes_control_plane: {missing_queue_depth_control_owner}")
 
     missing_queue_health_control_owner = {
         manifest.name: sorted(set(manifest.queue_health_tables) - set(manifest.writes_control_plane))
@@ -1126,9 +1120,7 @@ def _validate_worker_manifests() -> None:
         if set(manifest.queue_health_tables) - set(manifest.writes_control_plane)
     }
     if missing_queue_health_control_owner:
-        raise ValueError(
-            f"queue health tables missing from writes_control_plane: {missing_queue_health_control_owner}"
-        )
+        raise ValueError(f"queue health tables missing from writes_control_plane: {missing_queue_health_control_owner}")
 
     read_model_writer_by_table()
 
@@ -1139,19 +1131,14 @@ def _validate_worker_manifests() -> None:
             if type(identity_entry) is not tuple
         )
         for manifest in _WORKER_MANIFESTS
-        if any(
-            type(identity_entry) is not tuple
-            for identity_entry in manifest.current_read_model_identities
-        )
+        if any(type(identity_entry) is not tuple for identity_entry in manifest.current_read_model_identities)
     }
     if non_tuple_current_identity_entries:
         raise ValueError(f"non-tuple current read model identity entries: {non_tuple_current_identity_entries}")
 
     malformed_current_identity_entries = {
         manifest.name: tuple(
-            identity_entry
-            for identity_entry in manifest.current_read_model_identities
-            if len(identity_entry) != 2
+            identity_entry for identity_entry in manifest.current_read_model_identities if len(identity_entry) != 2
         )
         for manifest in _WORKER_MANIFESTS
         if any(len(identity_entry) != 2 for identity_entry in manifest.current_read_model_identities)
@@ -1181,10 +1168,7 @@ def _validate_worker_manifests() -> None:
             if type(table_name) is not str
         )
         for manifest in _WORKER_MANIFESTS
-        if any(
-            type(table_name) is not str
-            for table_name, _identity_columns in manifest.current_read_model_identities
-        )
+        if any(type(table_name) is not str for table_name, _identity_columns in manifest.current_read_model_identities)
     }
     if non_string_current_identity_tables:
         raise ValueError(f"non-string current read model identity tables: {non_string_current_identity_tables}")

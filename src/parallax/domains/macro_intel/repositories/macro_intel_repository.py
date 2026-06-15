@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Callable, Mapping, Sequence
-from contextlib import AbstractContextManager, nullcontext
+from collections.abc import Mapping, Sequence
+from contextlib import AbstractContextManager
 from datetime import date
 from typing import Any, NotRequired, TypedDict, cast
 
@@ -42,6 +42,16 @@ class MacroObservationUpsertOutcome(TypedDict):
 _POSTGRES_MAX_BIND_PARAMS = 65_535
 _MACRO_SERIES_INSERT_PARAM_COUNT = 16
 _MACRO_SERIES_INSERT_CHUNK_SIZE = min(4_000, _POSTGRES_MAX_BIND_PARAMS // _MACRO_SERIES_INSERT_PARAM_COUNT)
+_MACRO_VIEW_SNAPSHOT_MAPPING_FIELDS = (
+    "panels_json",
+    "indicators_json",
+    "source_coverage_json",
+    "features_json",
+    "chain_json",
+    "scenario_json",
+    "scorecard_json",
+)
+_MACRO_VIEW_SNAPSHOT_LIST_FIELDS = ("triggers_json", "data_gaps_json")
 
 
 class MacroIntelRepository:
@@ -226,7 +236,7 @@ class MacroIntelRepository:
             window_end=window_end,
             trigger_reason=trigger_reason,
         )
-        row = self.conn.execute(
+        cursor = self.conn.execute(
             """
             INSERT INTO macro_sync_windows(
               sync_window_id,
@@ -323,8 +333,9 @@ class MacroIntelRepository:
                 int(now_ms),
                 int(now_ms),
             ),
-        ).fetchone()
-        return str(dict(row or {})["sync_window_id"])
+        )
+        row = cursor.fetchone()
+        return str(_required_returning_row(cursor, row)["sync_window_id"])
 
     def claim_macro_sync_window(
         self,
@@ -333,7 +344,7 @@ class MacroIntelRepository:
         lease_ms: int,
         now_ms: int,
     ) -> dict[str, Any] | None:
-        row = self.conn.execute(
+        cursor = self.conn.execute(
             """
             WITH expired_terminal AS (
               UPDATE macro_sync_windows
@@ -387,8 +398,9 @@ class MacroIntelRepository:
                 int(now_ms) + int(lease_ms),
                 int(now_ms),
             ),
-        ).fetchone()
-        return dict(row) if row is not None else None
+        )
+        row = cursor.fetchone()
+        return _optional_returning_row(cursor, row)
 
     def claim_macro_sync_window_by_id(
         self,
@@ -398,7 +410,7 @@ class MacroIntelRepository:
         lease_ms: int,
         now_ms: int,
     ) -> dict[str, Any] | None:
-        row = self.conn.execute(
+        cursor = self.conn.execute(
             """
             WITH candidate AS (
               SELECT sync_window_id
@@ -435,8 +447,9 @@ class MacroIntelRepository:
                 int(now_ms) + int(lease_ms),
                 int(now_ms),
             ),
-        ).fetchone()
-        return dict(row) if row is not None else None
+        )
+        row = cursor.fetchone()
+        return _optional_returning_row(cursor, row)
 
     def record_macro_sync_run(self, run: Mapping[str, Any]) -> None:
         self.conn.execute(
@@ -578,7 +591,7 @@ class MacroIntelRepository:
                 int(attempt_count),
             ),
         )
-        return int(getattr(cursor, "rowcount", 0) or 0) > 0
+        return _single_rowcount(cursor) > 0
 
     def retry_macro_sync_window(
         self,
@@ -620,7 +633,7 @@ class MacroIntelRepository:
                 int(attempt_count),
             ),
         )
-        return int(getattr(cursor, "rowcount", 0) or 0) > 0
+        return _single_rowcount(cursor) > 0
 
     def fail_macro_sync_window(
         self,
@@ -659,7 +672,7 @@ class MacroIntelRepository:
                 int(attempt_count),
             ),
         )
-        return int(getattr(cursor, "rowcount", 0) or 0) > 0
+        return _single_rowcount(cursor) > 0
 
     def latest_macro_sync_run(self) -> dict[str, Any] | None:
         row = self.conn.execute(
@@ -749,7 +762,7 @@ class MacroIntelRepository:
                 int(now_ms),
             ),
         )
-        return int(getattr(cursor, "rowcount", 0) or 0)
+        return _single_rowcount(cursor)
 
     def rebuild_macro_sync_state(self, *, source_name: str, bundle_name: str, now_ms: int) -> dict[str, Any]:
         row = self.conn.execute(
@@ -782,7 +795,7 @@ class MacroIntelRepository:
                 """,
                 (str(source_name), str(bundle_name)),
             )
-            return {"max_observed_at": None, "rows_written": int(getattr(cursor, "rowcount", 0) or 0)}
+            return {"max_observed_at": None, "rows_written": _single_rowcount(cursor)}
 
         normalized_max_observed_at = normalize_macro_date(max_observed_at)
         cursor = self.conn.execute(
@@ -803,7 +816,7 @@ class MacroIntelRepository:
         )
         return {
             "max_observed_at": normalized_max_observed_at,
-            "rows_written": int(getattr(cursor, "rowcount", 0) or 0),
+            "rows_written": _single_rowcount(cursor),
         }
 
     def enqueue_macro_projection_dirty_target(
@@ -887,10 +900,7 @@ class MacroIntelRepository:
                 "now_ms": int(now_ms),
             },
         )
-        rowcount = getattr(cursor, "rowcount", None)
-        if rowcount is None or int(rowcount) < 0:
-            return 1
-        return int(rowcount)
+        return _cursor_rowcount(cursor)
 
     def enqueue_macro_projection_dirty_targets_for_changes(
         self,
@@ -1022,10 +1032,7 @@ class MacroIntelRepository:
             """,
             params,
         )
-        rowcount = getattr(cursor, "rowcount", None)
-        if rowcount is None or int(rowcount) < 0:
-            return len(targets)
-        return int(rowcount)
+        return _cursor_rowcount(cursor)
 
     def claim_macro_projection_dirty_targets(
         self,
@@ -1038,6 +1045,18 @@ class MacroIntelRepository:
         now_ms: int,
         commit: bool = True,
     ) -> list[dict[str, Any]]:
+        if commit:
+            with _macro_projection_dirty_target_transaction_context(self.conn):
+                return self.claim_macro_projection_dirty_targets(
+                    projection_name=projection_name,
+                    projection_version=projection_version,
+                    limit=limit,
+                    lease_ms=lease_ms,
+                    lease_owner=lease_owner,
+                    now_ms=now_ms,
+                    commit=False,
+                )
+
         rows = self.conn.execute(
             """
             WITH due AS (
@@ -1073,8 +1092,6 @@ class MacroIntelRepository:
                 "limit": max(0, int(limit)),
             },
         ).fetchall()
-        if commit:
-            self.conn.commit()
         return [dict(row) for row in rows]
 
     def mark_macro_projection_dirty_targets_done(
@@ -1087,6 +1104,14 @@ class MacroIntelRepository:
         records = _macro_projection_dirty_claims(claimed)
         if not records:
             return 0
+        if commit:
+            with _macro_projection_dirty_target_transaction_context(self.conn):
+                return self.mark_macro_projection_dirty_targets_done(
+                    claimed,
+                    now_ms=now_ms,
+                    commit=False,
+                )
+
         cursor = self.conn.execute(
             """
             DELETE FROM macro_projection_dirty_targets queue
@@ -1120,9 +1145,7 @@ class MacroIntelRepository:
             """,
             _macro_projection_dirty_claim_params(records),
         )
-        if commit:
-            self.conn.commit()
-        return int(getattr(cursor, "rowcount", 0) or 0)
+        return _cursor_rowcount(cursor)
 
     def mark_macro_projection_dirty_targets_error(
         self,
@@ -1136,6 +1159,16 @@ class MacroIntelRepository:
         records = _macro_projection_dirty_claims(claimed)
         if not records:
             return 0
+        if commit:
+            with _macro_projection_dirty_target_transaction_context(self.conn):
+                return self.mark_macro_projection_dirty_targets_error(
+                    claimed,
+                    error=error,
+                    retry_ms=retry_ms,
+                    now_ms=now_ms,
+                    commit=False,
+                )
+
         params = _macro_projection_dirty_claim_params(records)
         params.update(
             {
@@ -1182,9 +1215,7 @@ class MacroIntelRepository:
             """,
             params,
         )
-        if commit:
-            self.conn.commit()
-        return int(getattr(cursor, "rowcount", 0) or 0)
+        return _cursor_rowcount(cursor)
 
     def latest_observations(
         self,
@@ -1486,10 +1517,7 @@ class MacroIntelRepository:
                 """,
                 (projection_version, list(concept_keys)),
             )
-        rowcount = getattr(cursor, "rowcount", None)
-        if rowcount is None or int(rowcount) < 0:
-            return 0
-        return int(rowcount)
+        return _cursor_rowcount(cursor)
 
     def _insert_observation_series_rows(self, rows: Sequence[Mapping[str, Any]]) -> int:
         if not rows:
@@ -1564,10 +1592,7 @@ class MacroIntelRepository:
             """,
             tuple(params),
         )
-        rowcount = getattr(cursor, "rowcount", None)
-        if rowcount is None or int(rowcount) < 0:
-            return len(rows)
-        return int(rowcount)
+        return _cursor_rowcount(cursor)
 
     def _macro_series_publication_state(self, projection_version: str) -> dict[str, Any] | None:
         row = self.conn.execute(
@@ -1700,8 +1725,9 @@ class MacroIntelRepository:
         return [dict(row) for row in rows]
 
     def insert_snapshot(self, snapshot: Mapping[str, Any]) -> bool:
-        payload_hash = _macro_snapshot_payload_hash(snapshot)
-        row = self.conn.execute(
+        payload = _macro_snapshot_payload(snapshot)
+        payload_hash = stable_current_payload_hash(payload)
+        cursor = self.conn.execute(
             """
             INSERT INTO macro_view_snapshots(
               snapshot_id, projection_version, asof_date, status, regime, overall_score, panels_json,
@@ -1735,21 +1761,22 @@ class MacroIntelRepository:
                 snapshot["asof_date"],
                 snapshot["status"],
                 snapshot["regime"],
-                snapshot.get("overall_score"),
-                Jsonb(snapshot.get("panels_json") or {}),
-                Jsonb(snapshot.get("indicators_json") or {}),
-                Jsonb(snapshot.get("triggers_json") or []),
-                Jsonb(snapshot.get("data_gaps_json") or []),
-                Jsonb(snapshot.get("source_coverage_json") or {}),
-                Jsonb(snapshot.get("features_json") or {}),
-                Jsonb(snapshot.get("chain_json") or {}),
-                Jsonb(snapshot.get("scenario_json") or {}),
-                Jsonb(snapshot.get("scorecard_json") or {}),
+                payload["overall_score"],
+                Jsonb(payload["panels_json"]),
+                Jsonb(payload["indicators_json"]),
+                Jsonb(payload["triggers_json"]),
+                Jsonb(payload["data_gaps_json"]),
+                Jsonb(payload["source_coverage_json"]),
+                Jsonb(payload["features_json"]),
+                Jsonb(payload["chain_json"]),
+                Jsonb(payload["scenario_json"]),
+                Jsonb(payload["scorecard_json"]),
                 int(snapshot["computed_at_ms"]),
                 payload_hash,
             ),
-        ).fetchone()
-        return bool(dict(row or {}).get("changed", False))
+        )
+        row = cursor.fetchone()
+        return _single_returning_changed(cursor, row)
 
     def latest_snapshot(
         self,
@@ -1773,7 +1800,7 @@ class MacroIntelRepository:
         payload_hash = _macro_daily_brief_payload_hash(brief)
         brief_date = brief.get("brief_date")
         asof_date = brief.get("asof_date")
-        row = self.conn.execute(
+        cursor = self.conn.execute(
             """
             INSERT INTO macro_daily_briefs(
               brief_key, projection_version, brief_date, asof_date, status, headline,
@@ -1805,8 +1832,9 @@ class MacroIntelRepository:
                 int(now_ms),
                 payload_hash,
             ),
-        ).fetchone()
-        return bool(dict(row or {}).get("changed", False))
+        )
+        row = cursor.fetchone()
+        return _single_returning_changed(cursor, row)
 
     def latest_macro_daily_brief(self, *, brief_key: str = "assets_today") -> dict[str, Any] | None:
         row = self.conn.execute(
@@ -1936,7 +1964,7 @@ def _series_payload_hashes_by_concept(
         if not concept_key:
             continue
         payload_hash = (
-            macro_series_current_row_payload_hash(row) if compute_hash else str(row.get("payload_hash") or "")
+            macro_series_current_row_payload_hash(row) if compute_hash else _existing_series_payload_hash(row)
         )
         grouped.setdefault(concept_key, []).append(
             (
@@ -1950,24 +1978,67 @@ def _series_payload_hashes_by_concept(
     return grouped
 
 
+def _existing_series_payload_hash(row: Mapping[str, Any]) -> str:
+    try:
+        value = row["payload_hash"]
+    except KeyError as exc:
+        raise RuntimeError("macro_series_current_existing_payload_hash_required") from exc
+    if value is None:
+        raise RuntimeError("macro_series_current_existing_payload_hash_required")
+    payload_hash = str(value).strip()
+    if not payload_hash:
+        raise RuntimeError("macro_series_current_existing_payload_hash_required")
+    return payload_hash
+
+
 def _macro_snapshot_payload_hash(snapshot: Mapping[str, Any]) -> str:
+    return stable_current_payload_hash(_macro_snapshot_payload(snapshot))
+
+
+def _macro_snapshot_payload(snapshot: Mapping[str, Any]) -> dict[str, Any]:
     payload = {
         "projection_version": snapshot["projection_version"],
         "asof_date": snapshot["asof_date"],
         "status": snapshot["status"],
         "regime": snapshot["regime"],
         "overall_score": snapshot.get("overall_score"),
-        "panels_json": snapshot.get("panels_json") or {},
-        "indicators_json": snapshot.get("indicators_json") or {},
-        "triggers_json": snapshot.get("triggers_json") or [],
-        "data_gaps_json": snapshot.get("data_gaps_json") or [],
-        "source_coverage_json": snapshot.get("source_coverage_json") or {},
-        "features_json": snapshot.get("features_json") or {},
-        "chain_json": snapshot.get("chain_json") or {},
-        "scenario_json": snapshot.get("scenario_json") or {},
-        "scorecard_json": snapshot.get("scorecard_json") or {},
+        "panels_json": _required_snapshot_mapping(snapshot, "panels_json"),
+        "indicators_json": _required_snapshot_mapping(snapshot, "indicators_json"),
+        "triggers_json": _required_snapshot_list(snapshot, "triggers_json"),
+        "data_gaps_json": _required_snapshot_list(snapshot, "data_gaps_json"),
+        "source_coverage_json": _required_snapshot_mapping(snapshot, "source_coverage_json"),
+        "features_json": _required_snapshot_mapping(snapshot, "features_json"),
+        "chain_json": _required_snapshot_mapping(snapshot, "chain_json"),
+        "scenario_json": _required_snapshot_mapping(snapshot, "scenario_json"),
+        "scorecard_json": _required_snapshot_mapping(snapshot, "scorecard_json"),
     }
-    return stable_current_payload_hash(payload)
+    return payload
+
+
+def _required_snapshot_mapping(snapshot: Mapping[str, Any], field_name: str) -> dict[str, Any]:
+    try:
+        value = snapshot[field_name]
+    except KeyError as exc:
+        raise RuntimeError(f"macro_view_snapshot_payload_required:{field_name}") from exc
+    if value is None:
+        raise RuntimeError(f"macro_view_snapshot_payload_required:{field_name}")
+    if not isinstance(value, Mapping):
+        raise RuntimeError(f"macro_view_snapshot_payload_invalid:{field_name}")
+    return dict(value)
+
+
+def _required_snapshot_list(snapshot: Mapping[str, Any], field_name: str) -> list[Any]:
+    try:
+        value = snapshot[field_name]
+    except KeyError as exc:
+        raise RuntimeError(f"macro_view_snapshot_payload_required:{field_name}") from exc
+    if value is None:
+        raise RuntimeError(f"macro_view_snapshot_payload_required:{field_name}")
+    if isinstance(value, Mapping | str | bytes | bytearray):
+        raise RuntimeError(f"macro_view_snapshot_payload_invalid:{field_name}")
+    if not isinstance(value, Sequence):
+        raise RuntimeError(f"macro_view_snapshot_payload_invalid:{field_name}")
+    return list(value)
 
 
 def _macro_daily_brief_payload_hash(brief: Mapping[str, Any]) -> str:
@@ -2140,11 +2211,66 @@ def _payload_hash(
     return hashlib.sha256(identity.encode()).hexdigest()
 
 
+def _macro_projection_dirty_target_transaction_context(conn: Any) -> AbstractContextManager[Any]:
+    return _connection_transaction_context(conn, error_code="macro_projection_dirty_target_transaction_required")
+
+
+def _single_rowcount(cursor: Any) -> int:
+    rowcount = _cursor_rowcount(cursor)
+    if rowcount not in {0, 1}:
+        raise TypeError("macro_intel_repository_rowcount_invalid")
+    return rowcount
+
+
+def _single_returning_changed(cursor: Any, row: Any | None) -> bool:
+    count = _cursor_rowcount(cursor)
+    if count not in (0, 1):
+        raise TypeError("macro_intel_repository_rowcount_invalid")
+    if count != (1 if row is not None else 0):
+        raise TypeError("macro_intel_repository_rowcount_invalid")
+    return row is not None and bool(row.get("changed", True))
+
+
+def _optional_returning_row(cursor: Any, row: Any | None) -> dict[str, Any] | None:
+    count = _cursor_rowcount(cursor)
+    if count not in (0, 1):
+        raise TypeError("macro_intel_repository_rowcount_invalid")
+    if count != (1 if row is not None else 0):
+        raise TypeError("macro_intel_repository_rowcount_invalid")
+    return dict(row) if row is not None else None
+
+
+def _required_returning_row(cursor: Any, row: Any | None) -> dict[str, Any]:
+    row_dict = _optional_returning_row(cursor, row)
+    if row_dict is None:
+        raise TypeError("macro_intel_repository_rowcount_invalid")
+    return row_dict
+
+
+def _cursor_rowcount(cursor: Any) -> int:
+    try:
+        rowcount: object = cursor.rowcount
+    except AttributeError as exc:
+        raise TypeError("macro_intel_repository_rowcount_required") from exc
+    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
+        raise TypeError("macro_intel_repository_rowcount_invalid")
+    if rowcount < 0:
+        raise TypeError("macro_intel_repository_rowcount_invalid")
+    return rowcount
+
+
 def _transaction_context(conn: Any) -> AbstractContextManager[Any]:
-    transaction = getattr(conn, "transaction", None)
-    if transaction is None:
-        return nullcontext()
-    return cast(Callable[[], AbstractContextManager[Any]], transaction)()
+    return _connection_transaction_context(conn, error_code="macro_observation_series_refresh_transaction_required")
+
+
+def _connection_transaction_context(conn: Any, *, error_code: str) -> AbstractContextManager[Any]:
+    try:
+        transaction = conn.transaction
+    except AttributeError as exc:
+        raise RuntimeError(error_code) from exc
+    if not callable(transaction):
+        raise RuntimeError(error_code)
+    return cast(AbstractContextManager[Any], transaction())
 
 
 def _count(row: Any) -> int:

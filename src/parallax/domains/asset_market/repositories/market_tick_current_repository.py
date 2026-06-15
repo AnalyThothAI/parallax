@@ -28,7 +28,7 @@ class MarketTickCurrentRepository:
 
     def upsert_current_from_tick(self, tick_row: Mapping[str, Any], *, now_ms: int) -> bool:
         params = _current_params(tick_row, now_ms=now_ms)
-        row = self.conn.execute(
+        cursor = self.conn.execute(
             """
             INSERT INTO market_tick_current(
               target_type,
@@ -118,8 +118,9 @@ class MarketTickCurrentRepository:
             RETURNING true AS changed
             """,
             params,
-        ).fetchone()
-        return bool(row and row["changed"])
+        )
+        row = cursor.fetchone()
+        return _single_returning_changed(cursor, row)
 
     def truncate_current(self) -> None:
         self.conn.execute("TRUNCATE market_tick_current")
@@ -164,3 +165,24 @@ def _current_params(tick_row: Mapping[str, Any], *, now_ms: int) -> dict[str, An
         "created_at_ms": int(tick_row["created_at_ms"]),
         "now_ms": int(now_ms),
     }
+
+
+def _cursor_rowcount(cursor: Any) -> int:
+    try:
+        rowcount: object = cursor.rowcount
+    except AttributeError as exc:
+        raise TypeError("market_tick_current_repository_rowcount_required") from exc
+    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
+        raise TypeError("market_tick_current_repository_rowcount_invalid")
+    if rowcount < 0:
+        raise TypeError("market_tick_current_repository_rowcount_invalid")
+    return rowcount
+
+
+def _single_returning_changed(cursor: Any, row: Any | None) -> bool:
+    count = _cursor_rowcount(cursor)
+    if count not in (0, 1):
+        raise TypeError("market_tick_current_repository_rowcount_invalid")
+    if count != (1 if row is not None else 0):
+        raise TypeError("market_tick_current_repository_rowcount_invalid")
+    return row is not None and bool(row.get("changed", True))

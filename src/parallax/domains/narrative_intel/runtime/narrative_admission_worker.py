@@ -11,6 +11,17 @@ from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.narrative_intel.services.narrative_admission import NarrativeAdmissionService
 
+NARRATIVE_WINDOW_MS_BY_KEY = {
+    "5m": 300_000,
+    "1h": 3_600_000,
+    "4h": 14_400_000,
+    "24h": 86_400_000,
+}
+NARRATIVE_SCOPE_WATCHED_ONLY = {
+    "all": False,
+    "matched": True,
+}
+
 
 class NarrativeAdmissionWorker(WorkerBase):
     SINGLE_WRITER_KEY = 2026051901
@@ -22,14 +33,18 @@ class NarrativeAdmissionWorker(WorkerBase):
         settings: Any,
         db: Any,
         telemetry: Any,
-        wake_bus: Any | None = None,
         wake_waiter: Any | None = None,
     ) -> None:
+        if settings is None:
+            raise RuntimeError("narrative_admission_settings_required")
+        if db is None:
+            raise RuntimeError("narrative_admission_db_required")
         super().__init__(name=name, settings=settings, db=db, telemetry=telemetry, wake_waiter=wake_waiter)
-        self.wake_bus = wake_bus
+        self.windows = tuple(str(window).strip().lower() for window in settings.windows)
+        self.scopes = tuple(str(scope).strip().lower() for scope in settings.scopes)
         self.admission = NarrativeAdmissionService(
-            hot_rank_limit=int(getattr(settings, "hot_rank_limit", 50) or 50),
-            min_rank_score=int(getattr(settings, "min_rank_score", 30) or 30),
+            hot_rank_limit=int(settings.hot_rank_limit),
+            min_rank_score=int(settings.min_rank_score),
         )
 
     async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
@@ -50,10 +65,10 @@ class NarrativeAdmissionWorker(WorkerBase):
         return WorkerResult(processed=processed, notes=stats)
 
     def _process_dirty_targets_sync(self, *, now_ms: int) -> dict[str, int]:
-        admission_limit = max(1, int(getattr(self.settings, "admission_limit", 200) or 200))
-        source_limit = max(1, int(getattr(self.settings, "source_limit", 2000) or 2000))
-        lease_ms = max(1, int(getattr(self.settings, "lease_seconds", 60) or 60)) * 1000
-        retry_ms = max(1, int(getattr(self.settings, "error_retry_seconds", 60) or 60)) * 1000
+        admission_limit = max(1, int(self.settings.admission_limit))
+        source_limit = max(1, int(self.settings.source_limit))
+        lease_ms = max(1, int(self.settings.lease_ms))
+        retry_ms = max(1, int(self.settings.retry_ms))
         stats = {
             "claimed": 0,
             "queue_depth": 0,
@@ -115,8 +130,8 @@ class NarrativeAdmissionWorker(WorkerBase):
     ) -> dict[str, int]:
         target_type = _required_claim_text(claim, "target_type")
         target_id = _required_claim_text(claim, "target_id")
-        window = _required_claim_text(claim, "window")
-        scope = _required_claim_text(claim, "scope")
+        window = _required_claim_member(claim, "window", self.windows)
+        scope = _required_claim_member(claim, "scope", self.scopes)
         projection_version = _required_claim_text(claim, "projection_version")
         schema_version = _required_claim_text(claim, "schema_version")
         stats = {
@@ -173,7 +188,7 @@ class NarrativeAdmissionWorker(WorkerBase):
                 target_id=decision.target_id,
                 since_ms=source_start_ms,
                 until_ms=int(source_end_ms),
-                watched_only=scope == "matched",
+                watched_only=_watched_only_for_scope(scope),
                 limit=source_limit,
             )
             source_set.pop("source_rows", None)
@@ -198,7 +213,7 @@ class NarrativeAdmissionWorker(WorkerBase):
     def _repository_session(self) -> Iterator[Any]:
         with self.db.worker_session(
             self.name,
-            statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
+            statement_timeout_seconds=self.settings.statement_timeout_seconds,
         ) as repos:
             yield repos
 
@@ -218,13 +233,31 @@ def _required_claim_text(claim: dict[str, Any], key: str) -> str:
     return value
 
 
+def _required_claim_member(claim: dict[str, Any], key: str, allowed: tuple[str, ...]) -> str:
+    value = _required_claim_text(claim, key)
+    if value not in allowed:
+        allowed_values = ",".join(allowed)
+        raise ValueError(f"narrative_admission_dirty_target_invalid_{key}:{value}:allowed={allowed_values}")
+    return value
+
+
 def _merge_stats(total: dict[str, int], delta: dict[str, int]) -> None:
     for key, value in delta.items():
         total[key] = int(total.get(key) or 0) + int(value or 0)
 
 
 def _window_ms(window: str) -> int:
-    return {"5m": 300_000, "1h": 3_600_000, "4h": 14_400_000, "24h": 86_400_000}.get(window, 86_400_000)
+    try:
+        return NARRATIVE_WINDOW_MS_BY_KEY[window]
+    except KeyError as exc:
+        raise ValueError(f"narrative_admission_dirty_target_invalid_window:{window}") from exc
+
+
+def _watched_only_for_scope(scope: str) -> bool:
+    try:
+        return NARRATIVE_SCOPE_WATCHED_ONLY[scope]
+    except KeyError as exc:
+        raise ValueError(f"narrative_admission_dirty_target_invalid_scope:{scope}") from exc
 
 
 def _radar_row_for_admission(row: dict[str, Any]) -> dict[str, Any]:

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import time
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,37 +29,42 @@ def sync_binance_usdt_perp_routes(
     routes = _normalized_routes(client.usdt_perpetual_routes())
     base_symbols = [route.base_symbol for route in routes]
     native_market_ids = [route.native_market_id for route in routes]
-    plan = _sync_plan_counts(registry, base_symbols=base_symbols, native_market_ids=native_market_ids)
+    plan = dict(
+        registry.binance_usdt_perp_sync_plan_counts(
+            base_symbols=base_symbols,
+            native_market_ids=native_market_ids,
+        )
+    )
 
     cex_tokens_written = 0
     pricefeeds_written = 0
     affected_lookup_keys: set[str] = set()
     if execute:
-        for route in routes:
-            cex_token = registry.upsert_cex_token(
-                base_symbol=route.base_symbol,
-                project_id=None,
-                source="binance_cex",
-                observed_at_ms=observed_at_ms,
-                commit=False,
-            )
-            cex_tokens_written += 1
-            registry.upsert_pricefeed(
-                feed_type="cex_swap",
-                provider="binance",
-                subject_type="CexToken",
-                subject_id=str(cex_token["cex_token_id"]),
-                native_market_id=route.native_market_id,
-                base_cex_token_id=str(cex_token["cex_token_id"]),
-                base_symbol=route.base_symbol,
-                quote_symbol=route.quote_symbol,
-                multiplier=route.multiplier,
-                observed_at_ms=observed_at_ms,
-                commit=False,
-            )
-            pricefeeds_written += 1
-            affected_lookup_keys.update(_symbol_lookup_keys(route.base_symbol))
-        registry.conn.commit()
+        with _transaction(registry.conn):
+            for route in routes:
+                cex_token = registry.upsert_cex_token(
+                    base_symbol=route.base_symbol,
+                    project_id=None,
+                    source="binance_cex",
+                    observed_at_ms=observed_at_ms,
+                    commit=False,
+                )
+                cex_tokens_written += 1
+                registry.upsert_pricefeed(
+                    feed_type="cex_swap",
+                    provider="binance",
+                    subject_type="CexToken",
+                    subject_id=str(cex_token["cex_token_id"]),
+                    native_market_id=route.native_market_id,
+                    base_cex_token_id=str(cex_token["cex_token_id"]),
+                    base_symbol=route.base_symbol,
+                    quote_symbol=route.quote_symbol,
+                    multiplier=route.multiplier,
+                    observed_at_ms=observed_at_ms,
+                    commit=False,
+                )
+                pricefeeds_written += 1
+                affected_lookup_keys.update(_symbol_lookup_keys(route.base_symbol))
 
     return {
         "mode": "execute" if execute else "dry_run",
@@ -95,18 +101,6 @@ def _normalized_routes(routes: Any) -> list[_BinanceRoute]:
     return [by_market_id[key] for key in sorted(by_market_id)]
 
 
-def _sync_plan_counts(registry: Any, *, base_symbols: list[str], native_market_ids: list[str]) -> dict[str, int]:
-    method = getattr(registry, "binance_usdt_perp_sync_plan_counts", None)
-    if method is None:
-        return {
-            "cex_tokens_to_insert": len(set(base_symbols)),
-            "cex_tokens_to_delete": 0,
-            "pricefeeds_to_insert": len(set(native_market_ids)),
-            "old_okx_cex_rows_to_delete": 0,
-        }
-    return dict(method(base_symbols=base_symbols, native_market_ids=native_market_ids))
-
-
 def _symbol(value: Any) -> str:
     return str(value or "").strip().lstrip("$").upper()
 
@@ -116,3 +110,13 @@ def _symbol_lookup_keys(symbol: Any) -> set[str]:
     if not normalized:
         return set()
     return {f"symbol:{normalized}", f"project_symbol:{normalized}", f"cex_token:{normalized}"}
+
+
+def _transaction(conn: Any) -> AbstractContextManager[Any]:
+    try:
+        transaction = conn.transaction
+    except AttributeError as exc:
+        raise RuntimeError("asset_market_sync_transaction_required") from exc
+    if not callable(transaction):
+        raise RuntimeError("asset_market_sync_transaction_required")
+    return cast(AbstractContextManager[Any], transaction())

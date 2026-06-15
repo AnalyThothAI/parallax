@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 import pytest
@@ -203,7 +204,15 @@ def test_completion_rejects_claim_without_payload_hash() -> None:
 
     try:
         PulseTriggerDirtyTargetRepository(conn).mark_done(
-            [{"target_type": "Asset", "target_id": "asset-1", "window": "1h", "scope": "all"}],
+            [
+                {
+                    "target_type": "Asset",
+                    "target_id": "asset-1",
+                    "window": "1h",
+                    "scope": "all",
+                    "attempt_count": 1,
+                }
+            ],
             now_ms=1_700_000_010_000,
             commit=False,
         )
@@ -215,18 +224,231 @@ def test_completion_rejects_claim_without_payload_hash() -> None:
     assert conn.sql == []
 
 
+@pytest.mark.parametrize(
+    ("operation", "error_code"),
+    [
+        pytest.param(
+            lambda repo, claim: repo.mark_done([claim], now_ms=1_700_000_010_000, commit=False),
+            "pulse_trigger_dirty_target_rowcount_required",
+            id="done",
+        ),
+        pytest.param(
+            lambda repo, claim: repo.mark_error(
+                [claim],
+                error="boom",
+                now_ms=1_700_000_010_000,
+                retry_ms=30_000,
+                commit=False,
+            ),
+            "pulse_trigger_dirty_target_rowcount_required",
+            id="error",
+        ),
+        pytest.param(
+            lambda repo, claim: repo.reschedule(
+                [claim],
+                due_at_ms=1_700_000_120_000,
+                now_ms=1_700_000_010_000,
+                commit=False,
+            ),
+            "pulse_trigger_dirty_target_rowcount_required",
+            id="reschedule",
+        ),
+    ],
+)
+def test_completion_write_counts_require_cursor_rowcount(
+    operation: Callable[[PulseTriggerDirtyTargetRepository, dict[str, Any]], int],
+    error_code: str,
+) -> None:
+    conn = _ScriptedConnection([], omit_rowcount=True)
+
+    with pytest.raises(TypeError, match=error_code):
+        operation(PulseTriggerDirtyTargetRepository(conn), _claimed_dirty_target())
+
+
+@pytest.mark.parametrize(
+    "rowcount",
+    [
+        pytest.param("bad", id="string"),
+        pytest.param(True, id="bool"),
+        pytest.param(-1, id="negative"),
+    ],
+)
+@pytest.mark.parametrize(
+    "operation",
+    [
+        pytest.param(lambda repo, claim: repo.mark_done([claim], now_ms=1_700_000_010_000, commit=False), id="done"),
+        pytest.param(
+            lambda repo, claim: repo.mark_error(
+                [claim],
+                error="boom",
+                now_ms=1_700_000_010_000,
+                retry_ms=30_000,
+                commit=False,
+            ),
+            id="error",
+        ),
+        pytest.param(
+            lambda repo, claim: repo.reschedule(
+                [claim],
+                due_at_ms=1_700_000_120_000,
+                now_ms=1_700_000_010_000,
+                commit=False,
+            ),
+            id="reschedule",
+        ),
+    ],
+)
+def test_completion_write_counts_reject_invalid_cursor_rowcount(
+    operation: Callable[[PulseTriggerDirtyTargetRepository, dict[str, Any]], int],
+    rowcount: object,
+) -> None:
+    conn = _ScriptedConnection([], rowcount=rowcount)
+
+    with pytest.raises(TypeError, match="pulse_trigger_dirty_target_rowcount_invalid"):
+        operation(PulseTriggerDirtyTargetRepository(conn), _claimed_dirty_target())
+
+
+@pytest.mark.parametrize(
+    "operation",
+    [
+        pytest.param(lambda repo, claim: repo.mark_done([claim], now_ms=1_700_000_010_000, commit=False), id="done"),
+        pytest.param(
+            lambda repo, claim: repo.mark_error(
+                [claim],
+                error="boom",
+                now_ms=1_700_000_010_000,
+                retry_ms=30_000,
+                commit=False,
+            ),
+            id="error",
+        ),
+        pytest.param(
+            lambda repo, claim: repo.reschedule(
+                [claim],
+                due_at_ms=1_700_000_120_000,
+                now_ms=1_700_000_010_000,
+                commit=False,
+            ),
+            id="reschedule",
+        ),
+    ],
+)
+def test_completion_requires_claim_attempt_field_without_default(operation) -> None:
+    conn = _ScriptedConnection([])
+    claim = _claimed_dirty_target()
+    claim.pop("attempt_count")
+
+    with pytest.raises(
+        ValueError,
+        match="pulse trigger dirty target completion requires attempt_count",
+    ) as exc_info:
+        operation(PulseTriggerDirtyTargetRepository(conn), claim)
+
+    assert isinstance(exc_info.value.__cause__, KeyError)
+    assert conn.sql == []
+
+
 def test_repository_session_exposes_pulse_trigger_dirty_targets() -> None:
-    session = repositories_for_connection(_ScriptedConnection([]))
+    session = repositories_for_connection(
+        _ScriptedConnection([]),
+        pulse_job_running_timeout_ms=300_000,
+        notification_delivery_running_timeout_ms=300_000,
+        notification_delivery_stale_running_terminalization_batch_size=100,
+    )
 
     assert isinstance(session.pulse_trigger_dirty_targets, PulseTriggerDirtyTargetRepository)
 
 
+@pytest.mark.parametrize(
+    ("method_name", "operation"),
+    [
+        (
+            "enqueue_targets",
+            lambda repository: repository.enqueue_targets(
+                [
+                    {
+                        "target_type": "Asset",
+                        "target_id": "asset-1",
+                        "window": "1h",
+                        "scope": "all",
+                    }
+                ],
+                reason="token_radar_changed",
+                now_ms=1_700_000_000_000,
+            ),
+        ),
+        (
+            "claim_due",
+            lambda repository: repository.claim_due(
+                now_ms=1_700_000_000_000,
+                limit=25,
+                lease_owner="pulse-a",
+                lease_ms=60_000,
+            ),
+        ),
+        (
+            "mark_done",
+            lambda repository: repository.mark_done(
+                [_claimed_dirty_target()],
+                now_ms=1_700_000_010_000,
+            ),
+        ),
+        (
+            "mark_error",
+            lambda repository: repository.mark_error(
+                [_claimed_dirty_target()],
+                error="boom",
+                now_ms=1_700_000_010_000,
+                retry_ms=60_000,
+            ),
+        ),
+        (
+            "reschedule",
+            lambda repository: repository.reschedule(
+                [_claimed_dirty_target()],
+                due_at_ms=1_700_000_120_000,
+                now_ms=1_700_000_010_000,
+            ),
+        ),
+    ],
+)
+def test_pulse_trigger_dirty_target_mutations_require_connection_transaction_before_sql_when_committing(
+    method_name: str,
+    operation: Callable[[PulseTriggerDirtyTargetRepository], object],
+) -> None:
+    conn = _MissingTransactionConnection()
+
+    with pytest.raises(RuntimeError, match="pulse_repository_transaction_required"):
+        operation(PulseTriggerDirtyTargetRepository(conn))
+
+    assert conn.sql == [], method_name
+
+
+def _claimed_dirty_target() -> dict[str, Any]:
+    return {
+        "target_type": "Asset",
+        "target_id": "asset-1",
+        "window": "1h",
+        "scope": "all",
+        "payload_hash": "payload-1",
+        "lease_owner": "pulse-a",
+        "attempt_count": 2,
+    }
+
+
 class _ScriptedConnection:
-    def __init__(self, results: list[list[dict[str, Any]] | None]) -> None:
+    def __init__(
+        self,
+        results: list[list[dict[str, Any]] | None],
+        *,
+        rowcount: object = 0,
+        omit_rowcount: bool = False,
+    ) -> None:
         self.results = list(results)
         self.sql: list[str] = []
         self.params: list[dict[str, Any]] = []
-        self.rowcount = 0
+        if not omit_rowcount:
+            self.rowcount = rowcount
         self.commits = 0
 
     def execute(self, sql: str, params: dict[str, Any] | None = None) -> _ScriptedConnection:
@@ -247,3 +469,13 @@ class _ScriptedConnection:
 
     def commit(self) -> None:
         self.commits += 1
+
+
+class _MissingTransactionConnection:
+    def __init__(self) -> None:
+        self.sql: list[str] = []
+
+    def execute(self, sql: str, params: dict[str, Any] | None = None) -> _MissingTransactionConnection:
+        del params
+        self.sql.append(str(sql))
+        raise AssertionError("SQL executed before transaction contract was required")

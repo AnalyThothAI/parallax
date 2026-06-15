@@ -20,6 +20,31 @@ repository access, make the route synchronous. If it needs async
 streaming, keep synchronous repository work outside the event loop
 through a dedicated read model boundary.
 
+`DBPoolBundle.create()` owns startup pool construction and partial cleanup.
+If pool creation fails after one or more pools were created, cleanup calls each
+partial pool's formal synchronous `close()` contract directly and records any
+missing or failed close as a note on the original creation exception. Startup
+pool cleanup must not skip malformed pools through optional close probing or
+mask the original create failure with a cleanup failure.
+Runtime shutdown uses the same synchronous pool contract. `DBPoolBundle.aclose()`
+may be awaited by async owners, but each psycopg pool must expose
+`close() -> None`; awaitable or non-`None` close results are malformed pool
+wiring, not alternate lifecycle shapes to await.
+When a checked-out worker or advisory-lock connection must be discarded after
+reset/unlock failure, `DBPoolBundle` closes the connection directly and returns
+the closed connection through `pool.putconn(conn)`. Private test-only pool hooks
+such as `close_returns(...)` and optional `conn.close` probing are not runtime
+compatibility paths.
+PostgreSQL liveness probes use the same formal connection boundary:
+`postgres_health_check(...)` must call `conn.commit()` after successful probe
+SQL and `conn.rollback()` after probe failures. Missing cleanup methods are
+malformed connection wiring and must be reported as failed liveness payloads,
+not skipped through optional `hasattr(...)` probes.
+Inner write guards use the formal psycopg transaction-status contract:
+`require_transaction(conn, operation=...)` reads `conn.info.transaction_status`
+directly, rejects `IDLE`, and treats missing transaction-status evidence as
+malformed connection/session wiring rather than fake-connection compatibility.
+
 Workers must use `DBPoolBundle.worker_session()`, not
 `repository_session()` or raw pool connections. External provider IO,
 publish calls, and wake waits must happen outside DB sessions so worker
@@ -29,6 +54,41 @@ Workers that require single-writer advisory locks must acquire them via
 `DBPoolBundle.acquire_advisory_lock_connection()`. Advisory locks are
 session-scoped and may be held for the worker lifetime, so they must not
 consume `worker_pool` connections needed for actual worker sessions.
+`WorkerBase` releases that handle through the formal advisory lock
+connection `release()` contract; injected lock handles that only expose
+`close()` are malformed runtime wiring, not a supported fallback.
+Injected wake waiters have separate wait and close contracts:
+`async_wait(...)` is awaited by the loop, while `close()` is synchronous and
+must return `None`. Awaitable wake-waiter close results are malformed runtime
+wiring, not an alternate cleanup shape.
+CLI ops one-shot worker commands follow the same lifecycle boundary:
+their temporary `DBPoolBundle` closes through `db.aclose()`, and any
+manually acquired advisory lock releases through `release()` rather than
+pool probing or `close()` fallback. If an ops one-shot command wires
+asset-market providers directly, it closes the resulting provider bundle
+through `AssetMarketProviders.aclose()` rather than enumerating provider fields
+or probing individual `close()` methods.
+The continuous collector owns its injected upstream stream client through
+`UpstreamClientProtocol.aclose()`. A client that only exposes `close()` is
+malformed wiring; collector shutdown must surface that contract failure
+rather than silently accepting a different lifecycle shape.
+GMGN DirectWS frame delivery follows the same formal-boundary rule: the
+upstream adapter awaits the collector's async `handle_frame(...)` contract
+directly. Synchronous frame callbacks are malformed runtime wiring, not a
+supported test or provider compatibility shape.
+Provider cleanup has the same root-contract rule. Runtime shutdown and
+bootstrap failure cleanup call `WiredProviders.aclose()`,
+`runtime.agent_execution_gateway.aclose()`, and `runtime.llm_gateway.aclose()`
+directly. Bootstrap must not recursively scan provider dataclasses, object
+slots, mappings, or `close/aclose`-shaped aliases.
+Worker-owned provider handles follow their provider protocols directly:
+Pulse candidate decision clients close through `aclose()`, and News fetch
+source providers close through synchronous `close()`. Workers must not probe
+alternate close shapes or await a sync close result as compatibility fallback.
+Market stream workers also close each per-cycle provider async iterator through
+the iterator's formal `aclose()` contract. A stream iterator missing `aclose()`
+is malformed runtime wiring and must surface as degraded stream evidence, not a
+successful no-close stream.
 
 ## Foreground-only run model
 
@@ -52,10 +112,23 @@ All long-running workers inherit `WorkerBase`. `runtime.bootstrap()`
 constructs the canonical worker map, provider wiring, `DBPoolBundle`,
 and disabled placeholders for unavailable workers. `WorkerScheduler`
 starts enabled workers in registry priority order, reports status for
-the canonical map, stops workers cooperatively, cancels stragglers,
-calls `aclose()`, and closes the pool bundle. Runtime health endpoints
-and CLI status must read worker state from the scheduler's `workers`
-map, not bespoke top-level runtime fields.
+the canonical map, awaits worker `stop()` directly, cancels stragglers,
+awaits worker `aclose()` directly, and closes the canonical `DBPoolBundle`
+through direct `DBPoolBundle.aclose()`. Synchronous or non-awaitable scheduler
+lifecycle hook results are malformed runtime wiring. The scheduler does not
+close individual
+`api_pool`, `worker_pool`, `lock_pool`, `tool_pool`, or `wake_pool`
+attributes as a compatibility fallback; missing `db.aclose()` is runtime
+wiring failure. Bootstrap failure cleanup follows the same boundary: once a
+`DBPoolBundle` exists, startup unwind calls `db.aclose()` and records cleanup
+failure as a note on the original startup error rather than duplicating pool
+role knowledge. Provider cleanup follows explicit root lifecycle methods and
+does not walk object graphs looking for arbitrary close methods. Runtime health
+endpoints and CLI status must read worker state
+from the scheduler's `workers` map, not bespoke top-level runtime fields.
+When a worker owns an injected provider directly, its `on_close()` uses that
+provider protocol's lifecycle method directly and fails malformed handles
+instead of probing alternate method names.
 
 Worker timeout supervision has four layers. `WorkerBase`
 `soft_timeout_seconds` is an overrun signal only: it exposes
@@ -95,6 +168,10 @@ congestion and lets the next bounded catch-up cycle retry naturally. For Pulse,
 `pulse.decision` is reserved before job claim and covers all internal decision
 audit stages. A no-start response from capacity, circuit, RPM, or reservation
 pressure is backpressure, not a provider attempt.
+Reservation release is synchronous resource accounting inside the gateway:
+lane semaphores, global capacity, and RPM slots are released by a callback that
+must return `None`. Awaitable release results are malformed agent execution
+wiring and must not be awaited as compatibility cleanup.
 No-start backpressure must not write business run ledgers or increment
 business attempts. Provider-started validation, publication, schema, timeout,
 or cancellation failures remain started execution failures and follow the
@@ -121,7 +198,10 @@ not against the full three-stage public-judge path.
 Prometheus exposes `gmgn_agent_execution_*` metrics. These are ops
 signals only. `/api/ops/diagnostics` also exposes a sanitized
 `agent_execution` section with policy labels, counters, and status
-classification. Lane `priority` is an operator-facing label for
+classification. These status surfaces read `runtime.agent_execution_gateway`
+directly; `None` means disabled, while a malformed non-`None` gateway is a
+runtime contract failure. They must not fall back to provider-bundle aliases.
+Lane `priority` is an operator-facing label for
 diagnostics and triage, not a strict scheduler. Product readiness still
 comes from persisted domain facts and read models.
 
@@ -159,10 +239,19 @@ and inline-only capture assignment, but it is not a market fact.
 
 `LivePriceGateway` is cache/publish only. It may maintain process-local latest
 state and fan out WebSocket updates, but it must not write market facts or
-become a correctness dependency for projections.
+become a correctness dependency for projections. Its fan-out publisher is the
+formal async WebSocket hub `publish(payload)` contract; synchronous callback
+results are malformed runtime wiring, not alternate publish compatibility.
 
 WebSocket fan-out must be bounded. Slow clients are stale subscribers to drop;
 they must not stall worker publish paths or other clients.
+Replay is part of that same public read contract: replay limit, filter
+cardinality, and per-filter token replay budget are all bounded before
+PostgreSQL reads begin. Token-filter replay then sends the selected
+`cas`/`symbols` as one PostgreSQL keyset/window query with per-filter bucket
+limits, so one subscribe message cannot fan out into one replay query per
+filter. Replay payload hydration then batches projected event payload lookups
+for the replay page instead of issuing per-event projection reads.
 
 ## News Provider Ingest
 
@@ -172,7 +261,16 @@ bounded `/open/news_search` pages; it must not open short-lived WebSocket
 subscribe cycles during a poll. If a future OpenNews streaming input is added,
 it must be a separate provider input path that writes provider observations
 into the same material-fact contract instead of sharing `news_fetch` control
-flow or reintroducing hybrid fetch mode.
+flow or reintroducing hybrid fetch mode. The OpenNews REST HTTP poster is a
+formal async contract and is awaited directly; synchronous poster results are
+malformed runtime wiring, not a compatibility mode to detect with
+`inspect.isawaitable(...)`. The sync worker bridge accepts the formal coroutine
+created by the REST fetch and closes it directly if `fetch()` is misused from an
+active event loop; arbitrary awaitables without `close()` are malformed private
+bridge inputs, not compatibility shapes. REST scan budgets are formal runtime
+policy: source policy or worker/cursor inputs must provide page size, max pages,
+and overlap, and the integration client must not supply hidden defaults when
+that policy is missing.
 
 ## Wake Hints And Durable Work
 
@@ -194,6 +292,13 @@ Token Radar repair uses the explicit
 `ops enqueue-token-radar-dirty-targets` command, and resolution refresh
 uses `token_discovery_dirty_lookup_keys`. Service correctness must not
 depend on `NOTIFY` delivery.
+
+Wake emitters are still runtime contracts even though wakes are hints.
+`WakeBus` is constructed from the dedicated wake-pool connection context
+factory, enters that context, emits `pg_notify`, and commits the checked-out
+connection. A factory that returns a raw connection without the context
+protocol is malformed runtime wiring and fails before `pg_notify`; it is not a
+supported compatibility path.
 
 ## One writer per read model
 
@@ -256,6 +361,8 @@ source-health outcomes in `macro_sync_runs`, and keeps FRED secrets out of
 argv, logs, DB diagnostics, and API/CLI payloads. The macrodata child process
 must have its own subprocess timeout (`macrodata_timeout_seconds`) because
 canceling the worker thread does not kill a running child process.
+The FRED env var name is a settings-owned policy: `null` or blank disables env
+lookup, and runner/service code must not silently restore `FINANCE_FRED_API_KEY`.
 
 ## PostgreSQL Observability
 
@@ -285,6 +392,10 @@ zero rows. Failed latest attempts serve previous rows as `stale` or no rows as
 `current_generation_id` remains attempt audit metadata, not an online serving
 join key. `fresh`, `stale`, and `failed` describe publication freshness only;
 row `quality_status` describes business credibility.
+Projection-private `token_radar_target_features` and rank-source edge retention
+is bounded maintenance owned by `TokenRadarProjectionWorker`; rank publication
+does not perform retention prune work, and maintenance deletes are capped by the
+worker batch limit.
 
 Successful publication generation ids are content-stable. If a rebuild produces
 unchanged current-row content, publication state refreshes without deleting or
@@ -329,6 +440,16 @@ publish it through `/api/status`. State values are `disconnected`,
 `connecting`, `authenticating`, `subscribed`, `streaming`, and `failed`.
 Capture workers must expose provider state changes through status payloads so
 operators can tell the difference between stale markets and stale projections.
+GMGN DirectWS also treats frame delivery as a formal async collector contract:
+`on_frame(frame)` is awaited directly and must not be accepted through
+conditional await compatibility.
+
+Provider lifecycle cleanup is owned by explicit roots and wrapper contracts,
+not reflection. Runtime roots call `WiredProviders.aclose()` and gateway
+`aclose()` methods directly. Provider wiring wrappers that own synchronous
+providers call the wrapped provider `close()` contract directly, and startup
+partial-cleanup records missing `close()` as failure evidence on the original
+exception instead of silently skipping malformed providers.
 
 ## Snapshot gate observability
 

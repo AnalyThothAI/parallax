@@ -12,10 +12,8 @@ class StocksRadarService:
         self,
         *,
         conn: Any,
-        quote_provider: Any | None = None,
         stock_rows_query: Any | None = None,
     ) -> None:
-        self.quote_provider = quote_provider
         self.stock_rows_query = stock_rows_query or StocksRadarQuery(conn)
 
     def stocks_radar(
@@ -34,9 +32,8 @@ class StocksRadarService:
             scope=scope,
             limit=parsed_limit,
         )
-        quotes = self._quote_snapshots([str(row["symbol"]) for row in rows])
         items = [
-            _public_row(row, quote=quotes.get(str(row["symbol"])) or _unavailable_quote("missing_quote"))
+            _public_row(row, quote=_unavailable_quote("quote_read_model_unavailable", symbol=_row_symbol(row)))
             for row in rows
         ]
         quote_ready_count = sum(1 for item in items if item["quote"]["status"] == "ready")
@@ -58,31 +55,6 @@ class StocksRadarService:
                 "quote_unavailable_count": quote_unavailable_count,
             },
         }
-
-    def _quote_snapshots(self, symbols: list[str]) -> dict[str, dict[str, Any]]:
-        unique_symbols = []
-        seen: set[str] = set()
-        for symbol in symbols:
-            normalized = symbol.strip().upper()
-            if normalized and normalized not in seen:
-                unique_symbols.append(normalized)
-                seen.add(normalized)
-        if not unique_symbols:
-            return {}
-        if self.quote_provider is None:
-            return {
-                symbol: _unavailable_quote("quote_provider_unavailable", symbol=symbol) for symbol in unique_symbols
-            }
-        quotes: dict[str, dict[str, Any]] = {}
-        for symbol in unique_symbols:
-            try:
-                quote = self.quote_provider.quote(symbol)
-            except Exception:
-                quote = _unavailable_quote("quote_provider_error", symbol=symbol)
-            quotes[symbol] = (
-                quote if isinstance(quote, dict) else _unavailable_quote("quote_provider_error", symbol=symbol)
-            )
-        return quotes
 
 
 def _public_row(row: dict[str, Any], *, quote: dict[str, Any]) -> dict[str, Any]:
@@ -127,6 +99,14 @@ def _unavailable_quote(error: str, *, symbol: str | None = None) -> dict[str, An
         "freshness_class": None,
         "error": error,
     }
+
+
+def _row_symbol(row: dict[str, Any]) -> str | None:
+    symbol = row.get("symbol")
+    if symbol is None:
+        return None
+    normalized = str(symbol).strip().upper()
+    return normalized or None
 
 
 def _int_or_none(value: Any) -> int | None:

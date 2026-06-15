@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 import pytest
@@ -15,13 +16,12 @@ from parallax.domains.token_intel.repositories.token_radar_source_dirty_event_re
 
 
 def test_enqueue_targets_coalesces_by_identity_and_preserves_first_dirty_time() -> None:
-    conn = _ScriptedConnection([])
+    conn = _ScriptedConnection([], rowcount=1)
 
     count = TokenRadarDirtyTargetRepository(conn).enqueue_targets(
         [
             {"target_type_key": "Asset", "identity_id": "asset-1"},
-            {"target_type": "Asset", "target_id": "asset-1"},
-            {"target_type_key": "", "identity_id": ""},
+            {"target_type_key": "Asset", "identity_id": "asset-1"},
         ],
         reason="ops_repair",
         now_ms=1_700_000_000_000,
@@ -38,6 +38,29 @@ def test_enqueue_targets_coalesces_by_identity_and_preserves_first_dirty_time() 
     assert conn.params[-1]["identity_ids"] == ["asset-1"]
     assert conn.params[-1]["dirty_reason"] == "ops_repair"
     assert conn.params[-1]["due_at_ms"] == 1_700_000_000_000
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        pytest.param({"target_type": "Asset", "target_id": "asset-1"}, id="legacy-target-alias"),
+        pytest.param({"target_type_key": "Asset", "target_id": "asset-1"}, id="legacy-id-alias"),
+        pytest.param({"target_type_key": "Asset", "identity_id": ""}, id="blank-formal-id"),
+        pytest.param({"target_type_key": "", "identity_id": "asset-1"}, id="blank-formal-type"),
+    ],
+)
+def test_enqueue_targets_requires_formal_identity_without_alias_fallback(row: dict[str, str]) -> None:
+    conn = _ScriptedConnection([])
+
+    with pytest.raises(ValueError, match="token_radar_dirty_target_enqueue_identity_required"):
+        TokenRadarDirtyTargetRepository(conn).enqueue_targets(
+            [row],
+            reason="ops_repair",
+            now_ms=1_700_000_000_000,
+            commit=False,
+        )
+
+    assert conn.sql == []
 
 
 def test_enqueue_targets_unions_dirty_kind_flags_on_conflict() -> None:
@@ -148,12 +171,144 @@ def test_mark_error_releases_lease_without_overwriting_newer_dirty_payload() -> 
     assert conn.params[-1]["last_error"] == "projection failed"
 
 
+@pytest.mark.parametrize(
+    ("operation", "error"),
+    [
+        pytest.param(
+            lambda repo: repo.enqueue_market_targets(
+                [("chain_token", "eip155:1:0xabc")],
+                reason="market_tick_current_changed",
+                now_ms=1_700_000_000_000,
+                commit=False,
+            ),
+            "token_radar_dirty_target_rowcount_required",
+            id="market-target-rowcount-required",
+        ),
+        pytest.param(
+            lambda repo: repo.mark_done([_claim()], now_ms=1_700_000_060_000, commit=False),
+            "token_radar_dirty_target_rowcount_required",
+            id="done-rowcount-required",
+        ),
+        pytest.param(
+            lambda repo: repo.mark_error(
+                [_claim()],
+                error="projection failed",
+                retry_ms=30_000,
+                now_ms=1_700_000_060_000,
+                commit=False,
+            ),
+            "token_radar_dirty_target_rowcount_required",
+            id="error-rowcount-required",
+        ),
+    ],
+)
+def test_target_dirty_write_counts_require_cursor_rowcount(
+    operation: Callable[[TokenRadarDirtyTargetRepository], object],
+    error: str,
+) -> None:
+    conn = _ScriptedConnection([], omit_rowcount=True)
+
+    with pytest.raises(TypeError, match=error):
+        operation(TokenRadarDirtyTargetRepository(conn))
+
+
+@pytest.mark.parametrize("rowcount", ("bad", "1"))
+def test_target_dirty_write_counts_reject_invalid_cursor_rowcount(rowcount: object) -> None:
+    conn = _ScriptedConnection([], rowcount=rowcount)
+
+    with pytest.raises(TypeError, match="token_radar_dirty_target_rowcount_invalid"):
+        TokenRadarDirtyTargetRepository(conn).enqueue_market_current_targets(
+            since_ms=123,
+            now_ms=1_700_000_060_000,
+            limit=25,
+            reason="ops_market_current_repair",
+            commit=False,
+        )
+
+
+def test_target_dirty_generic_enqueue_requires_cursor_rowcount() -> None:
+    conn = _ScriptedConnection([], omit_rowcount=True)
+
+    with pytest.raises(TypeError, match="token_radar_dirty_target_rowcount_required"):
+        TokenRadarDirtyTargetRepository(conn).enqueue_targets(
+            [{"target_type_key": "Asset", "identity_id": "asset-1"}],
+            reason="intent_written",
+            now_ms=1_700_000_000_000,
+            commit=False,
+        )
+
+
+@pytest.mark.parametrize("rowcount", ("bad", "1", True, -1))
+def test_target_dirty_generic_enqueue_rejects_invalid_cursor_rowcount(rowcount: object) -> None:
+    conn = _ScriptedConnection([], rowcount=rowcount)
+
+    with pytest.raises(TypeError, match="token_radar_dirty_target_rowcount_invalid"):
+        TokenRadarDirtyTargetRepository(conn).enqueue_targets(
+            [{"target_type_key": "Asset", "identity_id": "asset-1"}],
+            reason="intent_written",
+            now_ms=1_700_000_000_000,
+            commit=False,
+        )
+
+
+@pytest.mark.parametrize(
+    "operation",
+    [
+        lambda repo: repo.enqueue_targets(
+            [{"target_type_key": "Asset", "identity_id": "asset-1"}],
+            reason="intent_written",
+            now_ms=1_700_000_000_000,
+        ),
+        lambda repo: repo.enqueue_market_targets(
+            [("chain_token", "eip155:1:0xabc")],
+            reason="market_tick_current_changed",
+            now_ms=1_700_000_000_000,
+        ),
+        lambda repo: repo.claim_due(
+            limit=10,
+            lease_ms=60_000,
+            now_ms=1_700_000_000_000,
+            lease_owner="token_radar_projection",
+        ),
+        lambda repo: repo.enqueue_recent_resolved_targets(
+            since_ms=1_700_000_000_000,
+            now_ms=1_700_000_060_000,
+            limit=10,
+            reason="projection_catch_up",
+        ),
+        lambda repo: repo.enqueue_market_current_targets(
+            since_ms=1_700_000_000_000,
+            now_ms=1_700_000_060_000,
+            limit=10,
+            reason="ops_market_current_repair",
+        ),
+        lambda repo: repo.mark_done([_claim()], now_ms=1_700_000_060_000),
+        lambda repo: repo.mark_error(
+            [_claim()],
+            error="projection failed",
+            retry_ms=30_000,
+            now_ms=1_700_000_060_000,
+        ),
+    ],
+)
+def test_target_dirty_mutations_require_connection_transaction_before_sql_when_committing(
+    operation: Callable[[TokenRadarDirtyTargetRepository], object],
+) -> None:
+    conn = _MissingTransactionConnection()
+
+    with pytest.raises(RuntimeError, match="token_radar_dirty_target_transaction_required"):
+        operation(TokenRadarDirtyTargetRepository(conn))
+
+    assert conn.sql == []
+    assert conn.commits == 0
+
+
 def test_mark_done_rejects_keys_without_claim_payload_hash() -> None:
     conn = _ScriptedConnection([])
 
     try:
         TokenRadarDirtyTargetRepository(conn).mark_done(
-            [{"target_type_key": "Asset", "identity_id": "asset-1"}],
+            [{"target_type_key": "Asset", "identity_id": "asset-1", "attempt_count": 1}],
             now_ms=1_700_000_010_000,
             commit=False,
         )
@@ -162,6 +317,76 @@ def test_mark_done_rejects_keys_without_claim_payload_hash() -> None:
     else:
         raise AssertionError("expected mark_done to require claimed payload_hash")
 
+    assert conn.sql == []
+
+
+@pytest.mark.parametrize(
+    "operation",
+    [
+        pytest.param(lambda repo, claim: repo.mark_done([claim], now_ms=1_700_000_010_000, commit=False), id="done"),
+        pytest.param(
+            lambda repo, claim: repo.mark_error(
+                [claim],
+                error="projection failed",
+                retry_ms=30_000,
+                now_ms=1_700_000_010_000,
+                commit=False,
+            ),
+            id="error",
+        ),
+    ],
+)
+def test_target_dirty_completion_requires_claim_attempt_field_without_default(
+    operation: Callable[[TokenRadarDirtyTargetRepository, dict[str, Any]], object],
+) -> None:
+    conn = _ScriptedConnection([])
+    claim = _claim()
+    claim.pop("attempt_count")
+
+    with pytest.raises(ValueError, match="token radar dirty target completion requires attempt_count") as exc_info:
+        operation(TokenRadarDirtyTargetRepository(conn), claim)
+
+    assert isinstance(exc_info.value.__cause__, KeyError)
+    assert conn.sql == []
+
+
+@pytest.mark.parametrize(
+    ("field", "aliases"),
+    [
+        pytest.param("target_type_key", {"target_type": "Asset"}, id="target_type_key"),
+        pytest.param("identity_id", {"target_id": "asset-1", "intent_id": "intent-1"}, id="identity_id"),
+    ],
+)
+@pytest.mark.parametrize(
+    "operation",
+    [
+        pytest.param(lambda repo, claim: repo.mark_done([claim], now_ms=1_700_000_010_000, commit=False), id="done"),
+        pytest.param(
+            lambda repo, claim: repo.mark_error(
+                [claim],
+                error="projection failed",
+                retry_ms=30_000,
+                now_ms=1_700_000_010_000,
+                commit=False,
+            ),
+            id="error",
+        ),
+    ],
+)
+def test_target_dirty_completion_requires_formal_identity_fields_without_alias_fallback(
+    operation: Callable[[TokenRadarDirtyTargetRepository, dict[str, Any]], object],
+    field: str,
+    aliases: dict[str, str],
+) -> None:
+    conn = _ScriptedConnection([])
+    claim = _claim()
+    claim.pop(field)
+    claim.update(aliases)
+
+    with pytest.raises(ValueError, match=field) as exc_info:
+        operation(TokenRadarDirtyTargetRepository(conn), claim)
+
+    assert isinstance(exc_info.value.__cause__, KeyError)
     assert conn.sql == []
 
 
@@ -330,18 +555,40 @@ def test_market_current_target_candidate_counts_are_read_only() -> None:
 
 
 def test_repository_session_exposes_token_radar_dirty_targets() -> None:
-    session = repositories_for_connection(_ScriptedConnection([]))
+    session = repositories_for_connection(
+        _ScriptedConnection([]),
+        pulse_job_running_timeout_ms=300_000,
+        notification_delivery_running_timeout_ms=300_000,
+        notification_delivery_stale_running_terminalization_batch_size=100,
+    )
 
     assert isinstance(session.token_radar_dirty_targets, TokenRadarDirtyTargetRepository)
     assert isinstance(session.token_radar_source_dirty_events, TokenRadarSourceDirtyEventRepository)
 
 
+def _claim() -> dict[str, Any]:
+    return {
+        "target_type_key": "Asset",
+        "identity_id": "asset-1",
+        "payload_hash": "hash-1",
+        "lease_owner": "token_radar_projection",
+        "attempt_count": 1,
+    }
+
+
 class _ScriptedConnection:
-    def __init__(self, results: list[list[dict[str, Any]] | None]) -> None:
+    def __init__(
+        self,
+        results: list[list[dict[str, Any]] | None],
+        *,
+        rowcount: Any = 0,
+        omit_rowcount: bool = False,
+    ) -> None:
         self.results = list(results)
         self.sql: list[str] = []
         self.params: list[dict[str, Any]] = []
-        self.rowcount = 0
+        if not omit_rowcount:
+            self.rowcount = rowcount
         self.commits = 0
 
     def execute(self, sql: str, params: dict[str, Any] | None = None) -> _ScriptedConnection:
@@ -362,3 +609,21 @@ class _ScriptedConnection:
 
     def commit(self) -> None:
         self.commits += 1
+
+
+class _MissingTransactionConnection:
+    transaction = None
+
+    def __init__(self) -> None:
+        self.sql: list[str] = []
+        self.params: list[dict[str, Any]] = []
+        self.commits = 0
+
+    def execute(self, sql: str, params: dict[str, Any] | None = None) -> _MissingTransactionConnection:
+        self.sql.append(str(sql))
+        self.params.append(params or {})
+        raise AssertionError("SQL must not run without connection transaction")
+
+    def commit(self) -> None:
+        self.commits += 1
+        raise AssertionError("manual commit fallback must not run")

@@ -246,6 +246,55 @@ def test_queue_resolve_retry_rolls_back_when_transition_requeues_nothing(monkeyp
     assert conn.rollbacks == 1
 
 
+def test_queue_resolve_retry_requires_discovery_repository_contract(monkeypatch) -> None:
+    from parallax.app.surfaces.cli.commands import ops as ops_module
+
+    conn = _FakeTerminalConnection()
+    conn.rows = [
+        _terminal_row(
+            "terminal-1",
+            worker_name="resolution_refresh",
+            source_table="token_discovery_dirty_lookup_keys",
+            target_key="okx_dex_search:bonk",
+            source_row_json={
+                "provider": "okx_dex_search",
+                "lookup_key": "symbol:BONK",
+                "payload_hash": "",
+            },
+        )
+    ]
+    repos = SimpleNamespace(signals=SimpleNamespace(conn=conn))
+
+    @contextmanager
+    def fake_repositories(_settings: object):
+        yield repos
+
+    monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: SimpleNamespace())
+    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
+    monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_700_000_100_000)
+    stdout = io.StringIO()
+
+    code = main(
+        [
+            "ops",
+            "queue-resolve",
+            "--terminal-id",
+            "terminal-1",
+            "--action",
+            "retry",
+            "--reason",
+            "operator checked row",
+            "--execute",
+        ],
+        stdout=stdout,
+    )
+
+    assert code == 1
+    assert json.loads(stdout.getvalue()) == {"ok": False, "error": "discovery_repository_required"}
+    assert conn.rows[0]["operator_action"] is None
+    assert conn.rollbacks == 1
+
+
 def test_queue_retry_transitions_cover_phase_five_terminal_queues() -> None:
     from parallax.app.surfaces.cli.commands import queue_ops
 

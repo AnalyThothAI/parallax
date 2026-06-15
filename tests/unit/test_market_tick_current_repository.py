@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
+
+import pytest
 
 from parallax.app.runtime.repository_session import repositories_for_connection
 from parallax.domains.asset_market.repositories.market_tick_current_dirty_target_repository import (
@@ -16,6 +19,7 @@ from parallax.domains.asset_market.services.market_tick_current_rebuild import (
 
 def test_enqueue_targets_coalesces_by_target() -> None:
     conn = _ScriptedConnection([])
+    conn.rowcount = 2
 
     count = MarketTickCurrentDirtyTargetRepository(conn).enqueue_targets(
         [
@@ -128,6 +132,141 @@ def test_mark_error_reschedules_only_matching_claim() -> None:
     assert conn.params[-1]["last_error"] == "projection failed"
 
 
+@pytest.mark.parametrize(
+    "operation",
+    [
+        lambda repo: repo.enqueue_targets(
+            [("chain_token", "solana:abc")],
+            reason="market_tick_written",
+            now_ms=1_700_000_000_000,
+        ),
+        lambda repo: repo.claim_due(
+            limit=25,
+            now_ms=1_700_000_000_000,
+            lease_ms=60_000,
+            lease_owner="market_tick_current_projection",
+        ),
+        lambda repo: repo.mark_done([_dirty_claim()], now_ms=1_700_000_010_000),
+        lambda repo: repo.mark_error(
+            [_dirty_claim()],
+            error="projection failed",
+            retry_ms=30_000,
+            now_ms=1_700_000_010_000,
+        ),
+    ],
+)
+def test_market_tick_current_dirty_mutations_require_connection_transaction_before_sql_when_committing(
+    operation: Callable[[MarketTickCurrentDirtyTargetRepository], object],
+) -> None:
+    conn = _MissingTransactionConnection()
+
+    with pytest.raises(RuntimeError, match="market_tick_current_dirty_target_transaction_required"):
+        operation(MarketTickCurrentDirtyTargetRepository(conn))
+
+    assert conn.sql == []
+    assert conn.commits == 0
+
+
+@pytest.mark.parametrize(
+    "operation",
+    [
+        pytest.param(lambda repo, claim: repo.mark_done([claim], now_ms=1_700_000_010_000, commit=False), id="done"),
+        pytest.param(
+            lambda repo, claim: repo.mark_error(
+                [claim],
+                error="projection failed",
+                retry_ms=30_000,
+                now_ms=1_700_000_010_000,
+                commit=False,
+            ),
+            id="error",
+        ),
+    ],
+)
+def test_market_tick_current_dirty_completion_requires_claim_attempt_field_without_default(
+    operation: Callable[[MarketTickCurrentDirtyTargetRepository, dict[str, Any]], object],
+) -> None:
+    conn = _ScriptedConnection([])
+    claim = _dirty_claim()
+    claim.pop("attempt_count")
+
+    with pytest.raises(
+        ValueError,
+        match="market tick current dirty target completion requires attempt_count",
+    ) as exc_info:
+        operation(MarketTickCurrentDirtyTargetRepository(conn), claim)
+
+    assert isinstance(exc_info.value.__cause__, KeyError)
+    assert conn.sql == []
+
+
+def test_market_tick_current_dirty_completion_counts_require_cursor_rowcount() -> None:
+    conn = _RowcountConnection(omit_rowcount=True)
+    repo = MarketTickCurrentDirtyTargetRepository(conn)
+
+    with pytest.raises(TypeError, match="market_tick_current_dirty_target_rowcount_required"):
+        repo.mark_done([_dirty_claim()], now_ms=1_700_000_010_000, commit=False)
+
+
+@pytest.mark.parametrize("rowcount", ["bad", True, -1])
+def test_market_tick_current_dirty_completion_counts_reject_invalid_cursor_rowcount(rowcount: object) -> None:
+    conn = _RowcountConnection(rowcount=rowcount)
+    repo = MarketTickCurrentDirtyTargetRepository(conn)
+
+    with pytest.raises(TypeError, match="market_tick_current_dirty_target_rowcount_invalid"):
+        repo.mark_error(
+            [_dirty_claim()],
+            error="projection failed",
+            retry_ms=30_000,
+            now_ms=1_700_000_010_000,
+            commit=False,
+        )
+
+
+def test_market_tick_current_dirty_enqueue_counts_require_cursor_rowcount() -> None:
+    conn = _RowcountConnection(omit_rowcount=True)
+    repo = MarketTickCurrentDirtyTargetRepository(conn)
+
+    with pytest.raises(TypeError, match="market_tick_current_dirty_target_rowcount_required"):
+        repo.enqueue_targets(
+            [("chain_token", "solana:abc")],
+            reason="market_tick_written",
+            now_ms=1_700_000_000_000,
+            commit=False,
+        )
+
+
+@pytest.mark.parametrize("rowcount", ["bad", True, -1])
+def test_market_tick_current_dirty_enqueue_counts_reject_invalid_cursor_rowcount(rowcount: object) -> None:
+    conn = _RowcountConnection(rowcount=rowcount)
+    repo = MarketTickCurrentDirtyTargetRepository(conn)
+
+    with pytest.raises(TypeError, match="market_tick_current_dirty_target_rowcount_invalid"):
+        repo.enqueue_targets(
+            [("chain_token", "solana:abc")],
+            reason="market_tick_written",
+            now_ms=1_700_000_000_000,
+            commit=False,
+        )
+
+
+def test_market_tick_current_dirty_enqueue_count_uses_postgres_rowcount_not_candidate_count() -> None:
+    conn = _RowcountConnection(rowcount=0)
+    repo = MarketTickCurrentDirtyTargetRepository(conn)
+
+    changed = repo.enqueue_targets(
+        [
+            ("chain_token", "solana:abc"),
+            ("cex_symbol", "binance:BTCUSDT"),
+        ],
+        reason="market_tick_written",
+        now_ms=1_700_000_000_000,
+        commit=False,
+    )
+
+    assert changed == 0
+
+
 def test_queue_depth_counts_due_unleased_rows() -> None:
     conn = _ScriptedConnection([[{"count": 7}]])
 
@@ -166,6 +305,42 @@ def test_upsert_current_from_tick_returns_true_only_when_visible_row_changes() -
     assert "ON CONFLICT(target_type, target_id) DO UPDATE SET" in sql
     assert "WHERE market_tick_current.tick_id IS DISTINCT FROM EXCLUDED.tick_id" in sql
     assert "RETURNING true AS changed" in sql
+
+
+def test_upsert_current_from_tick_returning_changed_requires_cursor_rowcount() -> None:
+    conn = _CurrentRowcountConnection(row={"changed": True}, omit_rowcount=True)
+    repo = MarketTickCurrentRepository(conn)
+
+    with pytest.raises(TypeError, match="market_tick_current_repository_rowcount_required"):
+        repo.upsert_current_from_tick(_tick_row(tick_id="tick-rowcount-missing"), now_ms=1_700_000_010_000)
+
+
+@pytest.mark.parametrize("rowcount", ["bad", True, -1])
+def test_upsert_current_from_tick_returning_changed_rejects_invalid_cursor_rowcount(rowcount: object) -> None:
+    conn = _CurrentRowcountConnection(row={"changed": True}, rowcount=rowcount)
+    repo = MarketTickCurrentRepository(conn)
+
+    with pytest.raises(TypeError, match="market_tick_current_repository_rowcount_invalid"):
+        repo.upsert_current_from_tick(_tick_row(tick_id="tick-rowcount-invalid"), now_ms=1_700_000_010_000)
+
+
+@pytest.mark.parametrize(
+    ("rowcount", "row"),
+    [
+        (0, {"changed": True}),
+        (1, None),
+        (2, {"changed": True}),
+    ],
+)
+def test_upsert_current_from_tick_returning_changed_rejects_rowcount_returning_mismatch(
+    rowcount: object,
+    row: dict[str, Any] | None,
+) -> None:
+    conn = _CurrentRowcountConnection(row=row, rowcount=rowcount)
+    repo = MarketTickCurrentRepository(conn)
+
+    with pytest.raises(TypeError, match="market_tick_current_repository_rowcount_invalid"):
+        repo.upsert_current_from_tick(_tick_row(tick_id="tick-rowcount-mismatch"), now_ms=1_700_000_010_000)
 
 
 def test_upsert_current_from_tick_preserves_tick_received_and_created_times() -> None:
@@ -229,7 +404,12 @@ def test_rebuild_all_rolls_back_when_upsert_fails() -> None:
 
 
 def test_repository_session_exposes_market_tick_current_repository() -> None:
-    session = repositories_for_connection(_ScriptedConnection([]))
+    session = repositories_for_connection(
+        _ScriptedConnection([]),
+        pulse_job_running_timeout_ms=300_000,
+        notification_delivery_running_timeout_ms=300_000,
+        notification_delivery_stale_running_terminalization_batch_size=100,
+    )
 
     assert isinstance(session.market_tick_current_dirty_targets, MarketTickCurrentDirtyTargetRepository)
     assert isinstance(session.market_tick_current, MarketTickCurrentRepository)
@@ -261,6 +441,16 @@ def _tick_row(*, tick_id: str) -> dict[str, Any]:
     }
 
 
+def _dirty_claim() -> dict[str, Any]:
+    return {
+        "target_type": "chain_token",
+        "target_id": "solana:abc",
+        "payload_hash": "claim-hash",
+        "lease_owner": "market_tick_current_projection",
+        "attempt_count": 1,
+    }
+
+
 class _ScriptedConnection:
     def __init__(self, results: list[list[dict[str, Any]] | None]) -> None:
         self.results = list(results)
@@ -276,10 +466,13 @@ class _ScriptedConnection:
 
     def fetchone(self) -> dict[str, Any] | None:
         if not self.results:
+            self.rowcount = 0
             return None
         result = self.results.pop(0)
         if result is None or not result:
+            self.rowcount = 0
             return None
+        self.rowcount = 1
         return result[0]
 
     def fetchall(self) -> list[dict[str, Any]]:
@@ -293,12 +486,80 @@ class _ScriptedConnection:
         self.commits += 1
 
 
+class _MissingTransactionConnection:
+    transaction = None
+
+    def __init__(self) -> None:
+        self.sql: list[str] = []
+        self.params: list[dict[str, Any]] = []
+        self.commits = 0
+
+    def execute(self, sql: str, params: dict[str, Any] | None = None) -> _MissingTransactionConnection:
+        self.sql.append(str(sql))
+        self.params.append(params or {})
+        raise AssertionError("SQL must not run without connection transaction")
+
+    def commit(self) -> None:
+        self.commits += 1
+        raise AssertionError("manual commit fallback must not run")
+
+
+class _RowcountConnection:
+    def __init__(self, *, rowcount: object = 1, omit_rowcount: bool = False) -> None:
+        self.rowcount = rowcount
+        self.omit_rowcount = omit_rowcount
+        self.sql: list[str] = []
+        self.params: list[Any] = []
+
+    def execute(self, sql: str, params: Any | None = None) -> _RowcountCursor:
+        self.sql.append(str(sql))
+        self.params.append(params or {})
+        return _RowcountCursor(rowcount=self.rowcount, omit_rowcount=self.omit_rowcount)
+
+
+class _RowcountCursor:
+    def __init__(self, *, rowcount: object, omit_rowcount: bool) -> None:
+        if not omit_rowcount:
+            self.rowcount = rowcount
+
+
+class _CurrentRowcountConnection:
+    def __init__(
+        self,
+        *,
+        row: dict[str, Any] | None,
+        rowcount: object = 1,
+        omit_rowcount: bool = False,
+    ) -> None:
+        self.row = row
+        self.rowcount = rowcount
+        self.omit_rowcount = omit_rowcount
+        self.sql: list[str] = []
+        self.params: list[Any] = []
+
+    def execute(self, sql: str, params: Any | None = None) -> _CurrentRowcountCursor:
+        self.sql.append(str(sql))
+        self.params.append(params or {})
+        return _CurrentRowcountCursor(row=self.row, rowcount=self.rowcount, omit_rowcount=self.omit_rowcount)
+
+
+class _CurrentRowcountCursor:
+    def __init__(self, *, row: dict[str, Any] | None, rowcount: object, omit_rowcount: bool) -> None:
+        self.row = row
+        if not omit_rowcount:
+            self.rowcount = rowcount
+
+    def fetchone(self) -> dict[str, Any] | None:
+        return self.row
+
+
 class _StatefulCurrentConnection:
     def __init__(self, *, existing_created_at_ms: int) -> None:
         self.current_created_at_ms = existing_created_at_ms
         self.sql: list[str] = []
         self.params: list[Any] = []
         self.pending_row: dict[str, Any] | None = None
+        self.rowcount = 0
 
     def execute(self, sql: str, params: Any | None = None) -> _StatefulCurrentConnection:
         self.sql.append(str(sql))
@@ -308,6 +569,7 @@ class _StatefulCurrentConnection:
             if changed and "created_at_ms = EXCLUDED.created_at_ms" in str(sql):
                 self.current_created_at_ms = params["created_at_ms"]
             self.pending_row = {"changed": changed} if changed else None
+            self.rowcount = 1 if changed else 0
         return self
 
     def fetchone(self) -> dict[str, Any] | None:

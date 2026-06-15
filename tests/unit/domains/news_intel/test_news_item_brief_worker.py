@@ -3,18 +3,39 @@ from __future__ import annotations
 import asyncio
 import threading
 from contextlib import contextmanager
-from types import SimpleNamespace
 from typing import Any
 
-from parallax.domains.news_intel.runtime.news_item_brief_worker import NewsItemBriefWorker
+import pytest
+
+from parallax.domains.news_intel.runtime.news_item_brief_worker import (
+    NewsItemBriefWorker,
+    _agent_admission_payload,
+    _audit_dict,
+    _provider_error_audit,
+)
+from parallax.domains.news_intel.types.news_item_agent_admission import NewsItemAgentAdmission
 from parallax.domains.news_intel.types.news_item_brief import NEWS_ITEM_BRIEF_LANE, NewsItemBriefPayload
 from parallax.platform.agent_execution import (
     AgentCapacityReservation,
     AgentExecutionError,
     AgentExecutionErrorClass,
+    AgentExecutionRequestAudit,
 )
+from parallax.platform.config.settings import NewsItemBriefWorkerSettings
 
 NOW_MS = 1_779_000_000_000
+
+
+def _news_item_brief_settings(**overrides: Any) -> NewsItemBriefWorkerSettings:
+    payload = {
+        "batch_size": 5,
+        "lease_ms": 120_000,
+        "retry_ms": 60_000,
+        "backpressure_cooldown_ms": 60_000,
+        "statement_timeout_seconds": 30,
+    }
+    payload.update(overrides)
+    return NewsItemBriefWorkerSettings(**payload)
 
 
 def test_worker_writes_ready_brief_and_emits_wake() -> None:
@@ -49,6 +70,14 @@ def test_worker_policy_skips_claimed_target_with_low_provider_rating() -> None:
     asyncio.run(_test_worker_policy_skips_claimed_target_with_low_provider_rating())
 
 
+def test_worker_requires_repository_session_transaction_for_policy_skip_completion() -> None:
+    asyncio.run(_test_worker_requires_repository_session_transaction_for_policy_skip_completion())
+
+
+def test_worker_reads_formal_settings_for_claim_session_retry_and_backpressure() -> None:
+    asyncio.run(_test_worker_reads_formal_settings_for_claim_session_retry_and_backpressure())
+
+
 def test_worker_processes_high_score_target_older_than_brief_window() -> None:
     asyncio.run(_test_worker_processes_high_score_target_older_than_brief_window())
 
@@ -61,7 +90,7 @@ async def _test_worker_writes_ready_brief_and_emits_wake() -> None:
     db = FakeDB([_candidate()])
     provider = FakeBriefProvider(payload=_ready_payload())
     wake_bus = FakeWakeBus()
-    worker = _worker(db=db, provider=provider, wake_bus=wake_bus)
+    worker = _worker(db=db, provider=provider, wake_emitter=wake_bus)
 
     result = await worker.run_once()
 
@@ -194,7 +223,7 @@ async def _test_worker_restores_current_from_completed_run_without_second_model_
     }
     db = FakeDB([candidate])
     wake_bus = FakeWakeBus()
-    worker = _worker(db=db, provider=provider, wake_bus=wake_bus)
+    worker = _worker(db=db, provider=provider, wake_emitter=wake_bus)
 
     result = await worker.run_once()
 
@@ -247,6 +276,10 @@ def test_worker_revalidates_completed_run_before_restoring_current() -> None:
     asyncio.run(_test_worker_revalidates_completed_run_before_restoring_current())
 
 
+def test_worker_rejects_completed_run_missing_run_id_before_restore_or_model_call() -> None:
+    asyncio.run(_test_worker_rejects_completed_run_missing_run_id_before_restore_or_model_call())
+
+
 async def _test_worker_revalidates_completed_run_before_restoring_current() -> None:
     candidate = _candidate()
     provider = FakeBriefProvider(payload=_ready_payload())
@@ -286,8 +319,45 @@ async def _test_worker_revalidates_completed_run_before_restoring_current() -> N
     assert result.notes["invalid_completed_run"] == 1
 
 
+async def _test_worker_rejects_completed_run_missing_run_id_before_restore_or_model_call() -> None:
+    candidate = _candidate()
+    provider = FakeBriefProvider(payload=_ready_payload())
+    packet = provider.packet_for_candidate(candidate)
+    agent_config = provider.agent_config()
+    candidate["latest_run"] = {
+        "news_item_id": candidate["item"]["news_item_id"],
+        "status": "completed",
+        "outcome": "ready",
+        "execution_started": True,
+        "input_hash": packet.input_hash,
+        "artifact_version_hash": provider.artifact_version_hash,
+        "prompt_version": packet.prompt_version,
+        "schema_version": packet.schema_version,
+        "validator_version": agent_config.validator_version,
+        "finished_at_ms": NOW_MS - 30_000,
+        "response_json": _ready_payload(),
+    }
+    db = FakeDB([candidate])
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert provider.request_audit_calls == []
+    assert provider.execution_calls == 0
+    assert db.news.runs == []
+    assert db.news.briefs == []
+    assert db.dirty.done == []
+    assert len(db.dirty.errors) == 1
+    assert db.dirty.error_kwargs[0]["error"] == "news_item_brief_run_id_required:completed_run"
+    assert result.failed == 1
+
+
 def test_worker_restores_failed_current_from_started_failed_run_without_second_model_call() -> None:
     asyncio.run(_test_worker_restores_failed_current_from_started_failed_run_without_second_model_call())
+
+
+def test_worker_rejects_failed_run_missing_run_id_before_restore_or_model_call() -> None:
+    asyncio.run(_test_worker_rejects_failed_run_missing_run_id_before_restore_or_model_call())
 
 
 async def _test_worker_restores_failed_current_from_started_failed_run_without_second_model_call() -> None:
@@ -328,6 +398,40 @@ async def _test_worker_restores_failed_current_from_started_failed_run_without_s
     assert result.notes["restored_from_failed_run"] == 1
 
 
+async def _test_worker_rejects_failed_run_missing_run_id_before_restore_or_model_call() -> None:
+    candidate = _candidate()
+    provider = FakeBriefProvider(payload=_ready_payload())
+    packet = provider.packet_for_candidate(candidate)
+    agent_config = provider.agent_config()
+    candidate["latest_run"] = {
+        "news_item_id": candidate["item"]["news_item_id"],
+        "status": "failed",
+        "outcome": "failed",
+        "error_class": "timeout",
+        "error": "model timed out",
+        "execution_started": True,
+        "input_hash": packet.input_hash,
+        "artifact_version_hash": provider.artifact_version_hash,
+        "prompt_version": packet.prompt_version,
+        "schema_version": packet.schema_version,
+        "validator_version": agent_config.validator_version,
+        "finished_at_ms": NOW_MS - 30_000,
+    }
+    db = FakeDB([candidate])
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert provider.request_audit_calls == []
+    assert provider.execution_calls == 0
+    assert db.news.runs == []
+    assert db.news.briefs == []
+    assert db.dirty.done == []
+    assert len(db.dirty.errors) == 1
+    assert db.dirty.error_kwargs[0]["error"] == "news_item_brief_run_id_required:failed_run"
+    assert result.failed == 1
+
+
 async def _test_worker_policy_skips_claimed_target_with_low_provider_rating() -> None:
     candidate = _candidate(provider_score=64)
     db = FakeDB([candidate])
@@ -347,6 +451,66 @@ async def _test_worker_policy_skips_claimed_target_with_low_provider_rating() ->
     assert result.processed == 0
     assert result.skipped == 1
     assert result.notes["policy_skipped"] == 1
+
+
+async def _test_worker_requires_repository_session_transaction_for_policy_skip_completion() -> None:
+    candidate = _candidate(provider_score=64)
+    db = FakeDB([candidate], expose_transaction=False)
+    provider = FakeBriefProvider(payload=_ready_payload())
+    worker = _worker(db=db, provider=provider)
+
+    with pytest.raises(AttributeError, match="transaction"):
+        await worker.run_once()
+
+    assert db.news.agent_admission_updates == []
+    assert db.dirty.done == []
+
+
+async def _test_worker_reads_formal_settings_for_claim_session_retry_and_backpressure() -> None:
+    targets = [
+        {
+            **_dirty_target(),
+            "target_id": f"news-item-{index}",
+            "payload_hash": f"payload:news-item-{index}",
+        }
+        for index in range(9)
+    ]
+    db = FakeDB([], targets=targets, expected_statement_timeout=17, load_error=RuntimeError("load failed"))
+    provider = FakeBriefProvider()
+    worker = _worker(
+        db=db,
+        provider=provider,
+        settings=_news_item_brief_settings(
+            batch_size=7,
+            lease_ms=45_000,
+            retry_ms=90_000,
+            backpressure_cooldown_ms=12_000,
+            statement_timeout_seconds=17,
+        ),
+    )
+
+    result = await worker.run_once()
+
+    assert provider.reserve_rate_units == [7]
+    assert len(db.dirty.claim_kwargs) == 1
+    assert db.dirty.claim_kwargs[0]["projection_name"] == "brief_input"
+    assert db.dirty.claim_kwargs[0]["limit"] == 7
+    assert db.dirty.claim_kwargs[0]["lease_ms"] == 45_000
+    assert db.dirty.claim_kwargs[0]["now_ms"] == NOW_MS
+    assert str(db.dirty.claim_kwargs[0]["lease_owner"]).startswith("news_item_brief:")
+    assert db.dirty.error_kwargs == [
+        {
+            "error": "load failed",
+            "retry_ms": 90_000,
+            "now_ms": NOW_MS,
+            "count_attempt": True,
+            "commit": True,
+        }
+    ]
+    assert worker._backpressure_cooldown_ms() == 12_000
+    assert result.failed == 7
+    assert result.notes["claimed"] == 7
+    assert result.notes["load_failed"] == 1
 
 
 async def _test_worker_processes_high_score_target_older_than_brief_window() -> None:
@@ -522,7 +686,7 @@ async def _test_worker_request_audit_error_requeues_without_business_ledger_or_c
     db = FakeDB([_candidate()])
     provider = FakeBriefProvider(audit_error=RuntimeError("audit exploded"))
     wake_bus = FakeWakeBus()
-    worker = _worker(db=db, provider=provider, wake_bus=wake_bus)
+    worker = _worker(db=db, provider=provider, wake_emitter=wake_bus)
 
     result = await worker.run_once()
 
@@ -547,7 +711,7 @@ async def _test_worker_reserve_error_does_not_claim_dirty_target_or_write_ledger
     db = FakeDB([_candidate()])
     provider = FakeBriefProvider(reserve_error=RuntimeError("reserve exploded"))
     wake_bus = FakeWakeBus()
-    worker = _worker(db=db, provider=provider, wake_bus=wake_bus)
+    worker = _worker(db=db, provider=provider, wake_emitter=wake_bus)
 
     result = await worker.run_once()
 
@@ -602,7 +766,7 @@ async def _test_worker_validation_failure_writes_failed_current_without_retry_or
     invalid_ready_payload["market_read_zh"] = ""
     provider = FakeBriefProvider(payload=invalid_ready_payload)
     wake_bus = FakeWakeBus()
-    worker = _worker(db=db, provider=provider, wake_bus=wake_bus)
+    worker = _worker(db=db, provider=provider, wake_emitter=wake_bus)
 
     result = await worker.run_once()
 
@@ -620,6 +784,57 @@ async def _test_worker_validation_failure_writes_failed_current_without_retry_or
     assert result.notes["ready"] == 0
 
 
+def test_news_item_brief_worker_requires_mapping_agent_run_audit_contract() -> None:
+    with pytest.raises(RuntimeError, match="news_item_brief_agent_run_audit_contract_required"):
+        _audit_dict(object())
+
+
+def test_news_item_brief_worker_provider_error_audit_requires_formal_agent_execution_audit() -> None:
+    malformed_error = AgentExecutionError(
+        AgentExecutionErrorClass.PROVIDER_ERROR,
+        "provider failed",
+        audit={"status": "failed"},  # type: ignore[arg-type]
+        execution_started=True,
+    )
+
+    with pytest.raises(RuntimeError, match="news_item_brief_agent_error_audit_contract_required"):
+        _provider_error_audit(malformed_error)
+
+    packet = FakeBriefProvider().packet_for_candidate(_candidate())
+    formal_audit = AgentExecutionRequestAudit(
+        **_audit(run_id="run-formal", packet=packet, execution_started=False),
+    )
+    formal_error = AgentExecutionError(
+        AgentExecutionErrorClass.PROVIDER_ERROR,
+        "provider failed",
+        audit=formal_audit,
+        execution_started=False,
+    )
+
+    assert _provider_error_audit(formal_error)["execution_trace_id"] == "trace-run-formal"
+
+
+def test_news_item_brief_worker_agent_admission_payload_requires_formal_admission_type() -> None:
+    admission = NewsItemAgentAdmission(
+        eligible=True,
+        status="eligible",
+        reason="eligible",
+        representative_news_item_id="news-item-1",
+        basis={"market_scope": ["crypto"]},
+    )
+
+    assert _agent_admission_payload(admission) == {
+        "eligible": True,
+        "status": "eligible",
+        "reason": "eligible",
+        "representative_news_item_id": "news-item-1",
+        "basis": {"market_scope": ["crypto"]},
+        "version": admission.version,
+    }
+    with pytest.raises(RuntimeError, match="news_item_brief_agent_admission_contract_required"):
+        _agent_admission_payload({"eligible": True})  # type: ignore[arg-type]
+
+
 def test_worker_provider_failure_writes_failed_current_without_retry_after_prior_attempts() -> None:
     asyncio.run(_test_worker_provider_failure_writes_failed_current_without_retry_after_prior_attempts())
 
@@ -628,7 +843,7 @@ async def _test_worker_provider_failure_writes_failed_current_without_retry_afte
     target = _dirty_target(attempt_count=2)
     db = FakeDB([_candidate()], targets=[target])
     provider = FakeBriefProvider(brief_error=RuntimeError("provider bad output"))
-    worker = _worker(db=db, provider=provider, settings=SimpleNamespace(batch_size=1))
+    worker = _worker(db=db, provider=provider, settings=_news_item_brief_settings(batch_size=1))
 
     result = await worker.run_once()
 
@@ -650,7 +865,7 @@ async def _test_worker_provider_failure_hard_cuts_dirty_target_without_terminal_
     target = _dirty_target(attempt_count=2)
     db = FakeDB([_candidate()], targets=[target])
     provider = FakeBriefProvider(brief_error=RuntimeError("provider bad output"))
-    worker = _worker(db=db, provider=provider, settings=SimpleNamespace(batch_size=1))
+    worker = _worker(db=db, provider=provider, settings=_news_item_brief_settings(batch_size=1))
 
     result = await worker.run_once()
 
@@ -666,24 +881,17 @@ def _worker(
     *,
     db: FakeDB,
     provider: FakeBriefProvider,
-    wake_bus: Any | None = None,
-    settings: SimpleNamespace | None = None,
+    wake_emitter: Any | None = None,
+    settings: NewsItemBriefWorkerSettings | None = None,
 ) -> NewsItemBriefWorker:
     provider.db = db
-    resolved_settings = SimpleNamespace(
-        batch_size=5,
-        backpressure_cooldown_ms=60_000,
-        statement_timeout_seconds=30,
-    )
-    if settings is not None:
-        resolved_settings.__dict__.update(settings.__dict__)
     return NewsItemBriefWorker(
         name="news_item_brief",
-        settings=resolved_settings,
+        settings=settings or _news_item_brief_settings(),
         db=db,
         telemetry=object(),
         provider=provider,
-        wake_bus=wake_bus,
+        wake_emitter=wake_emitter,
         clock_ms=lambda: NOW_MS,
     )
 
@@ -1106,8 +1314,11 @@ class FakeDB:
         candidates: list[dict[str, Any]],
         *,
         targets: list[dict[str, Any]] | None = None,
+        expose_transaction: bool = True,
+        expected_statement_timeout: float = 30,
+        load_error: Exception | None = None,
     ) -> None:
-        self.news = FakeNewsRepository(candidates)
+        self.news = FakeNewsRepository(candidates, load_error=load_error)
         self.conn = FakeConn()
         resolved_targets = (
             targets
@@ -1129,8 +1340,12 @@ class FakeDB:
             resolved_targets,
         )
         self.in_session = False
+        self.expose_transaction = expose_transaction
+        self.expected_statement_timeout = expected_statement_timeout
 
     def worker_session(self, worker_name: str, statement_timeout_seconds: float | None = None) -> FakeSession:
+        assert worker_name == "news_item_brief"
+        assert statement_timeout_seconds == self.expected_statement_timeout
         return FakeSession(self)
 
 
@@ -1140,6 +1355,8 @@ class FakeSession:
         self.news = db.news
         self.conn = db.conn
         self.news_projection_dirty_targets = db.dirty
+        if db.expose_transaction:
+            self.transaction = db.conn.transaction
 
     def __enter__(self) -> FakeSession:
         assert self.db.in_session is False
@@ -1151,8 +1368,9 @@ class FakeSession:
 
 
 class FakeNewsRepository:
-    def __init__(self, candidates: list[dict[str, Any]]) -> None:
+    def __init__(self, candidates: list[dict[str, Any]], *, load_error: Exception | None = None) -> None:
         self.candidates = candidates
+        self.load_error = load_error
         self.runs: list[dict[str, Any]] = []
         self.briefs: list[dict[str, Any]] = []
         self.loaded_target_ids: list[list[str]] = []
@@ -1160,6 +1378,8 @@ class FakeNewsRepository:
         self.agent_admission_updates: list[dict[str, Any]] = []
 
     def load_items_for_brief_targets(self, *, news_item_ids: list[str]) -> list[dict[str, Any]]:
+        if self.load_error is not None:
+            raise self.load_error
         self.loaded_target_ids.append(list(news_item_ids))
         by_id = {str(candidate["item"]["news_item_id"]): candidate for candidate in self.candidates}
         return [by_id[item_id] for item_id in news_item_ids if item_id in by_id]
@@ -1192,6 +1412,9 @@ class FakeNewsRepository:
         assert news_item_ids == ["news-item-1"]
         return ["source-1"]
 
+    def servable_news_item_ids(self, news_item_ids: list[str]) -> list[str]:
+        return [str(news_item_id) for news_item_id in news_item_ids if str(news_item_id)]
+
 
 class FakeDirtyRepository:
     def __init__(
@@ -1203,10 +1426,12 @@ class FakeDirtyRepository:
         self.done: list[dict[str, Any]] = []
         self.errors: list[dict[str, Any]] = []
         self.error_kwargs: list[dict[str, Any]] = []
+        self.claim_kwargs: list[dict[str, Any]] = []
         self.claim_thread_ids: list[int] = []
 
     def claim_due(self, **kwargs: Any) -> list[dict[str, Any]]:
         self.claim_thread_ids.append(threading.get_ident())
+        self.claim_kwargs.append(dict(kwargs))
         limit = int(kwargs.get("limit") or len(self.targets) or 1)
         claimed = self.targets[:limit]
         self.targets = self.targets[limit:]

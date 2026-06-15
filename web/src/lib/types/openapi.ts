@@ -1449,6 +1449,7 @@ export interface components {
             provider_observations?: {
                 [key: string]: unknown;
             }[];
+            provider_rating?: components["schemas"]["NewsProviderRating"] | null;
             /** Provider Type */
             provider_type?: string | null;
             /** Published At Ms */
@@ -1484,6 +1485,25 @@ export interface components {
             token_mentions?: unknown[];
             /** Trust Tier */
             trust_tier?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** NewsProviderRating */
+        NewsProviderRating: {
+            /** Direction */
+            direction?: string | null;
+            /** Grade */
+            grade?: string | null;
+            /** Method */
+            method?: string | null;
+            /** Provider */
+            provider?: string | null;
+            /** Score */
+            score?: number | null;
+            /** Signal */
+            signal?: string | null;
+            /** Status */
+            status?: string | null;
         } & {
             [key: string]: unknown;
         };
@@ -1540,6 +1560,7 @@ export interface components {
             news_item_id?: string | null;
             /** Projection Version */
             projection_version?: string | null;
+            provider_rating?: components["schemas"]["NewsProviderRating"] | null;
             /** Provider Type */
             provider_type?: string | null;
             /** Published At Ms */
@@ -1904,8 +1925,6 @@ export interface components {
         };
         /** SignalPulseData */
         SignalPulseData: {
-            /** Agent Worker Running */
-            agent_worker_running?: boolean | null;
             /** Has More */
             has_more?: boolean | null;
             health?: components["schemas"]["SignalPulseHealth"] | null;
@@ -1974,8 +1993,6 @@ export interface components {
             agent_failure_rate_4h?: number | null;
             /** Agent Runs 4H */
             agent_runs_4h?: number | null;
-            /** Agent Worker Running */
-            agent_worker_running?: boolean | null;
             /** Blocked Low Information Count */
             blocked_low_information_count?: number | null;
             /** Candidate Count */

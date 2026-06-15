@@ -6,7 +6,7 @@ import subprocess
 import sys
 from contextlib import contextmanager
 from datetime import date
-from types import TracebackType
+from types import SimpleNamespace, TracebackType
 
 import pytest
 
@@ -49,6 +49,10 @@ ENVELOPE = {
         }
     },
 }
+
+
+def _macrodata_workers(timeout_seconds: float = 240.0) -> SimpleNamespace:
+    return SimpleNamespace(macro_sync=SimpleNamespace(macrodata_timeout_seconds=timeout_seconds))
 
 
 def test_macro_import_bundle_parser_accepts_file() -> None:
@@ -110,6 +114,8 @@ def test_macrodata_runner_injects_fred_env_without_exposing_secret(monkeypatch) 
 
     class Settings:
         macrodata_fred_api_key_env = "APP_FRED_KEY"
+        macrodata_fred_api_key = None
+        workers = _macrodata_workers()
 
     class Completed:
         returncode = 0
@@ -197,6 +203,7 @@ def test_macrodata_runner_injects_configured_fred_key_without_exposing_secret(mo
     class Settings:
         macrodata_fred_api_key_env = "APP_FRED_KEY"
         macrodata_fred_api_key = secret
+        workers = _macrodata_workers()
 
     class Completed:
         returncode = 0
@@ -229,13 +236,39 @@ def test_macrodata_runner_injects_configured_fred_key_without_exposing_secret(mo
     assert stale_env_secret not in rendered
 
 
-def test_macrodata_runner_uses_default_fred_env_when_unset(monkeypatch) -> None:
+def test_macrodata_runner_requires_formal_fred_and_timeout_settings_contracts() -> None:
+    from parallax.integrations.macrodata import runner
+
+    class MissingEnvSettings:
+        macrodata_fred_api_key = None
+        workers = _macrodata_workers()
+
+    class MissingSecretSettings:
+        macrodata_fred_api_key_env = "APP_FRED_KEY"
+        workers = _macrodata_workers()
+
+    class MissingTimeoutSettings:
+        macrodata_fred_api_key_env = None
+        macrodata_fred_api_key = None
+        workers = SimpleNamespace()
+
+    with pytest.raises(RuntimeError, match="macrodata_fred_api_key_env_settings_required"):
+        runner.fred_api_key_state(MissingEnvSettings(), environ={})
+    with pytest.raises(RuntimeError, match="macrodata_fred_api_key_settings_required"):
+        runner.fred_api_key_state(MissingSecretSettings(), environ={})
+    with pytest.raises(RuntimeError, match="macrodata_timeout_settings_required"):
+        runner._macrodata_timeout_seconds(MissingTimeoutSettings())
+
+
+def test_macrodata_runner_honors_disabled_fred_env_without_defaulting(monkeypatch) -> None:
     from parallax.integrations.macrodata.runner import MacrodataBundleRunner
 
     calls: list[dict[str, object]] = []
 
     class Settings:
         macrodata_fred_api_key_env = None
+        macrodata_fred_api_key = None
+        workers = _macrodata_workers()
 
     class Completed:
         returncode = 0
@@ -259,7 +292,7 @@ def test_macrodata_runner_uses_default_fred_env_when_unset(monkeypatch) -> None:
         end="2026-05-21",
     )
 
-    assert result.diagnostics["fred_api_key_env"] == "FINANCE_FRED_API_KEY"
+    assert result.diagnostics["fred_api_key_env"] is None
     assert result.diagnostics["fred_api_key_configured"] is False
     assert calls[0]["env_has_fred"] is False
 
@@ -271,6 +304,8 @@ def test_macrodata_runner_falls_back_to_python_entrypoint_when_console_script_mi
 
     class Settings:
         macrodata_fred_api_key_env = None
+        macrodata_fred_api_key = None
+        workers = _macrodata_workers()
 
     class Completed:
         returncode = 0
@@ -395,7 +430,8 @@ def test_macrodata_runner_passes_configured_timeout_to_child_process(monkeypatch
 
     class Settings:
         macrodata_fred_api_key_env = None
-        macrodata_timeout_seconds = 12.5
+        macrodata_fred_api_key = None
+        workers = _macrodata_workers(12.5)
 
     class Completed:
         returncode = 0
@@ -427,7 +463,8 @@ def test_macrodata_runner_timeout_raises_redacted_runner_error(monkeypatch) -> N
 
     class Settings:
         macrodata_fred_api_key_env = None
-        macrodata_timeout_seconds = 9.0
+        macrodata_fred_api_key = None
+        workers = _macrodata_workers(9.0)
 
     def fake_run(command, *, env, cwd, capture_output, text, check, timeout=None):
         raise subprocess.TimeoutExpired(command, timeout)
@@ -457,6 +494,8 @@ def test_macrodata_runner_ignores_legacy_cli_project_dir(monkeypatch, tmp_path) 
 
     class Settings:
         macrodata_fred_api_key_env = None
+        macrodata_fred_api_key = None
+        workers = _macrodata_workers()
         macrodata_cli_project_dir = str(tmp_path)
 
     class Completed:
@@ -492,6 +531,8 @@ def test_macrodata_runner_removes_stale_parent_fred_key_when_configured_env_miss
 
     class Settings:
         macrodata_fred_api_key_env = "APP_FRED_KEY"
+        macrodata_fred_api_key = None
+        workers = _macrodata_workers()
 
     class Completed:
         returncode = 0
@@ -1074,6 +1115,8 @@ class FakeMacroSyncService:
 class FakeSettings:
     def __init__(self, *, fred_env: str | None = None) -> None:
         self.macrodata_fred_api_key_env = fred_env
+        self.macrodata_fred_api_key = None
+        self.workers = _macrodata_workers()
 
 
 class FakeConnection:

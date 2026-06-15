@@ -23,14 +23,24 @@ def test_rebuild_recent_token_intents_uses_current_builder_policy():
         conn.commit()
 
         result = rebuild_recent_token_intents(
-            repos=repositories_for_connection(conn),
+            repos=repositories_for_connection(
+                conn,
+                pulse_job_running_timeout_ms=300_000,
+                notification_delivery_running_timeout_ms=300_000,
+                notification_delivery_stale_running_terminalization_batch_size=100,
+            ),
             now_ms=event.received_at_ms + 1_000,
             window="5m",
             limit=10,
             projection_limit=10,
         )
 
-        intents = repositories_for_connection(conn).token_intents.intents_for_event("event-cross")
+        intents = repositories_for_connection(
+            conn,
+            pulse_job_running_timeout_ms=300_000,
+            notification_delivery_running_timeout_ms=300_000,
+            notification_delivery_stale_running_terminalization_batch_size=100,
+        ).token_intents.intents_for_event("event-cross")
         assert result["events_rebuilt"] == 1
         assert {intent["intent_key"] for intent in intents} == {
             "symbol:NOTHING",

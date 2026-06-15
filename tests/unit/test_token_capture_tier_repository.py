@@ -3,6 +3,8 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any
 
+import pytest
+
 from parallax.domains.asset_market.repositories.token_capture_tier_repository import (
     TokenCaptureTierRepository,
 )
@@ -28,6 +30,63 @@ def test_upsert_tier_updates_only_token_capture_tier_projection() -> None:
     assert conn.commits == 0
     assert conn.params[-1]["tier"] == 1
     assert conn.params[-1]["score"] == Decimal("9.5")
+
+
+def test_upsert_tier_returning_changed_requires_cursor_rowcount() -> None:
+    conn = _CurrentRowcountConnection(row={"changed": True}, omit_rowcount=True)
+    repo = TokenCaptureTierRepository(conn)
+
+    with pytest.raises(TypeError, match="token_capture_tier_repository_rowcount_required"):
+        repo.upsert_tier(
+            target_type="chain_token",
+            target_id="solana:abc",
+            tier=1,
+            reason="ws_subscribed",
+            score=Decimal("9.5"),
+            updated_at_ms=1_700_000_000_000,
+        )
+
+
+@pytest.mark.parametrize("rowcount", ["bad", True, False, -1])
+def test_upsert_tier_returning_changed_rejects_invalid_cursor_rowcount(rowcount: object) -> None:
+    conn = _CurrentRowcountConnection(row={"changed": True}, rowcount=rowcount)
+    repo = TokenCaptureTierRepository(conn)
+
+    with pytest.raises(TypeError, match="token_capture_tier_repository_rowcount_invalid"):
+        repo.upsert_tier(
+            target_type="chain_token",
+            target_id="solana:abc",
+            tier=1,
+            reason="ws_subscribed",
+            score=Decimal("9.5"),
+            updated_at_ms=1_700_000_000_000,
+        )
+
+
+@pytest.mark.parametrize(
+    ("rowcount", "row"),
+    [
+        (0, {"changed": True}),
+        (1, None),
+        (2, {"changed": True}),
+    ],
+)
+def test_upsert_tier_returning_changed_rejects_rowcount_returning_mismatch(
+    rowcount: object,
+    row: dict[str, Any] | None,
+) -> None:
+    conn = _CurrentRowcountConnection(row=row, rowcount=rowcount)
+    repo = TokenCaptureTierRepository(conn)
+
+    with pytest.raises(TypeError, match="token_capture_tier_repository_rowcount_invalid"):
+        repo.upsert_tier(
+            target_type="chain_token",
+            target_id="solana:abc",
+            tier=1,
+            reason="ws_subscribed",
+            score=Decimal("9.5"),
+            updated_at_ms=1_700_000_000_000,
+        )
 
 
 def test_list_by_tier_prioritizes_missing_or_incomplete_market_ticks() -> None:
@@ -111,6 +170,23 @@ def test_demote_hot_rows_outside_rank_set_returns_zero_when_no_rows_match() -> N
     assert demoted == 0
 
 
+def test_token_capture_tier_demote_counts_require_cursor_rowcount() -> None:
+    conn = _RowcountConnection(rowcount=None)
+    repo = TokenCaptureTierRepository(conn)
+
+    with pytest.raises(TypeError, match="token_capture_tier_repository_rowcount_required"):
+        repo.demote_hot_rows_outside_rank_set(active_keys=[], updated_at_ms=1_777_800_000_000)
+
+
+@pytest.mark.parametrize("rowcount", [True, False, "1", -1])
+def test_token_capture_tier_demote_counts_reject_invalid_cursor_rowcount(rowcount: Any) -> None:
+    conn = _RowcountConnection(rowcount=rowcount)
+    repo = TokenCaptureTierRepository(conn)
+
+    with pytest.raises(TypeError, match="token_capture_tier_repository_rowcount_invalid"):
+        repo.demote_hot_rows_outside_rank_set(active_keys=[], updated_at_ms=1_777_800_000_000)
+
+
 def test_get_selects_exact_target() -> None:
     conn = _ScriptedConnection([{"target_type": "chain_token", "target_id": "solana:abc"}])
 
@@ -138,9 +214,11 @@ class _ScriptedConnection:
 
     def fetchone(self) -> dict[str, Any] | None:
         if not self.results:
+            self.rowcount = 0
             return None
         result = self.results.pop(0)
         assert not isinstance(result, list)
+        self.rowcount = 1 if result is not None else 0
         return result
 
     def fetchall(self) -> list[dict[str, Any]]:
@@ -152,3 +230,51 @@ class _ScriptedConnection:
 
     def commit(self) -> None:
         self.commits += 1
+
+
+class _RowcountConnection:
+    def __init__(self, *, rowcount: Any) -> None:
+        self.rowcount = rowcount
+        self.sql = ""
+        self.params: Any = None
+
+    def execute(self, sql: str, params: dict[str, Any] | None = None) -> _RowcountCursor:
+        self.sql = str(sql)
+        self.params = params
+        return _RowcountCursor(self.rowcount)
+
+
+class _RowcountCursor:
+    def __init__(self, rowcount: Any) -> None:
+        if rowcount is not None:
+            self.rowcount = rowcount
+
+
+class _CurrentRowcountConnection:
+    def __init__(
+        self,
+        *,
+        row: dict[str, Any] | None,
+        rowcount: object = 1,
+        omit_rowcount: bool = False,
+    ) -> None:
+        self.row = row
+        self.rowcount = rowcount
+        self.omit_rowcount = omit_rowcount
+        self.sql: list[str] = []
+        self.params: list[dict[str, Any]] = []
+
+    def execute(self, sql: str, params: dict[str, Any] | None = None) -> _CurrentRowcountCursor:
+        self.sql.append(str(sql))
+        self.params.append(params or {})
+        return _CurrentRowcountCursor(row=self.row, rowcount=self.rowcount, omit_rowcount=self.omit_rowcount)
+
+
+class _CurrentRowcountCursor:
+    def __init__(self, *, row: dict[str, Any] | None, rowcount: object, omit_rowcount: bool) -> None:
+        self.row = row
+        if not omit_rowcount:
+            self.rowcount = rowcount
+
+    def fetchone(self) -> dict[str, Any] | None:
+        return self.row

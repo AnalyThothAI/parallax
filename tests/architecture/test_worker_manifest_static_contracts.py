@@ -9,7 +9,7 @@ from parallax.app.runtime.current_read_model_publisher import (
     FORBIDDEN_SERVING_IDENTITY_COLUMNS,
     CurrentReadModelPublisher,
 )
-from parallax.app.runtime.worker_manifest import WorkerKind, all_worker_manifests
+from parallax.app.runtime.worker_manifest import WorkerKind, WorkerRuntimeConstraint, all_worker_manifests
 from parallax.platform.current_read_model_payload_hash import stable_current_payload_hash
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -89,6 +89,17 @@ def test_dirty_target_workers_declare_claim_tables_and_read_model_identity() -> 
 
 
 @pytest.mark.architecture
+def test_resolution_refresh_manifest_is_dirty_lookup_queue_consumer() -> None:
+    manifest = {manifest.name: manifest for manifest in all_worker_manifests()}["resolution_refresh"]
+
+    assert manifest.runtime_constraint is WorkerRuntimeConstraint.DIRTY_TARGET_CONSUMER
+    assert manifest.input_contract == ("token_discovery_dirty_lookup_keys",)
+    assert manifest.dirty_target_tables == ("token_discovery_dirty_lookup_keys",)
+    assert manifest.queue_depth_table == "token_discovery_dirty_lookup_keys"
+    assert manifest.uses_provider_io is True
+
+
+@pytest.mark.architecture
 def test_provider_io_manifest_workers_are_bounded_and_not_projection_claim_loaders() -> None:
     manifests = {manifest.name: manifest for manifest in all_worker_manifests()}
 
@@ -99,6 +110,24 @@ def test_provider_io_manifest_workers_are_bounded_and_not_projection_claim_loade
 
     assert manifests["news_page_projection"].uses_provider_io is False
     assert manifests["macro_view_projection"].uses_provider_io is False
+
+
+@pytest.mark.architecture
+def test_provider_io_manifest_inventory_is_explicit() -> None:
+    provider_io_workers = {manifest.name for manifest in all_worker_manifests() if manifest.uses_provider_io}
+
+    assert provider_io_workers == {
+        "asset_profile_refresh",
+        "cex_oi_radar_board",
+        "collector",
+        "event_anchor_backfill",
+        "macro_sync",
+        "market_tick_poll",
+        "market_tick_stream",
+        "news_fetch",
+        "resolution_refresh",
+        "token_image_mirror",
+    }
 
 
 @pytest.mark.architecture

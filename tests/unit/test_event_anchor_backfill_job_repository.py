@@ -3,10 +3,14 @@ from __future__ import annotations
 import inspect
 from typing import Any
 
+import pytest
+
 from parallax.domains.asset_market.repositories.event_anchor_backfill_job_repository import (
     EventAnchorBackfillJobRepository,
 )
 from parallax.domains.asset_market.types import EnrichedEventCapture
+
+_ROWCOUNT_FROM_RESULT = object()
 
 
 def test_enqueue_for_pending_capture_writes_control_plane_job() -> None:
@@ -117,6 +121,256 @@ def test_event_anchor_mark_done_requires_lease_owner_and_attempt() -> None:
     assert "attempt_count = %(attempt_count)s" in sql
     assert conn.params[-1]["lease_owner"] == "worker-a"
     assert conn.params[-1]["attempt_count"] == 1
+
+
+@pytest.mark.parametrize(
+    ("operation", "results"),
+    [
+        pytest.param(
+            lambda repo: repo.claim_due(
+                limit=25,
+                now_ms=1_700_000_001_000,
+                min_age_ms=250,
+                lease_owner="worker-a",
+                lease_ms=60_000,
+            ),
+            [[{"event_id": "event-1", "intent_id": "intent-1"}]],
+            id="claim_due",
+        ),
+        pytest.param(
+            lambda repo: repo.mark_done(
+                event_id="event-1",
+                intent_id="intent-1",
+                now_ms=1_700_000_001_000,
+                lease_owner="worker-a",
+                attempt_count=1,
+            ),
+            [{"event_id": "event-1", "intent_id": "intent-1"}],
+            id="mark_done",
+        ),
+        pytest.param(
+            lambda repo: repo.mark_terminal(
+                event_id="event-1",
+                intent_id="intent-1",
+                status="failed",
+                reason="provider_no_quote",
+                now_ms=1_700_000_001_000,
+                lease_owner="worker-a",
+                attempt_count=3,
+            ),
+            [{"event_id": "event-1", "intent_id": "intent-1", "created_at_ms": 1_700_000_000_000}],
+            id="mark_terminal",
+        ),
+        pytest.param(
+            lambda repo: repo.retry_terminal_job_from_snapshot(
+                {
+                    "event_id": "event-1",
+                    "intent_id": "intent-1",
+                    "status": "failed",
+                    "created_at_ms": 1_700_000_000_000,
+                },
+                now_ms=1_700_000_001_000,
+                reason="operator_retry",
+            ),
+            [{"event_id": "event-1", "intent_id": "intent-1"}],
+            id="retry_terminal",
+        ),
+        pytest.param(
+            lambda repo: repo.reconcile_ready_historical_jobs(
+                limit=10,
+                now_ms=1_700_000_010_000,
+                execute=True,
+            ),
+            [
+                [{"QUERY PLAN": "Index Scan using idx_event_anchor_backfill_jobs_pending_created"}],
+                {"count": 1},
+                [{"event_id": "event-1", "intent_id": "intent-1"}],
+                {"count": 0},
+            ],
+            id="reconcile_ready",
+        ),
+        pytest.param(
+            lambda repo: repo.reschedule(
+                event_id="event-1",
+                intent_id="intent-1",
+                reason="rate_limited",
+                now_ms=1_700_000_001_000,
+                next_run_at_ms=1_700_000_011_000,
+                lease_owner="worker-a",
+                attempt_count=1,
+            ),
+            [{"event_id": "event-1", "intent_id": "intent-1"}],
+            id="reschedule",
+        ),
+    ],
+)
+def test_event_anchor_job_returning_writes_require_cursor_rowcount(
+    operation: Any,
+    results: list[dict[str, Any] | list[dict[str, Any]] | None],
+) -> None:
+    conn = _ScriptedConnection(results, omit_rowcount=True)
+
+    with pytest.raises(TypeError, match="event_anchor_job_repository_rowcount_required"):
+        operation(EventAnchorBackfillJobRepository(conn))
+
+
+@pytest.mark.parametrize("rowcount", [True, False, "1", None, -1, 2])
+@pytest.mark.parametrize(
+    "operation",
+    [
+        pytest.param(
+            lambda repo: repo.mark_done(
+                event_id="event-1",
+                intent_id="intent-1",
+                now_ms=1_700_000_001_000,
+                lease_owner="worker-a",
+                attempt_count=1,
+            ),
+            id="mark_done",
+        ),
+        pytest.param(
+            lambda repo: repo.mark_terminal(
+                event_id="event-1",
+                intent_id="intent-1",
+                status="failed",
+                reason="provider_no_quote",
+                now_ms=1_700_000_001_000,
+                lease_owner="worker-a",
+                attempt_count=3,
+            ),
+            id="mark_terminal",
+        ),
+        pytest.param(
+            lambda repo: repo.retry_terminal_job_from_snapshot(
+                {"event_id": "event-1", "intent_id": "intent-1"},
+                now_ms=1_700_000_001_000,
+                reason="operator_retry",
+            ),
+            id="retry_terminal",
+        ),
+        pytest.param(
+            lambda repo: repo.reschedule(
+                event_id="event-1",
+                intent_id="intent-1",
+                reason="rate_limited",
+                now_ms=1_700_000_001_000,
+                next_run_at_ms=1_700_000_011_000,
+                lease_owner="worker-a",
+                attempt_count=1,
+            ),
+            id="reschedule",
+        ),
+    ],
+)
+def test_event_anchor_single_returning_writes_reject_invalid_rowcount(rowcount: Any, operation: Any) -> None:
+    conn = _ScriptedConnection(
+        [{"event_id": "event-1", "intent_id": "intent-1", "created_at_ms": 1_700_000_000_000}],
+        rowcount=rowcount,
+    )
+
+    with pytest.raises(TypeError, match="event_anchor_job_repository_rowcount_invalid"):
+        operation(EventAnchorBackfillJobRepository(conn))
+
+
+@pytest.mark.parametrize(
+    ("rowcount", "result"),
+    [
+        (0, {"event_id": "event-1", "intent_id": "intent-1"}),
+        (1, None),
+    ],
+)
+def test_event_anchor_single_returning_writes_reject_rowcount_returning_mismatch(
+    rowcount: int,
+    result: dict[str, Any] | None,
+) -> None:
+    conn = _ScriptedConnection([result], rowcount=rowcount)
+
+    with pytest.raises(TypeError, match="event_anchor_job_repository_rowcount_invalid"):
+        EventAnchorBackfillJobRepository(conn).mark_done(
+            event_id="event-1",
+            intent_id="intent-1",
+            now_ms=1_700_000_001_000,
+            lease_owner="worker-a",
+            attempt_count=1,
+        )
+
+
+@pytest.mark.parametrize(
+    ("rowcount", "rows"),
+    [
+        (0, [{"event_id": "event-1", "intent_id": "intent-1"}]),
+        (2, [{"event_id": "event-1", "intent_id": "intent-1"}]),
+    ],
+)
+def test_event_anchor_multi_returning_writes_reject_rowcount_returning_mismatch(
+    rowcount: int,
+    rows: list[dict[str, Any]],
+) -> None:
+    conn = _ScriptedConnection([rows], rowcount=rowcount)
+
+    with pytest.raises(TypeError, match="event_anchor_job_repository_rowcount_invalid"):
+        EventAnchorBackfillJobRepository(conn).claim_due(
+            limit=25,
+            now_ms=1_700_000_001_000,
+            min_age_ms=250,
+            lease_owner="worker-a",
+            lease_ms=60_000,
+        )
+
+
+def test_expire_stale_requires_connection_transaction_before_terminal_writes() -> None:
+    conn = _ConnectionWithoutTransaction(
+        [
+            [
+                {
+                    "event_id": "event-1",
+                    "intent_id": "intent-1",
+                    "status": "expired",
+                    "attempt_count": 1,
+                    "created_at_ms": 1_700_000_000_000,
+                    "updated_at_ms": 1_700_000_001_000,
+                }
+            ]
+        ]
+    )
+
+    with pytest.raises(RuntimeError, match="event_anchor_repository_transaction_required"):
+        EventAnchorBackfillJobRepository(conn).expire_stale(
+            limit=5,
+            now_ms=1_700_000_010_000,
+            max_attempts=3,
+            retry_backoff_ms=10_000,
+        )
+
+    assert conn.sql == []
+
+
+def test_mark_terminal_requires_callable_connection_transaction_before_terminal_writes() -> None:
+    conn = _ConnectionWithNonCallableTransaction(
+        [
+            {
+                "event_id": "event-1",
+                "intent_id": "intent-1",
+                "status": "failed",
+                "attempt_count": 3,
+                "created_at_ms": 1_700_000_000_000,
+                "updated_at_ms": 1_700_000_001_000,
+            }
+        ]
+    )
+
+    with pytest.raises(RuntimeError, match="event_anchor_repository_transaction_required"):
+        EventAnchorBackfillJobRepository(conn).mark_terminal(
+            event_id="event-1",
+            intent_id="intent-1",
+            status="failed",
+            reason="provider_no_quote",
+            now_ms=1_700_000_001_000,
+            lease_owner="worker-a",
+            attempt_count=3,
+        )
+
+    assert conn.sql == []
 
 
 def test_reschedule_uses_claim_guard_without_incrementing_attempts() -> None:
@@ -253,30 +507,80 @@ def test_reconcile_ready_historical_jobs_execute_marks_bounded_rows_done() -> No
 
 
 class _ScriptedConnection:
-    def __init__(self, results: list[dict[str, Any] | list[dict[str, Any]] | None]) -> None:
+    def __init__(
+        self,
+        results: list[dict[str, Any] | list[dict[str, Any]] | None],
+        *,
+        rowcount: object = _ROWCOUNT_FROM_RESULT,
+        omit_rowcount: bool = False,
+    ) -> None:
         self.results = list(results)
         self.sql: list[str] = []
         self.params: list[dict[str, Any]] = []
-        self.rowcount = 0
+        self._rowcount_setting = rowcount
+        self._omit_rowcount = omit_rowcount
+        if not omit_rowcount:
+            self.rowcount = 0
+        self.transaction_events: list[str] = []
+
+    def transaction(self) -> _ScriptedTransaction:
+        return _ScriptedTransaction(self)
 
     def execute(self, sql: str, params: dict[str, Any] | None = None) -> _ScriptedConnection:
         self.sql.append(str(sql))
         self.params.append(params or {})
+        if self._omit_rowcount and hasattr(self, "rowcount"):
+            delattr(self, "rowcount")
         return self
 
     def fetchall(self) -> list[dict[str, Any]]:
         if not self.results:
+            self._set_rowcount([])
             return []
         result = self.results.pop(0)
         assert isinstance(result, list)
+        self._set_rowcount(result)
         return result
 
     def fetchone(self) -> dict[str, Any] | None:
         if not self.results:
+            self._set_rowcount(None)
             return None
         result = self.results.pop(0)
         assert isinstance(result, dict) or result is None
+        self._set_rowcount(result)
         return result
+
+    def _set_rowcount(self, result: dict[str, Any] | list[dict[str, Any]] | None) -> None:
+        if self._omit_rowcount:
+            if hasattr(self, "rowcount"):
+                delattr(self, "rowcount")
+            return
+        if self._rowcount_setting is _ROWCOUNT_FROM_RESULT:
+            self.rowcount = len(result) if isinstance(result, list) else (1 if result is not None else 0)
+        else:
+            self.rowcount = self._rowcount_setting
+
+
+class _ConnectionWithoutTransaction(_ScriptedConnection):
+    transaction = None  # type: ignore[assignment]
+
+
+class _ConnectionWithNonCallableTransaction(_ScriptedConnection):
+    transaction = "not-callable"  # type: ignore[assignment]
+
+
+class _ScriptedTransaction:
+    def __init__(self, conn: _ScriptedConnection) -> None:
+        self.conn = conn
+
+    def __enter__(self) -> _ScriptedConnection:
+        self.conn.transaction_events.append("begin")
+        return self.conn
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
+        self.conn.transaction_events.append("rollback" if exc_type is not None else "commit")
+        return False
 
 
 def _pending_capture(

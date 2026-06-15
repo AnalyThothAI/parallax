@@ -10,13 +10,14 @@ from parallax.domains.cex_market_intel.providers import (
 from parallax.domains.cex_market_intel.runtime.cex_oi_radar_board_worker import (
     CexOiRadarBoardWorker,
 )
+from parallax.platform.config.settings import CexOiRadarBoardWorkerSettings
 
 
 def test_cex_oi_radar_board_worker_publishes_current_board():
     db = _DB()
     worker = CexOiRadarBoardWorker(
         name="cex_oi_radar_board",
-        settings=SimpleNamespace(enabled=True, batch_size=10, period="5m", statement_timeout_seconds=30),
+        settings=_settings(enabled=True, batch_size=10, period="5m", statement_timeout_seconds=30),
         db=db,
         telemetry=SimpleNamespace(),
         oi_market=_Client(),
@@ -47,7 +48,7 @@ def test_cex_oi_radar_board_worker_zero_writes_when_board_and_detail_unchanged()
     db = _DB(board_rows_written=0, detail_rows_written=0)
     worker = CexOiRadarBoardWorker(
         name="cex_oi_radar_board",
-        settings=SimpleNamespace(enabled=True, batch_size=10, period="5m", statement_timeout_seconds=30),
+        settings=_settings(enabled=True, batch_size=10, period="5m", statement_timeout_seconds=30),
         db=db,
         telemetry=SimpleNamespace(),
         oi_market=_Client(),
@@ -70,7 +71,7 @@ def test_cex_oi_radar_board_worker_changed_board_unchanged_detail_only_writes_bo
     db = _DB(board_rows_written=1, detail_rows_written=0)
     worker = CexOiRadarBoardWorker(
         name="cex_oi_radar_board",
-        settings=SimpleNamespace(enabled=True, batch_size=10, period="5m", statement_timeout_seconds=30),
+        settings=_settings(enabled=True, batch_size=10, period="5m", statement_timeout_seconds=30),
         db=db,
         telemetry=SimpleNamespace(),
         oi_market=_Client(),
@@ -93,7 +94,7 @@ def test_cex_oi_radar_board_worker_unchanged_board_changed_detail_only_writes_de
     db = _DB(board_rows_written=0, detail_rows_written=1)
     worker = CexOiRadarBoardWorker(
         name="cex_oi_radar_board",
-        settings=SimpleNamespace(enabled=True, batch_size=10, period="5m", statement_timeout_seconds=30),
+        settings=_settings(enabled=True, batch_size=10, period="5m", statement_timeout_seconds=30),
         db=db,
         telemetry=SimpleNamespace(),
         oi_market=_Client(),
@@ -116,7 +117,7 @@ def test_cex_oi_radar_board_worker_rolls_back_board_publication_when_detail_writ
     db = _DB(detail_raises=True)
     worker = CexOiRadarBoardWorker(
         name="cex_oi_radar_board",
-        settings=SimpleNamespace(enabled=True, batch_size=10, period="5m", statement_timeout_seconds=30),
+        settings=_settings(enabled=True, batch_size=10, period="5m", statement_timeout_seconds=30),
         db=db,
         telemetry=SimpleNamespace(),
         oi_market=_Client(),
@@ -135,6 +136,9 @@ def test_cex_oi_radar_board_worker_rolls_back_board_publication_when_detail_writ
         "publish_board_with_result",
         "upsert_detail",
         "rollback",
+        "transaction_begin",
+        "record_attempt_failure",
+        "commit",
     ]
     assert db.repos.cex_oi_radar.published == []
     assert db.repos.cex_oi_radar.serving_rows_written == 0
@@ -150,7 +154,7 @@ def test_cex_oi_radar_board_worker_rolls_back_board_publication_when_detail_writ
 def test_cex_oi_radar_board_worker_skips_when_previous_thread_still_finishing():
     worker = CexOiRadarBoardWorker(
         name="cex_oi_radar_board",
-        settings=SimpleNamespace(enabled=True, batch_size=10, period="5m", statement_timeout_seconds=30),
+        settings=_settings(enabled=True, batch_size=10, period="5m", statement_timeout_seconds=30),
         db=_DB(),
         telemetry=SimpleNamespace(),
         oi_market=_Client(),
@@ -173,7 +177,7 @@ def test_cex_oi_radar_board_worker_caps_universe_to_batch_size():
     db = _DB()
     worker = CexOiRadarBoardWorker(
         name="cex_oi_radar_board",
-        settings=SimpleNamespace(
+        settings=_settings(
             enabled=True,
             batch_size=1,
             universe_limit=500,
@@ -192,11 +196,56 @@ def test_cex_oi_radar_board_worker_caps_universe_to_batch_size():
     assert len(db.repos.cex_oi_radar.published[0]["rows"]) == 1
 
 
+def test_cex_oi_radar_board_worker_reads_formal_settings_for_session_universe_and_enrichment():
+    db = _DB(expected_statement_timeout=17.0)
+    worker = CexOiRadarBoardWorker(
+        name="cex_oi_radar_board",
+        settings=_settings(
+            batch_size=7,
+            universe_limit=3,
+            period="15m",
+            statement_timeout_seconds=17.0,
+            coinglass_enrichment_limit=1,
+            coinglass_level_limit=2,
+        ),
+        db=db,
+        telemetry=SimpleNamespace(),
+        oi_market=_Client(),
+        coinglass_derivatives=_CoinglassClient(),
+        clock_ms=lambda: 1_778_000_000_000,
+    )
+
+    worker.run_once_sync()
+
+    assert db.worker_sessions == [
+        {"name": "cex_oi_radar_board", "statement_timeout_seconds": 17.0},
+        {"name": "cex_oi_radar_board", "statement_timeout_seconds": 17.0},
+    ]
+    assert db.repos.cex_oi_radar.requested_limit == 3
+    assert db.repos.cex_oi_radar.published[0]["period"] == "15m"
+    assert db.repos.cex_detail_snapshots.upserted[0]["level_bands"][0]["kind"] == "resistance"
+
+
+def test_cex_oi_radar_board_worker_requires_oi_market_provider_contract():
+    try:
+        CexOiRadarBoardWorker(
+            name="cex_oi_radar_board",
+            settings=_settings(),
+            db=_DB(),
+            telemetry=SimpleNamespace(),
+            oi_market=None,  # type: ignore[arg-type]
+        )
+    except RuntimeError as exc:
+        assert str(exc) == "cex_oi_radar_board_oi_market_required"
+    else:
+        raise AssertionError("missing OI market provider must fail worker construction")
+
+
 def test_cex_oi_radar_board_worker_publishes_skipped_board_for_empty_universe():
     db = _DB(universe=[])
     worker = CexOiRadarBoardWorker(
         name="cex_oi_radar_board",
-        settings=SimpleNamespace(enabled=True, batch_size=10, period="5m", statement_timeout_seconds=30),
+        settings=_settings(enabled=True, batch_size=10, period="5m", statement_timeout_seconds=30),
         db=db,
         telemetry=SimpleNamespace(),
         oi_market=_Client(),
@@ -215,6 +264,7 @@ def test_cex_oi_radar_board_worker_publishes_skipped_board_for_empty_universe():
             "notes": {"reason": "empty_binance_universe"},
         }
     ]
+    assert db.publication_events == ["transaction_begin", "publish_board", "commit"]
     assert "run_id" not in result.notes
 
 
@@ -222,7 +272,7 @@ def test_cex_oi_radar_board_worker_records_failed_attempt_without_clearing_curre
     db = _DB()
     worker = CexOiRadarBoardWorker(
         name="cex_oi_radar_board",
-        settings=SimpleNamespace(enabled=True, batch_size=10, period="5m", statement_timeout_seconds=30),
+        settings=_settings(enabled=True, batch_size=10, period="5m", statement_timeout_seconds=30),
         db=db,
         telemetry=SimpleNamespace(),
         oi_market=_FailingClient(),
@@ -244,13 +294,90 @@ def test_cex_oi_radar_board_worker_records_failed_attempt_without_clearing_curre
             "notes": {"reason": "RuntimeError"},
         }
     ]
+    assert db.publication_events == ["transaction_begin", "record_attempt_failure", "commit"]
+
+
+def test_cex_oi_radar_board_worker_records_failed_attempt_for_malformed_universe_identity():
+    db = _DB(
+        universe=[
+            {
+                "pricefeed_id": "pricefeed:cex:binance:swap:broken",
+                "cex_token_id": "cex_token:BTC",
+                "native_market_id": "",
+                "base_symbol": "BTC",
+            }
+        ]
+    )
+    worker = CexOiRadarBoardWorker(
+        name="cex_oi_radar_board",
+        settings=_settings(enabled=True, batch_size=10, period="5m", statement_timeout_seconds=30),
+        db=db,
+        telemetry=SimpleNamespace(),
+        oi_market=_Client(),
+        clock_ms=lambda: 1_778_000_000_000,
+    )
+
+    try:
+        worker.run_once_sync()
+    except ValueError as exc:
+        assert str(exc) == "cex_oi_radar_identity_required:native_market_id"
+    else:
+        raise AssertionError("expected malformed universe identity failure")
+
+    assert db.repos.cex_oi_radar.published == []
+    assert db.repos.cex_oi_radar.failed_attempts == [
+        {
+            "computed_at_ms": 1_778_000_000_000,
+            "period": "5m",
+            "notes": {"reason": "ValueError"},
+        }
+    ]
+    assert db.publication_events == ["transaction_begin", "record_attempt_failure", "commit"]
+
+
+def test_cex_oi_radar_board_worker_records_failed_attempt_for_missing_base_symbol():
+    db = _DB(
+        universe=[
+            {
+                "pricefeed_id": "pricefeed:cex:binance:swap:broken",
+                "cex_token_id": "cex_token:BTC",
+                "native_market_id": "BTCUSDT",
+                "base_symbol": "",
+            }
+        ]
+    )
+    worker = CexOiRadarBoardWorker(
+        name="cex_oi_radar_board",
+        settings=_settings(enabled=True, batch_size=10, period="5m", statement_timeout_seconds=30),
+        db=db,
+        telemetry=SimpleNamespace(),
+        oi_market=_Client(),
+        clock_ms=lambda: 1_778_000_000_000,
+    )
+
+    try:
+        worker.run_once_sync()
+    except ValueError as exc:
+        assert str(exc) == "cex_oi_radar_identity_required:base_symbol"
+    else:
+        raise AssertionError("expected malformed universe base symbol failure")
+
+    assert db.repos.cex_oi_radar.published == []
+    assert db.repos.cex_oi_radar.failed_attempts == [
+        {
+            "computed_at_ms": 1_778_000_000_000,
+            "period": "5m",
+            "notes": {"reason": "ValueError"},
+        }
+    ]
+    assert db.publication_events == ["transaction_begin", "record_attempt_failure", "commit"]
 
 
 def test_cex_oi_radar_board_worker_does_not_publish_empty_board_when_all_symbols_fail():
     db = _DB()
     worker = CexOiRadarBoardWorker(
         name="cex_oi_radar_board",
-        settings=SimpleNamespace(enabled=True, batch_size=10, period="5m", statement_timeout_seconds=30),
+        settings=_settings(enabled=True, batch_size=10, period="5m", statement_timeout_seconds=30),
         db=db,
         telemetry=SimpleNamespace(),
         oi_market=_OpenInterestFailingClient(),
@@ -268,13 +395,14 @@ def test_cex_oi_radar_board_worker_does_not_publish_empty_board_when_all_symbols
             "notes": {"reason": "all_symbols_failed", "failed_symbols": ["BTCUSDT"]},
         }
     ]
+    assert db.publication_events == ["transaction_begin", "record_attempt_failure", "commit"]
 
 
 def test_cex_oi_radar_board_worker_adds_coinglass_enrichment_to_detail_snapshot():
     db = _DB()
     worker = CexOiRadarBoardWorker(
         name="cex_oi_radar_board",
-        settings=SimpleNamespace(
+        settings=_settings(
             enabled=True,
             batch_size=10,
             universe_limit=10,
@@ -299,6 +427,18 @@ def test_cex_oi_radar_board_worker_adds_coinglass_enrichment_to_detail_snapshot(
     assert snapshot["level_bands"][0]["kind"] == "resistance"
 
 
+def _settings(**overrides: object) -> CexOiRadarBoardWorkerSettings:
+    payload = {
+        "enabled": True,
+        "batch_size": 10,
+        "universe_limit": 10,
+        "period": "5m",
+        "statement_timeout_seconds": 30,
+        **overrides,
+    }
+    return CexOiRadarBoardWorkerSettings(**payload)
+
+
 class _DB:
     def __init__(
         self,
@@ -307,7 +447,10 @@ class _DB:
         board_rows_written=None,
         detail_rows_written=None,
         detail_raises=False,
+        expected_statement_timeout=30,
     ) -> None:
+        self.expected_statement_timeout = expected_statement_timeout
+        self.worker_sessions = []
         self.publication_events = []
         self.repos = _Repos(
             cex_oi_radar=_Repo(
@@ -323,7 +466,14 @@ class _DB:
             publication_events=self.publication_events,
         )
 
-    def worker_session(self, *_args, **_kwargs):
+    def worker_session(self, name, statement_timeout_seconds=None):
+        assert statement_timeout_seconds == self.expected_statement_timeout
+        self.worker_sessions.append(
+            {
+                "name": name,
+                "statement_timeout_seconds": statement_timeout_seconds,
+            }
+        )
         return _Session(self.repos)
 
 
@@ -391,7 +541,9 @@ class _Repo:
             }
         ]
 
-    def publish_board(self, *, rows, computed_at_ms, period, status, notes):
+    def publish_board(self, *, rows, computed_at_ms, period, status, notes, commit=False):
+        if commit:
+            raise AssertionError("worker must publish board inside explicit transaction with commit=False")
         if self._publication_events is not None:
             self._publication_events.append("publish_board")
         self.published.append(
@@ -421,7 +573,11 @@ class _Repo:
             self._publication_events[-1] = "publish_board_with_result"
         return SimpleNamespace(board_changed=written > 0, board_rows_written=written)
 
-    def record_attempt_failure(self, *, computed_at_ms, period, notes):
+    def record_attempt_failure(self, *, computed_at_ms, period, notes, commit=False):
+        if commit:
+            raise AssertionError("worker must record CEX attempts inside explicit transaction with commit=False")
+        if self._publication_events is not None:
+            self._publication_events.append("record_attempt_failure")
         self.failed_attempts.append(
             {
                 "computed_at_ms": computed_at_ms,

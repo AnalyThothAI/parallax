@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from typing import Any
+
+import pytest
+
 from parallax.domains.macro_intel.observation_identity import (
     macro_series_current_row_payload_hash,
 )
@@ -36,6 +40,32 @@ def test_insert_snapshot_returns_false_when_only_computed_at_ms_changes() -> Non
     assert conn.payload_hashes[0] == conn.payload_hashes[1]
 
 
+@pytest.mark.parametrize(
+    ("rowcount", "rows", "expected_error"),
+    (
+        (None, [{"changed": True}], "macro_intel_repository_rowcount_required"),
+        (True, [{"changed": True}], "macro_intel_repository_rowcount_invalid"),
+        (False, [{"changed": True}], "macro_intel_repository_rowcount_invalid"),
+        ("1", [{"changed": True}], "macro_intel_repository_rowcount_invalid"),
+        (-1, [{"changed": True}], "macro_intel_repository_rowcount_invalid"),
+        (2, [{"changed": True}], "macro_intel_repository_rowcount_invalid"),
+        (0, [{"changed": True}], "macro_intel_repository_rowcount_invalid"),
+        (1, [], "macro_intel_repository_rowcount_invalid"),
+    ),
+)
+def test_insert_snapshot_requires_returning_rowcount_match(
+    rowcount: object,
+    rows: list[dict[str, object]],
+    expected_error: str,
+) -> None:
+    conn = SnapshotReturningConnection(rows=rows, rowcount=rowcount)
+    repo = MacroIntelRepository(conn)
+    snapshot = build_macro_view_snapshot([_observation()], computed_at_ms=1_779_000_000_000)
+
+    with pytest.raises(TypeError, match=expected_error):
+        repo.insert_snapshot(snapshot)
+
+
 def test_insert_snapshot_leaves_commit_to_projection_worker_transaction() -> None:
     conn = SnapshotConnection()
     repo = MacroIntelRepository(conn)
@@ -44,6 +74,60 @@ def test_insert_snapshot_leaves_commit_to_projection_worker_transaction() -> Non
     repo.insert_snapshot(snapshot)
 
     assert conn.commit_count == 0
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    (
+        "panels_json",
+        "indicators_json",
+        "triggers_json",
+        "data_gaps_json",
+        "source_coverage_json",
+        "features_json",
+        "chain_json",
+        "scenario_json",
+        "scorecard_json",
+    ),
+)
+def test_insert_snapshot_requires_formal_json_sections_before_payload_hash_and_sql(field_name: str) -> None:
+    conn = SnapshotConnection()
+    repo = MacroIntelRepository(conn)
+    snapshot = build_macro_view_snapshot([_observation()], computed_at_ms=1_779_000_000_000)
+    del snapshot[field_name]
+
+    with pytest.raises(RuntimeError, match=f"macro_view_snapshot_payload_required:{field_name}"):
+        repo.insert_snapshot(snapshot)
+
+    assert conn.executions == []
+
+
+@pytest.mark.parametrize(
+    ("field_name", "invalid_value"),
+    (
+        ("panels_json", []),
+        ("indicators_json", []),
+        ("source_coverage_json", []),
+        ("features_json", []),
+        ("chain_json", []),
+        ("scenario_json", []),
+        ("scorecard_json", []),
+        ("triggers_json", {}),
+        ("data_gaps_json", {}),
+    ),
+)
+def test_insert_snapshot_rejects_misshaped_formal_json_sections_before_sql(
+    field_name: str, invalid_value: object
+) -> None:
+    conn = SnapshotConnection()
+    repo = MacroIntelRepository(conn)
+    snapshot = build_macro_view_snapshot([_observation()], computed_at_ms=1_779_000_000_000)
+    snapshot[field_name] = invalid_value
+
+    with pytest.raises(RuntimeError, match=f"macro_view_snapshot_payload_invalid:{field_name}"):
+        repo.insert_snapshot(snapshot)
+
+    assert conn.executions == []
 
 
 def test_macro_series_source_signature_ignores_now_ms_and_ingested_at_ms() -> None:
@@ -156,6 +240,37 @@ def test_refresh_observation_series_rows_upserts_current_rows_when_signature_cha
     assert "macro_observation_series_generations" not in queries
 
 
+@pytest.mark.parametrize(
+    "transaction_shape",
+    ["missing", "non_callable"],
+)
+def test_refresh_observation_series_rows_requires_connection_transaction_before_current_publication_writes(
+    transaction_shape: str,
+) -> None:
+    selected_row = _series_row()
+    connection_cls: type[Any]
+    if transaction_shape == "missing":
+        connection_cls = CurrentRefreshConnectionWithoutTransaction
+    else:
+        connection_cls = CurrentRefreshConnectionWithNonCallableTransaction
+    conn = connection_cls(selected_rows=[selected_row], publication_state=None, insert_rowcount=1)
+    repo = MacroIntelRepository(conn)
+
+    with pytest.raises(RuntimeError, match="macro_observation_series_refresh_transaction_required"):
+        repo.refresh_observation_series_rows_for_concepts(
+            projection_version="macro_regime_v4",
+            now_ms=1_779_000_000_000,
+            lookback_days=730,
+            limit_per_series=252,
+            concept_keys=("rates:dgs10",),
+        )
+
+    queries = "\n".join(query for query, _params in conn.executions)
+    assert "DELETE FROM macro_observation_series_rows" not in queries
+    assert "INSERT INTO macro_observation_series_rows" not in queries
+    assert "INSERT INTO macro_observation_series_publication_state" not in queries
+
+
 def test_insert_observation_series_rows_chunks_under_postgres_bind_parameter_limit() -> None:
     conn = InsertChunkConnection()
     repo = MacroIntelRepository(conn)
@@ -170,6 +285,57 @@ def test_insert_observation_series_rows_chunks_under_postgres_bind_parameter_lim
     assert len(insert_executions) == 2
     assert all(len(params) <= 65_535 for _query, params in insert_executions)
     assert [len(params) // 16 for _query, params in insert_executions] == [4_000, 1_000]
+
+
+@pytest.mark.parametrize("rowcount", [None, True, False, "1", -1])
+def test_insert_observation_series_rows_requires_real_cursor_rowcount(rowcount: object) -> None:
+    conn = InsertChunkConnection(rowcount=rowcount)
+    repo = MacroIntelRepository(conn)
+
+    with pytest.raises(
+        TypeError,
+        match=(
+            "macro_intel_repository_rowcount_required"
+            if rowcount is None
+            else "macro_intel_repository_rowcount_invalid"
+        ),
+    ):
+        repo._insert_observation_series_rows([_series_row()])
+
+
+@pytest.mark.parametrize("rowcount", [None, True, False, "1", -1])
+def test_refresh_observation_series_delete_counts_require_real_cursor_rowcount(rowcount: object) -> None:
+    selected_row = _series_row()
+    conn = CurrentRefreshConnection(
+        selected_rows=[selected_row],
+        publication_state=None,
+        existing_rows=[
+            {
+                "concept_key": selected_row["concept_key"],
+                "observed_at": "2026-05-19",
+                "series_rank": 1,
+                "payload_hash": "old",
+            }
+        ],
+        delete_rowcount=rowcount,
+    )
+    repo = MacroIntelRepository(conn)
+
+    with pytest.raises(
+        TypeError,
+        match=(
+            "macro_intel_repository_rowcount_required"
+            if rowcount is None
+            else "macro_intel_repository_rowcount_invalid"
+        ),
+    ):
+        repo.refresh_observation_series_rows_for_concepts(
+            projection_version="macro_regime_v4",
+            now_ms=1_779_000_000_000,
+            lookback_days=730,
+            limit_per_series=252,
+            concept_keys=("rates:dgs10",),
+        )
 
 
 def test_refresh_empty_current_partition_without_existing_rows_is_unchanged() -> None:
@@ -304,11 +470,13 @@ class CurrentRefreshConnection:
         publication_state: dict[str, object] | None,
         existing_rows: list[dict[str, object]] | None = None,
         insert_rowcount: int = 0,
+        delete_rowcount: object = 0,
     ) -> None:
         self.selected_rows = selected_rows
         self.publication_state = publication_state
         self.existing_rows = existing_rows or []
         self.insert_rowcount = insert_rowcount
+        self.delete_rowcount = delete_rowcount
         self.executions: list[tuple[str, tuple[object, ...]]] = []
 
     def execute(self, query: str, params: tuple[object, ...] = ()) -> Cursor:
@@ -319,12 +487,25 @@ class CurrentRefreshConnection:
             return Cursor(self.existing_rows)
         if "SELECT *" in query and "FROM macro_observation_series_publication_state" in query:
             return Cursor([self.publication_state] if self.publication_state else [])
+        if "DELETE FROM macro_observation_series_rows" in query:
+            return Cursor([], rowcount=self.delete_rowcount)
         if "INSERT INTO macro_observation_series_rows" in query:
             return Cursor([], rowcount=self.insert_rowcount)
         return Cursor([])
 
     def transaction(self):
         return NullContext()
+
+
+class CurrentRefreshConnectionWithoutTransaction(CurrentRefreshConnection):
+    def __getattribute__(self, name: str) -> Any:
+        if name == "transaction":
+            raise AttributeError(name)
+        return super().__getattribute__(name)
+
+
+class CurrentRefreshConnectionWithNonCallableTransaction(CurrentRefreshConnection):
+    transaction = None
 
 
 class ReadConnection:
@@ -337,13 +518,19 @@ class ReadConnection:
         return Cursor(self.rows)
 
 
+_ROWCOUNT_FROM_PARAMS = object()
+
+
 class InsertChunkConnection:
-    def __init__(self) -> None:
+    def __init__(self, *, rowcount: object = _ROWCOUNT_FROM_PARAMS) -> None:
         self.executions: list[tuple[str, tuple[object, ...]]] = []
+        self.rowcount = rowcount
 
     def execute(self, query: str, params: tuple[object, ...]) -> Cursor:
         self.executions.append((query, params))
-        return Cursor([], rowcount=len(params) // 16)
+        if self.rowcount is _ROWCOUNT_FROM_PARAMS:
+            return Cursor([], rowcount=len(params) // 16)
+        return Cursor([], rowcount=self.rowcount)
 
 
 class SnapshotConnection:
@@ -365,6 +552,17 @@ class SnapshotConnection:
         self.commit_count += 1
 
 
+class SnapshotReturningConnection:
+    def __init__(self, *, rows: list[dict[str, object]], rowcount: object) -> None:
+        self.rows = rows
+        self.rowcount = rowcount
+        self.executions: list[tuple[str, tuple[object, ...]]] = []
+
+    def execute(self, query: str, params: tuple[object, ...]) -> Cursor:
+        self.executions.append((query, params))
+        return Cursor(self.rows, rowcount=self.rowcount)
+
+
 class NullContext:
     def __enter__(self):
         return self
@@ -374,9 +572,10 @@ class NullContext:
 
 
 class Cursor:
-    def __init__(self, rows: list[dict[str, object] | None], *, rowcount: int = 0) -> None:
+    def __init__(self, rows: list[dict[str, object] | None], *, rowcount: object = 0) -> None:
         self.rows = rows
-        self.rowcount = rowcount
+        if rowcount is not None:
+            self.rowcount = rowcount
 
     def fetchall(self) -> list[dict[str, object]]:
         return [row for row in self.rows if row is not None]

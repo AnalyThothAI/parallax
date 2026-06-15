@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Callable, Iterable, Mapping
-from contextlib import nullcontext
 from typing import Any
 
 from parallax.app.runtime.worker_base import WorkerBase
@@ -24,12 +23,26 @@ class NewsSourceQualityProjectionWorker(WorkerBase):
     def __init__(
         self,
         *,
-        wake_bus: Any | None = None,
+        settings: Any,
+        db: Any,
+        telemetry: Any,
+        wake_waiter: Any | None = None,
+        wake_emitter: Any | None = None,
         clock_ms: Callable[[], int] | None = None,
-        **kwargs: Any,
+        name: str = "news_source_quality_projection",
     ) -> None:
-        super().__init__(**kwargs)
-        self.wake_bus = wake_bus
+        if settings is None:
+            raise RuntimeError("news_source_quality_projection_settings_required")
+        if db is None:
+            raise RuntimeError("news_source_quality_projection_db_required")
+        super().__init__(
+            name=name,
+            settings=settings,
+            db=db,
+            telemetry=telemetry,
+            wake_waiter=wake_waiter,
+        )
+        self.wake_emitter = wake_emitter
         self.clock_ms = clock_ms or _now_ms
 
     async def run_once(self) -> WorkerResult:
@@ -43,7 +56,7 @@ class NewsSourceQualityProjectionWorker(WorkerBase):
         dirty_page_count = 0
         rescheduled = 0
         windows = self._windows()
-        with self._repository_session() as repos, _transaction(repos.conn):
+        with self._repository_session() as repos, repos.transaction():
             claimed = claim_source_quality_work(
                 repos,
                 limit=self._batch_size(),
@@ -65,7 +78,7 @@ class NewsSourceQualityProjectionWorker(WorkerBase):
                     ),
                 )
             try:
-                with _transaction(repos.conn):
+                with repos.transaction():
                     source_windows = source_quality_claim_windows(claimed, configured_windows=windows)
                     aggregate_inputs = repos.news.list_source_quality_inputs_for_targets(
                         source_windows=source_windows,
@@ -142,7 +155,7 @@ class NewsSourceQualityProjectionWorker(WorkerBase):
                     ),
                 )
         _notify_news_page_dirty(
-            self.wake_bus,
+            self.wake_emitter,
             count=dirty_page_count,
             reason="source_quality_status_changed",
         )
@@ -161,21 +174,20 @@ class NewsSourceQualityProjectionWorker(WorkerBase):
     def _repository_session(self) -> Any:
         return self.db.worker_session(
             self.name,
-            statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
+            statement_timeout_seconds=self.settings.statement_timeout_seconds,
         )
 
     def _windows(self) -> tuple[str, ...]:
-        windows = tuple(str(window).strip().lower() for window in getattr(self.settings, "windows", ("24h", "7d")))
-        return tuple(window for window in windows if window) or ("24h", "7d")
+        return tuple(str(window).strip().lower() for window in self.settings.windows)
 
     def _batch_size(self) -> int:
-        return max(1, int(getattr(self.settings, "batch_size", 100)))
+        return max(1, int(self.settings.batch_size))
 
     def _lease_ms(self) -> int:
-        return max(1, int(getattr(self.settings, "lease_ms", 120_000)))
+        return max(1, int(self.settings.lease_ms))
 
     def _retry_ms(self) -> int:
-        return max(1, int(getattr(self.settings, "retry_ms", 30_000)))
+        return max(1, int(self.settings.retry_ms))
 
 
 def _notes(
@@ -195,13 +207,6 @@ def _notes(
         "marked_error": int(marked_error),
         "windows": windows,
     }
-
-
-def _transaction(conn: Any) -> Any:
-    transaction = getattr(conn, "transaction", None)
-    if transaction is None:
-        return nullcontext()
-    return transaction()
 
 
 def _ordered_windows(source_windows: Iterable[tuple[str, str]]) -> list[str]:
@@ -247,13 +252,10 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
-def _notify_news_page_dirty(wake_bus: Any | None, *, count: int, reason: str) -> None:
-    if count <= 0 or wake_bus is None:
+def _notify_news_page_dirty(wake_emitter: Any | None, *, count: int, reason: str) -> None:
+    if count <= 0 or wake_emitter is None:
         return
-    notify = getattr(wake_bus, "notify_news_page_dirty", None)
-    if notify is None:
-        return
-    notify(count=int(count), reason=str(reason))
+    wake_emitter.notify_news_page_dirty(count=int(count), reason=str(reason))
 
 
 __all__ = ["NewsSourceQualityProjectionWorker"]

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+_CURRENT_ROW_STATUSES = frozenset({"ready", "missing", "unsupported", "error"})
+
 
 class TokenProfileReadModel:
     def __init__(self, *, token_profiles: Any) -> None:
@@ -34,7 +36,9 @@ class TokenProfileReadModel:
 
 
 def _block_from_row(row: dict[str, Any]) -> dict[str, Any]:
-    status = (_clean(row.get("status")) or "pending").lower()
+    status = _required_current_text(row, "status").lower()
+    if status not in _CURRENT_ROW_STATUSES:
+        raise ValueError("token_profile_current_public_invalid:status")
     if status == "ready":
         return {
             "status": "ready",
@@ -102,7 +106,7 @@ def _source(row: dict[str, Any]) -> dict[str, Any]:
     payload = _payload(row)
     return {
         "provider": _provider(row),
-        "source_kind": _clean(row.get("source_kind")),
+        "source_kind": _required_current_text(row, "source_kind"),
         "source_ref": _clean(row.get("source_ref")),
         "quality_flags": _quality_flags(row.get("quality_flags_json")),
         "raw_available": bool(payload),
@@ -133,19 +137,38 @@ def _provider(row: dict[str, Any]) -> str | None:
 
 
 def _payload(row: dict[str, Any]) -> dict[str, Any]:
-    payload = row.get("source_payload_json")
-    return dict(payload) if isinstance(payload, dict) else {}
+    return _required_current_mapping(row, "source_payload_json")
 
 
 def _quality_flags(value: Any) -> list[str]:
-    if not isinstance(value, (list, tuple)):
-        return []
+    if value is None:
+        raise ValueError("token_profile_current_public_required:quality_flags_json")
+    if not isinstance(value, list):
+        raise ValueError("token_profile_current_public_invalid:quality_flags_json")
     result: list[str] = []
     for item in value:
         cleaned = _clean(item)
         if cleaned:
             result.append(cleaned)
     return result
+
+
+def _required_current_text(row: dict[str, Any], field: str) -> str:
+    if field not in row or row[field] is None:
+        raise ValueError(f"token_profile_current_public_required:{field}")
+    text = _clean(row[field])
+    if not text:
+        raise ValueError(f"token_profile_current_public_invalid:{field}")
+    return text
+
+
+def _required_current_mapping(row: dict[str, Any], field: str) -> dict[str, Any]:
+    if field not in row or row[field] is None:
+        raise ValueError(f"token_profile_current_public_required:{field}")
+    value = row[field]
+    if not isinstance(value, dict):
+        raise ValueError(f"token_profile_current_public_invalid:{field}")
+    return dict(value)
 
 
 def _clean(value: Any) -> str | None:

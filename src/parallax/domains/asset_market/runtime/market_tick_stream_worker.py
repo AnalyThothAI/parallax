@@ -5,8 +5,7 @@ import time
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
-from types import SimpleNamespace
-from typing import Any
+from typing import Any, Protocol, cast
 
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_result import WorkerResult
@@ -25,8 +24,10 @@ from parallax.domains.asset_market.types import (
 
 SOURCE_TIER: MarketTickSourceTier = "tier1_ws"
 SOURCE_PROVIDER: MarketTickSourceProvider = "okx_dex_ws"
-DEFAULT_SUBSCRIPTION_LIMIT = 50
-DEFAULT_STREAM_CYCLE_SECONDS = 30.0
+
+
+class _AsyncCloseIterator(Protocol):
+    async def aclose(self) -> None: ...
 
 
 class MarketTickStreamWorker(WorkerBase):
@@ -35,55 +36,35 @@ class MarketTickStreamWorker(WorkerBase):
     def __init__(
         self,
         *,
-        pool_bundle: Any | None = None,
-        stream_dex_market: DexMarketStreamProvider | None = None,
+        pool_bundle: Any,
+        stream_dex_market: DexMarketStreamProvider,
         wake_emitter: Any | None = None,
-        wake_bus: Any | None = None,
-        subscription_limit: int = DEFAULT_SUBSCRIPTION_LIMIT,
-        interval_seconds: float | None = None,
-        stream_cycle_seconds: float | None = None,
         clock: Any | None = None,
         name: str = "market_tick_stream",
-        settings: Any | None = None,
-        db: Any | None = None,
-        telemetry: Any | None = None,
+        settings: Any,
+        telemetry: Any,
     ) -> None:
-        resolved_settings = _settings(
-            settings,
-            interval_seconds=interval_seconds,
-            subscription_limit=subscription_limit,
-            stream_cycle_seconds=stream_cycle_seconds,
-        )
+        if settings is None:
+            raise RuntimeError("market_tick_stream_settings_required")
+        if pool_bundle is None:
+            raise RuntimeError("market_tick_stream_db_required")
+        if stream_dex_market is None:
+            raise RuntimeError("market_tick_stream_provider_required")
         super().__init__(
             name=name,
-            settings=resolved_settings,
-            db=pool_bundle or db,
-            telemetry=telemetry or object(),
+            settings=settings,
+            db=pool_bundle,
+            telemetry=telemetry,
         )
         self.stream_dex_market = stream_dex_market
-        self.wake_emitter = wake_emitter or wake_bus
-        self.subscription_limit = max(
-            0,
-            int(getattr(resolved_settings, "subscription_limit", subscription_limit)),
-        )
-        self.stream_cycle_seconds = _stream_cycle_seconds(
-            resolved_settings,
-            fallback_interval_seconds=self.interval_seconds,
-        )
+        self.wake_emitter = wake_emitter
+        self.subscription_limit = max(0, int(settings.subscription_limit))
+        self.stream_cycle_seconds = max(0.001, float(settings.stream_cycle_seconds))
         self.clock = clock or _now_ms
 
     async def run_once(self) -> WorkerResult:
         rows = self._list_tier1_rows()
         targets, skipped_targets = _stream_targets(rows, limit=self.subscription_limit)
-        if self.stream_dex_market is None:
-            return WorkerResult(
-                skipped=len(targets) + skipped_targets,
-                notes={
-                    "reason": "stream_provider_unavailable",
-                    "targets_selected": len(rows),
-                    "stream_targets": len(targets),
-                },
-            )
         if not targets:
             return WorkerResult(
                 skipped=skipped_targets,
@@ -167,9 +148,7 @@ class MarketTickStreamWorker(WorkerBase):
                     exc=exc,
                 )
             finally:
-                close = getattr(iterator, "aclose", None)
-                if close is not None:
-                    await close()
+                await cast(_AsyncCloseIterator, iterator).aclose()
             if degraded_result is not None:
                 return degraded_result
         except Exception as exc:
@@ -235,15 +214,22 @@ def _degraded_stream_result(
     )
 
 
-def _provider_connection_state_payload(provider: Any) -> dict[str, Any]:
-    payload = getattr(provider, "connection_state_payload", None)
-    if not callable(payload):
-        return {}
+def _provider_connection_state_payload(provider: DexMarketStreamProvider) -> dict[str, Any]:
     try:
-        value = payload()
+        value = provider.connection_state_payload()
+    except AttributeError:
+        return {
+            "state": "failed",
+            "last_error_category": "provider_connection_state_contract_missing",
+        }
     except Exception as exc:
         return {"state": "unknown", "last_error_category": type(exc).__name__}
-    return value if isinstance(value, dict) else {}
+    if not isinstance(value, dict):
+        return {
+            "state": "failed",
+            "last_error_category": "provider_connection_state_payload_not_dict",
+        }
+    return value
 
 
 def _provider_failure_category(provider_state: Mapping[str, Any], exc: BaseException) -> str:
@@ -370,46 +356,6 @@ def _emit_wake(wake_emitter: Any, *, target_type: str, target_id: str) -> None:
     if wake_emitter is None:
         return
     wake_emitter.notify_market_tick_written(target_type=target_type, target_id=target_id)
-
-
-def _settings(
-    settings: Any | None,
-    *,
-    interval_seconds: float | None,
-    subscription_limit: int,
-    stream_cycle_seconds: float | None,
-) -> Any:
-    if settings is None:
-        return SimpleNamespace(
-            enabled=True,
-            interval_seconds=interval_seconds if interval_seconds is not None else 5.0,
-            soft_timeout_seconds=120.0,
-            hard_timeout_seconds=180.0,
-            subscription_limit=subscription_limit,
-            stream_cycle_seconds=stream_cycle_seconds,
-        )
-    if interval_seconds is None and stream_cycle_seconds is None:
-        return settings
-    try:
-        if interval_seconds is not None:
-            settings.interval_seconds = interval_seconds
-        if stream_cycle_seconds is not None:
-            settings.stream_cycle_seconds = stream_cycle_seconds
-        return settings
-    except Exception:
-        values = dict(getattr(settings, "__dict__", {}))
-        if interval_seconds is not None:
-            values["interval_seconds"] = interval_seconds
-        if stream_cycle_seconds is not None:
-            values["stream_cycle_seconds"] = stream_cycle_seconds
-        return SimpleNamespace(**values)
-
-
-def _stream_cycle_seconds(settings: Any, *, fallback_interval_seconds: float) -> float:
-    configured = getattr(settings, "stream_cycle_seconds", None)
-    if configured is not None:
-        return max(0.001, float(configured))
-    return max(0.001, min(float(fallback_interval_seconds), DEFAULT_STREAM_CYCLE_SECONDS))
 
 
 def _now_ms() -> int:

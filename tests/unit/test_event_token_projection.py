@@ -3,6 +3,8 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any
 
+import pytest
+
 from parallax.domains.token_intel.queries.event_token_projection_query import (
     EventTokenProjectionQuery,
 )
@@ -170,6 +172,60 @@ def test_event_token_projection_omits_unresolved_public_rows() -> None:
     )
 
     assert EventTokenProjectionQuery(conn).for_event("event-1") == []
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "error"),
+    [
+        ("resolution_id", None, "event_token_projection_required:resolution_id"),
+        ("resolution_id", "", "event_token_projection_invalid:resolution_id"),
+        ("intent_id", None, "event_token_projection_required:intent_id"),
+        ("event_id", None, "event_token_projection_required:event_id"),
+        ("resolution_status", "", "event_token_projection_invalid:resolution_status"),
+        ("reason_codes_json", None, "event_token_projection_required:reason_codes_json"),
+        ("reason_codes_json", '["ca_match"]', "event_token_projection_invalid:reason_codes_json"),
+        ("candidate_ids_json", None, "event_token_projection_required:candidate_ids_json"),
+        ("candidate_ids_json", {"candidate": "legacy"}, "event_token_projection_invalid:candidate_ids_json"),
+        ("lookup_keys_json", None, "event_token_projection_required:lookup_keys_json"),
+        ("lookup_keys_json", '["ca:TokenA"]', "event_token_projection_invalid:lookup_keys_json"),
+    ],
+)
+def test_event_token_projection_requires_formal_resolution_fields_without_empty_defaults(
+    field: str,
+    value: Any,
+    error: str,
+) -> None:
+    row = _base_public_resolution_row()
+    row[field] = value
+    conn = _FakeConn([row])
+
+    with pytest.raises(ValueError, match=error):
+        EventTokenProjectionQuery(conn).for_event("event-1")
+
+
+def _base_public_resolution_row() -> dict[str, Any]:
+    return {
+        "event_id": "event-1",
+        "intent_id": "intent-1",
+        "resolution_id": "resolution-1",
+        "target_type": "Asset",
+        "target_id": "asset:solana:token:TokenA",
+        "pricefeed_id": None,
+        "resolution_status": "EXACT",
+        "reason_codes_json": ["ca_match"],
+        "candidate_ids_json": [],
+        "lookup_keys_json": ["ca:TokenA"],
+        "symbol": "VOICE",
+        "market_tick_id": None,
+        "market_tick_provider": None,
+        "market_tick_observed_at_ms": None,
+        "price_usd": None,
+        "price_quote": None,
+        "price_quote_symbol": None,
+        "quote_symbol": None,
+        "market_capture_method": None,
+        "market_tick_lag_ms": None,
+    }
 
 
 class _FakeConn:

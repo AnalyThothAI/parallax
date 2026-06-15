@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Any
+from contextlib import AbstractContextManager
+from typing import Any, cast
 
 from psycopg.types.json import Jsonb
 
@@ -31,6 +32,17 @@ class IdentityEvidenceRepository:
         normalized_address = _address(address)
         standard = token_standard or ("erc20" if normalized_chain.startswith("eip155:") else "token")
         asset_id = _asset_id(chain_id=normalized_chain, token_standard=standard, address=normalized_address)
+        if commit:
+            with _transaction(self.conn):
+                return self.ensure_asset(
+                    chain_id=normalized_chain,
+                    address=normalized_address,
+                    observed_at_ms=observed_at_ms,
+                    project_id=project_id,
+                    token_standard=standard,
+                    status=status,
+                    commit=False,
+                )
         row = self.conn.execute(
             """
             WITH existing AS (
@@ -105,8 +117,6 @@ class IdentityEvidenceRepository:
                 int(observed_at_ms),
             ),
         ).fetchone()
-        if commit:
-            self.conn.commit()
         return (
             dict(row)
             if row
@@ -156,6 +166,27 @@ class IdentityEvidenceRepository:
             source_resolution_id=source_resolution_id,
             raw_payload=payload,
         )
+        if commit:
+            with _transaction(self.conn):
+                return self.upsert_identity_evidence(
+                    asset_id=asset_id,
+                    evidence_kind=evidence_kind,
+                    provider=provider,
+                    lookup_mode=lookup_mode,
+                    chain_id=chain_id,
+                    address=address,
+                    observed_at_ms=observed_at_ms,
+                    symbol=symbol,
+                    name=name,
+                    decimals=decimals,
+                    confidence=confidence,
+                    source_event_id=source_event_id,
+                    source_intent_id=source_intent_id,
+                    source_resolution_id=source_resolution_id,
+                    raw_payload=payload,
+                    evidence_id=row_id,
+                    commit=False,
+                )
         self.conn.execute(
             """
             INSERT INTO asset_identity_evidence(
@@ -196,8 +227,6 @@ class IdentityEvidenceRepository:
                 int(observed_at_ms),
             ),
         )
-        if commit:
-            self.conn.commit()
         return self._row_by_id("asset_identity_evidence", "evidence_id", row_id) or {
             "evidence_id": row_id,
             "asset_id": asset_id,
@@ -226,21 +255,22 @@ class IdentityEvidenceRepository:
         return [dict(row) for row in rows]
 
     def recompute_current_identity(self, asset_id: str, *, now_ms: int, commit: bool = True) -> dict[str, Any]:
+        if commit:
+            with _transaction(self.conn):
+                return self.recompute_current_identity(asset_id, now_ms=now_ms, commit=False)
         current = select_current_identity(
             asset_id=asset_id,
             evidence_rows=self.list_identity_evidence(asset_id),
             now_ms=now_ms,
         )
         changed = self._upsert_current_identity(current)
-        if commit:
-            self.conn.commit()
         return {**current, "rows_written": int(changed)}
 
     def current_identity(self, asset_id: str) -> dict[str, Any] | None:
         return self._row_by_id("asset_identity_current", "asset_id", asset_id)
 
     def _upsert_current_identity(self, current: dict[str, Any]) -> bool:
-        returned = self.conn.execute(
+        cursor = self.conn.execute(
             """
             INSERT INTO asset_identity_current(
               asset_id, canonical_symbol, canonical_name, decimals, identity_confidence,
@@ -280,9 +310,8 @@ class IdentityEvidenceRepository:
                 current["updated_at_ms"],
             ),
         )
-        fetchone = getattr(returned, "fetchone", None)
-        row = fetchone() if fetchone is not None else None
-        return row is not None and bool(row.get("changed", True))
+        row = cursor.fetchone()
+        return _single_returning_changed(cursor, row)
 
     def _row_by_id(self, table: str, key: str, value: str) -> dict[str, Any] | None:
         row = self.conn.execute(f"SELECT * FROM {table} WHERE {key} = %s", (value,)).fetchone()
@@ -324,6 +353,37 @@ def _evidence_id(
         ).encode("utf-8")
     ).hexdigest()
     return f"asset-identity-evidence:{digest}"
+
+
+def _transaction(conn: Any) -> AbstractContextManager[Any]:
+    try:
+        transaction = conn.transaction
+    except AttributeError as exc:
+        raise RuntimeError("identity_evidence_repository_transaction_required") from exc
+    if not callable(transaction):
+        raise RuntimeError("identity_evidence_repository_transaction_required")
+    return cast(AbstractContextManager[Any], transaction())
+
+
+def _cursor_rowcount(cursor: Any) -> int:
+    try:
+        rowcount: object = cursor.rowcount
+    except AttributeError as exc:
+        raise TypeError("identity_evidence_repository_rowcount_required") from exc
+    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
+        raise TypeError("identity_evidence_repository_rowcount_invalid")
+    if rowcount < 0:
+        raise TypeError("identity_evidence_repository_rowcount_invalid")
+    return rowcount
+
+
+def _single_returning_changed(cursor: Any, row: Any | None) -> bool:
+    count = _cursor_rowcount(cursor)
+    if count not in (0, 1):
+        raise TypeError("identity_evidence_repository_rowcount_invalid")
+    if count != (1 if row is not None else 0):
+        raise TypeError("identity_evidence_repository_rowcount_invalid")
+    return row is not None and bool(row.get("changed", True))
 
 
 def _chain(value: str) -> str:

@@ -4,6 +4,8 @@ import asyncio
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from parallax.app.runtime import provider_wiring
 from parallax.app.runtime.provider_wiring import model_execution
 from parallax.app.runtime.provider_wiring.model_execution import build_agent_execution_gateway
@@ -169,6 +171,24 @@ def test_pulse_provider_uses_agent_runtime_decision_timeout() -> None:
     )
 
     assert provider.timeout_seconds == 305
+
+
+def test_pulse_provider_timeout_requires_agent_runtime_lanes_contract() -> None:
+    malformed_settings = SimpleNamespace(workers=SimpleNamespace(agent_runtime=SimpleNamespace()))
+
+    with pytest.raises(AttributeError, match="lanes"):
+        model_execution._agent_runtime_lane_timeout_seconds(malformed_settings, "pulse.decision")
+
+
+def test_pulse_provider_timeout_requires_configured_pulse_decision_lane() -> None:
+    malformed_settings = SimpleNamespace(
+        workers=SimpleNamespace(
+            agent_runtime=SimpleNamespace(lanes={}),
+        ),
+    )
+
+    with pytest.raises(KeyError, match=r"pulse\.decision"):
+        model_execution._agent_runtime_lane_timeout_seconds(malformed_settings, "pulse.decision")
 
 
 def test_pulse_provider_maps_agent_run_audit_from_litellm_client() -> None:

@@ -27,7 +27,7 @@ _PULSE_AGENT_STAGES = (
 def _pulse_repos(conn: Any) -> SimpleNamespace:
     return SimpleNamespace(
         candidates=PulseCandidatesRepository(conn),
-        jobs=PulseJobsRepository(conn),
+        jobs=PulseJobsRepository(conn, running_timeout_ms=300_000),
         runs=PulseRunsRepository(conn),
     )
 
@@ -43,6 +43,7 @@ def _seed_run_and_job(repo: SimpleNamespace, *, run_id: str) -> None:
         trigger_signature=f"trigger-{run_id}",
         timeline_signature=f"timeline-{run_id}",
         priority=10,
+        max_attempts=3,
         next_run_at_ms=1_000,
         now_ms=900,
     )

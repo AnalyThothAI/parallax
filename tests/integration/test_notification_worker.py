@@ -119,7 +119,7 @@ def news_candidate(
 def open_worker(tmp_path, *, candidates, publisher=None, delivery_channels=None, delivery_wake=None):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     migrate(conn)
-    repo = NotificationRepository(conn)
+    repo = NotificationRepository(conn, running_timeout_ms=300_000, stale_running_terminalization_batch_size=100)
     worker = NotificationWorker(
         name="notification_rule",
         settings=worker_settings(),
@@ -128,6 +128,7 @@ def open_worker(tmp_path, *, candidates, publisher=None, delivery_channels=None,
         rule_engine=StaticRuleEngine(candidates),
         publisher=publisher,
         delivery_channels=delivery_channels or {},
+        delivery_max_attempts=5,
         delivery_wake=delivery_wake,
     )
     return conn, repo, worker

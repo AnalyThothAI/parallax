@@ -129,9 +129,7 @@ describe("news API client normalization", () => {
     expect(rows.items[0].agent_representative_news_item_id).toBe("news-classified");
     expect(rows.items[0].signal.alert_eligibility.market_scope?.primary).toBe("us_equity");
     expect(rows.items[0].signal.alert_eligibility.agent_admission_status).toBe("eligible");
-    expect(rows.items[0].signal.alert_eligibility.agent_admission_reason).toBe(
-      "agent_brief_ready",
-    );
+    expect(rows.items[0].signal.alert_eligibility.agent_admission_reason).toBe("agent_brief_ready");
   });
 
   it("keeps agent brief optional when the hard-cut row omits it", async () => {

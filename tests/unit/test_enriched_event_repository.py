@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from parallax.domains.asset_market.repositories.enriched_event_repository import (
     EnrichedEventRepository,
 )
@@ -73,7 +75,7 @@ def test_latest_for_target_orders_by_event_time_and_keys() -> None:
 
 
 def test_attach_backfill_capture_writes_composite_tick_key() -> None:
-    conn = _ScriptedConnection([])
+    conn = _ScriptedConnection([], rowcount=1)
     capture = _capture()
 
     EnrichedEventRepository(conn).attach_backfill_capture(capture)
@@ -85,12 +87,49 @@ def test_attach_backfill_capture_writes_composite_tick_key() -> None:
     assert conn.params[-1]["tick_observed_at_ms"] == 1_700_000_000_100
 
 
+@pytest.mark.parametrize("operation", ("attach", "terminal"))
+@pytest.mark.parametrize(("rowcount", "expected"), ((1, True), (0, False)))
+def test_backfill_lifecycle_write_counts_report_single_row_mutation(
+    operation: str, rowcount: int, expected: bool
+) -> None:
+    conn = _ScriptedConnection([], rowcount=rowcount)
+
+    assert _run_backfill_lifecycle_write(EnrichedEventRepository(conn), operation) is expected
+
+
+@pytest.mark.parametrize("operation", ("attach", "terminal"))
+def test_backfill_lifecycle_write_counts_require_cursor_rowcount(operation: str) -> None:
+    conn = _ScriptedConnection([])
+
+    with pytest.raises(TypeError, match="enriched_event_repository_rowcount_required"):
+        _run_backfill_lifecycle_write(EnrichedEventRepository(conn), operation)
+
+
+@pytest.mark.parametrize("operation", ("attach", "terminal"))
+@pytest.mark.parametrize("rowcount", (True, False, "1", None, -1, 2))
+def test_backfill_lifecycle_write_counts_reject_invalid_cursor_rowcount(operation: str, rowcount: Any) -> None:
+    conn = _ScriptedConnection([], rowcount=rowcount)
+
+    with pytest.raises(TypeError, match="enriched_event_repository_rowcount_invalid"):
+        _run_backfill_lifecycle_write(EnrichedEventRepository(conn), operation)
+
+
+_ROWCOUNT_MISSING = object()
+
+
 class _ScriptedConnection:
-    def __init__(self, results: list[dict[str, Any] | list[dict[str, Any]] | None]) -> None:
+    def __init__(
+        self,
+        results: list[dict[str, Any] | list[dict[str, Any]] | None],
+        *,
+        rowcount: Any = _ROWCOUNT_MISSING,
+    ) -> None:
         self.results = list(results)
         self.sql: list[str] = []
         self.params: list[dict[str, Any]] = []
         self.commits = 0
+        if rowcount is not _ROWCOUNT_MISSING:
+            self.rowcount = rowcount
 
     def execute(self, sql: str, params: dict[str, Any] | None = None) -> _ScriptedConnection:
         self.sql.append(str(sql))
@@ -113,6 +152,14 @@ class _ScriptedConnection:
 
     def commit(self) -> None:
         self.commits += 1
+
+
+def _run_backfill_lifecycle_write(repository: EnrichedEventRepository, operation: str) -> bool:
+    if operation == "attach":
+        return repository.attach_backfill_capture(_capture())
+    if operation == "terminal":
+        return repository.mark_backfill_terminal(event_id="event-1", intent_id="intent-1", reason="no_market_tick")
+    raise AssertionError(operation)
 
 
 def _capture() -> EnrichedEventCapture:

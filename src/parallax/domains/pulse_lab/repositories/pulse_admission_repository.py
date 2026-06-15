@@ -8,16 +8,44 @@ from parallax.domains.pulse_lab.repositories._pulse_repository_shared import (
     _json,
     _optional_row,
     _row,
+    _run_repository_write,
     _stable_hash,
     _stable_strings,
     _transaction,
 )
 
 
+def _cursor_rowcount(cursor: Any) -> int:
+    try:
+        rowcount: object = cursor.rowcount
+    except AttributeError as exc:
+        raise TypeError("pulse_admission_repository_rowcount_required") from exc
+    if isinstance(rowcount, bool) or not isinstance(rowcount, int) or rowcount < 0:
+        raise TypeError("pulse_admission_repository_rowcount_invalid")
+    return rowcount
+
+
+def _single_returning_rowcount(cursor: Any, row: Any) -> int:
+    count = _cursor_rowcount(cursor)
+    if count > 1 or count != int(row is not None):
+        raise TypeError("pulse_admission_repository_rowcount_invalid")
+    return count
+
+
+def _required_returning_row(cursor: Any, row: Any) -> dict[str, Any]:
+    if _single_returning_rowcount(cursor, row) != 1:
+        raise TypeError("pulse_admission_repository_rowcount_invalid")
+    return _row(row)
+
+
+def _optional_returning_row(cursor: Any, row: Any) -> dict[str, Any] | None:
+    _single_returning_rowcount(cursor, row)
+    return _row(row) if row is not None else None
+
+
 class PulseAdmissionRepository:
-    def __init__(self, conn: Any, *, running_timeout_ms: int = 300_000):
+    def __init__(self, conn: Any):
         self.conn = conn
-        self.running_timeout_ms = int(running_timeout_ms)
 
     def edge_state_by_candidate(self, candidate_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(
@@ -39,27 +67,29 @@ class PulseAdmissionRepository:
         observed_at_ms: int,
         commit: bool = True,
     ) -> dict[str, Any]:
-        observed = int(observed_at_ms)
-        row = self.conn.execute(
-            """
-            INSERT INTO pulse_candidate_edge_state(
-              candidate_id, latest_observed_state_json, last_processed_state_json,
-              last_edge_events_json, last_edge_signature, observed_at_ms,
-              created_at_ms, updated_at_ms
+        def _record_edge_observation() -> dict[str, Any]:
+            observed = int(observed_at_ms)
+            cursor = self.conn.execute(
+                """
+                INSERT INTO pulse_candidate_edge_state(
+                  candidate_id, latest_observed_state_json, last_processed_state_json,
+                  last_edge_events_json, last_edge_signature, observed_at_ms,
+                  created_at_ms, updated_at_ms
+                )
+                VALUES (%s, %s, '{}'::jsonb, '[]'::jsonb, %s, %s, %s, %s)
+                ON CONFLICT(candidate_id) DO UPDATE SET
+                  latest_observed_state_json = excluded.latest_observed_state_json,
+                  last_edge_signature = excluded.last_edge_signature,
+                  observed_at_ms = excluded.observed_at_ms,
+                  updated_at_ms = excluded.updated_at_ms
+                RETURNING *
+                """,
+                (candidate_id, _json(current_state_json), edge_signature, observed, observed, observed),
             )
-            VALUES (%s, %s, '{}'::jsonb, '[]'::jsonb, %s, %s, %s, %s)
-            ON CONFLICT(candidate_id) DO UPDATE SET
-              latest_observed_state_json = excluded.latest_observed_state_json,
-              last_edge_signature = excluded.last_edge_signature,
-              observed_at_ms = excluded.observed_at_ms,
-              updated_at_ms = excluded.updated_at_ms
-            RETURNING *
-            """,
-            (candidate_id, _json(current_state_json), edge_signature, observed, observed, observed),
-        ).fetchone()
-        if commit:
-            self.conn.commit()
-        return _row(row)
+            row = cursor.fetchone()
+            return _required_returning_row(cursor, row)
+
+        return _run_repository_write(self.conn, commit, _record_edge_observation)
 
     def claim_edge_budget(
         self,
@@ -70,24 +100,26 @@ class PulseAdmissionRepository:
         max_enqueues: int = 3,
         commit: bool = True,
     ) -> bool:
-        now = int(now_ms)
-        row = self.conn.execute(
-            """
-            INSERT INTO pulse_candidate_run_budget(
-              candidate_id, hour_bucket_ms, enqueue_count, created_at_ms, updated_at_ms
+        def _claim_edge_budget() -> bool:
+            now = int(now_ms)
+            cursor = self.conn.execute(
+                """
+                INSERT INTO pulse_candidate_run_budget(
+                  candidate_id, hour_bucket_ms, enqueue_count, created_at_ms, updated_at_ms
+                )
+                VALUES (%s, %s, 1, %s, %s)
+                ON CONFLICT(candidate_id, hour_bucket_ms) DO UPDATE SET
+                  enqueue_count = pulse_candidate_run_budget.enqueue_count + 1,
+                  updated_at_ms = excluded.updated_at_ms
+                WHERE pulse_candidate_run_budget.enqueue_count < %s
+                RETURNING enqueue_count
+                """,
+                (candidate_id, int(hour_bucket_ms), now, now, max(1, int(max_enqueues))),
             )
-            VALUES (%s, %s, 1, %s, %s)
-            ON CONFLICT(candidate_id, hour_bucket_ms) DO UPDATE SET
-              enqueue_count = pulse_candidate_run_budget.enqueue_count + 1,
-              updated_at_ms = excluded.updated_at_ms
-            WHERE pulse_candidate_run_budget.enqueue_count < %s
-            RETURNING enqueue_count
-            """,
-            (candidate_id, int(hour_bucket_ms), now, now, max(1, int(max_enqueues))),
-        ).fetchone()
-        if commit:
-            self.conn.commit()
-        return row is not None
+            row = cursor.fetchone()
+            return _single_returning_rowcount(cursor, row) == 1
+
+        return _run_repository_write(self.conn, commit, _claim_edge_budget)
 
     def mark_edge_job_enqueued(
         self,
@@ -99,39 +131,41 @@ class PulseAdmissionRepository:
         processed_at_ms: int,
         commit: bool = True,
     ) -> dict[str, Any]:
-        processed = int(processed_at_ms)
-        row = self.conn.execute(
-            """
-            INSERT INTO pulse_candidate_edge_state(
-              candidate_id, latest_observed_state_json, last_processed_state_json,
-              last_edge_events_json, last_job_id, observed_at_ms,
-              created_at_ms, updated_at_ms
+        def _mark_edge_job_enqueued() -> dict[str, Any]:
+            processed = int(processed_at_ms)
+            cursor = self.conn.execute(
+                """
+                INSERT INTO pulse_candidate_edge_state(
+                  candidate_id, latest_observed_state_json, last_processed_state_json,
+                  last_edge_events_json, last_job_id, observed_at_ms,
+                  created_at_ms, updated_at_ms
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT(candidate_id) DO UPDATE SET
+                  last_edge_events_json = excluded.last_edge_events_json,
+                  last_job_id = excluded.last_job_id,
+                  last_suppressed_reason = NULL,
+                  last_suppressed_at_ms = NULL,
+                  pending_score_band = NULL,
+                  pending_score_band_count = 0,
+                  updated_at_ms = excluded.updated_at_ms
+                RETURNING *
+                """,
+                (
+                    candidate_id,
+                    _json(processed_state_json),
+                    _json({}),
+                    _json(edge_events_json),
+                    job_id,
+                    processed,
+                    processed,
+                    processed,
+                ),
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT(candidate_id) DO UPDATE SET
-              last_edge_events_json = excluded.last_edge_events_json,
-              last_job_id = excluded.last_job_id,
-              last_suppressed_reason = NULL,
-              last_suppressed_at_ms = NULL,
-              pending_score_band = NULL,
-              pending_score_band_count = 0,
-              updated_at_ms = excluded.updated_at_ms
-            RETURNING *
-            """,
-            (
-                candidate_id,
-                _json(processed_state_json),
-                _json({}),
-                _json(edge_events_json),
-                job_id,
-                processed,
-                processed,
-                processed,
-            ),
-        ).fetchone()
-        if commit:
-            self.conn.commit()
-        return _row(row)
+            row = cursor.fetchone()
+            return _required_returning_row(cursor, row)
+
+        return _run_repository_write(self.conn, commit, _mark_edge_job_enqueued)
 
     def mark_edge_budget_rejected(
         self,
@@ -141,19 +175,21 @@ class PulseAdmissionRepository:
         rejected_at_ms: int,
         commit: bool = True,
     ) -> dict[str, Any] | None:
-        row = self.conn.execute(
-            """
-            UPDATE pulse_candidate_edge_state
-            SET last_edge_events_json = %s,
-                updated_at_ms = %s
-            WHERE candidate_id = %s
-            RETURNING *
-            """,
-            (_json(edge_events_json), int(rejected_at_ms), candidate_id),
-        ).fetchone()
-        if commit:
-            self.conn.commit()
-        return _optional_row(row)
+        def _mark_edge_budget_rejected() -> dict[str, Any] | None:
+            cursor = self.conn.execute(
+                """
+                UPDATE pulse_candidate_edge_state
+                SET last_edge_events_json = %s,
+                    updated_at_ms = %s
+                WHERE candidate_id = %s
+                RETURNING *
+                """,
+                (_json(edge_events_json), int(rejected_at_ms), candidate_id),
+            )
+            row = cursor.fetchone()
+            return _optional_returning_row(cursor, row)
+
+        return _run_repository_write(self.conn, commit, _mark_edge_budget_rejected)
 
     def claim_pulse_admission(
         self,
@@ -355,7 +391,7 @@ class PulseAdmissionRepository:
         suppressed_at_ms: int,
     ) -> dict[str, Any] | None:
         score_band = _clean(current_state_json.get("score_band"))
-        row = self.conn.execute(
+        cursor = self.conn.execute(
             """
             UPDATE pulse_candidate_edge_state
             SET last_edge_events_json = %s,
@@ -404,8 +440,9 @@ class PulseAdmissionRepository:
                 int(suppressed_at_ms),
                 candidate_id,
             ),
-        ).fetchone()
-        return _optional_row(row)
+        )
+        row = cursor.fetchone()
+        return _optional_returning_row(cursor, row)
 
     def _mark_edge_admitted(
         self,
@@ -415,7 +452,7 @@ class PulseAdmissionRepository:
         job_id: str,
         admitted_at_ms: int,
     ) -> dict[str, Any] | None:
-        row = self.conn.execute(
+        cursor = self.conn.execute(
             """
             UPDATE pulse_candidate_edge_state
             SET last_edge_events_json = %s,
@@ -429,8 +466,9 @@ class PulseAdmissionRepository:
             RETURNING *
             """,
             (_json(edge_events_json), job_id, int(admitted_at_ms), candidate_id),
-        ).fetchone()
-        return _optional_row(row)
+        )
+        row = cursor.fetchone()
+        return _optional_returning_row(cursor, row)
 
     def mark_edge_run_finished(
         self,
@@ -442,33 +480,35 @@ class PulseAdmissionRepository:
         finished_at_ms: int,
         commit: bool = True,
     ) -> dict[str, Any] | None:
-        row = self.conn.execute(
-            """
-            UPDATE pulse_candidate_edge_state
-            SET last_agent_run_id = %s,
-                last_processed_state_json = %s,
-                last_edge_events_json = %s,
-                last_processed_at_ms = %s,
-                last_suppressed_reason = NULL,
-                last_suppressed_at_ms = NULL,
-                pending_score_band = NULL,
-                pending_score_band_count = 0,
-                updated_at_ms = %s
-            WHERE candidate_id = %s
-            RETURNING *
-            """,
-            (
-                agent_run_id,
-                _json(processed_state_json),
-                _json(edge_events_json),
-                int(finished_at_ms),
-                int(finished_at_ms),
-                candidate_id,
-            ),
-        ).fetchone()
-        if commit:
-            self.conn.commit()
-        return _optional_row(row)
+        def _mark_edge_run_finished() -> dict[str, Any] | None:
+            cursor = self.conn.execute(
+                """
+                UPDATE pulse_candidate_edge_state
+                SET last_agent_run_id = %s,
+                    last_processed_state_json = %s,
+                    last_edge_events_json = %s,
+                    last_processed_at_ms = %s,
+                    last_suppressed_reason = NULL,
+                    last_suppressed_at_ms = NULL,
+                    pending_score_band = NULL,
+                    pending_score_band_count = 0,
+                    updated_at_ms = %s
+                WHERE candidate_id = %s
+                RETURNING *
+                """,
+                (
+                    agent_run_id,
+                    _json(processed_state_json),
+                    _json(edge_events_json),
+                    int(finished_at_ms),
+                    int(finished_at_ms),
+                    candidate_id,
+                ),
+            )
+            row = cursor.fetchone()
+            return _optional_returning_row(cursor, row)
+
+        return _run_repository_write(self.conn, commit, _mark_edge_run_finished)
 
     def recent_target_failure_count(
         self,

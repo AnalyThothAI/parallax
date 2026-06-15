@@ -79,8 +79,22 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     assert settings.workers.pulse_candidate.interval_seconds == 60
     assert settings.workers.pulse_candidate.batch_size == 10
     assert settings.workers.pulse_candidate.max_attempts == 3
+    assert settings.workers.pulse_candidate.job_running_timeout_ms == 300_000
+    assert settings.workers.pulse_candidate.stale_running_terminalization_batch_size == 100
+    assert settings.workers.pulse_candidate.trigger_lease_ms == 60_000
+    assert settings.workers.pulse_candidate.trigger_capacity_retry_ms == 30_000
+    assert settings.workers.pulse_candidate.trigger_error_retry_ms == 60_000
+    assert settings.workers.pulse_candidate.target_edge_budget_per_hour == 3
+    assert settings.workers.pulse_candidate.candidate_edge_budget_per_hour == 3
+    assert settings.workers.pulse_candidate.failure_circuit_per_hour == 3
+    assert settings.workers.pulse_candidate.failure_circuit_reasons == (
+        "schema_validation_failed",
+        "unknown_evidence_id",
+    )
     assert settings.workers.pulse_candidate.trigger_thresholds.min_rank_score == 45
     assert settings.workers.pulse_candidate.gate_thresholds.trade_candidate_min == 72
+    assert settings.workers.notification_delivery.running_timeout_ms == 300_000
+    assert settings.workers.notification_delivery.stale_running_terminalization_batch_size == 100
     assert not hasattr(settings.workers, "handle_summary")
     assert settings.gmgn_configured is False
     assert settings.upstream_chains == ("sol", "eth", "base", "bsc")
@@ -103,6 +117,8 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     assert settings.workers.token_capture_tier.ws_limit == 100
     assert settings.workers.token_capture_tier.poll_limit == 500
     assert settings.workers.live_price_gateway.interval_seconds == 2
+    assert settings.workers.live_price_gateway.target_limit == 100
+    assert settings.workers.live_price_gateway.target_ttl_seconds == 300
     assert not hasattr(settings.workers.live_price_gateway, "subscription_limit")
     assert settings.okx_dex_ws_configured is False
 
@@ -342,11 +358,19 @@ def test_default_config_yaml_contains_macrodata_fred_env_pointer() -> None:
 
     assert payload["providers"]["macrodata"] == {
         "enabled": True,
-        "quote_timeout_seconds": 5,
-        "quote_cache_ttl_seconds": 30,
         "fred_api_key_env": "FINANCE_FRED_API_KEY",
         "fred_api_key": None,
     }
+
+
+def test_macrodata_provider_config_excludes_quote_runtime_fields(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(tmp_path, {"ws_token": "secret", "handles": ["toly"]})
+
+    settings = load_settings()
+
+    assert not hasattr(settings, "macrodata_quote_timeout_seconds")
+    assert not hasattr(settings, "macrodata_quote_cache_ttl_seconds")
 
 
 def test_load_settings_rejects_missing_ws_token_by_default(tmp_path, monkeypatch):
@@ -440,6 +464,7 @@ def test_postgres_storage_and_llm_can_be_explicitly_configured(tmp_path, monkeyp
                 "interval_seconds": 1,
                 "batch_size": 100,
                 "max_attempts": 1,
+                "stale_running_terminalization_batch_size": 13,
                 "trigger_thresholds": {"min_rank_score": 60},
                 "gate_thresholds": {
                     "trade_candidate_min": 70,
@@ -470,6 +495,7 @@ def test_postgres_storage_and_llm_can_be_explicitly_configured(tmp_path, monkeyp
     assert settings.workers.pulse_candidate.interval_seconds == 1
     assert settings.workers.pulse_candidate.batch_size == 100
     assert settings.workers.pulse_candidate.max_attempts == 1
+    assert settings.workers.pulse_candidate.stale_running_terminalization_batch_size == 13
     assert settings.agent_runtime_model_for_lane("pulse.decision") == "gpt-test"
     assert settings.pulse_agent_configured is True
     assert settings.workers.pulse_candidate.trigger_thresholds.min_rank_score == 60
@@ -619,8 +645,6 @@ def test_macrodata_fred_env_pointer_is_redacted_and_configurable(tmp_path, monke
             "providers": {
                 "macrodata": {
                     "enabled": True,
-                    "quote_timeout_seconds": 6,
-                    "quote_cache_ttl_seconds": 45,
                     "fred_api_key_env": " CUSTOM_FRED_ENV ",
                 },
             },
@@ -630,8 +654,6 @@ def test_macrodata_fred_env_pointer_is_redacted_and_configurable(tmp_path, monke
     settings = load_settings()
 
     assert settings.macrodata_enabled is True
-    assert settings.macrodata_quote_timeout_seconds == 6
-    assert settings.macrodata_quote_cache_ttl_seconds == 45
     assert settings.macrodata_fred_api_key_env == "CUSTOM_FRED_ENV"
     assert settings.macrodata_fred_api_key_configured is True
 
@@ -683,8 +705,6 @@ def test_cli_config_reports_macrodata_without_secret(tmp_path, monkeypatch):
     macrodata = payload["data"]["providers"]["macrodata"]
     assert macrodata == {
         "enabled": True,
-        "quote_timeout_seconds": 5.0,
-        "quote_cache_ttl_seconds": 30.0,
         "fred_api_key_env": "FINANCE_FRED_API_KEY",
         "fred_api_key_configured": True,
     }
@@ -715,8 +735,6 @@ def test_cli_config_reports_configured_macrodata_config_key_without_secret(tmp_p
     macrodata = payload["data"]["providers"]["macrodata"]
     assert macrodata == {
         "enabled": True,
-        "quote_timeout_seconds": 5.0,
-        "quote_cache_ttl_seconds": 30.0,
         "fred_api_key_env": "FINANCE_FRED_API_KEY",
         "fred_api_key_configured": True,
     }
@@ -813,6 +831,11 @@ def test_load_settings_accepts_notification_defaults_and_rule_overrides(tmp_path
             "notifications": {
                 "enabled": True,
                 "candidate_limit": 40,
+                "watched_activity_window_ms": 7_200_000,
+                "news_high_signal_recency_window_ms": 3_600_000,
+                "news_high_signal_query_min_limit": 80,
+                "news_high_signal_query_multiplier": 4,
+                "signal_pulse_max_pages": 3,
                 "rules": {
                     "signal_pulse_candidate": {
                         "enabled": True,
@@ -844,6 +867,11 @@ def test_load_settings_accepts_notification_defaults_and_rule_overrides(tmp_path
 
     assert settings.notifications.enabled is True
     assert settings.notifications.candidate_limit == 40
+    assert settings.notifications.watched_activity_window_ms == 7_200_000
+    assert settings.notifications.news_high_signal_recency_window_ms == 3_600_000
+    assert settings.notifications.news_high_signal_query_min_limit == 80
+    assert settings.notifications.news_high_signal_query_multiplier == 4
+    assert settings.notifications.signal_pulse_max_pages == 3
     activity_rule = settings.notifications.rules["watched_account_activity"]
     assert activity_rule.channels == ("in_app",)
     assert activity_rule.cooldown_seconds == 300
@@ -862,6 +890,86 @@ def test_load_settings_accepts_notification_defaults_and_rule_overrides(tmp_path
     assert news_rule.cooldown_seconds == 1800
     assert settings.notifications.channels["pushdeer"].provider == "pushdeer"
     assert settings.notifications.channels["pushdeer"].url == "pushdeer://pushKey"
+
+
+def test_notification_candidate_limit_rejects_zero(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(
+        tmp_path,
+        {
+            "ws_token": "secret",
+            "handles": ["toly"],
+            "notifications": {
+                "candidate_limit": 0,
+            },
+        },
+    )
+
+    with pytest.raises(ValidationError):
+        load_settings()
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "watched_activity_window_ms",
+        "news_high_signal_recency_window_ms",
+        "news_high_signal_query_min_limit",
+        "news_high_signal_query_multiplier",
+        "signal_pulse_max_pages",
+    ],
+)
+def test_notification_query_policy_fields_reject_zero(tmp_path, monkeypatch, field):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(
+        tmp_path,
+        {
+            "ws_token": "secret",
+            "handles": ["toly"],
+            "notifications": {
+                field: 0,
+            },
+        },
+    )
+
+    with pytest.raises(ValidationError):
+        load_settings()
+
+
+@pytest.mark.parametrize(
+    ("rule_id", "field", "value"),
+    [
+        ("watched_account_activity", "window", "1h"),
+        ("watched_account_activity", "scopes", ["all"]),
+        ("watched_account_activity", "statuses", ["token_watch"]),
+        ("watched_account_token_alert", "window", "1h"),
+        ("watched_account_token_alert", "scopes", ["all"]),
+        ("watched_account_token_alert", "statuses", ["token_watch"]),
+        ("news_high_signal", "window", "1h"),
+        ("news_high_signal", "scopes", ["all"]),
+    ],
+)
+def test_notification_settings_reject_unused_query_fields_for_non_signal_rules(
+    tmp_path, monkeypatch, rule_id, field, value
+):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(
+        tmp_path,
+        {
+            "ws_token": "secret",
+            "handles": ["toly"],
+            "notifications": {
+                "rules": {
+                    rule_id: {
+                        field: value,
+                    },
+                },
+            },
+        },
+    )
+
+    with pytest.raises(ValidationError, match="only accepts delivery settings"):
+        load_settings()
 
 
 @pytest.mark.parametrize("threshold_key", ["combined_score_min", "external_score_min"])
@@ -970,6 +1078,38 @@ def test_signal_pulse_notification_rule_rejects_removed_5m_window(tmp_path, monk
         load_settings()
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "match"),
+    [
+        ("window", None, "window is required"),
+        ("window", "", "window is required"),
+        ("scopes", [], "scopes are required"),
+        ("scopes", "", "scopes are required"),
+        ("statuses", [], "statuses are required"),
+        ("statuses", "", "statuses are required"),
+    ],
+)
+def test_signal_pulse_notification_rule_rejects_empty_query_dimensions(tmp_path, monkeypatch, field, value, match):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(
+        tmp_path,
+        {
+            "ws_token": "secret",
+            "handles": ["toly"],
+            "notifications": {
+                "rules": {
+                    "signal_pulse_candidate": {
+                        field: value,
+                    }
+                }
+            },
+        },
+    )
+
+    with pytest.raises(ValidationError, match=match):
+        load_settings()
+
+
 def test_signal_pulse_rule_rejects_theme_watch_status(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     write_config(
@@ -1072,6 +1212,12 @@ def test_config_example_excludes_worker_runtime_knobs() -> None:
     workers = WorkersSettings(**yaml.safe_load(default_workers_yaml()))
     assert not hasattr(workers, "enrichment")
     assert workers.pulse_candidate.trigger_thresholds.min_rank_score == 45
+    assert workers.pulse_candidate.job_running_timeout_ms == 300_000
+    assert workers.pulse_candidate.stale_running_terminalization_batch_size == 100
+    assert workers.pulse_candidate.trigger_lease_ms == 60_000
+    assert workers.pulse_candidate.failure_circuit_reasons == ("schema_validation_failed", "unknown_evidence_id")
+    assert workers.notification_delivery.running_timeout_ms == 300_000
+    assert workers.notification_delivery.stale_running_terminalization_batch_size == 100
     assert not hasattr(workers, "handle_summary")
     Settings(**{**payload, "workers": workers})
 

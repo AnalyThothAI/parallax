@@ -4,7 +4,6 @@ from hashlib import sha256
 
 from parallax.domains.asset_market.services.token_image_mirror import (
     TOKEN_IMAGE_MIRROR_MAX_BYTES,
-    TOKEN_IMAGE_MIRROR_RETRY_MS,
     TokenImageMirrorService,
     is_allowed_token_image_source_url,
 )
@@ -12,6 +11,7 @@ from parallax.domains.asset_market.services.token_image_mirror import (
 NOW_MS = 1_779_000_000_000
 GMGN_URL = "https://gmgn.ai/external-res/token-alpha.png"
 PNG_BYTES = b"\x89PNG\r\n\x1a\nunit-test"
+RETRY_MS = 123_456
 
 
 def test_allowed_token_image_source_urls_are_provider_scoped() -> None:
@@ -35,6 +35,7 @@ def test_mirror_marks_unsupported_when_magic_bytes_mismatch_media_type(tmp_path)
         repository=repo,
         app_home=tmp_path,
         http_client=_FakeImageClient(_FakeImageResponse(content=b"not an image", content_type="image/png")),
+        retry_ms=RETRY_MS,
     )
 
     result = service.mirror_source({"source_url": GMGN_URL}, now_ms=NOW_MS)
@@ -55,7 +56,7 @@ def test_mirror_marks_unsupported_when_magic_bytes_mismatch_media_type(tmp_path)
 def test_mirror_marks_unsupported_source_url_without_fetching(tmp_path) -> None:
     repo = _FakeTokenImageAssetRepository()
     client = _FakeImageClient(_FakeImageResponse(content=PNG_BYTES, content_type="image/png"))
-    service = TokenImageMirrorService(repository=repo, app_home=tmp_path, http_client=client)
+    service = TokenImageMirrorService(repository=repo, app_home=tmp_path, http_client=client, retry_ms=RETRY_MS)
 
     result = service.mirror_source({"source_url": "https://example.com/token.png"}, now_ms=NOW_MS)
 
@@ -78,6 +79,7 @@ def test_mirror_accepts_valid_image_bytes_when_content_type_is_missing(tmp_path)
         repository=repo,
         app_home=tmp_path,
         http_client=_FakeImageClient(_FakeImageResponse(content=PNG_BYTES, content_type=None)),
+        retry_ms=RETRY_MS,
     )
 
     result = service.mirror_source({"source_url": GMGN_URL}, now_ms=NOW_MS)
@@ -104,6 +106,7 @@ def test_mirror_uses_magic_bytes_when_provider_content_type_disagrees(tmp_path) 
         repository=repo,
         app_home=tmp_path,
         http_client=_FakeImageClient(_FakeImageResponse(content=PNG_BYTES, content_type="image/webp")),
+        retry_ms=RETRY_MS,
     )
 
     result = service.mirror_source({"source_url": GMGN_URL}, now_ms=NOW_MS)
@@ -130,6 +133,7 @@ def test_mirror_rejects_malformed_png_with_only_four_byte_prefix(tmp_path) -> No
         repository=repo,
         app_home=tmp_path,
         http_client=_FakeImageClient(_FakeImageResponse(content=b"\x89PNGbad", content_type="image/png")),
+        retry_ms=RETRY_MS,
     )
 
     result = service.mirror_source({"source_url": GMGN_URL}, now_ms=NOW_MS)
@@ -152,6 +156,7 @@ def test_mirror_marks_unsupported_when_response_is_oversized(tmp_path) -> None:
                 headers={"content-length": str(TOKEN_IMAGE_MIRROR_MAX_BYTES + 1)},
             )
         ),
+        retry_ms=RETRY_MS,
     )
 
     result = service.mirror_source({"source_url": GMGN_URL}, now_ms=NOW_MS)
@@ -173,6 +178,7 @@ def test_mirror_marks_unsupported_when_actual_body_is_oversized(tmp_path) -> Non
                 content_type="image/png",
             )
         ),
+        retry_ms=RETRY_MS,
     )
 
     result = service.mirror_source({"source_url": GMGN_URL}, now_ms=NOW_MS)
@@ -191,6 +197,7 @@ def test_mirror_marks_upstream_404_as_unsupported_without_retry(tmp_path) -> Non
         http_client=_FakeImageClient(
             _FakeImageResponse(content=b"not found", content_type="text/plain", status_code=404)
         ),
+        retry_ms=RETRY_MS,
     )
 
     result = service.mirror_source({"source_url": GMGN_URL}, now_ms=NOW_MS)
@@ -215,6 +222,7 @@ def test_mirror_marks_upstream_503_as_error_with_retry_backoff(tmp_path) -> None
         http_client=_FakeImageClient(
             _FakeImageResponse(content=b"temporarily unavailable", content_type="text/plain", status_code=503)
         ),
+        retry_ms=RETRY_MS,
     )
 
     result = service.mirror_source({"source_url": GMGN_URL}, now_ms=NOW_MS)
@@ -226,7 +234,7 @@ def test_mirror_marks_upstream_503_as_error_with_retry_backoff(tmp_path) -> None
         {
             "source_url": GMGN_URL,
             "now_ms": NOW_MS,
-            "retry_ms": TOKEN_IMAGE_MIRROR_RETRY_MS,
+            "retry_ms": RETRY_MS,
             "error_prefix": "image_fetch_failed",
         }
     ]
@@ -235,7 +243,7 @@ def test_mirror_marks_upstream_503_as_error_with_retry_backoff(tmp_path) -> None
 def test_mirror_writes_verified_image_atomically_and_marks_ready(tmp_path) -> None:
     repo = _FakeTokenImageAssetRepository()
     client = _FakeImageClient(_FakeImageResponse(content=PNG_BYTES, content_type="image/png"))
-    service = TokenImageMirrorService(repository=repo, app_home=tmp_path, http_client=client)
+    service = TokenImageMirrorService(repository=repo, app_home=tmp_path, http_client=client, retry_ms=RETRY_MS)
 
     result = service.mirror_source({"source_url": GMGN_URL}, now_ms=NOW_MS)
 
@@ -266,6 +274,7 @@ def test_mirror_marks_provider_fetch_failures_for_retry(tmp_path) -> None:
         repository=repo,
         app_home=tmp_path,
         http_client=_FailingImageClient(RuntimeError("tls handshake failed")),
+        retry_ms=RETRY_MS,
     )
 
     result = service.mirror_source({"source_url": GMGN_URL}, now_ms=NOW_MS)
@@ -276,7 +285,7 @@ def test_mirror_marks_provider_fetch_failures_for_retry(tmp_path) -> None:
         {
             "source_url": GMGN_URL,
             "now_ms": NOW_MS,
-            "retry_ms": TOKEN_IMAGE_MIRROR_RETRY_MS,
+            "retry_ms": RETRY_MS,
             "error_prefix": "image_fetch_failed",
         }
     ]

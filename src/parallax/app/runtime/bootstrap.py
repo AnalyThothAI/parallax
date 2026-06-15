@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 import time
 from collections.abc import Mapping
-from contextlib import suppress
-from dataclasses import dataclass, fields, is_dataclass
+from dataclasses import dataclass
 from threading import Thread
 from typing import Any
 
@@ -55,7 +53,6 @@ class Runtime:
     read_signals: Any | None = None
     read_notifications: Any | None = None
     ingest: Any | None = None
-    stock_quote_provider: Any | None = None
 
     def repositories(self):
         return self.db.api_session()
@@ -120,13 +117,10 @@ def bootstrap(settings: Settings, *, start_collector: bool = True) -> Runtime:
         for error in _cleanup_provider_roots_sync(providers, agent_execution_gateway, llm_gateway):
             exc.add_note(f"provider cleanup failed: {type(error).__name__}: {error}")
         if db is not None:
-            _close_db_pools(
-                db.api_pool,
-                db.worker_pool,
-                getattr(db, "lock_pool", None),
-                db.tool_pool,
-                db.wake_pool,
-            )
+            try:
+                _close_db_bundle_sync(db)
+            except Exception as cleanup_exc:
+                exc.add_note(f"db pool bundle cleanup failed: {type(cleanup_exc).__name__}: {cleanup_exc}")
         raise
     return runtime
 
@@ -148,7 +142,12 @@ def _assemble_runtime(
     evidence = PooledRepository(db.api_pool, EvidenceRepository)
     entities = PooledRepository(db.api_pool, EntityRepository)
     signals = PooledRepository(db.api_pool, SignalRepository)
-    notifications = PooledRepository(db.api_pool, NotificationRepository)
+    notifications = PooledRepository(
+        db.api_pool,
+        NotificationRepository,
+        running_timeout_ms=db.notification_delivery_running_timeout_ms,
+        stale_running_terminalization_batch_size=db.notification_delivery_stale_running_terminalization_batch_size,
+    )
     ingest = _PooledIngestStore(
         db,
         providers=providers.asset_market,
@@ -203,7 +202,6 @@ def _assemble_runtime(
         read_signals=signals,
         read_notifications=notifications,
         ingest=ingest,
-        stock_quote_provider=providers.macrodata.stock_quote_provider,
     )
     if worker_collector_enabled:
         factory = providers.ingestion.upstream_client_factory
@@ -217,8 +215,8 @@ class _PooledIngestStore:
         db: DBPoolBundle,
         *,
         providers: Any,
+        event_anchor_active_window_ms: int,
         now_ms: Any = None,
-        event_anchor_active_window_ms: int = 300_000,
     ):
         self.db = db
         self.event_anchor_active_window_ms = max(1, int(event_anchor_active_window_ms))
@@ -291,7 +289,7 @@ class _PooledIngestStore:
 def _ingest_service_for_repos(
     repos: Any,
     *,
-    event_anchor_active_window_ms: int = 300_000,
+    event_anchor_active_window_ms: int,
 ) -> IngestService:
     return IngestService(
         evidence=repos.evidence,
@@ -300,15 +298,15 @@ def _ingest_service_for_repos(
         registry=repos.registry,
         identity_evidence=repos.identity_evidence,
         token_intent_lookup=repos.token_intent_lookup,
-        token_evidence=getattr(repos, "token_evidence", None),
-        token_intents=getattr(repos, "token_intents", None),
-        intent_resolutions=getattr(repos, "intent_resolutions", None),
-        market_ticks=getattr(repos, "market_ticks", None),
+        token_evidence=repos.token_evidence,
+        token_intents=repos.token_intents,
+        intent_resolutions=repos.intent_resolutions,
+        discovery=repos.discovery,
+        market_ticks=repos.market_ticks,
         market_tick_current_dirty_targets=repos.market_tick_current_dirty_targets,
-        enriched_events=getattr(repos, "enriched_events", None),
-        event_anchor_jobs=getattr(repos, "event_anchor_jobs", None),
-        token_radar_dirty_targets=getattr(repos, "token_radar_dirty_targets", None),
-        token_radar_source_dirty_events=getattr(repos, "token_radar_source_dirty_events", None),
+        enriched_events=repos.enriched_events,
+        event_anchor_jobs=repos.event_anchor_jobs,
+        token_radar_source_dirty_events=repos.token_radar_source_dirty_events,
         event_anchor_active_window_ms=event_anchor_active_window_ms,
     )
 
@@ -323,95 +321,51 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
-async def _maybe_await(value: Any) -> Any:
-    if inspect.isawaitable(value):
-        return await value
-    return value
-
-
 async def _cleanup_runtime_providers(runtime: Runtime) -> list[Exception]:
     errors: list[Exception] = []
-    for provider in _provider_cleanup_targets(
-        runtime.providers,
-        runtime.stock_quote_provider,
-        runtime.agent_execution_gateway,
-        runtime.llm_gateway,
-    ):
-        close = getattr(provider, "aclose", None) or getattr(provider, "close", None)
-        if close is None:
-            continue
+    try:
+        await runtime.providers.aclose()
+    except Exception as exc:
+        errors.append(exc)
+    if runtime.agent_execution_gateway is not None:
         try:
-            await _maybe_await(close())
+            await runtime.agent_execution_gateway.aclose()
+        except Exception as exc:
+            errors.append(exc)
+    if runtime.llm_gateway is not None:
+        try:
+            await runtime.llm_gateway.aclose()
         except Exception as exc:
             errors.append(exc)
     return errors
 
 
-def _cleanup_provider_roots_sync(*roots: Any) -> list[Exception]:
+def _cleanup_provider_roots_sync(
+    providers: WiredProviders | None,
+    agent_execution_gateway: Any | None,
+    llm_gateway: LLMGateway | None,
+) -> list[Exception]:
     errors: list[Exception] = []
-    for provider in _provider_cleanup_targets(*roots):
-        close = getattr(provider, "aclose", None) or getattr(provider, "close", None)
-        if close is None:
-            continue
+    if providers is not None:
         try:
-            result = close()
-            if inspect.isawaitable(result):
-                _await_sync(result)
+            _await_sync(providers.aclose())
+        except Exception as exc:
+            errors.append(exc)
+    if agent_execution_gateway is not None:
+        try:
+            _await_sync(agent_execution_gateway.aclose())
+        except Exception as exc:
+            errors.append(exc)
+    if llm_gateway is not None:
+        try:
+            _await_sync(llm_gateway.aclose())
         except Exception as exc:
             errors.append(exc)
     return errors
 
 
-def _provider_cleanup_targets(*roots: Any) -> list[Any]:
-    seen: set[int] = set()
-    closable_seen: set[int] = set()
-    targets: list[Any] = []
-
-    def walk(value: Any) -> None:
-        if value is None or isinstance(value, str | bytes | int | float | bool):
-            return
-        if inspect.isclass(value) or inspect.ismodule(value) or inspect.isroutine(value):
-            return
-        object_id = id(value)
-        if object_id in seen:
-            return
-        seen.add(object_id)
-        if _has_close_method(value) and object_id not in closable_seen:
-            targets.append(value)
-            closable_seen.add(object_id)
-            return
-        if is_dataclass(value) and not isinstance(value, type):
-            for field in fields(value):
-                walk(getattr(value, field.name, None))
-            return
-        if isinstance(value, Mapping):
-            for item in value.values():
-                walk(item)
-            return
-        if isinstance(value, list | tuple | set | frozenset):
-            for item in value:
-                walk(item)
-            return
-        values = _object_values_for_cleanup(value)
-        for item in values:
-            walk(item)
-
-    for root in roots:
-        walk(root)
-    return targets
-
-
-def _object_values_for_cleanup(value: Any) -> list[Any]:
-    if hasattr(value, "__dict__"):
-        return list(vars(value).values())
-    slots = getattr(type(value), "__slots__", ())
-    if isinstance(slots, str):
-        slots = (slots,)
-    return [getattr(value, slot) for slot in slots if hasattr(value, slot)]
-
-
-def _has_close_method(value: Any) -> bool:
-    return callable(getattr(value, "aclose", None)) or callable(getattr(value, "close", None))
+def _close_db_bundle_sync(db: DBPoolBundle) -> None:
+    _await_sync(db.aclose())
 
 
 def _await_sync(awaitable: Any) -> Any:
@@ -433,14 +387,6 @@ def _await_sync(awaitable: Any) -> Any:
     if "error" in result:
         raise result["error"]
     return result.get("value")
-
-
-def _close_db_pools(*pools: Any) -> None:
-    for pool in pools:
-        close = getattr(pool, "close", None)
-        if close:
-            with suppress(Exception):
-                close()
 
 
 def _error_text(exc: BaseException) -> str:

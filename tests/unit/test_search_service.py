@@ -1,6 +1,22 @@
 import pytest
 
-from parallax.domains.token_intel.read_models.search_service import SearchCursorError, SearchService
+from parallax.domains.token_intel.read_models.search_service import (
+    SearchCursorError,
+    SearchScopeError,
+    SearchService,
+    SearchWindowError,
+)
+
+
+def test_search_requires_explicit_query_boundaries_before_repository_call():
+    query = FakeSearchQuery(route_hits=[])
+
+    with pytest.raises(TypeError):
+        SearchService(search_query=query).search("btc")
+
+    assert query.resolved_symbols == []
+    assert query.route_limits == []
+    assert query.target_limits == []
 
 
 def test_search_merges_target_and_lexical_hits_by_event_id():
@@ -11,7 +27,7 @@ def test_search_merges_target_and_lexical_hits_by_event_id():
         ]
     )
 
-    result = SearchService(search_query=query).search("macro market", limit=20)
+    result = SearchService(search_query=query).search("macro market", limit=20, scope="all", window="24h")
 
     assert result.ok is True
     assert len(result.items) == 1
@@ -28,8 +44,14 @@ def test_search_paginates_with_next_cursor():
         ]
     )
 
-    first = SearchService(search_query=query).search("btc", limit=1)
-    second = SearchService(search_query=query).search("btc", limit=1, cursor=first.page["next_cursor"])
+    first = SearchService(search_query=query).search("btc", limit=1, scope="all", window="24h")
+    second = SearchService(search_query=query).search(
+        "btc",
+        limit=1,
+        scope="all",
+        window="24h",
+        cursor=first.page["next_cursor"],
+    )
 
     assert first.page["has_more"] is True
     assert first.items[0]["event"]["event_id"] == "event-1"
@@ -45,8 +67,14 @@ def test_search_target_cursor_does_not_expand_route_window_from_the_top():
         ]
     )
 
-    first = SearchService(search_query=query).search("btc", limit=50)
-    SearchService(search_query=query).search("btc", limit=50, cursor=first.page["next_cursor"])
+    first = SearchService(search_query=query).search("btc", limit=50, scope="all", window="24h")
+    SearchService(search_query=query).search(
+        "btc",
+        limit=50,
+        scope="all",
+        window="24h",
+        cursor=first.page["next_cursor"],
+    )
 
     assert query.target_limits == [51, 51]
     assert query.target_after_values[1] == {
@@ -60,15 +88,43 @@ def test_search_rejects_invalid_cursor():
     query = FakeSearchQuery(route_hits=[])
 
     with pytest.raises(SearchCursorError):
-        SearchService(search_query=query).search("btc", cursor="not-a-cursor")
+        SearchService(search_query=query).search(
+            "btc",
+            limit=20,
+            scope="all",
+            window="24h",
+            cursor="not-a-cursor",
+        )
+
+
+def test_search_rejects_invalid_scope_before_repository_call():
+    query = FakeSearchQuery(route_hits=[])
+
+    with pytest.raises(SearchScopeError):
+        SearchService(search_query=query).search("btc", limit=20, scope="everything", window="24h")
+
+    assert query.resolved_symbols == []
+    assert query.route_limits == []
+    assert query.target_limits == []
+
+
+def test_search_rejects_invalid_window_before_repository_call():
+    query = FakeSearchQuery(route_hits=[])
+
+    with pytest.raises(SearchWindowError):
+        SearchService(search_query=query).search("btc", limit=20, scope="all", window="7d")
+
+    assert query.resolved_symbols == []
+    assert query.route_limits == []
+    assert query.target_limits == []
 
 
 def test_search_routes_symbol_and_cashtag_to_same_target_candidates():
     bare_query = FakeSearchQuery(route_hits=[])
     cashtag_query = FakeSearchQuery(route_hits=[])
 
-    SearchService(search_query=bare_query).search("btc", limit=20)
-    SearchService(search_query=cashtag_query).search("$btc", limit=20)
+    SearchService(search_query=bare_query).search("btc", limit=20, scope="all", window="24h")
+    SearchService(search_query=cashtag_query).search("$btc", limit=20, scope="all", window="24h")
 
     assert bare_query.resolved_symbols == ["BTC"]
     assert cashtag_query.resolved_symbols == ["BTC"]
@@ -77,16 +133,17 @@ def test_search_routes_symbol_and_cashtag_to_same_target_candidates():
 def test_search_routes_symbol_or_query_to_targets():
     query = FakeSearchQuery(target_hits=[hit("event-1", route="target", route_rank=1, received_at_ms=3000)])
 
-    result = SearchService(search_query=query).search("btc OR eth", limit=20)
+    result = SearchService(search_query=query).search("btc OR eth", limit=20, scope="all", window="24h")
 
     assert result.items[0]["event"]["event_id"] == "event-1"
-    assert query.resolved_symbols == ["BTC", "ETH"]
+    assert query.resolved_symbol_batches == [("BTC", "ETH")]
+    assert query.resolved_symbols == []
 
 
 def test_search_expands_known_symbol_aliases_for_lexical_route():
     query = FakeSearchQuery(route_hits=[])
 
-    result = SearchService(search_query=query).search("bitcoin", limit=20)
+    result = SearchService(search_query=query).search("bitcoin", limit=20, scope="all", window="24h")
 
     assert result.query["lexical_query"] == "btc OR bitcoin OR bitcoins OR 比特币 OR xbt"
     assert query.resolved_symbols == ["BTC"]
@@ -95,7 +152,7 @@ def test_search_expands_known_symbol_aliases_for_lexical_route():
 def test_search_fuzzy_alias_typo_routes_to_target():
     query = FakeSearchQuery(target_hits=[hit("event-1", route="target", route_rank=1, received_at_ms=3000)])
 
-    result = SearchService(search_query=query).search("bitcon", limit=20)
+    result = SearchService(search_query=query).search("bitcon", limit=20, scope="all", window="24h")
 
     assert result.items[0]["event"]["event_id"] == "event-1"
     assert query.resolved_symbols == ["BITCON", "BTC"]
@@ -107,6 +164,7 @@ def test_search_applies_requested_window_to_target_route():
     SearchService(search_query=query).search(
         "btc",
         limit=20,
+        scope="all",
         window="24h",
         now_ms=1_700_086_400_000,
     )
@@ -120,6 +178,7 @@ def test_search_applies_requested_window_to_keyword_route():
     SearchService(search_query=query).search(
         "挖矿",
         limit=20,
+        scope="all",
         window="4h",
         now_ms=1_700_014_400_000,
     )
@@ -132,6 +191,7 @@ class FakeSearchQuery:
         self._route_hits = route_hits or []
         self._target_hits = target_hits if target_hits is not None else self._route_hits
         self.resolved_symbols: list[str | None] = []
+        self.resolved_symbol_batches: list[tuple[str, ...]] = []
         self.route_intents = []
         self.route_limits: list[int] = []
         self.target_limits: list[int] = []
@@ -153,6 +213,14 @@ class FakeSearchQuery:
                 }
             ]
         return []
+
+    def resolve_symbols(self, symbols):
+        self.resolved_symbol_batches.append(tuple(symbols))
+        candidates = []
+        for symbol in symbols:
+            candidates.extend(self.resolve_targets(type("Intent", (), {"symbol": symbol})()))
+        self.resolved_symbols.clear()
+        return candidates
 
     def route_hits(self, *, intent, target_candidates, watched_only, route_limit, since_ms):
         self.route_intents.append(intent)

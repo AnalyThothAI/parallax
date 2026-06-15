@@ -5,9 +5,10 @@ import json
 import re
 import uuid
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import asdict
-from typing import Any
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from contextlib import AbstractContextManager
+from functools import wraps
+from typing import Any, cast
 
 from psycopg.types.json import Jsonb
 
@@ -17,14 +18,15 @@ from parallax.domains.news_intel._constants import (
     NEWS_PAGE_PROJECTION_VERSION,
     NEWS_STORY_IDENTITY_VERSION,
 )
-from parallax.domains.news_intel.services.news_canonical_identity import (
+from parallax.domains.news_intel.types import NewsSourceConfig
+from parallax.domains.news_intel.types.news_canonical_identity import (
     CANONICAL_POLICY_VERSION,
     PROVIDER_GLOBAL_ARTICLE_ID_TYPES,
     CanonicalIdentity,
     canonical_identity_for_observation,
     provider_global_article_key,
 )
-from parallax.domains.news_intel.types import NewsSourceConfig
+from parallax.domains.news_intel.types.news_extraction import NewsEntity, NewsFactCandidate, NewsTokenMention
 from parallax.domains.news_intel.types.news_item_agent_admission import NewsItemAgentAdmission
 from parallax.domains.news_intel.types.news_item_brief_contract import (
     current_news_item_brief_sql_predicate,
@@ -45,7 +47,6 @@ from parallax.domains.news_intel.types.source_classification import normalize_st
 from parallax.domains.news_intel.types.source_quality_policy import window_ms_for_label
 from parallax.platform.current_read_model_payload_hash import stable_current_payload_hash
 
-_DEFAULT_SOURCE_CLAIM_LEASE_MS = 60_000
 _REDACTED = "<redacted>"
 _SECRET_ERROR_KEYS = (
     "api[_-]?key",
@@ -180,6 +181,31 @@ _CURRENT_NEWS_ITEM_BRIEF_STORY_CURRENT_BRIEF_SQL = current_news_item_brief_sql_p
 _CURRENT_NEWS_ITEM_BRIEF_BRIEFS_SQL = current_news_item_brief_sql_predicate("briefs")
 
 
+def _news_repository_transaction(conn: Any) -> AbstractContextManager[Any]:
+    try:
+        transaction = conn.transaction
+    except AttributeError as exc:
+        raise RuntimeError("news_repository_transaction_required") from exc
+    if not callable(transaction):
+        raise RuntimeError("news_repository_transaction_required")
+    return cast(AbstractContextManager[Any], transaction())
+
+
+def _news_repository_write[NewsRepositoryWrite: Callable[..., Any]](
+    method: NewsRepositoryWrite,
+) -> NewsRepositoryWrite:
+    @wraps(method)
+    def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
+        if not bool(kwargs.get("commit", True)):
+            return method(self, *args, **kwargs)
+        call_kwargs = dict(kwargs)
+        call_kwargs["commit"] = False
+        with _news_repository_transaction(self.conn):
+            return method(self, *args, **call_kwargs)
+
+    return cast(NewsRepositoryWrite, wrapper)
+
+
 class NewsRepository:
     def __init__(self, conn: Any):
         self.conn = conn
@@ -200,6 +226,7 @@ class NewsRepository:
             return ()
         return _quoted_constraint_values(str(row["constraint_def"] or ""))
 
+    @_news_repository_write
     def upsert_source(
         self,
         *,
@@ -247,11 +274,9 @@ class NewsRepository:
             status = "updated" if _source_material_changed(existing, payload) else "duplicate"
         if status == "duplicate":
             row = dict(existing)
-            if commit:
-                self.conn.commit()
             return {**row, "status": status}
 
-        row = self.conn.execute(
+        cursor = self.conn.execute(
             """
             INSERT INTO news_sources (
               source_id, provider_type, feed_url, source_domain, source_name, source_role,
@@ -297,11 +322,12 @@ class NewsRepository:
                 int(now_ms),
                 int(now_ms),
             ),
-        ).fetchone()
-        if commit:
-            self.conn.commit()
-        return {**dict(row), "status": status}
+        )
+        row = cursor.fetchone()
+        returned_row = _required_returning_row(cursor, row)
+        return {**returned_row, "status": status}
 
+    @_news_repository_write
     def reconcile_configured_sources(
         self,
         sources: Iterable[NewsSourceConfig | Mapping[str, Any]],
@@ -322,21 +348,18 @@ class NewsRepository:
                 commit=False,
             )
         )
-        if commit:
-            self.conn.commit()
         return rows
 
-    def disable_unconfigured_source_rows(
+    def _disable_unconfigured_source_rows(
         self,
         *,
         configured_source_ids: Sequence[str] | None = None,
         active_source_ids: Sequence[str] | None = None,
         now_ms: int,
-        commit: bool = True,
-    ) -> list[dict[str, Any]]:
+    ) -> tuple[list[dict[str, Any]], int]:
         source_ids = configured_source_ids if configured_source_ids is not None else active_source_ids
         normalized_ids = [str(source_id) for source_id in (source_ids or [])]
-        rows = self.conn.execute(
+        cursor = self.conn.execute(
             """
             UPDATE news_sources
                SET enabled = false,
@@ -347,11 +370,28 @@ class NewsRepository:
             RETURNING *
             """,
             (int(now_ms), normalized_ids),
-        ).fetchall()
-        if commit:
-            self.conn.commit()
-        return [{**dict(row), "status": "disabled"} for row in rows]
+        )
+        rows = cursor.fetchall()
+        disabled_count = _returned_rowcount(cursor, rows)
+        return [{**dict(row), "status": "disabled"} for row in rows], disabled_count
 
+    @_news_repository_write
+    def disable_unconfigured_source_rows(
+        self,
+        *,
+        configured_source_ids: Sequence[str] | None = None,
+        active_source_ids: Sequence[str] | None = None,
+        now_ms: int,
+        commit: bool = True,
+    ) -> list[dict[str, Any]]:
+        rows, _disabled_count = self._disable_unconfigured_source_rows(
+            configured_source_ids=configured_source_ids,
+            active_source_ids=active_source_ids,
+            now_ms=now_ms,
+        )
+        return rows
+
+    @_news_repository_write
     def disable_unconfigured_sources(
         self,
         *,
@@ -360,15 +400,12 @@ class NewsRepository:
         now_ms: int,
         commit: bool = True,
     ) -> int:
-        rows = self.disable_unconfigured_source_rows(
+        _disabled_rows, disabled_count = self._disable_unconfigured_source_rows(
             configured_source_ids=configured_source_ids,
             active_source_ids=active_source_ids,
             now_ms=now_ms,
-            commit=False,
         )
-        if commit:
-            self.conn.commit()
-        return len(rows)
+        return disabled_count
 
     def list_news_item_ids_for_sources(self, *, source_ids: Sequence[str]) -> list[str]:
         normalized_ids = list(dict.fromkeys(str(source_id) for source_id in source_ids if str(source_id)))
@@ -412,15 +449,16 @@ class NewsRepository:
         ).fetchall()
         return [str(row["news_item_id"]) for row in rows]
 
+    @_news_repository_write
     def claim_due_sources(
         self,
         *,
         now_ms: int,
         limit: int,
-        claim_lease_ms: int = _DEFAULT_SOURCE_CLAIM_LEASE_MS,
+        claim_lease_ms: int,
         commit: bool = True,
     ) -> list[dict[str, Any]]:
-        rows = self.conn.execute(
+        cursor = self.conn.execute(
             """
             WITH due AS (
               SELECT source_id
@@ -444,21 +482,23 @@ class NewsRepository:
                 int(now_ms) + max(1, int(claim_lease_ms)),
                 int(now_ms),
             ),
-        ).fetchall()
-        if commit:
-            self.conn.commit()
+        )
+        rows = cursor.fetchall()
+        _returned_rowcount(cursor, rows)
         return [dict(row) for row in rows]
 
+    @_news_repository_write
     def start_fetch_run(self, *, source_id: str, started_at_ms: int, commit: bool = True) -> str:
         fetch_run_id = f"news-fetch-run-{uuid.uuid4().hex}"
-        self.conn.execute(
+        cursor = self.conn.execute(
             """
             INSERT INTO news_fetch_runs (fetch_run_id, source_id, started_at_ms, status)
             VALUES (%s, %s, %s, 'running')
             """,
             (fetch_run_id, source_id, int(started_at_ms)),
         )
-        self.conn.execute(
+        _required_rowcount(cursor, expected=1)
+        cursor = self.conn.execute(
             """
             UPDATE news_sources
                SET last_fetch_at_ms = %s,
@@ -467,10 +507,10 @@ class NewsRepository:
             """,
             (int(started_at_ms), int(started_at_ms), source_id),
         )
-        if commit:
-            self.conn.commit()
+        _required_rowcount(cursor, expected=1)
         return fetch_run_id
 
+    @_news_repository_write
     def finish_fetch_run(
         self,
         *,
@@ -494,7 +534,7 @@ class NewsRepository:
         inserted = _first_int(inserted_count, items_inserted)
         updated = _first_int(updated_count, items_updated)
         duplicates = _first_int(duplicate_count)
-        row = self.conn.execute(
+        cursor = self.conn.execute(
             """
             UPDATE news_fetch_runs
                SET finished_at_ms = %s,
@@ -521,7 +561,9 @@ class NewsRepository:
                 _json(dict(extra_json or {})),
                 fetch_run_id,
             ),
-        ).fetchone()
+        )
+        row = cursor.fetchone()
+        returned_row = _required_returning_row(cursor, row)
         if status == "success":
             self.conn.execute(
                 """
@@ -547,10 +589,9 @@ class NewsRepository:
                 """,
                 (_compact_error(error), int(finished_at_ms), int(finished_at_ms), source_id),
             )
-        if commit:
-            self.conn.commit()
-        return dict(row)
+        return returned_row
 
+    @_news_repository_write
     def update_source_http_cache(
         self,
         *,
@@ -575,8 +616,6 @@ class NewsRepository:
                 source_id,
             ),
         )
-        if commit:
-            self.conn.commit()
 
     def source_sync_cursor(self, source_id: str) -> dict[str, Any]:
         row = self.conn.execute(
@@ -597,6 +636,7 @@ class NewsRepository:
             cursor["diagnostics"] = diagnostics
         return cursor
 
+    @_news_repository_write
     def update_source_sync_state(
         self,
         source_id: str,
@@ -630,9 +670,8 @@ class NewsRepository:
                 str(source_id),
             ),
         )
-        if commit:
-            self.conn.commit()
 
+    @_news_repository_write
     def upsert_provider_item(
         self,
         *,
@@ -754,8 +793,6 @@ class NewsRepository:
                 or existing["provider_published_at_ms"] != normalized_published_at_ms
             )
             if not material_changed:
-                if commit:
-                    self.conn.commit()
                 return {
                     **dict(existing),
                     "status": "duplicate",
@@ -766,7 +803,7 @@ class NewsRepository:
         provider_item_id = (
             str(existing["provider_item_id"]) if existing is not None else f"news-provider-item-{uuid.uuid4().hex}"
         )
-        row = self.conn.execute(
+        cursor = self.conn.execute(
             """
             INSERT INTO news_provider_items (
               provider_item_id, source_id, fetch_run_id, source_item_key, canonical_url,
@@ -828,11 +865,12 @@ class NewsRepository:
                 normalized_published_at_ms,
                 normalized_observed_at_ms,
             ),
-        ).fetchone()
-        if commit:
-            self.conn.commit()
-        return {**dict(row), "status": status, "incoming_provider_payload_status": incoming_payload_status}
+        )
+        row = cursor.fetchone()
+        returned_row = _required_returning_row(cursor, row)
+        return {**returned_row, "status": status, "incoming_provider_payload_status": incoming_payload_status}
 
+    @_news_repository_write
     def upsert_canonical_news_item(
         self,
         *,
@@ -853,26 +891,6 @@ class NewsRepository:
         provider_payload_status: str | None = None,
         commit: bool = True,
     ) -> dict[str, Any]:
-        if commit and bool(getattr(self.conn, "autocommit", False)):
-            with self.conn.transaction():
-                return self.upsert_canonical_news_item(
-                    provider_item_id=provider_item_id,
-                    canonical_identity=canonical_identity,
-                    canonical_url=canonical_url,
-                    title=title,
-                    summary=summary,
-                    body_text=body_text,
-                    language=language,
-                    published_at_ms=published_at_ms,
-                    fetched_at_ms=fetched_at_ms,
-                    content_hash=content_hash,
-                    title_fingerprint=title_fingerprint,
-                    now_ms=now_ms,
-                    provider_signal=provider_signal,
-                    provider_token_impacts=provider_token_impacts,
-                    provider_payload_status=provider_payload_status,
-                    commit=False,
-                )
         item_published_at_ms = int(published_at_ms if published_at_ms is not None else fetched_at_ms)
         provider_signal_payload = dict(provider_signal or {})
         provider_token_impacts_payload = [dict(item) for item in provider_token_impacts or []]
@@ -1090,7 +1108,7 @@ class NewsRepository:
             if existing_edge is not None and str(existing_edge["news_item_id"]) != item_id
             else None
         )
-        row = self.conn.execute(
+        cursor = self.conn.execute(
             """
             INSERT INTO news_items (
               news_item_id, provider_item_id, source_id, source_domain, canonical_url,
@@ -1205,7 +1223,9 @@ class NewsRepository:
                 "updated_at_ms": int(now_ms),
                 "replace_representative": replace_representative,
             },
-        ).fetchone()
+        )
+        row = cursor.fetchone()
+        returned_row = _required_returning_row(cursor, row)
         edge_evidence = {
             **dict(identity.evidence),
             "provider_article_key": provider_article_key or None,
@@ -1225,7 +1245,7 @@ class NewsRepository:
             },
         }
         edge_payload = {
-            "news_item_id": str(row["news_item_id"]),
+            "news_item_id": str(returned_row["news_item_id"]),
             "source_id": observation_source_id,
             "provider_article_key": provider_article_key,
             "match_type": identity.match_type,
@@ -1233,7 +1253,7 @@ class NewsRepository:
             "policy_version": CANONICAL_POLICY_VERSION,
             "evidence_json": edge_evidence,
         }
-        self.conn.execute(
+        cursor = self.conn.execute(
             """
             INSERT INTO news_item_observation_edges (
               provider_item_id, news_item_id, source_id, provider_article_key, match_type,
@@ -1263,11 +1283,12 @@ class NewsRepository:
                 int(now_ms),
             ),
         )
+        _required_rowcount(cursor, expected=1)
         provider_article_remapped_old_item_ids: list[str] = []
         if provider_article_key and promotes_provider_article_identity:
             provider_article_remapped_old_item_ids = self._remap_provider_article_edges_to_news_item(
                 provider_article_key=provider_article_key,
-                news_item_id=str(row["news_item_id"]),
+                news_item_id=str(returned_row["news_item_id"]),
                 now_ms=now_ms,
                 remap_reason="hard_canonical_url" if hard_url_identity else "ready_content_hash",
             )
@@ -1275,14 +1296,17 @@ class NewsRepository:
         if hard_url_identity:
             material_remapped_old_item_ids = self._remap_material_duplicate_edges_to_news_item(
                 source_id=observation_source_id,
-                news_item_id=str(row["news_item_id"]),
+                news_item_id=str(returned_row["news_item_id"]),
                 canonical_item_key=identity.canonical_item_key,
                 title=str(title),
                 published_at_ms=item_published_at_ms,
                 provider_token_impacts=provider_token_impacts_payload,
                 now_ms=now_ms,
             )
-        row = self._refresh_news_item_observation_summary(news_item_id=str(row["news_item_id"]), now_ms=now_ms)
+        row = self._refresh_news_item_observation_summary(
+            news_item_id=str(returned_row["news_item_id"]),
+            now_ms=now_ms,
+        )
         aggregate_changed = existing is not None and _news_item_aggregate_changed(existing, row)
         edge_changed = (
             existing_edge is None
@@ -1317,6 +1341,7 @@ class NewsRepository:
             self._refresh_news_item_observation_summary(
                 news_item_id=old_news_item_id,
                 now_ms=now_ms,
+                required=False,
             )
             if self._news_item_has_observation_edges(news_item_id=old_news_item_id):
                 self._reselect_news_item_representative_from_edges(
@@ -1354,8 +1379,6 @@ class NewsRepository:
         if content_changed:
             self._clear_item_scoped_derived_facts(news_item_id=item_id)
             self.mark_news_items_for_reprocessing(news_item_ids=[item_id], now_ms=now_ms, commit=False)
-        if commit:
-            self.conn.commit()
         return {
             **dict(row),
             "status": status,
@@ -1556,7 +1579,7 @@ class NewsRepository:
             return []
 
         placeholders = ", ".join(["%s"] * len(old_news_item_ids))
-        rows = self.conn.execute(
+        cursor = self.conn.execute(
             f"""
             WITH remapped AS (
               SELECT provider_item_id, news_item_id AS old_news_item_id
@@ -1598,8 +1621,11 @@ class NewsRepository:
                 int(now_ms),
                 int(now_ms),
             ),
-        ).fetchall()
-        return [str(row["old_news_item_id"]) for row in rows]
+        )
+        rows = cursor.fetchall()
+        _returned_rowcount(cursor, rows)
+        old_item_ids = [str(row["old_news_item_id"]) for row in rows]
+        return old_item_ids
 
     def _remap_provider_article_edges_to_news_item(
         self,
@@ -1609,7 +1635,7 @@ class NewsRepository:
         now_ms: int,
         remap_reason: str = "ready_content_hash",
     ) -> list[str]:
-        rows = self.conn.execute(
+        cursor = self.conn.execute(
             """
             WITH remapped AS (
               SELECT provider_item_id, news_item_id AS old_news_item_id
@@ -1646,11 +1672,20 @@ class NewsRepository:
                 int(now_ms),
                 int(now_ms),
             ),
-        ).fetchall()
-        return [str(row["old_news_item_id"]) for row in rows]
+        )
+        rows = cursor.fetchall()
+        _returned_rowcount(cursor, rows)
+        old_item_ids = [str(row["old_news_item_id"]) for row in rows]
+        return old_item_ids
 
-    def _refresh_news_item_observation_summary(self, *, news_item_id: str, now_ms: int) -> dict[str, Any]:
-        row = self.conn.execute(
+    def _refresh_news_item_observation_summary(
+        self,
+        *,
+        news_item_id: str,
+        now_ms: int,
+        required: bool = True,
+    ) -> dict[str, Any]:
+        cursor = self.conn.execute(
             """
             WITH edge_summary AS (
               SELECT
@@ -1682,17 +1717,14 @@ class NewsRepository:
             RETURNING items.*
             """,
             (news_item_id, int(now_ms)),
-        ).fetchone()
-        if row is not None:
-            return dict(row)
-        fallback = self.conn.execute(
-            "SELECT * FROM news_items WHERE news_item_id = %s",
-            (news_item_id,),
-        ).fetchone()
-        return dict(fallback) if fallback is not None else {}
+        )
+        row = cursor.fetchone()
+        if required:
+            return _required_returning_row(cursor, row)
+        return _optional_returning_row(cursor, row) or {}
 
     def _delete_zero_edge_news_item(self, *, news_item_id: str) -> bool:
-        row = self.conn.execute(
+        cursor = self.conn.execute(
             """
             DELETE FROM news_items AS items
              WHERE items.news_item_id = %s
@@ -1704,8 +1736,11 @@ class NewsRepository:
             RETURNING items.news_item_id
             """,
             (news_item_id,),
-        ).fetchone()
-        return row is not None
+        )
+        row = cursor.fetchone()
+        rows = [row] if row is not None else []
+        deleted_count = _returned_rowcount(cursor, rows)
+        return deleted_count > 0
 
     def _lock_news_item_for_edge_remap_cleanup(self, *, news_item_id: str) -> bool:
         row = self.conn.execute(
@@ -1927,7 +1962,7 @@ class NewsRepository:
         )
 
     def _reselect_news_item_representative_from_edges(self, *, news_item_id: str, now_ms: int) -> dict[str, Any]:
-        row = self.conn.execute(
+        cursor = self.conn.execute(
             """
             WITH representative_edge AS (
               SELECT
@@ -2009,12 +2044,15 @@ class NewsRepository:
             RETURNING items.*
             """,
             (news_item_id, int(now_ms), news_item_id),
-        ).fetchone()
-        return dict(row) if row is not None else {}
+        )
+        row = cursor.fetchone()
+        returned_row = _optional_returning_row(cursor, row)
+        return returned_row or {}
 
+    @_news_repository_write
     def insert_news_item_agent_run(self, **payload: Any) -> dict[str, Any]:
-        commit = bool(payload.pop("commit", True))
-        row = self.conn.execute(
+        payload.pop("commit", None)
+        cursor = self.conn.execute(
             """
             INSERT INTO news_item_agent_runs (
               run_id, news_item_id, provider, model, backend, execution_trace_id, workflow_name,
@@ -2036,14 +2074,15 @@ class NewsRepository:
             RETURNING *
             """,
             _agent_run_payload(payload),
-        ).fetchone()
-        if commit:
-            self.conn.commit()
-        return dict(row)
+        )
+        row = cursor.fetchone()
+        returned_row = _required_returning_row(cursor, row)
+        return returned_row
 
+    @_news_repository_write
     def upsert_news_item_agent_brief(self, **payload: Any) -> dict[str, Any]:
-        commit = bool(payload.pop("commit", True))
-        row = self.conn.execute(
+        payload.pop("commit", None)
+        cursor = self.conn.execute(
             """
             INSERT INTO news_item_agent_briefs (
               news_item_id, agent_run_id, status, direction, decision_class, brief_json,
@@ -2072,10 +2111,10 @@ class NewsRepository:
             RETURNING *
             """,
             _agent_brief_payload(payload),
-        ).fetchone()
-        if commit:
-            self.conn.commit()
-        return dict(row)
+        )
+        row = cursor.fetchone()
+        returned_row = _required_returning_row(cursor, row)
+        return returned_row
 
     def get_news_item_agent_brief(self, news_item_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(
@@ -2106,6 +2145,7 @@ class NewsRepository:
         ).fetchall()
         return [str(row["news_item_id"]) for row in rows]
 
+    @_news_repository_write
     def clear_current_briefs_outside_schema(
         self,
         *,
@@ -2122,7 +2162,7 @@ class NewsRepository:
         else:
             row_filter = ""
             params = (str(required_schema_version),)
-        rows = self.conn.execute(
+        cursor = self.conn.execute(
             f"""
             DELETE FROM news_item_agent_briefs
              WHERE COALESCE(NULLIF(schema_version, ''), '') <> %s
@@ -2130,10 +2170,11 @@ class NewsRepository:
              RETURNING news_item_id
             """,
             params,
-        ).fetchall()
-        if commit:
-            self.conn.commit()
-        return [str(row["news_item_id"]) for row in rows]
+        )
+        rows = cursor.fetchall()
+        _returned_rowcount(cursor, rows)
+        cleared_ids = [str(row["news_item_id"]) for row in rows]
+        return cleared_ids
 
     def list_page_source_items(self, *, limit: int, cursor: str | None = None) -> list[dict[str, Any]]:
         return self.list_news_page_rows(limit=limit, cursor=cursor)
@@ -2221,12 +2262,7 @@ class NewsRepository:
             """,
             (NEWS_PAGE_PROJECTION_VERSION, max(0, int(limit))),
         ).fetchall()
-        payloads: list[dict[str, Any]] = []
-        for row in rows:
-            payload = dict(row)
-            payload["agent_brief"] = _public_agent_brief_payload(payload.get("agent_brief"))
-            payloads.append(payload)
-        return payloads
+        return [_projected_news_page_row_payload(row, require_full_sections=False) for row in rows]
 
     def _list_projected_news_page_rows(
         self,
@@ -2314,13 +2350,9 @@ class NewsRepository:
                 max(0, int(limit)),
             ),
         ).fetchall()
-        payloads: list[dict[str, Any]] = []
-        for row in rows:
-            payload = dict(row)
-            payload["agent_brief"] = _public_agent_brief_payload(payload.get("agent_brief"))
-            payloads.append(payload)
-        return payloads
+        return [_projected_news_page_row_payload(row, require_full_sections=True) for row in rows]
 
+    @_news_repository_write
     def claim_unprocessed_items(
         self,
         *,
@@ -2331,7 +2363,7 @@ class NewsRepository:
         commit: bool = True,
     ) -> list[dict[str, Any]]:
         lease_deadline = int(now_ms) + max(1, int(lease_ms))
-        rows = self.conn.execute(
+        cursor = self.conn.execute(
             """
             WITH picked AS (
               SELECT news_item_id,
@@ -2417,16 +2449,18 @@ class NewsRepository:
                 lease_deadline,
                 int(now_ms),
             ),
-        ).fetchall()
-        if commit:
-            self.conn.commit()
-        return [dict(row) for row in rows]
+        )
+        rows = cursor.fetchall()
+        _returned_rowcount(cursor, rows)
+        claimed_rows = [dict(row) for row in rows]
+        return claimed_rows
 
+    @_news_repository_write
     def replace_item_entities(
         self,
         *,
         news_item_id: str,
-        entities: Sequence[Any],
+        entities: Sequence[NewsEntity],
         commit: bool = True,
     ) -> None:
         self.conn.execute("DELETE FROM news_item_entities WHERE news_item_id = %s", (news_item_id,))
@@ -2454,14 +2488,13 @@ class NewsRepository:
                 """,
                 _entity_payload(entity),
             )
-        if commit:
-            self.conn.commit()
 
+    @_news_repository_write
     def replace_token_mentions(
         self,
         *,
         news_item_id: str,
-        mentions: Sequence[Any],
+        mentions: Sequence[NewsTokenMention],
         commit: bool = True,
     ) -> None:
         self.conn.execute("DELETE FROM news_token_mentions WHERE news_item_id = %s", (news_item_id,))
@@ -2495,14 +2528,13 @@ class NewsRepository:
                 """,
                 _mention_payload(mention),
             )
-        if commit:
-            self.conn.commit()
 
+    @_news_repository_write
     def replace_fact_candidates(
         self,
         *,
         news_item_id: str,
-        candidates: Sequence[Any],
+        candidates: Sequence[NewsFactCandidate],
         commit: bool = True,
     ) -> None:
         self.conn.execute("DELETE FROM news_fact_candidates WHERE news_item_id = %s", (news_item_id,))
@@ -2538,9 +2570,8 @@ class NewsRepository:
                 """,
                 _fact_payload(candidate),
             )
-        if commit:
-            self.conn.commit()
 
+    @_news_repository_write
     def mark_item_processed(
         self,
         *,
@@ -2595,10 +2626,9 @@ class NewsRepository:
                     int(processing_attempts),
                 ),
             )
-        if commit:
-            self.conn.commit()
-        return int(getattr(cursor, "rowcount", 0) or 0)
+        return _cursor_rowcount(cursor)
 
+    @_news_repository_write
     def mark_news_items_for_reprocessing(
         self,
         *,
@@ -2624,10 +2654,9 @@ class NewsRepository:
             """,
             (int(now_ms), scoped_ids),
         )
-        if commit:
-            self.conn.commit()
-        return int(getattr(cursor, "rowcount", 0) or 0)
+        return _cursor_rowcount(cursor)
 
+    @_news_repository_write
     def update_item_content_classification(
         self,
         *,
@@ -2655,15 +2684,14 @@ class NewsRepository:
                 str(news_item_id),
             ),
         )
-        if commit:
-            self.conn.commit()
 
+    @_news_repository_write
     def update_item_market_scope_and_story_identity(
         self,
         *,
         news_item_id: str,
-        market_scope: NewsMarketScope | Mapping[str, object],
-        story_identity: NewsStoryIdentity | Mapping[str, object],
+        market_scope: NewsMarketScope,
+        story_identity: NewsStoryIdentity,
         now_ms: int,
         commit: bool = True,
     ) -> None:
@@ -2688,23 +2716,22 @@ class NewsRepository:
                 str(news_item_id),
             ),
         )
-        if commit:
-            self.conn.commit()
 
+    @_news_repository_write
     def update_item_market_scope_and_agent_admission(
         self,
         *,
         news_item_id: str,
-        market_scope: NewsMarketScope | Mapping[str, object],
-        story_identity: NewsStoryIdentity | Mapping[str, object],
-        admission: NewsItemAgentAdmission | Mapping[str, object],
+        market_scope: NewsMarketScope,
+        story_identity: NewsStoryIdentity,
+        admission: NewsItemAgentAdmission,
         now_ms: int,
         commit: bool = True,
     ) -> int:
         market_scope_payload = _market_scope_payload(market_scope)
         story_identity_payload = _story_identity_payload(story_identity)
         admission_payload = _agent_admission_payload(admission)
-        representative_news_item_id = str(admission_payload.get("representative_news_item_id") or news_item_id)
+        representative_news_item_id = str(admission_payload["representative_news_item_id"])
         cursor = self.conn.execute(
             """
             UPDATE news_items
@@ -2736,15 +2763,14 @@ class NewsRepository:
                 str(news_item_id),
             ),
         )
-        if commit:
-            self.conn.commit()
-        return int(getattr(cursor, "rowcount", 0) or 0)
+        return _cursor_rowcount(cursor)
 
+    @_news_repository_write
     def update_item_agent_admission(
         self,
         *,
         news_item_id: str,
-        admission: Any,
+        admission: NewsItemAgentAdmission,
         now_ms: int,
         commit: bool = True,
     ) -> int:
@@ -2772,9 +2798,7 @@ class NewsRepository:
                 str(news_item_id),
             ),
         )
-        if commit:
-            self.conn.commit()
-        return int(getattr(cursor, "rowcount", 0) or 0)
+        return _cursor_rowcount(cursor)
 
     def _current_brief_for_item(self, news_item_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(
@@ -2793,9 +2817,14 @@ class NewsRepository:
         news_item_id = str(item.get("news_item_id") or "")
         content_hash = str(item.get("content_hash") or "")
         canonical_item_key = str(item.get("canonical_item_key") or "")
-        provider_article_keys = _json_list(item.get("provider_article_keys_json"))
         row = self.conn.execute(
             """
+            WITH item_provider_article_keys AS MATERIALIZED (
+              SELECT DISTINCT item_edges.provider_article_key
+                FROM news_item_observation_edges AS item_edges
+               WHERE item_edges.news_item_id = %s
+                 AND item_edges.provider_article_key <> ''
+            )
             SELECT candidates.news_item_id,
                    candidates.story_key,
                    CASE
@@ -2804,10 +2833,10 @@ class NewsRepository:
                       AND candidates.url_identity_kind = 'article' THEN 'same_article_url'
                      WHEN EXISTS (
                        SELECT 1
-                         FROM jsonb_array_elements_text(COALESCE(candidates.provider_article_keys_json, '[]'::jsonb))
-                              AS candidate_key(value)
-                         JOIN jsonb_array_elements_text(%s::jsonb) AS item_key(value)
-                           ON item_key.value = candidate_key.value
+                         FROM item_provider_article_keys AS item_keys
+                         JOIN news_item_observation_edges AS candidate_edges
+                           ON candidate_edges.provider_article_key = item_keys.provider_article_key
+                        WHERE candidate_edges.news_item_id = candidates.news_item_id
                      ) THEN 'same_provider_article_id'
                      ELSE ''
                    END AS match_type
@@ -2818,27 +2847,26 @@ class NewsRepository:
                  OR (%s <> '' AND candidates.canonical_item_key = %s AND candidates.url_identity_kind = 'article')
                  OR EXISTS (
                    SELECT 1
-                     FROM jsonb_array_elements_text(COALESCE(candidates.provider_article_keys_json, '[]'::jsonb))
-                          AS candidate_key(value)
-                     JOIN jsonb_array_elements_text(%s::jsonb) AS item_key(value)
-                       ON item_key.value = candidate_key.value
+                     FROM item_provider_article_keys AS item_keys
+                     JOIN news_item_observation_edges AS candidate_edges
+                       ON candidate_edges.provider_article_key = item_keys.provider_article_key
+                    WHERE candidate_edges.news_item_id = candidates.news_item_id
                  )
                )
              ORDER BY candidates.published_at_ms ASC, candidates.news_item_id ASC
              LIMIT 1
             """,
             (
-                content_hash,
-                content_hash,
-                canonical_item_key,
-                canonical_item_key,
-                _json(provider_article_keys),
                 news_item_id,
                 content_hash,
                 content_hash,
                 canonical_item_key,
                 canonical_item_key,
-                _json(provider_article_keys),
+                news_item_id,
+                content_hash,
+                content_hash,
+                canonical_item_key,
+                canonical_item_key,
             ),
         ).fetchone()
         if row is None:
@@ -2890,6 +2918,7 @@ class NewsRepository:
             "last_brief_input_hash": str(row["brief_input_hash"] or ""),
         }
 
+    @_news_repository_write
     def mark_item_process_retryable(
         self,
         *,
@@ -2945,10 +2974,9 @@ class NewsRepository:
                     int(processing_attempts),
                 ),
             )
-        if commit:
-            self.conn.commit()
-        return int(getattr(cursor, "rowcount", 0) or 0)
+        return _cursor_rowcount(cursor)
 
+    @_news_repository_write
     def mark_item_process_terminal_failed(
         self,
         *,
@@ -3002,10 +3030,9 @@ class NewsRepository:
                     int(processing_attempts),
                 ),
             )
-        if commit:
-            self.conn.commit()
-        return int(getattr(cursor, "rowcount", 0) or 0)
+        return _cursor_rowcount(cursor)
 
+    @_news_repository_write
     def release_expired_processing_items(self, *, now_ms: int, commit: bool = True) -> int:
         cursor = self.conn.execute(
             """
@@ -3020,9 +3047,7 @@ class NewsRepository:
             """,
             (int(now_ms), int(now_ms), int(now_ms)),
         )
-        if commit:
-            self.conn.commit()
-        return int(getattr(cursor, "rowcount", 0) or 0)
+        return _cursor_rowcount(cursor)
 
     def servable_news_item_ids(self, news_item_ids: Sequence[str]) -> list[str]:
         target_ids = list(dict.fromkeys(str(news_item_id) for news_item_id in news_item_ids if str(news_item_id)))
@@ -3328,14 +3353,16 @@ class NewsRepository:
                       SELECT candidate_ids.news_item_id
                         FROM (
                           SELECT duplicate_edges.news_item_id
-                            FROM jsonb_array_elements_text(
-                                   COALESCE(edge_summary.provider_article_keys_json, '[]'::jsonb)
-                                 ) AS item_keys(provider_article_key)
+                            FROM news_item_observation_edges AS target_provider_edges
+                            JOIN news_sources AS target_provider_sources
+                              ON target_provider_sources.source_id = target_provider_edges.source_id
                             JOIN news_item_observation_edges AS duplicate_edges
-                              ON duplicate_edges.provider_article_key = item_keys.provider_article_key
+                              ON duplicate_edges.provider_article_key = target_provider_edges.provider_article_key
                             JOIN news_sources AS duplicate_sources
                               ON duplicate_sources.source_id = duplicate_edges.source_id
-                           WHERE duplicate_edges.provider_article_key <> ''
+                           WHERE target_provider_edges.news_item_id = items.news_item_id
+                             AND target_provider_edges.provider_article_key <> ''
+                             AND target_provider_sources.enabled = true
                              AND duplicate_sources.enabled = true
                           UNION
                           SELECT url_items.news_item_id
@@ -3918,45 +3945,49 @@ class NewsRepository:
         item_payload = _json_dict(row["item"])
         agent_brief = _detail_agent_brief(row["agent_brief"])
         projected = dict(page_row)
-        projected_signal = _json_dict(projected.get("signal")) or _projection_missing_signal(
-            agent_brief=agent_brief,
+        representative_news_item_id = _required_projected_page_text(projected, "representative_news_item_id")
+        story_key = _required_projected_page_text(projected, "story_key")
+        story = _required_projected_page_mapping(projected, "story")
+        token_lanes = _required_projected_page_list(projected, "token_lanes")
+        fact_lanes = _required_projected_page_list(projected, "fact_lanes")
+        projected_signal = _required_projected_page_mapping(projected, "signal")
+        provider_rating = _required_projected_page_mapping(projected, "provider_rating")
+        token_impacts = _required_projected_page_list(projected, "token_impacts")
+        content_class = _required_projected_page_text(projected, "content_class")
+        content_tags = _required_projected_page_list(projected, "content_tags")
+        content_classification = _required_projected_page_mapping(projected, "content_classification")
+        _required_projected_page_mapping(projected, "page_source")
+        _required_projected_page_mapping(projected, "page_agent_brief")
+        market_scope = _required_projected_page_mapping(projected, "market_scope")
+        agent_admission_status = _required_projected_page_text(projected, "agent_admission_status")
+        agent_admission_reason = _required_projected_page_text(projected, "agent_admission_reason")
+        agent_admission = _required_projected_page_mapping(projected, "agent_admission")
+        agent_representative_news_item_id = _required_projected_page_text(
+            projected,
+            "agent_representative_news_item_id",
         )
         token_mentions = _json_list(row["token_mentions"])
         fact_candidates = _json_list(row["fact_candidates"])
         public_item = _public_news_item_payload(item_payload)
         return {
             **public_item,
-            "representative_news_item_id": str(
-                projected.get("representative_news_item_id") or item_payload.get("news_item_id") or ""
-            ),
-            "story_key": str(projected.get("story_key") or item_payload.get("story_key") or ""),
-            "story": _json_dict(projected.get("story") or item_payload.get("story_identity_json")),
-            "market_scope": _json_dict(projected.get("market_scope") or item_payload.get("market_scope_json") or {}),
-            "agent_admission_status": str(
-                projected.get("agent_admission_status") or item_payload.get("agent_admission_status") or "needs_review"
-            ),
-            "agent_admission_reason": str(
-                projected.get("agent_admission_reason") or item_payload.get("agent_admission_reason") or ""
-            ),
-            "agent_admission": _json_dict(
-                projected.get("agent_admission") or item_payload.get("agent_admission_json") or {}
-            ),
-            "agent_representative_news_item_id": str(
-                projected.get("agent_representative_news_item_id")
-                or item_payload.get("agent_representative_news_item_id")
-                or projected.get("representative_news_item_id")
-                or item_payload.get("news_item_id")
-                or ""
-            ),
+            "representative_news_item_id": representative_news_item_id,
+            "story_key": story_key,
+            "story": story,
+            "market_scope": market_scope,
+            "agent_admission_status": agent_admission_status,
+            "agent_admission_reason": agent_admission_reason,
+            "agent_admission": agent_admission,
+            "agent_representative_news_item_id": agent_representative_news_item_id,
             "agent_admission_computed_at_ms": item_payload.get("agent_admission_computed_at_ms"),
-            "content_class": projected.get("content_class") or item_payload.get("content_class"),
-            "content_tags": _json_list(projected.get("content_tags")),
-            "content_classification": _json_dict(projected.get("content_classification")),
+            "content_class": content_class,
+            "content_tags": content_tags,
+            "content_classification": content_classification,
             "signal": projected_signal,
-            "provider_rating": _json_dict(projected.get("provider_rating")),
-            "token_impacts": _json_list(projected.get("token_impacts")),
-            "token_lanes": _json_list(projected.get("token_lanes")),
-            "fact_lanes": _json_list(projected.get("fact_lanes")),
+            "provider_rating": provider_rating,
+            "token_impacts": token_impacts,
+            "token_lanes": token_lanes,
+            "fact_lanes": fact_lanes,
             "source": _public_source_payload(_json_dict(row["source"])),
             "provider_item": _public_provider_observation_payload(_json_dict(row["provider_item"])),
             "fetch_run": _public_fetch_run_payload(_json_dict(row["fetch_run"]))
@@ -4156,6 +4187,7 @@ class NewsRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    @_news_repository_write
     def replace_source_quality_rows(
         self,
         *,
@@ -4167,9 +4199,7 @@ class NewsRepository:
         changed_status_source_ids: list[str] = []
         for row in rows:
             payload = _source_quality_payload(row)
-            payload["payload_hash"] = _current_read_model_payload_hash(
-                payload, exclude=_PUBLICATION_METADATA_FIELDS
-            )
+            payload["payload_hash"] = _current_read_model_payload_hash(payload, exclude=_PUBLICATION_METADATA_FIELDS)
             self.conn.execute(
                 """
                 INSERT INTO news_source_quality_rows (
@@ -4223,10 +4253,8 @@ class NewsRepository:
                         str(status or "unknown"),
                     ),
                 )
-                if int(getattr(cursor, "rowcount", 0) or 0) > 0:
+                if _cursor_rowcount(cursor) > 0:
                     changed_status_source_ids.append(str(payload["source_id"]))
-        if commit:
-            self.conn.commit()
         return list(dict.fromkeys(changed_status_source_ids))
 
     def list_source_status(self) -> list[dict[str, Any]]:
@@ -4759,6 +4787,7 @@ class NewsRepository:
         ).fetchall()
         return {str(row["news_item_id"]): dict(row) for row in rows}
 
+    @_news_repository_write
     def replace_page_rows_for_items(
         self,
         *,
@@ -4790,16 +4819,14 @@ class NewsRepository:
                     "DELETE FROM news_page_rows WHERE news_item_id = ANY(%s::text[])",
                     (scoped_ids,),
                 )
-            deleted = int(getattr(cursor, "rowcount", 0) or 0)
+            deleted = _cursor_rowcount(cursor)
         inserted = 0
         updated = 0
         unchanged = 0
         for payload in row_payloads:
             payload["search_text"] = build_news_page_search_text(payload)
-            payload["payload_hash"] = _current_read_model_payload_hash(
-                payload, exclude=_PUBLICATION_METADATA_FIELDS
-            )
-            returned = self.conn.execute(
+            payload["payload_hash"] = _current_read_model_payload_hash(payload, exclude=_PUBLICATION_METADATA_FIELDS)
+            cursor = self.conn.execute(
                 """
                 INSERT INTO news_page_rows (
                   row_id, news_item_id, representative_news_item_id, story_key, story_json,
@@ -4868,17 +4895,18 @@ class NewsRepository:
                 RETURNING (xmax = 0) AS inserted
                 """,
                 payload,
-            ).fetchone()
-            if returned is None:
+            )
+            returned = cursor.fetchone()
+            returned_row = _optional_returning_row(cursor, returned)
+            if returned_row is None:
                 unchanged += 1
-            elif bool(returned["inserted"]):
+            elif bool(returned_row["inserted"]):
                 inserted += 1
             else:
                 updated += 1
-        if commit:
-            self.conn.commit()
         return {"inserted": inserted, "updated": updated, "unchanged": unchanged, "deleted": deleted}
 
+    @_news_repository_write
     def replace_page_rows_for_story_targets(
         self,
         *,
@@ -4971,13 +4999,12 @@ class NewsRepository:
                 """,
                 delete_params,
             )
-            deleted = int(getattr(cursor, "rowcount", 0) or 0)
+            deleted = _cursor_rowcount(cursor)
         result = self.replace_page_rows_for_items(news_item_ids=[], rows=row_payloads, commit=False)
         result["deleted"] = int(result.get("deleted", 0)) + deleted
-        if commit:
-            self.conn.commit()
         return result
 
+    @_news_repository_write
     def delete_page_rows_for_sources(
         self,
         *,
@@ -5015,10 +5042,9 @@ class NewsRepository:
             """,
             (normalized_source_ids, normalized_source_ids, normalized_domains, normalized_domains),
         )
-        if commit:
-            self.conn.commit()
-        return int(cursor.rowcount or 0)
+        return _cursor_rowcount(cursor)
 
+    @_news_repository_write
     def delete_page_rows_without_enabled_observation_edges(self, *, commit: bool = True) -> int:
         cursor = self.conn.execute(
             """
@@ -5032,9 +5058,49 @@ class NewsRepository:
              )
             """
         )
-        if commit:
-            self.conn.commit()
-        return int(cursor.rowcount or 0)
+        return _cursor_rowcount(cursor)
+
+
+def _cursor_rowcount(cursor: Any) -> int:
+    try:
+        rowcount = cursor.rowcount
+    except AttributeError as exc:
+        raise TypeError("news_repository_rowcount_required") from exc
+    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
+        raise TypeError("news_repository_rowcount_invalid")
+    if rowcount < 0:
+        raise TypeError("news_repository_rowcount_invalid")
+    return int(rowcount)
+
+
+def _required_rowcount(cursor: Any, *, expected: int) -> int:
+    count = _cursor_rowcount(cursor)
+    if count != expected:
+        raise TypeError("news_repository_rowcount_invalid")
+    return count
+
+
+def _returned_rowcount(cursor: Any, rows: list[Any]) -> int:
+    count = _cursor_rowcount(cursor)
+    if count != len(rows):
+        raise TypeError("news_repository_rowcount_invalid")
+    return count
+
+
+def _optional_returning_row(cursor: Any, row: Any | None) -> dict[str, Any] | None:
+    count = _cursor_rowcount(cursor)
+    if count not in (0, 1):
+        raise TypeError("news_repository_rowcount_invalid")
+    if count != (1 if row is not None else 0):
+        raise TypeError("news_repository_rowcount_invalid")
+    return dict(row) if row is not None else None
+
+
+def _required_returning_row(cursor: Any, row: Any | None) -> dict[str, Any]:
+    returned_row = _optional_returning_row(cursor, row)
+    if returned_row is None:
+        raise TypeError("news_repository_rowcount_invalid")
+    return returned_row
 
 
 def _source_payload(source: NewsSourceConfig | Mapping[str, Any]) -> dict[str, Any]:
@@ -5112,36 +5178,31 @@ def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     payload["canonical_url"] = str(payload.get("canonical_url") or "")
     payload["summary"] = str(payload.get("summary") or "")
     payload["search_text"] = str(payload.get("search_text") or "")
-    payload["token_lanes_json"] = _json(payload.get("token_lanes") or [])
-    payload["fact_lanes_json"] = _json(payload.get("fact_lanes") or [])
+    payload["token_lanes_json"] = _json(_required_page_list(payload, "token_lanes"))
+    payload["fact_lanes_json"] = _json(_required_page_list(payload, "fact_lanes"))
     payload["representative_news_item_id"] = str(
         payload.get("representative_news_item_id") or payload.get("news_item_id") or ""
     )
     payload["story_key"] = str(payload.get("story_key") or "")
-    payload["story_json"] = _json(payload.get("story") or {})
-    payload["token_impacts_json"] = _json(payload.get("token_impacts") or [])
+    payload["story_json"] = _json(_required_page_mapping(payload, "story"))
+    payload["token_impacts_json"] = _json(_required_page_list(payload, "token_impacts"))
     payload["content_class"] = str(payload.get("content_class") or "low_signal")
-    payload["content_tags_json"] = _json(payload.get("content_tags") or [])
-    payload["content_classification_json"] = _json(payload.get("content_classification") or {})
-    payload["source_json"] = _json(payload.get("source") or {})
-    agent_brief = payload.get("agent_brief") or {"status": "pending"}
+    payload["content_tags_json"] = _json(_required_page_list(payload, "content_tags"))
+    payload["content_classification_json"] = _json(_required_page_mapping(payload, "content_classification"))
+    payload["source_json"] = _json(_required_page_mapping(payload, "source"))
+    agent_brief = _required_page_mapping(payload, "agent_brief")
     agent_status = str(payload.get("agent_status") or "pending")
-    signal = payload.get("signal") or {}
+    signal = _required_page_mapping(payload, "signal")
     payload["signal_json"] = _json(signal)
-    payload["provider_rating_json"] = _json(payload.get("provider_rating") or {})
+    payload["provider_rating_json"] = _json(_required_page_mapping(payload, "provider_rating"))
     payload["agent_brief_json"] = _json(agent_brief)
     payload["agent_status"] = agent_status
     payload["agent_brief_computed_at_ms"] = (
         int(payload["agent_brief_computed_at_ms"]) if payload.get("agent_brief_computed_at_ms") is not None else None
     )
-    payload["market_scope_json"] = _json(payload.get("market_scope") or {})
-    agent_admission = _agent_admission_payload(
-        payload.get("agent_admission")
-        or {
-            "status": payload.get("agent_admission_status") or "needs_review",
-            "reason": payload.get("agent_admission_reason") or "",
-            "version": payload.get("agent_admission_version") or NEWS_ITEM_AGENT_ADMISSION_VERSION,
-        }
+    payload["market_scope_json"] = _json(_required_page_mapping(payload, "market_scope"))
+    agent_admission = _agent_admission_mapping_payload(
+        _required_page_mapping(payload, "agent_admission")
     )
     payload["agent_admission_status"] = str(payload.get("agent_admission_status") or agent_admission["status"])
     payload["agent_admission_reason"] = str(payload.get("agent_admission_reason") or agent_admission["reason"])
@@ -5152,6 +5213,115 @@ def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
         payload.get("agent_representative_news_item_id") or agent_admission.get("representative_news_item_id") or ""
     )
     return payload
+
+
+def _required_page_mapping(payload: Mapping[str, Any], field_name: str) -> dict[str, Any]:
+    if field_name not in payload:
+        raise ValueError(f"news_page_row_payload_required:{field_name}")
+    value = payload[field_name]
+    if not isinstance(value, Mapping):
+        raise ValueError(f"news_page_row_payload_invalid:{field_name}")
+    return dict(value)
+
+
+def _required_page_list(payload: Mapping[str, Any], field_name: str) -> list[Any]:
+    if field_name not in payload:
+        raise ValueError(f"news_page_row_payload_required:{field_name}")
+    value = payload[field_name]
+    if not isinstance(value, list):
+        raise ValueError(f"news_page_row_payload_invalid:{field_name}")
+    return list(value)
+
+
+def _required_projected_page_text(projected: Mapping[str, Any], field_name: str) -> str:
+    if field_name not in projected:
+        raise ValueError(f"news_item_detail_projection_required:{field_name}")
+    value = projected[field_name]
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"news_item_detail_projection_invalid:{field_name}")
+    return value
+
+
+def _required_projected_page_mapping(projected: Mapping[str, Any], field_name: str) -> dict[str, Any]:
+    if field_name not in projected:
+        raise ValueError(f"news_item_detail_projection_required:{field_name}")
+    value = projected[field_name]
+    if not isinstance(value, Mapping):
+        raise ValueError(f"news_item_detail_projection_invalid:{field_name}")
+    return dict(value)
+
+
+def _required_projected_page_list(projected: Mapping[str, Any], field_name: str) -> list[Any]:
+    if field_name not in projected:
+        raise ValueError(f"news_item_detail_projection_required:{field_name}")
+    value = projected[field_name]
+    if not isinstance(value, list):
+        raise ValueError(f"news_item_detail_projection_invalid:{field_name}")
+    return list(value)
+
+
+def _projected_news_page_row_payload(
+    row: Mapping[str, Any],
+    *,
+    require_full_sections: bool,
+) -> dict[str, Any]:
+    payload = dict(row)
+    for field_name in (
+        "row_id",
+        "news_item_id",
+        "representative_news_item_id",
+        "story_key",
+        "content_class",
+        "agent_admission_status",
+        "agent_admission_reason",
+        "agent_representative_news_item_id",
+        "projection_version",
+    ):
+        payload[field_name] = _required_news_page_row_text(payload, field_name)
+    for field_name in (
+        "story",
+        "signal",
+        "provider_rating",
+        "source",
+        "market_scope",
+        "agent_admission",
+    ):
+        payload[field_name] = _required_news_page_row_mapping(payload, field_name)
+    for field_name in ("source_ids", "source_domains", "token_impacts", "content_tags"):
+        payload[field_name] = _required_news_page_row_list(payload, field_name)
+    if require_full_sections:
+        payload["content_classification"] = _required_news_page_row_mapping(payload, "content_classification")
+        payload["token_lanes"] = _required_news_page_row_list(payload, "token_lanes")
+        payload["fact_lanes"] = _required_news_page_row_list(payload, "fact_lanes")
+    payload["agent_brief"] = _public_agent_brief_payload(_required_news_page_row_mapping(payload, "agent_brief"))
+    return payload
+
+
+def _required_news_page_row_text(projected: Mapping[str, Any], field_name: str) -> str:
+    if field_name not in projected:
+        raise ValueError(f"news_page_row_projection_required:{field_name}")
+    value = projected[field_name]
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"news_page_row_projection_invalid:{field_name}")
+    return value
+
+
+def _required_news_page_row_mapping(projected: Mapping[str, Any], field_name: str) -> dict[str, Any]:
+    if field_name not in projected:
+        raise ValueError(f"news_page_row_projection_required:{field_name}")
+    value = projected[field_name]
+    if not isinstance(value, Mapping):
+        raise ValueError(f"news_page_row_projection_invalid:{field_name}")
+    return dict(value)
+
+
+def _required_news_page_row_list(projected: Mapping[str, Any], field_name: str) -> list[Any]:
+    if field_name not in projected:
+        raise ValueError(f"news_page_row_projection_required:{field_name}")
+    value = projected[field_name]
+    if not isinstance(value, list):
+        raise ValueError(f"news_page_row_projection_invalid:{field_name}")
+    return list(value)
 
 
 def _story_projection_payload(*, story_key: str, member_payloads: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
@@ -5215,75 +5385,6 @@ def _detail_agent_brief(value: Any) -> dict[str, Any]:
     return _public_agent_brief_payload(value)
 
 
-def _signal_from_agent_brief(value: Any) -> dict[str, Any]:
-    payload = _json_dict(value)
-    if str(payload.get("status") or "") != "ready":
-        return {
-            "display_signal": {
-                "source": "partial",
-                "status": "partial",
-                "direction": "neutral",
-                "label_zh": "中性",
-                "method": "pending",
-            },
-            "agent_signal": payload or {"status": "pending"},
-            "alert_eligibility": {
-                "agent_status": str(payload.get("status") or "pending"),
-                "in_app_eligible": False,
-                "external_push_ready": False,
-                "external_push_block_reason": "agent_brief_not_ready",
-            },
-        }
-    direction = str(payload.get("direction") or "neutral")
-    return {
-        "display_signal": {
-            "source": "agent",
-            "status": "ready",
-            "direction": direction,
-            "label_zh": _direction_label(direction),
-            "title_zh": _json_dict(payload.get("brief_json")).get("title_zh"),
-            "summary_zh": _json_dict(payload.get("brief_json")).get("summary_zh"),
-            "method": "news_item_brief",
-        },
-        "agent_signal": payload,
-        "alert_eligibility": {
-            "agent_status": "ready",
-            "decision_class": payload.get("decision_class"),
-            "in_app_eligible": str(payload.get("decision_class") or "") in {"driver", "watch"},
-            "external_push_ready": _agent_publishable_summary(payload),
-            "external_push_basis": "agent_brief" if _agent_publishable_summary(payload) else None,
-        },
-    }
-
-
-def _projection_missing_signal(
-    *,
-    agent_brief: Mapping[str, Any],
-) -> dict[str, Any]:
-    agent_status = str(agent_brief.get("status") or "pending")
-    return {
-        "display_signal": {
-            "source": "partial",
-            "status": "pending",
-            "direction": "neutral",
-            "label_zh": "中性",
-            "method": "projection_missing",
-        },
-        "agent_signal": dict(agent_brief),
-        "alert_eligibility": {
-            key: value
-            for key, value in {
-                "agent_status": agent_status,
-                "decision_class": agent_brief.get("decision_class"),
-                "in_app_eligible": False,
-                "external_push_ready": False,
-                "external_push_block_reason": "projection_missing",
-            }.items()
-            if value is not None
-        },
-    }
-
-
 def _agent_publishable_summary(agent_brief: Mapping[str, Any]) -> bool:
     brief_json = _json_dict(agent_brief.get("brief_json"))
     return bool(
@@ -5297,74 +5398,69 @@ def _agent_publishable_summary(agent_brief: Mapping[str, Any]) -> bool:
     )
 
 
-def _direction_label(direction: str) -> str:
-    if direction == "bullish":
-        return "利好"
-    if direction == "bearish":
-        return "利空"
-    return "中性"
-
-
-def _entity_payload(entity: Any) -> dict[str, Any]:
-    payload = _object_payload(entity)
+def _entity_payload(entity: NewsEntity) -> dict[str, Any]:
+    if not isinstance(entity, NewsEntity):
+        raise ValueError("unsupported news entity payload shape")
     return {
-        "entity_id": str(payload["entity_id"]),
-        "news_item_id": str(payload["news_item_id"]),
-        "entity_type": str(payload["entity_type"]),
-        "raw_value": str(payload["raw_value"]),
-        "normalized_value": str(payload["normalized_value"]),
-        "chain": payload.get("chain"),
-        "span_start": int(payload["span_start"]),
-        "span_end": int(payload["span_end"]),
-        "text_surface": str(payload["text_surface"]),
-        "confidence": float(payload["confidence"]),
-        "extraction_policy_version": str(payload["extraction_policy_version"]),
-        "created_at_ms": int(payload["created_at_ms"]),
+        "entity_id": str(entity.entity_id),
+        "news_item_id": str(entity.news_item_id),
+        "entity_type": str(entity.entity_type),
+        "raw_value": str(entity.raw_value),
+        "normalized_value": str(entity.normalized_value),
+        "chain": entity.chain,
+        "span_start": int(entity.span_start),
+        "span_end": int(entity.span_end),
+        "text_surface": str(entity.text_surface),
+        "confidence": float(entity.confidence),
+        "extraction_policy_version": str(entity.extraction_policy_version),
+        "created_at_ms": int(entity.created_at_ms),
     }
 
 
-def _mention_payload(mention: Any) -> dict[str, Any]:
-    payload = _object_payload(mention)
+def _mention_payload(mention: NewsTokenMention) -> dict[str, Any]:
+    if not isinstance(mention, NewsTokenMention):
+        raise ValueError("unsupported news token mention payload shape")
     return {
-        "mention_id": str(payload["mention_id"]),
-        "news_item_id": str(payload["news_item_id"]),
-        "entity_id": payload.get("entity_id"),
-        "observed_symbol": payload.get("observed_symbol"),
-        "chain_id": payload.get("chain_id"),
-        "address": payload.get("address"),
-        "resolution_status": str(payload["resolution_status"]),
-        "target_type": payload.get("target_type"),
-        "target_id": payload.get("target_id"),
-        "display_symbol": payload.get("display_symbol"),
-        "display_name": payload.get("display_name"),
-        "reason_codes_json": _json(_json_list(payload.get("reason_codes"))),
-        "candidate_targets_json": _json(_json_list(payload.get("candidate_targets"))),
-        "evidence_strength": str(payload["evidence_strength"]),
-        "confidence": float(payload["confidence"]),
-        "created_at_ms": int(payload["created_at_ms"]),
+        "mention_id": str(mention.mention_id),
+        "news_item_id": str(mention.news_item_id),
+        "entity_id": mention.entity_id,
+        "observed_symbol": mention.observed_symbol,
+        "chain_id": mention.chain_id,
+        "address": mention.address,
+        "resolution_status": str(mention.resolution_status),
+        "target_type": mention.target_type,
+        "target_id": mention.target_id,
+        "display_symbol": mention.display_symbol,
+        "display_name": mention.display_name,
+        "reason_codes_json": _json(list(mention.reason_codes)),
+        "candidate_targets_json": _json([dict(candidate) for candidate in mention.candidate_targets]),
+        "evidence_strength": str(mention.evidence_strength),
+        "confidence": float(mention.confidence),
+        "created_at_ms": int(mention.created_at_ms),
     }
 
 
-def _fact_payload(candidate: Any) -> dict[str, Any]:
-    payload = _object_payload(candidate)
+def _fact_payload(candidate: NewsFactCandidate) -> dict[str, Any]:
+    if not isinstance(candidate, NewsFactCandidate):
+        raise ValueError("unsupported news fact candidate payload shape")
     return {
-        "fact_candidate_id": str(payload["fact_candidate_id"]),
-        "news_item_id": str(payload["news_item_id"]),
-        "event_type": str(payload["event_type"]),
-        "claim": str(payload["claim"]),
-        "realis": str(payload["realis"]),
-        "evidence_quote": str(payload["evidence_quote"]),
-        "evidence_span_start": int(payload["evidence_span_start"]),
-        "evidence_span_end": int(payload["evidence_span_end"]),
-        "source_role": str(payload["source_role"]),
-        "required_slots_json": _json(_json_dict(payload.get("required_slots"))),
-        "affected_targets_json": _json(_json_list(payload.get("affected_targets"))),
-        "validation_status": str(payload["validation_status"]),
-        "rejection_reasons_json": _json(_json_list(payload.get("rejection_reasons"))),
-        "extraction_method": str(payload["extraction_method"]),
-        "policy_version": str(payload["policy_version"]),
-        "created_at_ms": int(payload["created_at_ms"]),
-        "updated_at_ms": int(payload["updated_at_ms"]),
+        "fact_candidate_id": str(candidate.fact_candidate_id),
+        "news_item_id": str(candidate.news_item_id),
+        "event_type": str(candidate.event_type),
+        "claim": str(candidate.claim),
+        "realis": str(candidate.realis),
+        "evidence_quote": str(candidate.evidence_quote),
+        "evidence_span_start": int(candidate.evidence_span_start),
+        "evidence_span_end": int(candidate.evidence_span_end),
+        "source_role": str(candidate.source_role),
+        "required_slots_json": _json(dict(candidate.required_slots)),
+        "affected_targets_json": _json([dict(target) for target in candidate.affected_targets]),
+        "validation_status": str(candidate.validation_status),
+        "rejection_reasons_json": _json(list(candidate.rejection_reasons)),
+        "extraction_method": str(candidate.extraction_method),
+        "policy_version": str(candidate.policy_version),
+        "created_at_ms": int(candidate.created_at_ms),
+        "updated_at_ms": int(candidate.updated_at_ms),
     }
 
 
@@ -5832,26 +5928,17 @@ def _comparable_source_value(value: Any) -> Any:
     return value
 
 
-def _object_payload(value: Any) -> dict[str, Any]:
-    if isinstance(value, Jsonb):
-        value = getattr(value, "obj", None)
-    if isinstance(value, Mapping):
-        return dict(value)
-    dump = getattr(value, "model_dump", None)
-    if dump is not None:
-        return dict(dump())
-    if hasattr(value, "__dict__"):
-        return dict(vars(value))
-    return {name: getattr(value, name) for name in getattr(value, "__slots__", ()) if hasattr(value, name)}
-
-
-def _market_scope_payload(value: NewsMarketScope | Mapping[str, object]) -> dict[str, object]:
-    payload = _strict_current_dataclass_or_mapping_payload(
-        value,
-        expected_type=NewsMarketScope,
-        label="market scope payload",
-        required_fields=("scope", "primary", "status", "reason", "basis", "version"),
-    )
+def _market_scope_payload(value: NewsMarketScope) -> dict[str, object]:
+    if not isinstance(value, NewsMarketScope):
+        raise ValueError("unsupported market scope payload shape")
+    payload = {
+        "scope": value.scope,
+        "primary": value.primary,
+        "status": value.status,
+        "reason": value.reason,
+        "basis": value.basis,
+        "version": value.version,
+    }
     return {
         "scope": _required_payload_list(payload, "scope", label="market scope payload"),
         "primary": _required_payload_text(payload, "primary", label="market scope payload"),
@@ -5862,31 +5949,26 @@ def _market_scope_payload(value: NewsMarketScope | Mapping[str, object]) -> dict
     }
 
 
-def _agent_admission_payload(value: NewsItemAgentAdmission | Mapping[str, object]) -> dict[str, object]:
-    payload = _object_payload(value)
-    status = str(payload.get("status") or "needs_review")
-    reason = str(payload.get("reason") or "")
-    representative_news_item_id = str(
-        payload.get("representative_news_item_id")
-        or payload.get("agent_representative_news_item_id")
-        or payload.get("representative_item_id")
-        or ""
-    )
-    basis = payload.get("basis")
-    eligible = bool(payload.get("eligible")) if "eligible" in payload else status in {"eligible", "eligible_refresh"}
+def _agent_admission_payload(value: NewsItemAgentAdmission) -> dict[str, object]:
+    if not isinstance(value, NewsItemAgentAdmission):
+        raise ValueError("unsupported agent admission payload shape")
     return {
-        "eligible": eligible,
-        "status": status,
-        "reason": reason,
-        "representative_news_item_id": representative_news_item_id,
-        "basis": dict(basis) if isinstance(basis, Mapping) else {},
-        "version": str(payload.get("version") or NEWS_ITEM_AGENT_ADMISSION_VERSION),
+        "eligible": bool(value.eligible),
+        "status": _required_payload_text({"status": value.status}, "status", label="agent admission payload"),
+        "reason": _required_payload_text({"reason": value.reason}, "reason", label="agent admission payload"),
+        "representative_news_item_id": _required_payload_text(
+            {"representative_news_item_id": value.representative_news_item_id},
+            "representative_news_item_id",
+            label="agent admission payload",
+        ),
+        "basis": _required_payload_mapping({"basis": value.basis}, "basis", label="agent admission payload"),
+        "version": _required_payload_text({"version": value.version}, "version", label="agent admission payload"),
     }
 
 
 def _agent_admission_public_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     payload = _json_dict(row.get("agent_admission_json"))
-    normalized = _agent_admission_payload(
+    normalized = _agent_admission_mapping_payload(
         {
             **payload,
             "status": row.get("agent_admission_status") or payload.get("status") or "needs_review",
@@ -5902,13 +5984,15 @@ def _agent_admission_public_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     return dict(normalized)
 
 
-def _story_identity_payload(value: NewsStoryIdentity | Mapping[str, object]) -> dict[str, object]:
-    payload = _strict_current_dataclass_or_mapping_payload(
-        value,
-        expected_type=NewsStoryIdentity,
-        label="story identity payload",
-        required_fields=("story_key", "confidence", "basis", "version"),
-    )
+def _story_identity_payload(value: NewsStoryIdentity) -> dict[str, object]:
+    if not isinstance(value, NewsStoryIdentity):
+        raise ValueError("unsupported story identity payload shape")
+    payload = {
+        "story_key": value.story_key,
+        "confidence": value.confidence,
+        "basis": value.basis,
+        "version": value.version,
+    }
     return {
         "story_key": _required_payload_text(payload, "story_key", label="story identity payload"),
         "confidence": _required_payload_text(payload, "confidence", label="story identity payload"),
@@ -5917,24 +6001,19 @@ def _story_identity_payload(value: NewsStoryIdentity | Mapping[str, object]) -> 
     }
 
 
-def _strict_current_dataclass_or_mapping_payload(
-    value: NewsMarketScope | NewsStoryIdentity | NewsItemAgentAdmission | Mapping[str, object],
-    *,
-    expected_type: type[NewsMarketScope] | type[NewsStoryIdentity] | type[NewsItemAgentAdmission],
-    label: str,
-    required_fields: tuple[str, ...],
-) -> dict[str, object]:
-    if isinstance(value, Mapping):
-        payload = dict(value)
-    elif isinstance(value, expected_type):
-        to_payload = getattr(value, "to_payload", None)
-        payload = dict(to_payload() if to_payload is not None else asdict(value))
-    else:
-        raise ValueError(f"unsupported {label} shape")
-    missing = [field for field in required_fields if field not in payload]
-    if missing:
-        raise ValueError(f"unsupported {label} shape: missing {', '.join(missing)}")
-    return payload
+def _agent_admission_mapping_payload(payload: Mapping[str, Any]) -> dict[str, object]:
+    status = str(payload.get("status") or "needs_review")
+    reason = str(payload.get("reason") or "")
+    basis = payload.get("basis")
+    eligible = bool(payload.get("eligible")) if "eligible" in payload else status in {"eligible", "eligible_refresh"}
+    return {
+        "eligible": eligible,
+        "status": status,
+        "reason": reason,
+        "representative_news_item_id": str(payload.get("representative_news_item_id") or ""),
+        "basis": dict(basis) if isinstance(basis, Mapping) else {},
+        "version": str(payload.get("version") or NEWS_ITEM_AGENT_ADMISSION_VERSION),
+    }
 
 
 def _required_payload_list(payload: Mapping[str, object], field: str, *, label: str) -> list[object]:

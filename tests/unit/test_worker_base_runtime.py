@@ -61,6 +61,25 @@ class FakeWakeWaiter:
         self.close_count += 1
 
 
+class AwaitableCloseResult:
+    def __init__(self) -> None:
+        self.awaited = False
+
+    def __await__(self) -> Any:
+        self.awaited = True
+        return iter(())
+
+
+class AwaitableCloseWakeWaiter(FakeWakeWaiter):
+    def __init__(self) -> None:
+        super().__init__()
+        self.close_result = AwaitableCloseResult()
+
+    def close(self) -> AwaitableCloseResult:
+        self.close_count += 1
+        return self.close_result
+
+
 class FakeAdvisoryLock:
     def __init__(self) -> None:
         self.released = False
@@ -115,6 +134,65 @@ class CountingWorker(WorkerBase):
 
     async def on_close(self) -> None:
         self.closed += 1
+
+
+def test_worker_base_requires_formal_settings_fields_without_runtime_defaults() -> None:
+    worker = CountingWorker(
+        name="missing_enabled",
+        settings=SimpleNamespace(
+            interval_seconds=0.01,
+            soft_timeout_seconds=1.0,
+            hard_timeout_seconds=0.0,
+            backoff=SimpleNamespace(base_ms=1, max_ms=5),
+        ),
+        db=FakeDB(),
+        telemetry=FakeTelemetry(),
+    )
+    with pytest.raises(AttributeError, match="enabled"):
+        _ = worker.enabled
+
+    worker = CountingWorker(
+        name="missing_interval",
+        settings=SimpleNamespace(
+            enabled=True,
+            soft_timeout_seconds=1.0,
+            hard_timeout_seconds=0.0,
+            backoff=SimpleNamespace(base_ms=1, max_ms=5),
+        ),
+        db=FakeDB(),
+        telemetry=FakeTelemetry(),
+    )
+    with pytest.raises(AttributeError, match="interval_seconds"):
+        _ = worker.interval_seconds
+
+    worker = CountingWorker(
+        name="missing_backoff",
+        settings=SimpleNamespace(
+            enabled=True,
+            interval_seconds=0.01,
+            soft_timeout_seconds=1.0,
+            hard_timeout_seconds=0.0,
+        ),
+        db=FakeDB(),
+        telemetry=FakeTelemetry(),
+    )
+    with pytest.raises(AttributeError, match="backoff"):
+        worker._backoff_seconds()
+
+    worker = CountingWorker(
+        name="missing_backoff_base",
+        settings=SimpleNamespace(
+            enabled=True,
+            interval_seconds=0.01,
+            soft_timeout_seconds=1.0,
+            hard_timeout_seconds=0.0,
+            backoff=SimpleNamespace(max_ms=5),
+        ),
+        db=FakeDB(),
+        telemetry=FakeTelemetry(),
+    )
+    with pytest.raises(AttributeError, match="base_ms"):
+        worker._backoff_seconds()
 
 
 def test_worker_base_run_calls_hooks_updates_status_and_metrics() -> None:
@@ -441,7 +519,40 @@ def test_worker_base_advisory_lock_unavailable_skips_until_acquired_and_releases
     asyncio.run(scenario())
 
 
-def test_worker_base_uses_single_writer_key_class_attr_when_settings_has_no_lock_key() -> None:
+def test_worker_base_requires_advisory_lock_release_contract() -> None:
+    class CloseOnlyLock:
+        def __init__(self) -> None:
+            self.close_calls = 0
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    class LockedWorker(WorkerBase):
+        async def run_once(self) -> WorkerResult:
+            await self.stop()
+            return WorkerResult(processed=1)
+
+    async def scenario() -> None:
+        lock = CloseOnlyLock()
+        db = FakeDB([lock])
+        worker = LockedWorker(
+            name="release_contract",
+            settings=worker_settings(advisory_lock_key=2026061301),
+            db=db,
+            telemetry=FakeTelemetry(),
+            wake_waiter=FakeWakeWaiter(),
+        )
+
+        await worker.run()
+        with pytest.raises(RuntimeError, match="worker_advisory_lock_release_required"):
+            await worker.aclose()
+
+        assert lock.close_calls == 0
+
+    asyncio.run(scenario())
+
+
+def test_worker_base_uses_formal_advisory_lock_key_instead_of_single_writer_fallback() -> None:
     class ClassLockedWorker(WorkerBase):
         SINGLE_WRITER_KEY = 2026051501
 
@@ -454,7 +565,7 @@ def test_worker_base_uses_single_writer_key_class_attr_when_settings_has_no_lock
         db = FakeDB([lock])
         worker = ClassLockedWorker(
             name="class_locked",
-            settings=worker_settings(),
+            settings=worker_settings(advisory_lock_key=2026061301),
             db=db,
             telemetry=FakeTelemetry(),
             wake_waiter=FakeWakeWaiter(),
@@ -463,8 +574,34 @@ def test_worker_base_uses_single_writer_key_class_attr_when_settings_has_no_lock
         await worker.run()
         await worker.aclose()
 
-        assert db.acquire_calls == [("class_locked", 2026051501)]
+        assert db.acquire_calls == [("class_locked", 2026061301)]
         assert lock.released is True
+
+    asyncio.run(scenario())
+
+
+def test_worker_base_requires_formal_advisory_lock_key_for_single_writer() -> None:
+    class ClassLockedWorker(WorkerBase):
+        SINGLE_WRITER_KEY = 2026051501
+
+        async def run_once(self) -> WorkerResult:
+            await self.stop()
+            return WorkerResult(processed=1)
+
+    async def scenario() -> None:
+        db = FakeDB([FakeAdvisoryLock()])
+        worker = ClassLockedWorker(
+            name="class_locked_missing_settings",
+            settings=worker_settings(),
+            db=db,
+            telemetry=FakeTelemetry(),
+            wake_waiter=FakeWakeWaiter(),
+        )
+
+        with pytest.raises(RuntimeError, match="worker_advisory_lock_key_required"):
+            await worker.run()
+
+        assert db.acquire_calls == []
 
     asyncio.run(scenario())
 
@@ -501,6 +638,38 @@ def test_worker_base_stop_wakes_waiter() -> None:
     asyncio.run(scenario())
 
 
+def test_worker_base_stop_requires_injected_wake_waiter_wake_contract() -> None:
+    async def scenario() -> None:
+        worker = CountingWorker(
+            name="malformed_wake_stop",
+            settings=worker_settings(),
+            db=FakeDB(),
+            telemetry=FakeTelemetry(),
+            wake_waiter=object(),
+        )
+
+        with pytest.raises(AttributeError, match="wake"):
+            await worker.stop()
+
+    asyncio.run(scenario())
+
+
+def test_worker_base_wait_requires_injected_wake_waiter_async_wait_contract() -> None:
+    async def scenario() -> None:
+        worker = CountingWorker(
+            name="malformed_wake_wait",
+            settings=worker_settings(),
+            db=FakeDB(),
+            telemetry=FakeTelemetry(),
+            wake_waiter=object(),
+        )
+
+        with pytest.raises(AttributeError, match="async_wait"):
+            await worker._wait_for_next_iteration(0.0)
+
+    asyncio.run(scenario())
+
+
 def test_worker_base_aclose_closes_wake_waiter() -> None:
     async def scenario() -> None:
         waiter = FakeWakeWaiter()
@@ -516,6 +685,42 @@ def test_worker_base_aclose_closes_wake_waiter() -> None:
         await worker.aclose()
 
         assert waiter.close_count == 1
+
+    asyncio.run(scenario())
+
+
+def test_worker_base_aclose_requires_injected_wake_waiter_close_contract() -> None:
+    async def scenario() -> None:
+        worker = CountingWorker(
+            name="malformed_wake_close",
+            settings=worker_settings(),
+            db=FakeDB(),
+            telemetry=FakeTelemetry(),
+            wake_waiter=object(),
+        )
+
+        with pytest.raises(AttributeError, match="close"):
+            await worker.aclose()
+
+    asyncio.run(scenario())
+
+
+def test_worker_base_aclose_requires_sync_wake_waiter_close_contract_without_awaitable_fallback() -> None:
+    async def scenario() -> None:
+        waiter = AwaitableCloseWakeWaiter()
+        worker = CountingWorker(
+            name="malformed_wake_close_result",
+            settings=worker_settings(),
+            db=FakeDB(),
+            telemetry=FakeTelemetry(),
+            wake_waiter=waiter,
+        )
+
+        with pytest.raises(RuntimeError, match="worker_wake_waiter_close_must_be_sync"):
+            await worker.aclose()
+
+        assert waiter.close_count == 1
+        assert waiter.close_result.awaited is False
 
     asyncio.run(scenario())
 

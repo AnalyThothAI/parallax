@@ -20,11 +20,11 @@ def _coinglass_derivatives(
     oi_market: object | None,
 ) -> CoinglassDerivativesProvider | None:
     worker_settings = settings.workers.cex_oi_radar_board
-    if not bool(getattr(worker_settings, "enabled", True)):
+    if not worker_settings.enabled:
         return None
     if oi_market is None:
         return None
-    if int(getattr(worker_settings, "coinglass_enrichment_limit", 0)) <= 0:
+    if worker_settings.coinglass_enrichment_limit <= 0:
         return None
     try:
         from coinglass_cli.client import CoinglassClient

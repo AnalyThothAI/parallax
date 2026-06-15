@@ -319,3 +319,34 @@ def test_capacity_reservation_release_is_idempotent() -> None:
 
     assert calls == ["released"]
     assert reservation.acquired is False
+
+
+def test_capacity_reservation_release_requires_sync_callback_without_awaitable_fallback() -> None:
+    class AwaitableReleaseResult:
+        def __init__(self) -> None:
+            self.awaited = False
+
+        def __await__(self):
+            self.awaited = True
+            if False:
+                yield None
+
+    calls: list[str] = []
+    release_result = AwaitableReleaseResult()
+
+    def release():
+        calls.append("released")
+        return release_result
+
+    reservation = AgentCapacityReservation(
+        lane="lane",
+        acquired=True,
+        _release=release,
+    )
+
+    with pytest.raises(RuntimeError, match="agent_capacity_release_must_be_sync"):
+        asyncio.run(reservation.release())
+
+    assert calls == ["released"]
+    assert reservation.acquired is False
+    assert release_result.awaited is False

@@ -49,9 +49,9 @@ ASSET_CORRELATION_TITLES: Mapping[str, str] = {
 def build_macro_asset_correlation(
     observations: Sequence[Mapping[str, Any]],
     *,
+    window: str,
     assets: Sequence[str] = DEFAULT_ASSET_CORRELATION_CONCEPTS,
     optional_assets: Sequence[str] = (),
-    window: str = "60d",
 ) -> dict[str, Any]:
     window_days = ASSET_CORRELATION_WINDOWS[window]
     min_sample = _minimum_sample_size(window_days)

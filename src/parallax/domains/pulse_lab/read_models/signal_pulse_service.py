@@ -3,7 +3,6 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from parallax.domains.pulse_lab.services.pulse_freshness_health import PulseFreshnessHealthService
 from parallax.domains.token_intel.interfaces import is_token_factor_snapshot
 
 PUBLIC_SUMMARY_STATUSES = (
@@ -34,7 +33,6 @@ class SignalPulseService:
         q: str | None,
         limit: int,
         cursor: str | None,
-        agent_worker_running: bool,
         visibility: str = "public",
     ) -> dict[str, Any]:
         parsed_visibility = _visibility(visibility)
@@ -70,7 +68,6 @@ class SignalPulseService:
         result_health = {
             "pulse_ready": public_candidate_count > 0,
             "public_ready": public_candidate_count > 0,
-            "agent_worker_running": bool(agent_worker_running),
             "candidate_count": candidate_count,
             "public_candidate_count": public_candidate_count,
             "hidden_candidate_count": max(0, hidden_candidate_count),
@@ -163,15 +160,15 @@ def _health_passthrough(aggregate: dict[str, Any]) -> dict[str, Any]:
 
 
 def _freshness_health(repository: Any, *, window: str, scope: str) -> dict[str, Any]:
-    conn = getattr(repository, "conn", None)
-    if conn is None:
-        return {}
+    freshness_health = repository.freshness_health
     try:
-        return PulseFreshnessHealthService(conn).health(
-            window=window,
-            scope=scope,
-            now_ms=int(time.time() * 1000),
-            since_hours=4,
+        return dict(
+            freshness_health(
+                window=window,
+                scope=scope,
+                now_ms=int(time.time() * 1000),
+                since_hours=4,
+            )
         )
     except Exception:
         return {
@@ -218,10 +215,10 @@ def pulse_item_from_row(row: dict[str, Any]) -> dict[str, Any]:
         "social_phase": row.get("social_phase"),
         "candidate_score": row.get("candidate_score"),
         "score_band": row.get("score_band"),
-        "gate_reasons": _list(row.get("gate_reasons_json")),
-        "risk_reasons": _list(row.get("risk_reasons_json")),
-        "evidence_event_ids": _list(row.get("evidence_event_ids_json")),
-        "source_event_ids": _list(row.get("source_event_ids_json")),
+        "gate_reasons": _required_candidate_list(row, "gate_reasons_json"),
+        "risk_reasons": _required_candidate_list(row, "risk_reasons_json"),
+        "evidence_event_ids": _required_candidate_list(row, "evidence_event_ids_json"),
+        "source_event_ids": _required_candidate_list(row, "source_event_ids_json"),
         "factor_snapshot": factor_snapshot,
         "decision": _decision(row),
         "gate": gate,
@@ -256,7 +253,7 @@ def _first_int(*values: Any) -> int:
 
 
 def _decision(row: dict[str, Any]) -> dict[str, Any]:
-    decision = _dict(row.get("decision_json"))
+    decision = _required_candidate_mapping(row, "decision_json")
     return {
         "route": row.get("decision_route"),
         "recommendation": row.get("decision_recommendation"),
@@ -349,6 +346,24 @@ def _family_facts(snapshot: dict[str, Any], family: str) -> dict[str, Any]:
     families = _dict(snapshot.get("families"))
     family_payload = _dict(families.get(family))
     return _dict(family_payload.get("facts"))
+
+
+def _required_candidate_mapping(row: dict[str, Any], field: str) -> dict[str, Any]:
+    if field not in row or row[field] is None:
+        raise ValueError(f"signal_pulse_public_candidate_required:{field}")
+    value = row[field]
+    if not isinstance(value, dict):
+        raise ValueError(f"signal_pulse_public_candidate_invalid:{field}")
+    return value
+
+
+def _required_candidate_list(row: dict[str, Any], field: str) -> list[Any]:
+    if field not in row or row[field] is None:
+        raise ValueError(f"signal_pulse_public_candidate_required:{field}")
+    value = row[field]
+    if not isinstance(value, list):
+        raise ValueError(f"signal_pulse_public_candidate_invalid:{field}")
+    return value
 
 
 _MISSING = object()

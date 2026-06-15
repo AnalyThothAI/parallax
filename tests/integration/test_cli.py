@@ -16,12 +16,9 @@ from parallax.app.runtime.repository_session import repositories_for_connection
 from parallax.app.surfaces.cli.parser import build_parser
 from parallax.cli import main
 from parallax.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
-from parallax.domains.evidence.repositories.entity_repository import EntityRepository
-from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from parallax.domains.evidence.services.ingest_service import IngestService
 from parallax.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
 from parallax.domains.notifications.repositories.notification_repository import NotificationRepository
-from parallax.domains.token_intel.interfaces import SignalRepository
 from parallax.domains.token_intel.services.token_radar_projection import TokenRadarProjection
 from parallax.platform.config.settings import default_workers_yaml
 from tests.postgres_test_utils import connect_postgres_test
@@ -66,13 +63,29 @@ def seed_postgres(db_path: Path) -> None:
     conn = connect_postgres_test(db_path, read_only=False)
     try:
         migrate(conn)
-        evidence = EvidenceRepository(conn)
-        entities = EntityRepository(conn)
-        signals = SignalRepository(conn)
+        repos = repositories_for_connection(
+            conn,
+            pulse_job_running_timeout_ms=300_000,
+            notification_delivery_running_timeout_ms=300_000,
+            notification_delivery_stale_running_terminalization_batch_size=100,
+        )
         ingest = IngestService(
-            evidence=evidence,
-            entities=entities,
-            signals=signals,
+            evidence=repos.evidence,
+            entities=repos.entities,
+            signals=repos.signals,
+            registry=repos.registry,
+            identity_evidence=repos.identity_evidence,
+            token_intent_lookup=repos.token_intent_lookup,
+            token_evidence=repos.token_evidence,
+            token_intents=repos.token_intents,
+            intent_resolutions=repos.intent_resolutions,
+            discovery=repos.discovery,
+            market_ticks=repos.market_ticks,
+            market_tick_current_dirty_targets=repos.market_tick_current_dirty_targets,
+            enriched_events=repos.enriched_events,
+            event_anchor_jobs=repos.event_anchor_jobs,
+            token_radar_source_dirty_events=repos.token_radar_source_dirty_events,
+            event_anchor_active_window_ms=300_000,
         )
         snapshot = parse_gmgn_token_payload(
             {
@@ -97,7 +110,6 @@ def seed_postgres(db_path: Path) -> None:
             token_snapshot=snapshot,
         )
         ingest.ingest_event(token_event, is_watched=True)
-        repos = repositories_for_connection(conn)
         now_ms = token_event.received_at_ms + 1
         repos.token_radar_dirty_targets.enqueue_recent_resolved_targets(
             since_ms=max(0, token_event.received_at_ms - 5 * 60 * 1000),
@@ -107,6 +119,8 @@ def seed_postgres(db_path: Path) -> None:
             commit=True,
         )
         TokenRadarProjection(repos=repos).rebuild_dirty_targets(
+            lease_ms=120_000,
+            retry_ms=30_000,
             windows=("5m",),
             scopes=("all",),
             now_ms=now_ms,
@@ -401,7 +415,9 @@ class CliTests(unittest.TestCase):
             conn = connect_postgres_test(db_path, read_only=False)
             try:
                 migrate(conn)
-                notifications = NotificationRepository(conn)
+                notifications = NotificationRepository(
+                    conn, running_timeout_ms=300_000, stale_running_terminalization_batch_size=100
+                )
                 notification = notifications.insert_notification(
                     dedup_key="news:pepe",
                     rule_id="news_high_signal",
@@ -1031,9 +1047,6 @@ def test_cli_ops_run_resolution_refresh_uses_worker_without_outer_repository_ses
         def claim_due_lookup_keys(self, **kwargs):
             captured["claim_due_lookup_kwargs"] = kwargs
             return []
-
-        def due_lookup_keys(self, **kwargs):
-            raise AssertionError("run-resolution-refresh must claim discovery dirty lookup queue")
 
         def counts(self):
             return {"found": 0}

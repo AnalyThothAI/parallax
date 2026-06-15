@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from threading import Lock
-from typing import Any
+from typing import Any, Protocol, cast
 
 from parallax.app.runtime.provider_wiring.types import OkxProviderBundle
 from parallax.domains.asset_market.providers import (
@@ -19,6 +19,10 @@ from parallax.integrations.okx.chains import OKX_CHAIN_INDEX_TO_CHAIN, OKX_CHAIN
 from parallax.integrations.okx.dex_client import EVM_ADDRESS_RE, OkxDexClient
 from parallax.integrations.okx.dex_ws_client import OkxDexWebSocketMarketProvider
 from parallax.platform.config.settings import Settings
+
+
+class _SyncCloseProvider(Protocol):
+    def close(self) -> None: ...
 
 
 class OkxDexDiscoveryProvider:
@@ -86,13 +90,10 @@ class SerializedDiscoveryProvider:
             return self._provider.search_tokens(query=query, chain_ids=chain_ids)
 
     def close(self) -> None:
-        close = getattr(self._provider, "close", None)
-        if not close:
-            return
         with self._lock:
             if self._closed:
                 return
-            close()
+            self._provider.close()
             self._closed = True
 
 
@@ -127,10 +128,7 @@ class OkxDexWebSocketMarketProviderAdapter:
             raise RuntimeError("use aclose() for connected OKX DEX WS provider cleanup")
 
     def connection_state_payload(self) -> dict[str, Any]:
-        payload = getattr(self._provider, "connection_state_payload", None)
-        if payload:
-            return payload()
-        return {"provider": "okx_dex_ws", "state": "disconnected", "last_state_change_at_ms": None}
+        return self._provider.connection_state_payload()
 
 
 def wire_okx_provider_bundle(settings: Settings) -> OkxProviderBundle:
@@ -288,11 +286,8 @@ def _close_partial_providers(error: BaseException, *providers: object | None) ->
         if provider is None or id(provider) in seen:
             continue
         seen.add(id(provider))
-        close = getattr(provider, "close", None)
-        if close is None:
-            continue
         try:
-            close()
+            cast(_SyncCloseProvider, provider).close()
         except Exception as exc:
             error.add_note(f"partial provider cleanup failed: {type(exc).__name__}: {exc}")
 

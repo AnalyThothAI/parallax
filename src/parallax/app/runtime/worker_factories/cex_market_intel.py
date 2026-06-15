@@ -14,8 +14,9 @@ def construct_cex_market_intel_workers(ctx: WorkerFactoryContext) -> dict[str, W
     settings = ctx.settings.workers.cex_oi_radar_board
     if not settings.enabled:
         return {}
-    cex_providers = getattr(ctx.providers, "cex_market_intel", None)
-    oi_market = getattr(cex_providers, "oi_market", None)
+    cex_providers = ctx.providers.cex_market_intel
+    oi_market = cex_providers.oi_market
+    coinglass_derivatives = cex_providers.coinglass_derivatives
     if oi_market is None:
         return {
             "cex_oi_radar_board": unavailable_worker(
@@ -31,6 +32,6 @@ def construct_cex_market_intel_workers(ctx: WorkerFactoryContext) -> dict[str, W
             db=ctx.db,
             telemetry=ctx.telemetry,
             oi_market=oi_market,
-            coinglass_derivatives=getattr(cex_providers, "coinglass_derivatives", None),
+            coinglass_derivatives=coinglass_derivatives,
         )
     }

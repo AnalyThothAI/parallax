@@ -179,6 +179,8 @@ def test_source_quality_projection_worker_builds_rows_for_configured_windows() -
         name="news_source_quality_projection",
         settings=SimpleNamespace(
             batch_size=100,
+            lease_ms=120_000,
+            retry_ms=30_000,
             statement_timeout_seconds=30,
             windows=("4h", "24h"),
         ),
@@ -207,6 +209,8 @@ def test_source_quality_projection_worker_empty_dirty_queue_does_not_scan_source
         name="news_source_quality_projection",
         settings=SimpleNamespace(
             batch_size=100,
+            lease_ms=120_000,
+            retry_ms=30_000,
             statement_timeout_seconds=30,
             windows=("24h", "7d"),
         ),
@@ -439,7 +443,9 @@ def test_replace_source_quality_rows_updates_source_status_freshness() -> None:
     assert "updated_at_ms = GREATEST(updated_at_ms, %s)" in status_update
     assert "source_quality_status IS DISTINCT FROM %s" in status_update
     assert status_params == ("healthy", NOW_MS, "coindesk", "healthy")
-    assert conn.commits == 1
+    assert conn.commits == 0
+    assert conn.transaction_enter_count == 1
+    assert conn.transaction_exit_count == 1
 
 
 def test_source_quality_payload_hash_rejects_legacy_diagnostics_keys() -> None:
@@ -544,7 +550,12 @@ class FakeSourceQualityDB:
     def worker_session(self, name: str, statement_timeout_seconds: float | None = None):
         assert statement_timeout_seconds == 30
         self.sessions.append(name)
-        yield SimpleNamespace(news=self.repo, news_projection_dirty_targets=self.dirty, conn=self.conn)
+        yield SimpleNamespace(
+            news=self.repo,
+            news_projection_dirty_targets=self.dirty,
+            conn=self.conn,
+            transaction=self.conn.transaction,
+        )
 
 
 class FakeSourceQualityRepository:
@@ -637,6 +648,8 @@ class CapturingQualityConnection:
     def __init__(self) -> None:
         self.calls: list[tuple[str, object]] = []
         self.commits = 0
+        self.transaction_enter_count = 0
+        self.transaction_exit_count = 0
 
     def execute(self, sql: str, params: object = None) -> CapturingQualityCursor:
         self.calls.append((sql, params))
@@ -647,9 +660,15 @@ class CapturingQualityConnection:
 
     @contextmanager
     def transaction(self):
-        yield
+        self.transaction_enter_count += 1
+        try:
+            yield
+        finally:
+            self.transaction_exit_count += 1
 
 
 class CapturingQualityCursor:
+    rowcount = 1
+
     def fetchall(self):
         return []

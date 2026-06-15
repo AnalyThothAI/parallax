@@ -17,16 +17,32 @@ class MacroSyncWorker(WorkerBase):
     def __init__(
         self,
         *,
-        settings_root: object,
-        wake_bus: object,
+        settings: Any,
+        db: Any,
+        telemetry: Any,
+        settings_root: Any,
+        wake_waiter: Any | None = None,
+        wake_emitter: Any | None = None,
         clock_ms: Callable[[], int] | None = None,
         runner: object | None = None,
         service_factory: Callable[[], MacroSyncService] | None = None,
-        **kwargs: Any,
+        name: str = "macro_sync",
     ) -> None:
-        super().__init__(**kwargs)
+        if settings is None:
+            raise RuntimeError("macro_sync_settings_required")
+        if db is None:
+            raise RuntimeError("macro_sync_db_required")
+        if settings_root is None:
+            raise RuntimeError("macro_sync_settings_root_required")
+        super().__init__(
+            name=name,
+            settings=settings,
+            db=db,
+            telemetry=telemetry,
+            wake_waiter=wake_waiter,
+        )
         self.settings_root = settings_root
-        self.wake_bus = wake_bus
+        self.wake_emitter = wake_emitter
         self.clock_ms = clock_ms or _now_ms
         self.runner = runner
         self.service_factory = service_factory
@@ -78,7 +94,7 @@ class MacroSyncWorker(WorkerBase):
         )
 
     def _batch_size(self) -> int:
-        configured = max(1, int(getattr(self.settings, "batch_size", 1) or 1))
+        configured = max(1, int(self.settings.batch_size))
         return min(configured, _MAX_WINDOWS_PER_CYCLE)
 
     def _service(self) -> MacroSyncService:
@@ -88,7 +104,7 @@ class MacroSyncWorker(WorkerBase):
             settings=self.settings_root,
             db=self.db,
             runner=self.runner,  # type: ignore[arg-type]
-            wake_bus=self.wake_bus,
+            wake_emitter=self.wake_emitter,
             clock_ms=self.clock_ms,
         )
 

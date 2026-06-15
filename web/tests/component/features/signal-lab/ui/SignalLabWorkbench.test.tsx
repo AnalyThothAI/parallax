@@ -13,7 +13,6 @@ describe("SignalLabWorkbench", () => {
           health: {
             pulse_ready: false,
             public_ready: false,
-            agent_worker_running: true,
             candidate_count: 5,
             public_candidate_count: 0,
             blocked_low_information_count: 0,
@@ -73,7 +72,6 @@ describe("SignalLabWorkbench", () => {
           health: {
             pulse_ready: true,
             public_ready: true,
-            agent_worker_running: true,
             candidate_count: 8,
             public_candidate_count: 3,
             hidden_candidate_count: 5,

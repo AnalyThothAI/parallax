@@ -3,7 +3,9 @@ from __future__ import annotations
 import hashlib
 import time
 import uuid
-from typing import Any
+from collections.abc import Callable
+from contextlib import AbstractContextManager
+from typing import Any, cast
 
 from parallax.domains.token_intel.interfaces import (
     TOKEN_RADAR_PROJECTION_NAME,
@@ -55,41 +57,43 @@ class ProjectionRepository:
         last_error: str | None = None,
         commit: bool = True,
     ) -> None:
-        now_ms = _now_ms()
-        self.conn.execute(
-            """
-            INSERT INTO projection_offsets(
-              projection_name, projection_version, source_table, source_max_received_at_ms,
-              source_max_id, last_run_id, status, lag_ms, last_error, created_at_ms, updated_at_ms
+        def _write() -> None:
+            now_ms = _now_ms()
+            cursor = self.conn.execute(
+                """
+                INSERT INTO projection_offsets(
+                  projection_name, projection_version, source_table, source_max_received_at_ms,
+                  source_max_id, last_run_id, status, lag_ms, last_error, created_at_ms, updated_at_ms
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT(projection_name) DO UPDATE SET
+                  projection_version = excluded.projection_version,
+                  source_table = excluded.source_table,
+                  source_max_received_at_ms = excluded.source_max_received_at_ms,
+                  source_max_id = excluded.source_max_id,
+                  last_run_id = excluded.last_run_id,
+                  status = excluded.status,
+                  lag_ms = excluded.lag_ms,
+                  last_error = excluded.last_error,
+                  updated_at_ms = excluded.updated_at_ms
+                """,
+                (
+                    projection_name,
+                    projection_version,
+                    source_table,
+                    int(source_max_received_at_ms),
+                    source_max_id,
+                    last_run_id,
+                    status,
+                    int(lag_ms),
+                    last_error,
+                    now_ms,
+                    now_ms,
+                ),
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT(projection_name) DO UPDATE SET
-              projection_version = excluded.projection_version,
-              source_table = excluded.source_table,
-              source_max_received_at_ms = excluded.source_max_received_at_ms,
-              source_max_id = excluded.source_max_id,
-              last_run_id = excluded.last_run_id,
-              status = excluded.status,
-              lag_ms = excluded.lag_ms,
-              last_error = excluded.last_error,
-              updated_at_ms = excluded.updated_at_ms
-            """,
-            (
-                projection_name,
-                projection_version,
-                source_table,
-                int(source_max_received_at_ms),
-                source_max_id,
-                last_run_id,
-                status,
-                int(lag_ms),
-                last_error,
-                now_ms,
-                now_ms,
-            ),
-        )
-        if commit:
-            self.conn.commit()
+            _required_single_rowcount(cursor)
+
+        return _run_repository_write(self.conn, commit, _write)
 
     def start_run(
         self,
@@ -102,36 +106,39 @@ class ProjectionRepository:
         run_id: str | None = None,
         commit: bool = True,
     ) -> dict[str, Any]:
-        now_ms = _now_ms()
-        resolved_run_id = run_id or _id(
-            "projection_run",
-            projection_name,
-            projection_version,
-            mode,
-            str(now_ms),
-            uuid.uuid4().hex,
-        )
-        self.conn.execute(
-            """
-            INSERT INTO projection_runs(
-              run_id, projection_name, projection_version, mode, status, source_start_ms, source_end_ms,
-              rows_read, rows_written, dirty_ranges_written, started_at_ms
-            )
-            VALUES (%s, %s, %s, %s, 'running', %s, %s, 0, 0, 0, %s)
-            """,
-            (
-                resolved_run_id,
+        def _write() -> dict[str, Any]:
+            now_ms = _now_ms()
+            resolved_run_id = run_id or _id(
+                "projection_run",
                 projection_name,
                 projection_version,
                 mode,
-                source_start_ms,
-                source_end_ms,
-                now_ms,
-            ),
-        )
-        if commit:
-            self.conn.commit()
-        return self.run_by_id(resolved_run_id) or {}
+                str(now_ms),
+                uuid.uuid4().hex,
+            )
+            cursor = self.conn.execute(
+                """
+                INSERT INTO projection_runs(
+                  run_id, projection_name, projection_version, mode, status, source_start_ms, source_end_ms,
+                  rows_read, rows_written, dirty_ranges_written, started_at_ms
+                )
+                VALUES (%s, %s, %s, %s, 'running', %s, %s, 0, 0, 0, %s)
+                RETURNING *
+                """,
+                (
+                    resolved_run_id,
+                    projection_name,
+                    projection_version,
+                    mode,
+                    source_start_ms,
+                    source_end_ms,
+                    now_ms,
+                ),
+            )
+            row = cursor.fetchone()
+            return _required_returning_row(cursor, row)
+
+        return _run_repository_write(self.conn, commit, _write)
 
     def mark_stale_running_runs(
         self,
@@ -142,27 +149,28 @@ class ProjectionRepository:
         finished_at_ms: int,
         commit: bool = True,
     ) -> int:
-        result = self.conn.execute(
-            """
-            UPDATE projection_runs
-            SET status = 'abandoned',
-                finished_at_ms = %s,
-                error = 'stale_running_timeout'
-            WHERE projection_name = %s
-              AND projection_version = %s
-              AND status = 'running'
-              AND started_at_ms < %s
-            """,
-            (
-                int(finished_at_ms),
-                projection_name,
-                projection_version,
-                int(stale_before_ms),
-            ),
-        )
-        if commit:
-            self.conn.commit()
-        return int(getattr(result, "rowcount", 0) or 0)
+        def _write() -> int:
+            result = self.conn.execute(
+                """
+                UPDATE projection_runs
+                SET status = 'abandoned',
+                    finished_at_ms = %s,
+                    error = 'stale_running_timeout'
+                WHERE projection_name = %s
+                  AND projection_version = %s
+                  AND status = 'running'
+                  AND started_at_ms < %s
+                """,
+                (
+                    int(finished_at_ms),
+                    projection_name,
+                    projection_version,
+                    int(stale_before_ms),
+                ),
+            )
+            return _cursor_rowcount(result)
+
+        return _run_repository_write(self.conn, commit, _write)
 
     def finish_run(
         self,
@@ -175,35 +183,37 @@ class ProjectionRepository:
         error: str | None = None,
         commit: bool = True,
     ) -> None:
-        self.conn.execute(
-            """
-            UPDATE projection_runs
-            SET status = %s,
-                rows_read = %s,
-                rows_written = %s,
-                dirty_ranges_written = %s,
-                finished_at_ms = %s,
-                error = %s
-            WHERE run_id = %s
-            """,
-            (
-                status,
-                int(rows_read),
-                int(rows_written),
-                int(dirty_ranges_written),
-                _now_ms(),
-                error,
-                run_id,
-            ),
-        )
-        if commit:
-            self.conn.commit()
+        def _write() -> None:
+            cursor = self.conn.execute(
+                """
+                UPDATE projection_runs
+                SET status = %s,
+                    rows_read = %s,
+                    rows_written = %s,
+                    dirty_ranges_written = %s,
+                    finished_at_ms = %s,
+                    error = %s
+                WHERE run_id = %s
+                """,
+                (
+                    status,
+                    int(rows_read),
+                    int(rows_written),
+                    int(dirty_ranges_written),
+                    _now_ms(),
+                    error,
+                    run_id,
+                ),
+            )
+            _required_single_rowcount(cursor)
+
+        return _run_repository_write(self.conn, commit, _write)
 
     def run_by_id(self, run_id: str) -> dict[str, Any] | None:
         row = self.conn.execute("SELECT * FROM projection_runs WHERE run_id = %s", (run_id,)).fetchone()
         return dict(row) if row else None
 
-    def list_runs(self, *, projection_name: str | None = None, limit: int = 20) -> list[dict[str, Any]]:
+    def list_runs(self, *, limit: int, projection_name: str | None = None) -> list[dict[str, Any]]:
         params: list[Any] = []
         where = ""
         if projection_name:
@@ -235,51 +245,53 @@ class ProjectionRepository:
         reason: str,
         commit: bool = True,
     ) -> str:
-        dirty_id = _id(
-            "projection_dirty_range",
-            projection_name,
-            projection_version,
-            entity_type,
-            entity_key,
-            window or "",
-            scope or "",
-            str(int(start_ms)),
-            str(int(end_ms)),
-            reason,
-        )
-        now_ms = _now_ms()
-        self.conn.execute(
-            """
-            INSERT INTO projection_dirty_ranges(
-              dirty_id, projection_name, projection_version, entity_type, entity_key,
-              "window", scope, start_ms, end_ms, reason, status, created_at_ms, updated_at_ms
-            )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending', %s, %s)
-            ON CONFLICT(dirty_id) DO UPDATE SET
-              status = CASE
-                WHEN projection_dirty_ranges.status = 'running' THEN 'running'
-                ELSE 'pending'
-              END,
-              updated_at_ms = excluded.updated_at_ms
-            """,
-            (
-                dirty_id,
+        def _write() -> str:
+            dirty_id = _id(
+                "projection_dirty_range",
                 projection_name,
                 projection_version,
                 entity_type,
                 entity_key,
-                window,
-                scope,
-                int(start_ms),
-                int(end_ms),
+                window or "",
+                scope or "",
+                str(int(start_ms)),
+                str(int(end_ms)),
                 reason,
-                now_ms,
-                now_ms,
-            ),
-        )
-        if commit:
-            self.conn.commit()
-        return dirty_id
+            )
+            now_ms = _now_ms()
+            cursor = self.conn.execute(
+                """
+                INSERT INTO projection_dirty_ranges(
+                  dirty_id, projection_name, projection_version, entity_type, entity_key,
+                  "window", scope, start_ms, end_ms, reason, status, created_at_ms, updated_at_ms
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending', %s, %s)
+                ON CONFLICT(dirty_id) DO UPDATE SET
+                  status = CASE
+                    WHEN projection_dirty_ranges.status = 'running' THEN 'running'
+                    ELSE 'pending'
+                  END,
+                  updated_at_ms = excluded.updated_at_ms
+                """,
+                (
+                    dirty_id,
+                    projection_name,
+                    projection_version,
+                    entity_type,
+                    entity_key,
+                    window,
+                    scope,
+                    int(start_ms),
+                    int(end_ms),
+                    reason,
+                    now_ms,
+                    now_ms,
+                ),
+            )
+            _required_single_rowcount(cursor)
+            return dirty_id
+
+        return _run_repository_write(self.conn, commit, _write)
 
     def claim_dirty_ranges(
         self,
@@ -289,32 +301,35 @@ class ProjectionRepository:
         limit: int,
         commit: bool = True,
     ) -> list[dict[str, Any]]:
-        rows = self.conn.execute(
-            """
-            WITH picked AS (
-              SELECT dirty_id
-              FROM projection_dirty_ranges
-              WHERE projection_name = %s
-                AND projection_version = %s
-                AND status = 'pending'
-              ORDER BY created_at_ms ASC, dirty_id ASC
-              LIMIT %s
-              FOR UPDATE SKIP LOCKED
+        def _write() -> list[dict[str, Any]]:
+            cursor = self.conn.execute(
+                """
+                WITH picked AS (
+                  SELECT dirty_id
+                  FROM projection_dirty_ranges
+                  WHERE projection_name = %s
+                    AND projection_version = %s
+                    AND status = 'pending'
+                  ORDER BY created_at_ms ASC, dirty_id ASC
+                  LIMIT %s
+                  FOR UPDATE SKIP LOCKED
+                )
+                UPDATE projection_dirty_ranges ranges
+                SET status = 'running',
+                    updated_at_ms = %s
+                FROM picked
+                WHERE ranges.dirty_id = picked.dirty_id
+                RETURNING ranges.*
+                """,
+                (projection_name, projection_version, max(0, int(limit)), _now_ms()),
             )
-            UPDATE projection_dirty_ranges ranges
-            SET status = 'running',
-                updated_at_ms = %s
-            FROM picked
-            WHERE ranges.dirty_id = picked.dirty_id
-            RETURNING ranges.*
-            """,
-            (projection_name, projection_version, max(0, int(limit)), _now_ms()),
-        ).fetchall()
-        if commit:
-            self.conn.commit()
-        return [dict(row) for row in rows]
+            rows = cursor.fetchall()
+            _returned_rowcount(cursor, rows)
+            return [dict(row) for row in rows]
 
-    def list_dirty_ranges(self, *, projection_name: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
+        return _run_repository_write(self.conn, commit, _write)
+
+    def list_dirty_ranges(self, *, limit: int, projection_name: str | None = None) -> list[dict[str, Any]]:
         params: list[Any] = []
         where = ""
         if projection_name:
@@ -371,3 +386,53 @@ def _id(*parts: str) -> str:
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _transaction(conn: Any) -> AbstractContextManager[Any]:
+    try:
+        transaction_context = conn.transaction
+    except AttributeError as exc:
+        raise RuntimeError("projection_repository_transaction_required") from exc
+    if not callable(transaction_context):
+        raise RuntimeError("projection_repository_transaction_required")
+    return cast(AbstractContextManager[Any], transaction_context())
+
+
+def _run_repository_write[T](conn: Any, commit: bool, write: Callable[[], T]) -> T:
+    if commit:
+        with _transaction(conn):
+            return write()
+    return write()
+
+
+def _cursor_rowcount(cursor: Any) -> int:
+    try:
+        rowcount = cursor.rowcount
+    except AttributeError as exc:
+        raise TypeError("projection_repository_rowcount_required") from exc
+    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
+        raise TypeError("projection_repository_rowcount_invalid")
+    if rowcount < 0:
+        raise TypeError("projection_repository_rowcount_invalid")
+    return int(rowcount)
+
+
+def _returned_rowcount(cursor: Any, rows: list[Any]) -> int:
+    rowcount = _cursor_rowcount(cursor)
+    if rowcount != len(rows):
+        raise TypeError("projection_repository_rowcount_invalid")
+    return rowcount
+
+
+def _required_single_rowcount(cursor: Any) -> int:
+    rowcount = _cursor_rowcount(cursor)
+    if rowcount != 1:
+        raise TypeError("projection_repository_rowcount_invalid")
+    return rowcount
+
+
+def _required_returning_row(cursor: Any, row: Any) -> dict[str, Any]:
+    _required_single_rowcount(cursor)
+    if row is None:
+        raise TypeError("projection_repository_rowcount_invalid")
+    return dict(row)

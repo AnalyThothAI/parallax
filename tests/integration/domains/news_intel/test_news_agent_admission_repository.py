@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from parallax.domains.news_intel._constants import NEWS_MARKET_SCOPE_VERSION, NEWS_PAGE_PROJECTION_VERSION
 from parallax.domains.news_intel.repositories.news_repository import NewsRepository
+from parallax.domains.news_intel.types.news_item_agent_admission import NewsItemAgentAdmission
+from parallax.domains.news_intel.types.news_market_scope import NewsMarketScope
+from parallax.domains.news_intel.types.news_story_identity import NewsStoryIdentity
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 
@@ -261,12 +264,12 @@ def _seed_processed_news_item(
     repo.update_item_market_scope_and_story_identity(
         news_item_id=news_item_id,
         market_scope=_market_scope_fixture(primary=primary_scope),
-        story_identity={
-            "story_key": story_key or f"story:{suffix}",
-            "confidence": "weak",
-            "basis": {"test": True},
-            "version": "news_story_identity_v1",
-        },
+        story_identity=NewsStoryIdentity(
+            story_key=story_key or f"story:{suffix}",
+            confidence="weak",
+            basis={"test": True},
+            version="news_story_identity_v1",
+        ),
         now_ms=NOW_MS,
     )
     return news_item_id
@@ -277,14 +280,15 @@ def _agent_admission_fixture(
     status: str = "eligible",
     reason: str = "eligible",
     representative_news_item_id: str = "",
-) -> dict[str, object]:
-    return {
-        "status": status,
-        "reason": reason,
-        "basis": {"market_scope": ["crypto"]},
-        "version": AGENT_ADMISSION_VERSION,
-        "representative_news_item_id": representative_news_item_id,
-    }
+) -> NewsItemAgentAdmission:
+    return NewsItemAgentAdmission(
+        eligible=status in {"eligible", "eligible_refresh"},
+        status=status,
+        reason=reason,
+        basis={"market_scope": ["crypto"]},
+        version=AGENT_ADMISSION_VERSION,
+        representative_news_item_id=representative_news_item_id,
+    )
 
 
 def _page_row_fixture(
@@ -323,12 +327,12 @@ def _page_row_fixture(
     }
 
 
-def _market_scope_fixture(*, primary: str = "crypto") -> dict[str, object]:
-    return {
-        "scope": [primary],
-        "primary": primary,
-        "status": "classified",
-        "reason": f"{primary}_context",
-        "basis": {"test": True},
-        "version": NEWS_MARKET_SCOPE_VERSION,
-    }
+def _market_scope_fixture(*, primary: str = "crypto") -> NewsMarketScope:
+    return NewsMarketScope(
+        scope=(primary,),
+        primary=primary,
+        status="classified",
+        reason=f"{primary}_context",
+        basis={"test": True},
+        version=NEWS_MARKET_SCOPE_VERSION,
+    )

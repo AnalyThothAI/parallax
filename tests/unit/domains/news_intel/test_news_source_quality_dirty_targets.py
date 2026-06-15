@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
-from types import SimpleNamespace
 from typing import Any
 
 from parallax.domains.news_intel.runtime.news_source_quality_projection_worker import (
     NewsSourceQualityProjectionWorker,
 )
+from parallax.platform.config.settings import NewsSourceQualityProjectionWorkerSettings
 
 NOW_MS = 1_779_000_000_000
 
@@ -57,14 +57,79 @@ def test_source_quality_worker_projects_claimed_source_window_and_reschedules_ta
     ]
 
 
-def _worker(repos: FakeRepos) -> NewsSourceQualityProjectionWorker:
+def test_source_quality_worker_reads_formal_settings_for_claim_session_windows_and_retry() -> None:
+    settings = _source_quality_projection_settings(
+        batch_size=7,
+        lease_ms=45_000,
+        retry_ms=90_000,
+        statement_timeout_seconds=17,
+        windows=("7d",),
+    )
+    repos = FakeRepos(claimed=[_claim("source-1", window="_refresh")], expected_status_window="7d")
+    worker = _worker(repos, settings=settings, expected_statement_timeout=17)
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.processed == 1
+    assert result.notes["windows"] == ("7d",)
+    assert repos.news.scoped_calls == [[("source-1", "7d")]]
+    assert repos.dirty.claim_calls == [
+        {
+            "projection_name": "source_quality",
+            "limit": 7,
+            "lease_ms": 45_000,
+            "now_ms": NOW_MS,
+            "lease_owner": "news_source_quality_projection",
+            "commit": False,
+        }
+    ]
+
+    error_repos = FakeRepos(
+        claimed=[_claim("source-1", window="_refresh")],
+        expected_status_window="7d",
+        input_error=RuntimeError("boom"),
+    )
+    error_worker = _worker(error_repos, settings=settings, expected_statement_timeout=17)
+
+    error_result = error_worker.run_once_sync(now_ms=NOW_MS)
+
+    assert error_result.failed == 1
+    assert error_repos.dirty.error_calls == [
+        {
+            "rows": [_claim("source-1", window="_refresh")],
+            "error": "boom",
+            "retry_ms": 90_000,
+            "now_ms": NOW_MS,
+            "commit": False,
+        }
+    ]
+
+
+def _worker(
+    repos: FakeRepos,
+    *,
+    settings: NewsSourceQualityProjectionWorkerSettings | None = None,
+    expected_statement_timeout: float = 30,
+) -> NewsSourceQualityProjectionWorker:
     return NewsSourceQualityProjectionWorker(
         name="news_source_quality_projection",
-        settings=SimpleNamespace(batch_size=10, lease_ms=60_000, retry_ms=30_000, statement_timeout_seconds=30),
-        db=FakeDB(repos),
+        settings=settings or _source_quality_projection_settings(),
+        db=FakeDB(repos, expected_statement_timeout=expected_statement_timeout),
         telemetry=object(),
         clock_ms=lambda: NOW_MS,
     )
+
+
+def _source_quality_projection_settings(**overrides: Any) -> NewsSourceQualityProjectionWorkerSettings:
+    payload: dict[str, Any] = {
+        "batch_size": 10,
+        "lease_ms": 60_000,
+        "retry_ms": 30_000,
+        "statement_timeout_seconds": 30,
+        "windows": ("24h",),
+    }
+    payload.update(overrides)
+    return NewsSourceQualityProjectionWorkerSettings(**payload)
 
 
 def _claim(source_id: str, *, window: str) -> dict[str, Any]:
@@ -80,18 +145,29 @@ def _claim(source_id: str, *, window: str) -> dict[str, Any]:
 
 
 class FakeRepos:
-    def __init__(self, *, claimed: list[dict[str, Any]]) -> None:
+    def __init__(
+        self,
+        *,
+        claimed: list[dict[str, Any]],
+        expected_status_window: str = "24h",
+        input_error: Exception | None = None,
+    ) -> None:
         self.conn = FakeConn()
-        self.news = FakeNewsRepo()
+        self.news = FakeNewsRepo(expected_status_window=expected_status_window, input_error=input_error)
         self.dirty = FakeDirtyRepo(claimed)
         self.news_projection_dirty_targets = self.dirty
 
+    def transaction(self) -> Iterator[None]:
+        return self.conn.transaction()
+
 
 class FakeNewsRepo:
-    def __init__(self) -> None:
+    def __init__(self, *, expected_status_window: str = "24h", input_error: Exception | None = None) -> None:
         self.scoped_calls: list[list[tuple[str, str]]] = []
         self.broad_scan_calls = 0
         self.replaced_rows: list[dict[str, Any]] = []
+        self.expected_status_window = expected_status_window
+        self.input_error = input_error
 
     def list_source_quality_inputs(self, *, window_ms: int, now_ms: int) -> list[dict[str, Any]]:
         self.broad_scan_calls += 1
@@ -104,6 +180,8 @@ class FakeNewsRepo:
         now_ms: int,
     ) -> list[dict[str, Any]]:
         self.scoped_calls.append(list(source_windows))
+        if self.input_error is not None:
+            raise self.input_error
         return [
             {
                 "source_id": source_id,
@@ -135,7 +213,7 @@ class FakeNewsRepo:
         status_window: str,
         commit: bool = True,
     ) -> list[str]:
-        assert status_window == "24h"
+        assert status_window == self.expected_status_window
         assert commit is False
         self.replaced_rows.extend(dict(row) for row in rows)
         return []
@@ -144,13 +222,16 @@ class FakeNewsRepo:
 class FakeDirtyRepo:
     def __init__(self, claimed: list[dict[str, Any]]) -> None:
         self.claimed = [dict(row) for row in claimed]
+        self.claim_calls: list[dict[str, Any]] = []
         self.marked_done: list[list[dict[str, Any]]] = []
         self.marked_error: list[list[dict[str, Any]]] = []
+        self.error_calls: list[dict[str, Any]] = []
         self.enqueued: list[dict[str, Any]] = []
 
     def claim_due(self, **kwargs: Any) -> list[dict[str, Any]]:
         assert kwargs["projection_name"] == "source_quality"
         assert kwargs["commit"] is False
+        self.claim_calls.append(dict(kwargs))
         return [dict(row) for row in self.claimed[: kwargs["limit"]]]
 
     def mark_done(self, rows: list[Mapping[str, Any]], *, now_ms: int, commit: bool = True) -> int:
@@ -170,6 +251,15 @@ class FakeDirtyRepo:
     ) -> int:
         del count_attempt
         self.marked_error.append([dict(row) for row in rows])
+        self.error_calls.append(
+            {
+                "rows": [dict(row) for row in rows],
+                "error": error,
+                "retry_ms": retry_ms,
+                "now_ms": now_ms,
+                "commit": commit,
+            }
+        )
         return len(rows)
 
     def enqueue_targets(
@@ -194,13 +284,14 @@ class FakeDirtyRepo:
 
 
 class FakeDB:
-    def __init__(self, repos: FakeRepos) -> None:
+    def __init__(self, repos: FakeRepos, *, expected_statement_timeout: float = 30) -> None:
         self.repos = repos
+        self.expected_statement_timeout = expected_statement_timeout
 
     @contextmanager
     def worker_session(self, name: str, statement_timeout_seconds: float | None = None) -> Iterator[FakeRepos]:
         assert name == "news_source_quality_projection"
-        assert statement_timeout_seconds == 30
+        assert statement_timeout_seconds == self.expected_statement_timeout
         yield self.repos
 
 

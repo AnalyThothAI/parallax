@@ -21,6 +21,7 @@ def test_search_inspect_returns_canonical_token_result_without_agent_brief():
         token_radar=FakeTokenRadar(),
         targets=FakeTargets(rows=[target_row("ev_1", phase_text="$BTC first social wave")]),
         profiles=FakeProfiles(profile={"status": "ready", "provider": "test_profile"}),
+        cex_detail_snapshots=FakeCexDetailSnapshots(),
     )
 
     result = service.inspect("$BTC", window="24h", scope="all", limit=50, now_ms=1_700_086_400_000)
@@ -34,6 +35,7 @@ def test_search_inspect_returns_canonical_token_result_without_agent_brief():
     assert result["token_result"]["profile"] == {"status": "ready", "provider": "test_profile"}
     assert "agent_brief" not in result["token_result"]
     assert result["token_result"]["market_live"]["status"] == "missing"
+    assert result["token_result"]["cex_detail"]["status"] == "missing"
     assert "radar_item" not in result["token_result"]
     assert LEGACY_MARKET_FIELD not in result["token_result"]
 
@@ -127,8 +129,9 @@ class FakeSearchQuery:
 
 
 class FakeTargets:
-    def __init__(self, *, rows):
+    def __init__(self, *, rows, market_tick=None):
         self.rows = rows
+        self.market_tick = market_tick
 
     def target_identity(self, *, target_type, target_id):
         for row in self.rows:
@@ -158,6 +161,12 @@ class FakeTargets:
             if row["target_type"] == target_type and row["target_id"] == target_id and row["received_at_ms"] >= since_ms
         ][:limit]
 
+    def latest_market_tick(self, *, target_type, target_id):
+        for row in self.rows:
+            if row["target_type"] == target_type and row["target_id"] == target_id:
+                return self.market_tick
+        return None
+
 
 class FakeTokenRadar:
     def latest_coverage(self, *, projection_version, windows, scopes):
@@ -186,6 +195,16 @@ class FakeProfiles:
 
     def profiles_for_targets(self, targets):
         return {}
+
+
+class FakeCexDetailSnapshots:
+    def __init__(self, *, snapshot=None):
+        self.snapshot = snapshot
+        self.calls = []
+
+    def latest_snapshot(self, *, target_type, target_id):
+        self.calls.append({"target_type": target_type, "target_id": target_id})
+        return self.snapshot
 
 
 def hit(

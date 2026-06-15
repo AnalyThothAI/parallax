@@ -39,6 +39,7 @@ def test_publish_board_upserts_current_rows_with_stable_target_identity():
         "score": 91.5,
         "score_components": {"oi": 1},
         "observed_at_ms": 1_778_000_000_001,
+        "observed_at_source": "provider",
     }
 
     written = repo.publish_board(
@@ -89,6 +90,175 @@ def test_publish_board_upserts_current_rows_with_stable_target_identity():
     assert second_conn.params_for("INSERT INTO cex_oi_radar_rows")[0] == row_params[0]
 
 
+def test_publish_board_requires_connection_transaction_before_sql_when_committing():
+    conn = _NoTransactionConn()
+    row = {
+        "rank": 1,
+        "target_id": "binance:BTCUSDT",
+        "native_market_id": "BTCUSDT",
+        "base_symbol": "BTC",
+        "quote_symbol": "USDT",
+        "score": 91.5,
+        "observed_at_ms": 1_778_000_000_001,
+    }
+
+    with pytest.raises(TypeError, match="cex_oi_radar_transaction_required"):
+        CexOiRadarRepository(conn).publish_board(
+            rows=[row],
+            computed_at_ms=1_778_000_000_123,
+            period="5m",
+            status="success",
+            notes={},
+        )
+
+    assert conn.sql_calls == []
+
+
+def test_publish_board_requires_formal_period_identity_before_sql():
+    conn = _RecordingConn()
+
+    with pytest.raises(ValueError, match="cex_oi_radar_identity_required:period"):
+        CexOiRadarRepository(conn).publish_board(
+            rows=[_valid_board_row()],
+            computed_at_ms=1_778_000_000_123,
+            period=" ",
+            status="success",
+            notes={},
+            commit=False,
+        )
+
+    assert conn.sql_calls == []
+
+
+@pytest.mark.parametrize("field", ("target_id", "native_market_id", "base_symbol", "quote_symbol"))
+def test_publish_board_requires_formal_row_identity_before_sql(field: str):
+    conn = _RecordingConn()
+    row = {**_valid_board_row(), field: ""}
+
+    with pytest.raises(ValueError, match=f"cex_oi_radar_identity_required:{field}"):
+        CexOiRadarRepository(conn).publish_board(
+            rows=[row],
+            computed_at_ms=1_778_000_000_123,
+            period="5m",
+            status="success",
+            notes={},
+            commit=False,
+        )
+
+    assert conn.sql_calls == []
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "match"),
+    (
+        ("observed_at_ms", None, "cex_oi_radar_observation_required:observed_at_ms"),
+        ("observed_at_source", "", "cex_oi_radar_observation_required:observed_at_source"),
+        ("observed_at_source", "clock", "cex_oi_radar_observation_invalid:observed_at_source"),
+    ),
+)
+def test_publish_board_requires_formal_observation_contract_before_sql(field: str, value, match: str):
+    conn = _RecordingConn()
+    row = {**_valid_board_row(), field: value}
+
+    with pytest.raises(ValueError, match=match):
+        CexOiRadarRepository(conn).publish_board(
+            rows=[row],
+            computed_at_ms=1_778_000_000_123,
+            period="5m",
+            status="success",
+            notes={},
+            commit=False,
+        )
+
+    assert conn.sql_calls == []
+
+
+@pytest.mark.parametrize(
+    ("value", "match"),
+    (
+        (None, "cex_oi_radar_score_components_required"),
+        ([], "cex_oi_radar_score_components_invalid"),
+    ),
+)
+def test_publish_board_requires_formal_score_components_before_sql(value, match: str):
+    conn = _RecordingConn()
+    row = {**_valid_board_row(), "score_components": value}
+
+    with pytest.raises(ValueError, match=match):
+        CexOiRadarRepository(conn).publish_board(
+            rows=[row],
+            computed_at_ms=1_778_000_000_123,
+            period="5m",
+            status="success",
+            notes={},
+            commit=False,
+        )
+
+    assert conn.sql_calls == []
+
+
+@pytest.mark.parametrize(
+    ("patch", "error_field"),
+    (
+        ({"period": " "}, "period"),
+        ({"row": {"target_id": ""}}, "target_id"),
+        ({"row": {"native_market_id": ""}}, "native_market_id"),
+        ({"row": {"base_symbol": ""}}, "base_symbol"),
+        ({"row": {"quote_symbol": ""}}, "quote_symbol"),
+    ),
+)
+def test_board_payload_hash_requires_formal_board_identity_without_defaults(
+    patch: dict[str, object],
+    error_field: str,
+):
+    row = {**_valid_board_row(), **patch.get("row", {})}
+    period = str(patch.get("period", "5m"))
+
+    with pytest.raises(ValueError, match=f"cex_oi_radar_identity_required:{error_field}"):
+        _board_payload_hash(
+            rows=[row],
+            period=period,
+            source_frontier_ms=1_778_000_000_001,
+        )
+
+
+@pytest.mark.parametrize(
+    ("row_patch", "match"),
+    (
+        ({"observed_at_ms": None}, "cex_oi_radar_observation_required:observed_at_ms"),
+        ({"observed_at_source": ""}, "cex_oi_radar_observation_required:observed_at_source"),
+        ({"observed_at_source": "clock"}, "cex_oi_radar_observation_invalid:observed_at_source"),
+    ),
+)
+def test_board_payload_hash_requires_formal_observation_contract(row_patch: dict[str, object], match: str):
+    row = {**_valid_board_row(), **row_patch}
+
+    with pytest.raises(ValueError, match=match):
+        _board_payload_hash(
+            rows=[row],
+            period="5m",
+            source_frontier_ms=1_778_000_000_001,
+        )
+
+
+@pytest.mark.parametrize(
+    ("value", "match"),
+    (
+        (None, "cex_oi_radar_score_components_required"),
+        ([], "cex_oi_radar_score_components_invalid"),
+    ),
+)
+def test_board_payload_hash_requires_formal_score_components(value, match: str):
+    row = {**_valid_board_row(), "score_components": value}
+
+    with pytest.raises(ValueError, match=match):
+        _board_payload_hash(
+            rows=[row],
+            period="5m",
+            source_frontier_ms=1_778_000_000_001,
+        )
+
+
 def test_publish_board_skips_serving_row_writes_when_payload_is_unchanged():
     row = {
         "rank": 1,
@@ -105,6 +275,7 @@ def test_publish_board_skips_serving_row_writes_when_payload_is_unchanged():
         "score": 91.5,
         "score_components": {"oi": 1},
         "observed_at_ms": 1_778_000_000_001,
+        "observed_at_source": "provider",
     }
     conn = _RecordingConn(
         state={
@@ -150,6 +321,7 @@ def test_board_payload_hash_ignores_detail_only_payload_fields():
         "score": 91.5,
         "score_components": {"oi": 1},
         "observed_at_ms": 1_778_000_000_001,
+        "observed_at_source": "provider",
     }
 
     first_hash = _board_payload_hash(
@@ -164,6 +336,89 @@ def test_board_payload_hash_ignores_detail_only_payload_fields():
     )
 
     assert first_hash == second_hash
+
+
+def test_board_payload_hash_ignores_computed_fallback_observed_timestamps():
+    row = {
+        "rank": 1,
+        "target_id": "binance:BTCUSDT",
+        "pricefeed_id": "pf-btc",
+        "native_market_id": "BTCUSDT",
+        "base_symbol": "BTC",
+        "quote_symbol": "USDT",
+        "open_interest_usd": 1100.0,
+        "open_interest_change_pct_1h": 10.0,
+        "volume_24h_usd": 10_000_000.0,
+        "funding_rate": 0.0001,
+        "mark_price": 101.0,
+        "score": 91.5,
+        "score_components": {"oi": 1},
+        "observed_at_source": "computed",
+    }
+
+    first_hash = _board_payload_hash(
+        rows=[{**row, "observed_at_ms": 1_778_000_000_001}],
+        period="5m",
+        source_frontier_ms=1_778_000_000_001,
+    )
+    second_hash = _board_payload_hash(
+        rows=[{**row, "observed_at_ms": 1_778_000_999_999}],
+        period="5m",
+        source_frontier_ms=1_778_000_999_999,
+    )
+
+    assert first_hash == second_hash
+
+
+def test_board_payload_hash_keeps_successful_empty_board_stable_across_attempt_time():
+    first_hash = _board_payload_hash(rows=[], period="5m", source_frontier_ms=1_778_000_000_001)
+    second_hash = _board_payload_hash(rows=[], period="5m", source_frontier_ms=1_778_000_999_999)
+
+    assert first_hash == second_hash
+
+
+def test_publish_board_skips_serving_row_writes_when_only_computed_observed_time_changes():
+    row = {
+        "rank": 1,
+        "target_id": "binance:BTCUSDT",
+        "pricefeed_id": "pf-btc",
+        "native_market_id": "BTCUSDT",
+        "base_symbol": "BTC",
+        "quote_symbol": "USDT",
+        "open_interest_usd": 1100.0,
+        "open_interest_change_pct_1h": 10.0,
+        "volume_24h_usd": 10_000_000.0,
+        "funding_rate": 0.0001,
+        "mark_price": 101.0,
+        "score": 91.5,
+        "score_components": {"oi": 1},
+        "observed_at_source": "computed",
+    }
+    first = {**row, "observed_at_ms": 1_778_000_000_001}
+    second = {**row, "observed_at_ms": 1_778_000_999_999}
+    conn = _RecordingConn(
+        state={
+            "board_key": "binance:USDT:PERPETUAL:5m",
+            "current_payload_hash": _board_payload_hash(
+                rows=[first],
+                period="5m",
+                source_frontier_ms=1_778_000_000_001,
+            ),
+        }
+    )
+
+    written = CexOiRadarRepository(conn).publish_board(
+        rows=[second],
+        computed_at_ms=1_778_000_999_999,
+        period="5m",
+        status="success",
+        notes={},
+    )
+
+    assert written == 0
+    all_sql = "\n".join(conn.sql_calls)
+    assert "DELETE FROM cex_oi_radar_rows" not in all_sql
+    assert "INSERT INTO cex_oi_radar_rows" not in all_sql
 
 
 def test_board_payload_hash_rejects_legacy_score_component_keys():
@@ -182,6 +437,7 @@ def test_board_payload_hash_rejects_legacy_score_component_keys():
         "score": 91.5,
         "score_components": {123: "legacy"},
         "observed_at_ms": 1_778_000_000_001,
+        "observed_at_source": "provider",
     }
 
     with pytest.raises(ValueError, match="current payload hash payload has non-string keys"):
@@ -204,6 +460,43 @@ def test_publish_board_with_result_reports_changed_empty_board_decision():
     all_sql = "\n".join(conn.sql_calls)
     assert "DELETE FROM cex_oi_radar_rows" in all_sql
     assert "AND NOT (row_id = ANY(%s::text[]))" not in all_sql
+
+
+def test_publish_board_requires_delete_rowcount_for_write_accounting():
+    conn = _RowcountDriftConn(dml_cursors=[_MissingRowcountCursor(), _RowcountCursor(rowcount=1)])
+
+    with pytest.raises(TypeError, match="cex_oi_radar_rowcount_required"):
+        CexOiRadarRepository(conn).publish_board(
+            rows=[_valid_board_row()],
+            computed_at_ms=1_778_000_000_123,
+            period="5m",
+            status="success",
+            notes={},
+            commit=False,
+        )
+
+    all_sql = "\n".join(conn.sql_calls)
+    assert "DELETE FROM cex_oi_radar_rows" in all_sql
+    assert "INSERT INTO cex_oi_radar_rows" not in all_sql
+
+
+@pytest.mark.parametrize("rowcount", ("unknown", True, -1))
+def test_publish_board_rejects_invalid_upsert_rowcount_for_write_accounting(rowcount: object):
+    conn = _RowcountDriftConn(dml_cursors=[_RowcountCursor(rowcount=0), _RowcountCursor(rowcount=rowcount)])
+
+    with pytest.raises(TypeError, match="cex_oi_radar_rowcount_invalid"):
+        CexOiRadarRepository(conn).publish_board(
+            rows=[_valid_board_row()],
+            computed_at_ms=1_778_000_000_123,
+            period="5m",
+            status="success",
+            notes={},
+            commit=False,
+        )
+
+    all_sql = "\n".join(conn.sql_calls)
+    assert "DELETE FROM cex_oi_radar_rows" in all_sql
+    assert "INSERT INTO cex_oi_radar_rows" in all_sql
 
 
 def test_skipped_publish_preserves_existing_current_rows():
@@ -285,11 +578,47 @@ def test_record_attempt_failure_preserves_current_rows():
     )
 
 
+def test_record_attempt_failure_requires_connection_transaction_before_sql_when_committing():
+    conn = _NoTransactionConn()
+
+    with pytest.raises(TypeError, match="cex_oi_radar_transaction_required"):
+        CexOiRadarRepository(conn).record_attempt_failure(
+            computed_at_ms=1_778_000_000_123,
+            period="5m",
+            notes={"reason": "RuntimeError"},
+        )
+
+    assert conn.sql_calls == []
+
+
+def _valid_board_row() -> dict[str, object]:
+    return {
+        "rank": 1,
+        "target_id": "binance:BTCUSDT",
+        "pricefeed_id": "pf-btc",
+        "native_market_id": "BTCUSDT",
+        "base_symbol": "BTC",
+        "quote_symbol": "USDT",
+        "open_interest_usd": 1100.0,
+        "open_interest_change_pct_1h": 10.0,
+        "volume_24h_usd": 10_000_000.0,
+        "funding_rate": 0.0001,
+        "mark_price": 101.0,
+        "score": 91.5,
+        "score_components": {"oi": 1},
+        "observed_at_ms": 1_778_000_000_001,
+        "observed_at_source": "provider",
+    }
+
+
 class _RecordingConn:
     def __init__(self, *, state=None, board_rows=None) -> None:
         self.sql_calls: list[str] = []
         self.params_calls: list[tuple[str, tuple]] = []
         self.committed = False
+        self.rollbacks = 0
+        self.transaction_depth = 0
+        self.rowcount = 0
         self._state = state
         self._board_rows = board_rows or [{"native_market_id": "BTCUSDT"}]
 
@@ -297,6 +626,12 @@ class _RecordingConn:
         sql_text = str(sql)
         self.sql_calls.append(sql_text)
         self.params_calls.append((sql_text, tuple(params or ())))
+        if "INSERT INTO cex_oi_radar_rows" in sql_text:
+            self.rowcount = 1
+        elif "DELETE FROM cex_oi_radar_rows" in sql_text:
+            self.rowcount = 0
+        else:
+            self.rowcount = 0
         return self
 
     def fetchall(self):
@@ -308,8 +643,55 @@ class _RecordingConn:
     def commit(self):
         self.committed = True
 
+    def transaction(self):
+        return _Transaction(self)
+
     def params_for(self, sql_fragment: str) -> tuple:
         for sql, params in self.params_calls:
             if sql_fragment in sql:
                 return params
         raise AssertionError(f"missing sql fragment: {sql_fragment}")
+
+
+class _NoTransactionConn(_RecordingConn):
+    transaction = None
+
+
+class _RowcountDriftConn(_RecordingConn):
+    def __init__(self, *, dml_cursors: list[object]) -> None:
+        super().__init__()
+        self._dml_cursors = list(dml_cursors)
+
+    def execute(self, sql, params=None):
+        sql_text = str(sql)
+        self.sql_calls.append(sql_text)
+        self.params_calls.append((sql_text, tuple(params or ())))
+        if "DELETE FROM cex_oi_radar_rows" in sql_text or "INSERT INTO cex_oi_radar_rows" in sql_text:
+            return self._dml_cursors.pop(0)
+        return self
+
+
+class _RowcountCursor:
+    def __init__(self, *, rowcount: object) -> None:
+        self.rowcount = rowcount
+
+
+class _MissingRowcountCursor:
+    pass
+
+
+class _Transaction:
+    def __init__(self, conn: _RecordingConn) -> None:
+        self.conn = conn
+
+    def __enter__(self):
+        self.conn.transaction_depth += 1
+        return self.conn
+
+    def __exit__(self, exc_type, *_args):
+        self.conn.transaction_depth -= 1
+        if exc_type is None:
+            self.conn.committed = True
+        else:
+            self.conn.rollbacks += 1
+        return False

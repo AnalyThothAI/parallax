@@ -9,7 +9,6 @@ from typing import Any
 import pytest
 
 from parallax.app.runtime.repository_session import repositories_for_connection
-from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from parallax.domains.pulse_lab.repositories.pulse_admission_repository import PulseAdmissionRepository
 from parallax.domains.pulse_lab.repositories.pulse_agent_eval_repository import PulseAgentEvalRepository
 from parallax.domains.pulse_lab.repositories.pulse_candidates_repository import PulseCandidatesRepository
@@ -20,7 +19,6 @@ from parallax.domains.pulse_lab.repositories.pulse_read_repository import (
     _candidate_handle_filter_clause,
 )
 from parallax.domains.pulse_lab.repositories.pulse_runs_repository import PulseRunsRepository
-from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 
@@ -28,9 +26,9 @@ from tests.postgres_test_utils import reset_postgres_schema as migrate
 def _repo_bundle(conn: Any, *, running_timeout_ms: int = 300_000) -> SimpleNamespace:
     return SimpleNamespace(
         jobs=PulseJobsRepository(conn, running_timeout_ms=running_timeout_ms),
-        admission=PulseAdmissionRepository(conn, running_timeout_ms=running_timeout_ms),
+        admission=PulseAdmissionRepository(conn),
         candidates=PulseCandidatesRepository(conn),
-        runs=PulseRunsRepository(conn, running_timeout_ms=running_timeout_ms),
+        runs=PulseRunsRepository(conn),
         pulse_agent_eval=PulseAgentEvalRepository(conn),
         read=PulseReadRepository(conn),
         playbooks=PulsePlaybooksRepository(conn),
@@ -78,6 +76,7 @@ def test_enqueue_job_and_claim_due_job_marks_running(tmp_path) -> None:
             trigger_signature="trigger-a",
             timeline_signature="timeline-a",
             priority=10,
+            max_attempts=3,
             next_run_at_ms=1_000,
             now_ms=900,
         )
@@ -109,6 +108,7 @@ def test_release_running_job_for_provider_cooldown_delays_without_burning_attemp
             trigger_signature="trigger",
             timeline_signature="timeline",
             priority=10,
+            max_attempts=3,
             next_run_at_ms=1_000,
             now_ms=900,
         )
@@ -449,6 +449,7 @@ def test_mark_job_failed_retries_then_dead_and_succeeded_sets_done(tmp_path) -> 
             trigger_signature="trigger-success",
             timeline_signature="timeline-success",
             priority=5,
+            max_attempts=3,
             next_run_at_ms=1_000,
             now_ms=900,
         )
@@ -653,6 +654,7 @@ def test_pending_job_counts_and_stale_window_ttl_terminalize_short_window_jobs(t
             trigger_signature="trigger-5m",
             timeline_signature="timeline-5m",
             priority=10,
+            max_attempts=3,
             next_run_at_ms=1_000,
             now_ms=1_000,
         )
@@ -666,6 +668,7 @@ def test_pending_job_counts_and_stale_window_ttl_terminalize_short_window_jobs(t
             trigger_signature="trigger-1h",
             timeline_signature="timeline-1h",
             priority=10,
+            max_attempts=3,
             next_run_at_ms=1_000,
             now_ms=1_000,
         )
@@ -706,6 +709,7 @@ def test_claim_due_job_keeps_priority_before_schedule_age_and_job_id(tmp_path) -
             trigger_signature="trigger-low",
             timeline_signature="timeline-low",
             priority=10,
+            max_attempts=3,
             next_run_at_ms=1_000,
             now_ms=1_000,
         )
@@ -719,6 +723,7 @@ def test_claim_due_job_keeps_priority_before_schedule_age_and_job_id(tmp_path) -
             trigger_signature="trigger-high",
             timeline_signature="timeline-high",
             priority=90,
+            max_attempts=3,
             next_run_at_ms=2_000,
             now_ms=2_000,
         )
@@ -747,6 +752,7 @@ def test_insert_agent_run_and_finish_agent_run_store_audit_json(tmp_path) -> Non
             trigger_signature="trigger-run",
             timeline_signature="timeline-run",
             priority=10,
+            max_attempts=3,
             next_run_at_ms=1_000,
             now_ms=900,
         )
@@ -912,6 +918,7 @@ def test_mark_stale_agent_runs_failed_closes_orphaned_running_audit_rows(tmp_pat
             trigger_signature="trigger-stale",
             timeline_signature="timeline-stale",
             priority=10,
+            max_attempts=3,
             next_run_at_ms=1_000,
             now_ms=900,
         )
@@ -984,6 +991,7 @@ def test_recent_target_failure_count_reads_normalized_trace_reason(tmp_path) -> 
             trigger_signature="trigger-failure",
             timeline_signature="timeline-failure",
             priority=10,
+            max_attempts=3,
             next_run_at_ms=1_000,
             now_ms=900,
         )
@@ -1046,6 +1054,7 @@ def test_insert_agent_run_stores_runtime_identity(tmp_path) -> None:
             trigger_signature="trigger-runtime",
             timeline_signature="timeline-runtime",
             priority=10,
+            max_attempts=3,
             next_run_at_ms=1_000,
             now_ms=900,
         )
@@ -1103,6 +1112,7 @@ def test_agent_run_steps_round_trip(tmp_path) -> None:
             trigger_signature="trigger-run-step",
             timeline_signature="timeline-run-step",
             priority=10,
+            max_attempts=3,
             next_run_at_ms=1_000,
             now_ms=900,
         )
@@ -1175,6 +1185,7 @@ def test_agent_eval_case_and_result_round_trip(tmp_path) -> None:
             trigger_signature="trigger-eval",
             timeline_signature="timeline-eval",
             priority=10,
+            max_attempts=3,
             next_run_at_ms=1_000,
             now_ms=900,
         )
@@ -1387,6 +1398,7 @@ def test_upsert_candidate_skips_serving_update_when_only_runtime_metadata_change
             trigger_signature="trigger:candidate-stable-projection",
             timeline_signature="timeline:candidate-stable-projection",
             priority=10,
+            max_attempts=3,
             next_run_at_ms=1_000,
             now_ms=900,
         )
@@ -1441,9 +1453,7 @@ def test_upsert_candidate_skips_serving_update_when_only_runtime_metadata_change
         conn.close()
 
     assert "agent_run_id" not in first
-    assert "agent_run_id" not in second
-    assert second["decision_stage_count"] == 3
-    assert second["updated_at_ms"] == 3_000
+    assert second is None
     assert dict(stored) == {"decision_stage_count": 3, "updated_at_ms": 3_000}
     assert agent_run_column is None
     assert latest_run is not None
@@ -1545,24 +1555,16 @@ def test_pulse_summary_counts_market_freshness_from_evidence_packet_status(tmp_p
     assert summary["market_ready_rate"] == 0.5
 
 
-def test_handle_filter_matches_candidate_source_event_author(tmp_path) -> None:
+def test_handle_filter_matches_candidate_subject_key_without_event_author_expansion(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        EvidenceRepository(conn).insert_event(
-            make_event("event-watch", author_handle="traderpow", received_at_ms=1_000),
-            is_watched=True,
-        )
-        EvidenceRepository(conn).insert_event(
-            make_event("event-other", author_handle="otheralpha", received_at_ms=1_100),
-            is_watched=True,
-        )
         repo = _repo_bundle(conn)
         repo.candidates.upsert_candidate(
             **_candidate_payload(
                 "candidate-watch-source",
                 symbol="PEPE",
-                subject_key="PEPE",
+                subject_key="traderpow",
                 source_event_ids=["event-watch"],
                 evidence_event_ids=["event-watch"],
                 updated_at_ms=3_000,
@@ -1589,15 +1591,15 @@ def test_handle_filter_matches_candidate_source_event_author(tmp_path) -> None:
     assert summary["summary"]["token_watch"] == 1
 
 
-def test_candidate_handle_filter_clause_checks_source_event_authors() -> None:
+def test_pulse_handle_filter_does_not_expand_jsonb_event_arrays() -> None:
     clause, params = _candidate_handle_filter_clause("candidate", "@TraderPow")
 
     assert "candidate.subject_key" in clause
-    assert "candidate.source_event_ids_json" in clause
-    assert "candidate.evidence_event_ids_json" in clause
-    assert "jsonb_array_elements_text" in clause
-    assert "events" in clause
-    assert params == ["traderpow", "traderpow"]
+    assert "candidate.source_event_ids_json" not in clause
+    assert "candidate.evidence_event_ids_json" not in clause
+    assert "jsonb_array_elements_text" not in clause
+    assert "events" not in clause
+    assert params == ["traderpow"]
 
 
 def test_list_candidates_ignores_malformed_structured_cursor(tmp_path) -> None:
@@ -1829,7 +1831,12 @@ def test_repository_session_exposes_focused_pulse_repositories(tmp_path) -> None
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        repos = repositories_for_connection(conn)
+        repos = repositories_for_connection(
+            conn,
+            pulse_job_running_timeout_ms=300_000,
+            notification_delivery_running_timeout_ms=300_000,
+            notification_delivery_stale_running_terminalization_batch_size=100,
+        )
     finally:
         conn.close()
 

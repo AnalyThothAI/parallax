@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+import pytest
+
 from parallax.domains.token_intel.read_models.token_target_social_timeline_service import (
+    TokenTargetSocialTimelineScopeError,
     TokenTargetSocialTimelineService,
+    TokenTargetSocialTimelineWindowError,
 )
 
 LEGACY_MARKET_FIELD = "market_overlay"
@@ -149,6 +153,38 @@ def test_social_timeline_cursor_is_timestamp_and_event_id():
     assert first["next_cursor"] == "1700000000000:event-2"
     assert targets.seen_cursors[-1] == (1_700_000_000_000, "event-2")
     assert [post["event_id"] for post in second["posts"]] == ["event-1"]
+
+
+def test_social_timeline_rejects_invalid_scope_before_repository_call():
+    targets = FakeTargets(rows=[])
+
+    with pytest.raises(TokenTargetSocialTimelineScopeError):
+        TokenTargetSocialTimelineService(targets=targets).timeline(
+            target_type="CexToken",
+            target_id="cex_token:BTC",
+            window="1h",
+            scope="everything",
+            limit=2,
+            now_ms=1_700_000_060_000,
+        )
+
+    assert targets.seen_cursors == []
+
+
+def test_social_timeline_rejects_invalid_window_before_repository_call():
+    targets = FakeTargets(rows=[])
+
+    with pytest.raises(TokenTargetSocialTimelineWindowError):
+        TokenTargetSocialTimelineService(targets=targets).timeline(
+            target_type="CexToken",
+            target_id="cex_token:BTC",
+            window="7d",
+            scope="all",
+            limit=2,
+            now_ms=1_700_000_060_000,
+        )
+
+    assert targets.seen_cursors == []
 
 
 class FakeTargets:

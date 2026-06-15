@@ -39,13 +39,14 @@ def build_macro_module_view(
             projection_behind_facts=projection_behind_facts,
         )
 
-    feature_map = _mapping(snapshot.get("features_json"))
+    snapshot_sections = _macro_module_view_snapshot_sections(snapshot)
+    feature_map = snapshot_sections["features_json"]
     concept_keys = _module_concept_keys(config)
     cex_source = _cex_source(cex_board) if config.module_id == "assets/crypto-derivatives" else None
     primary_chart = _primary_chart(config.chart_specs[0], feature_map) if config.chart_specs else _empty_chart()
     data_health = _data_health(
         config=config,
-        snapshot=snapshot,
+        data_gaps=snapshot_sections["data_gaps_json"],
         feature_map=feature_map,
         concept_keys=concept_keys,
         primary_chart=primary_chart,
@@ -76,16 +77,22 @@ def build_macro_module_view(
             primary_chart=primary_chart,
             data_health=data_health,
             snapshot=snapshot,
+            scenario=snapshot_sections["scenario_json"],
         ),
         module_evidence=_module_evidence(
             config=config,
             feature_map=feature_map,
             primary_chart=primary_chart,
             data_health=data_health,
-            scenario=_mapping(snapshot.get("scenario_json")),
+            scenario=snapshot_sections["scenario_json"],
             cex_source=cex_source,
         ),
-        transmission=_transmission(config=config, snapshot=snapshot, feature_map=feature_map, data_health=data_health),
+        transmission=_transmission(
+            config=config,
+            chain=snapshot_sections["chain_json"],
+            feature_map=feature_map,
+            data_health=data_health,
+        ),
         data_health=data_health,
         provenance=_provenance(
             snapshot=snapshot,
@@ -102,6 +109,40 @@ def build_macro_module_view(
     return payload
 
 
+def _macro_module_view_snapshot_sections(snapshot: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "panels_json": _required_snapshot_mapping(snapshot, "panels_json"),
+        "indicators_json": _required_snapshot_mapping(snapshot, "indicators_json"),
+        "triggers_json": _required_snapshot_list(snapshot, "triggers_json"),
+        "data_gaps_json": _required_snapshot_list(snapshot, "data_gaps_json"),
+        "source_coverage_json": _required_snapshot_mapping(snapshot, "source_coverage_json"),
+        "features_json": _required_snapshot_mapping(snapshot, "features_json"),
+        "chain_json": _required_snapshot_mapping(snapshot, "chain_json"),
+        "scenario_json": _required_snapshot_mapping(snapshot, "scenario_json"),
+        "scorecard_json": _required_snapshot_mapping(snapshot, "scorecard_json"),
+    }
+
+
+def _required_snapshot_mapping(snapshot: Mapping[str, Any], field_name: str) -> dict[str, Any]:
+    if field_name not in snapshot or snapshot.get(field_name) is None:
+        raise ValueError(f"macro_module_view_snapshot_section_required:{field_name}")
+    value = snapshot.get(field_name)
+    if not isinstance(value, Mapping):
+        raise ValueError(f"macro_module_view_snapshot_section_invalid:{field_name}")
+    return dict(value)
+
+
+def _required_snapshot_list(snapshot: Mapping[str, Any], field_name: str) -> list[Any]:
+    if field_name not in snapshot or snapshot.get(field_name) is None:
+        raise ValueError(f"macro_module_view_snapshot_section_required:{field_name}")
+    value = snapshot.get(field_name)
+    if isinstance(value, Mapping | str | bytes | bytearray):
+        raise ValueError(f"macro_module_view_snapshot_section_invalid:{field_name}")
+    if not isinstance(value, Sequence):
+        raise ValueError(f"macro_module_view_snapshot_section_invalid:{field_name}")
+    return list(value)
+
+
 def _missing_view(
     config: MacroModuleConfig,
     cex_board: Mapping[str, Any] | None,
@@ -113,7 +154,7 @@ def _missing_view(
     primary_chart = _missing_chart(config.chart_specs[0]) if config.chart_specs else _empty_chart()
     data_health = _data_health(
         config=config,
-        snapshot={"data_gaps_json": build_macro_data_gaps(["macro_view_snapshot_missing"])},
+        data_gaps=build_macro_data_gaps(["macro_view_snapshot_missing"]),
         feature_map={},
         concept_keys=(),
         primary_chart=primary_chart,
@@ -159,7 +200,7 @@ def _missing_view(
             "methodology_note": "运行 macro sync 回填历史并重新投影后恢复图表。",
         },
         module_evidence={"confirmations": [], "contradictions": [], "watch_triggers": [], "invalidations": []},
-        transmission=_transmission(config=config, snapshot={}, feature_map={}, data_health=data_health),
+        transmission=_transmission(config=config, chain={}, feature_map={}, data_health=data_health),
         data_health=data_health,
         provenance=_provenance(
             snapshot={},
@@ -439,9 +480,9 @@ def _module_read(
     primary_chart: Mapping[str, Any],
     data_health: Mapping[str, Any],
     snapshot: Mapping[str, Any],
+    scenario: Mapping[str, Any],
 ) -> dict[str, Any]:
     if config.module_id == "overview":
-        scenario = _mapping(snapshot.get("scenario_json"))
         regime = str(scenario.get("current_regime") or snapshot.get("regime") or "data_gap")
         confidence = _number(scenario.get("confidence")) or 0.0
         headline_label = _regime_label(regime)
@@ -677,13 +718,13 @@ def _missing_cex_row(reason: str) -> dict[str, Any]:
 def _data_health(
     *,
     config: MacroModuleConfig,
-    snapshot: Mapping[str, Any],
+    data_gaps: Sequence[Any],
     feature_map: Mapping[str, Any],
     concept_keys: Sequence[str],
     primary_chart: Mapping[str, Any],
     cex_source: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
-    global_gaps = [_gap_payload(gap) for gap in _sequence(snapshot.get("data_gaps_json"))]
+    global_gaps = [_gap_payload(gap) for gap in data_gaps]
     global_scope = "global_blocker" if config.module_id == "overview" else "global_reference"
     global_gaps = [_with_scope(gap, global_scope) for gap in global_gaps]
 
@@ -789,12 +830,11 @@ def _data_health_status(
 def _transmission(
     *,
     config: MacroModuleConfig,
-    snapshot: Mapping[str, Any],
+    chain: Mapping[str, Any],
     feature_map: Mapping[str, Any],
     data_health: Mapping[str, Any],
 ) -> list[dict[str, Any]]:
     if config.module_id == "overview":
-        chain = _mapping(snapshot.get("chain_json"))
         nodes = [
             {
                 "id": f"global:{key}",

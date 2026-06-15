@@ -7,6 +7,8 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src" / "parallax"
+AGENT_EXECUTION = SRC / "platform" / "agent_execution.py"
+MODEL_EXECUTION_PROVIDER_WIRING = SRC / "app" / "runtime" / "provider_wiring" / "model_execution.py"
 MODEL_EXECUTION = SRC / "integrations" / "model_execution"
 GATEWAY_FILES = {
     MODEL_EXECUTION / "execution_gateway.py",
@@ -146,6 +148,22 @@ def test_agent_execution_types_have_single_live_source() -> None:
     assert not stale.exists()
 
 
+def test_agent_capacity_reservation_release_is_sync_contract_without_awaitable_fallback() -> None:
+    source = AGENT_EXECUTION.read_text(encoding="utf-8")
+    reservation_source = source.split("class AgentCapacityReservation", 1)[1].split("\n\n__all__", 1)[0]
+    forbidden_tokens = (
+        "ReleaseCallback = Callable[[], None | Awaitable[None]]",
+        "await result",
+        "Awaitable[None]]",
+    )
+    violations = [token for token in forbidden_tokens if token in source]
+
+    assert violations == []
+    assert "ReleaseCallback = Callable[[], None]" in source
+    assert "result = release()" in reservation_source
+    assert "agent_capacity_release_must_be_sync" in reservation_source
+
+
 def test_agent_hashing_has_single_live_source() -> None:
     stale = MODEL_EXECUTION / "agent_hashing.py"
     assert not stale.exists()
@@ -225,6 +243,132 @@ def test_pulse_decision_runtime_has_no_database_pool_dependency() -> None:
     assert "db_pool is required for LiteLLMPulseDecisionProvider" not in wiring_text
 
 
+def test_pulse_decision_stage_spec_requires_formal_packet_and_gate_without_payload_fallback() -> None:
+    runtime_text = (SRC / "domains/pulse_lab/services/pulse_decision_runtime.py").read_text(encoding="utf-8")
+    client_text = (SRC / "integrations/model_execution/pulse_decision_agent_client.py").read_text(encoding="utf-8")
+    stage_source = runtime_text.split("def pulse_decision_stage_spec", 1)[1].split(
+        "def validate_final_evidence_refs",
+        1,
+    )[0]
+    forbidden = (
+        "_model_payload(evidence_packet)",
+        "_model_payload(evidence_gate)",
+        "def _agent_packet_payload(value: Any)",
+        'getattr(value, "model_dump"',
+    )
+    forbidden_client = (
+        "def _evidence_packet_from_context(context: dict[str, Any]) -> dict",
+        'getattr(packet, "model_dump"',
+        "PulseEvidencePacket | dict[str, Any]",
+        "def _allowed_refs_from_packet",
+        "def _ref_value",
+    )
+
+    assert "isinstance(evidence_packet, PulseEvidencePacket)" in stage_source
+    assert "isinstance(evidence_gate, EvidenceCompletenessGateResult)" in stage_source
+    assert "pulse_decision_stage_packet_contract_required" in stage_source
+    assert "pulse_decision_stage_gate_contract_required" in stage_source
+    assert "PulseEvidencePacket.model_validate(packet)" in client_text
+    assert "EvidenceCompletenessGateResult(" in client_text
+    assert [token for token in forbidden if token in runtime_text] == []
+    assert [token for token in forbidden_client if token in client_text] == []
+
+
+def test_pulse_request_audit_requires_context_packet_without_top_level_hash_fallback() -> None:
+    runtime_text = (SRC / "domains/pulse_lab/services/pulse_decision_runtime.py").read_text(encoding="utf-8")
+    request_source = runtime_text.split("def request_audit", 1)[1].split("def with_output_hash", 1)[0]
+    forbidden = (
+        "def _context_packet_payload(context: dict[str, Any]) -> dict[str, Any]",
+        'context.get("evidence_packet_hash")',
+        "return dict(context)",
+    )
+    required = (
+        "def _context_evidence_packet",
+        "PulseEvidencePacket.model_validate(packet)",
+        "pulse_decision_request_audit_packet_contract_required",
+    )
+
+    assert "packet_payload = _agent_packet_payload(evidence_packet)" in request_source
+    assert [token for token in forbidden if token in runtime_text] == []
+    assert [token for token in required if token not in runtime_text] == []
+
+
+def test_pulse_request_audit_requires_formal_gate_without_dict_payload() -> None:
+    runtime_text = (SRC / "domains/pulse_lab/services/pulse_decision_runtime.py").read_text(encoding="utf-8")
+    request_source = runtime_text.split("def request_audit", 1)[1].split("def with_output_hash", 1)[0]
+    forbidden = (
+        "completeness: dict[str, Any]",
+        '"evidence_gate": completeness',
+        '"evidence_gate": completeness}',
+    )
+    required = (
+        "isinstance(completeness, EvidenceCompletenessGateResult)",
+        "pulse_decision_request_audit_gate_contract_required",
+        "gate_payload = completeness.to_json()",
+        '"evidence_gate": gate_payload',
+    )
+
+    assert [token for token in forbidden if token in request_source] == []
+    assert [token for token in required if token not in request_source] == []
+
+
+def test_pulse_request_audit_requires_runtime_manifest_version_without_empty_default() -> None:
+    runtime_text = (SRC / "domains/pulse_lab/services/pulse_decision_runtime.py").read_text(encoding="utf-8")
+    request_source = runtime_text.split("def request_audit", 1)[1].split("def with_output_hash", 1)[0]
+    forbidden = (
+        'runtime_manifest.get("runtime_version") or ""',
+        'str(runtime_manifest.get("runtime_version") or "")',
+    )
+    required = (
+        "runtime_version = _runtime_manifest_version(runtime_manifest)",
+        "pulse_decision_runtime_manifest_version_required",
+    )
+
+    assert [token for token in forbidden if token in request_source] == []
+    assert [token for token in required if token not in runtime_text] == []
+
+
+def test_pulse_request_audit_requires_execution_identity_without_empty_defaults() -> None:
+    runtime_text = (SRC / "domains/pulse_lab/services/pulse_decision_runtime.py").read_text(encoding="utf-8")
+    request_source = runtime_text.split("def request_audit", 1)[1].split("def with_output_hash", 1)[0]
+    forbidden = (
+        'str(run_id or "")',
+        'str(job.get("job_id") or "")',
+        'str(model or "")',
+        'str(workflow_name or "")',
+        'str(agent_name or "")',
+    )
+    required = (
+        'run_id_value = _required_request_audit_text(run_id, "pulse_decision_request_audit_run_id_required")',
+        'job_id = _required_request_audit_text(job["job_id"], "pulse_decision_request_audit_job_id_required")',
+        'model_value = _required_request_audit_text(model, "pulse_decision_request_audit_model_required")',
+        "artifact_hash = _required_request_audit_text(",
+        (
+            "workflow = _required_request_audit_text("
+            'workflow_name, "pulse_decision_request_audit_workflow_name_required")'
+        ),
+        'agent = _required_request_audit_text(agent_name, "pulse_decision_request_audit_agent_name_required")',
+    )
+
+    assert [token for token in forbidden if token in request_source] == []
+    assert [token for token in required if token not in runtime_text] == []
+
+
+def test_pulse_request_audit_requires_runtime_manifest_model_artifact_match() -> None:
+    runtime_text = (SRC / "domains/pulse_lab/services/pulse_decision_runtime.py").read_text(encoding="utf-8")
+    request_source = runtime_text.split("def request_audit", 1)[1].split("def with_output_hash", 1)[0]
+    required = (
+        "runtime_model, runtime_artifact_hash = _runtime_manifest_model_identity(runtime_manifest)",
+        "pulse_decision_runtime_manifest_model_mismatch",
+        "pulse_decision_runtime_manifest_artifact_version_hash_mismatch",
+        "def _runtime_manifest_model_identity",
+    )
+
+    assert [token for token in required if token not in runtime_text] == []
+    assert "if runtime_model != model_value" in request_source
+    assert "if runtime_artifact_hash != artifact_hash" in request_source
+
+
 def test_pulse_final_decision_refs_are_not_synthesized_from_packet_inputs() -> None:
     normalization_text = (SRC / "domains/pulse_lab/services/agent_output_normalization.py").read_text(encoding="utf-8")
 
@@ -289,6 +433,60 @@ def test_pulse_stage_audit_no_longer_dual_writes_safety_net_trace_metadata() -> 
 
     assert [token for token in forbidden_client_tokens if token in client_text] == []
     assert [token for token in forbidden_type_tokens if token in decision_types_text] == []
+
+
+def test_pulse_stage_audit_requires_formal_agent_execution_audit_without_reflection() -> None:
+    source = (SRC / "integrations/model_execution/pulse_decision_agent_client.py").read_text(encoding="utf-8")
+    forbidden_tokens = (
+        "getattr(audit",
+        "getattr(exc",
+    )
+    required_tokens = (
+        "AgentExecutionResult",
+        "pulse_decision_execution_result_contract_required",
+        "pulse_decision_execution_audit_contract_required",
+        "def _require_execution_audit",
+        "exc.execution_started is False",
+    )
+
+    assert [token for token in forbidden_tokens if token in source] == []
+    assert [token for token in required_tokens if token not in source] == []
+
+
+def test_pulse_agent_stage_spec_requires_request_audit_identity_without_empty_defaults() -> None:
+    source = (SRC / "integrations/model_execution/pulse_decision_agent_client.py").read_text(encoding="utf-8")
+    stage_spec_source = source.split("def _agent_stage_spec", 1)[1].split("def _pipeline_model_manifest", 1)[0]
+    forbidden = (
+        'audit.get("trace_metadata") or {}',
+        'str(run_id or "")',
+        '_group_id(spec.input_payload.get("evidence_packet")) or',
+    )
+    required = (
+        "def _stage_request_audit(",
+        "pulse_decision_stage_request_audit_trace_metadata_required",
+        "pulse_decision_stage_request_audit_run_id_mismatch",
+        "def _stage_group_id(",
+        "pulse_decision_stage_group_id_required",
+    )
+
+    assert [token for token in forbidden if token in stage_spec_source] == []
+    assert [token for token in required if token not in source] == []
+
+
+def test_pulse_decision_client_requires_constructor_workflow_identity_without_blank_default() -> None:
+    source = (SRC / "integrations/model_execution/pulse_decision_agent_client.py").read_text(encoding="utf-8")
+    constructor_source = source.split("def __init__", 1)[1].split("\n    @property\n    def model", 1)[0]
+    forbidden = (
+        'str(workflow_name or "").strip() or WORKFLOW_NAME',
+        "or WORKFLOW_NAME",
+    )
+    required = (
+        "self.workflow_name = _workflow_name(workflow_name)",
+        "pulse_decision_workflow_name_required",
+    )
+
+    assert [token for token in forbidden if token in constructor_source] == []
+    assert [token for token in required if token not in source] == []
 
 
 def test_pulse_runtime_manifest_no_longer_advertises_safety_net_switch() -> None:
@@ -365,6 +563,37 @@ def test_pulse_decision_lane_literal_lives_in_runtime_contract_only() -> None:
     assert offenders == []
 
 
+def test_model_execution_provider_wiring_uses_formal_agent_lane_timeout_contract() -> None:
+    source = MODEL_EXECUTION_PROVIDER_WIRING.read_text(encoding="utf-8")
+    helper_source = source.split("def _agent_runtime_lane_timeout_seconds", 1)[1].split(
+        "\n\n\ndef _require_llm_gateway",
+        1,
+    )[0]
+    forbidden_tokens = (
+        'getattr(settings.workers.agent_runtime, "lanes", {})',
+        "lanes.get(lane)",
+        'getattr(lane_policy, "timeout_seconds", 120.0)',
+        "return 120.0",
+    )
+    offenders = [token for token in forbidden_tokens if token in helper_source]
+
+    assert offenders == []
+    assert "lane_policy = settings.workers.agent_runtime.lanes[lane]" in helper_source
+    assert "return float(lane_policy.timeout_seconds)" in helper_source
+
+
+def test_pulse_decision_client_does_not_keep_provider_timeout_fallback() -> None:
+    source = (SRC / "integrations/model_execution/pulse_decision_agent_client.py").read_text(encoding="utf-8")
+    forbidden_tokens = (
+        "_DEFAULT_TIMEOUT_SECONDS",
+        "def timeout_seconds",
+        "return 120.0",
+    )
+    offenders = [token for token in forbidden_tokens if token in source]
+
+    assert offenders == []
+
+
 def test_pulse_runtime_has_no_stage_plan_contract() -> None:
     paths = [
         SRC / "domains/pulse_lab/providers.py",
@@ -391,6 +620,23 @@ def test_pulse_runtime_has_no_stage_plan_contract() -> None:
     ]
 
     assert offenders == []
+
+
+def test_pulse_deterministic_eval_requires_formal_packet_without_partial_dict_refs() -> None:
+    source = (SRC / "domains/pulse_lab/services/agent_eval.py").read_text(encoding="utf-8")
+    forbidden_tokens = (
+        'packet = _mapping(context.get("evidence_packet"))',
+        "def _allowed_ref_ids(packet: dict[str, Any])",
+        'refs = _list(packet.get("allowed_evidence_refs"))',
+    )
+    required_tokens = (
+        "PulseEvidencePacket.model_validate",
+        "packet.allowed_evidence_refs",
+        "ref.ref_id",
+    )
+
+    assert [token for token in forbidden_tokens if token in source] == []
+    assert [token for token in required_tokens if token not in source] == []
 
 
 def test_pulse_runtime_has_single_final_decision_stage_contract() -> None:

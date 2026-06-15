@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from datetime import date
-from types import SimpleNamespace
 
 from parallax.domains.macro_intel.services.macro_sync_types import MacroSyncRunSummary
+from parallax.platform.config.settings import MacroSyncWorkerSettings
 
 
 def test_worker_idle_claims_no_window_and_does_not_call_runner() -> None:
@@ -12,11 +12,11 @@ def test_worker_idle_claims_no_window_and_does_not_call_runner() -> None:
     service = FakeService(result=None, enqueue_summary={"due_count": 0, "open_count": 0})
     worker = MacroSyncWorker(
         name="macro_sync",
-        settings=SimpleNamespace(enabled=True),
+        settings=_macro_sync_settings(),
         db=object(),
         telemetry=object(),
-        settings_root=object(),
-        wake_bus=object(),
+        settings_root=_settings_root(),
+        wake_emitter=object(),
         service_factory=lambda: service,
     )
 
@@ -49,11 +49,11 @@ def test_worker_success_and_failure_results_reflect_sync_summary() -> None:
     )
     worker = MacroSyncWorker(
         name="macro_sync",
-        settings=SimpleNamespace(enabled=True),
+        settings=_macro_sync_settings(),
         db=object(),
         telemetry=object(),
-        settings_root=object(),
-        wake_bus=object(),
+        settings_root=_settings_root(),
+        wake_emitter=object(),
         service_factory=lambda: FakeService(result=success),
     )
 
@@ -78,11 +78,11 @@ def test_worker_success_and_failure_results_reflect_sync_summary() -> None:
     )
     failed_worker = MacroSyncWorker(
         name="macro_sync",
-        settings=SimpleNamespace(enabled=True),
+        settings=_macro_sync_settings(),
         db=object(),
         telemetry=object(),
-        settings_root=object(),
-        wake_bus=object(),
+        settings_root=_settings_root(),
+        wake_emitter=object(),
         service_factory=lambda: FakeService(result=failure),
     )
 
@@ -112,11 +112,11 @@ def test_worker_drains_due_windows_up_to_batch_size() -> None:
     service = FakeService(results=results)
     worker = MacroSyncWorker(
         name="macro_sync",
-        settings=SimpleNamespace(enabled=True, batch_size=3),
+        settings=_macro_sync_settings(batch_size=3),
         db=object(),
         telemetry=object(),
-        settings_root=object(),
-        wake_bus=object(),
+        settings_root=_settings_root(),
+        wake_emitter=object(),
         service_factory=lambda: service,
     )
 
@@ -151,11 +151,11 @@ def test_worker_counts_successful_empty_window_as_processed() -> None:
     )
     worker = MacroSyncWorker(
         name="macro_sync",
-        settings=SimpleNamespace(enabled=True),
+        settings=_macro_sync_settings(),
         db=object(),
         telemetry=object(),
-        settings_root=object(),
-        wake_bus=object(),
+        settings_root=_settings_root(),
+        wake_emitter=object(),
         service_factory=lambda: FakeService(result=success),
     )
 
@@ -165,6 +165,53 @@ def test_worker_counts_successful_empty_window_as_processed() -> None:
     assert result.failed == 0
     assert result.notes["status"] == "ok"
     assert result.notes["imported_observation_count"] == 0
+
+
+def test_worker_caps_formal_batch_size_to_max_windows_per_cycle() -> None:
+    from parallax.domains.macro_intel.runtime.macro_sync_worker import MacroSyncWorker
+
+    results = [
+        MacroSyncRunSummary(
+            sync_run_id=f"sync-run-{index}",
+            import_run_id=f"import-run-{index}",
+            status="ok",
+            observations_count=1,
+            imported_observation_count=1,
+            asof_date=date(2026, 5, 25 + index),
+            max_observed_at=date(2026, 5, 25 + index),
+            diagnostics={},
+        )
+        for index in range(1, 7)
+    ]
+    service = FakeService(results=results)
+    worker = MacroSyncWorker(
+        name="macro_sync",
+        settings=_macro_sync_settings(batch_size=7),
+        db=object(),
+        telemetry=object(),
+        settings_root=_settings_root(),
+        wake_emitter=object(),
+        service_factory=lambda: service,
+    )
+
+    result = worker.run_once_sync(now_ms=1_779_000_000_000)
+
+    assert result.processed == 5
+    assert result.notes["claimed"] == 5
+    assert [call[0] for call in service.calls].count("run_claimed_window_once") == 5
+
+
+def _macro_sync_settings(**overrides: object) -> MacroSyncWorkerSettings:
+    payload = {
+        "enabled": True,
+        "batch_size": 1,
+        **overrides,
+    }
+    return MacroSyncWorkerSettings(**payload)
+
+
+def _settings_root() -> object:
+    return object()
 
 
 class FakeService:

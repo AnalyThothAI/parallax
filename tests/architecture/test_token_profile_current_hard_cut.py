@@ -44,6 +44,16 @@ def test_public_read_paths_do_not_call_profile_providers() -> None:
     assert violations == []
 
 
+def test_public_token_profile_read_model_requires_formal_current_row_fields_without_defaults() -> None:
+    text = (SRC / "domains/asset_market/read_models/token_profile_read_model.py").read_text(encoding="utf-8")
+
+    assert "token_profile_current_public_required" in text
+    assert "token_profile_current_public_invalid" in text
+    assert '(_clean(row.get("status")) or "pending").lower()' not in text
+    assert 'return dict(payload) if isinstance(payload, dict) else {}' not in text
+    assert "if not isinstance(value, (list, tuple)):\n        return []" not in text
+
+
 def test_no_cex_token_registry_icon_compatibility_path_remains() -> None:
     violations: list[str] = []
     for path in SRC.rglob("*.py"):

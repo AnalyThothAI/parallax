@@ -19,4 +19,11 @@ def postgres_connection(settings):
 @contextmanager
 def repositories(settings):
     with postgres_connection(settings) as conn:
-        yield repositories_for_connection(conn)
+        yield repositories_for_connection(
+            conn,
+            pulse_job_running_timeout_ms=int(settings.workers.pulse_candidate.job_running_timeout_ms),
+            notification_delivery_running_timeout_ms=int(settings.workers.notification_delivery.running_timeout_ms),
+            notification_delivery_stale_running_terminalization_batch_size=int(
+                settings.workers.notification_delivery.stale_running_terminalization_batch_size
+            ),
+        )

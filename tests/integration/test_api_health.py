@@ -197,7 +197,6 @@ def fake_wired_providers(
         ),
         narrative_intel=SimpleNamespace(narrative_provider=None),
         news_intel=news_intel or SimpleNamespace(feed_client=None, brief_provider=None),
-        macrodata=SimpleNamespace(stock_quote_provider=None),
         agent_execution_gateway=agent_execution_gateway,
     )
 
@@ -429,7 +428,6 @@ def test_runtime_aclose_closes_wired_providers_even_when_scheduler_stop_fails(mo
                 stream_dex_market=SimpleNamespace(inner=async_provider),
                 discovery_chain_ids=(),
             ),
-            "macrodata": SimpleNamespace(stock_quote_provider=sync_provider),
         }
     )
     monkeypatch.setattr(bootstrap_module.DBPoolBundle, "create", lambda *_, **__: FakeDB())
@@ -500,7 +498,6 @@ def test_bootstrap_failure_after_provider_wiring_closes_providers(monkeypatch, t
     async_provider = FakeAsyncClosableProvider()
     providers = SimpleNamespace(
         asset_market=SimpleNamespace(cex_market=sync_provider, nested={"async": async_provider}),
-        macrodata=SimpleNamespace(stock_quote_provider=sync_provider),
     )
     db = FakeDB()
     monkeypatch.setattr(bootstrap_module.DBPoolBundle, "create", lambda *_, **__: db)

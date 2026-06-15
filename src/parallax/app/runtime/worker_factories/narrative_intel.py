@@ -19,7 +19,6 @@ def construct_narrative_intel_workers(ctx: WorkerFactoryContext) -> dict[str, Wo
             settings=workers.narrative_admission,
             db=ctx.db,
             telemetry=ctx.telemetry,
-            wake_bus=ctx.wake_bus,
             wake_waiter=ctx.db.wake_listener("narrative_admission", workers.narrative_admission.wakes_on),
         )
     }

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any
 
-if TYPE_CHECKING:
-    from parallax.domains.pulse_lab.types.evidence_packet import PulseEvidencePacket
+from parallax.domains.pulse_lab.types.evidence_packet import PulseEvidencePacket
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,12 +23,16 @@ class EvidenceCompletenessGateResult:
 
 
 class EvidenceCompletenessGate:
-    def evaluate(self, packet: PulseEvidencePacket | Any) -> EvidenceCompletenessGateResult:
+    def evaluate(self, packet: PulseEvidencePacket) -> EvidenceCompletenessGateResult:
+        if not isinstance(packet, PulseEvidencePacket):
+            raise TypeError(
+                f"pulse_evidence_packet_contract_required: expected PulseEvidencePacket, got {type(packet).__name__}"
+            )
         refs = _refs(packet)
         ref_types = {str(ref.get("ref_type") or "") for ref in refs}
-        social_evidence = _model_mapping(getattr(packet, "social_evidence", None))
-        market = _model_items(getattr(packet, "market_evidence", ()))
-        identity_evidence = _model_mapping(getattr(packet, "identity_evidence", None))
+        social_evidence = packet.social_evidence.model_dump(mode="json")
+        market = [packet.market_evidence.model_dump(mode="json")]
+        identity_evidence = packet.identity_evidence.model_dump(mode="json")
         route = _route(packet, market)
 
         if not social_evidence.get("event_refs") and "event" not in ref_types:
@@ -134,7 +137,7 @@ def _blocked(
     )
 
 
-def _route(packet: Any, market: list[dict[str, Any]]) -> str:
+def _route(packet: PulseEvidencePacket, market: list[dict[str, Any]]) -> str:
     for row in market:
         route = str(row.get("route") or "").lower()
         market_type = str(row.get("target_market_type") or "").lower()
@@ -144,7 +147,7 @@ def _route(packet: Any, market: list[dict[str, Any]]) -> str:
             return "cex"
         if market_type in {"dex", "meme"}:
             return "meme"
-    target_type = str(getattr(packet, "target_type", "") or "").lower()
+    target_type = packet.target_type.lower()
     if "cex" in target_type:
         return "cex"
     if market:
@@ -156,12 +159,12 @@ def _required_ref_ids(refs: list[dict[str, Any]]) -> list[str]:
     return [str(ref.get("ref_id")) for ref in refs if str(ref.get("ref_id") or "").strip()]
 
 
-def _refs(packet: Any) -> list[dict[str, Any]]:
-    return [_model_mapping(ref) for ref in _items(getattr(packet, "allowed_evidence_refs", ()))]
+def _refs(packet: PulseEvidencePacket) -> list[dict[str, Any]]:
+    return [ref.model_dump(mode="json") for ref in packet.allowed_evidence_refs]
 
 
-def _packet_gaps(packet: Any, fallback: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-    gaps = [_model_mapping(gap) for gap in _items(getattr(packet, "data_gaps", ()))]
+def _packet_gaps(packet: PulseEvidencePacket, fallback: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    gaps = [gap.model_dump(mode="json") for gap in packet.data_gaps]
     gaps = [gap for gap in gaps if gap]
     if gaps:
         return gaps
@@ -177,24 +180,6 @@ def _items(value: Any) -> list[Any]:
 def _mapping(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
         return {str(key): item for key, item in value.items()}
-    return {}
-
-
-def _model_items(value: Any) -> list[dict[str, Any]]:
-    if isinstance(value, list | tuple | set):
-        return [_model_mapping(item) for item in value]
-    mapped = _model_mapping(value)
-    return [mapped] if mapped else []
-
-
-def _model_mapping(value: Any) -> dict[str, Any]:
-    if isinstance(value, dict):
-        return {str(key): item for key, item in value.items()}
-    model_dump = getattr(value, "model_dump", None)
-    if callable(model_dump):
-        return cast(dict[str, Any], model_dump(mode="json"))
-    if value is not None and hasattr(value, "__dict__"):
-        return {str(key): item for key, item in vars(value).items()}
     return {}
 
 

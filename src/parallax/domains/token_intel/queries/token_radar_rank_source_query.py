@@ -67,7 +67,10 @@ class TokenRadarRankSourceQuery:
         ).fetchall()
         for row in rows:
             payload = dict(row)
-            target_key = (str(payload.get("target_type_key") or ""), str(payload.get("identity_id") or ""))
+            target_key = (
+                _required_target_payload_text(payload, "target_type_key"),
+                _required_target_payload_text(payload, "identity_id"),
+            )
             rows_by_target[target_key] = payload
         return rows_by_target
 
@@ -87,11 +90,10 @@ class TokenRadarRankSourceQuery:
             ).fetchall()
             for row in rows:
                 target = {
-                    "target_type_key": str(row.get("target_type_key") or ""),
-                    "identity_id": str(row.get("identity_id") or ""),
+                    "target_type_key": _required_target_payload_text(row, "target_type_key"),
+                    "identity_id": _required_target_payload_text(row, "identity_id"),
                 }
-                if target["target_type_key"] and target["identity_id"]:
-                    targets_by_key[(target["target_type_key"], target["identity_id"])] = target
+                targets_by_key[(target["target_type_key"], target["identity_id"])] = target
         return list(targets_by_key.values())
 
     def populate_edges_for_event_ids(
@@ -99,7 +101,6 @@ class TokenRadarRankSourceQuery:
         requests: Sequence[TokenRadarSourceEdgeRequest | str],
         *,
         projected_at_ms: int,
-        commit: bool = True,
     ) -> int:
         changed = 0
         for chunk in _edge_chunks(tuple(requests), self.chunk_size):
@@ -113,10 +114,9 @@ class TokenRadarRankSourceQuery:
                     TOKEN_RADAR_PROJECTION_VERSION,
                 ),
             ).fetchone()
-            changed += int((row or {}).get("upserted_count") or 0)
-            changed += int((row or {}).get("deleted_count") or 0)
-        if commit:
-            self.conn.commit()
+            count_result = _mutation_count_result(row)
+            changed += _required_mutation_count(count_result, "upserted_count")
+            changed += _required_mutation_count(count_result, "deleted_count")
         return changed
 
     def populate_edges_for_targets(
@@ -125,7 +125,6 @@ class TokenRadarRankSourceQuery:
         *,
         projected_at_ms: int,
         analysis_since_ms: int,
-        commit: bool = True,
     ) -> int:
         target_payloads = _target_payloads(targets)
         if not target_payloads:
@@ -144,10 +143,9 @@ class TokenRadarRankSourceQuery:
                     int(analysis_since_ms),
                 ),
             ).fetchone()
-            changed += int((row or {}).get("upserted_count") or 0)
-            changed += int((row or {}).get("deleted_count") or 0)
-        if commit:
-            self.conn.commit()
+            count_result = _mutation_count_result(row)
+            changed += _required_mutation_count(count_result, "upserted_count")
+            changed += _required_mutation_count(count_result, "deleted_count")
         return changed
 
     def prune_edges(
@@ -155,19 +153,23 @@ class TokenRadarRankSourceQuery:
         *,
         projection_version: str,
         event_received_before_ms: int,
-        commit: bool = True,
+        limit: int,
     ) -> int:
         cursor = self.conn.execute(
             """
             DELETE FROM token_radar_rank_source_events
-            WHERE projection_version = %s
-              AND event_received_at_ms < %s
+            WHERE ctid IN (
+              SELECT ctid
+              FROM token_radar_rank_source_events
+              WHERE projection_version = %s
+                AND event_received_at_ms < %s
+              ORDER BY event_received_at_ms ASC
+              LIMIT %s
+            )
             """,
-            (projection_version, int(event_received_before_ms)),
+            (projection_version, int(event_received_before_ms), max(1, int(limit))),
         )
-        if commit:
-            self.conn.commit()
-        return int(getattr(cursor, "rowcount", 0) or 0)
+        return _cursor_rowcount(cursor)
 
 
 def _chunks(
@@ -215,14 +217,61 @@ def _target_payloads(targets: Sequence[Mapping[str, Any]]) -> list[dict[str, str
     payloads: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()
     for target in targets:
-        target_type_key = str(target.get("target_type_key") or target.get("target_type") or "").strip()
-        identity_id = str(target.get("identity_id") or target.get("target_id") or "").strip()
+        target_type_key = _required_target_payload_text(target, "target_type_key")
+        identity_id = _required_target_payload_text(target, "identity_id")
         target_key = (target_type_key, identity_id)
-        if not target_type_key or not identity_id or target_key in seen:
+        if target_key in seen:
             continue
         seen.add(target_key)
         payloads.append({"target_type_key": target_type_key, "identity_id": identity_id})
     return payloads
+
+
+def _required_target_payload_text(target: Mapping[str, Any], column: str) -> str:
+    try:
+        value = target[column]
+    except KeyError as exc:
+        raise ValueError(f"token_radar_rank_source_target_identity_required:{column}") from exc
+    if value is None:
+        raise ValueError(f"token_radar_rank_source_target_identity_required:{column}")
+    text = str(value).strip()
+    if not text:
+        raise ValueError(f"token_radar_rank_source_target_identity_required:{column}")
+    return text
+
+
+def _mutation_count_result(row: Any) -> Mapping[str, Any]:
+    if not isinstance(row, Mapping):
+        raise TypeError("token_radar_rank_source_write_count_required:result")
+    return row
+
+
+def _required_mutation_count(row: Mapping[str, Any], column: str) -> int:
+    try:
+        value = row[column]
+    except KeyError as exc:
+        raise TypeError(f"token_radar_rank_source_write_count_required:{column}") from exc
+    if isinstance(value, bool):
+        raise TypeError(f"token_radar_rank_source_write_count_invalid:{column}")
+    try:
+        count = int(value)
+    except (TypeError, ValueError):
+        raise TypeError(f"token_radar_rank_source_write_count_invalid:{column}") from None
+    if count < 0:
+        raise TypeError(f"token_radar_rank_source_write_count_invalid:{column}")
+    return count
+
+
+def _cursor_rowcount(cursor: Any) -> int:
+    try:
+        rowcount: object = cursor.rowcount
+    except AttributeError as exc:
+        raise TypeError("token_radar_rank_source_rowcount_required") from exc
+    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
+        raise TypeError("token_radar_rank_source_rowcount_invalid")
+    if rowcount < 0:
+        raise TypeError("token_radar_rank_source_rowcount_invalid")
+    return rowcount
 
 
 _LATEST_MARKET_CONTEXT_FOR_TARGETS_SQL = """

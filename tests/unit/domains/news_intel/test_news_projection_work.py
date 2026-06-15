@@ -40,6 +40,12 @@ class FakeRepos:
         self.news = FakeNews(servable_news_item_ids=servable_news_item_ids)
 
 
+class FakeReposWithoutServableFilter:
+    def __init__(self) -> None:
+        self.news_projection_dirty_targets = FakeDirtyTargets()
+        self.news = object()
+
+
 class FakeNews:
     def __init__(self, *, servable_news_item_ids: list[str] | None = None) -> None:
         self.servable_ids = servable_news_item_ids
@@ -129,6 +135,25 @@ def test_enqueue_news_item_work_filters_non_servable_duplicate_ids() -> None:
         {"projection_name": "page", "target_kind": "news_item", "target_id": "news-survivor"},
         {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-survivor"},
     ]
+
+
+def test_enqueue_news_item_work_requires_repository_servable_filter() -> None:
+    repos = FakeReposWithoutServableFilter()
+
+    try:
+        enqueue_page_reprojection(
+            repos,
+            news_item_ids=["news-1"],
+            reason="news_item_processed",
+            now_ms=NOW_MS,
+            commit=False,
+        )
+    except ValueError as exc:
+        assert "servable_news_item_ids" in str(exc)
+    else:  # pragma: no cover - assertion branch documents the expected failure mode.
+        raise AssertionError("missing servable_news_item_ids repository contract must fail closed")
+
+    assert repos.news_projection_dirty_targets.enqueued == []
 
 
 def test_source_quality_refresh_is_source_scoped_not_window_fanout() -> None:

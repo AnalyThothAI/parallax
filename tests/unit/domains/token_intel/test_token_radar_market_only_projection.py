@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any
+
+import pytest
 
 from parallax.domains.token_intel.services.token_radar_projection import TokenRadarProjection
 
@@ -70,12 +73,15 @@ def test_rebuild_dirty_targets_market_only_loads_existing_edges_without_populati
     monkeypatch.setattr(TokenRadarProjection, "refresh_rank_set", refresh)
 
     result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
+        lease_ms=120_000,
+        retry_ms=30_000,
         windows=("5m",),
         scopes=("all",),
         venues=("bsc",),
         now_ms=now_ms,
         limit=20,
         rank_limit=7,
+        lease_owner="projection-worker",
     )
 
     assert result["status"] == "ready"
@@ -113,10 +119,14 @@ def test_rebuild_dirty_targets_source_event_claim_populates_narrow_edges(monkeyp
     )
 
     result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
+        lease_ms=120_000,
+        retry_ms=30_000,
         windows=("5m",),
         scopes=("all",),
         now_ms=now_ms,
         limit=20,
+        rank_limit=20,
+        lease_owner="projection-worker",
     )
 
     assert result["status"] == "ready"
@@ -129,6 +139,26 @@ def test_rebuild_dirty_targets_source_event_claim_populates_narrow_edges(monkeyp
     assert rank_sources.latest_market_calls == []
     assert source_dirty.done[0]["source_event_id"] == "event-claim"
     assert dirty_targets.done == []
+
+
+def test_rebuild_dirty_targets_requires_source_dirty_event_repository() -> None:
+    repos = SimpleNamespace(
+        conn=FakeTransactionConn(),
+        token_radar_dirty_targets=FakeDirtyTargets([]),
+        token_radar_rank_sources=FakeRankSources(rows_by_request={}),
+    )
+
+    with pytest.raises(AttributeError, match="token_radar_source_dirty_events"):
+        TokenRadarProjection(repos=repos).rebuild_dirty_targets(
+            lease_ms=120_000,
+            retry_ms=30_000,
+            windows=("5m",),
+            scopes=("all",),
+            now_ms=1_777_800_060_000,
+            limit=20,
+            rank_limit=20,
+            lease_owner="projection-worker",
+        )
 
 
 class FakeDirtyTargets:
@@ -154,6 +184,12 @@ class FakeDirtyTargets:
 
 class FakeSourceDirtyEvents(FakeDirtyTargets):
     pass
+
+
+class FakeTransactionConn:
+    @contextmanager
+    def transaction(self):
+        yield
 
 
 class FakeRankSources:
@@ -209,6 +245,7 @@ def _repos(
     rank_sources: FakeRankSources,
 ) -> Any:
     return SimpleNamespace(
+        conn=FakeTransactionConn(),
         token_radar_dirty_targets=dirty_targets,
         token_radar_source_dirty_events=source_dirty,
         token_radar_rank_sources=rank_sources,

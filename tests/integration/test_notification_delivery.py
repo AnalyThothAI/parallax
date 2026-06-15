@@ -32,7 +32,7 @@ class RecordingPushDeerAdapter:
 def open_repo(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     migrate(conn)
-    return conn, NotificationRepository(conn)
+    return conn, NotificationRepository(conn, running_timeout_ms=300_000, stale_running_terminalization_batch_size=100)
 
 
 class SingleConnectionDB:

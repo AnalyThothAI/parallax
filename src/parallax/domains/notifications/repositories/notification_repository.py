@@ -3,12 +3,12 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from collections.abc import Callable, Sequence
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from psycopg.types.json import Jsonb
-
-from parallax.platform.db.postgres_client import transaction
 
 SEVERITY_RANK = {"info": 0, "warning": 1, "high": 2, "critical": 3}
 _AGGREGATION_SOURCE_REFS_KEY = "_aggregation_source_refs"
@@ -22,9 +22,16 @@ class NotificationInsertOutcome:
 
 
 class NotificationRepository:
-    def __init__(self, conn: Any, *, running_timeout_ms: int = 300_000):
+    def __init__(
+        self,
+        conn: Any,
+        *,
+        running_timeout_ms: int,
+        stale_running_terminalization_batch_size: int,
+    ):
         self.conn = conn
         self.running_timeout_ms = int(running_timeout_ms)
+        self.stale_running_terminalization_batch_size = max(1, int(stale_running_terminalization_batch_size))
 
     def insert_notification(
         self,
@@ -92,125 +99,129 @@ class NotificationRepository:
         channels: list[str] | tuple[str, ...] = ("in_app",),
         commit: bool = True,
     ) -> NotificationInsertOutcome:
-        now_ms = _now_ms()
-        notification_id = _id("notification", dedup_key)
-        normalized_severity = _normalize_severity(severity)
-        normalized_channels = tuple(str(channel).strip() for channel in channels if str(channel).strip()) or ("in_app",)
-        normalized_payload = dict(payload or {})
-        semantic_duplicate = self._semantic_signature_duplicate(
-            rule_id=rule_id,
-            payload=normalized_payload,
-            source_table=source_table,
-            source_id=source_id,
-            event_id=event_id,
-        )
-        if semantic_duplicate is not None:
-            aggregated = self._aggregate_notification_row(
-                existing=semantic_duplicate,
-                normalized_severity=normalized_severity,
-                title=title,
-                body=body,
-                author_handle=_normalize_handle(author_handle),
-                symbol=_normalize_symbol(symbol),
-                chain=_normalize_chain(chain),
-                address=_normalize_address(address),
-                event_id=event_id,
+        def write() -> NotificationInsertOutcome:
+            now_ms = _now_ms()
+            notification_id = _id("notification", dedup_key)
+            normalized_severity = _normalize_severity(severity)
+            normalized_channels = tuple(str(channel).strip() for channel in channels if str(channel).strip()) or (
+                "in_app",
+            )
+            normalized_payload = dict(payload or {})
+            semantic_duplicate = self._semantic_signature_duplicate(
+                rule_id=rule_id,
+                payload=normalized_payload,
                 source_table=source_table,
                 source_id=source_id,
-                occurrence_at_ms=int(occurrence_at_ms),
-                payload=normalized_payload,
-                channels=list(normalized_channels),
-                now_ms=now_ms,
-            )
-            if commit:
-                self.conn.commit()
-            row = (
-                self.notification_by_id(str(semantic_duplicate["notification_id"]), subscriber_key=None)
-                if aggregated
-                else None
-            )
-            return NotificationInsertOutcome(row=row, created=False, aggregated=aggregated)
-        if self._external_push_cooldown_duplicate(rule_id=rule_id, payload=normalized_payload):
-            normalized_payload = {
-                **normalized_payload,
-                "external_push_eligible": False,
-                "external_push_suppression_reason": "external_cooldown_duplicate",
-            }
-            normalized_channels = ("in_app",)
-        cursor = self.conn.execute(
-            """
-            INSERT INTO notifications(
-              notification_id, dedup_key, rule_id, severity, title, body, entity_type, entity_key,
-              author_handle, symbol, chain, address, event_id, source_table, source_id,
-              occurrence_count, first_seen_at_ms, last_seen_at_ms, payload_json, channels_json,
-              created_at_ms, updated_at_ms
-            )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT(dedup_key) DO NOTHING
-            """,
-            (
-                notification_id,
-                dedup_key,
-                rule_id,
-                normalized_severity,
-                title,
-                body,
-                entity_type,
-                entity_key,
-                _normalize_handle(author_handle),
-                _normalize_symbol(symbol),
-                _normalize_chain(chain),
-                _normalize_address(address),
-                event_id,
-                source_table,
-                source_id,
-                1,
-                int(occurrence_at_ms),
-                int(occurrence_at_ms),
-                _json(normalized_payload),
-                _json(list(normalized_channels)),
-                now_ms,
-                now_ms,
-            ),
-        )
-        if cursor.rowcount == 0:
-            existing = self.conn.execute(
-                "SELECT * FROM notifications WHERE dedup_key = %s FOR UPDATE",
-                (dedup_key,),
-            ).fetchone()
-            existing_dict = dict(existing) if existing is not None else None
-            aggregated = self._aggregate_notification_row(
-                existing=existing_dict,
-                normalized_severity=normalized_severity,
-                title=title,
-                body=body,
-                author_handle=_normalize_handle(author_handle),
-                symbol=_normalize_symbol(symbol),
-                chain=_normalize_chain(chain),
-                address=_normalize_address(address),
                 event_id=event_id,
-                source_table=source_table,
-                source_id=source_id,
-                occurrence_at_ms=int(occurrence_at_ms),
-                payload=normalized_payload,
-                channels=list(normalized_channels),
-                now_ms=now_ms,
             )
-            if commit:
-                self.conn.commit()
-            row = (
-                self.notification_by_id(str(existing_dict["notification_id"]), subscriber_key=None)
-                if aggregated and existing_dict is not None
-                else None
+            if semantic_duplicate is not None:
+                aggregated = self._aggregate_notification_row(
+                    existing=semantic_duplicate,
+                    normalized_severity=normalized_severity,
+                    title=title,
+                    body=body,
+                    author_handle=_normalize_handle(author_handle),
+                    symbol=_normalize_symbol(symbol),
+                    chain=_normalize_chain(chain),
+                    address=_normalize_address(address),
+                    event_id=event_id,
+                    source_table=source_table,
+                    source_id=source_id,
+                    occurrence_at_ms=int(occurrence_at_ms),
+                    payload=normalized_payload,
+                    channels=list(normalized_channels),
+                    now_ms=now_ms,
+                )
+                row = (
+                    self.notification_by_id(str(semantic_duplicate["notification_id"]), subscriber_key=None)
+                    if aggregated
+                    else None
+                )
+                return NotificationInsertOutcome(row=row, created=False, aggregated=aggregated)
+            if self._external_push_cooldown_duplicate(rule_id=rule_id, payload=normalized_payload):
+                normalized_payload = {
+                    **normalized_payload,
+                    "external_push_eligible": False,
+                    "external_push_suppression_reason": "external_cooldown_duplicate",
+                }
+                normalized_channels = ("in_app",)
+            cursor = self.conn.execute(
+                """
+                INSERT INTO notifications(
+                  notification_id, dedup_key, rule_id, severity, title, body, entity_type, entity_key,
+                  author_handle, symbol, chain, address, event_id, source_table, source_id,
+                  occurrence_count, first_seen_at_ms, last_seen_at_ms, payload_json, channels_json,
+                  created_at_ms, updated_at_ms
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT(dedup_key) DO NOTHING
+                """,
+                (
+                    notification_id,
+                    dedup_key,
+                    rule_id,
+                    normalized_severity,
+                    title,
+                    body,
+                    entity_type,
+                    entity_key,
+                    _normalize_handle(author_handle),
+                    _normalize_symbol(symbol),
+                    _normalize_chain(chain),
+                    _normalize_address(address),
+                    event_id,
+                    source_table,
+                    source_id,
+                    1,
+                    int(occurrence_at_ms),
+                    int(occurrence_at_ms),
+                    _json(normalized_payload),
+                    _json(list(normalized_channels)),
+                    now_ms,
+                    now_ms,
+                ),
             )
-            return NotificationInsertOutcome(row=row, created=False, aggregated=aggregated)
-        if commit:
-            self.conn.commit()
-        return NotificationInsertOutcome(
-            row=self.notification_by_id(notification_id, subscriber_key=None),
-            created=True,
-            aggregated=False,
-        )
+            inserted = _single_row_write_count(
+                cursor,
+                required_error="notification_insert_rowcount_required",
+                invalid_error="notification_insert_rowcount_invalid",
+            )
+            if inserted == 0:
+                existing = self.conn.execute(
+                    "SELECT * FROM notifications WHERE dedup_key = %s FOR UPDATE",
+                    (dedup_key,),
+                ).fetchone()
+                existing_dict = dict(existing) if existing is not None else None
+                aggregated = self._aggregate_notification_row(
+                    existing=existing_dict,
+                    normalized_severity=normalized_severity,
+                    title=title,
+                    body=body,
+                    author_handle=_normalize_handle(author_handle),
+                    symbol=_normalize_symbol(symbol),
+                    chain=_normalize_chain(chain),
+                    address=_normalize_address(address),
+                    event_id=event_id,
+                    source_table=source_table,
+                    source_id=source_id,
+                    occurrence_at_ms=int(occurrence_at_ms),
+                    payload=normalized_payload,
+                    channels=list(normalized_channels),
+                    now_ms=now_ms,
+                )
+                row = (
+                    self.notification_by_id(str(existing_dict["notification_id"]), subscriber_key=None)
+                    if aggregated and existing_dict is not None
+                    else None
+                )
+                return NotificationInsertOutcome(row=row, created=False, aggregated=aggregated)
+            return NotificationInsertOutcome(
+                row=self.notification_by_id(notification_id, subscriber_key=None),
+                created=True,
+                aggregated=False,
+            )
+
+        return _run_repository_write(self.conn, commit, write)
 
     def _semantic_signature_duplicate(
         self,
@@ -313,7 +324,7 @@ class NotificationRepository:
         next_payload = dict(payload)
         if merged_refs:
             next_payload[_AGGREGATION_SOURCE_REFS_KEY] = merged_refs[-100:]
-        self.conn.execute(
+        cursor = self.conn.execute(
             """
             UPDATE notifications
             SET severity = %s,
@@ -352,6 +363,13 @@ class NotificationRepository:
                 existing["notification_id"],
             ),
         )
+        updated = _single_row_write_count(
+            cursor,
+            required_error="notification_aggregate_rowcount_required",
+            invalid_error="notification_aggregate_rowcount_invalid",
+        )
+        if updated != 1:
+            raise TypeError("notification_aggregate_rowcount_invalid")
         return True
 
     def notification_by_id(
@@ -451,49 +469,64 @@ class NotificationRepository:
         }
 
     def mark_read(self, *, notification_id: str, subscriber_key: str = "local", read_at_ms: int | None = None) -> bool:
-        row = self.conn.execute(
-            "SELECT notification_id FROM notifications WHERE notification_id = %s",
-            (notification_id,),
-        ).fetchone()
-        if row is None:
-            return False
-        self.conn.execute(
-            """
-            INSERT INTO notification_reads(notification_id, subscriber_key, read_at_ms)
-            VALUES (%s, %s, %s)
-            ON CONFLICT(notification_id, subscriber_key) DO UPDATE SET
-              read_at_ms = excluded.read_at_ms
-            """,
-            (notification_id, subscriber_key, int(read_at_ms if read_at_ms is not None else _now_ms())),
-        )
-        self.conn.commit()
-        return True
+        def write() -> bool:
+            row = self.conn.execute(
+                "SELECT notification_id FROM notifications WHERE notification_id = %s",
+                (notification_id,),
+            ).fetchone()
+            if row is None:
+                return False
+            cursor = self.conn.execute(
+                """
+                INSERT INTO notification_reads(notification_id, subscriber_key, read_at_ms)
+                VALUES (%s, %s, %s)
+                ON CONFLICT(notification_id, subscriber_key) DO UPDATE SET
+                  read_at_ms = excluded.read_at_ms
+                WHERE notification_reads.read_at_ms IS DISTINCT FROM excluded.read_at_ms
+                """,
+                (notification_id, subscriber_key, int(read_at_ms if read_at_ms is not None else _now_ms())),
+            )
+            _single_row_write_count(
+                cursor,
+                required_error="notification_read_mark_rowcount_required",
+                invalid_error="notification_read_mark_rowcount_invalid",
+            )
+            return True
+
+        return _run_repository_write(self.conn, True, write)
 
     def mark_all_read(self, *, subscriber_key: str = "local", read_at_ms: int | None = None) -> int:
-        now_ms = int(read_at_ms if read_at_ms is not None else _now_ms())
-        rows = self.conn.execute(
-            """
-            SELECT n.notification_id
-            FROM notifications n
-            LEFT JOIN notification_reads r
-              ON r.notification_id = n.notification_id
-             AND r.subscriber_key = %s
-            WHERE r.read_at_ms IS NULL
-            """,
-            (subscriber_key,),
-        ).fetchall()
-        with transaction(self.conn):
-            for row in rows:
-                self.conn.execute(
-                    """
-                    INSERT INTO notification_reads(notification_id, subscriber_key, read_at_ms)
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT(notification_id, subscriber_key) DO UPDATE SET
-                      read_at_ms = excluded.read_at_ms
-                    """,
-                    (row["notification_id"], subscriber_key, now_ms),
+        def write() -> int:
+            now_ms = int(read_at_ms if read_at_ms is not None else _now_ms())
+            cursor = self.conn.execute(
+                """
+                WITH unread AS (
+                  SELECT n.notification_id
+                  FROM notifications n
+                  LEFT JOIN notification_reads r
+                    ON r.notification_id = n.notification_id
+                   AND r.subscriber_key = %s
+                  WHERE r.read_at_ms IS NULL
                 )
-        return len(rows)
+                INSERT INTO notification_reads(notification_id, subscriber_key, read_at_ms)
+                SELECT notification_id, %s, %s
+                FROM unread
+                ON CONFLICT(notification_id, subscriber_key) DO UPDATE SET
+                  read_at_ms = excluded.read_at_ms
+                WHERE notification_reads.read_at_ms IS DISTINCT FROM excluded.read_at_ms
+                RETURNING notification_id
+                """,
+                (subscriber_key, subscriber_key, now_ms),
+            )
+            rows = cursor.fetchall()
+            return _returned_write_count(
+                cursor,
+                rows,
+                required_error="notification_read_bulk_rowcount_required",
+                invalid_error="notification_read_bulk_rowcount_invalid",
+            )
+
+        return _run_repository_write(self.conn, True, write)
 
     def mark_author_read(
         self,
@@ -505,29 +538,39 @@ class NotificationRepository:
         normalized_handle = _normalize_handle(author_handle)
         if not normalized_handle:
             return 0
-        now_ms = int(read_at_ms if read_at_ms is not None else _now_ms())
-        rows = self.conn.execute(
-            """
-            WITH unread AS (
-              SELECT n.notification_id
-              FROM notifications n
-              LEFT JOIN notification_reads r
-                ON r.notification_id = n.notification_id
-               AND r.subscriber_key = %s
-              WHERE r.read_at_ms IS NULL
-                AND n.author_handle = %s
+
+        def write() -> int:
+            now_ms = int(read_at_ms if read_at_ms is not None else _now_ms())
+            cursor = self.conn.execute(
+                """
+                WITH unread AS (
+                  SELECT n.notification_id
+                  FROM notifications n
+                  LEFT JOIN notification_reads r
+                    ON r.notification_id = n.notification_id
+                   AND r.subscriber_key = %s
+                  WHERE r.read_at_ms IS NULL
+                    AND n.author_handle = %s
+                )
+                INSERT INTO notification_reads(notification_id, subscriber_key, read_at_ms)
+                SELECT notification_id, %s, %s
+                FROM unread
+                ON CONFLICT(notification_id, subscriber_key) DO UPDATE SET
+                  read_at_ms = excluded.read_at_ms
+                WHERE notification_reads.read_at_ms IS DISTINCT FROM excluded.read_at_ms
+                RETURNING notification_id
+                """,
+                (subscriber_key, normalized_handle, subscriber_key, now_ms),
             )
-            INSERT INTO notification_reads(notification_id, subscriber_key, read_at_ms)
-            SELECT notification_id, %s, %s
-            FROM unread
-            ON CONFLICT(notification_id, subscriber_key) DO UPDATE SET
-              read_at_ms = excluded.read_at_ms
-            RETURNING notification_id
-            """,
-            (subscriber_key, normalized_handle, subscriber_key, now_ms),
-        ).fetchall()
-        self.conn.commit()
-        return len(rows)
+            rows = cursor.fetchall()
+            return _returned_write_count(
+                cursor,
+                rows,
+                required_error="notification_read_bulk_rowcount_required",
+                invalid_error="notification_read_bulk_rowcount_invalid",
+            )
+
+        return _run_repository_write(self.conn, True, write)
 
     def enqueue_delivery(
         self,
@@ -539,38 +582,44 @@ class NotificationRepository:
         next_run_at_ms: int | None = None,
         commit: bool = True,
     ) -> dict[str, Any] | None:
-        now_ms = _now_ms()
-        delivery_id = _id("delivery", notification_id, channel_id)
-        cursor = self.conn.execute(
-            """
-            INSERT INTO notification_deliveries(
-              delivery_id, notification_id, channel_id, provider, status, attempt_count, max_attempts,
-              next_run_at_ms, last_attempt_at_ms, delivered_at_ms, last_error, created_at_ms, updated_at_ms
+        def write() -> dict[str, Any] | None:
+            now_ms = _now_ms()
+            delivery_id = _id("delivery", notification_id, channel_id)
+            cursor = self.conn.execute(
+                """
+                INSERT INTO notification_deliveries(
+                  delivery_id, notification_id, channel_id, provider, status, attempt_count, max_attempts,
+                  next_run_at_ms, last_attempt_at_ms, delivered_at_ms, last_error, created_at_ms, updated_at_ms
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT(notification_id, channel_id) DO NOTHING
+                """,
+                (
+                    delivery_id,
+                    notification_id,
+                    channel_id,
+                    provider,
+                    "pending",
+                    0,
+                    max(1, int(max_attempts)),
+                    int(next_run_at_ms if next_run_at_ms is not None else now_ms),
+                    None,
+                    None,
+                    None,
+                    now_ms,
+                    now_ms,
+                ),
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT(notification_id, channel_id) DO NOTHING
-            """,
-            (
-                delivery_id,
-                notification_id,
-                channel_id,
-                provider,
-                "pending",
-                0,
-                max(1, int(max_attempts)),
-                int(next_run_at_ms if next_run_at_ms is not None else now_ms),
-                None,
-                None,
-                None,
-                now_ms,
-                now_ms,
-            ),
-        )
-        if commit:
-            self.conn.commit()
-        if cursor.rowcount == 0:
-            return None
-        return self.delivery_by_id(delivery_id)
+            inserted = _single_row_write_count(
+                cursor,
+                required_error="notification_delivery_enqueue_rowcount_required",
+                invalid_error="notification_delivery_enqueue_rowcount_invalid",
+            )
+            if inserted == 0:
+                return None
+            return self.delivery_by_id(delivery_id)
+
+        return _run_delivery_write(self.conn, commit, write)
 
     def enqueue_or_requeue_delivery(
         self,
@@ -582,48 +631,54 @@ class NotificationRepository:
         next_run_at_ms: int | None = None,
         commit: bool = True,
     ) -> dict[str, Any] | None:
-        now_ms = _now_ms()
-        delivery_id = _id("delivery", notification_id, channel_id)
-        cursor = self.conn.execute(
-            """
-            INSERT INTO notification_deliveries(
-              delivery_id, notification_id, channel_id, provider, status, attempt_count, max_attempts,
-              next_run_at_ms, last_attempt_at_ms, delivered_at_ms, last_error, created_at_ms, updated_at_ms
+        def write() -> dict[str, Any] | None:
+            now_ms = _now_ms()
+            delivery_id = _id("delivery", notification_id, channel_id)
+            cursor = self.conn.execute(
+                """
+                INSERT INTO notification_deliveries(
+                  delivery_id, notification_id, channel_id, provider, status, attempt_count, max_attempts,
+                  next_run_at_ms, last_attempt_at_ms, delivered_at_ms, last_error, created_at_ms, updated_at_ms
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT(notification_id, channel_id) DO UPDATE SET
+                  provider = EXCLUDED.provider,
+                  status = 'pending',
+                  attempt_count = 0,
+                  max_attempts = EXCLUDED.max_attempts,
+                  next_run_at_ms = EXCLUDED.next_run_at_ms,
+                  last_attempt_at_ms = NULL,
+                  delivered_at_ms = NULL,
+                  last_error = NULL,
+                  updated_at_ms = EXCLUDED.updated_at_ms
+                WHERE notification_deliveries.status IN ('failed', 'dead')
+                RETURNING *
+                """,
+                (
+                    delivery_id,
+                    notification_id,
+                    channel_id,
+                    provider,
+                    "pending",
+                    0,
+                    max(1, int(max_attempts)),
+                    int(next_run_at_ms if next_run_at_ms is not None else now_ms),
+                    None,
+                    None,
+                    None,
+                    now_ms,
+                    now_ms,
+                ),
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT(notification_id, channel_id) DO UPDATE SET
-              provider = EXCLUDED.provider,
-              status = 'pending',
-              attempt_count = 0,
-              max_attempts = EXCLUDED.max_attempts,
-              next_run_at_ms = EXCLUDED.next_run_at_ms,
-              last_attempt_at_ms = NULL,
-              delivered_at_ms = NULL,
-              last_error = NULL,
-              updated_at_ms = EXCLUDED.updated_at_ms
-            WHERE notification_deliveries.status IN ('failed', 'dead')
-            RETURNING *
-            """,
-            (
-                delivery_id,
-                notification_id,
-                channel_id,
-                provider,
-                "pending",
-                0,
-                max(1, int(max_attempts)),
-                int(next_run_at_ms if next_run_at_ms is not None else now_ms),
-                None,
-                None,
-                None,
-                now_ms,
-                now_ms,
-            ),
-        )
-        if commit:
-            self.conn.commit()
-        row = cursor.fetchone()
-        return dict(row) if row is not None else None
+            row = cursor.fetchone()
+            return _optional_returning_row(
+                cursor,
+                row,
+                required_error="notification_delivery_requeue_rowcount_required",
+                invalid_error="notification_delivery_requeue_rowcount_invalid",
+            )
+
+        return _run_delivery_write(self.conn, commit, write)
 
     def delivery_by_id(self, delivery_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(
@@ -632,99 +687,136 @@ class NotificationRepository:
         ).fetchone()
         return dict(row) if row else None
 
-    def claim_next_delivery(self, *, now_ms: int | None = None) -> dict[str, Any] | None:
+    def claim_next_delivery(self, *, now_ms: int | None = None, commit: bool = True) -> dict[str, Any] | None:
         now = int(now_ms if now_ms is not None else _now_ms())
-        stale_before = now - self.running_timeout_ms
-        self.conn.execute(
-            """
-            UPDATE notification_deliveries
-            SET status = 'dead',
-                last_error = 'stale_running_timeout',
-                updated_at_ms = %s
-            WHERE status = 'running'
-              AND updated_at_ms < %s
-              AND attempt_count >= max_attempts
-            """,
-            (now, stale_before),
-        )
-        row = self.conn.execute(
-            """
-            WITH picked AS (
-              SELECT delivery_id
-              FROM notification_deliveries
-              WHERE (
-                  status IN ('pending', 'failed')
-                  AND attempt_count < max_attempts
-                  AND next_run_at_ms <= %s
+
+        def write() -> dict[str, Any] | None:
+            stale_before = now - self.running_timeout_ms
+            self.conn.execute(
+                """
+                WITH expired AS (
+                  SELECT delivery_id
+                  FROM notification_deliveries
+                  WHERE status = 'running'
+                    AND updated_at_ms < %s
+                    AND attempt_count >= max_attempts
+                  ORDER BY updated_at_ms ASC, delivery_id ASC
+                  LIMIT %s
+                  FOR UPDATE SKIP LOCKED
                 )
-                OR (
-                  status = 'running'
-                  AND updated_at_ms < %s
-                  AND attempt_count < max_attempts
-                )
-              ORDER BY next_run_at_ms ASC, created_at_ms ASC, delivery_id ASC
-              LIMIT 1
-              FOR UPDATE SKIP LOCKED
+                UPDATE notification_deliveries AS delivery
+                SET status = 'dead',
+                    last_error = 'stale_running_timeout',
+                    updated_at_ms = %s
+                FROM expired
+                WHERE delivery.delivery_id = expired.delivery_id
+                """,
+                (stale_before, self.stale_running_terminalization_batch_size, now),
             )
-            UPDATE notification_deliveries AS delivery
-            SET status = 'running',
-                attempt_count = delivery.attempt_count + 1,
-                last_attempt_at_ms = %s,
-                updated_at_ms = %s,
-                last_error = NULL
-            FROM picked
-            WHERE delivery.delivery_id = picked.delivery_id
-              AND (
-                (
-                  delivery.status IN ('pending', 'failed')
-                  AND delivery.attempt_count < delivery.max_attempts
-                  AND delivery.next_run_at_ms <= %s
+            cursor = self.conn.execute(
+                """
+                WITH picked AS (
+                  SELECT delivery_id
+                  FROM notification_deliveries
+                  WHERE (
+                      status IN ('pending', 'failed')
+                      AND attempt_count < max_attempts
+                      AND next_run_at_ms <= %s
+                    )
+                    OR (
+                      status = 'running'
+                      AND updated_at_ms < %s
+                      AND attempt_count < max_attempts
+                    )
+                  ORDER BY next_run_at_ms ASC, created_at_ms ASC, delivery_id ASC
+                  LIMIT 1
+                  FOR UPDATE SKIP LOCKED
                 )
-                OR (
-                  delivery.status = 'running'
-                  AND delivery.updated_at_ms < %s
-                  AND delivery.attempt_count < delivery.max_attempts
-                )
-              )
-            RETURNING delivery.*
-            """,
-            (now, stale_before, now, now, now, stale_before),
-        ).fetchone()
-        return dict(row) if row else None
+                UPDATE notification_deliveries AS delivery
+                SET status = 'running',
+                    attempt_count = delivery.attempt_count + 1,
+                    last_attempt_at_ms = %s,
+                    updated_at_ms = %s,
+                    last_error = NULL
+                FROM picked
+                WHERE delivery.delivery_id = picked.delivery_id
+                  AND (
+                    (
+                      delivery.status IN ('pending', 'failed')
+                      AND delivery.attempt_count < delivery.max_attempts
+                      AND delivery.next_run_at_ms <= %s
+                    )
+                    OR (
+                      delivery.status = 'running'
+                      AND delivery.updated_at_ms < %s
+                      AND delivery.attempt_count < delivery.max_attempts
+                    )
+                  )
+                RETURNING delivery.*
+                """,
+                (now, stale_before, now, now, now, stale_before),
+            )
+            row = cursor.fetchone()
+            return _optional_returning_row(
+                cursor,
+                row,
+                required_error="notification_delivery_claim_rowcount_required",
+                invalid_error="notification_delivery_claim_rowcount_invalid",
+            )
 
-    def complete_delivery(self, delivery: dict[str, Any], *, delivered_at_ms: int | None = None) -> None:
+        return _run_delivery_write(self.conn, commit, write)
+
+    def complete_delivery(
+        self,
+        delivery: dict[str, Any],
+        *,
+        delivered_at_ms: int | None = None,
+        commit: bool = True,
+    ) -> None:
         now = int(delivered_at_ms if delivered_at_ms is not None else _now_ms())
-        self.conn.execute(
-            """
-            UPDATE notification_deliveries
-            SET status = 'delivered',
-                delivered_at_ms = %s,
-                last_error = NULL,
-                updated_at_ms = %s
-            WHERE delivery_id = %s
-            """,
-            (now, now, delivery["delivery_id"]),
-        )
-        self.conn.commit()
 
-    def fail_delivery(self, delivery: dict[str, Any], *, error: str, now_ms: int | None = None) -> None:
+        def write() -> None:
+            self.conn.execute(
+                """
+                UPDATE notification_deliveries
+                SET status = 'delivered',
+                    delivered_at_ms = %s,
+                    last_error = NULL,
+                    updated_at_ms = %s
+                WHERE delivery_id = %s
+                """,
+                (now, now, delivery["delivery_id"]),
+            )
+
+        _run_delivery_write(self.conn, commit, write)
+
+    def fail_delivery(
+        self,
+        delivery: dict[str, Any],
+        *,
+        error: str,
+        now_ms: int | None = None,
+        commit: bool = True,
+    ) -> None:
         now = int(now_ms if now_ms is not None else _now_ms())
-        attempts = int(delivery.get("attempt_count") or 0)
-        max_attempts = int(delivery.get("max_attempts") or 5)
+        attempts, max_attempts = _delivery_attempt_contract(delivery)
         status = "dead" if attempts >= max_attempts else "failed"
         delay_ms = min(15 * 60_000, 30_000 * max(1, attempts))
-        self.conn.execute(
-            """
-            UPDATE notification_deliveries
-            SET status = %s,
-                next_run_at_ms = %s,
-                last_error = %s,
-                updated_at_ms = %s
-            WHERE delivery_id = %s
-            """,
-            (status, now + delay_ms, str(error)[:1000], now, delivery["delivery_id"]),
-        )
-        self.conn.commit()
+
+        def write() -> None:
+            self.conn.execute(
+                """
+                UPDATE notification_deliveries
+                SET status = %s,
+                    next_run_at_ms = %s,
+                    last_error = %s,
+                    updated_at_ms = %s
+                WHERE delivery_id = %s
+                """,
+                (status, now + delay_ms, str(error)[:1000], now, delivery["delivery_id"]),
+            )
+
+        _run_delivery_write(self.conn, commit, write)
 
     def list_deliveries(self, *, limit: int, status: str | None = None) -> list[dict[str, Any]]:
         clauses: list[str] = []
@@ -819,6 +911,98 @@ def _append_unique(values: list[str], value: str | None) -> list[str]:
     if value and value not in result:
         result.append(value)
     return result
+
+
+def _connection_transaction(conn: Any, *, error_code: str) -> AbstractContextManager[Any]:
+    try:
+        conn_transaction = conn.transaction
+    except AttributeError as exc:
+        raise RuntimeError(error_code) from exc
+    if not callable(conn_transaction):
+        raise RuntimeError(error_code)
+    return cast(AbstractContextManager[Any], conn_transaction())
+
+
+def _notification_repository_transaction(conn: Any) -> AbstractContextManager[Any]:
+    return _connection_transaction(conn, error_code="notification_repository_transaction_required")
+
+
+def _delivery_repository_transaction(conn: Any) -> AbstractContextManager[Any]:
+    return _connection_transaction(conn, error_code="notification_delivery_repository_transaction_required")
+
+
+def _run_repository_write[T](conn: Any, commit: bool, write: Callable[[], T]) -> T:
+    if commit:
+        with _notification_repository_transaction(conn):
+            return write()
+    return write()
+
+
+def _run_delivery_write[T](conn: Any, commit: bool, write: Callable[[], T]) -> T:
+    if commit:
+        with _delivery_repository_transaction(conn):
+            return write()
+    return write()
+
+
+def _write_count(cursor: Any, *, required_error: str, invalid_error: str) -> int:
+    try:
+        rowcount: object = cursor.rowcount
+    except AttributeError as exc:
+        raise TypeError(required_error) from exc
+    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
+        raise TypeError(invalid_error)
+    if rowcount < 0:
+        raise TypeError(invalid_error)
+    return rowcount
+
+
+def _single_row_write_count(cursor: Any, *, required_error: str, invalid_error: str) -> int:
+    rowcount = _write_count(cursor, required_error=required_error, invalid_error=invalid_error)
+    if rowcount not in (0, 1):
+        raise TypeError(invalid_error)
+    return rowcount
+
+
+def _returned_write_count(
+    cursor: Any,
+    rows: Sequence[Any],
+    *,
+    required_error: str,
+    invalid_error: str,
+) -> int:
+    rowcount = _write_count(cursor, required_error=required_error, invalid_error=invalid_error)
+    if rowcount != len(rows):
+        raise TypeError(invalid_error)
+    return rowcount
+
+
+def _optional_returning_row(
+    cursor: Any,
+    row: Any,
+    *,
+    required_error: str,
+    invalid_error: str,
+) -> dict[str, Any] | None:
+    rowcount = _single_row_write_count(cursor, required_error=required_error, invalid_error=invalid_error)
+    if rowcount == 0:
+        if row is not None:
+            raise TypeError(invalid_error)
+        return None
+    if row is None:
+        raise TypeError(invalid_error)
+    return dict(row)
+
+
+def _delivery_attempt_contract(delivery: dict[str, Any]) -> tuple[int, int]:
+    try:
+        attempts = int(delivery["attempt_count"])
+        max_attempts = int(delivery["max_attempts"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError("notification_delivery_attempt_contract_required") from exc
+    if attempts < 0 or max_attempts < 1:
+        raise RuntimeError("notification_delivery_attempt_contract_required")
+    return attempts, max_attempts
 
 
 def _id(*parts: str) -> str:

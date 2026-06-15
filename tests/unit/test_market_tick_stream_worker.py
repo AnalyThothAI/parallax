@@ -5,6 +5,8 @@ import time
 from decimal import Decimal
 from types import SimpleNamespace
 
+import pytest
+
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.asset_market.providers import DexMarketFactUpdate
@@ -17,7 +19,7 @@ from parallax.domains.asset_market.types import market_tick_id
 def test_market_tick_stream_worker_is_not_single_writer_locked() -> None:
     state = FakeSessionState()
     repos = FakeRepos(state, [])
-    worker = MarketTickStreamWorker(pool_bundle=FakeDB(state, repos), stream_dex_market=FakeDexMarketStream(state, []))
+    worker = _worker(db=FakeDB(state, repos), stream=FakeDexMarketStream(state, []))
 
     assert worker.SINGLE_WRITER_KEY is None
     assert worker._advisory_lock_key() is None
@@ -36,10 +38,10 @@ def test_market_tick_stream_worker_reuses_stateful_provider_and_replaces_subscri
             DexMarketFactUpdate(chain_id="solana", address="B", observed_at_ms=2, price_usd=2),
         ]
     )
-    worker = MarketTickStreamWorker(
-        pool_bundle=db,
-        stream_dex_market=provider,
-        stream_cycle_seconds=0.05,
+    worker = _worker(
+        db=db,
+        stream=provider,
+        settings_overrides={"stream_cycle_seconds": 0.05},
         clock=lambda: 1_800_000_000_100,
     )
 
@@ -83,11 +85,11 @@ def test_market_tick_stream_worker_reads_tier1_streams_outside_session_inserts_a
         ],
     )
     wake = FakeWakeEmitter()
-    worker = MarketTickStreamWorker(
-        pool_bundle=db,
-        stream_dex_market=stream,
+    worker = _worker(
+        db=db,
+        stream=stream,
         wake_emitter=wake,
-        subscription_limit=10,
+        settings_overrides={"subscription_limit": 10},
         clock=lambda: 1_800_000_000_100,
     )
 
@@ -146,11 +148,11 @@ def test_market_tick_stream_worker_skips_cex_symbol_tier1_targets() -> None:
     db = FakeDB(state, repos)
     stream = FakeDexMarketStream(state, [])
     wake = FakeWakeEmitter()
-    worker = MarketTickStreamWorker(
-        pool_bundle=db,
-        stream_dex_market=stream,
+    worker = _worker(
+        db=db,
+        stream=stream,
         wake_emitter=wake,
-        subscription_limit=5,
+        settings_overrides={"subscription_limit": 5},
         clock=lambda: 1_800_000_000_100,
     )
 
@@ -179,12 +181,7 @@ def test_market_tick_stream_worker_skips_invalid_price_and_does_not_notify() -> 
         ],
     )
     wake = FakeWakeEmitter()
-    worker = MarketTickStreamWorker(
-        pool_bundle=db,
-        stream_dex_market=stream,
-        wake_emitter=wake,
-        clock=lambda: 1_800_000_000_100,
-    )
+    worker = _worker(db=db, stream=stream, wake_emitter=wake, clock=lambda: 1_800_000_000_100)
 
     result = asyncio.run(worker.run_once())
 
@@ -212,12 +209,7 @@ def test_market_tick_stream_worker_flushes_collected_ticks_before_stream_error_r
         ],
     )
     wake = FakeWakeEmitter()
-    worker = MarketTickStreamWorker(
-        pool_bundle=db,
-        stream_dex_market=stream,
-        wake_emitter=wake,
-        clock=lambda: 1_800_000_000_100,
-    )
+    worker = _worker(db=db, stream=stream, wake_emitter=wake, clock=lambda: 1_800_000_000_100)
 
     result = asyncio.run(worker.run_once())
 
@@ -248,12 +240,7 @@ def test_market_tick_stream_worker_persists_collected_ticks_once_when_error_and_
         ],
     )
     wake = FakeWakeEmitter()
-    worker = MarketTickStreamWorker(
-        pool_bundle=db,
-        stream_dex_market=stream,
-        wake_emitter=wake,
-        clock=lambda: 1_800_000_000_100,
-    )
+    worker = _worker(db=db, stream=stream, wake_emitter=wake, clock=lambda: 1_800_000_000_100)
 
     result = asyncio.run(worker.run_once())
 
@@ -277,10 +264,10 @@ def test_market_tick_stream_worker_provider_circuit_open_returns_degraded_result
             "last_error_category": "connect_timeout",
         },
     )
-    worker = MarketTickStreamWorker(
-        pool_bundle=db,
-        stream_dex_market=stream,
-        stream_cycle_seconds=0.05,
+    worker = _worker(
+        db=db,
+        stream=stream,
+        settings_overrides={"stream_cycle_seconds": 0.05},
         clock=lambda: 1_800_000_000_100,
     )
 
@@ -306,10 +293,10 @@ def test_market_tick_stream_worker_recoverable_provider_failure_returns_degraded
             "last_error_category": "notice_reconnect",
         },
     )
-    worker = MarketTickStreamWorker(
-        pool_bundle=db,
-        stream_dex_market=stream,
-        stream_cycle_seconds=0.05,
+    worker = _worker(
+        db=db,
+        stream=stream,
+        settings_overrides={"stream_cycle_seconds": 0.05},
         clock=lambda: 1_800_000_000_100,
     )
 
@@ -323,15 +310,40 @@ def test_market_tick_stream_worker_recoverable_provider_failure_returns_degraded
     assert repos.market_ticks.inserted == []
 
 
+def test_market_tick_stream_worker_provider_state_hook_is_required_for_stream_failures() -> None:
+    state = FakeSessionState()
+    repos = FakeRepos(state, [tier_row(target_type="chain_token", target_id="solana:TokenA")])
+    db = FakeDB(state, repos)
+    stream = MissingConnectionStateFailingStream(RuntimeError("socket dropped"))
+    worker = _worker(
+        db=db,
+        stream=stream,
+        settings_overrides={"stream_cycle_seconds": 0.05},
+        clock=lambda: 1_800_000_000_100,
+    )
+
+    result = asyncio.run(worker.run_once())
+
+    assert result.failed == 0
+    assert result.notes["degraded"] is True
+    assert result.notes["provider_state"] == "failed"
+    assert result.notes["provider_state_payload"] == {
+        "state": "failed",
+        "last_error_category": "provider_connection_state_contract_missing",
+    }
+    assert result.notes["failure_category"] == "provider_connection_state_contract_missing"
+    assert repos.market_ticks.inserted == []
+
+
 def test_market_tick_stream_worker_bounds_stream_cycle_and_closes_iterator() -> None:
     state = FakeSessionState()
     repos = FakeRepos(state, [tier_row(target_type="chain_token", target_id="solana:TokenA")])
     db = FakeDB(state, repos)
     stream = NeverYieldDexMarketStream(state)
-    worker = MarketTickStreamWorker(
-        pool_bundle=db,
-        stream_dex_market=stream,
-        stream_cycle_seconds=0.001,
+    worker = _worker(
+        db=db,
+        stream=stream,
+        settings_overrides={"stream_cycle_seconds": 0.001},
         clock=lambda: 1_800_000_000_100,
     )
 
@@ -345,15 +357,47 @@ def test_market_tick_stream_worker_bounds_stream_cycle_and_closes_iterator() -> 
     assert repos.market_ticks.inserted == []
 
 
+def test_market_tick_stream_worker_requires_iterator_aclose_contract() -> None:
+    state = FakeSessionState()
+    repos = FakeRepos(state, [tier_row(target_type="chain_token", target_id="solana:TokenA")])
+    db = FakeDB(state, repos)
+    stream = MissingIteratorCloseDexMarketStream(
+        state,
+        [
+            DexMarketFactUpdate(
+                chain_id="solana",
+                address="TokenA",
+                observed_at_ms=1_800_000_000_001,
+                price_usd=12.34,
+            )
+        ],
+    )
+    worker = _worker(
+        db=db,
+        stream=stream,
+        settings_overrides={"stream_cycle_seconds": 0.01},
+        clock=lambda: 1_800_000_000_100,
+    )
+
+    result = asyncio.run(worker.run_once())
+
+    assert result.processed == 1
+    assert result.failed == 0
+    assert result.notes["degraded"] is True
+    assert result.notes["failure_category"] == "AttributeError"
+    assert repos.conn.commit_count == 1
+    assert len(repos.market_ticks.inserted) == 1
+
+
 def test_market_tick_stream_worker_bounds_subscription_replace_by_stream_cycle() -> None:
     state = FakeSessionState()
     repos = FakeRepos(state, [tier_row(target_type="chain_token", target_id="solana:TokenA")])
     db = FakeDB(state, repos)
     stream = HangingReplaceDexMarketStream()
-    worker = MarketTickStreamWorker(
-        pool_bundle=db,
-        stream_dex_market=stream,
-        stream_cycle_seconds=0.001,
+    worker = _worker(
+        db=db,
+        stream=stream,
+        settings_overrides={"stream_cycle_seconds": 0.001},
         clock=lambda: 1_800_000_000_100,
     )
 
@@ -369,17 +413,68 @@ def test_market_tick_stream_worker_bounds_subscription_replace_by_stream_cycle()
     assert repos.market_ticks.inserted == []
 
 
-def test_market_tick_stream_worker_result_when_no_stream_provider() -> None:
+def test_market_tick_stream_worker_requires_stream_provider_contract() -> None:
     state = FakeSessionState()
     repos = FakeRepos(state, [tier_row(target_type="chain_token", target_id="solana:TokenA")])
-    worker = MarketTickStreamWorker(pool_bundle=FakeDB(state, repos), stream_dex_market=None)
 
-    result = asyncio.run(worker.run_once())
+    with pytest.raises(RuntimeError, match="market_tick_stream_provider_required"):
+        _worker(db=FakeDB(state, repos), stream=None)
 
-    assert isinstance(result, WorkerResult)
-    assert result.processed == 0
-    assert result.skipped == 1
-    assert result.notes["reason"] == "stream_provider_unavailable"
+
+def test_market_tick_stream_worker_requires_formal_settings_contract() -> None:
+    state = FakeSessionState()
+    repos = FakeRepos(state, [])
+
+    with pytest.raises(RuntimeError, match="market_tick_stream_settings_required"):
+        MarketTickStreamWorker(
+            pool_bundle=FakeDB(state, repos),
+            stream_dex_market=FakeDexMarketStream(state, []),
+            settings=None,
+            telemetry=object(),
+        )
+
+
+def test_market_tick_stream_worker_requires_db_pool_bundle_contract() -> None:
+    state = FakeSessionState()
+
+    with pytest.raises(RuntimeError, match="market_tick_stream_db_required"):
+        MarketTickStreamWorker(
+            pool_bundle=None,
+            stream_dex_market=FakeDexMarketStream(state, []),
+            settings=_stream_settings(),
+            telemetry=object(),
+        )
+
+
+def _worker(
+    *,
+    db: object,
+    stream: object | None,
+    wake_emitter: object | None = None,
+    settings_overrides: dict[str, object] | None = None,
+    clock: object | None = None,
+) -> MarketTickStreamWorker:
+    return MarketTickStreamWorker(
+        pool_bundle=db,
+        stream_dex_market=stream,
+        wake_emitter=wake_emitter,
+        clock=clock,
+        settings=_stream_settings(**(settings_overrides or {})),
+        telemetry=object(),
+    )
+
+
+def _stream_settings(**overrides: object) -> SimpleNamespace:
+    values = {
+        "enabled": True,
+        "interval_seconds": 5.0,
+        "soft_timeout_seconds": 120.0,
+        "hard_timeout_seconds": 180.0,
+        "subscription_limit": 50,
+        "stream_cycle_seconds": 30.0,
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
 
 
 def tier_row(*, target_type: str, target_id: str, pricefeed_id: str | None = None) -> dict[str, object]:
@@ -514,6 +609,13 @@ class FakeDexMarketStream:
     async def aclose(self) -> None:
         self.close_count += 1
 
+    def connection_state_payload(self):
+        return {
+            "provider": "okx_dex_ws",
+            "state": "connected",
+            "last_state_change_at_ms": 1_800_000_000_000,
+        }
+
 
 class FailingDexMarketStream:
     def __init__(self, state: FakeSessionState, updates: list[DexMarketFactUpdate]) -> None:
@@ -590,6 +692,51 @@ class CloseFailingPriceIterator:
         raise RuntimeError("close dropped")
 
 
+class MissingIteratorCloseDexMarketStream:
+    def __init__(self, state: FakeSessionState, updates: list[DexMarketFactUpdate]) -> None:
+        self.state = state
+        self.updates = updates
+        self.targets = []
+        self.saw_in_session: list[bool] = []
+
+    async def replace_subscriptions(self, targets) -> None:
+        self.targets = list(targets)
+
+    def iter_price_info(self):
+        return MissingClosePriceIterator(self.state, self.updates, self.saw_in_session)
+
+    def connection_state_payload(self):
+        return {
+            "provider": "okx_dex_ws",
+            "state": "connected",
+            "last_state_change_at_ms": 1_800_000_000_000,
+        }
+
+
+class MissingClosePriceIterator:
+    def __init__(
+        self,
+        state: FakeSessionState,
+        updates: list[DexMarketFactUpdate],
+        saw_in_session: list[bool],
+    ) -> None:
+        self.state = state
+        self.updates = list(updates)
+        self.saw_in_session = saw_in_session
+        self.index = 0
+
+    def __aiter__(self):
+        self.saw_in_session.append(self.state.in_session)
+        return self
+
+    async def __anext__(self):
+        if self.index < len(self.updates):
+            update = self.updates[self.index]
+            self.index += 1
+            return update
+        raise StopAsyncIteration
+
+
 class FailingReplaceDexMarketStream:
     def __init__(self, error: BaseException, *, provider_state: dict[str, object]) -> None:
         self.error = error
@@ -604,6 +751,18 @@ class FailingReplaceDexMarketStream:
 
     def connection_state_payload(self):
         return dict(self.provider_state)
+
+
+class MissingConnectionStateFailingStream:
+    def __init__(self, error: BaseException) -> None:
+        self.error = error
+
+    async def replace_subscriptions(self, targets) -> None:
+        raise self.error
+
+    async def iter_price_info(self):
+        if False:
+            yield
 
 
 class NeverYieldDexMarketStream:
@@ -629,6 +788,13 @@ class NeverYieldDexMarketStream:
     async def aclose(self) -> None:
         self.closed = True
 
+    def connection_state_payload(self):
+        return {
+            "provider": "okx_dex_ws",
+            "state": "connected",
+            "last_state_change_at_ms": 1_800_000_000_000,
+        }
+
 
 class HangingReplaceDexMarketStream:
     def __init__(self) -> None:
@@ -644,6 +810,13 @@ class HangingReplaceDexMarketStream:
     async def iter_price_info(self):
         if False:
             yield
+
+    def connection_state_payload(self):
+        return {
+            "provider": "okx_dex_ws",
+            "state": "connected",
+            "last_state_change_at_ms": 1_800_000_000_000,
+        }
 
 
 class FakeStatefulStreamProvider:
@@ -667,6 +840,13 @@ class FakeStatefulStreamProvider:
 
     async def aclose(self) -> None:
         self.close_count += 1
+
+    def connection_state_payload(self):
+        return {
+            "provider": "okx_dex_ws",
+            "state": "connected",
+            "last_state_change_at_ms": 1_800_000_000_000,
+        }
 
 
 class FakeWakeEmitter:

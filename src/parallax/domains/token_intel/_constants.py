@@ -10,6 +10,7 @@ TOKEN_RADAR_SOURCE_TABLE = "token_radar_rank_source_events"
 TOKEN_RADAR_DEFAULT_VENUE = "all"
 TOKEN_RADAR_VENUES = ("all", "sol", "eth", "base", "bsc", "cex")
 TOKEN_FACTOR_SNAPSHOT_VERSION = "token_factor_snapshot_v3_social_attention"
+TOKEN_RADAR_DECISIONS = frozenset({"discard", "watch", "high_alert"})
 TOKEN_RADAR_FACTOR_FAMILIES = (
     "social_heat",
     "social_propagation",

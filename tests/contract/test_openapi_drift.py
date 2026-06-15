@@ -171,6 +171,18 @@ def test_signal_pulse_openapi_type_has_no_run_step_audit_surface() -> None:
 
 
 @pytest.mark.contract
+def test_signal_pulse_public_contract_has_no_worker_runtime_state() -> None:
+    """Signal Pulse public payloads are read-model state, not scheduler liveness."""
+    openapi_text = OPENAPI_PATH.read_text(encoding="utf-8")
+    openapi_ts_text = OPENAPI_TS_PATH.read_text(encoding="utf-8")
+    frontend_contracts_text = FRONTEND_CONTRACTS_PATH.read_text(encoding="utf-8")
+
+    assert "agent_worker_running" not in openapi_text
+    assert "agent_worker_running" not in openapi_ts_text
+    assert "agent_worker_running" not in frontend_contracts_text
+
+
+@pytest.mark.contract
 def test_news_signal_envelope_openapi_type_has_no_top_level_index_signature() -> None:
     """Generated OpenAPI TS must not allow flat compatibility fields on NewsSignalEnvelope."""
     text = OPENAPI_TS_PATH.read_text(encoding="utf-8")

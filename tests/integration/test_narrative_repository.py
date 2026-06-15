@@ -257,7 +257,7 @@ def test_current_digests_for_targets_reads_legacy_digest_without_exact_fingerpri
     assert row["currentness"]["reason"] == "fingerprint_match"
 
 
-def test_current_digests_for_targets_reports_pending_from_legacy_semantic_coverage(tmp_path):
+def test_current_digests_for_targets_does_not_treat_legacy_semantics_as_current_backlog(tmp_path):
     conn, evidence, repo = open_repo(tmp_path)
     try:
         for event_id in ["event-labeled", "event-missing"]:
@@ -288,9 +288,10 @@ def test_current_digests_for_targets_reports_pending_from_legacy_semantic_covera
 
     row = current[("chain_token", "solana:Pending")]
     assert row["status"] == "pending"
-    assert row["data_gaps_json"] == [{"reason": "semantic_labeling_pending"}]
-    assert row["semantic_backlog_pending"] == 1
-    assert row["labeled_event_count"] == 1
+    assert row["data_gaps_json"] == [{"reason": "no_ready_digest"}]
+    assert "semantic_backlog_pending" not in row
+    assert row["source_event_count"] == 2
+    assert row["labeled_event_count"] == 0
 
 
 def test_semantics_for_posts_reads_legacy_label_rows(tmp_path):

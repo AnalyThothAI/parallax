@@ -29,7 +29,9 @@ def _csv_set(raw: str) -> set[str]:
 
 
 def _scope(value: str) -> str:
-    return value if value in SCOPES else "matched"
+    if value in SCOPES:
+        return value
+    raise ApiBadRequest("invalid_scope", field="scope")
 
 
 def _token_radar_venue(value: str) -> str:

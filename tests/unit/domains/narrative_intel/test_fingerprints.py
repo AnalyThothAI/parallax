@@ -1,4 +1,4 @@
-from parallax.domains.narrative_intel.services.fingerprints import (
+from parallax.domains.narrative_intel.types.fingerprints import (
     label_fingerprint,
     source_fingerprint,
     text_fingerprint,

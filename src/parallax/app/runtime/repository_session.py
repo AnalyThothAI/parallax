@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from typing import Any
 
@@ -17,6 +17,7 @@ from parallax.domains.asset_market.interfaces import (
     TokenCaptureTierRepository,
     TokenProfileCurrentRepository,
 )
+from parallax.domains.asset_market.queries.token_profile_source_query import TokenProfileSourceQuery
 from parallax.domains.asset_market.repositories.asset_profile_refresh_target_repository import (
     AssetProfileRefreshTargetRepository,
 )
@@ -104,6 +105,7 @@ class RepositorySession:
     signals: SignalRepository
     asset_profiles: AssetProfileRepository
     asset_profile_refresh_targets: AssetProfileRefreshTargetRepository
+    source_query: TokenProfileSourceQuery
     cex_token_profiles: CexTokenProfileRepository
     token_profiles: TokenProfileCurrentRepository
     token_profile_current_dirty_targets: TokenProfileCurrentDirtyTargetRepository
@@ -151,17 +153,23 @@ class RepositorySession:
     cex_oi_radar: CexOiRadarRepository
     macro_intel: MacroIntelRepository
 
-    def unit_of_work(self):
+    def unit_of_work(self) -> AbstractContextManager[None]:
         return transaction(self.conn)
 
-    def transaction(self):
+    def transaction(self) -> AbstractContextManager[None]:
         return self.unit_of_work()
 
     def require_transaction(self, *, operation: str) -> None:
         require_transaction(self.conn, operation=operation)
 
 
-def repositories_for_connection(conn: Any) -> RepositorySession:
+def repositories_for_connection(
+    conn: Any,
+    *,
+    pulse_job_running_timeout_ms: int,
+    notification_delivery_running_timeout_ms: int,
+    notification_delivery_stale_running_terminalization_batch_size: int,
+) -> RepositorySession:
     return RepositorySession(
         conn=conn,
         evidence=EvidenceRepository(conn),
@@ -169,6 +177,7 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         signals=SignalRepository(conn),
         asset_profiles=AssetProfileRepository(conn),
         asset_profile_refresh_targets=AssetProfileRefreshTargetRepository(conn),
+        source_query=TokenProfileSourceQuery(conn),
         cex_token_profiles=CexTokenProfileRepository(conn),
         token_profiles=TokenProfileCurrentRepository(conn),
         token_profile_current_dirty_targets=TokenProfileCurrentDirtyTargetRepository(conn),
@@ -195,8 +204,12 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         token_radar=TokenRadarRepository(conn),
         token_factor_evaluations=TokenFactorEvaluationRepository(conn),
         token_targets=TokenTargetRepository(conn),
-        notifications=NotificationRepository(conn),
-        pulse_jobs=PulseJobsRepository(conn),
+        notifications=NotificationRepository(
+            conn,
+            running_timeout_ms=notification_delivery_running_timeout_ms,
+            stale_running_terminalization_batch_size=notification_delivery_stale_running_terminalization_batch_size,
+        ),
+        pulse_jobs=PulseJobsRepository(conn, running_timeout_ms=pulse_job_running_timeout_ms),
         pulse_admission=PulseAdmissionRepository(conn),
         pulse_candidates=PulseCandidatesRepository(conn),
         pulse_evidence=PulseEvidenceRepository(conn),
@@ -219,9 +232,22 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
 
 
 @contextmanager
-def repository_session(pool: Any) -> Iterator[RepositorySession]:
+def repository_session(
+    pool: Any,
+    *,
+    pulse_job_running_timeout_ms: int,
+    notification_delivery_running_timeout_ms: int,
+    notification_delivery_stale_running_terminalization_batch_size: int,
+) -> Iterator[RepositorySession]:
     with pool.connection() as conn:
-        yield repositories_for_connection(conn)
+        yield repositories_for_connection(
+            conn,
+            pulse_job_running_timeout_ms=pulse_job_running_timeout_ms,
+            notification_delivery_running_timeout_ms=notification_delivery_running_timeout_ms,
+            notification_delivery_stale_running_terminalization_batch_size=(
+                notification_delivery_stale_running_terminalization_batch_size
+            ),
+        )
 
 
 class PooledRepository:

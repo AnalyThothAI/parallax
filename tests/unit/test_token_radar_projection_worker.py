@@ -5,6 +5,8 @@ import time
 from contextlib import contextmanager
 from types import SimpleNamespace
 
+import pytest
+
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.token_intel.runtime import token_radar_projection_worker as module
@@ -112,7 +114,7 @@ def _default_dirty_claim() -> dict[str, object]:
 def test_projection_worker_calls_dirty_incremental_projection_not_window_rebuild(monkeypatch):
     calls: list[dict[str, object]] = []
     publication_state = {}
-    wake_bus = FakeWakeBus()
+    wake_emitter = FakeWakeBus()
 
     class FakeProjection:
         def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
@@ -139,7 +141,7 @@ def test_projection_worker_calls_dirty_incremental_projection_not_window_rebuild
         settings=_settings(windows=("5m", "1h", "4h"), scopes=("all", "matched"), batch_size=7),
         db=db,
         telemetry=object(),
-        wake_bus=wake_bus,
+        wake_emitter=wake_emitter,
     )
 
     result = worker.rebuild_once(now_ms=1_777_800_000_000)
@@ -156,6 +158,8 @@ def test_projection_worker_calls_dirty_incremental_projection_not_window_rebuild
             "now_ms": 1_777_800_000_000,
             "limit": 7,
             "rank_limit": 7,
+            "lease_ms": 120_000,
+            "retry_ms": 30_000,
             "lease_owner": "token_radar_projection",
             "claimed_targets": (
                 {
@@ -179,10 +183,72 @@ def test_projection_worker_calls_dirty_incremental_projection_not_window_rebuild
     ]
     assert result["rows_written"] == 2
     assert result["windows"]["5m:all"]["status"] == "ready"
-    assert wake_bus.token_radar_notifications == [{"window": "5m", "scope": "all"}]
+    assert wake_emitter.token_radar_notifications == [{"window": "5m", "scope": "all"}]
     assert isinstance(worker, WorkerBase)
     assert worker.SINGLE_WRITER_KEY == 2026051501
+    assert worker.windows == ("5m", "1h", "4h")
+    assert worker.scopes == ("all", "matched")
+    assert worker.venues == ("all",)
+    assert worker.hot_windows == ("5m",)
+    assert worker.limit == 7
+    assert worker.cold_interval_ms == 60_000
+    assert worker.wake_emitter is wake_emitter
+    assert not hasattr(worker, "wake_bus")
     assert db.worker_sessions[0] == {"name": "token_radar_projection", "statement_timeout_seconds": 120.0}
+
+
+def test_projection_worker_requires_formal_settings_and_db_contract() -> None:
+    with pytest.raises(RuntimeError, match="token_radar_projection_settings_required"):
+        module.TokenRadarProjectionWorker(
+            name="token_radar_projection",
+            settings=None,
+            db=FakeDB({}),
+            telemetry=object(),
+        )
+
+    with pytest.raises(RuntimeError, match="token_radar_projection_db_required"):
+        module.TokenRadarProjectionWorker(
+            name="token_radar_projection",
+            settings=_settings(),
+            db=None,
+            telemetry=object(),
+        )
+
+
+def test_projection_worker_requires_source_dirty_event_repository(monkeypatch):
+    projection_calls = 0
+
+    class FakeProjection:
+        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
+            self.repos = repos
+
+        def rebuild_dirty_targets(self, **kwargs):
+            nonlocal projection_calls
+            projection_calls += 1
+            return {"computed_at_ms": kwargs["now_ms"], "rows_written": 0, "source_rows": 0, "windows": {}}
+
+    class FakeDBWithoutSourceDirtyEvents(FakeDB):
+        @contextmanager
+        def worker_session(self, name, statement_timeout_seconds=None):
+            self.worker_sessions.append({"name": name, "statement_timeout_seconds": statement_timeout_seconds})
+            yield SimpleNamespace(
+                token_radar=FakeTokenRadar({}),
+                token_radar_dirty_targets=FakeDirtyTargets([]),
+            )
+
+    monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
+    worker = module.TokenRadarProjectionWorker(
+        name="token_radar_projection",
+        settings=_settings(windows=("5m",), scopes=("all",), hot_windows=("5m",), batch_size=7),
+        db=FakeDBWithoutSourceDirtyEvents({}),
+        telemetry=object(),
+    )
+
+    result = worker.rebuild_once(now_ms=1_777_800_000_000)
+
+    assert result["status"] == "failed"
+    assert "token_radar_source_dirty_events" in result["error"]
+    assert projection_calls == 0
 
 
 def test_projection_worker_run_once_returns_worker_result(monkeypatch):
@@ -300,6 +366,111 @@ def test_token_radar_worker_claims_dirty_targets_even_when_publication_cadence_i
         },
     )
     assert db.sessions[0].repos.token_radar_dirty_targets.claim_due_calls
+
+
+def test_projection_worker_uses_formal_dirty_lease_and_retry_settings(monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+    now_ms = 1_777_800_001_000
+
+    class FakeProjection:
+        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
+            self.repos = repos
+
+        def rebuild_dirty_targets(self, **kwargs):
+            calls.append(kwargs)
+            return {
+                "rows_written": 0,
+                "source_rows": 1,
+                "computed_at_ms": kwargs["now_ms"],
+                "status": "ready",
+                "claimed": 1,
+                "windows": {},
+            }
+
+    monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
+    db = FakeDB({})
+    worker = module.TokenRadarProjectionWorker(
+        name="token_radar_projection",
+        settings=_settings(
+            windows=("5m",),
+            scopes=("all",),
+            hot_windows=("5m",),
+            batch_size=3,
+            lease_ms=45_000,
+            retry_ms=12_000,
+        ),
+        db=db,
+        telemetry=object(),
+    )
+
+    result = worker.rebuild_once(now_ms=now_ms)
+
+    assert result["status"] == "ready"
+    assert db.sessions[0].repos.token_radar_dirty_targets.claim_due_calls[0]["lease_ms"] == 45_000
+    assert db.sessions[0].repos.token_radar_source_dirty_events.claim_due_calls[0]["lease_ms"] == 45_000
+    assert calls[0]["lease_ms"] == 45_000
+    assert calls[0]["retry_ms"] == 12_000
+
+
+def test_projection_worker_runs_bounded_private_cache_retention_from_formal_settings(monkeypatch) -> None:
+    retention_calls: list[dict[str, object]] = []
+    now_ms = 1_777_800_001_000
+
+    class FakeProjection:
+        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
+            self.repos = repos
+
+        def rebuild_dirty_targets(self, **kwargs):  # pragma: no cover - retention-only path must stay idle
+            raise AssertionError("retention test should not run dirty projection")
+
+        def prune_private_cache(self, **kwargs):
+            retention_calls.append(kwargs)
+            return {
+                "status": "ready",
+                "target_features_deleted": 2,
+                "rank_source_edges_deleted": 1,
+                "cutoff_ms": kwargs["now_ms"] - kwargs["retention_ms"],
+                "limit": kwargs["limit"],
+            }
+
+    monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
+    publication_state = {
+        ("5m", "all"): _ready_state(now_ms),
+        ("5m", "matched"): _ready_state(now_ms),
+        ("1h", "all"): _ready_state(now_ms),
+        ("1h", "matched"): _ready_state(now_ms),
+    }
+    db = FakeDB(publication_state, dirty_claims=[], source_claims=[])
+    worker = module.TokenRadarProjectionWorker(
+        name="token_radar_projection",
+        settings=_settings(
+            windows=("5m", "1h"),
+            scopes=("all", "matched"),
+            hot_windows=("5m",),
+            batch_size=23,
+            private_cache_retention_enabled=True,
+            private_cache_retention_ms=600_000,
+        ),
+        db=db,
+        telemetry=object(),
+    )
+
+    result = worker.rebuild_once(now_ms=now_ms)
+
+    assert result["status"] == "ready"
+    assert result["reason"] == "private_cache_retention"
+    assert retention_calls == [
+        {
+            "windows": ("5m", "1h"),
+            "scopes": ("all", "matched"),
+            "now_ms": now_ms,
+            "retention_ms": 600_000,
+            "limit": 23,
+        }
+    ]
+    assert result["private_cache_retention"]["status"] == "ready"
+    assert result["private_cache_retention"]["target_features_deleted"] == 2
+    assert result["private_cache_retention"]["rank_source_edges_deleted"] == 1
 
 
 def test_token_radar_worker_runs_only_due_hot_items_after_interval(monkeypatch):
@@ -866,8 +1037,13 @@ def _settings(**overrides):
         "interval_seconds": 10.0,
         "timeout_seconds": 120.0,
         "batch_size": 100,
+        "lease_ms": 120_000,
+        "retry_ms": 30_000,
+        "private_cache_retention_enabled": False,
+        "private_cache_retention_ms": 172_800_000,
         "statement_timeout_seconds": 120.0,
         "advisory_lock_key": 2026051501,
+        "backoff": SimpleNamespace(base_ms=1, max_ms=5),
         "wakes_on": ("market_tick_current_updated", "resolution_updated"),
         "windows": ("5m", "1h", "4h", "24h"),
         "scopes": ("all", "matched"),

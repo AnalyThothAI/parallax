@@ -14,6 +14,10 @@ _CHANNEL_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _NOTIFY_WAIT_SLICE_SECONDS = 0.25
 
 
+class WakeWaiterConnectionContractError(RuntimeError):
+    pass
+
+
 class WakeWaiter:
     def __init__(self, wake_pool: Any, *, channels: Sequence[str]) -> None:
         self._wake_pool = wake_pool
@@ -54,6 +58,8 @@ class WakeWaiter:
             try:
                 retry_after_failure = False
                 return self._wait_once(timeout=remaining)
+            except WakeWaiterConnectionContractError:
+                raise
             except Exception as exc:
                 logger.warning("wake waiter reconnecting after LISTEN failure: {}", exc)
                 if max(0.0, float(timeout)) <= 0:
@@ -65,15 +71,11 @@ class WakeWaiter:
         with self._wake_pool.connection() as conn:
             for channel in self._channels:
                 conn.execute(f"LISTEN {channel}")
-            commit = getattr(conn, "commit", None)
-            if commit:
-                commit()
+            _commit_listen(conn)
             if self._local_wake.wait(timeout=0):
                 self._local_wake.clear()
                 return True
-            notifies = getattr(conn, "notifies", None)
-            if not notifies:
-                return self._local_wake.wait(timeout=max(0.0, timeout))
+            notifies = _notifies(conn)
             while True:
                 if self._local_wake.is_set():
                     self._local_wake.clear()
@@ -95,3 +97,23 @@ def _normalize_channel(channel: str) -> str:
     if not _CHANNEL_RE.fullmatch(normalized):
         raise ValueError(f"invalid_wake_channel:{normalized}")
     return normalized
+
+
+def _commit_listen(conn: Any) -> None:
+    try:
+        commit = conn.commit
+    except AttributeError as exc:
+        raise WakeWaiterConnectionContractError("wake_waiter_commit_required") from exc
+    if not callable(commit):
+        raise WakeWaiterConnectionContractError("wake_waiter_commit_required")
+    commit()
+
+
+def _notifies(conn: Any) -> Any:
+    try:
+        notifies = conn.notifies
+    except AttributeError as exc:
+        raise WakeWaiterConnectionContractError("wake_waiter_notifies_required") from exc
+    if not callable(notifies):
+        raise WakeWaiterConnectionContractError("wake_waiter_notifies_required")
+    return notifies

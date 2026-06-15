@@ -4,7 +4,7 @@ import asyncio
 import time
 import uuid
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import asdict, is_dataclass
+from dataclasses import dataclass
 from typing import Any, cast
 
 from parallax.app.runtime.worker_base import WorkerBase
@@ -24,6 +24,7 @@ from parallax.domains.news_intel.services.news_item_brief_input import (
     build_news_item_brief_input_packet,
 )
 from parallax.domains.news_intel.services.news_item_brief_validation import (
+    NewsItemBriefValidationResult,
     validate_news_item_brief_output,
 )
 from parallax.domains.news_intel.types.news_item_agent_admission import (
@@ -40,6 +41,8 @@ from parallax.platform.agent_execution import (
     AgentCapacityReservation,
     AgentExecutionError,
     AgentExecutionErrorClass,
+    AgentExecutionRequestAudit,
+    AgentExecutionResultAudit,
 )
 from parallax.platform.agent_hashing import json_sha256
 
@@ -48,22 +51,35 @@ class NewsItemBriefWorker(WorkerBase):
     def __init__(
         self,
         *,
-        provider: Any | None = None,
-        wake_bus: Any | None = None,
+        settings: Any,
+        db: Any,
+        telemetry: Any,
+        provider: Any,
+        wake_waiter: Any | None = None,
+        wake_emitter: Any | None = None,
         clock_ms: Callable[[], int] | None = None,
         run_id_factory: Callable[[], str] | None = None,
-        **kwargs: Any,
+        name: str = "news_item_brief",
     ) -> None:
-        super().__init__(**kwargs)
+        if settings is None:
+            raise RuntimeError("news_item_brief_settings_required")
+        if db is None:
+            raise RuntimeError("news_item_brief_db_required")
+        if provider is None:
+            raise RuntimeError("news_item_brief_provider_required")
+        super().__init__(
+            name=name,
+            settings=settings,
+            db=db,
+            telemetry=telemetry,
+            wake_waiter=wake_waiter,
+        )
         self.provider = provider
-        self.wake_bus = wake_bus
+        self.wake_emitter = wake_emitter
         self.clock_ms = clock_ms or _now_ms
         self.run_id_factory = run_id_factory or _default_run_id
 
     async def run_once(self) -> WorkerResult:
-        if self.provider is None:
-            return WorkerResult(skipped=1, notes={"reason": "missing_provider"})
-
         now = self.clock_ms()
         provider = self.provider
         agent_config = default_news_item_brief_agent_config(
@@ -187,10 +203,10 @@ class NewsItemBriefWorker(WorkerBase):
                         )
                         if invalid_completed_run is not None:
                             outcome = await self._record_invalid_completed_run(
-                                run=_dict(invalid_completed_run.get("run")),
+                                run=invalid_completed_run["run"],
                                 packet=packet,
                                 agent_config=agent_config,
-                                errors=_list_of_dicts(invalid_completed_run.get("errors")),
+                                errors=invalid_completed_run["errors"],
                                 now_ms=now,
                             )
                         else:
@@ -227,8 +243,8 @@ class NewsItemBriefWorker(WorkerBase):
                     now_ms=now,
                 )
 
-            if current_updates > 0 and self.wake_bus is not None:
-                self.wake_bus.notify_news_item_brief_updated(count=current_updates)
+            if current_updates > 0 and self.wake_emitter is not None:
+                self.wake_emitter.notify_news_item_brief_updated(count=current_updates)
             failed = max(0, int(notes["failed"]) - int(notes["validation_failed"]))
             processed = int(notes["ready"]) + int(notes["insufficient"])
             skipped += int(notes["backpressure"])
@@ -348,9 +364,11 @@ class NewsItemBriefWorker(WorkerBase):
         now_ms: int,
     ) -> _CandidateOutcome:
         run_id = self.run_id_factory()
+        source_run_id = _required_run_id(run, reason="invalid_completed_source_run")
         audit = _invalid_completed_run_audit(
             run_id=run_id,
             source_run=run,
+            source_run_id=source_run_id,
             packet=packet,
             agent_config=agent_config,
         )
@@ -370,7 +388,7 @@ class NewsItemBriefWorker(WorkerBase):
             request_json={
                 "packet": packet.model_dump(mode="json"),
                 "audit": audit,
-                "source_run_id": str(run.get("run_id") or ""),
+                "source_run_id": source_run_id,
                 "reason": "invalid_completed_run",
             },
             response_json=response_json,
@@ -526,7 +544,7 @@ class NewsItemBriefWorker(WorkerBase):
         news_item_id = str(item.get("news_item_id") or target.get("target_id") or "")
         if not news_item_id:
             return
-        with self._repository_session() as repos, repos.conn.transaction():
+        with self._repository_session() as repos, repos.transaction():
             repos.news.update_item_agent_admission(
                 news_item_id=news_item_id,
                 admission=admission,
@@ -658,7 +676,7 @@ class NewsItemBriefWorker(WorkerBase):
         payload: Mapping[str, Any],
         computed_at_ms: int,
     ) -> None:
-        with self._repository_session() as repos, repos.conn.transaction():
+        with self._repository_session() as repos, repos.transaction():
             repos.news.upsert_news_item_agent_brief(
                 news_item_id=packet.news_item.news_item_id,
                 agent_run_id=run_id,
@@ -695,7 +713,7 @@ class NewsItemBriefWorker(WorkerBase):
         payload = _dict(run.get("response_json"))
         computed_at_ms = int(run.get("finished_at_ms") or now_ms)
         self._upsert_current(
-            run_id=str(run.get("run_id") or ""),
+            run_id=_required_run_id(run, reason="completed_run"),
             packet=packet,
             agent_config=agent_config,
             payload=payload,
@@ -723,20 +741,20 @@ class NewsItemBriefWorker(WorkerBase):
     def _repository_session(self) -> Any:
         return self.db.worker_session(
             self.name,
-            statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
+            statement_timeout_seconds=self.settings.statement_timeout_seconds,
         )
 
     def _batch_size(self) -> int:
-        return max(1, int(getattr(self.settings, "batch_size", 5)))
+        return max(1, int(self.settings.batch_size))
 
     def _lease_ms(self) -> int:
-        return max(1, int(getattr(self.settings, "lease_ms", 120_000)))
+        return max(1, int(self.settings.lease_ms))
 
     def _retry_ms(self) -> int:
-        return max(1, int(getattr(self.settings, "retry_ms", self._backpressure_cooldown_ms())))
+        return max(1, int(self.settings.retry_ms))
 
     def _backpressure_cooldown_ms(self) -> int:
-        return max(1, int(getattr(self.settings, "backpressure_cooldown_ms", 60_000)))
+        return max(1, int(self.settings.backpressure_cooldown_ms))
 
 
 class _CandidateOutcome:
@@ -806,10 +824,10 @@ def _fresh_completed_run(
     completed = _completed_run_validation(candidate, packet=packet, agent_config=agent_config)
     if completed is None:
         return None
-    run = _dict(completed.get("run"))
-    validation = completed.get("validation")
+    run = completed.run
+    validation = completed.validation
     outcome = str(run.get("outcome") or "")
-    if getattr(validation, "publishable", False) and str(getattr(validation, "status", "")) == outcome:
+    if validation.publishable and validation.status == outcome:
         return run
     return None
 
@@ -823,12 +841,12 @@ def _invalid_completed_run(
     completed = _completed_run_validation(candidate, packet=packet, agent_config=agent_config)
     if completed is None:
         return None
-    run = _dict(completed.get("run"))
-    validation = completed.get("validation")
+    run = completed.run
+    validation = completed.validation
     outcome = str(run.get("outcome") or "")
-    if getattr(validation, "publishable", False) and str(getattr(validation, "status", "")) == outcome:
+    if validation.publishable and validation.status == outcome:
         return None
-    errors = _list_of_dicts(getattr(validation, "errors", []))
+    errors = list(validation.errors)
     if not errors:
         errors = [
             {
@@ -862,8 +880,7 @@ def _fresh_failed_run(
         return None
     if str(run.get("validator_version") or "") != agent_config.validator_version:
         return None
-    if not str(run.get("run_id") or ""):
-        return None
+    _required_run_id(run, reason="failed_run")
     return run
 
 
@@ -874,9 +891,15 @@ def _failed_run_outcome(run: Mapping[str, Any]) -> _CandidateOutcome:
         notes={"restored_from_failed_run": 1},
         current_updates=0,
         retry_reason=error_class,
-        failed_current_run_id=str(run.get("run_id") or ""),
+        failed_current_run_id=_required_run_id(run, reason="failed_run"),
         failed_current_errors=[{"code": error_class, "message": error[:500]}],
     )
+
+
+@dataclass(frozen=True)
+class _CompletedRunValidation:
+    run: dict[str, Any]
+    validation: NewsItemBriefValidationResult
 
 
 def _completed_run_validation(
@@ -884,7 +907,7 @@ def _completed_run_validation(
     *,
     packet: NewsItemBriefInputPacket,
     agent_config: NewsItemBriefAgentConfig,
-) -> dict[str, Any] | None:
+) -> _CompletedRunValidation | None:
     run = _optional_dict(candidate.get("latest_run"))
     if run is None:
         return None
@@ -906,10 +929,20 @@ def _completed_run_validation(
     payload = _optional_dict(run.get("response_json"))
     if payload is None:
         return None
-    if not str(run.get("run_id") or ""):
-        return None
+    _required_run_id(run, reason="completed_run")
     validation = validate_news_item_brief_output(payload=payload, packet=packet, audit=run)
-    return {"run": run, "validation": validation}
+    return _CompletedRunValidation(run=run, validation=validation)
+
+
+def _required_run_id(run: Mapping[str, Any], *, reason: str) -> str:
+    try:
+        value = run["run_id"]
+    except KeyError as exc:
+        raise RuntimeError(f"news_item_brief_run_id_required:{reason}") from exc
+    run_id = str(value).strip()
+    if not run_id:
+        raise RuntimeError(f"news_item_brief_run_id_required:{reason}")
+    return run_id
 
 
 def _admission_from_candidate(candidate: Mapping[str, Any], *, now_ms: int) -> NewsItemAgentAdmission:
@@ -932,7 +965,7 @@ def _candidate_with_agent_admission(
 ) -> dict[str, Any]:
     result = dict(candidate)
     item = _dict(result.get("item") or result)
-    admission_payload = _object_payload(admission)
+    admission_payload = _agent_admission_payload(admission)
     item["agent_admission_status"] = admission.status
     item["agent_admission_reason"] = admission.reason
     item["agent_admission_json"] = admission_payload
@@ -975,10 +1008,10 @@ def _invalid_completed_run_audit(
     *,
     run_id: str,
     source_run: Mapping[str, Any],
+    source_run_id: str,
     packet: NewsItemBriefInputPacket,
     agent_config: NewsItemBriefAgentConfig,
 ) -> dict[str, Any]:
-    source_run_id = str(source_run.get("run_id") or "")
     return {
         "provider": str(source_run.get("provider") or "deterministic"),
         "backend": "deterministic_validation",
@@ -1040,15 +1073,14 @@ def _failed_brief(
 
 
 def _provider_error_audit(error: Exception) -> dict[str, Any] | None:
-    audit = getattr(error, "audit", None)
+    if not isinstance(error, AgentExecutionError):
+        return None
+    audit = error.audit
     if audit is None:
         return None
-    dump = getattr(audit, "model_dump", None)
-    if dump is not None:
-        return dict(dump(mode="json"))
-    if isinstance(audit, Mapping):
-        return dict(audit)
-    return None
+    if not isinstance(audit, AgentExecutionRequestAudit | AgentExecutionResultAudit):
+        raise RuntimeError("news_item_brief_agent_error_audit_contract_required")
+    return audit.model_dump(mode="json")
 
 
 def _provider_error_class(error: Exception) -> str:
@@ -1091,7 +1123,11 @@ async def _release_reservation(reservation: AgentCapacityReservation) -> None:
 
 
 def _audit_dict(value: Any) -> dict[str, Any]:
-    return _dict(value)
+    if value is None:
+        return {}
+    if not isinstance(value, Mapping):
+        raise RuntimeError("news_item_brief_agent_run_audit_contract_required")
+    return {str(key): child for key, child in value.items()}
 
 
 def _optional_dict(value: Any) -> dict[str, Any] | None:
@@ -1103,19 +1139,20 @@ def _optional_dict(value: Any) -> dict[str, Any] | None:
 def _dict(value: Any) -> dict[str, Any]:
     if isinstance(value, Mapping):
         return dict(value)
-    if is_dataclass(value):
-        return dict(asdict(cast(Any, value)))
-    dump = getattr(value, "model_dump", None)
-    if dump is not None:
-        return dict(dump(mode="json"))
-    slots = getattr(value, "__slots__", ())
-    if slots:
-        return {name: getattr(value, name) for name in slots if hasattr(value, name)}
     return {}
 
 
-def _object_payload(value: Any) -> dict[str, Any]:
-    return _dict(value)
+def _agent_admission_payload(value: NewsItemAgentAdmission) -> dict[str, Any]:
+    if not isinstance(value, NewsItemAgentAdmission):
+        raise RuntimeError("news_item_brief_agent_admission_contract_required")
+    return {
+        "eligible": bool(value.eligible),
+        "status": value.status,
+        "reason": value.reason,
+        "representative_news_item_id": value.representative_news_item_id,
+        "basis": dict(value.basis),
+        "version": value.version,
+    }
 
 
 def _list_of_dicts(value: Any) -> list[dict[str, Any]]:

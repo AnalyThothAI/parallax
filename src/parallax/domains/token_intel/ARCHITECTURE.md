@@ -16,6 +16,7 @@ GMGN frame
       → token_evidence
       → token_intents + token_intent_lookup_keys
       → token_intent_resolutions
+      → token_radar_source_dirty_events for resolved source-event edges from formal TokenIntentResolutionDecision results
       → registry_assets + asset_identity_evidence/current
       → enriched_events + inline market_ticks
       → event_anchor_backfill_jobs for short-lived missing-anchor control
@@ -37,16 +38,149 @@ GMGN frame
 |-------|------------|-----------------|-----------|
 | Upstream collection | `../ingestion/runtime/collector_service.py`, `../ingestion/services/normalizer.py` | raw frames, `events` | GMGN frames are normalized to `TwitterEvent` once. Token snapshots are identity-only (`chain` / `address` / `symbol`); embedded GMGN price fields are not normalized into token evidence. Public-stream coverage remains `public_stream`, not a full Twitter firehose. |
 | Entity extraction | `../evidence/services/entity_extractor.py` | `event_entities` | Extracts span-aware CA, Solana, TON, cashtag, hashtag, mention, URL, and domain entities from primary and referenced tweet text. Only CA and cashtag become token evidence. |
-| Evidence construction | `services/token_evidence_builder.py` | `token_evidence` | CA/address evidence is strong resolution evidence; cashtag evidence is medium symbol evidence; GMGN token payload evidence is strong provider evidence. Canonical asset display identity is selected later from asset identity evidence. |
-| Intent construction | `services/token_intent_builder.py` | `token_intents`, evidence links | One event can produce multiple token intents. Local cashtag aliases may attach to a nearby CA; a free cashtag stays a symbol-only intent. |
-| Deterministic resolution | `services/token_intent_resolver.py`, `services/deterministic_token_resolver.py` | `token_intent_resolutions`, `token_intent_lookup_keys` | Resolver outputs identity status and reason codes, not probabilistic guesses. CEX token matches win first; symbol-only confirmed US equities become `MarketInstrument`/`NON_CRYPTO` before DEX same-symbol assets; explicit chain+address wins through the address path as exact asset identity. |
+| Evidence construction | `services/token_evidence_builder.py`, `repositories/token_evidence_repository.py` | `token_evidence` | CA/address evidence is strong resolution evidence; cashtag evidence is medium symbol evidence; GMGN token payload evidence is strong provider evidence. Canonical asset display identity is selected later from asset identity evidence. Repository-owned evidence writes require a callable connection transaction before SQL; ingest/rebuild paths keep writes caller-owned with `commit=False` inside their outer transaction. Evidence upserts require `RETURNING *` with PostgreSQL rowcount=1, while event-scoped deletes require real non-negative rowcount evidence. |
+| Intent construction | `services/token_intent_builder.py`, `repositories/token_intent_repository.py` | `token_intents`, evidence links | One event can produce multiple token intents. Local cashtag aliases may attach to a nearby CA; a free cashtag stays a symbol-only intent. Repository-owned intent/evidence-link writes require a callable connection transaction before SQL; ingest/rebuild paths keep writes caller-owned with `commit=False` inside their outer transaction. Intent upserts require `RETURNING *` with rowcount=1, evidence-link `ON CONFLICT DO NOTHING` accepts only rowcount 0/1, and event-scoped deletes require real non-negative rowcount evidence. |
+| Deterministic resolution | `services/token_intent_resolver.py`, `services/deterministic_token_resolver.py`, `repositories/intent_resolution_repository.py`, `repositories/token_intent_lookup_repository.py` | `token_intent_resolutions`, `token_intent_lookup_keys` | Resolver outputs identity status and reason codes, not probabilistic guesses. CEX token matches win first; symbol-only confirmed US equities become `MarketInstrument`/`NON_CRYPTO` before DEX same-symbol assets; explicit chain+address wins through the address path as exact asset identity. Repository-owned lookup-key replacement and resolution writes require a callable connection transaction before SQL; `insert_resolution` enters that transaction before `pg_advisory_xact_lock`. Lookup replacement deletes require real non-negative rowcount, each lookup upsert requires rowcount=1, superseding an old current resolution requires update rowcount=1, and resolution upsert returns the written fact only after `RETURNING *` rowcount=1. |
+| Watched account alerts | `../evidence/services/ingest_service.py`, `repositories/signal_repository.py`, `../account_quality/read_models/account_alert_service.py` | `account_token_alerts` | Ingest emits watched-account token alerts only after deterministic token resolution and first-seen checks. Ingest keeps alert writes caller-owned with `commit=False` inside the evidence unit of work; repository-owned alert inserts require a callable connection transaction before SQL and never fall back to manual `self.conn.commit()`. `INSERT ... DO NOTHING` created-vs-existing classification requires PostgreSQL single-row `cursor.rowcount` evidence; missing or invalid rowcount is malformed driver state, not an alert-created or existing-row decision. |
 | Asset identity ledger | `../asset_market/identity_evidence_policy.py`, `../asset_market/repositories/identity_evidence_repository.py` | `asset_identity_evidence`, `asset_identity_current` | Tweet CA mentions, GMGN payloads, OKX symbol candidates, and OKX exact address hits are separate evidence kinds. One deterministic policy selects current canonical symbol/name/confidence. |
-| Discovery and reprocess | `../asset_market/runtime/resolution_refresh_worker.py`, `../asset_market/repositories/discovery_repository.py` | `token_discovery_dirty_lookup_keys`, `token_discovery_results`, `registry_assets`, `asset_identity_evidence/current` | Intent writes and reprocess paths enqueue NIL / AMBIGUOUS symbol and address lookup keys. The worker claims due queue rows, refreshes them through OKX DEX, then reprocesses affected intents. It does not scan recent facts to discover due lookups. Successful refresh wakes downstream fact readers; it does not inline Token Radar projection. |
+| Discovery and reprocess | `../asset_market/runtime/resolution_refresh_worker.py`, `../asset_market/repositories/discovery_repository.py` | `token_discovery_dirty_lookup_keys`, `token_discovery_results`, `registry_assets`, `asset_identity_evidence/current` | Intent writes and reprocess paths enqueue NIL / AMBIGUOUS symbol and address lookup keys. The worker claims due queue rows, refreshes them through OKX DEX, then reprocesses affected intents using the named `TOKEN_REPROCESS_WINDOW` policy and formal `settings.workers.resolution_refresh` timing/reprocess fields: `lease_ms`, `hot_not_found_retry_ms`, and `reprocess_limit`. DiscoveryRepository receives lookup due/claim/start timing explicitly, does not own repository-local runtime policy constants, and does not expose a read-only due-list helper as a second queue-consumer path. Reprocessed resolved event edges enqueue `token_radar_source_dirty_events` from formal `TokenIntentResolutionDecision` results only; loose resolver decision objects are malformed reprocess state, not empty dirty work. Missing source-dirty repository contract is a failure, not an empty queue. Token intent rebuild and resolution reprocess writes require `RepositorySession.transaction` plus `require_transaction` before token evidence/intent/lookup/resolution/discovery/source-dirty SQL; their public helpers require explicit window/limit arguments and do not expose service-local default limit/window compatibility constants. They do not commit through raw `repos.conn.commit()`. It does not scan recent facts to discover due lookups. Successful refresh wakes downstream fact readers; it does not inline Token Radar projection. |
 | Asset profile facts | `../asset_market/runtime/asset_profile_refresh_worker.py`, `../asset_market/runtime/token_profile_current_worker.py`, `../asset_market/services/token_profile_current_projection.py`, `../asset_market/read_models/token_profile_read_model.py` | `asset_profiles`, `cex_token_profiles`, `token_profile_current` | GMGN OpenAPI, Binance Web3, and Binance CEX profile rows are source-cache facts. Public profile/icon facts come from `token_profile_current`, projected from persisted source caches plus GMGN stream exact snapshot and OKX DEX exact-address evidence. Profile facts are never resolver evidence, ranking factors, or `factor_snapshot_json` fields. API and frontend code do not call providers. |
 | Market facts | `../asset_market/runtime/{token_capture_tier_worker.py,market_tick_stream_worker.py,market_tick_poll_worker.py,event_anchor_backfill_worker.py,live_price_gateway.py}`, `../asset_market/services/{event_market_capture.py,asset_market_sync.py}` | `cex_tokens`, `price_feeds`, `market_ticks`, `enriched_events`, `token_capture_tier`; `event_anchor_backfill_jobs` control state | Ingest writes inline event-adjacent market ticks or a pending event-anchor fact plus a short-lived backfill job. Capture-tier projection assigns active targets to stream, poll, or inline-only. Stream and poll workers refresh hot market ticks. Event-anchor backfill consumes jobs, not fact rows, and terminalizes anchors it cannot validly attach. LivePriceGateway may receive high-frequency provider frames, but it is cache-only and does not persist facts. |
-| Event token projection | `queries/event_token_projection_query.py` | reads `token_intent_resolutions`, `asset_identity_current`, `cex_tokens`, `price_feeds`, `enriched_events`, `market_ticks` | HTTP recent, WebSocket replay/live payloads, and watchlist timelines expose token mentions through this read model. It returns a lean public token-resolution payload with `symbol` and standard message `price`; public surfaces do not serialize raw resolution fact rows. |
-| Radar projection | `runtime/token_radar_projection_worker.py`, `services/token_radar_projection.py`, `scoring/factor_snapshot.py`, `scoring/cross_section_normalizer.py`, `scoring/factor_diagnostics.py`, `queries/token_radar_rank_source_query.py`, `repositories/token_radar_rank_source_repository.py` | `token_radar_dirty_targets`, `token_radar_rank_source_events`, `token_radar_target_features`, `token_radar_current_rows.factor_snapshot_json`, `token_radar_publication_state`, `token_score_evaluations`, `projection_runs`, `projection_offsets` | Projection claims durable due dirty targets, applies due gates, builds one content-stable generation per `(projection_version, window, scope)`, and atomically publishes `token_radar_current_rows` plus `token_radar_publication_state`. Runtime projection does not run a broad recent fact-window catch-up scan. `token_radar_dirty_targets` carries source, market, and repair dirty kinds; market-only work reuses existing source edges and refreshes latest market context plus scoring output. `token_radar_rank_source_events` stores a `source_payload_hash` no-op gate and is rebuildable projection input plus bounded lazy evidence/detail only. `token_radar_current_rows` is the only online leaderboard table; `token_radar_publication_state` is the only online readiness and last-failure state. `token_radar_target_features` is projection-private cache and is not an API, CLI, Pulse, notification, or repair read path. Retired history/audit/coverage tables do not participate in online service. Repair is explicit ops enqueue, not worker runtime scan. |
-| Search read model | `read_models/search_service.py`, `queries/search_events_query.py`, `services/query_parser.py`, `services/search_aliases.py` | `events.search_tsv`, `token_intent_resolutions`, `cex_tokens`, `registry_assets`, `asset_identity_current` | Search resolves query intent against current production identity first, retrieves target / lexical / trigram route hits, fuses them into cursor pages, and never performs provider calls, extraction, resolution mutation, scoring projection, or legacy `assets / asset_aliases / asset_venues` identity reads. |
+| Event token projection | `queries/event_token_projection_query.py` | reads `token_intent_resolutions`, `asset_identity_current`, `cex_tokens`, `price_feeds`, `enriched_events`, `market_ticks` | HTTP recent, WebSocket replay/live payloads, and watchlist timelines expose token mentions through this read model. It returns a lean public token-resolution payload with `symbol` and standard message `price`; public surfaces do not serialize raw resolution fact rows. Selected current resolution rows must provide non-empty resolution/intent/event/status fields plus list-shaped `reason_codes_json`, `candidate_ids_json`, and `lookup_keys_json`; malformed rows fail rather than being repaired through JSON string parsing or empty-array defaults. |
+| Radar projection | `runtime/token_radar_projection_worker.py`, `services/token_radar_projection.py`, `scoring/factor_snapshot.py`, `scoring/cross_section_normalizer.py`, `scoring/factor_diagnostics.py`, `queries/token_radar_rank_source_query.py`, `repositories/token_radar_rank_source_repository.py`, `repositories/token_radar_repository.py`, `repositories/projection_repository.py` | `token_radar_source_dirty_events`, `token_radar_dirty_targets`, `token_radar_rank_source_events`, `token_radar_target_features`, `token_radar_current_rows.factor_snapshot_json`, `token_radar_publication_state`, `token_score_evaluations`, `projection_runs`, `projection_offsets`, `projection_dirty_ranges` | Projection claims durable due source-event and target dirty queues, applies due gates, builds one content-stable generation per `(projection_version, window, scope)`, and atomically publishes `token_radar_current_rows` plus `token_radar_publication_state`. Worker windows, scopes, venues, hot windows, batch size, cold interval, and statement timeout are formal `settings.workers.token_radar_projection` fields; projection window math requires valid `WINDOW_MS` entries and does not restore malformed work-item windows through `1h` or `24h` fallbacks. The worker receives downstream wake output as `wake_emitter` and keeps no product-default or `wake_bus` compatibility alias. Runtime projection does not run a broad recent fact-window catch-up scan. `token_radar_source_dirty_events` is the required source-edge queue from ingest/reprocess; it is not optional and missing repository contract fails closed. Source dirty queue enqueue/claim/done/error mutations require the connection transaction when the repository owns the commit, and missing transaction support fails before queue SQL. `token_radar_dirty_targets` carries source, market, and repair dirty kinds; market-only work reuses existing source edges and refreshes latest market context plus scoring output. Target dirty queue enqueue/market enqueue/claim/catch-up enqueue/done/error mutations require the connection transaction when the repository owns the commit, and missing transaction support fails before queue SQL. Target/source dirty done/error completion keys require formal claimed-row identity plus positive `attempt_count`, non-empty `lease_owner`, and claimed `payload_hash`; completion code does not recover identity from `target_type`, `target_id`, `intent_id`, or `event_id` aliases after claim. Downstream dirty-target enqueue for Pulse, Narrative Admission, Token Profile Current, and Token Capture Tier uses direct repository-session attributes; a missing downstream repository is a session wiring failure, not optional work or an empty queue. Pulse/Narrative/Profile fan-out skip decisions require previous/current row `payload_hash` values and fail malformed rows instead of comparing empty signatures. `token_radar_rank_source_events` stores a `source_payload_hash` no-op gate and is rebuildable projection input plus bounded lazy evidence/detail only; repository-owned edge population/prune writes require a callable connection transaction before edge SQL, while `TokenRadarRankSourceQuery` executes SQL only and does not own commits. `token_radar_current_rows` is the only online leaderboard table; `token_radar_publication_state` is the only online readiness and last-failure state. Target-feature and current-row serving identity must be explicit `target_type_key` plus `identity_id`; unresolved attention rows use stable lookup-key identity such as `LookupKey/symbol:...` from formal `lookup_keys_json`, never a display-symbol reconstruction, and repository code does not recover missing serving identity from `target_type`, `target_id`, or `intent_id`. The current-row `resolution_json` requires non-empty `resolution_status` plus list-shaped `reason_codes_json`, `candidate_ids_json`, and `lookup_keys_json` from the selected resolution row; malformed resolution fields fail before publication instead of becoming `NIL` or empty arrays. High-confidence `EXACT` / `UNIQUE_BY_CONTEXT` resolutions must carry formal `Asset` or `CexToken` target identity before entering the resolved lane; malformed target identity fails instead of being downgraded into attention. Resolved `Asset` target payloads require the joined `asset_identity_current` explanation fields `asset_identity_confidence`, list-shaped `asset_identity_reason_codes`, and non-negative integer `asset_identity_conflict_count`; projection code must not restore missing identity-current evidence through empty reason arrays or zero conflict defaults. Repository-owned serving publication, target-feature cache, first-seen, and failed-publication writes require a callable connection transaction before SQL; publication enters that transaction before `pg_advisory_xact_lock`. Repository-owned `projection_offsets`, `projection_runs`, and `projection_dirty_ranges` writes require a callable connection transaction before control-plane SQL, while rank publication keeps them caller-owned inside its explicit projection transaction. Diagnostic reads over `projection_runs` and `projection_dirty_ranges` require explicit caller limits; `ProjectionRepository` does not own `20`/`50` row defaults. Repository-owned `token_score_evaluations` single and batch upserts require a callable connection transaction before SQL, while batch per-row writes remain caller-owned with `commit=False` inside that transaction. `token_radar_target_features` is projection-private cache and is not an API, CLI, Pulse, notification, or repair read path. Retired history/audit/coverage tables do not participate in online service. Repair is explicit ops enqueue, not worker runtime scan. |
+| Search read model | `read_models/search_service.py`, `queries/search_events_query.py`, `services/query_parser.py`, `services/search_aliases.py` | `events.search_tsv`, `token_intent_resolutions`, `cex_tokens`, `registry_assets`, `asset_identity_current` | Search resolves query intent against current production identity first, retrieves target / lexical / trigram route hits, fuses them into cursor pages, and never performs provider calls, extraction, resolution mutation, scoring projection, or legacy `assets / asset_aliases / asset_venues` identity reads. API/CLI callers own `limit`, `scope`, and `window` defaults/validation and pass them explicitly; `SearchService` does not retain read-service query-boundary defaults or unknown-window fallback. OR-symbol target resolution is one PostgreSQL keyset read through `SearchEventsQuery.resolve_symbols(...)` and `unnest(%s::text[]) WITH ORDINALITY`; it must not loop over symbols and call the single-symbol resolver once per token. |
+
+Token Radar downstream fan-out target identity, rank-input venue selection, and
+Token Capture Tier dirty rank-set hashes derive from formal current-row
+`target_type_key` plus `identity_id`. Stale `target_type` / `target_id` aliases
+must not override formal keys, and alias-only current rows fail before dirty hash
+construction or downstream enqueue.
+Projection-private `token_radar_target_features` rows must also expose formal
+`target_type_key` plus `identity_id` before `_row_from_target_feature(...)`
+constructs a current row; missing target-feature identity is malformed private
+cache state, not an empty serving identity. The same target-feature-to-current
+boundary requires non-empty `projection_version`, `window`, `scope`, `lane`,
+integer `latest_event_received_at_ms`, and mapping-shaped
+`factor_snapshot_json`; missing private-cache dimensions fail before row-id,
+source frontier, lane, or factor payload construction. Current-row
+`created_at_ms` at this boundary derives from formal `last_scored_at_ms`; it is
+not restored from target-feature `updated_at_ms` or `_now_ms()`. The
+target-feature cache writer applies the same hard edge before SQL: `lane`,
+`source_max_received_at_ms`, `source_event_ids_json`, `created_at_ms`, and
+`factor_snapshot_json` are required projection payload fields, not values to
+repair through `attention`, `computed_at_ms`, `[]`, or `{}` defaults. Core
+scoring fields inside the snapshot are formal too: `composite.rank_score`,
+`composite.recommended_decision`, and `gates.max_decision` must already exist
+before payload hashing or SQL, and missing values are not repaired to `0.0` or
+`discard`.
+Rank-set selection requires each rank input to expose a non-negative
+`latest_event_received_at_ms` and a known `lane` before window filtering and
+resolved/attention selection; malformed rank inputs fail instead of being
+treated as expired rows or dropped from both lanes. Compact rank inputs require
+formal `raw_composite_score` and `gates_max_decision`, and ranked rows require
+formal `rank_score` and `recommended_decision`; missing score/gate/decision
+fields are not repaired to `0.0` or `discard`. Retired snapshot-row sort
+helpers are removed: rank publication does not use `_rank_key`, `raw_alpha_score`
+fallback, or invalid-snapshot demotion as an alternate ranking path.
+Ranked current-row patching requires formal `normalization_status`,
+`cohort_status`, `cohort_size`, `cohort_in_cohort`, `cohort_metadata`, complete
+per-family `factor_ranks`, `alpha_rank`, `rank`, `rank_score`,
+`recommended_decision`, and `latest_event_received_at_ms` before mutating
+current rows or `factor_snapshot_json`; missing ranked metadata is malformed
+publication state, not permission to publish `no_signal`, `not_ranked`, false
+cohort membership, an empty or incomplete rank map, alpha rank `None`, rank `0`,
+or source watermark `0`. Family rank values must be `None` or bounded `0..1`
+ranks.
+Token Radar current-row delete/upsert, target-feature write/delete, and
+target-feature retention counts require real PostgreSQL `cursor.rowcount`
+evidence. Missing, boolean, negative, or non-integer rowcount is
+repository/driver contract drift, not a default no-op or one-row write.
+`token_radar_target_first_seen` upsert counts require the same PostgreSQL
+`cursor.rowcount` evidence; first-seen write accounting cannot be restored from
+projection candidate `len(records)`.
+Projection-run stale-running cleanup counts require the same PostgreSQL
+`cursor.rowcount` evidence. Missing or invalid rowcount is malformed
+repository/driver state, not a default zero abandoned-run count.
+Projection dirty-range claims from `UPDATE projection_dirty_ranges ...
+RETURNING ranges.*` require returned-rowcount evidence too: rowcount must match
+the returned claimed rows, and rowcount=0 with no rows is the only no-work claim
+result.
+Ordinary ProjectionRepository offset, run-ledger, and dirty-range enqueue or
+finish mutations require exactly one PostgreSQL rowcount too; `start_run`
+uses `INSERT ... RETURNING *` and must not fall back to `run_by_id` readback as
+proof of the run insert.
+Unresolved Token Radar attention rows derive their `LookupKey/...` identity
+from formal resolution `lookup_keys_json` only. A missing lookup key is malformed
+resolution input, not permission to synthesize identity from `display_symbol`.
+
+Generic dirty enqueue contracts for `token_radar_dirty_targets.enqueue_targets`
+and `token_radar_source_dirty_events` require formal queue identity before
+payload hashes or queue SQL. Generic target dirty enqueue accepts
+`target_type_key` plus `identity_id` only; source dirty enqueue accepts
+`source_event_id`, `target_type_key`, and `identity_id` only. Legacy
+`target_type`, `target_id`, `intent_id`, and `event_id` aliases are producer
+bugs at this boundary and fail instead of being mapped or silently skipped in
+repository code.
+
+Target/source dirty queue mutation paths that return changed-row counts require
+real PostgreSQL `cursor.rowcount` evidence. Missing, boolean, negative, or
+non-integer rowcount is repository/driver contract drift, not a default
+zero-row enqueue, completion, retry, or catch-up write count.
+
+Dirty completion keys for `token_radar_dirty_targets` and
+`token_radar_source_dirty_events` preserve the claimed-row queue identity and
+CAS fields. Target dirty completion requires `target_type_key` plus
+`identity_id`; source dirty completion requires `projection_version`,
+`source_event_id`, `target_type_key`, and `identity_id`. `attempt_count` must
+be positive, `lease_owner` must be non-empty, and `payload_hash` must be
+present before rank-source population, source projection, or done/error SQL.
+Missing fields are malformed claim rows, not alias-derived identity,
+`attempt_count=0`, empty-owner, or empty-payload compatibility tokens.
+Rank-source repair target payloads, latest-market-context input/output rows,
+affected-target output rows, and projection source request target lists require
+the same formal `target_type_key` plus `identity_id` command shape.
+`target_type` / `target_id` aliases are not repaired at those helpers, and
+malformed source targets fail before edge repair, market-context SQL/result
+mapping, source request generation, or target-feature delete/upsert.
+Token Radar stable payload canonicalization and hash primitives live in
+`token_intel.types.token_radar_payload_hash`; repositories and projection
+services import that leaf module directly, with no repository exception for
+upward service imports.
+
+After due source-event or target dirty work is claimed, `TokenRadarProjection.rebuild_dirty_targets`
+processes rank-source edge updates, target-feature writes/deletes, rank-set publication attempts,
+and dirty queue done/error terminalization inside one explicit connection transaction. Worker-level
+lease claims may be committed before the processing phase, but the processing/publish/terminal-state
+chain must not be split into autocommit statements. On PostgreSQL connections configured with
+`autocommit=True`, `commit=False` is only a caller-owned commit boundary when an explicit transaction
+is already active. Dirty queue lease and retry timing belong to
+`settings.workers.token_radar_projection`: the worker reads `lease_ms` and
+`retry_ms` directly and passes both into `TokenRadarProjection.rebuild_dirty_targets(...)`.
+The same worker owns dirty claim width, rank publish width, and lease owner:
+it passes `limit`, `rank_limit`, and `lease_owner` explicitly. The projection
+service does not own hidden dirty queue or rank-publication policy defaults.
+
+`TokenIntentResolver` is deterministic resolution logic plus caller-owned persistence only. It exposes
+no `commit` flag and never commits `token_intent_resolutions` itself; ingest, rebuild, and reprocess
+entrypoints write resolver output inside their surrounding repository-session transaction.
+Resolution reprocess must batch token evidence for the selected intent keyset
+through `TokenEvidenceRepository.evidence_for_intents(...)`; it must not query
+`token_intent_evidence` / `token_evidence` once per intent inside the reprocess
+loop.
+The underlying token fact repositories (`TokenEvidenceRepository`,
+`TokenIntentRepository`, `TokenIntentLookupRepository`, and
+`IntentResolutionRepository`) enforce the same boundary when they own commits:
+they require callable connection transactions before fact SQL and do not fall
+back to naked `self.conn.commit()`. `IntentResolutionRepository` must enter that
+transaction before taking the per-intent PostgreSQL advisory transaction lock.
+They also require PostgreSQL mutation evidence before reporting fact writes:
+token evidence, token intent, and token intent resolution upserts use
+`RETURNING *` plus rowcount=1; token-intent evidence links allow only the
+explicit `ON CONFLICT DO NOTHING` rowcount 0/1 shape; lookup-key replacement
+deletes accept real non-negative rowcount, while each replacement upsert must
+affect exactly one row. Missing, boolean, negative, non-integer, zero-row
+required-write, multi-row, or returned-row mismatch evidence is malformed
+repository/driver state, not an empty fact result or a fallback-read success.
 
 ## Factor Snapshot Contract
 
@@ -73,8 +207,9 @@ contract. It contains:
   `timing_risk.weight = 0.0`, so timing contributes risk/gate context without
   positive alpha.
 - `normalization` — cohort definition, per-family ranks, alpha rank, and status.
-- `composite` — raw alpha score, cross-section rank score, family scores, and
-  recommended decision derived from alpha families plus gates.
+- `composite` — final rank score, recommended decision, and optional display
+  aliases such as `family_scores`; formal family diagnostics come from
+  `families.*.score`.
 - `provenance` — source event ids and computation time.
 
 `token_radar_current_rows` stores `rank_score`, `quality_status`,
@@ -91,7 +226,27 @@ gates.
 
 Latest read models read `token_radar_current_rows`; diagnostics use
 `token_score_evaluations` and v3 score-version keys to keep populations
-comparable. Online readiness and last-failure semantics come only
+comparable. Repository-owned diagnostics upserts require a callable connection
+transaction before SQL; batch upserts keep per-row writes caller-owned with
+`commit=False` inside the repository transaction. Token score evaluation
+consumes only formal v3 `factor_snapshot_json`; a missing
+`composite.rank_score` fails before bucket/IC summaries and is not repaired
+into the `0-19` bucket. Because evaluation settles market outcomes, it also
+requires `factor_snapshot_json.subject.target_type` and `.target_id` at the
+consumer boundary and never repairs them from current-row top-level
+`target_type` / `target_id`; unresolved Token Radar attention snapshots remain
+valid outside this settlement path. CEX settlement targets require subject-owned
+`provider` and `native_market_id`; `market.decision_latest` and `instrument`
+aliases are not settlement identity fallbacks. Settlement subject `target_type`
+must be formal `Asset` or `CexToken`; direct market-tick target types
+`chain_token` and `cex_symbol` are not settlement subjects and fail before
+market lookup or bucket upsert. Asset settlement targets require subject-owned
+`chain` and `address`; `chain_id` and `asset_address` aliases are not
+settlement identity fallbacks. Settlement time comes from
+`factor_snapshot_json.provenance.computed_at_ms`, not current-row top-level
+`computed_at_ms` or an epoch-zero fallback. Family diagnostics read formal
+`families.*.score`, not optional `composite.family_scores` aliases. Online
+readiness and last-failure semantics come only
 from `token_radar_publication_state`: `fresh` requires a ready latest attempt,
 product/window current rows, or an explicitly empty ready publication. A failed
 latest attempt with prior current rows is `stale`; a failed latest attempt
@@ -112,11 +267,18 @@ successful generations.
 rewritten only when their normalized source payload hash changes. Latest market
 context is a target-level scoring input loaded from current market facts during
 projection; market-only dirty targets must not rehydrate or rewrite every
-source edge just because a quote changed.
+source edge just because a quote changed. Edge population write counts come from
+explicit SQL aggregate count rows, and edge prune counts come from PostgreSQL
+`cursor.rowcount`; missing, boolean, negative, or non-integer mutation-count
+evidence is malformed query/driver state, not a default zero-edge update.
 
 `token_radar_rank_source_events` may be queried for detail/evidence only when
 bounded by a current row key and limit. `token_radar_target_features` is a
-projection-private intermediate layer, not an online read API. Retired
+projection-private intermediate layer, not an online read API. Private cache
+retention is owned by `TokenRadarProjectionWorker`, uses formal
+`settings.workers.token_radar_projection.private_cache_retention_enabled` and
+`private_cache_retention_ms`, and deletes old target-feature / rank-source rows
+through bounded repository prune calls outside `refresh_rank_set`. Retired
 history/audit/coverage tables are not current-serving or publication-state
 sources.
 
@@ -150,6 +312,24 @@ symbol remains `None` rather than falling back to the mention symbol.
 - API, WebSocket, CLI, and frontend surfaces read projected rows or read models;
   they never perform entity extraction, token resolution, provider calls,
   scoring, SQL joins, or notification decisions.
+- Search Inspect token results delegate to Token Case and must pass the
+  persisted `cex_detail_snapshots` repository for `CexToken` dossiers. Missing
+  snapshot rows can produce a structured missing CEX detail block, but that
+  block must not synthesize `snapshot_id` or `exchange`; only a persisted
+  `cex_detail_snapshots` row owns those projection identity fields. Missing
+  repository/session support is not compatible with a successful token result.
+  The CEX detail repository also owns query-identity validation, so Token Case
+  cannot hide malformed empty `target_type` / `target_id` CEX lookups behind an
+  empty PostgreSQL result.
+- Token Case and Search Inspect market-live blocks read persisted current
+  market ticks through `TokenTargetRepository.latest_market_tick`. Missing
+  current tick rows can produce a structured missing market block, but missing
+  repository/session support is not compatible with a successful dossier.
+- Token Case, `/api/target-posts`, and `/api/target-social-timeline` callers
+  own target timeline `window`, `scope`, and page `limit` defaults/validation.
+  Token-target read services fail malformed direct-call `window` or `scope`
+  contracts before repository reads; they do not restore unknown windows through
+  `1h` fallbacks or treat unknown scopes as `all`.
 - Token profile provider calls live only in `asset_market` refresh/ops paths.
   Search, Token Radar, and UI surfaces consume `TokenProfileReadModel` output
   from `token_profile_current`.

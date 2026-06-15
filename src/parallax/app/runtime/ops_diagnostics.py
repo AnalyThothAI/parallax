@@ -3,12 +3,13 @@ from __future__ import annotations
 import time
 from collections import Counter
 from collections.abc import Callable, Mapping
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
 from parallax.app.runtime.job_queue import JOB_QUEUE_DESCRIPTORS, JobQueueDescriptor
 from parallax.app.runtime.worker_status import effective_worker_status, workers_status_payload
+from parallax.domains.asset_market.providers import ProviderHealth
 from parallax.domains.pulse_lab.queries.pulse_freshness_health_queries import (
     fetch_pulse_health_candidates,
     fetch_pulse_health_clocks,
@@ -81,10 +82,10 @@ AGENT_EXECUTION_COUNTER_KEYS = {
 def ops_diagnostics_payload(
     runtime: Any,
     *,
+    since_hours: int,
+    window: str,
+    scope: str,
     now_ms: int | None = None,
-    since_hours: int = 4,
-    window: str = "1h",
-    scope: str = "all",
 ) -> dict[str, Any]:
     generated_at_ms = int(now_ms if now_ms is not None else _now_ms())
     since_ms = generated_at_ms - max(1, int(since_hours)) * 60 * 60 * 1000
@@ -203,18 +204,17 @@ def _database_payload(runtime: Any) -> dict[str, Any]:
 
 
 def _collector_payload(runtime: Any) -> dict[str, Any]:
-    collector = getattr(runtime, "collector", None)
-    status_object = getattr(collector, "status", None)
-    to_dict = getattr(status_object, "to_dict", None)
-    details = to_dict() if callable(to_dict) else {}
-    provider = getattr(collector, "upstream_client", None)
+    details = runtime.collector.status.to_dict()
+    if not isinstance(details, dict):
+        raise RuntimeError("collector_status_payload_must_be_dict")
+    provider = runtime.collector.upstream_client
     connection = _provider_connection_payload(provider)
     state = str(connection.get("state") or "")
     status = "ok" if state in {"connected", "running"} or not provider else "degraded"
     return {
         "status": status,
         "connection": connection,
-        "details": details if isinstance(details, dict) else {},
+        "details": details,
     }
 
 
@@ -226,11 +226,10 @@ def _providers_payload(runtime: Any) -> list[dict[str, Any]]:
 
 
 def _asset_market_provider_health(runtime: Any) -> list[dict[str, Any]]:
-    asset_market = getattr(getattr(runtime, "providers", None), "asset_market", None)
-    health_items = getattr(asset_market, "provider_health", ()) or ()
+    health_items = runtime.providers.asset_market.provider_health
     providers: list[dict[str, Any]] = []
     for item in health_items:
-        payload = _object_payload(item)
+        payload = _provider_health_payload(item)
         capabilities = payload.get("capabilities") or []
         providers.append(
             {
@@ -253,20 +252,20 @@ def _asset_market_provider_health(runtime: Any) -> list[dict[str, Any]]:
 
 
 def _connection_providers(runtime: Any) -> list[dict[str, Any]]:
-    collector = getattr(runtime, "collector", None)
-    asset_market = getattr(getattr(runtime, "providers", None), "asset_market", None)
+    collector = runtime.collector
+    asset_market = runtime.providers.asset_market
     return [
         _connection_provider_payload(
             provider_name="gmgn_direct_ws",
             domain="ingestion",
-            provider=getattr(collector, "upstream_client", None),
-            configured=getattr(collector, "upstream_client", None) is not None,
+            provider=collector.upstream_client,
+            configured=collector.upstream_client is not None,
         ),
         _connection_provider_payload(
             provider_name="okx_dex_ws",
             domain="asset_market",
-            provider=getattr(asset_market, "stream_dex_market", None),
-            configured=getattr(asset_market, "stream_dex_market", None) is not None,
+            provider=asset_market.stream_dex_market,
+            configured=asset_market.stream_dex_market is not None,
         ),
     ]
 
@@ -297,14 +296,23 @@ def _connection_provider_payload(
 def _provider_connection_payload(provider: Any | None) -> dict[str, Any]:
     if provider is None:
         return {"state": "disabled", "last_state_change_at_ms": None}
-    payload = getattr(provider, "connection_state_payload", None)
-    if not callable(payload):
-        return {"state": "configured", "last_state_change_at_ms": None}
     try:
-        value = payload()
+        value = provider.connection_state_payload()
+    except AttributeError:
+        return {
+            "state": "failed",
+            "last_state_change_at_ms": None,
+            "error": "provider_connection_state_contract_missing",
+        }
     except Exception as exc:
         return {"state": "failed", "last_state_change_at_ms": None, "error": _preview_error(exc)}
-    return value if isinstance(value, dict) else {"state": "failed", "last_state_change_at_ms": None}
+    if not isinstance(value, dict):
+        return {
+            "state": "failed",
+            "last_state_change_at_ms": None,
+            "error": "provider_connection_state_payload_not_dict",
+        }
+    return value
 
 
 def _provider_status(*, configured: bool, state: str | None = None, error: Any = None) -> str:
@@ -396,12 +404,7 @@ def _worker_group(name: str) -> str:
 
 
 def _queues_payload(runtime: Any, *, now_ms: int) -> list[dict[str, Any]]:
-    db = getattr(runtime, "db", None)
-    api_pool = getattr(db, "api_pool", None)
-    connection = getattr(api_pool, "connection", None)
-    if not callable(connection):
-        return []
-    with connection() as conn:
+    with runtime.db.api_pool.connection() as conn:
         return [_queue_summary(conn, descriptor, now_ms=now_ms) for descriptor in JOB_QUEUE_DESCRIPTORS.values()]
 
 
@@ -605,7 +608,7 @@ def _news_domain(runtime: Any) -> dict[str, Any]:
 
 
 def _watchlist_domain(runtime: Any) -> dict[str, Any]:
-    configured_handles = tuple(getattr(getattr(runtime, "settings", None), "handles", ()) or ())
+    configured_handles = tuple(runtime.settings.handles or ())
     return {"status": "ok" if configured_handles else "idle", "configured_handle_count": len(configured_handles)}
 
 
@@ -616,19 +619,31 @@ def _notifications_domain(runtime: Any) -> dict[str, Any]:
 
 
 def _agent_execution_payload(runtime: Any, *, now_ms: int) -> dict[str, Any]:
-    gateway = getattr(runtime, "agent_execution_gateway", None)
+    gateway = runtime.agent_execution_gateway
     if gateway is None:
-        providers = getattr(runtime, "providers", None)
-        gateway = getattr(providers, "agent_execution_gateway", None)
-    snapshot = getattr(gateway, "status_snapshot", None)
-    if not callable(snapshot):
         return {"status": "disabled", "policy": {}, "counters": {}, "lanes": {}}
     try:
-        raw_snapshot = snapshot()
+        raw_snapshot = gateway.status_snapshot()
+    except AttributeError:
+        return {
+            "status": "unknown",
+            "status_reason": "unavailable",
+            "error": "agent_execution_status_contract_missing",
+            "policy": {},
+            "counters": {},
+            "lanes": {},
+        }
     except Exception:
         return {"status": "unknown", "status_reason": "unavailable", "policy": {}, "counters": {}, "lanes": {}}
     if not isinstance(raw_snapshot, Mapping):
-        return {"status": "unknown", "status_reason": "unavailable", "policy": {}, "counters": {}, "lanes": {}}
+        return {
+            "status": "unknown",
+            "status_reason": "unavailable",
+            "error": "agent_execution_status_payload_not_mapping",
+            "policy": {},
+            "counters": {},
+            "lanes": {},
+        }
 
     policy = _agent_policy_fields(raw_snapshot)
     counters = _agent_counter_fields(raw_snapshot)
@@ -786,19 +801,19 @@ def _overall_payload(
 
 
 def _config_payload(runtime: Any) -> dict[str, Any]:
-    settings = getattr(runtime, "settings", None)
-    app_home = Path(str(getattr(settings, "app_home", ""))).expanduser()
+    settings = runtime.settings
+    app_home = Path(str(settings.app_home)).expanduser()
     return {
         "app_home": str(app_home) if str(app_home) else None,
         "config_path": str(app_home / "config.yaml") if str(app_home) else None,
         "workers_config_path": str(workers_config_path(app_home)) if str(app_home) else None,
-        "handles_count": len(tuple(getattr(settings, "handles", ()) or ())),
-        "upstream_channels": list(getattr(settings, "upstream_channels", ()) or ()),
-        "gmgn_configured": bool(getattr(settings, "gmgn_configured", False)),
-        "okx_dex_configured": bool(getattr(settings, "okx_dex_configured", False)),
-        "llm_configured": bool(getattr(settings, "llm_configured", False)),
-        "news_enabled": bool(getattr(settings, "news_intel_enabled", False)),
-        "notifications_enabled": bool(getattr(settings, "notification_rules", None) is not None),
+        "handles_count": len(tuple(settings.handles or ())),
+        "upstream_channels": list(settings.upstream_channels or ()),
+        "gmgn_configured": bool(settings.gmgn_configured),
+        "okx_dex_configured": bool(settings.okx_dex_configured),
+        "llm_configured": bool(settings.llm_configured),
+        "news_enabled": bool(settings.news_intel_enabled),
+        "notifications_enabled": bool(settings.notification_rules is not None),
     }
 
 
@@ -829,14 +844,16 @@ def _suggested_checks(*, queues: list[dict[str, Any]], domains: dict[str, Any]) 
     return checks
 
 
-def _object_payload(value: Any) -> dict[str, Any]:
-    if value is None:
-        return {}
-    if isinstance(value, Mapping):
-        return dict(value)
-    if is_dataclass(value):
+def _provider_health_payload(value: Any) -> dict[str, Any]:
+    if isinstance(value, ProviderHealth):
         return asdict(value)
-    return {key: item for key, item in vars(value).items() if not key.startswith("_") and not callable(item)}
+    if isinstance(value, Mapping):
+        payload = dict(value)
+        missing = sorted({"provider", "capabilities", "configured"} - set(payload))
+        if missing:
+            raise TypeError(f"asset_market_provider_health_item_missing_fields: {missing}")
+        return payload
+    raise TypeError(f"asset_market_provider_health_item_contract_required: {type(value).__name__}")
 
 
 def _error_type(value: Any) -> str | None:

@@ -19,7 +19,7 @@ def construct_token_intel_workers(ctx: WorkerFactoryContext) -> dict[str, Worker
             settings=workers.token_radar_projection,
             db=ctx.db,
             telemetry=ctx.telemetry,
-            wake_bus=ctx.wake_bus,
+            wake_emitter=ctx.wake_bus,
             wake_waiter=ctx.db.wake_listener(worker_name, workers.token_radar_projection.wakes_on),
             enqueue_narrative_admission=bool(workers.narrative_admission.enabled),
         )

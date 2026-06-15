@@ -76,6 +76,64 @@ def test_opennews_client_runtime_reports_rest_transport_without_fetch_mode_surfa
     assert "_reject_removed_websocket_policy(policy)" in client
 
 
+def test_opennews_rest_poster_uses_async_http_contract_without_isawaitable_fallback() -> None:
+    client = _read("src/parallax/integrations/news_feeds/opennews_client.py")
+    init_source = client.split("def __init__", 1)[1].split("\n    def fetch", 1)[0]
+    fetch_rest_source = client.split("async def _fetch_rest_entries", 1)[1].split(
+        "\n\nasync def _default_post_json",
+        1,
+    )[0]
+    forbidden_tokens = (
+        "from inspect import isawaitable",
+        "isawaitable(",
+        "payload_result = await payload_result",
+        "post_json: Callable[..., Any]",
+    )
+    violations = [token for token in forbidden_tokens if token in client]
+
+    assert violations == []
+    assert "class _OpenNewsPostJson(Protocol)" in client
+    assert (
+        "def __call__(self, url: str, *, token: str, body: Mapping[str, Any]) -> Awaitable[Mapping[str, Any]]"
+    ) in client
+    assert "post_json: _OpenNewsPostJson | None = None" in init_source
+    assert "payload_result = await self._post_json(" in fetch_rest_source
+
+
+def test_opennews_rest_fetch_bridge_uses_formal_coroutine_close_contract_without_optional_probe() -> None:
+    client = _read("src/parallax/integrations/news_feeds/opennews_client.py")
+    bridge_source = client.split("def _run_rest_fetch", 1)[1].split("\n\ndef _source_fetch_policy", 1)[0]
+    forbidden_tokens = (
+        "def _run_rest_fetch(coro: Any)",
+        'getattr(coro, "close", None)',
+        "close = getattr",
+        "if callable(close)",
+    )
+    violations = [token for token in forbidden_tokens if token in bridge_source]
+
+    assert violations == []
+    assert "def _run_rest_fetch[ResultT](coro: Coroutine[Any, Any, ResultT]) -> ResultT:" in client
+    assert "coro.close()" in bridge_source
+
+
+def test_opennews_rest_fetch_policy_has_no_integration_local_defaults() -> None:
+    client = _read("src/parallax/integrations/news_feeds/opennews_client.py")
+    worker = _read("src/parallax/domains/news_intel/runtime/news_fetch_worker.py")
+    forbidden_tokens = (
+        "DEFAULT_REST_PAGE",
+        "DEFAULT_REST_LIMIT",
+        "DEFAULT_MAX_REST_PAGES",
+        "DEFAULT_REST_OVERLAP_MS",
+        "MIN_REST_OVERLAP_MS",
+    )
+    violations = [token for token in forbidden_tokens if token in client]
+
+    assert violations == []
+    assert "def _required_positive_int(value: Any, field_name: str) -> int:" in client
+    assert 'raise ValueError(f"OpenNews REST fetch policy missing {field_name}")' in client
+    assert '_fetch_policy_int(source, "overlap_ms")' not in worker
+
+
 def test_opennews_provider_signal_does_not_enter_fetch_brief_hot_path() -> None:
     fetch_worker = _read("src/parallax/domains/news_intel/runtime/news_fetch_worker.py")
 

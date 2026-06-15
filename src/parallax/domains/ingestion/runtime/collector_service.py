@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 import time
 from dataclasses import asdict, dataclass, field
 from typing import Any
@@ -63,7 +62,7 @@ class CollectorService(WorkerBase):
         self.store = store
         self.publisher = publisher
         self.upstream_client = upstream_client
-        self.snapshot_timeout = float(getattr(settings, "snapshot_timeout_seconds", 0.5))
+        self.snapshot_timeout = float(settings.snapshot_timeout_seconds)
         self._pending_snapshots: dict[str, asyncio.Task[None]] = {}
         self._upstream_task: asyncio.Task[None] | None = None
         self.status = CollectorStatus(started_at_ms=_now_ms())
@@ -103,12 +102,13 @@ class CollectorService(WorkerBase):
     async def on_close(self) -> None:
         if self.upstream_client is None:
             return
-        close = getattr(self.upstream_client, "aclose", None) or getattr(self.upstream_client, "close", None)
-        if close is None:
-            return
-        result = close()
-        if inspect.isawaitable(result):
-            await result
+        try:
+            aclose = self.upstream_client.aclose
+        except AttributeError as exc:
+            raise RuntimeError("collector_upstream_client_aclose_required") from exc
+        if not callable(aclose):
+            raise RuntimeError("collector_upstream_client_aclose_required")
+        await aclose()
 
     async def _clear_pending_snapshots(self) -> None:
         tasks = list(self._pending_snapshots.values())

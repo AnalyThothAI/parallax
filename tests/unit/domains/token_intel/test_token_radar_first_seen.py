@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from parallax.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
     TOKEN_RADAR_DEFAULT_VENUE,
@@ -22,8 +24,8 @@ def test_first_seen_lookup_reads_compact_table_only() -> None:
         scope="all",
         venue=TOKEN_RADAR_DEFAULT_VENUE,
         rows=[
-            {"target_type": "Asset", "target_id": "asset-1", "intent_id": "intent-1"},
-            {"target_type": None, "target_id": None, "intent_id": "intent-attention"},
+            {"target_type_key": "Asset", "identity_id": "asset-1"},
+            {"target_type_key": "Intent", "identity_id": "intent-attention"},
         ],
     )
 
@@ -31,7 +33,7 @@ def test_first_seen_lookup_reads_compact_table_only() -> None:
     assert "FROM token_radar_target_first_seen" in conn.sql
     assert "token_radar_rows" not in conn.sql
     assert conn.params == (
-        ["Asset", ""],
+        ["Asset", "Intent"],
         ["asset-1", "intent-attention"],
         "token-radar-v13-social-attention",
         "1h",
@@ -40,7 +42,7 @@ def test_first_seen_lookup_reads_compact_table_only() -> None:
     )
 
 
-def test_first_seen_lookup_skips_empty_identity_rows_without_querying() -> None:
+def test_first_seen_lookup_skips_empty_input_without_querying() -> None:
     conn = FirstSeenLookupConn()
 
     listed_at = TokenRadarRepository(conn).first_seen_by_identity(
@@ -48,7 +50,7 @@ def test_first_seen_lookup_skips_empty_identity_rows_without_querying() -> None:
         window="1h",
         scope="all",
         venue=TOKEN_RADAR_DEFAULT_VENUE,
-        rows=[{"target_type": None, "target_id": None, "intent_id": None}],
+        rows=[],
     )
 
     assert listed_at == {}
@@ -60,16 +62,16 @@ def test_upsert_first_seen_batch_uses_identity_key_and_keeps_first_seen_stable()
     rows = [
         {
             "row_id": "row-newer",
-            "target_type": None,
-            "target_id": None,
-            "intent_id": "intent-attention",
+            "target_type_key": "Intent",
+            "identity_id": "intent-attention",
             "listed_at_ms": 50,
         },
         {
             "row_id": "row-resolved",
+            "target_type_key": "Asset",
+            "identity_id": "asset-1",
             "target_type": "Asset",
             "target_id": "asset-1",
-            "intent_id": "intent-1",
         },
     ]
 
@@ -86,13 +88,63 @@ def test_upsert_first_seen_batch_uses_identity_key_and_keeps_first_seen_stable()
     assert count == 2
     assert "first_seen_ms = LEAST(token_radar_target_first_seen.first_seen_ms, excluded.first_seen_ms)" in conn.sql
     assert "last_seen_ms = GREATEST(token_radar_target_first_seen.last_seen_ms, excluded.last_seen_ms)" in conn.sql
-    assert conn.records[0]["target_type_key"] == ""
+    assert conn.records[0]["target_type_key"] == "Intent"
     assert conn.records[0]["identity_id"] == "intent-attention"
     assert conn.records[0]["first_seen_ms"] == 50
     assert conn.records[0]["last_seen_ms"] == 200
     assert conn.records[1]["target_type_key"] == "Asset"
     assert conn.records[1]["identity_id"] == "asset-1"
     assert conn.records[1]["first_seen_ms"] == 200
+
+
+def test_upsert_first_seen_batch_returns_postgres_rowcount_not_candidate_count() -> None:
+    conn = UpsertFirstSeenConn(rowcount=0)
+
+    count = TokenRadarRepository(conn).upsert_first_seen_batch(
+        projection_version="token-radar-v13-social-attention",
+        window="1h",
+        scope="all",
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
+        rows=[
+            {"row_id": "row-a", "target_type_key": "Asset", "identity_id": "asset-1"},
+            {"row_id": "row-b", "target_type_key": "Intent", "identity_id": "intent-1"},
+        ],
+        computed_at_ms=200,
+        commit=False,
+    )
+
+    assert count == 0
+
+
+def test_upsert_first_seen_batch_requires_cursor_rowcount() -> None:
+    conn = UpsertFirstSeenConn(omit_rowcount=True)
+
+    with pytest.raises(TypeError, match="token_radar_repository_rowcount_required"):
+        TokenRadarRepository(conn).upsert_first_seen_batch(
+            projection_version="token-radar-v13-social-attention",
+            window="1h",
+            scope="all",
+            venue=TOKEN_RADAR_DEFAULT_VENUE,
+            rows=[{"row_id": "row-a", "target_type_key": "Asset", "identity_id": "asset-1"}],
+            computed_at_ms=200,
+            commit=False,
+        )
+
+
+@pytest.mark.parametrize("rowcount", ("2", True, -1))
+def test_upsert_first_seen_batch_rejects_invalid_cursor_rowcount(rowcount: Any) -> None:
+    conn = UpsertFirstSeenConn(rowcount=rowcount)
+
+    with pytest.raises(TypeError, match="token_radar_repository_rowcount_invalid"):
+        TokenRadarRepository(conn).upsert_first_seen_batch(
+            projection_version="token-radar-v13-social-attention",
+            window="1h",
+            scope="all",
+            venue=TOKEN_RADAR_DEFAULT_VENUE,
+            rows=[{"row_id": "row-a", "target_type_key": "Asset", "identity_id": "asset-1"}],
+            computed_at_ms=200,
+            commit=False,
+        )
 
 
 def test_publish_current_generation_uses_compact_first_seen_before_insert_and_upserts_after_insert() -> None:
@@ -138,9 +190,11 @@ class FirstSeenLookupConn:
 
 
 class UpsertFirstSeenConn:
-    def __init__(self) -> None:
+    def __init__(self, *, rowcount: Any = 2, omit_rowcount: bool = False) -> None:
         self.sql = ""
         self.records: list[dict[str, Any]] = []
+        if not omit_rowcount:
+            self.rowcount = rowcount
 
     def execute(self, sql: str, params: Any = None) -> UpsertFirstSeenConn:
         self.sql = str(sql)
@@ -173,6 +227,7 @@ class PublishFirstSeenConn:
         self.insert_params: dict[str, Any] = {}
         self.sqls: list[str] = []
         self._last_rows: list[dict[str, Any]] = []
+        self.rowcount = 1
 
     def execute(self, sql: str, params: Any = None) -> PublishFirstSeenConn:
         text = str(sql)
@@ -209,6 +264,8 @@ def _valid_factor_row() -> dict[str, object]:
         "source_max_received_at_ms": 200,
         "lane": "resolved",
         "rank": 1,
+        "target_type_key": "Asset",
+        "identity_id": "asset-1",
         "intent_id": "intent-1",
         "event_id": "event-1",
         "target_type": "Asset",
@@ -262,6 +319,7 @@ def _valid_factor_snapshot() -> dict[str, object]:
         "gates": {
             "eligible_for_high_alert": False,
             "eligible_for_watch": True,
+            "max_decision": "discard",
             "suppression_reasons": [],
         },
         "data_health": {"identity": "ready", "market": "missing", "social": "ready", "alpha": "ready"},

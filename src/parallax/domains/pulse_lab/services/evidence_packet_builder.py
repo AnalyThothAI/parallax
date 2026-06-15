@@ -28,7 +28,7 @@ class PulseEvidenceBuilder:
         source_repository: Any,
         *,
         schema_version: str = "pulse_evidence_packet.v1",
-        market_freshness_ms: int = 3_600_000,
+        market_freshness_ms: int,
     ) -> None:
         self._sources = source_repository
         self._schema_version = schema_version
@@ -41,19 +41,19 @@ class PulseEvidenceBuilder:
         run_id: str,
         now_ms: int,
     ) -> PulseEvidencePacket:
-        factor_snapshot = _mapping(getattr(context, "factor_snapshot", {}))
+        factor_snapshot = _mapping(context.factor_snapshot)
         provenance_event_ids = _nested(factor_snapshot, "provenance", "source_event_ids")
         source_event_ids = _stable_strings(
             [
-                *_sequence(getattr(context, "source_event_ids", ())),
-                *_sequence(getattr(context, "evidence_event_ids", ())),
+                *_sequence(context.source_event_ids),
+                *_sequence(context.evidence_event_ids),
                 *_sequence(provenance_event_ids),
             ]
         )
-        events = self._list_repo("list_source_events", source_event_ids, default=())
-        enriched_events = self._list_repo("list_enriched_events", source_event_ids, default=())
+        events = list(self._sources.list_source_events(source_event_ids))
+        enriched_events = list(self._sources.list_enriched_events(source_event_ids))
         market_facts = self._list_market_facts(context, now_ms=now_ms)
-        identity_facts = self._list_repo("list_identity_facts", context, default=())
+        identity_facts = list(self._sources.list_identity_facts(context))
         discussion_digest = self._current_discussion_digest(context)
 
         refs: list[dict[str, Any]] = []
@@ -76,12 +76,12 @@ class PulseEvidenceBuilder:
             "run_id": run_id,
             "evidence_packet_hash": "",
             "schema_version": self._schema_version,
-            "candidate_id": str(getattr(context, "candidate_id", "") or ""),
-            "target_type": _optional_str(getattr(context, "target_type", None)) or "unknown",
-            "target_id": _optional_str(getattr(context, "target_id", None)) or "unknown",
-            "symbol": _optional_str(getattr(context, "symbol", None)) or "",
-            "window": str(getattr(context, "window", "") or ""),
-            "scope": str(getattr(context, "scope", "") or ""),
+            "candidate_id": str(context.candidate_id or ""),
+            "target_type": _optional_str(context.target_type) or "unknown",
+            "target_id": _optional_str(context.target_id) or "unknown",
+            "symbol": _optional_str(context.symbol) or "",
+            "window": str(context.window or ""),
+            "scope": str(context.scope or ""),
             "snapshot_at_ms": int(now_ms),
             "source_event_ids": tuple(source_event_ids),
             "allowed_evidence_refs": tuple(refs),
@@ -98,13 +98,13 @@ class PulseEvidenceBuilder:
             "data_gaps": tuple({key: value for key, value in gap.items() if key != "ref_id"} for gap in data_gaps),
             "risk_flags": tuple(),
             "source_fingerprints": {
-                "factor_snapshot_sha256": _sha256_json(_mapping(getattr(context, "factor_snapshot", {}))),
+                "factor_snapshot_sha256": _sha256_json(factor_snapshot),
                 "discussion_digest_id": _optional_str(_mapping(discussion_digest).get("digest_id")),
             },
             "admission_context": {
-                "factor_snapshot": _mapping(getattr(context, "factor_snapshot", {})),
-                "gate_result": _mapping(getattr(context, "gate_result", {})),
-                "selected_post_count": len(_sequence(getattr(context, "selected_posts", ()))),
+                "factor_snapshot": factor_snapshot,
+                "gate_result": _mapping(context.gate_result),
+                "selected_post_count": len(_sequence(context.selected_posts)),
                 "discussion_digest": _compact_discussion_digest(discussion_digest),
             },
             "summary_json": {
@@ -387,37 +387,19 @@ class PulseEvidenceBuilder:
             if gap.get("ref_id")
         ]
 
-    def _list_repo(self, method_name: str, arg: Any, *, default: tuple[Any, ...]) -> list[Any]:
-        method = getattr(self._sources, method_name, None)
-        if method is None:
-            return list(default)
-        value = method(arg)
-        if value is None:
-            return list(default)
-        return list(value)
+    def _list_market_facts(self, context: PulseCandidateContext, *, now_ms: int) -> list[Any]:
+        return list(self._sources.list_market_facts(context, max_age_ms=self._market_freshness_ms, now_ms=now_ms))
 
-    def _list_market_facts(self, context: Any, *, now_ms: int) -> list[Any]:
-        method = getattr(self._sources, "list_market_facts", None)
-        if method is None:
-            return []
-        value = method(context, max_age_ms=self._market_freshness_ms, now_ms=now_ms)
-        if value is None:
-            return []
-        return list(value)
-
-    def _current_discussion_digest(self, context: Any) -> dict[str, Any] | None:
-        method = getattr(self._sources, "get_current_discussion_digest", None)
-        if method is None:
-            return None
-        target_type = _optional_str(getattr(context, "target_type", None))
-        target_id = _optional_str(getattr(context, "target_id", None))
-        window = _optional_str(getattr(context, "window", None))
-        scope = _optional_str(getattr(context, "scope", None))
+    def _current_discussion_digest(self, context: PulseCandidateContext) -> dict[str, Any] | None:
+        target_type = _optional_str(context.target_type)
+        target_id = _optional_str(context.target_id)
+        window = _optional_str(context.window)
+        scope = _optional_str(context.scope)
         if not target_type or not target_id or not window or not scope:
             return None
         return cast(
             dict[str, Any],
-            method(
+            self._sources.get_current_discussion_digest(
                 target_type=target_type,
                 target_id=target_id,
                 window=window,
@@ -491,9 +473,9 @@ def _social_contract(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _market_contract(rows: list[dict[str, Any]], *, context: PulseCandidateContext | Any = None) -> dict[str, Any]:
+def _market_contract(rows: list[dict[str, Any]], *, context: PulseCandidateContext) -> dict[str, Any]:
     if not rows:
-        factor_snapshot = _mapping(getattr(context, "factor_snapshot", {}) if context is not None else {})
+        factor_snapshot = _mapping(context.factor_snapshot)
         subject = _mapping(factor_snapshot.get("subject"))
         target_market_type = str(subject.get("target_market_type") or "")
         return {

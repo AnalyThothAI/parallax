@@ -16,8 +16,21 @@ if TYPE_CHECKING:
 
 
 class MacroDailyBriefProjectionWorker(WorkerBase):
-    def __init__(self, *, clock_ms: Callable[[], int] | None = None, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
+    def __init__(
+        self,
+        *,
+        settings: Any,
+        db: Any,
+        telemetry: Any,
+        wake_waiter: Any | None = None,
+        clock_ms: Callable[[], int] | None = None,
+        name: str = "macro_daily_brief_projection",
+    ) -> None:
+        if settings is None:
+            raise RuntimeError("macro_daily_brief_projection_settings_required")
+        if db is None:
+            raise RuntimeError("macro_daily_brief_projection_db_required")
+        super().__init__(name=name, settings=settings, db=db, telemetry=telemetry, wake_waiter=wake_waiter)
         self.clock_ms = clock_ms or _now_ms
 
     async def run_once(self) -> WorkerResult:
@@ -44,7 +57,7 @@ class MacroDailyBriefProjectionWorker(WorkerBase):
             "AbstractContextManager[RepositorySession]",
             self.db.worker_session(
                 self.name,
-                statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
+                statement_timeout_seconds=self.settings.statement_timeout_seconds,
             ),
         )
 

@@ -24,13 +24,71 @@ ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src" / "parallax"
 DOCS_WORKERS = ROOT / "docs" / "WORKERS.md"
 DOCS_CONTRACTS = ROOT / "docs" / "CONTRACTS.md"
+DOCS_ARCHITECTURE = ROOT / "docs" / "ARCHITECTURE.md"
+API_SCHEMAS = SRC / "app" / "surfaces" / "api" / "schemas.py"
+API_DEPENDENCIES = SRC / "app" / "surfaces" / "api" / "dependencies.py"
+APP_RUNTIME_APP = SRC / "app" / "runtime" / "app.py"
+APP_RUNTIME_BOOTSTRAP = SRC / "app" / "runtime" / "bootstrap.py"
+APP_RUNTIME_DB_POOL_BUNDLE = SRC / "app" / "runtime" / "db_pool_bundle.py"
+OPS_DIAGNOSTICS = SRC / "app" / "runtime" / "ops_diagnostics.py"
+CLI_OPS = SRC / "app" / "surfaces" / "cli" / "commands" / "ops.py"
+WORKER_SCHEDULER = SRC / "app" / "runtime" / "worker_scheduler.py"
+OKX_PROVIDER_WIRING = SRC / "app" / "runtime" / "provider_wiring" / "okx.py"
+BINANCE_PROVIDER_WIRING = SRC / "app" / "runtime" / "provider_wiring" / "binance.py"
+ASSET_MARKET_PROVIDER_WIRING = SRC / "app" / "runtime" / "provider_wiring" / "asset_market.py"
+CEX_MARKET_INTEL_PROVIDER_WIRING = SRC / "app" / "runtime" / "provider_wiring" / "cex_market_intel.py"
+PROVIDER_WIRING_TYPES = SRC / "app" / "runtime" / "provider_wiring" / "types.py"
+ASSET_MARKET_PROVIDERS = SRC / "domains" / "asset_market" / "providers.py"
+INGESTION_PROVIDERS = SRC / "domains" / "ingestion" / "providers.py"
+COLLECTOR_SERVICE = SRC / "domains" / "ingestion" / "runtime" / "collector_service.py"
+GMGN_DIRECT_WS = SRC / "integrations" / "gmgn" / "direct_ws.py"
+MARKET_TICK_STREAM_WORKER = SRC / "domains" / "asset_market" / "runtime" / "market_tick_stream_worker.py"
+MARKET_TICK_POLL_WORKER = SRC / "domains" / "asset_market" / "runtime" / "market_tick_poll_worker.py"
+MARKET_TICK_CURRENT_PROJECTION_WORKER = (
+    SRC / "domains" / "asset_market" / "runtime" / "market_tick_current_projection_worker.py"
+)
+TOKEN_CAPTURE_TIER_WORKER = SRC / "domains" / "asset_market" / "runtime" / "token_capture_tier_worker.py"
+TOKEN_RADAR_PROJECTION_WORKER = SRC / "domains" / "token_intel" / "runtime" / "token_radar_projection_worker.py"
+LIVE_PRICE_GATEWAY = SRC / "domains" / "asset_market" / "runtime" / "live_price_gateway.py"
+TOKEN_PROFILE_CURRENT_WORKER = SRC / "domains" / "asset_market" / "runtime" / "token_profile_current_worker.py"
+TOKEN_IMAGE_MIRROR_WORKER = SRC / "domains" / "asset_market" / "runtime" / "token_image_mirror_worker.py"
+TOKEN_IMAGE_MIRROR_SERVICE = SRC / "domains" / "asset_market" / "services" / "token_image_mirror.py"
+ASSET_PROFILE_REFRESH_WORKER = SRC / "domains" / "asset_market" / "runtime" / "asset_profile_refresh_worker.py"
+EVENT_ANCHOR_BACKFILL_WORKER = SRC / "domains" / "asset_market" / "runtime" / "event_anchor_backfill_worker.py"
+INGEST_SERVICE = SRC / "domains" / "evidence" / "services" / "ingest_service.py"
+RESOLUTION_REFRESH_WORKER = SRC / "domains" / "asset_market" / "runtime" / "resolution_refresh_worker.py"
+PULSE_CANDIDATE_WORKER = SRC / "domains" / "pulse_lab" / "runtime" / "pulse_candidate_worker.py"
+PULSE_CANDIDATE_JOB_SERVICE = SRC / "domains" / "pulse_lab" / "services" / "pulse_candidate_job_service.py"
+PULSE_EVIDENCE_PACKET_BUILDER = SRC / "domains" / "pulse_lab" / "services" / "evidence_packet_builder.py"
+PULSE_EVIDENCE_SOURCE_REPOSITORY = (
+    SRC / "domains" / "pulse_lab" / "repositories" / "pulse_evidence_source_repository.py"
+)
+PULSE_ADMISSION_POLICY = SRC / "domains" / "pulse_lab" / "services" / "pulse_admission_policy.py"
+NEWS_PAGE_PROJECTION_WORKER = SRC / "domains" / "news_intel" / "runtime" / "news_page_projection_worker.py"
+NEWS_ITEM_PROCESS_WORKER = SRC / "domains" / "news_intel" / "runtime" / "news_item_process_worker.py"
+NEWS_ITEM_BRIEF_WORKER = SRC / "domains" / "news_intel" / "runtime" / "news_item_brief_worker.py"
+NEWS_REPOSITORY = SRC / "domains" / "news_intel" / "repositories" / "news_repository.py"
+NEWS_SOURCE_QUALITY_PROJECTION_WORKER = (
+    SRC / "domains" / "news_intel" / "runtime" / "news_source_quality_projection_worker.py"
+)
+NEWS_FETCH_WORKER = SRC / "domains" / "news_intel" / "runtime" / "news_fetch_worker.py"
+MACRO_SYNC_WORKER = SRC / "domains" / "macro_intel" / "runtime" / "macro_sync_worker.py"
+MACRO_SYNC_SERVICE = SRC / "domains" / "macro_intel" / "services" / "macro_sync_service.py"
+MACRO_VIEW_PROJECTION_WORKER = SRC / "domains" / "macro_intel" / "runtime" / "macro_view_projection_worker.py"
+MACRO_DAILY_BRIEF_PROJECTION_WORKER = (
+    SRC / "domains" / "macro_intel" / "runtime" / "macro_daily_brief_projection_worker.py"
+)
 NARRATIVE_ARCHITECTURE = SRC / "domains" / "narrative_intel" / "ARCHITECTURE.md"
 NARRATIVE_REPOSITORY = SRC / "domains" / "narrative_intel" / "repositories" / "narrative_repository.py"
 NARRATIVE_READ_MODEL = SRC / "domains" / "narrative_intel" / "read_models" / "narrative_read_model.py"
+NARRATIVE_ADMISSION_WORKER = SRC / "domains" / "narrative_intel" / "runtime" / "narrative_admission_worker.py"
+NARRATIVE_ADMISSION_SERVICE = SRC / "domains" / "narrative_intel" / "services" / "narrative_admission.py"
 API_ROUTES = SRC / "app" / "surfaces" / "api"
 WORKER_FACTORIES = SRC / "app" / "runtime" / "worker_factories"
 CEX_OI_RADAR_REPOSITORY = SRC / "domains" / "cex_market_intel" / "repositories" / "cex_oi_radar_repository.py"
 CEX_OI_RADAR_BOARD_WORKER = SRC / "domains" / "cex_market_intel" / "runtime" / "cex_oi_radar_board_worker.py"
+CEX_BINANCE_OI_RADAR_BUILDER = SRC / "domains" / "cex_market_intel" / "services" / "binance_oi_radar_builder.py"
+CEX_COINGLASS_DETAIL_ENRICHER = SRC / "domains" / "cex_market_intel" / "services" / "coinglass_detail_enricher.py"
 NEWS_INTEL_CANONICAL_DEDUP_MIGRATION = (
     SRC / "platform/db/alembic/versions/20260528_0117_news_intel_canonical_dedup_hard_cut.py"
 )
@@ -263,6 +321,2166 @@ def test_worker_queue_depth_overrides_are_status_payload_compatible() -> None:
             )
 
     assert violations == []
+
+
+@pytest.mark.architecture
+def test_worker_scheduler_status_payload_contract_is_not_optional_or_swallowed() -> None:
+    source = WORKER_SCHEDULER.read_text(encoding="utf-8")
+    helper = source.split("def _worker_status_payload", 1)[1].split("\ndef _worker_concurrency", 1)[0]
+    forbidden_tokens = (
+        'getattr(worker, "status_payload", None)',
+        "if not callable(status_payload)",
+        "payload = status_payload()",
+        "except Exception:",
+        "return {}",
+        "payload if isinstance(payload, dict) else {}",
+    )
+    violations = [token for token in forbidden_tokens if token in helper]
+
+    assert violations == []
+    assert "payload = worker.status_payload()" in helper
+    assert "worker_status_payload_must_be_dict" in helper
+
+
+@pytest.mark.architecture
+def test_worker_scheduler_unhealthy_reasons_use_status_payload_not_worker_attributes() -> None:
+    source = WORKER_SCHEDULER.read_text(encoding="utf-8")
+    unhealthy_source = source.split("def unhealthy_reasons", 1)[1].split("\n    def _ordered_worker_names", 1)[0]
+    reason_source = source.split("def _worker_unavailable_reason", 1)[1].split("\ndef _worker_status_payload", 1)[0]
+
+    forbidden_tokens = (
+        'getattr(worker, "unavailable_reason", None)',
+        'getattr(worker, "last_error", None)',
+        'getattr(worker, "active_run_once_hard_timed_out_at_ms", None)',
+    )
+    combined = f"{unhealthy_source}\n{reason_source}"
+    violations = [token for token in forbidden_tokens if token in combined]
+
+    assert violations == []
+    assert "payload = _worker_status_payload(worker)" in unhealthy_source
+    assert "_worker_failure_reason(name, payload, effective_status)" in unhealthy_source
+    assert "_worker_unavailable_reason(payload)" in unhealthy_source
+
+
+@pytest.mark.architecture
+def test_worker_scheduler_closes_db_pool_bundle_contract_without_pool_fallback() -> None:
+    source = WORKER_SCHEDULER.read_text(encoding="utf-8")
+    stop_source = source.split("async def stop", 1)[1].split("\n    def status_payload", 1)[0]
+    forbidden_tokens = (
+        'getattr(self.db, "aclose", None)',
+        'for attr in ("api_pool", "worker_pool", "lock_pool", "tool_pool", "wake_pool")',
+        "getattr(self.db, attr, None)",
+        "def _close_resource",
+        "await _maybe_await(",
+        "def _maybe_await",
+        "inspect.isawaitable",
+        "import inspect",
+    )
+    violations = [token for token in forbidden_tokens if token in source]
+
+    assert violations == []
+    assert "await worker.stop()" in stop_source
+    assert "await worker.aclose()" in stop_source
+    assert "await self.db.aclose()" in stop_source
+
+
+@pytest.mark.architecture
+def test_bootstrap_failure_closes_db_pool_bundle_contract_without_pool_fallback() -> None:
+    source = APP_RUNTIME_BOOTSTRAP.read_text(encoding="utf-8")
+    bootstrap_source = source.split("def bootstrap", 1)[1].split("\ndef _assemble_runtime", 1)[0]
+    failure_source = bootstrap_source.split("except Exception as exc:", 1)[1]
+    failure_forbidden_tokens = (
+        "_close_db_pools(",
+        'getattr(db, "lock_pool", None)',
+        "db.api_pool",
+        "db.worker_pool",
+        "db.tool_pool",
+        "db.wake_pool",
+    )
+    violations = [token for token in failure_forbidden_tokens if token in failure_source]
+    if "def _close_db_pools" in source:
+        violations.append("def _close_db_pools")
+
+    assert violations == []
+    assert "_close_db_bundle_sync(db)" in failure_source
+    assert "_await_sync(db.aclose())" in source
+
+
+@pytest.mark.architecture
+def test_db_pool_bundle_create_partial_cleanup_uses_formal_pool_close_contract() -> None:
+    source = APP_RUNTIME_DB_POOL_BUNDLE.read_text(encoding="utf-8")
+    create_source = source.split("def create(cls", 1)[1].split("\n    @contextmanager", 1)[0]
+    partial_cleanup_source = source.split("def _close_partial_pools", 1)[1].split(
+        "\n\nasync def _close_pool",
+        1,
+    )[0]
+    combined = "\n".join((create_source, partial_cleanup_source))
+
+    forbidden_tokens = (
+        'getattr(pool, "close", None)',
+        "close = getattr",
+        "if close:",
+        "if close is not None",
+        "if not close",
+    )
+    violations = [token for token in forbidden_tokens if token in combined]
+
+    assert violations == []
+    assert "_close_partial_pools(" in create_source
+    assert "cast(_SyncClosePool, pool).close()" in partial_cleanup_source
+    assert "partial db pool cleanup failed" in partial_cleanup_source
+
+
+@pytest.mark.architecture
+def test_db_pool_bundle_discard_connection_uses_formal_connection_close_without_pool_fallback() -> None:
+    source = APP_RUNTIME_DB_POOL_BUNDLE.read_text(encoding="utf-8")
+    discard_source = source.split("def _discard_connection", 1)[1].split(
+        "\n\n\ndef _close_partial_pools",
+        1,
+    )[0]
+
+    forbidden_tokens = (
+        "close_returns",
+        'getattr(pool, "close_returns", None)',
+        'getattr(conn, "close", None)',
+        "discard = getattr",
+        "close = getattr",
+        "if discard:",
+        "if close:",
+    )
+    violations = [token for token in forbidden_tokens if token in discard_source]
+
+    assert violations == []
+    assert "conn.close()" in discard_source
+    assert "pool.putconn(conn)" in discard_source
+
+
+@pytest.mark.architecture
+def test_db_pool_bundle_pool_close_is_sync_contract_without_awaitable_fallback() -> None:
+    source = APP_RUNTIME_DB_POOL_BUNDLE.read_text(encoding="utf-8")
+    close_pool_source = source.split("async def _close_pool", 1)[1]
+
+    forbidden_tokens = (
+        "import inspect",
+        "inspect.isawaitable",
+        "await result",
+        "await pool.close()",
+    )
+    violations = [token for token in forbidden_tokens if token in source]
+
+    assert violations == []
+    assert "result = pool.close()" in close_pool_source
+    assert "db_pool_close_must_be_sync" in close_pool_source
+
+
+@pytest.mark.architecture
+def test_bootstrap_provider_cleanup_uses_formal_roots_without_object_graph_scan() -> None:
+    bootstrap_source = APP_RUNTIME_BOOTSTRAP.read_text(encoding="utf-8")
+    provider_types_source = PROVIDER_WIRING_TYPES.read_text(encoding="utf-8")
+    runtime_cleanup_source = bootstrap_source.split("async def _cleanup_runtime_providers", 1)[1].split(
+        "\ndef _cleanup_provider_roots_sync",
+        1,
+    )[0]
+    sync_cleanup_source = bootstrap_source.split("def _cleanup_provider_roots_sync", 1)[1].split(
+        "\ndef _close_db_bundle_sync",
+        1,
+    )[0]
+    wired_providers_aclose = provider_types_source.split("class WiredProviders", 1)[1].split(
+        "\n\n__all__",
+        1,
+    )[0]
+
+    forbidden_tokens = (
+        "_provider_cleanup_targets",
+        "_object_values_for_cleanup",
+        "_has_close_method",
+        "fields(",
+        "is_dataclass",
+        "inspect.isclass",
+        "inspect.ismodule",
+        "inspect.isroutine",
+        'getattr(provider, "aclose", None)',
+        'getattr(provider, "close", None)',
+    )
+    violations = [token for token in forbidden_tokens if token in bootstrap_source]
+
+    assert violations == []
+    assert "await runtime.providers.aclose()" in runtime_cleanup_source
+    assert "await runtime.agent_execution_gateway.aclose()" in runtime_cleanup_source
+    assert "await runtime.llm_gateway.aclose()" in runtime_cleanup_source
+    assert "_await_sync(providers.aclose())" in sync_cleanup_source
+    assert "_await_sync(agent_execution_gateway.aclose())" in sync_cleanup_source
+    assert "_await_sync(llm_gateway.aclose())" in sync_cleanup_source
+    assert "async def aclose(self) -> None" in wired_providers_aclose
+    assert "self.agent_execution_gateway" not in wired_providers_aclose
+
+
+@pytest.mark.architecture
+def test_stream_provider_connection_state_is_formal_runtime_contract() -> None:
+    asset_provider_source = ASSET_MARKET_PROVIDERS.read_text(encoding="utf-8")
+    dex_stream_protocol = asset_provider_source.split("class DexMarketStreamProvider", 1)[1].split(
+        "\n\n__all__",
+        1,
+    )[0]
+    assert "def connection_state_payload(self) -> dict[str, Any]" in dex_stream_protocol
+
+    ingestion_provider_source = INGESTION_PROVIDERS.read_text(encoding="utf-8")
+    upstream_protocol = ingestion_provider_source.split("class UpstreamClientProtocol", 1)[1].split(
+        "\n\n__all__",
+        1,
+    )[0]
+    assert "def connection_state_payload(self) -> dict[str, Any]" in upstream_protocol
+
+    stream_worker_source = MARKET_TICK_STREAM_WORKER.read_text(encoding="utf-8")
+    stream_helper_source = stream_worker_source.split("def _provider_connection_state_payload", 1)[1].split(
+        "\n\ndef _provider_failure_category",
+        1,
+    )[0]
+    readiness_helper_source = (
+        APP_RUNTIME_APP.read_text(encoding="utf-8")
+        .split(
+            "def _provider_state_payload",
+            1,
+        )[1]
+        .split("\n\ndef _now_ms", 1)[0]
+    )
+    diagnostics_helper_source = (
+        OPS_DIAGNOSTICS.read_text(encoding="utf-8")
+        .split(
+            "def _provider_connection_payload",
+            1,
+        )[1]
+        .split("\n\ndef _provider_status", 1)[0]
+    )
+    okx_adapter_source = (
+        OKX_PROVIDER_WIRING.read_text(encoding="utf-8")
+        .split(
+            "def connection_state_payload(self) -> dict[str, Any]:",
+            1,
+        )[1]
+        .split("\n\n\ndef wire_okx_provider_bundle", 1)[0]
+    )
+
+    helper_sources = {
+        "market_tick_stream_worker": stream_helper_source,
+        "app_readiness": readiness_helper_source,
+        "ops_diagnostics": diagnostics_helper_source,
+        "okx_adapter": okx_adapter_source,
+    }
+    forbidden_tokens = (
+        'getattr(provider, "connection_state_payload", None)',
+        'getattr(self._provider, "connection_state_payload", None)',
+        "if not callable(payload)",
+        "if payload is None",
+    )
+    violations = [
+        f"{source_name} contains {token}"
+        for source_name, source in helper_sources.items()
+        for token in forbidden_tokens
+        if token in source
+    ]
+
+    assert violations == []
+    assert "provider.connection_state_payload()" in stream_helper_source
+    assert "provider.connection_state_payload()" in readiness_helper_source
+    assert "provider.connection_state_payload()" in diagnostics_helper_source
+    assert "self._provider.connection_state_payload()" in okx_adapter_source
+
+
+@pytest.mark.architecture
+def test_readyz_does_not_keep_dead_notification_summary_fallback() -> None:
+    source = APP_RUNTIME_APP.read_text(encoding="utf-8")
+    forbidden_tokens = (
+        "def _notification_summary",
+        'repos.notifications.summary(subscriber_key="local")',
+        "except Exception:\n        return {}",
+    )
+    violations = [token for token in forbidden_tokens if token in source]
+
+    assert violations == []
+
+
+@pytest.mark.architecture
+def test_status_provider_roots_use_formal_runtime_provider_bundle_contract() -> None:
+    app_source = APP_RUNTIME_APP.read_text(encoding="utf-8")
+    stream_root_source = app_source.split("def _stream_dex_market", 1)[1].split(
+        "\n\ndef _agent_execution_status",
+        1,
+    )[0]
+    readiness_payload_source = app_source.split("def _readiness_payload", 1)[1].split(
+        "\n\ndef _workers_status_payload",
+        1,
+    )[0]
+    diagnostics_source = OPS_DIAGNOSTICS.read_text(encoding="utf-8")
+    diagnostics_provider_source = diagnostics_source.split("def _asset_market_provider_health", 1)[1].split(
+        "\n\ndef _connection_provider_payload",
+        1,
+    )[0]
+
+    helper_sources = {
+        "api_stream_root": stream_root_source,
+        "api_readiness": readiness_payload_source,
+        "ops_diagnostics_providers": diagnostics_provider_source,
+    }
+    forbidden_tokens = (
+        'getattr(runtime, "providers", None)',
+        'getattr(providers, "asset_market", None)',
+        'getattr(getattr(runtime, "providers", None), "asset_market", None)',
+        'getattr(runtime.collector, "upstream_client", None)',
+        'getattr(asset_market, "provider_health", ())',
+    )
+    violations = [
+        f"{source_name} contains {token}"
+        for source_name, source in helper_sources.items()
+        for token in forbidden_tokens
+        if token in source
+    ]
+
+    assert violations == []
+    assert "runtime.providers.asset_market.stream_dex_market" in stream_root_source
+    assert "runtime.collector.upstream_client" in readiness_payload_source
+    assert "runtime.providers.asset_market" in diagnostics_provider_source
+    assert "health_items = runtime.providers.asset_market.provider_health" in diagnostics_provider_source
+
+
+@pytest.mark.architecture
+def test_ops_diagnostics_collector_section_uses_formal_collector_status_contract() -> None:
+    diagnostics_source = OPS_DIAGNOSTICS.read_text(encoding="utf-8")
+    collector_source = diagnostics_source.split("def _collector_payload", 1)[1].split(
+        "\n\ndef _providers_payload",
+        1,
+    )[0]
+    forbidden_tokens = (
+        'getattr(runtime, "collector", None)',
+        'getattr(collector, "status", None)',
+        'getattr(status_object, "to_dict", None)',
+        'getattr(collector, "upstream_client", None)',
+        "if callable(to_dict)",
+        "else {}",
+        "details if isinstance(details, dict) else {}",
+    )
+    violations = [token for token in forbidden_tokens if token in collector_source]
+
+    assert violations == []
+    assert "details = runtime.collector.status.to_dict()" in collector_source
+    assert "provider = runtime.collector.upstream_client" in collector_source
+    assert "collector_status_payload_must_be_dict" in collector_source
+
+
+@pytest.mark.architecture
+def test_ops_diagnostics_asset_market_provider_health_items_use_explicit_contract_without_reflection() -> None:
+    diagnostics_source = OPS_DIAGNOSTICS.read_text(encoding="utf-8")
+    provider_health_source = diagnostics_source.split("def _provider_health_payload", 1)[1].split(
+        "\n\ndef _error_type",
+        1,
+    )[0]
+    forbidden_tokens = (
+        "def _object_payload",
+        "vars(",
+        "__dict__",
+        "is_dataclass",
+    )
+    violations = [token for token in forbidden_tokens if token in diagnostics_source]
+
+    assert violations == []
+    assert "isinstance(value, ProviderHealth)" in provider_health_source
+    assert "isinstance(value, Mapping)" in provider_health_source
+    assert "asset_market_provider_health_item_contract_required" in provider_health_source
+
+
+@pytest.mark.architecture
+def test_ops_diagnostics_config_uses_formal_runtime_settings_contract_without_optional_probe() -> None:
+    diagnostics_source = OPS_DIAGNOSTICS.read_text(encoding="utf-8")
+    watchlist_source = diagnostics_source.split("def _watchlist_domain", 1)[1].split(
+        "\n\ndef _notifications_domain",
+        1,
+    )[0]
+    config_source = diagnostics_source.split("def _config_payload", 1)[1].split(
+        "\n\ndef _suggested_checks",
+        1,
+    )[0]
+    forbidden_tokens = (
+        'getattr(runtime, "settings", None)',
+        'getattr(getattr(runtime, "settings", None), "handles", ())',
+        'getattr(settings, "app_home", "")',
+        'getattr(settings, "handles", ())',
+        'getattr(settings, "upstream_channels", ())',
+        'getattr(settings, "gmgn_configured", False)',
+        'getattr(settings, "okx_dex_configured", False)',
+        'getattr(settings, "llm_configured", False)',
+        'getattr(settings, "news_intel_enabled", False)',
+        'getattr(settings, "notification_rules", None)',
+    )
+    combined = f"{watchlist_source}\n{config_source}"
+    violations = [token for token in forbidden_tokens if token in combined]
+
+    assert violations == []
+    assert "configured_handles = tuple(runtime.settings.handles or ())" in watchlist_source
+    assert "settings = runtime.settings" in config_source
+    assert "app_home = Path(str(settings.app_home)).expanduser()" in config_source
+    assert 'handles_count": len(tuple(settings.handles or ()))' in config_source
+    assert 'upstream_channels": list(settings.upstream_channels or ())' in config_source
+
+
+@pytest.mark.architecture
+def test_ops_diagnostics_queues_use_formal_api_pool_connection_contract() -> None:
+    diagnostics_source = OPS_DIAGNOSTICS.read_text(encoding="utf-8")
+    queue_source = diagnostics_source.split("def _queues_payload", 1)[1].split(
+        "\n\ndef _queue_summary",
+        1,
+    )[0]
+    forbidden_tokens = (
+        'getattr(runtime, "db", None)',
+        'getattr(db, "api_pool", None)',
+        'getattr(api_pool, "connection", None)',
+        "if not callable(connection):",
+        "return []",
+    )
+    violations = [token for token in forbidden_tokens if token in queue_source]
+
+    assert violations == []
+    assert "with runtime.db.api_pool.connection() as conn:" in queue_source
+
+
+@pytest.mark.architecture
+def test_market_tick_stream_worker_iterator_cleanup_uses_formal_aclose_contract() -> None:
+    source = MARKET_TICK_STREAM_WORKER.read_text(encoding="utf-8")
+    stream_source = source.split("async def _stream_and_persist_ticks", 1)[1].split(
+        "\n    def _persist_ticks",
+        1,
+    )[0]
+
+    forbidden_tokens = (
+        'getattr(iterator, "aclose", None)',
+        "close = getattr(iterator",
+        "if close is not None",
+        "if close:",
+        "if not close",
+    )
+    violations = [token for token in forbidden_tokens if token in stream_source]
+
+    assert violations == []
+    assert "class _AsyncCloseIterator(Protocol)" in source
+    assert "await cast(_AsyncCloseIterator, iterator).aclose()" in stream_source
+
+
+@pytest.mark.architecture
+def test_market_tick_stream_worker_constructor_uses_formal_runtime_contract_without_synthetic_defaults() -> None:
+    source = MARKET_TICK_STREAM_WORKER.read_text(encoding="utf-8")
+    init_source = source.split("def __init__", 1)[1].split("\n    async def run_once", 1)[0]
+    settings_source = (SRC / "platform/config/settings.py").read_text(encoding="utf-8")
+    settings_class = settings_source.split("class MarketTickStreamWorkerSettings", 1)[1].split(
+        "\n\nclass MarketTickPollWorkerSettings",
+        1,
+    )[0]
+    factory_source = (WORKER_FACTORIES / "asset_market.py").read_text(encoding="utf-8")
+    stream_factory_source = factory_source.split(
+        'constructed["market_tick_stream"] = MarketTickStreamWorker(',
+        1,
+    )[1].split(
+        "\n            )",
+        1,
+    )[0]
+    forbidden_source_tokens = (
+        "from types import SimpleNamespace",
+        "DEFAULT_SUBSCRIPTION_LIMIT",
+        "DEFAULT_STREAM_CYCLE_SECONDS",
+        "def _settings",
+        "def _stream_cycle_seconds",
+        "SimpleNamespace(",
+        "SimpleNamespace(**",
+        'getattr(settings, "__dict__", {})',
+        'getattr(settings, "stream_cycle_seconds"',
+    )
+    forbidden_init_tokens = (
+        "resolved_settings",
+        "wake_bus",
+        "db: Any | None",
+        "pool_bundle or db",
+        "wake_emitter or",
+        "subscription_limit:",
+        "interval_seconds:",
+        "stream_cycle_seconds:",
+        "settings: Any | None",
+        "telemetry or object()",
+        'getattr(settings, "',
+        'getattr(resolved_settings, "',
+    )
+    forbidden_factory_tokens = (
+        "subscription_limit=workers.market_tick_stream.subscription_limit",
+        "wake_bus=",
+        "db=",
+    )
+    violations = (
+        [f"worker-source:{token}" for token in forbidden_source_tokens if token in source]
+        + [f"worker-init:{token}" for token in forbidden_init_tokens if token in init_source]
+        + [f"factory:{token}" for token in forbidden_factory_tokens if token in stream_factory_source]
+    )
+
+    assert violations == []
+    assert "market_tick_stream_settings_required" in init_source
+    assert "market_tick_stream_db_required" in init_source
+    assert "market_tick_stream_provider_required" in init_source
+    assert "self.subscription_limit = max(0, int(settings.subscription_limit))" in init_source
+    assert "self.stream_cycle_seconds = max(0.001, float(settings.stream_cycle_seconds))" in init_source
+    assert "settings=workers.market_tick_stream" in stream_factory_source
+    assert "pool_bundle=ctx.db" in stream_factory_source
+    assert "stream_dex_market=stream_dex_market" in stream_factory_source
+    assert "wake_emitter=ctx.wake_bus" in stream_factory_source
+    assert "stream_cycle_seconds: float = Field(default=30.0, ge=0.001)" in settings_class
+
+
+@pytest.mark.architecture
+def test_market_tick_poll_worker_constructor_uses_formal_runtime_contract_without_synthetic_defaults() -> None:
+    source = MARKET_TICK_POLL_WORKER.read_text(encoding="utf-8")
+    init_source = source.split("def __init__", 1)[1].split("\n    async def run_once", 1)[0]
+    factory_source = (WORKER_FACTORIES / "asset_market.py").read_text(encoding="utf-8")
+    poll_factory_source = factory_source.split('constructed["market_tick_poll"] = MarketTickPollWorker(', 1)[1].split(
+        "\n            )",
+        1,
+    )[0]
+    forbidden_source_tokens = (
+        "from types import SimpleNamespace",
+        "DEFAULT_BATCH_SIZE",
+        "def _settings",
+        "model_dump",
+        "vars(",
+        "SimpleNamespace(",
+        "SimpleNamespace(**",
+    )
+    forbidden_init_tokens = (
+        "resolved_settings",
+        "dex_quote_market:",
+        "cex_market:",
+        "dex_quote_market=",
+        "cex_market=",
+        "self.dex_quote_market = dex_quote_market",
+        "self.cex_market = cex_market",
+        "wake_bus",
+        "db: Any | None",
+        "pool_bundle or db",
+        "providers or",
+        "wake_emitter or",
+        'getattr(settings, "',
+        'getattr(resolved_settings, "',
+        'getattr(settings, "__dict__", {})',
+        "interval_seconds:",
+        "batch_size:",
+    )
+    forbidden_provider_tokens = (
+        'getattr(self.providers, "dex_quote_market", None)',
+        'getattr(self.providers, "cex_market", None)',
+    )
+    forbidden_factory_tokens = (
+        "batch_size=workers.market_tick_poll.batch_size",
+        "dex_quote_market=",
+        "cex_market=",
+        "wake_bus=",
+        "db=",
+    )
+    violations = (
+        [f"worker-source:{token}" for token in forbidden_source_tokens if token in source]
+        + [f"worker-init:{token}" for token in forbidden_init_tokens if token in init_source]
+        + [f"worker-provider:{token}" for token in forbidden_provider_tokens if token in source]
+        + [f"factory:{token}" for token in forbidden_factory_tokens if token in poll_factory_source]
+    )
+
+    assert violations == []
+    assert "if settings is None:" in init_source
+    assert "market_tick_poll_settings_required" in init_source
+    assert "if providers is None:" in init_source
+    assert "market_tick_poll_providers_required" in init_source
+    assert "if pool_bundle is None:" in init_source
+    assert "market_tick_poll_db_required" in init_source
+    assert "self.batch_size = max(1, int(settings.batch_size))" in init_source
+    assert "self.concurrency = max(1, int(settings.concurrency))" in init_source
+    assert "self.dex_quote_market = providers.dex_quote_market" in init_source
+    assert "self.cex_market = providers.cex_market" in init_source
+    assert "settings=workers.market_tick_poll" in poll_factory_source
+    assert "providers=asset_market" in poll_factory_source
+    assert "pool_bundle=ctx.db" in poll_factory_source
+    assert "wake_emitter=ctx.wake_bus" in poll_factory_source
+
+
+@pytest.mark.architecture
+def test_live_price_gateway_constructor_uses_formal_settings_contract_without_synthetic_defaults() -> None:
+    source = LIVE_PRICE_GATEWAY.read_text(encoding="utf-8")
+    init_source = source.split("def __init__", 1)[1].split("\n    async def run_once", 1)[0]
+    settings_source = (SRC / "platform/config/settings.py").read_text(encoding="utf-8")
+    settings_class = settings_source.split("class LivePriceGatewayWorkerSettings", 1)[1].split(
+        "\n\nclass ResolutionRefreshWorkerSettings",
+        1,
+    )[0]
+    factory_source = (WORKER_FACTORIES / "asset_market.py").read_text(encoding="utf-8")
+    live_factory_source = factory_source.split(
+        'constructed["live_price_gateway"] = LivePriceGateway(',
+        1,
+    )[1].split(
+        "\n        )",
+        1,
+    )[0]
+    forbidden_source_tokens = (
+        "from types import SimpleNamespace",
+        "DEFAULT_LIVE_TARGET_LIMIT",
+        "DEFAULT_LIVE_TARGET_TTL_SECONDS",
+        "SimpleNamespace(",
+        "del providers",
+    )
+    forbidden_init_tokens = (
+        "providers:",
+        "interval_seconds:",
+        "settings: Any | None",
+        'getattr(settings, "',
+    )
+    forbidden_factory_tokens = (
+        "providers=asset_market",
+        "interval_seconds=workers.live_price_gateway.interval_seconds",
+    )
+    violations = (
+        [f"worker-source:{token}" for token in forbidden_source_tokens if token in source]
+        + [f"worker-init:{token}" for token in forbidden_init_tokens if token in init_source]
+        + [f"factory:{token}" for token in forbidden_factory_tokens if token in live_factory_source]
+    )
+
+    assert violations == []
+    assert "live_price_gateway_settings_required" in init_source
+    assert "live_price_gateway_db_required" in init_source
+    assert "self.target_limit = max(0, int(settings.target_limit))" in init_source
+    assert "self.target_ttl_seconds = max(0.0, float(settings.target_ttl_seconds))" in init_source
+    assert "settings=workers.live_price_gateway" in live_factory_source
+    assert "pool_bundle=ctx.db" in live_factory_source
+    assert "target_limit: int = Field(default=100, ge=0)" in settings_class
+    assert "target_ttl_seconds: float = Field(default=300.0, ge=0)" in settings_class
+
+
+@pytest.mark.architecture
+def test_news_fetch_worker_uses_formal_settings_news_settings_and_wake_contract() -> None:
+    source = NEWS_FETCH_WORKER.read_text(encoding="utf-8")
+    init_source = source.split("def __init__", 1)[1].split("\n    async def on_close", 1)[0]
+    claim_source = source.split("def run_once", 1)[1].split("\n    def _fetch_source", 1)[0]
+    repository_source = NEWS_REPOSITORY.read_text(encoding="utf-8")
+    claim_due_sources = repository_source.split("def claim_due_sources", 1)[1].split(
+        "\n\n    @_news_repository_write\n    def start_fetch_run",
+        1,
+    )[0]
+    settings_source = (SRC / "platform/config/settings.py").read_text(encoding="utf-8")
+    settings_class = settings_source.split("class NewsFetchWorkerSettings", 1)[1].split(
+        "\n\nclass NewsItemProcessWorkerSettings",
+        1,
+    )[0]
+    factory_source = (WORKER_FACTORIES / "news_intel.py").read_text(encoding="utf-8")
+    fetch_factory_source = factory_source.split(
+        'constructed["news_fetch"] = NewsFetchWorker(',
+        1,
+    )[1].split(
+        '        else:\n            constructed["news_fetch"] = unavailable_worker',
+        1,
+    )[0]
+    forbidden_source_tokens = (
+        'getattr(self.settings, "statement_timeout_seconds"',
+        'getattr(self.settings, "batch_size"',
+        "getattr(self.news_settings",
+        '"batch_size", 10',
+        'getattr(self.settings, "lease_ms"',
+        '"lease_ms", 60_000',
+        "wake_bus",
+    )
+    forbidden_repository_tokens = (
+        "_DEFAULT_SOURCE_CLAIM_LEASE_MS",
+        "claim_lease_ms: int =",
+    )
+    forbidden_init_tokens = (
+        "**kwargs",
+        "super().__init__(**kwargs)",
+        "settings: Any | None",
+        "feed_client: NewsSourceProvider | None",
+    )
+    forbidden_factory_tokens = ("wake_bus=ctx.wake_bus",)
+    violations = (
+        [f"worker-source:{token}" for token in forbidden_source_tokens if token in source]
+        + [
+            f"repository:{token}"
+            for token in forbidden_repository_tokens
+            if token in repository_source or token in claim_due_sources
+        ]
+        + [f"worker-init:{token}" for token in forbidden_init_tokens if token in init_source]
+        + [f"factory:{token}" for token in forbidden_factory_tokens if token in fetch_factory_source]
+    )
+
+    assert violations == []
+    assert "news_fetch_settings_required" in init_source
+    assert "news_fetch_db_required" in init_source
+    assert "news_fetch_news_settings_required" in init_source
+    assert "news_fetch_feed_client_required" in init_source
+    assert "self.wake_emitter = wake_emitter" in init_source
+    assert "configured_sources = tuple(self.news_settings.sources or ())" in source
+    assert "statement_timeout_seconds=self.settings.statement_timeout_seconds" in source
+    assert "claim_lease_ms=max(1, int(self.settings.lease_ms))" in claim_source
+    assert "return max(1, int(self.settings.batch_size))" in source
+    assert "self.wake_emitter.notify_news_item_written" in source
+    assert "_notify_news_page_dirty(\n            self.wake_emitter," in source
+    assert "wake_emitter=ctx.wake_bus" in fetch_factory_source
+    assert "batch_size: int = Field(default=5, ge=1)" in settings_class
+    assert "lease_ms: int = Field(default=60_000, ge=1)" in settings_class
+    assert "statement_timeout_seconds: float = Field(default=30.0, ge=0)" in settings_class
+
+
+@pytest.mark.architecture
+def test_news_page_projection_worker_uses_formal_settings_contract_without_runtime_defaults() -> None:
+    source = NEWS_PAGE_PROJECTION_WORKER.read_text(encoding="utf-8")
+    init_source = source.split("def __init__", 1)[1].split("\n    async def run_once", 1)[0]
+    settings_source = (SRC / "platform/config/settings.py").read_text(encoding="utf-8")
+    settings_class = settings_source.split("class NewsPageProjectionWorkerSettings", 1)[1].split(
+        "\n\nclass NewsSourceQualityProjectionWorkerSettings",
+        1,
+    )[0]
+    factory_source = (WORKER_FACTORIES / "news_intel.py").read_text(encoding="utf-8")
+    page_factory_source = factory_source.split(
+        'constructed["news_page_projection"] = NewsPageProjectionWorker(',
+        1,
+    )[1].split(
+        "    if workers.news_source_quality_projection.enabled:",
+        1,
+    )[0]
+    forbidden_source_tokens = (
+        'getattr(self.settings, "statement_timeout_seconds"',
+        'getattr(self.settings, "batch_size"',
+        'getattr(self.settings, "lease_ms"',
+        'getattr(self.settings, "retry_ms"',
+        '"batch_size", 100',
+        '"lease_ms", 120_000',
+        '"retry_ms", 30_000',
+    )
+    forbidden_init_tokens = (
+        "**kwargs",
+        "wake_bus",
+        "super().__init__(**kwargs)",
+        "settings: Any | None",
+    )
+    forbidden_factory_tokens = ("wake_bus=ctx.wake_bus",)
+    violations = (
+        [f"worker-source:{token}" for token in forbidden_source_tokens if token in source]
+        + [f"worker-init:{token}" for token in forbidden_init_tokens if token in init_source]
+        + [f"factory:{token}" for token in forbidden_factory_tokens if token in page_factory_source]
+    )
+
+    assert violations == []
+    assert "news_page_projection_settings_required" in init_source
+    assert "news_page_projection_db_required" in init_source
+    assert "statement_timeout_seconds=self.settings.statement_timeout_seconds" in source
+    assert "return max(1, int(self.settings.batch_size))" in source
+    assert "return max(1, int(self.settings.lease_ms))" in source
+    assert "return max(1, int(self.settings.retry_ms))" in source
+    assert "wake_bus=ctx.wake_bus" not in page_factory_source
+    assert "batch_size: int = Field(default=100, ge=1)" in settings_class
+    assert "lease_ms: int = Field(default=120_000, ge=1)" in settings_class
+    assert "retry_ms: int = Field(default=30_000, ge=1)" in settings_class
+    assert "statement_timeout_seconds: float = Field(default=30.0, ge=0)" in settings_class
+
+
+@pytest.mark.architecture
+def test_news_item_process_worker_uses_formal_settings_and_wake_contract_without_runtime_defaults() -> None:
+    source = NEWS_ITEM_PROCESS_WORKER.read_text(encoding="utf-8")
+    init_source = source.split("def __init__", 1)[1].split("\n    async def run_once", 1)[0]
+    settings_source = (SRC / "platform/config/settings.py").read_text(encoding="utf-8")
+    settings_class = settings_source.split("class NewsItemProcessWorkerSettings", 1)[1].split(
+        "\n\nclass NewsItemBriefWorkerSettings",
+        1,
+    )[0]
+    factory_source = (WORKER_FACTORIES / "news_intel.py").read_text(encoding="utf-8")
+    item_process_factory_source = factory_source.split(
+        'constructed["news_item_process"] = NewsItemProcessWorker(',
+        1,
+    )[1].split(
+        "    brief_provider = news_providers.brief_provider",
+        1,
+    )[0]
+    forbidden_source_tokens = (
+        'getattr(self.settings, "statement_timeout_seconds"',
+        'getattr(self.settings, "batch_size"',
+        'getattr(self.settings, "lease_ms"',
+        'getattr(self.settings, "max_attempts"',
+        'getattr(self.settings, "retry_delay_ms"',
+        '"batch_size", 10',
+        '"lease_ms", 120_000',
+        '"max_attempts", 3',
+        '"retry_delay_ms", 60_000',
+    )
+    forbidden_init_tokens = (
+        "**kwargs",
+        "wake_bus",
+        "super().__init__(**kwargs)",
+        "settings: Any | None",
+    )
+    forbidden_factory_tokens = ("wake_bus=ctx.wake_bus",)
+    violations = (
+        [f"worker-source:{token}" for token in forbidden_source_tokens if token in source]
+        + [f"worker-init:{token}" for token in forbidden_init_tokens if token in init_source]
+        + [f"factory:{token}" for token in forbidden_factory_tokens if token in item_process_factory_source]
+    )
+
+    assert violations == []
+    assert "news_item_process_settings_required" in init_source
+    assert "news_item_process_db_required" in init_source
+    assert "self.wake_emitter = wake_emitter" in init_source
+    assert "self.wake_emitter.notify_news_item_processed" in source
+    assert "statement_timeout_seconds=self.settings.statement_timeout_seconds" in source
+    assert "return max(1, int(self.settings.batch_size))" in source
+    assert "return max(1, int(self.settings.lease_ms))" in source
+    assert "return max(1, int(self.settings.max_attempts))" in source
+    assert "return max(1, int(self.settings.retry_delay_ms))" in source
+    assert "wake_emitter=ctx.wake_bus" in item_process_factory_source
+    assert "batch_size: int = Field(default=10, ge=1)" in settings_class
+    assert "lease_ms: int = Field(default=120_000, ge=1)" in settings_class
+    assert "max_attempts: int = Field(default=3, ge=1)" in settings_class
+    assert "retry_delay_ms: int = Field(default=60_000, ge=1)" in settings_class
+    assert "statement_timeout_seconds: float = Field(default=30.0, ge=0)" in settings_class
+
+
+@pytest.mark.architecture
+def test_news_item_brief_worker_uses_formal_settings_and_wake_contract_without_runtime_defaults() -> None:
+    source = NEWS_ITEM_BRIEF_WORKER.read_text(encoding="utf-8")
+    init_source = source.split("def __init__", 1)[1].split("\n    async def run_once", 1)[0]
+    settings_source = (SRC / "platform/config/settings.py").read_text(encoding="utf-8")
+    settings_class = settings_source.split("class NewsItemBriefWorkerSettings", 1)[1].split(
+        "\n\nclass NewsPageProjectionWorkerSettings",
+        1,
+    )[0]
+    factory_source = (WORKER_FACTORIES / "news_intel.py").read_text(encoding="utf-8")
+    item_brief_factory_source = factory_source.split(
+        "constructed[worker_name] = NewsItemBriefWorker(",
+        1,
+    )[1].split(
+        "        else:\n            constructed[worker_name] = unavailable_worker",
+        1,
+    )[0]
+    forbidden_source_tokens = (
+        'getattr(self.settings, "statement_timeout_seconds"',
+        'getattr(self.settings, "batch_size"',
+        'getattr(self.settings, "lease_ms"',
+        'getattr(self.settings, "retry_ms"',
+        'getattr(self.settings, "backpressure_cooldown_ms"',
+        '"batch_size", 5',
+        '"lease_ms", 120_000',
+        '"retry_ms", self._backpressure_cooldown_ms()',
+        '"backpressure_cooldown_ms", 60_000',
+        "missing_provider",
+    )
+    forbidden_init_tokens = (
+        "**kwargs",
+        "wake_bus",
+        "super().__init__(**kwargs)",
+        "settings: Any | None",
+        "provider: Any | None",
+    )
+    forbidden_factory_tokens = ("wake_bus=ctx.wake_bus",)
+    violations = (
+        [f"worker-source:{token}" for token in forbidden_source_tokens if token in source]
+        + [f"worker-init:{token}" for token in forbidden_init_tokens if token in init_source]
+        + [f"factory:{token}" for token in forbidden_factory_tokens if token in item_brief_factory_source]
+    )
+
+    assert violations == []
+    assert "news_item_brief_settings_required" in init_source
+    assert "news_item_brief_db_required" in init_source
+    assert "news_item_brief_provider_required" in init_source
+    assert "self.wake_emitter = wake_emitter" in init_source
+    assert "self.wake_emitter.notify_news_item_brief_updated" in source
+    assert "statement_timeout_seconds=self.settings.statement_timeout_seconds" in source
+    assert "return max(1, int(self.settings.batch_size))" in source
+    assert "return max(1, int(self.settings.lease_ms))" in source
+    assert "return max(1, int(self.settings.retry_ms))" in source
+    assert "return max(1, int(self.settings.backpressure_cooldown_ms))" in source
+    assert "wake_emitter=ctx.wake_bus" in item_brief_factory_source
+    assert "batch_size: int = Field(default=5, ge=1)" in settings_class
+    assert "lease_ms: int = Field(default=120_000, ge=1)" in settings_class
+    assert "retry_ms: int = Field(default=60_000, ge=1)" in settings_class
+    assert "backpressure_cooldown_ms: int = Field(default=60_000, ge=1)" in settings_class
+    assert "statement_timeout_seconds: float = Field(default=30.0, ge=0)" in settings_class
+
+
+@pytest.mark.architecture
+def test_news_source_quality_projection_worker_uses_formal_settings_and_wake_contract() -> None:
+    source = NEWS_SOURCE_QUALITY_PROJECTION_WORKER.read_text(encoding="utf-8")
+    init_source = source.split("def __init__", 1)[1].split("\n    async def run_once", 1)[0]
+    settings_source = (SRC / "platform/config/settings.py").read_text(encoding="utf-8")
+    settings_class = settings_source.split("class NewsSourceQualityProjectionWorkerSettings", 1)[1].split(
+        "\n\nclass WorkersSettings",
+        1,
+    )[0]
+    factory_source = (WORKER_FACTORIES / "news_intel.py").read_text(encoding="utf-8")
+    source_quality_factory_source = factory_source.split(
+        'constructed["news_source_quality_projection"] = NewsSourceQualityProjectionWorker(',
+        1,
+    )[1].split(
+        "    return constructed",
+        1,
+    )[0]
+    forbidden_source_tokens = (
+        'getattr(self.settings, "statement_timeout_seconds"',
+        'getattr(self.settings, "windows"',
+        'getattr(self.settings, "batch_size"',
+        'getattr(self.settings, "lease_ms"',
+        'getattr(self.settings, "retry_ms"',
+        '"batch_size", 100',
+        '"lease_ms", 120_000',
+        '"retry_ms", 30_000',
+        '("24h", "7d")',
+    )
+    forbidden_init_tokens = (
+        "**kwargs",
+        "wake_bus",
+        "super().__init__(**kwargs)",
+        "settings: Any | None",
+    )
+    forbidden_factory_tokens = ("wake_bus=ctx.wake_bus",)
+    violations = (
+        [f"worker-source:{token}" for token in forbidden_source_tokens if token in source]
+        + [f"worker-init:{token}" for token in forbidden_init_tokens if token in init_source]
+        + [f"factory:{token}" for token in forbidden_factory_tokens if token in source_quality_factory_source]
+    )
+
+    assert violations == []
+    assert "news_source_quality_projection_settings_required" in init_source
+    assert "news_source_quality_projection_db_required" in init_source
+    assert "self.wake_emitter = wake_emitter" in init_source
+    assert "statement_timeout_seconds=self.settings.statement_timeout_seconds" in source
+    assert "return tuple(str(window).strip().lower() for window in self.settings.windows)" in source
+    assert "return max(1, int(self.settings.batch_size))" in source
+    assert "return max(1, int(self.settings.lease_ms))" in source
+    assert "return max(1, int(self.settings.retry_ms))" in source
+    assert "_notify_news_page_dirty(\n            self.wake_emitter," in source
+    assert "wake_emitter=ctx.wake_bus" in source_quality_factory_source
+    assert "batch_size: int = Field(default=100, ge=1)" in settings_class
+    assert "lease_ms: int = Field(default=120_000, ge=1)" in settings_class
+    assert "retry_ms: int = Field(default=30_000, ge=1)" in settings_class
+    assert "statement_timeout_seconds: float = Field(default=30.0, ge=0)" in settings_class
+    assert 'windows: tuple[str, ...] = ("24h", "7d")' in settings_class
+
+
+@pytest.mark.architecture
+def test_token_radar_projection_worker_uses_formal_settings_and_wake_contract_without_runtime_defaults() -> None:
+    source = TOKEN_RADAR_PROJECTION_WORKER.read_text(encoding="utf-8")
+    projection_service_source = (SRC / "domains" / "token_intel" / "services" / "token_radar_projection.py").read_text(
+        encoding="utf-8"
+    )
+    init_source = source.split("def __init__", 1)[1].split("\n    async def run_once", 1)[0]
+    settings_source = (SRC / "platform/config/settings.py").read_text(encoding="utf-8")
+    settings_class = settings_source.split("class TokenRadarProjectionWorkerSettings", 1)[1].split(
+        "\n\nclass CexOiRadarBoardWorkerSettings",
+        1,
+    )[0]
+    per_worker_settings = settings_source.split("class PerWorkerSettings", 1)[1].split(
+        "\n\nclass WorkerDefaults",
+        1,
+    )[0]
+    factory_source = (WORKER_FACTORIES / "token_intel.py").read_text(encoding="utf-8")
+    factory_block = factory_source.split(
+        "worker_name: TokenRadarProjectionWorker(",
+        1,
+    )[1].split(
+        "    }\n",
+        1,
+    )[0]
+    ops_source = CLI_OPS.read_text(encoding="utf-8")
+    forbidden_source_tokens = (
+        "DEFAULT_WINDOWS",
+        "DEFAULT_SCOPES",
+        "DEFAULT_HOT_WINDOWS",
+        "TOKEN_RADAR_VENUES",
+        'getattr(settings, "windows"',
+        'getattr(settings, "scopes"',
+        'getattr(settings, "venues"',
+        'getattr(settings, "hot_windows"',
+        'getattr(settings, "batch_size"',
+        'getattr(settings, "cold_interval_seconds"',
+        'getattr(settings, "private_cache_retention_enabled"',
+        'getattr(settings, "private_cache_retention_ms"',
+        'getattr(self.settings, "statement_timeout_seconds"',
+        '"batch_size", 100',
+        '"cold_interval_seconds", 60.0',
+        '"statement_timeout_seconds", None',
+        "self.wake_bus",
+        "wake_bus:",
+        "wake_bus=",
+        "_dirty_target_lease_ms",
+    )
+    forbidden_service_tokens = (
+        "DIRTY_TARGET_LEASE_MS",
+        "DIRTY_TARGET_RETRY_MS",
+    )
+    forbidden_init_tokens = (
+        "**kwargs",
+        "super().__init__(**kwargs)",
+        "settings: Any | None",
+    )
+    forbidden_factory_tokens = ("wake_bus=ctx.wake_bus",)
+    violations = (
+        [f"worker-source:{token}" for token in forbidden_source_tokens if token in source]
+        + [f"projection-service:{token}" for token in forbidden_service_tokens if token in projection_service_source]
+        + [f"worker-init:{token}" for token in forbidden_init_tokens if token in init_source]
+        + [f"factory:{token}" for token in forbidden_factory_tokens if token in factory_block]
+    )
+
+    assert violations == []
+    assert "token_radar_projection_settings_required" in init_source
+    assert "token_radar_projection_db_required" in init_source
+    assert "self.wake_emitter = wake_emitter" in init_source
+    assert "self.windows = tuple(str(window).strip().lower() for window in settings.windows)" in source
+    assert "self.scopes = tuple(str(scope).strip().lower() for scope in settings.scopes)" in source
+    assert "self.venues = tuple(str(venue).strip().lower() for venue in settings.venues)" in source
+    assert "hot_windows = tuple(str(window).strip().lower() for window in settings.hot_windows)" in source
+    assert "self.limit = max(1, int(settings.batch_size))" in source
+    assert "self.lease_ms = max(1, int(settings.lease_ms))" in source
+    assert "self.retry_ms = max(1, int(settings.retry_ms))" in source
+    assert "self.private_cache_retention_enabled = bool(settings.private_cache_retention_enabled)" in source
+    assert "self.private_cache_retention_ms = max(1, int(settings.private_cache_retention_ms))" in source
+    assert "self.cold_interval_ms = int(float(settings.cold_interval_seconds) * 1000)" in source
+    assert "lease_ms=self.lease_ms" in source
+    assert '"retry_ms": self.retry_ms' in source
+    assert "projection.prune_private_cache(" in source
+    assert '"retention_ms": self.private_cache_retention_ms' in source
+    assert "statement_timeout_seconds=self.settings.statement_timeout_seconds" in source
+    assert "self.wake_emitter.notify_token_radar_updated" in source
+    assert "wake_emitter=ctx.wake_bus" in factory_block
+    assert "wake_bus=db.wake_emitter()" not in ops_source
+    assert "wake_emitter=db.wake_emitter()" in ops_source
+    assert "batch_size: int = Field(default=100, ge=1)" in settings_class
+    assert "statement_timeout_seconds: float = Field(default=120.0, ge=0)" in settings_class
+    assert 'wakes_on: tuple[str, ...] = ("market_tick_current_updated", "resolution_updated")' in settings_class
+    assert 'windows: tuple[str, ...] = ("5m", "1h", "4h", "24h")' in settings_class
+    assert 'scopes: tuple[str, ...] = ("all", "matched")' in settings_class
+    assert 'hot_windows: tuple[str, ...] = ("5m",)' in settings_class
+    assert "cold_interval_seconds: float = Field(default=60.0, ge=0)" in settings_class
+    assert "lease_ms: int = Field(default=120_000, ge=1)" in per_worker_settings
+    assert "retry_ms: int = Field(default=30_000, ge=1)" in settings_class
+    assert "private_cache_retention_enabled: bool = True" in settings_class
+    assert "private_cache_retention_ms: int = Field(default=172_800_000, ge=1)" in settings_class
+
+
+@pytest.mark.architecture
+def test_pulse_candidate_worker_and_job_service_use_formal_settings_without_runtime_defaults() -> None:
+    worker_source = PULSE_CANDIDATE_WORKER.read_text(encoding="utf-8")
+    job_service_source = PULSE_CANDIDATE_JOB_SERVICE.read_text(encoding="utf-8")
+    evidence_builder_source = PULSE_EVIDENCE_PACKET_BUILDER.read_text(encoding="utf-8")
+    evidence_source_repository_source = PULSE_EVIDENCE_SOURCE_REPOSITORY.read_text(encoding="utf-8")
+    admission_policy_source = PULSE_ADMISSION_POLICY.read_text(encoding="utf-8")
+    init_source = worker_source.split("def __init__", 1)[1].split("\n    async def on_close", 1)[0]
+    job_init_source = job_service_source.split("def __init__", 1)[1].split("\n    async def run_job", 1)[0]
+    settings_source = (SRC / "platform/config/settings.py").read_text(encoding="utf-8")
+    settings_class = settings_source.split("class PulseCandidateWorkerSettings", 1)[1].split(
+        "\n\nclass NarrativeAdmissionWorkerSettings",
+        1,
+    )[0]
+    factory_source = (WORKER_FACTORIES / "pulse.py").read_text(encoding="utf-8")
+    factory_block = factory_source.split(
+        "worker_name: PulseCandidateWorker(",
+        1,
+    )[1].split(
+        "        )\n",
+        1,
+    )[0]
+    forbidden_worker_tokens = (
+        "DEFAULT_WINDOWS",
+        "DEFAULT_SCOPES",
+        "SIGNAL_PULSE_WINDOWS",
+        'getattr(settings, "windows"',
+        'getattr(settings, "scopes"',
+        'getattr(settings, "batch_size"',
+        'getattr(settings, "max_agent_jobs_per_cycle"',
+        'getattr(settings, "max_attempts"',
+        'getattr(settings, "max_enqueues_per_cycle"',
+        'getattr(settings, "max_pending_jobs_global"',
+        'getattr(settings, "max_pending_jobs_per_window_scope"',
+        'getattr(settings, "trigger_lease_ms"',
+        'getattr(settings, "trigger_capacity_retry_ms"',
+        'getattr(settings, "trigger_error_retry_ms"',
+        'getattr(settings, "target_edge_budget_per_hour"',
+        'getattr(settings, "candidate_edge_budget_per_hour"',
+        'getattr(settings, "failure_circuit_per_hour"',
+        'getattr(settings, "failure_circuit_reasons"',
+        'getattr(settings, "timeline_debounce_seconds"',
+        'getattr(config, "min_rank_score"',
+        'getattr(config, "trade_candidate_min"',
+        'getattr(config, "token_watch_min"',
+        'getattr(config, "high_info_rejection_min"',
+        'getattr(config, "high_conviction_min"',
+        'getattr(self.settings, "statement_timeout_seconds"',
+        'getattr(pulse_jobs, "running_timeout_ms"',
+        '"batch_size", 10',
+        '"max_agent_jobs_per_cycle", 2',
+        '"max_attempts", 3',
+        '"max_enqueues_per_cycle", 10',
+        '"max_pending_jobs_global", 100',
+        '"max_pending_jobs_per_window_scope", 25',
+        "PULSE_EDGE_BUDGET_PER_HOUR",
+        "PULSE_TARGET_EDGE_BUDGET_PER_HOUR",
+        "PULSE_FAILURE_CIRCUIT_PER_HOUR",
+        "PULSE_FAILURE_CIRCUIT_REASONS",
+        "PULSE_TRIGGER_LEASE_MS",
+        "PULSE_TRIGGER_CAPACITY_RETRY_MS",
+        "PULSE_TRIGGER_ERROR_RETRY_MS",
+        "PulseTriggerThresholds()",
+        '"statement_timeout_seconds", None',
+        "300_000) or 300_000",
+    )
+    forbidden_job_service_tokens = (
+        'getattr(self.settings, "statement_timeout_seconds"',
+        'getattr(self.settings, "evidence_market_freshness_ms"',
+        "statement_timeout_seconds=getattr",
+        '"statement_timeout_seconds", None',
+        "PulseEvidenceBuilder(repos.pulse_evidence_sources).build",
+    )
+    forbidden_evidence_builder_tokens = (
+        "market_freshness_ms: int =",
+        "3_600_000",
+    )
+    forbidden_evidence_source_repository_tokens = (
+        "max_age_ms: int =",
+        "now_ms: int | None =",
+        "_now_ms() if now_ms is None",
+    )
+    violations = (
+        [f"worker:{token}" for token in forbidden_worker_tokens if token in worker_source]
+        + [f"job-service:{token}" for token in forbidden_job_service_tokens if token in job_service_source]
+        + [
+            f"evidence-builder:{token}"
+            for token in forbidden_evidence_builder_tokens
+            if token in evidence_builder_source
+        ]
+        + [
+            f"evidence-source-repository:{token}"
+            for token in forbidden_evidence_source_repository_tokens
+            if token in evidence_source_repository_source
+        ]
+        + [
+            f"policy:{token}"
+            for token in (
+                "recent_failure_count >= 3",
+                "recent_failure_count: int =",
+                "failure_circuit_per_hour: int =",
+                "timeline_debounce_seconds: int =",
+                '_int(job.get("max_attempts")) or 3',
+                'job.get("max_attempts")) or 3',
+            )
+            if token in admission_policy_source
+        ]
+    )
+
+    assert violations == []
+    assert "pulse_candidate_settings_required" in init_source
+    assert "pulse_candidate_db_required" in init_source
+    assert "pulse_candidate_decision_client_required" in init_source
+    assert "self.windows = tuple(str(window).strip().lower() for window in settings.windows)" in worker_source
+    assert "self.scopes = tuple(str(scope).strip().lower() for scope in settings.scopes)" in worker_source
+    assert "self.batch_size = max(1, int(settings.batch_size))" in worker_source
+    assert "self.max_agent_jobs_per_cycle = max(1, int(settings.max_agent_jobs_per_cycle))" in worker_source
+    assert "self.max_attempts = max(1, int(settings.max_attempts))" in worker_source
+    assert "self.max_enqueues_per_cycle = max(1, int(settings.max_enqueues_per_cycle))" in worker_source
+    assert "self.max_pending_jobs_global = max(1, int(settings.max_pending_jobs_global))" in worker_source
+    assert (
+        "self.max_pending_jobs_per_window_scope = max(1, int(settings.max_pending_jobs_per_window_scope))"
+        in worker_source
+    )
+    assert "self.job_running_timeout_ms = max(1, int(settings.job_running_timeout_ms))" in worker_source
+    assert "self.trigger_lease_ms = max(1, int(settings.trigger_lease_ms))" in worker_source
+    assert "self.trigger_capacity_retry_ms = max(1, int(settings.trigger_capacity_retry_ms))" in worker_source
+    assert "self.trigger_error_retry_ms = max(1, int(settings.trigger_error_retry_ms))" in worker_source
+    assert "self.target_edge_budget_per_hour = max(1, int(settings.target_edge_budget_per_hour))" in worker_source
+    assert "self.candidate_edge_budget_per_hour = max(1, int(settings.candidate_edge_budget_per_hour))" in worker_source
+    assert "self.failure_circuit_per_hour = max(1, int(settings.failure_circuit_per_hour))" in worker_source
+    assert "self.timeline_debounce_seconds = max(0, int(settings.timeline_debounce_seconds))" in worker_source
+    assert "settings.failure_circuit_reasons" in worker_source
+    assert "running_timeout_ms=self.job_running_timeout_ms" in worker_source
+    assert "stale_after_ms=int(running_timeout_ms)" in worker_source
+    assert (
+        "return PulseTriggerThresholds(min_rank_score=int(settings.trigger_thresholds.min_rank_score))" in worker_source
+    )
+    assert "trade_candidate_min=int(settings.gate_thresholds.trade_candidate_min)" in worker_source
+    assert "token_watch_min=int(settings.gate_thresholds.token_watch_min)" in worker_source
+    assert "high_info_rejection_min=int(settings.gate_thresholds.high_info_rejection_min)" in worker_source
+    assert "high_conviction_min=int(settings.gate_thresholds.high_conviction_min)" in worker_source
+    assert "lease_ms=self.trigger_lease_ms" in worker_source
+    assert "retry_ms=self.trigger_error_retry_ms" in worker_source
+    assert "retry_ms=self.trigger_capacity_retry_ms" in worker_source
+    assert "target_limit=self.target_edge_budget_per_hour" in worker_source
+    assert "candidate_limit=self.candidate_edge_budget_per_hour" in worker_source
+    assert "failure_circuit_per_hour=self.failure_circuit_per_hour" in worker_source
+    assert "timeline_debounce_seconds=self.timeline_debounce_seconds" in worker_source
+    assert "reasons=failure_circuit_reasons" in worker_source
+    assert "failure_circuit_per_hour: int," in admission_policy_source
+    assert "timeline_debounce_seconds: int," in admission_policy_source
+    assert "recent_failure_count >= max(1, int(failure_circuit_per_hour))" in admission_policy_source
+    assert 'attempt_count = int(job["attempt_count"])' in admission_policy_source
+    assert 'max_attempts = int(job["max_attempts"])' in admission_policy_source
+    assert "pulse_existing_failed_job_attempt_contract_required" in admission_policy_source
+    assert "statement_timeout_seconds=self.settings.statement_timeout_seconds" in worker_source
+    assert "pulse_candidate_job_settings_required" in job_init_source
+    assert "pulse_candidate_job_db_required" in job_init_source
+    assert "pulse_candidate_job_decision_client_required" in job_init_source
+    assert "statement_timeout_seconds=self.settings.statement_timeout_seconds" in job_service_source
+    assert "market_freshness_ms=max(1, int(self.settings.evidence_market_freshness_ms))" in job_service_source
+    assert "market_freshness_ms: int," in evidence_builder_source
+    assert "max_age_ms: int," in evidence_source_repository_source
+    assert "now_ms: int," in evidence_source_repository_source
+    assert "settings=workers.pulse_candidate" in factory_block
+    assert "wake_waiter=ctx.db.wake_listener(worker_name, workers.pulse_candidate.wakes_on)" in factory_block
+    assert "batch_size: int = Field(default=10, ge=1)" in settings_class
+    assert "max_agent_jobs_per_cycle: int = Field(default=2, ge=1)" in settings_class
+    assert "max_attempts: int = Field(default=3, ge=1)" in settings_class
+    assert "max_enqueues_per_cycle: int = Field(default=25, ge=1)" in settings_class
+    assert "max_pending_jobs_global: int = Field(default=100, ge=1)" in settings_class
+    assert "max_pending_jobs_per_window_scope: int = Field(default=25, ge=1)" in settings_class
+    assert "job_running_timeout_ms: int = Field(default=300_000, ge=1)" in settings_class
+    assert "trigger_lease_ms: int = Field(default=60_000, ge=1)" in settings_class
+    assert "trigger_capacity_retry_ms: int = Field(default=30_000, ge=1)" in settings_class
+    assert "trigger_error_retry_ms: int = Field(default=60_000, ge=1)" in settings_class
+    assert "target_edge_budget_per_hour: int = Field(default=3, ge=1)" in settings_class
+    assert "candidate_edge_budget_per_hour: int = Field(default=3, ge=1)" in settings_class
+    assert "failure_circuit_per_hour: int = Field(default=3, ge=1)" in settings_class
+    assert "timeline_debounce_seconds: int = Field(default=600, ge=0)" in settings_class
+    assert "evidence_market_freshness_ms: int = Field(default=3_600_000, ge=1)" in settings_class
+    assert (
+        'failure_circuit_reasons: tuple[str, ...] = ("schema_validation_failed", "unknown_evidence_id")'
+        in settings_class
+    )
+    assert "statement_timeout_seconds: float = Field(default=30.0, ge=0)" in settings_class
+    assert 'wakes_on: tuple[str, ...] = ("token_radar_updated",)' in settings_class
+    assert 'scopes: tuple[str, ...] = ("all", "matched")' in settings_class
+    assert "trigger_thresholds: PulseCandidateTriggerThresholds = Field" in settings_class
+    assert "gate_thresholds: PulseCandidateGateThresholds = Field" in settings_class
+
+
+@pytest.mark.architecture
+def test_narrative_admission_worker_uses_formal_settings_contract_without_runtime_defaults() -> None:
+    source = NARRATIVE_ADMISSION_WORKER.read_text(encoding="utf-8")
+    service_source = NARRATIVE_ADMISSION_SERVICE.read_text(encoding="utf-8")
+    init_source = source.split("def __init__", 1)[1].split("\n    async def run_once", 1)[0]
+    settings_source = (SRC / "platform/config/settings.py").read_text(encoding="utf-8")
+    settings_class = settings_source.split("class NarrativeAdmissionWorkerSettings", 1)[1].split(
+        "\n\nclass NotificationRuleWorkerSettings",
+        1,
+    )[0]
+    factory_source = (WORKER_FACTORIES / "narrative_intel.py").read_text(encoding="utf-8")
+    factory_block = factory_source.split(
+        '"narrative_admission": NarrativeAdmissionWorker(',
+        1,
+    )[1].split(
+        "        )\n",
+        1,
+    )[0]
+    forbidden_source_tokens = (
+        'getattr(settings, "hot_rank_limit"',
+        'getattr(settings, "min_rank_score"',
+        'getattr(self.settings, "admission_limit"',
+        'getattr(self.settings, "source_limit"',
+        'getattr(self.settings, "lease_seconds"',
+        'getattr(self.settings, "error_retry_seconds"',
+        'getattr(self.settings, "statement_timeout_seconds"',
+        '"admission_limit", 200',
+        '"source_limit", 2000',
+        '"lease_seconds", 60',
+        '"error_retry_seconds", 60',
+        '"statement_timeout_seconds", None',
+        "wake_bus",
+        "wake_emitter",
+    )
+    forbidden_init_tokens = (
+        "**kwargs",
+        "super().__init__(**kwargs)",
+        "settings: Any | None",
+    )
+    forbidden_factory_tokens = (
+        "wake_bus=ctx.wake_bus",
+        "wake_emitter=ctx.wake_bus",
+    )
+    forbidden_service_tokens = (
+        "hot_rank_limit: int =",
+        "min_rank_score: int =",
+        "carry_ttl_ms",
+    )
+    violations = (
+        [f"worker-source:{token}" for token in forbidden_source_tokens if token in source]
+        + [f"worker-init:{token}" for token in forbidden_init_tokens if token in init_source]
+        + [f"factory:{token}" for token in forbidden_factory_tokens if token in factory_block]
+        + [f"service:{token}" for token in forbidden_service_tokens if token in service_source]
+    )
+
+    assert violations == []
+    assert "narrative_admission_settings_required" in init_source
+    assert "narrative_admission_db_required" in init_source
+    assert "hot_rank_limit=int(settings.hot_rank_limit)" in source
+    assert "min_rank_score=int(settings.min_rank_score)" in source
+    assert "hot_rank_limit: int," in service_source
+    assert "min_rank_score: int," in service_source
+    assert "admission_limit = max(1, int(self.settings.admission_limit))" in source
+    assert "source_limit = max(1, int(self.settings.source_limit))" in source
+    assert "lease_ms = max(1, int(self.settings.lease_ms))" in source
+    assert "retry_ms = max(1, int(self.settings.retry_ms))" in source
+    assert "statement_timeout_seconds=self.settings.statement_timeout_seconds" in source
+    assert "wake_waiter=ctx.db.wake_listener" in factory_block
+    assert "lease_ms: int = Field(default=60_000, ge=1)" in settings_class
+    assert "retry_ms: int = Field(default=60_000, ge=1)" in settings_class
+    assert "statement_timeout_seconds: float = Field(default=30.0, ge=0)" in settings_class
+    assert "admission_limit: int = Field(default=200, ge=1)" in settings_class
+    assert "source_limit: int = Field(default=2000, ge=1)" in settings_class
+
+
+@pytest.mark.architecture
+def test_macro_sync_worker_and_service_use_formal_settings_wake_contract_without_runtime_defaults() -> None:
+    worker_source = MACRO_SYNC_WORKER.read_text(encoding="utf-8")
+    init_source = worker_source.split("def __init__", 1)[1].split("\n    async def run_once", 1)[0]
+    service_source = MACRO_SYNC_SERVICE.read_text(encoding="utf-8")
+    settings_source = (SRC / "platform/config/settings.py").read_text(encoding="utf-8")
+    settings_class = settings_source.split("class MacroSyncWorkerSettings", 1)[1].split(
+        "\n\nclass PulseCandidateTriggerThresholds",
+        1,
+    )[0]
+    factory_source = (WORKER_FACTORIES / "macro_intel.py").read_text(encoding="utf-8")
+    macro_factory_source = factory_source.split(
+        "constructed[worker_name] = MacroSyncWorker(",
+        1,
+    )[1].split(
+        "    elif workers.macro_sync.enabled:",
+        1,
+    )[0]
+    forbidden_worker_tokens = (
+        "**kwargs",
+        "super().__init__(**kwargs)",
+        "wake_bus",
+        'getattr(self.settings, "batch_size"',
+        '"batch_size", 1',
+    )
+    forbidden_service_tokens = (
+        "def _sync_settings",
+        "getattr(sync_settings",
+        "self.wake_bus",
+        "wake_bus:",
+        "wake_bus=",
+        '"source_name", "macrodata-cli"',
+        '"bundle_name", "macro-core"',
+        '"bootstrap_lookback_days", 1095',
+        '"max_window_days", 31',
+        '"steady_overlap_days", 7',
+        '"interval_seconds", 900.0',
+        '"max_bootstrap_windows_per_cycle", 1',
+        '"max_attempts", 8',
+        '"lease_ms", 300_000',
+        '"retry_delay_ms", 900_000',
+        '"statement_timeout_seconds", None',
+    )
+    forbidden_factory_tokens = ("wake_bus=ctx.wake_bus",)
+    violations = (
+        [f"worker:{token}" for token in forbidden_worker_tokens if token in worker_source]
+        + [f"service:{token}" for token in forbidden_service_tokens if token in service_source]
+        + [f"factory:{token}" for token in forbidden_factory_tokens if token in macro_factory_source]
+    )
+
+    assert violations == []
+    assert "macro_sync_settings_required" in init_source
+    assert "macro_sync_db_required" in init_source
+    assert "macro_sync_settings_root_required" in init_source
+    assert "self.wake_emitter = wake_emitter" in init_source
+    assert "configured = max(1, int(self.settings.batch_size))" in worker_source
+    assert "self.sync_settings = _require_macro_sync_worker_settings(settings)" in service_source
+    assert "source_name=str(self.sync_settings.source_name)" in service_source
+    assert "bundle_name=str(self.sync_settings.bundle_name)" in service_source
+    assert "bootstrap_lookback_days=int(self.sync_settings.bootstrap_lookback_days)" in service_source
+    assert "steady_interval_seconds=float(self.sync_settings.interval_seconds)" in service_source
+    assert "lease_ms=int(self.sync_settings.lease_ms)" in service_source
+    assert "retry_delay_ms=int(self.sync_settings.retry_delay_ms)" in service_source
+    assert "statement_timeout_seconds=self.sync_settings.statement_timeout_seconds" in service_source
+    assert "wake_emitter=ctx.wake_bus" in macro_factory_source
+    assert "batch_size: int = Field(default=1, ge=1)" in settings_class
+    assert "statement_timeout_seconds: float = Field(default=30.0, ge=0)" in settings_class
+    assert "lease_ms: int = Field(default=300_000, ge=1)" in settings_class
+    assert "retry_delay_ms: int = Field(default=900_000, ge=1)" in settings_class
+
+
+@pytest.mark.architecture
+def test_macro_view_projection_worker_uses_formal_settings_and_wake_contract_without_runtime_defaults() -> None:
+    source = MACRO_VIEW_PROJECTION_WORKER.read_text(encoding="utf-8")
+    init_source = source.split("def __init__", 1)[1].split("\n    async def run_once", 1)[0]
+    settings_source = (SRC / "platform/config/settings.py").read_text(encoding="utf-8")
+    settings_class = settings_source.split("class MacroViewProjectionWorkerSettings", 1)[1].split(
+        "\n\nclass MacroDailyBriefProjectionWorkerSettings",
+        1,
+    )[0]
+    factory_source = (WORKER_FACTORIES / "macro_intel.py").read_text(encoding="utf-8")
+    macro_factory_source = factory_source.split(
+        "constructed[worker_name] = MacroViewProjectionWorker(",
+        1,
+    )[1].split(
+        "    if workers.macro_daily_brief_projection.enabled:",
+        1,
+    )[0]
+    forbidden_source_tokens = (
+        "MACRO_VIEW_HISTORY_LIMIT_PER_SERIES",
+        "MACRO_VIEW_HISTORY_LOOKBACK_DAYS",
+        'getattr(self.settings, "statement_timeout_seconds"',
+        'getattr(self.settings, "batch_size"',
+        'getattr(self.settings, "lookback_days"',
+        'getattr(self.settings, "limit_per_series"',
+        'getattr(self.settings, "lease_ms"',
+        'getattr(self.settings, "retry_ms"',
+        '"lease_ms", 300_000',
+        '"retry_ms", 300_000',
+        "limit=1,",
+    )
+    forbidden_init_tokens = (
+        "**kwargs",
+        "wake_bus",
+        "super().__init__(**kwargs)",
+        "settings: Any | None",
+    )
+    forbidden_factory_tokens = ("wake_bus=ctx.wake_bus",)
+    violations = (
+        [f"worker-source:{token}" for token in forbidden_source_tokens if token in source]
+        + [f"worker-init:{token}" for token in forbidden_init_tokens if token in init_source]
+        + [f"factory:{token}" for token in forbidden_factory_tokens if token in macro_factory_source]
+    )
+
+    assert violations == []
+    assert "macro_view_projection_settings_required" in init_source
+    assert "macro_view_projection_db_required" in init_source
+    assert "self.wake_emitter = wake_emitter" in init_source
+    assert "limit=self._batch_size()" in source
+    assert "self.wake_emitter.notify_macro_view_snapshot_updated" in source
+    assert "statement_timeout_seconds=self.settings.statement_timeout_seconds" in source
+    assert "return max(1, int(self.settings.batch_size))" in source
+    assert "return max(1, int(self.settings.lookback_days))" in source
+    assert "return max(1, int(self.settings.limit_per_series))" in source
+    assert "return max(1, int(self.settings.lease_ms))" in source
+    assert "return max(1, int(self.settings.retry_ms))" in source
+    assert "wake_emitter=ctx.wake_bus" in macro_factory_source
+    assert "batch_size: int = Field(default=250, ge=1)" in settings_class
+    assert "lease_ms: int = Field(default=300_000, ge=1)" in settings_class
+    assert "retry_ms: int = Field(default=300_000, ge=1)" in settings_class
+    assert "lookback_days: int = Field(default=1095, ge=1095)" in settings_class
+    assert "limit_per_series: int = Field(default=800, ge=800)" in settings_class
+    assert "statement_timeout_seconds: float = Field(default=30.0, ge=0)" in settings_class
+
+
+@pytest.mark.architecture
+def test_macro_daily_brief_projection_worker_uses_formal_settings_contract_without_runtime_defaults() -> None:
+    source = MACRO_DAILY_BRIEF_PROJECTION_WORKER.read_text(encoding="utf-8")
+    init_source = source.split("def __init__", 1)[1].split("\n    async def run_once", 1)[0]
+    settings_source = (SRC / "platform/config/settings.py").read_text(encoding="utf-8")
+    settings_class = settings_source.split("class MacroDailyBriefProjectionWorkerSettings", 1)[1].split(
+        "\n\nclass MacroSyncWorkerSettings",
+        1,
+    )[0]
+    factory_source = (WORKER_FACTORIES / "macro_intel.py").read_text(encoding="utf-8")
+    factory_block = factory_source.split(
+        "constructed[worker_name] = MacroDailyBriefProjectionWorker(",
+        1,
+    )[1].split("    return constructed", 1)[0]
+    forbidden_tokens = (
+        "**kwargs",
+        "super().__init__(**kwargs)",
+        'getattr(self.settings, "statement_timeout_seconds"',
+        '"statement_timeout_seconds", None',
+        "wake_bus",
+    )
+    violations = [token for token in forbidden_tokens if token in source]
+
+    assert violations == []
+    assert "macro_daily_brief_projection_settings_required" in init_source
+    assert "macro_daily_brief_projection_db_required" in init_source
+    assert "statement_timeout_seconds=self.settings.statement_timeout_seconds" in source
+    assert "settings=workers.macro_daily_brief_projection" in factory_block
+    assert "wake_waiter=ctx.db.wake_listener" in factory_block
+    assert "statement_timeout_seconds: float = Field(default=30.0, ge=0)" in settings_class
+
+
+@pytest.mark.architecture
+def test_market_tick_current_projection_worker_uses_formal_settings_contract_without_runtime_defaults() -> None:
+    source = MARKET_TICK_CURRENT_PROJECTION_WORKER.read_text(encoding="utf-8")
+    forbidden_tokens = (
+        "DEFAULT_RETRY_MS",
+        'getattr(self.settings, "statement_timeout_seconds", None)',
+        'getattr(self.settings, "batch_size"',
+        'getattr(self.settings, "lease_ms"',
+        'getattr(self.settings, "retry_ms"',
+        '"lease_ms", 120_000',
+        '"batch_size", 100',
+    )
+    violations = [token for token in forbidden_tokens if token in source]
+
+    assert violations == []
+    assert source.count("statement_timeout_seconds=self.settings.statement_timeout_seconds") == 3
+    assert "limit=max(1, int(self.settings.batch_size))" in source
+    assert "lease_ms=max(1, int(self.settings.lease_ms))" in source
+    assert "retry_ms=max(1, int(self.settings.retry_ms))" in source
+
+
+@pytest.mark.architecture
+def test_token_capture_tier_worker_constructor_uses_formal_settings_contract_without_synthetic_defaults() -> None:
+    source = TOKEN_CAPTURE_TIER_WORKER.read_text(encoding="utf-8")
+    init_source = source.split("def __init__", 1)[1].split("\n    async def run_once", 1)[0]
+    project_source = source.split("def project_once", 1)[1].split("\n\n@dataclass", 1)[0]
+    factory_source = (WORKER_FACTORIES / "asset_market.py").read_text(encoding="utf-8")
+    capture_factory_source = factory_source.split(
+        'constructed["token_capture_tier"] = TokenCaptureTierWorker(',
+        1,
+    )[1].split(
+        "\n            )",
+        1,
+    )[0]
+    forbidden_source_tokens = (
+        "from types import SimpleNamespace",
+        "DEFAULT_BATCH_SIZE",
+        "DEFAULT_WS_LIMIT",
+        "DEFAULT_POLL_LIMIT",
+        "DEFAULT_LEASE_MS",
+        "def _settings",
+        "model_dump",
+        "vars(",
+        "SimpleNamespace(",
+        "SimpleNamespace(**",
+        "__dict__",
+    )
+    forbidden_init_tokens = (
+        "resolved_settings",
+        "db: Any | None",
+        "pool_bundle or db",
+        "interval_seconds:",
+        "batch_size:",
+        "ws_limit:",
+        "poll_limit:",
+        'getattr(settings, "',
+        'getattr(resolved_settings, "',
+        'getattr(self.settings, "lease_ms"',
+    )
+    forbidden_factory_tokens = (
+        "batch_size=workers.token_capture_tier.batch_size",
+        "ws_limit=workers.token_capture_tier.ws_limit",
+        "poll_limit=workers.token_capture_tier.poll_limit",
+        "db=",
+    )
+    violations = (
+        [f"worker-source:{token}" for token in forbidden_source_tokens if token in source]
+        + [f"worker-init:{token}" for token in forbidden_init_tokens if token in init_source]
+        + [f"factory:{token}" for token in forbidden_factory_tokens if token in capture_factory_source]
+    )
+
+    assert violations == []
+    assert "if settings is None:" in init_source
+    assert "token_capture_tier_settings_required" in init_source
+    assert "if pool_bundle is None:" in init_source
+    assert "token_capture_tier_db_required" in init_source
+    assert "self.batch_size = max(1, int(settings.batch_size))" in init_source
+    assert "self.ws_limit = max(0, int(settings.ws_limit))" in init_source
+    assert "self.poll_limit = max(0, int(settings.poll_limit))" in init_source
+    assert "lease_ms=max(1, int(self.settings.lease_ms))" in source
+    assert "batch_size: int," in project_source
+    assert "ws_limit: int," in project_source
+    assert "poll_limit: int," in project_source
+    assert "settings=workers.token_capture_tier" in capture_factory_source
+    assert "pool_bundle=ctx.db" in capture_factory_source
+
+
+@pytest.mark.architecture
+def test_event_anchor_backfill_worker_constructor_uses_formal_runtime_contract_without_synthetic_defaults() -> None:
+    source = EVENT_ANCHOR_BACKFILL_WORKER.read_text(encoding="utf-8")
+    init_source = source.split("def __init__", 1)[1].split("\n    async def run_once", 1)[0]
+    session_source = source.split("def _worker_session", 1)[1].split(
+        "\n    @contextmanager\n    def _transaction_session",
+        1,
+    )[0]
+    factory_source = (WORKER_FACTORIES / "asset_market.py").read_text(encoding="utf-8")
+    backfill_factory_source = factory_source.split(
+        'constructed["event_anchor_backfill"] = EventAnchorBackfillWorker(',
+        1,
+    )[1].split(
+        "\n        )",
+        1,
+    )[0]
+    forbidden_source_tokens = (
+        "from types import SimpleNamespace",
+        "DEFAULT_BATCH_SIZE",
+        "DEFAULT_CONCURRENCY",
+        "DEFAULT_MIN_AGE_MS",
+        "DEFAULT_ACTIVE_WINDOW_MS",
+        "DEFAULT_MAX_ANCHOR_LAG_MS",
+        "DEFAULT_INTERVAL_SECONDS",
+        "DEFAULT_LEASE_MS",
+        "def _settings",
+        "model_dump",
+        "vars(",
+        "SimpleNamespace(",
+        "SimpleNamespace(**",
+        "__dict__",
+        'getattr(self.settings, "statement_timeout_seconds", None)',
+    )
+    forbidden_init_tokens = (
+        "resolved_settings",
+        "dex_quote_market",
+        "cex_market",
+        "wake_bus",
+        "db: Any | None",
+        "pool_bundle or db",
+        "interval_seconds:",
+        "batch_size:",
+        "concurrency:",
+        "min_age_ms:",
+        "active_window_ms:",
+        "max_anchor_lag_ms:",
+        'getattr(settings, "',
+        'getattr(resolved_settings, "',
+    )
+    forbidden_factory_tokens = (
+        "batch_size=workers.event_anchor_backfill.batch_size",
+        "concurrency=workers.event_anchor_backfill.concurrency",
+        "min_age_ms=workers.event_anchor_backfill.min_age_ms",
+        "active_window_ms=workers.event_anchor_backfill.active_window_ms",
+        "max_anchor_lag_ms=workers.event_anchor_backfill.max_anchor_lag_ms",
+        "db=",
+        "wake_bus=",
+        "dex_quote_market=",
+        "cex_market=",
+    )
+    violations = (
+        [f"worker-source:{token}" for token in forbidden_source_tokens if token in source]
+        + [f"worker-init:{token}" for token in forbidden_init_tokens if token in init_source]
+        + [f"factory:{token}" for token in forbidden_factory_tokens if token in backfill_factory_source]
+    )
+
+    assert violations == []
+    assert "if settings is None:" in init_source
+    assert "event_anchor_backfill_settings_required" in init_source
+    assert "if pool_bundle is None:" in init_source
+    assert "event_anchor_backfill_db_required" in init_source
+    assert "if providers is None:" in init_source
+    assert "event_anchor_backfill_providers_required" in init_source
+    assert "self.batch_size = max(1, int(settings.batch_size))" in init_source
+    assert "self.concurrency = max(1, int(settings.concurrency))" in init_source
+    assert "self.lease_ms = max(1, int(settings.lease_ms))" in init_source
+    assert "statement_timeout_seconds=self.settings.statement_timeout_seconds" in session_source
+    assert "settings=workers.event_anchor_backfill" in backfill_factory_source
+    assert "pool_bundle=ctx.db" in backfill_factory_source
+    assert "providers=asset_market" in backfill_factory_source
+    assert "wake_emitter=ctx.wake_bus" in backfill_factory_source
+
+
+@pytest.mark.architecture
+def test_ingest_event_anchor_window_uses_formal_settings_without_service_defaults() -> None:
+    ingest_source = INGEST_SERVICE.read_text(encoding="utf-8")
+    bootstrap_source = APP_RUNTIME_BOOTSTRAP.read_text(encoding="utf-8")
+    pooled_init_source = bootstrap_source.split("class _PooledIngestStore", 1)[1].split(
+        "\n    def insert_raw_frame",
+        1,
+    )[0]
+    ingest_helper_source = bootstrap_source.split("def _ingest_service_for_repos", 1)[1].split(
+        "\n\n\ndef _prepared_value",
+        1,
+    )[0]
+    assemble_source = bootstrap_source.split("def _assemble_runtime", 1)[1].split(
+        "\n\nclass _PooledIngestStore",
+        1,
+    )[0]
+    forbidden_ingest_tokens = (
+        "DEFAULT_EVENT_ANCHOR_ACTIVE_WINDOW_MS",
+        "event_anchor_active_window_ms: int =",
+    )
+    forbidden_bootstrap_tokens = (
+        "event_anchor_active_window_ms: int = 300_000",
+        "event_anchor_active_window_ms: int =",
+    )
+    violations = [f"ingest:{token}" for token in forbidden_ingest_tokens if token in ingest_source] + [
+        f"bootstrap:{token}"
+        for token in forbidden_bootstrap_tokens
+        if token in pooled_init_source or token in ingest_helper_source
+    ]
+
+    assert violations == []
+    assert "event_anchor_active_window_ms: int," in ingest_source
+    assert "event_anchor_active_window_ms: int," in pooled_init_source
+    assert "event_anchor_active_window_ms: int," in ingest_helper_source
+    assert "event_anchor_active_window_ms=workers.event_anchor_backfill.active_window_ms" in assemble_source
+
+
+@pytest.mark.architecture
+def test_token_profile_current_worker_uses_formal_settings_contract_without_runtime_defaults() -> None:
+    source = TOKEN_PROFILE_CURRENT_WORKER.read_text(encoding="utf-8")
+    rebuild_source = source.split("def _rebuild_once", 1)[1].split("\n\n\ndef rebuild_token_profile_current_once", 1)[0]
+    helper_signature = source.split("def rebuild_token_profile_current_once", 1)[1].split(") -> dict[str, Any]:", 1)[0]
+    settings_source = (SRC / "platform/config/settings.py").read_text(encoding="utf-8")
+    settings_class = settings_source.split("class TokenProfileCurrentWorkerSettings", 1)[1].split(
+        "\n\nclass TokenCaptureTierWorkerSettings",
+        1,
+    )[0]
+    forbidden_tokens = (
+        "DEFAULT_LEASE_MS",
+        "DEFAULT_RETRY_MS",
+        'getattr(self.settings, "statement_timeout_seconds", None)',
+        'getattr(self.settings, "batch_size"',
+        'getattr(self.settings, "lease_ms"',
+        'getattr(self.settings, "retry_ms"',
+        "limit: int =",
+        "lease_owner: str =",
+        "lease_ms: int =",
+        "retry_ms: int =",
+    )
+    violations = [token for token in forbidden_tokens if token in source]
+
+    assert violations == []
+    assert "statement_timeout_seconds=self.settings.statement_timeout_seconds" in rebuild_source
+    assert "limit=max(1, int(self.settings.batch_size))" in rebuild_source
+    assert "lease_ms=max(1, int(self.settings.lease_ms))" in rebuild_source
+    assert "retry_ms=max(1, int(self.settings.retry_ms))" in rebuild_source
+    assert "limit: int," in helper_signature
+    assert "lease_owner: str," in helper_signature
+    assert "lease_ms: int," in helper_signature
+    assert "retry_ms: int," in helper_signature
+    assert "retry_ms: int = Field(default=30_000, ge=1)" in settings_class
+
+
+@pytest.mark.architecture
+def test_token_image_mirror_worker_uses_formal_settings_contract_without_runtime_defaults() -> None:
+    source = TOKEN_IMAGE_MIRROR_WORKER.read_text(encoding="utf-8")
+    service_source = TOKEN_IMAGE_MIRROR_SERVICE.read_text(encoding="utf-8")
+    settings_source = (SRC / "platform/config/settings.py").read_text(encoding="utf-8")
+    settings_class = settings_source.split("class TokenImageMirrorWorkerSettings", 1)[1].split(
+        "\n\nclass TokenProfileCurrentWorkerSettings",
+        1,
+    )[0]
+    forbidden_tokens = (
+        "DEFAULT_LEASE_MS",
+        "DEFAULT_RETRY_MS",
+        'getattr(self.settings, "statement_timeout_seconds"',
+        'getattr(self.settings, "batch_size"',
+        'getattr(self.settings, "lease_ms"',
+        'getattr(self.settings, "retry_ms"',
+        'getattr(self.settings, "source_limit"',
+        '"statement_timeout_seconds", 120.0',
+        '"batch_size", 100',
+    )
+    violations = [token for token in forbidden_tokens if token in source]
+
+    assert violations == []
+    assert source.count("statement_timeout_seconds=float(self.settings.statement_timeout_seconds)") == 6
+    assert "limit=max(1, int(self.settings.batch_size))" in source
+    assert "lease_ms=max(1, int(self.settings.lease_ms))" in source
+    assert "retry_ms=max(1, int(self.settings.retry_ms))" in source
+    service_forbidden_tokens = (
+        "TOKEN_IMAGE_MIRROR_RETRY_MS",
+        "retry_ms: int =",
+    )
+    service_violations = [token for token in service_forbidden_tokens if token in service_source]
+    assert service_violations == []
+    assert "retry_ms: int = Field(default=300_000, ge=1)" in settings_class
+
+
+@pytest.mark.architecture
+def test_asset_profile_refresh_worker_uses_formal_settings_contract_without_runtime_defaults() -> None:
+    source = ASSET_PROFILE_REFRESH_WORKER.read_text(encoding="utf-8")
+    service_source = (SRC / "domains/asset_market/services/asset_profile_refresh.py").read_text(encoding="utf-8")
+    repository_source = (SRC / "domains/asset_market/repositories/asset_profile_repository.py").read_text(
+        encoding="utf-8"
+    )
+    settings_source = (SRC / "platform/config/settings.py").read_text(encoding="utf-8")
+    settings_class = settings_source.split("class AssetProfileRefreshWorkerSettings", 1)[1].split(
+        "\n\nclass TokenImageMirrorWorkerSettings",
+        1,
+    )[0]
+    forbidden_tokens = (
+        "DEFAULT_LEASE_MS",
+        "DEFAULT_PROVIDER_RETRY_MS",
+        'getattr(self.settings, "statement_timeout_seconds"',
+        'getattr(self.settings, "batch_size"',
+        'getattr(self.settings, "lease_ms"',
+        'getattr(self.settings, "provider_retry_ms"',
+        '"batch_size", 50',
+    )
+    violations = [token for token in forbidden_tokens if token in source]
+    policy_forbidden_tokens = (
+        "READY_REFRESH_MS",
+        "MISSING_REFRESH_MS",
+        "ERROR_REFRESH_MS",
+        "next_refresh_at_ms=int(now_ms) +",
+        "due_at_ms=now_ms + READY_REFRESH_MS",
+        "due_at_ms=now_ms + MISSING_REFRESH_MS",
+        "due_at_ms=now_ms + ERROR_REFRESH_MS",
+    )
+    policy_violations = [
+        token
+        for token in policy_forbidden_tokens
+        if token in source or token in service_source or token in repository_source
+    ]
+
+    assert violations == []
+    assert policy_violations == []
+    assert source.count("statement_timeout_seconds=self.settings.statement_timeout_seconds") == 4
+    assert "limit=max(1, int(self.settings.batch_size))" in source
+    assert "lease_ms=max(1, int(self.settings.lease_ms))" in source
+    assert "return max(1, int(self.settings.provider_retry_ms))" in source
+    assert "ready_refresh_ms = max(1, int(self.settings.ready_refresh_ms))" in source
+    assert "missing_refresh_ms = max(1, int(self.settings.missing_refresh_ms))" in source
+    assert "error_refresh_ms = max(1, int(self.settings.error_refresh_ms))" in source
+    assert "provider_retry_ms: int = Field(default=300_000, ge=1)" in settings_class
+    assert "ready_refresh_ms: int = Field(default=21_600_000, ge=1)" in settings_class
+    assert "missing_refresh_ms: int = Field(default=900_000, ge=1)" in settings_class
+    assert "error_refresh_ms: int = Field(default=900_000, ge=1)" in settings_class
+
+
+@pytest.mark.architecture
+def test_resolution_refresh_worker_uses_formal_settings_and_wake_contract_without_runtime_defaults() -> None:
+    source = RESOLUTION_REFRESH_WORKER.read_text(encoding="utf-8")
+    init_source = source.split("def __init__", 1)[1].split("\n    async def run_once", 1)[0]
+    run_source = source.split("def _run_refresh_once", 1)[1].split("\n\n\ndef _fetch_lookup_provider_result", 1)[0]
+    factory_source = (WORKER_FACTORIES / "asset_market.py").read_text(encoding="utf-8")
+    resolution_factory_source = factory_source.split(
+        'constructed["resolution_refresh"] = ResolutionRefreshWorker(',
+        1,
+    )[1].split(
+        "\n            )",
+        1,
+    )[0]
+    forbidden_source_tokens = (
+        "DEFAULT_DISCOVERY_LIMIT",
+        "DEFAULT_REPROCESS_LIMIT",
+        "RUNNING_LOOKUP_TIMEOUT_MS",
+        "HOT_NOT_FOUND_RETRY_MS",
+        'getattr(self.settings, "batch_size"',
+        'getattr(self.settings, "reprocess_limit"',
+        'getattr(self.settings, "lease_ms"',
+        'getattr(self.settings, "hot_not_found_retry_ms"',
+        'getattr(settings, "chain_ids"',
+        'getattr(settings, "max_attempts"',
+        'getattr(settings, "lease_ms"',
+        'getattr(settings, "hot_not_found_retry_ms"',
+    )
+    forbidden_init_tokens = (
+        "dex_quote_market",
+        "wake_bus",
+        "chain_ids:",
+        "self.dex_quote_market",
+        "configured_chain_ids",
+        'getattr(settings, "',
+    )
+    forbidden_factory_tokens = (
+        "dex_quote_market=dex_quote_market",
+        "chain_ids=workers.resolution_refresh.chain_ids",
+        "wake_bus=ctx.wake_bus",
+    )
+    violations = (
+        [f"worker-source:{token}" for token in forbidden_source_tokens if token in source]
+        + [f"worker-init:{token}" for token in forbidden_init_tokens if token in init_source]
+        + [f"factory:{token}" for token in forbidden_factory_tokens if token in resolution_factory_source]
+    )
+
+    assert violations == []
+    assert "resolution_refresh_settings_required" in init_source
+    assert "resolution_refresh_provider_required" in init_source
+    assert "settings.chain_ids" in init_source
+    assert "self.max_attempts = max(1, int(settings.max_attempts))" in init_source
+    assert "self.lease_ms = max(1, int(settings.lease_ms))" in init_source
+    assert "self.hot_not_found_retry_ms = max(1, int(settings.hot_not_found_retry_ms))" in init_source
+    assert "self.wake_emitter = wake_emitter" in init_source
+    assert "self.wake_emitter.notify_resolution_updated" in source
+    assert "limit=max(1, int(self.settings.batch_size))" in run_source
+    assert "lease_ms=self.lease_ms" in run_source
+    assert "running_timeout_ms=self.lease_ms" in run_source
+    assert "hot_not_found_retry_ms=self.hot_not_found_retry_ms" in run_source
+    assert "limit=max(1, int(self.settings.reprocess_limit))" in run_source
+    assert "dex_discovery_market=dex_discovery_market" in resolution_factory_source
+    assert "wake_emitter=ctx.wake_bus" in resolution_factory_source
+
+
+@pytest.mark.architecture
+def test_token_resolution_reprocess_helpers_require_explicit_window_and_limits_without_defaults() -> None:
+    service_source = (SRC / "domains/token_intel/services/token_resolution_refresh.py").read_text(encoding="utf-8")
+    rebuild_source = (SRC / "domains/token_intel/runtime/token_intent_rebuild.py").read_text(encoding="utf-8")
+    interfaces_source = (SRC / "domains/token_intel/interfaces.py").read_text(encoding="utf-8")
+    forbidden_tokens = (
+        "DEFAULT_REPROCESS_LIMIT",
+        "DEFAULT_REPROCESS_WINDOW",
+        "window: str =",
+        "limit: int =",
+        "reprocess_limit: int =",
+        "projection_limit: int =",
+        "WINDOW_MS.get(window",
+    )
+    violations = (
+        [f"token_resolution_refresh:{token}" for token in forbidden_tokens if token in service_source]
+        + [f"token_intent_rebuild:{token}" for token in forbidden_tokens if token in rebuild_source]
+        + [
+            f"interfaces:{token}"
+            for token in ("DEFAULT_REPROCESS_LIMIT", "DEFAULT_REPROCESS_WINDOW")
+            if token in interfaces_source
+        ]
+    )
+
+    assert violations == []
+    assert 'TOKEN_REPROCESS_WINDOW = "24h"' in service_source
+    assert "window: str," in service_source
+    assert "limit: int," in service_source
+    assert "reprocess_limit: int," in service_source
+    assert "since_ms = int(now_ms) - WINDOW_MS[window]" in service_source
+    assert "since_ms = int(now_ms) - WINDOW_MS[window]" in rebuild_source
+
+
+@pytest.mark.architecture
+def test_token_resolution_refresh_requires_formal_resolution_decision_without_reflection() -> None:
+    service_source = (SRC / "domains/token_intel/services/token_resolution_refresh.py").read_text(encoding="utf-8")
+
+    forbidden_tokens = (
+        "getattr(decision,",
+        "hasattr(decision",
+        'decision.get("target_type"',
+        'decision.get("target_id"',
+        'decision.get("event_id"',
+    )
+
+    assert [token for token in forbidden_tokens if token in service_source] == []
+    assert "TokenIntentResolutionDecision" in service_source
+    assert "isinstance(decision, TokenIntentResolutionDecision)" in service_source
+    assert "token_resolution_refresh_decision_contract_required" in service_source
+    assert "target_type = decision.target_type" in service_source
+    assert "target_id = decision.target_id" in service_source
+    assert "event_id = decision.event_id" in service_source
+
+
+@pytest.mark.architecture
+def test_collector_upstream_client_close_contract_is_direct() -> None:
+    ingestion_provider_source = INGESTION_PROVIDERS.read_text(encoding="utf-8")
+    upstream_protocol = ingestion_provider_source.split("class UpstreamClientProtocol", 1)[1].split(
+        "\n\n__all__",
+        1,
+    )[0]
+    collector_source = COLLECTOR_SERVICE.read_text(encoding="utf-8")
+    on_close_source = collector_source.split("async def on_close", 1)[1].split(
+        "\n    async def _clear_pending_snapshots",
+        1,
+    )[0]
+
+    forbidden_tokens = (
+        'getattr(self.upstream_client, "aclose", None)',
+        'getattr(self.upstream_client, "close", None)',
+        'or getattr(self.upstream_client, "close", None)',
+        "close = getattr",
+        "result = close()",
+        "inspect.isawaitable",
+        "if close is None",
+    )
+    violations = [token for token in forbidden_tokens if token in on_close_source]
+
+    assert violations == []
+    assert "async def aclose(self) -> None" in upstream_protocol
+    assert "aclose = self.upstream_client.aclose" in on_close_source
+    assert "await aclose()" in on_close_source
+    assert "collector_upstream_client_aclose_required" in on_close_source
+
+
+@pytest.mark.architecture
+def test_collector_snapshot_gate_timeout_uses_formal_worker_settings_contract() -> None:
+    collector_source = COLLECTOR_SERVICE.read_text(encoding="utf-8")
+    init_source = collector_source.split("def __init__", 1)[1].split("\n    async def run_once", 1)[0]
+    forbidden_tokens = (
+        'getattr(settings, "snapshot_timeout_seconds", 0.5)',
+        'getattr(settings, "snapshot_timeout_seconds",',
+    )
+    violations = [token for token in forbidden_tokens if token in init_source]
+
+    assert violations == []
+    assert "settings.snapshot_timeout_seconds" in init_source
+
+
+@pytest.mark.architecture
+def test_direct_gmgn_ws_frame_handler_uses_async_collector_contract_without_isawaitable_fallback() -> None:
+    source = GMGN_DIRECT_WS.read_text(encoding="utf-8")
+    init_source = source.split("def __init__", 1)[1].split("\n    def connection_state_payload", 1)[0]
+    receive_source = source.split("async def _receive_frames", 1)[1].split(
+        "\n    async def _subscribe_all",
+        1,
+    )[0]
+
+    forbidden_tokens = (
+        "import inspect",
+        "inspect.isawaitable",
+        "result = self.on_frame(frame)",
+        "await result",
+        "Callable[[str], Any | Awaitable[Any]]",
+    )
+    violations = [token for token in forbidden_tokens if token in source]
+
+    assert violations == []
+    assert "on_frame: Callable[[str], Awaitable[None]]" in init_source
+    assert "await self.on_frame(frame)" in receive_source
+
+
+@pytest.mark.architecture
+def test_worker_owned_provider_cleanup_uses_formal_lifecycle_contracts() -> None:
+    pulse_source = PULSE_CANDIDATE_WORKER.read_text(encoding="utf-8")
+    pulse_on_close = pulse_source.split("async def on_close", 1)[1].split("\n    async def run_once", 1)[0]
+    news_source = NEWS_FETCH_WORKER.read_text(encoding="utf-8")
+    news_on_close = news_source.split("async def on_close", 1)[1].split("\n    async def run_once", 1)[0]
+
+    pulse_forbidden = (
+        'getattr(self.decision_client, "aclose", None)',
+        'getattr(self.decision_client, "close", None)',
+        "close_sync",
+        "if close is not None",
+    )
+    news_forbidden = (
+        'getattr(self.feed_client, "close", None)',
+        "isawaitable(",
+        "if close is None",
+        "await result",
+    )
+    violations = [f"pulse:{token}" for token in pulse_forbidden if token in pulse_on_close] + [
+        f"news:{token}" for token in news_forbidden if token in news_on_close
+    ]
+
+    assert violations == []
+    assert "aclose = self.decision_client.aclose" in pulse_on_close
+    assert "await aclose()" in pulse_on_close
+    assert "pulse_candidate_decision_client_aclose_required" in pulse_on_close
+    assert "close = cast(Callable[[], object | None], self.feed_client.close)" in news_on_close
+    assert "result = close()" in news_on_close
+    assert "news_fetch_feed_client_close_must_be_sync" in news_on_close
+
+
+@pytest.mark.architecture
+def test_provider_wiring_cleanup_uses_formal_close_contracts_without_optional_probes() -> None:
+    asset_source = ASSET_MARKET_PROVIDER_WIRING.read_text(encoding="utf-8")
+    okx_source = OKX_PROVIDER_WIRING.read_text(encoding="utf-8")
+    fallback_close_source = asset_source.split("def close(self) -> None:", 1)[1].split(
+        "\n\n\ndef wire_asset_market",
+        1,
+    )[0]
+    asset_partial_cleanup = asset_source.split("def _close_partial_providers", 1)[1].split(
+        "\n\n\n__all__",
+        1,
+    )[0]
+    serialized_close_source = okx_source.split("class SerializedDiscoveryProvider", 1)[1].split(
+        "\n\n\nclass OkxDexWebSocketMarketProviderAdapter",
+        1,
+    )[0]
+    okx_partial_cleanup = okx_source.split("def _close_partial_providers", 1)[1].split("\n\n\n__all__", 1)[0]
+    combined = "\n".join((fallback_close_source, asset_partial_cleanup, serialized_close_source, okx_partial_cleanup))
+
+    forbidden_tokens = (
+        'getattr(provider, "close", None)',
+        'getattr(self._provider, "close", None)',
+        "if close is None",
+        "if close:",
+        "if not close",
+    )
+    violations = [token for token in forbidden_tokens if token in combined]
+
+    assert violations == []
+    assert "provider.close()" in fallback_close_source
+    assert "self._provider.close()" in serialized_close_source
+    assert "cast(_SyncCloseProvider, provider).close()" in asset_partial_cleanup
+    assert "cast(_SyncCloseProvider, provider).close()" in okx_partial_cleanup
+
+
+@pytest.mark.architecture
+def test_configured_asset_market_gmgn_provider_uses_formal_quote_and_profile_contracts() -> None:
+    source = ASSET_MARKET_PROVIDER_WIRING.read_text(encoding="utf-8")
+
+    forbidden_tokens = (
+        "_has_token_quotes",
+        "_has_token_profile",
+        'getattr(value, "token_quotes", None)',
+        'getattr(value, "token_profile", None)',
+    )
+    violations = [token for token in forbidden_tokens if token in source]
+
+    assert violations == []
+    assert "primary_quote = _require_token_quote_provider(primary)" in source
+    assert "market=_require_token_profile_source(gmgn_dex_market)" in source
+    assert "asset_market_token_quotes_required" in source
+    assert "asset_market_token_profile_required" in source
+
+
+@pytest.mark.architecture
+def test_asset_market_wiring_cleanup_uses_formal_okx_bundle_fields_without_optional_probe() -> None:
+    source = ASSET_MARKET_PROVIDER_WIRING.read_text(encoding="utf-8")
+    wire_source = source.split("def wire_asset_market", 1)[1].split(
+        "\n\n\ndef wire_asset_market_providers",
+        1,
+    )[0]
+    cleanup_source = source.split("def _okx_bundle_cleanup_providers", 1)[1].split(
+        "\n\n\ndef _quote_key",
+        1,
+    )[0]
+    forbidden_tokens = (
+        'getattr(okx_bundle, "dex_discovery_market", None)',
+        'getattr(okx_bundle, "dex_quote_market", None)',
+        'getattr(okx_bundle, "stream_dex_market", None)',
+    )
+    violations = [token for token in forbidden_tokens if token in wire_source or token in cleanup_source]
+
+    assert violations == []
+    assert "_okx_bundle_cleanup_providers(exc, okx_bundle)" in wire_source
+    assert "dex_discovery_market = okx_bundle.dex_discovery_market" in cleanup_source
+    assert "dex_quote_market = okx_bundle.dex_quote_market" in cleanup_source
+    assert "stream_dex_market = okx_bundle.stream_dex_market" in cleanup_source
+    assert '"okx_bundle.dex_quote_market"' in cleanup_source
+    assert '"okx_bundle.stream_dex_market"' in cleanup_source
+
+
+@pytest.mark.architecture
+def test_api_worker_dependencies_use_formal_status_payload_contracts() -> None:
+    source = API_DEPENDENCIES.read_text(encoding="utf-8")
+    worker_running = source.split("def _worker_running", 1)[1].split("\ndef _worker_object", 1)[0]
+    worker_object = source.split("def _worker_object", 1)[1].split("\ndef _now_ms", 1)[0]
+
+    forbidden_tokens = (
+        'getattr(runtime, "scheduler", None)',
+        'getattr(scheduler, "tasks", {})',
+        'getattr(scheduler, "status_payload", None)',
+        'getattr(runtime, "workers", {})',
+        'getattr(worker, "status_payload", None)',
+        "except Exception:",
+        "status_payload is None",
+    )
+    combined = f"{worker_running}\n{worker_object}"
+    violations = [token for token in forbidden_tokens if token in combined]
+
+    assert violations == []
+    assert "scheduler = runtime.scheduler" in worker_running
+    assert "payload = scheduler.status_payload()" in source
+    assert "payload = worker.status_payload()" in source
+    assert "api_status_payload_must_be_dict" in source
+    assert "api_worker_status_payload_must_be_dict" in source
+
+
+@pytest.mark.architecture
+def test_agent_execution_status_uses_runtime_gateway_contract_without_provider_alias() -> None:
+    app_source = APP_RUNTIME_APP.read_text(encoding="utf-8")
+    app_helper = app_source.split("def _agent_execution_status", 1)[1].split("\ndef _unhealthy_reasons", 1)[0]
+    diagnostics_source = OPS_DIAGNOSTICS.read_text(encoding="utf-8")
+    diagnostics_helper = diagnostics_source.split("def _agent_execution_payload", 1)[1].split(
+        "\ndef _worker_lanes_payload",
+        1,
+    )[0]
+
+    helper_sources = {
+        "api_status": app_helper,
+        "ops_diagnostics": diagnostics_helper,
+    }
+    forbidden_tokens = (
+        'getattr(runtime, "agent_execution_gateway", None)',
+        'getattr(providers, "agent_execution_gateway", None)',
+        'getattr(gateway, "status_snapshot", None)',
+        "if not callable(snapshot)",
+    )
+    violations = [
+        f"{source_name} contains {token}"
+        for source_name, source in helper_sources.items()
+        for token in forbidden_tokens
+        if token in source
+    ]
+
+    assert violations == []
+    assert "gateway = runtime.agent_execution_gateway" in app_helper
+    assert "gateway = runtime.agent_execution_gateway" in diagnostics_helper
+    assert "payload = gateway.status_snapshot()" in app_helper
+    assert "raw_snapshot = gateway.status_snapshot()" in diagnostics_helper
 
 
 @pytest.mark.architecture
@@ -529,6 +2747,287 @@ def test_provider_io_worker_factories_do_not_import_raw_third_party_clients() ->
 
 
 @pytest.mark.architecture
+def test_missing_worker_sentinel_uses_formal_worker_settings_contract_without_default_config() -> None:
+    source = (WORKER_FACTORIES / "__init__.py").read_text(encoding="utf-8")
+    config_enabled_source = source.split("def _worker_config_enabled", 1)[1].split(
+        "\n\ndef _redacted_reason",
+        1,
+    )[0]
+    worker_settings_source = source.split("def _worker_settings", 1)[1].split(
+        "\n\ndef worker_factory_specs",
+        1,
+    )[0]
+    forbidden_tokens = (
+        "getattr(settings.workers, name, None)",
+        'getattr(config, "enabled", True)',
+        'getattr(value, "enabled", True)',
+        'getattr(value, "model_dump", None)',
+        "if config is None:",
+        "return SimpleNamespace(enabled=enabled)",
+        "SimpleNamespace(**",
+        "def _object_values",
+        "model_dump",
+        "__dict__",
+        "vars(",
+    )
+    combined = f"{config_enabled_source}\n{worker_settings_source}"
+    violations = [token for token in forbidden_tokens if token in combined]
+
+    assert violations == []
+    assert "config = getattr(settings.workers, name)" in config_enabled_source
+    assert "config = getattr(settings.workers, name)" in worker_settings_source
+    assert "model_copy = config.model_copy" in worker_settings_source
+    assert 'model_copy(update={"enabled": enabled})' in worker_settings_source
+    assert "worker_settings_model_copy_required" in worker_settings_source
+
+
+@pytest.mark.architecture
+def test_db_pool_bundle_wake_listener_sizing_uses_manifest_worker_settings_contract() -> None:
+    source = APP_RUNTIME_DB_POOL_BUNDLE.read_text(encoding="utf-8")
+    helper_source = source.split("def enabled_wake_listener_concurrency", 1)[1].split(
+        "\n\ndef _set_config",
+        1,
+    )[0]
+    forbidden_tokens = (
+        'getattr(settings, "workers", None)',
+        "if workers is None:",
+        'getattr(worker_settings, "enabled"',
+        'getattr(worker_settings, "wakes_on"',
+        'getattr(worker_settings, "concurrency"',
+    )
+    violations = [token for token in forbidden_tokens if token in helper_source]
+
+    assert violations == []
+    assert "workers = settings.workers" in helper_source
+    assert "for manifest in all_worker_manifests()" in helper_source
+    assert "if not manifest.wakes_on:" in helper_source
+    assert "worker_settings = getattr(workers, manifest.name)" in helper_source
+    assert "worker_settings.enabled" in helper_source
+    assert "worker_settings.wakes_on" in helper_source
+    assert "worker_settings.concurrency" in helper_source
+
+
+@pytest.mark.architecture
+def test_enabled_asset_market_provider_workers_missing_provider_surface_unavailable() -> None:
+    source = (WORKER_FACTORIES / "asset_market.py").read_text(encoding="utf-8")
+    asset_profile_block = source.split("if workers.asset_profile_refresh.enabled:", 1)[1].split(
+        "if workers.resolution_refresh.enabled:",
+        1,
+    )[0]
+    resolution_block = source.split("if workers.resolution_refresh.enabled:", 1)[1].split(
+        "if workers.live_price_gateway.enabled:",
+        1,
+    )[0]
+
+    assert 'disabled_worker(ctx, "asset_profile_refresh")' not in asset_profile_block
+    assert 'disabled_worker(ctx, "resolution_refresh")' not in resolution_block
+    assert "unavailable_worker(" in asset_profile_block
+    assert '"asset_profile_refresh"' in asset_profile_block
+    assert '"missing_asset_profile_provider"' in asset_profile_block
+    assert "unavailable_worker(" in resolution_block
+    assert '"resolution_refresh"' in resolution_block
+    assert '"missing_asset_discovery_provider"' in resolution_block
+
+
+@pytest.mark.architecture
+def test_asset_market_worker_factory_uses_formal_provider_bundle_fields_without_optional_probe() -> None:
+    source = (WORKER_FACTORIES / "asset_market.py").read_text(encoding="utf-8")
+    provider_setup = source.split("asset_market = ctx.providers.asset_market", 1)[1].split(
+        "\n    constructed:",
+        1,
+    )[0]
+    forbidden_tokens = (
+        'getattr(asset_market, "cex_market", None)',
+        'getattr(asset_market, "dex_quote_market", None)',
+        'getattr(asset_market, "dex_profile_sources", ())',
+        'getattr(asset_market, "dex_discovery_market", None)',
+        'getattr(asset_market, "stream_dex_market", None)',
+    )
+    violations = [token for token in forbidden_tokens if token in provider_setup]
+
+    assert violations == []
+    assert "cex_market = asset_market.cex_market" in provider_setup
+    assert "dex_quote_market = asset_market.dex_quote_market" in provider_setup
+    assert "dex_profile_sources = tuple(asset_market.dex_profile_sources or ())" in provider_setup
+    assert "dex_discovery_market = asset_market.dex_discovery_market" in provider_setup
+    assert "stream_dex_market = asset_market.stream_dex_market" in provider_setup
+
+
+@pytest.mark.architecture
+def test_cex_and_news_worker_factories_use_formal_provider_bundle_fields_without_optional_probe() -> None:
+    cex_source = (WORKER_FACTORIES / "cex_market_intel.py").read_text(encoding="utf-8")
+    news_source = (WORKER_FACTORIES / "news_intel.py").read_text(encoding="utf-8")
+    cex_provider_source = cex_source.split("cex_providers = ctx.providers.cex_market_intel", 1)[1]
+    news_provider_source = news_source.split("news_providers = ctx.providers.news_intel", 1)[1].split(
+        "\n    if workers.news_page_projection.enabled:",
+        1,
+    )[0]
+
+    forbidden_tokens = (
+        'getattr(cex_providers, "oi_market", None)',
+        'getattr(cex_providers, "coinglass_derivatives", None)',
+        'getattr(news_providers, "feed_client", None)',
+        'getattr(news_providers, "brief_provider", None)',
+    )
+    sources = {
+        "cex_market_intel": cex_provider_source,
+        "news_intel": news_provider_source,
+    }
+    violations = [
+        f"{source_name} contains {token}"
+        for source_name, source in sources.items()
+        for token in forbidden_tokens
+        if token in source
+    ]
+
+    assert violations == []
+    assert "oi_market = cex_providers.oi_market" in cex_provider_source
+    assert "coinglass_derivatives = cex_providers.coinglass_derivatives" in cex_provider_source
+    assert "feed_client = news_providers.feed_client" in news_provider_source
+    assert "brief_provider = news_providers.brief_provider" in news_provider_source
+
+
+@pytest.mark.architecture
+def test_cex_oi_radar_board_worker_uses_formal_settings_and_provider_contract_without_runtime_defaults() -> None:
+    source = CEX_OI_RADAR_BOARD_WORKER.read_text(encoding="utf-8")
+    builder_source = CEX_BINANCE_OI_RADAR_BUILDER.read_text(encoding="utf-8")
+    enricher_source = CEX_COINGLASS_DETAIL_ENRICHER.read_text(encoding="utf-8")
+    init_source = source.split("def __init__", 1)[1].split("\n    async def run_once", 1)[0]
+    settings_source = (SRC / "platform/config/settings.py").read_text(encoding="utf-8")
+    settings_class = settings_source.split("class CexOiRadarBoardWorkerSettings", 1)[1].split(
+        "\n\nclass MacroViewProjectionWorkerSettings",
+        1,
+    )[0]
+    factory_source = (WORKER_FACTORIES / "cex_market_intel.py").read_text(encoding="utf-8")
+    factory_worker_source = factory_source.split(
+        '"cex_oi_radar_board": CexOiRadarBoardWorker(',
+        1,
+    )[1].split(
+        "        )\n    }",
+        1,
+    )[0]
+    forbidden_worker_tokens = (
+        "**kwargs",
+        "super().__init__(**kwargs)",
+        "oi_market: CexOiMarketProvider | None",
+        "if self.oi_market is None",
+        'getattr(self.settings, "period"',
+        'getattr(self.settings, "universe_limit"',
+        'getattr(self.settings, "coinglass_enrichment_limit"',
+        'getattr(self.settings, "coinglass_level_limit"',
+        'getattr(self.settings, "statement_timeout_seconds"',
+        'getattr(self.settings, "batch_size"',
+        '"period", "5m"',
+        '"universe_limit", self._batch_size()',
+        '"coinglass_enrichment_limit", 0',
+        '"coinglass_level_limit", 6',
+        '"batch_size", 100',
+    )
+    forbidden_enricher_tokens = (
+        "level_limit: int =",
+        "level_limit: int = 6",
+    )
+    forbidden_builder_tokens = (
+        'period: str = "5m"',
+        "period: str =",
+        "limit: int = 500",
+        "limit: int =",
+    )
+    violations = [
+        *(f"worker contains {token}" for token in forbidden_worker_tokens if token in source),
+        *(f"builder contains {token}" for token in forbidden_builder_tokens if token in builder_source),
+        *(f"enricher contains {token}" for token in forbidden_enricher_tokens if token in enricher_source),
+    ]
+
+    assert violations == []
+    assert "cex_oi_radar_board_settings_required" in init_source
+    assert "cex_oi_radar_board_db_required" in init_source
+    assert "cex_oi_radar_board_oi_market_required" in init_source
+    assert "period = str(self.settings.period)" in source
+    assert "limit = max(1, min(int(self.settings.universe_limit), batch_size))" in source
+    assert "limit=int(self.settings.coinglass_enrichment_limit)" in source
+    assert "level_limit=int(self.settings.coinglass_level_limit)" in source
+    assert "statement_timeout_seconds=self.settings.statement_timeout_seconds" in source
+    assert "return max(1, int(self.settings.batch_size))" in source
+    assert "oi_market=oi_market" in factory_worker_source
+    assert "coinglass_derivatives=coinglass_derivatives" in factory_worker_source
+    assert "batch_size: int = Field(default=500, ge=1)" in settings_class
+    assert "statement_timeout_seconds: float = Field(default=120.0, ge=0)" in settings_class
+    assert "universe_limit: int = Field(default=500, ge=1)" in settings_class
+    assert "coinglass_enrichment_limit: int = Field(default=5, ge=0)" in settings_class
+    assert "coinglass_level_limit: int = Field(default=6, ge=0)" in settings_class
+    assert "period: str," in builder_source
+    assert "limit: int," in builder_source
+    assert "level_limit: int," in enricher_source
+
+
+@pytest.mark.architecture
+def test_cex_market_intel_provider_wiring_uses_formal_worker_settings_fields_without_defaults() -> None:
+    source = CEX_MARKET_INTEL_PROVIDER_WIRING.read_text(encoding="utf-8")
+    coinglass_source = source.split("def _coinglass_derivatives", 1)[1].split("\n\n\n__all__", 1)[0]
+    forbidden_tokens = (
+        'getattr(worker_settings, "enabled", True)',
+        'getattr(worker_settings, "coinglass_enrichment_limit", 0)',
+    )
+    violations = [token for token in forbidden_tokens if token in coinglass_source]
+
+    assert violations == []
+    assert "worker_settings = settings.workers.cex_oi_radar_board" in coinglass_source
+    assert "if not worker_settings.enabled:" in coinglass_source
+    assert "worker_settings.coinglass_enrichment_limit" in coinglass_source
+
+
+@pytest.mark.architecture
+def test_binance_oi_provider_wiring_requires_formal_integration_dto_fields_without_attr_defaults() -> None:
+    source = BINANCE_PROVIDER_WIRING.read_text(encoding="utf-8")
+    oi_source = source.split("class BinanceUsdmFuturesOiProvider", 1)[1].split("\n\n__all__", 1)[0]
+    forbidden_tokens = (
+        'getattr(row, "open_interest_value", None)',
+        'getattr(row, "time_ms", None)',
+        'getattr(row, "quote_volume_24h", None)',
+        'getattr(row, "price_change_percent", None)',
+        'getattr(row, "last_price", None)',
+        'getattr(row, "mark_price", None)',
+        'getattr(row, "last_funding_rate", None)',
+        'getattr(row, "symbol", "")',
+    )
+    required_tokens = (
+        '_required_row_field(row, "open_interest_value")',
+        '_required_row_field(row, "time_ms")',
+        '_required_row_field(row, "quote_volume_24h")',
+        '_required_row_field(row, "last_funding_rate")',
+        "binance_oi_provider_contract_required:",
+    )
+    violations = [token for token in forbidden_tokens if token in oi_source]
+
+    assert violations == []
+    assert [token for token in required_tokens if token not in oi_source] == []
+
+
+@pytest.mark.architecture
+def test_worker_factories_use_formal_wired_provider_domain_roots_without_optional_probe() -> None:
+    factory_sources = {
+        "cex_market_intel": (WORKER_FACTORIES / "cex_market_intel.py").read_text(encoding="utf-8"),
+        "news_intel": (WORKER_FACTORIES / "news_intel.py").read_text(encoding="utf-8"),
+    }
+    forbidden_tokens = (
+        'getattr(ctx.providers, "cex_market_intel", None)',
+        'getattr(ctx.providers, "news_intel", None)',
+    )
+
+    violations = [
+        f"{factory_name} contains {token}"
+        for factory_name, source in factory_sources.items()
+        for token in forbidden_tokens
+        if token in source
+    ]
+
+    assert violations == []
+    assert "ctx.providers.cex_market_intel" in factory_sources["cex_market_intel"]
+    assert "ctx.providers.news_intel" in factory_sources["news_intel"]
+
+
+@pytest.mark.architecture
 def test_no_external_io_inside_db_session() -> None:
     violations: list[str] = []
     for path in _worker_runtime_paths():
@@ -605,12 +3104,13 @@ def test_no_old_readyz_worker_sections(monkeypatch: pytest.MonkeyPatch) -> None:
             upstream_client=None,
         ),
         db=SimpleNamespace(),
+        agent_execution_gateway=None,
         providers=SimpleNamespace(asset_market=SimpleNamespace(stream_dex_market=None)),
         scheduler=SimpleNamespace(
             status_payload=lambda: {"collector": {"enabled": False, "running": False}},
             unhealthy_reasons=lambda: [],
         ),
-        settings=SimpleNamespace(handles=("toly",)),
+        settings=SimpleNamespace(handles=("toly",), news_intel=SimpleNamespace(sources=())),
     )
     monkeypatch.setattr(app_module, "_db_status", lambda _runtime: {"ok": True})
     monkeypatch.setattr(
@@ -716,6 +3216,39 @@ def test_runtime_contracts_forbid_old_watchlist_queue_tokens() -> None:
 
 
 @pytest.mark.architecture
+def test_runtime_job_queue_is_ops_descriptor_only_without_generic_executor() -> None:
+    job_queue_path = SRC / "app/runtime/job_queue.py"
+    job_queue_source = job_queue_path.read_text(encoding="utf-8")
+    job_queue_tree = ast.parse(job_queue_source)
+    ops_diagnostics_source = (SRC / "app/runtime/ops_diagnostics.py").read_text(encoding="utf-8")
+    forbidden_classes = {"BackoffPolicy", "JobQueue"}
+    forbidden_functions = {"claim_batch", "finalize_success", "finalize_failure", "reclaim_stale"}
+    forbidden_tokens = (
+        "uuid.uuid4",
+        "time.time",
+        "RETURNING job.*",
+        "RETURNING *",
+    )
+
+    class_names = {node.name for node in ast.walk(job_queue_tree) if isinstance(node, ast.ClassDef)}
+    function_names = {
+        node.name for node in ast.walk(job_queue_tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+
+    assert class_names.isdisjoint(forbidden_classes)
+    assert function_names.isdisjoint(forbidden_functions)
+    assert [token for token in forbidden_tokens if token in job_queue_source] == []
+    assert "class JobQueueDescriptor" in job_queue_source
+    assert "JOB_QUEUE_DESCRIPTORS" in job_queue_source
+    assert "PULSE_AGENT_JOBS" in job_queue_source
+    assert "NOTIFICATION_DELIVERIES" in job_queue_source
+    assert (
+        "from parallax.app.runtime.job_queue import "
+        "JOB_QUEUE_DESCRIPTORS, JobQueueDescriptor"
+    ) in ops_diagnostics_source
+
+
+@pytest.mark.architecture
 def test_narrative_hard_cut_contracts_are_documented() -> None:
     combined = "\n".join(
         path.read_text(encoding="utf-8") for path in (DOCS_WORKERS, DOCS_CONTRACTS, NARRATIVE_ARCHITECTURE)
@@ -735,10 +3268,59 @@ def test_narrative_hard_cut_contracts_are_documented() -> None:
 
 
 @pytest.mark.architecture
+def test_global_architecture_does_not_describe_retired_narrative_llm_lanes_as_current() -> None:
+    architecture = DOCS_ARCHITECTURE.read_text(encoding="utf-8")
+    forbidden_active_phrases = (
+        "domains/narrative_intel     (per-mention semantics and token discussion digests)",
+        "| `domains/narrative_intel/` | Per-mention trade stance / attention valence labels",
+        "Mention semantics, token discussion digest generation, evidence refs",
+    )
+    required_phrases = (
+        "current source-set admissions and legacy narrative currentness reads",
+        "Former per-mention semantics and discussion-digest LLM lanes have no current runtime writer.",
+        "Current `narrative_admissions` source-set ownership, legacy narrative currentness reads",
+    )
+
+    assert [phrase for phrase in forbidden_active_phrases if phrase in architecture] == []
+    assert [phrase for phrase in required_phrases if phrase not in architecture] == []
+
+
+@pytest.mark.architecture
+def test_public_narrative_reads_do_not_expose_retired_semantic_backlog() -> None:
+    repository = NARRATIVE_REPOSITORY.read_text(encoding="utf-8")
+    current_snapshot_method = repository.split("def current_narrative_snapshots_for_targets", 1)[1].split(
+        "def current_digests_for_targets",
+        1,
+    )[0]
+    read_model = NARRATIVE_READ_MODEL.read_text(encoding="utf-8")
+    api_schemas = API_SCHEMAS.read_text(encoding="utf-8")
+
+    forbidden_repository_tokens = (
+        "semantic_backlog_",
+        "_semantic_coverage_for_admissions",
+        "semantic_labeling_pending",
+    )
+    forbidden_read_model_tokens = (
+        "semantic_backlog_",
+        '"processing"',
+    )
+    forbidden_schema_tokens = (
+        "NarrativeBacklogHealthData",
+        "NarrativeSemanticBacklog",
+    )
+
+    assert [token for token in forbidden_repository_tokens if token in current_snapshot_method] == []
+    assert [token for token in forbidden_repository_tokens if token in repository] == []
+    assert [token for token in forbidden_read_model_tokens if token in read_model] == []
+    assert [token for token in forbidden_schema_tokens if token in api_schemas] == []
+
+
+@pytest.mark.architecture
 def test_wake_bus_is_emit_only() -> None:
     from parallax.app.runtime import wake_bus
 
     text = (SRC / "app/runtime/wake_bus.py").read_text(encoding="utf-8")
+    waiter_text = (SRC / "app/runtime/wake_waiter.py").read_text(encoding="utf-8")
     legacy_channel = "_".join(("market", "observation", "written"))
 
     assert not hasattr(wake_bus, "WakeListener")
@@ -746,6 +3328,154 @@ def test_wake_bus_is_emit_only() -> None:
     assert legacy_channel not in text
     assert "notify_market_tick_written" in text
     assert "LISTEN" not in text
+    assert 'getattr(conn, "commit", None)' not in text
+    assert 'getattr(conn, "commit", None)' not in waiter_text
+    assert "if not notifies:" not in waiter_text
+
+
+@pytest.mark.architecture
+def test_wake_bus_requires_connection_context_without_raw_connection_fallback() -> None:
+    text = (SRC / "app/runtime/wake_bus.py").read_text(encoding="utf-8")
+    forbidden_tokens = (
+        'hasattr(conn_or_context, "__enter__")',
+        "conn_or_context = self._conn_factory()",
+        "_execute_notify(conn_or_context",
+        "_commit(conn_or_context)",
+    )
+
+    assert [token for token in forbidden_tokens if token in text] == []
+    assert "with context as conn:" in text
+    assert "wake_bus_connection_context_required" in text
+
+
+@pytest.mark.architecture
+def test_runtime_wake_emitters_do_not_swallow_missing_notify_contracts() -> None:
+    paths = (
+        SRC / "domains/notifications/runtime/notification_worker.py",
+        SRC / "domains/news_intel/runtime/news_fetch_worker.py",
+        SRC / "domains/news_intel/runtime/news_source_quality_projection_worker.py",
+        SRC / "domains/asset_market/runtime/market_tick_current_projection_worker.py",
+        SRC / "domains/asset_market/runtime/event_anchor_backfill_worker.py",
+    )
+    forbidden = (
+        'getattr(self.delivery_wake, "wake", None)',
+        'getattr(wake_bus, "notify_news_page_dirty", None)',
+        'getattr(self.wake_emitter, "notify_market_tick_current_updated", None)',
+        'getattr(wake_emitter, "notify_market_tick_written", None)',
+        "if notify is None:",
+        "if wake is not None:",
+    )
+    violations = [
+        f"{_rel(path)} keeps optional wake-emitter compatibility token `{token}`"
+        for path in paths
+        for token in forbidden
+        if token in path.read_text(encoding="utf-8")
+    ]
+
+    assert violations == []
+
+
+@pytest.mark.architecture
+def test_worker_base_wake_waiter_contract_is_direct_when_injected() -> None:
+    text = (SRC / "app/runtime/worker_base.py").read_text(encoding="utf-8")
+    close_source = text.split("async def _close_wake_waiter", 1)[1].split(
+        "\n\ndef _worker_result_payload",
+        1,
+    )[0]
+    forbidden = (
+        "import inspect",
+        'getattr(self.wake_waiter, "wake", None)',
+        'getattr(self.wake_waiter, "close", None)',
+        'hasattr(self.wake_waiter, "async_wait")',
+        "inspect.isawaitable",
+        "await result",
+    )
+    violations = [
+        f"worker_base keeps optional wake-waiter compatibility token `{token}`" for token in forbidden if token in text
+    ]
+
+    assert violations == []
+    assert "result = self.wake_waiter.close()" in close_source
+    assert "worker_wake_waiter_close_must_be_sync" in close_source
+
+
+@pytest.mark.architecture
+def test_worker_base_core_settings_use_formal_worker_settings_without_runtime_defaults() -> None:
+    text = (SRC / "app/runtime/worker_base.py").read_text(encoding="utf-8")
+    enabled_source = text.split("def enabled", 1)[1].split("\n    @property\n    def effective_status", 1)[0]
+    interval_source = text.split("def interval_seconds", 1)[1].split(
+        "\n    @property\n    def soft_timeout_seconds",
+        1,
+    )[0]
+    backoff_source = text.split("def _backoff_seconds", 1)[1].split("\n    def _queue_depth", 1)[0]
+    forbidden = (
+        "_DEFAULT_INTERVAL_SECONDS",
+        "_DEFAULT_BACKOFF_BASE_MS",
+        "_DEFAULT_BACKOFF_MAX_MS",
+        'getattr(self.settings, "enabled", True)',
+        'getattr(self.settings, "interval_seconds",',
+        'getattr(self.settings, "backoff"',
+        'getattr(backoff, "base_ms"',
+        'getattr(backoff, "max_ms"',
+    )
+    violations = [f"worker_base keeps core settings fallback token `{token}`" for token in forbidden if token in text]
+
+    assert violations == []
+    assert "return bool(self.settings.enabled)" in enabled_source
+    assert "return max(0.0, float(self.settings.interval_seconds))" in interval_source
+    assert "backoff = self.settings.backoff" in backoff_source
+    assert "base_ms = int(backoff.base_ms)" in backoff_source
+    assert "max_ms = int(backoff.max_ms)" in backoff_source
+
+
+@pytest.mark.architecture
+def test_worker_base_advisory_lock_key_uses_formal_settings_without_class_attr_fallback() -> None:
+    text = (SRC / "app/runtime/worker_base.py").read_text(encoding="utf-8")
+    lock_key_source = text.split("def _advisory_lock_key", 1)[1].split(
+        "\n    async def _wait_for_next_iteration",
+        1,
+    )[0]
+    forbidden = (
+        'getattr(self.settings, "advisory_lock_key", None)',
+        "return int(self.SINGLE_WRITER_KEY)",
+        "settings_key = getattr",
+    )
+    violations = [
+        f"worker_base keeps advisory-lock key fallback token `{token}`"
+        for token in forbidden
+        if token in lock_key_source
+    ]
+
+    assert violations == []
+    assert "settings_key = self.settings.advisory_lock_key" in lock_key_source
+    assert 'raise RuntimeError("worker_advisory_lock_key_required") from exc' in lock_key_source
+    assert 'raise RuntimeError("worker_advisory_lock_key_required")' in lock_key_source
+    assert "if self.SINGLE_WRITER_KEY is None:" in lock_key_source
+
+
+@pytest.mark.architecture
+def test_worker_base_advisory_lock_release_contract_is_direct() -> None:
+    text = (SRC / "app/runtime/worker_base.py").read_text(encoding="utf-8")
+    release_source = text.split("def _release_advisory_lock", 1)[1].split(
+        "\n    async def _close_wake_waiter",
+        1,
+    )[0]
+    forbidden = (
+        'getattr(self._advisory_lock_connection, "release", None)',
+        'getattr(self._advisory_lock_connection, "close", None)',
+        "release or close",
+        "releaser is not None",
+    )
+    violations = [
+        f"worker_base keeps optional advisory-lock release compatibility token `{token}`"
+        for token in forbidden
+        if token in release_source
+    ]
+
+    assert violations == []
+    assert "worker_advisory_lock_release_required" in release_source
+    assert "release = lock_connection.release" in release_source
+    assert "release()" in release_source
 
 
 @pytest.mark.architecture
@@ -778,6 +3508,19 @@ def test_resolution_refresh_dirty_lookup_queue_is_control_plane() -> None:
         SRC / "domains/asset_market/repositories/discovery_repository.py",
         SRC / "platform/db/alembic/versions/20260525_0096_token_discovery_dirty_lookup_keys.py",
     }
+
+
+@pytest.mark.architecture
+def test_resolution_refresh_once_helper_is_not_retained() -> None:
+    source = (SRC / "domains/asset_market/runtime/resolution_refresh_worker.py").read_text(encoding="utf-8")
+
+    forbidden = (
+        "def run_resolution_refresh_once",
+        "def _process_lookup",
+        "def _process_dex_symbol_lookup",
+        "def _process_address_lookup",
+    )
+    assert [token for token in forbidden if token in source] == []
 
 
 @pytest.mark.architecture
@@ -836,6 +3579,18 @@ def test_runtime_dirty_workers_do_not_run_broad_fact_catchups() -> None:
         for token in banned_tokens
         if token in path.read_text(encoding="utf-8")
     ]
+
+    assert violations == []
+
+
+@pytest.mark.architecture
+def test_discovery_repository_does_not_keep_due_lookup_peek_helper() -> None:
+    source = (SRC / "domains/asset_market/repositories/discovery_repository.py").read_text(encoding="utf-8")
+    forbidden_tokens = (
+        "def due_lookup_keys(",
+        "since_ms: int,",
+    )
+    violations = [token for token in forbidden_tokens if token in source]
 
     assert violations == []
 
@@ -900,6 +3655,21 @@ def test_token_radar_narrative_read_model_does_not_reuse_1h_digest_for_other_win
     assert "TOKEN_RADAR_NARRATIVE_SURFACE_WINDOWS" not in text
     assert "_token_radar_overlay_digest" not in text
     assert "reuse_reason" not in text
+
+
+@pytest.mark.architecture
+def test_token_radar_narrative_read_model_requires_formal_target_identity_without_type_id_aliases() -> None:
+    text = NARRATIVE_READ_MODEL.read_text()
+    forbidden = (
+        'row.get("target_type") or row.get("type")',
+        'row.get("target_id") or row.get("id")',
+        'row.get("type")',
+        'row.get("id")',
+    )
+
+    assert [token for token in forbidden if token in text] == []
+    assert 'row.get("target_type")' in text
+    assert 'row.get("target_id")' in text
 
 
 @pytest.mark.architecture

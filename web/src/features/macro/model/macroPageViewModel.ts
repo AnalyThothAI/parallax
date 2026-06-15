@@ -28,9 +28,9 @@ export function macroFreshnessAlert(module?: MacroModuleView): MacroFreshnessAle
   const snapshotStatus = stringValue(module?.snapshot.status)?.toLowerCase() ?? null;
   const healthStatus = stringValue(module?.data_health?.summary_status)?.toLowerCase() ?? null;
   const wholePageStale = snapshotStatus === "stale" || healthStatus === "stale";
-  const staleGaps = (wholePageStale ? dataHealthGaps(module) : blockingDataHealthGaps(module)).filter(
-    isStaleGap,
-  );
+  const staleGaps = (
+    wholePageStale ? dataHealthGaps(module) : blockingDataHealthGaps(module)
+  ).filter(isStaleGap);
   if (!wholePageStale && staleGaps.length === 0) {
     return null;
   }

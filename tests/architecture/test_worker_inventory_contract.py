@@ -935,6 +935,14 @@ def test_worker_inventory_keys_match_runtime_registry_and_settings() -> None:
 
 
 @pytest.mark.architecture
+def test_provider_io_worker_marker_matches_manifest_inventory() -> None:
+    marker_keys = _provider_io_worker_marker_keys()
+    manifest_keys = {manifest.name for manifest in all_worker_manifests() if manifest.uses_provider_io}
+
+    assert marker_keys == manifest_keys, _key_diff_message("provider-io marker", marker_keys, manifest_keys)
+
+
+@pytest.mark.architecture
 def test_documented_wake_inputs_match_default_worker_settings() -> None:
     from parallax.platform.config.settings import WorkersSettings
 
@@ -1027,6 +1035,13 @@ def _worker_inventory_marker_keys() -> set[str]:
     text = DOCS_WORKERS.read_text(encoding="utf-8")
     marker = re.search(r"<!--\s*worker-inventory-keys:\s*(.*?)\s*-->", text, re.DOTALL)
     assert marker is not None, "docs/WORKERS.md is missing <!-- worker-inventory-keys: ... --> marker"
+    return {key.strip() for key in marker.group(1).replace("\n", " ").split(",") if key.strip()}
+
+
+def _provider_io_worker_marker_keys() -> set[str]:
+    text = DOCS_WORKERS.read_text(encoding="utf-8")
+    marker = re.search(r"<!--\s*provider-io-worker-keys:\s*(.*?)\s*-->", text, re.DOTALL)
+    assert marker is not None, "docs/WORKERS.md is missing <!-- provider-io-worker-keys: ... --> marker"
     return {key.strip() for key in marker.group(1).replace("\n", " ").split(",") if key.strip()}
 
 

@@ -14,6 +14,7 @@ from parallax.domains.pulse_lab.types.agent_decision import (
     FinalDecision,
     StageRunAudit,
 )
+from parallax.domains.pulse_lab.types.evidence_packet import PulseEvidencePacket
 
 _RULE_EVIDENCE_PACKET_EXISTS = "evidence_packet_exists"
 _RULE_STAGE_CONTRACT = "stage_contract"
@@ -122,11 +123,11 @@ def grade_pulse_deterministic_eval_case(case: dict[str, Any]) -> dict[str, Any]:
     context = _mapping(input_json.get("context"))
     completeness = _mapping(input_json.get("completeness"))
     final = _mapping(expected_json.get("final_decision"))
-    packet = _mapping(context.get("evidence_packet"))
-    allowed_refs = _allowed_ref_ids(packet)
+    packet = _evidence_packet_from_context(context)
+    allowed_refs = _allowed_ref_ids(packet) if packet is not None else set()
     violations: list[str] = []
 
-    if not packet.get("evidence_packet_hash") or not allowed_refs:
+    if packet is None or not packet.evidence_packet_hash or not allowed_refs:
         violations.append(_RULE_EVIDENCE_PACKET_EXISTS)
 
     hard_blocked = bool(completeness.get("hard_blocked") is True)
@@ -209,14 +210,18 @@ def _required_non_blocked_stages(context: dict[str, Any]) -> tuple[str, ...]:
     return _NON_BLOCKED_REQUIRED_STAGES
 
 
-def _allowed_ref_ids(packet: dict[str, Any]) -> set[str]:
-    refs = _list(packet.get("allowed_evidence_refs"))
-    result: set[str] = set()
-    for ref in refs:
-        ref_id = str(_mapping(ref).get("ref_id") or "").strip()
-        if ref_id:
-            result.add(ref_id)
-    return result
+def _evidence_packet_from_context(context: dict[str, Any]) -> PulseEvidencePacket | None:
+    packet = context.get("evidence_packet")
+    if not isinstance(packet, dict):
+        return None
+    try:
+        return PulseEvidencePacket.model_validate(packet)
+    except ValueError:
+        return None
+
+
+def _allowed_ref_ids(packet: PulseEvidencePacket) -> set[str]:
+    return {ref.ref_id for ref in packet.allowed_evidence_refs if ref.ref_id.strip()}
 
 
 def _final_refs(final: dict[str, Any]) -> set[str]:

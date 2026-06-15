@@ -6,6 +6,11 @@ from typing import Any
 
 from parallax.app.runtime.ops_diagnostics import (
     INVALID_QUEUE,
+    _asset_market_provider_health,
+    _collector_payload,
+    _config_payload,
+    _queues_payload,
+    _watchlist_domain,
     ops_diagnostics_payload,
     ops_queue_payload,
     redact_diagnostics,
@@ -41,6 +46,18 @@ def test_redact_diagnostics_keeps_business_token_keys() -> None:
     assert payload["provider"] == "token_profile_current"
 
 
+def test_ops_diagnostics_payload_requires_explicit_query_boundaries_without_defaults() -> None:
+    try:
+        ops_diagnostics_payload(FakeRuntime(), now_ms=10_000)
+    except TypeError as exc:
+        message = str(exc)
+        assert "since_hours" in message
+        assert "window" in message
+        assert "scope" in message
+    else:  # pragma: no cover - RED guard expectation
+        raise AssertionError("ops diagnostics runtime helper must require explicit query boundaries")
+
+
 def test_ops_diagnostics_survives_news_section_failure() -> None:
     runtime = FakeRuntime(news_error=RuntimeError("feed exploded"))
 
@@ -54,6 +71,92 @@ def test_ops_diagnostics_survives_news_section_failure() -> None:
     assert payload["worker_lanes"]["projection"]["running_workers"] >= 1
     assert payload["providers"]
     assert payload["queues"]
+
+
+def test_ops_diagnostics_requires_asset_market_provider_bundle_root() -> None:
+    runtime = FakeRuntime()
+    runtime.providers = SimpleNamespace()
+
+    try:
+        ops_diagnostics_payload(runtime, now_ms=10_000, since_hours=4, window="1h", scope="all")
+    except AttributeError as exc:
+        assert "asset_market" in str(exc)
+    else:  # pragma: no cover - RED guard expectation
+        raise AssertionError("ops diagnostics must not convert missing provider root into an empty provider list")
+
+
+def test_ops_diagnostics_requires_asset_market_provider_health_contract() -> None:
+    runtime = FakeRuntime()
+    runtime.providers.asset_market = SimpleNamespace(stream_dex_market=runtime.providers.asset_market.stream_dex_market)
+
+    try:
+        _asset_market_provider_health(runtime)
+    except AttributeError as exc:
+        assert "provider_health" in str(exc)
+    else:  # pragma: no cover - RED guard expectation
+        raise AssertionError("asset-market diagnostics must not hide missing provider_health as an empty list")
+
+
+def test_ops_diagnostics_rejects_reflective_asset_market_provider_health_items() -> None:
+    runtime = FakeRuntime()
+    runtime.providers.asset_market.provider_health = (
+        SimpleNamespace(provider="gmgn", capabilities=(), configured=True),
+    )
+
+    try:
+        _asset_market_provider_health(runtime)
+    except TypeError as exc:
+        assert "asset_market_provider_health_item" in str(exc)
+    else:  # pragma: no cover - RED guard expectation
+        raise AssertionError("asset-market diagnostics must not accept provider_health items via vars() reflection")
+
+
+def test_ops_diagnostics_collector_status_contract_failure_is_unknown_section() -> None:
+    runtime = FakeRuntime()
+    runtime.collector = SimpleNamespace(upstream_client=runtime.collector.upstream_client)
+
+    try:
+        _collector_payload(runtime)
+    except AttributeError as exc:
+        assert "status" in str(exc)
+    else:  # pragma: no cover - RED guard expectation
+        raise AssertionError("collector diagnostics must not hide missing collector.status as empty details")
+
+
+def test_ops_diagnostics_config_requires_runtime_settings_contract() -> None:
+    runtime = FakeRuntime()
+    del runtime.settings
+
+    try:
+        _config_payload(runtime)
+    except AttributeError as exc:
+        assert "settings" in str(exc)
+    else:  # pragma: no cover - RED guard expectation
+        raise AssertionError("ops diagnostics config must not hide missing runtime.settings as empty config")
+
+
+def test_ops_diagnostics_watchlist_requires_runtime_settings_contract() -> None:
+    runtime = FakeRuntime()
+    del runtime.settings
+
+    try:
+        _watchlist_domain(runtime)
+    except AttributeError as exc:
+        assert "settings" in str(exc)
+    else:  # pragma: no cover - RED guard expectation
+        raise AssertionError("watchlist diagnostics must not hide missing runtime.settings as idle")
+
+
+def test_ops_diagnostics_queues_require_api_pool_connection_contract() -> None:
+    runtime = FakeRuntime()
+    runtime.db = SimpleNamespace()
+
+    try:
+        _queues_payload(runtime, now_ms=10_000)
+    except AttributeError as exc:
+        assert "api_pool" in str(exc)
+    else:  # pragma: no cover - RED guard expectation
+        raise AssertionError("ops diagnostics queues must not hide missing db.api_pool as an empty queue list")
 
 
 def test_ops_diagnostics_reuses_effective_worker_lane_counts() -> None:
@@ -250,6 +353,30 @@ def test_ops_diagnostics_agent_execution_disabled_without_gateway() -> None:
     assert payload["agent_execution"]["counters"] == {}
 
 
+def test_ops_diagnostics_agent_execution_ignores_provider_alias_without_runtime_gateway() -> None:
+    runtime = FakeRuntime()
+    runtime.providers.agent_execution_gateway = SimpleNamespace(
+        status_snapshot=lambda: {"global_max_concurrency": 4, "lanes": {}}
+    )
+
+    payload = ops_diagnostics_payload(runtime, now_ms=10_000, since_hours=4, window="1h", scope="all")
+
+    assert payload["agent_execution"]["status"] == "disabled"
+    assert payload["agent_execution"]["policy"] == {}
+    assert payload["agent_execution"]["counters"] == {}
+
+
+def test_ops_diagnostics_agent_execution_gateway_requires_status_snapshot_contract() -> None:
+    runtime = FakeRuntime()
+    runtime.agent_execution_gateway = SimpleNamespace()
+
+    payload = ops_diagnostics_payload(runtime, now_ms=10_000, since_hours=4, window="1h", scope="all")
+
+    assert payload["agent_execution"]["status"] == "unknown"
+    assert payload["agent_execution"]["status_reason"] == "unavailable"
+    assert payload["agent_execution"]["error"] == "agent_execution_status_contract_missing"
+
+
 def test_ops_diagnostics_agent_execution_snapshot_failure_is_unavailable() -> None:
     runtime = FakeRuntime(agent_execution_error=RuntimeError("snapshot exploded"))
 
@@ -329,6 +456,8 @@ class FakeConn:
     def __init__(self, queue_rows: list[dict[str, Any]] | None = None) -> None:
         self.queue_rows = queue_rows or []
         self.executed: list[str] = []
+        self.commit_calls = 0
+        self.rollback_calls = 0
 
     def execute(self, sql: str, params: object = ()) -> FakeRows:
         self.executed.append(sql)
@@ -351,6 +480,12 @@ class FakeConn:
         if "FROM projection_offsets" in sql:
             return FakeRows([])
         return FakeRows([{"ok": True, "probe": "postgres_liveness"}])
+
+    def commit(self) -> None:
+        self.commit_calls += 1
+
+    def rollback(self) -> None:
+        self.rollback_calls += 1
 
 
 class FakeConnectionContext:

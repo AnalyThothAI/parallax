@@ -3,10 +3,12 @@ from __future__ import annotations
 from typing import Any
 
 from parallax.domains.token_intel._constants import WINDOW_MS
-from parallax.domains.token_intel.services.token_intent_resolver import TokenIntentResolver
+from parallax.domains.token_intel.services.token_intent_resolver import (
+    TokenIntentResolutionDecision,
+    TokenIntentResolver,
+)
 
-DEFAULT_REPROCESS_LIMIT = 500
-DEFAULT_REPROCESS_WINDOW = "24h"
+TOKEN_REPROCESS_WINDOW = "24h"
 
 
 def refresh_recent_token_state(
@@ -14,8 +16,8 @@ def refresh_recent_token_state(
     repos: Any,
     lookup_keys: list[str],
     now_ms: int,
-    window: str = DEFAULT_REPROCESS_WINDOW,
-    reprocess_limit: int = DEFAULT_REPROCESS_LIMIT,
+    window: str,
+    reprocess_limit: int,
 ) -> dict[str, Any]:
     keys = sorted({key for key in lookup_keys if key})
     result = {
@@ -42,11 +44,30 @@ def reprocess_recent_token_intents(
     *,
     repos: Any,
     now_ms: int,
-    window: str = DEFAULT_REPROCESS_WINDOW,
-    limit: int = DEFAULT_REPROCESS_LIMIT,
+    window: str,
+    limit: int,
     lookup_keys: list[str] | None = None,
 ) -> dict[str, Any]:
-    since_ms = int(now_ms) - WINDOW_MS.get(window, WINDOW_MS[DEFAULT_REPROCESS_WINDOW])
+    with repos.transaction():
+        return _reprocess_recent_token_intents(
+            repos=repos,
+            now_ms=now_ms,
+            window=window,
+            limit=limit,
+            lookup_keys=lookup_keys,
+        )
+
+
+def _reprocess_recent_token_intents(
+    *,
+    repos: Any,
+    now_ms: int,
+    window: str,
+    limit: int,
+    lookup_keys: list[str] | None,
+) -> dict[str, Any]:
+    repos.require_transaction(operation="token_resolution_refresh")
+    since_ms = int(now_ms) - WINDOW_MS[window]
     if lookup_keys:
         intents = repos.token_intent_lookup.recent_intents_for_lookup_keys(
             lookup_keys,
@@ -63,14 +84,16 @@ def reprocess_recent_token_intents(
     resolved = 0
     dirty_targets: list[dict[str, Any]] = []
     discovery_lookup_keys: set[str] = set()
+    evidence_by_intent = repos.token_evidence.evidence_for_intents(
+        [str(intent["intent_id"]) for intent in intents]
+    )
     for intent in intents:
-        evidence = repos.token_evidence.evidence_for_intent(str(intent["intent_id"]))
+        evidence = evidence_by_intent.get(str(intent["intent_id"]), [])
         decision = resolver.resolve(
             intent,
             evidence,
             decision_time_ms=now_ms,
             persist=True,
-            commit=False,
         )
         repos.token_intent_lookup.replace_lookup_keys(
             intent_id=decision.intent_id,
@@ -97,15 +120,13 @@ def reprocess_recent_token_intents(
             now_ms=now_ms,
             commit=False,
         )
-    dirty_repo = getattr(repos, "token_radar_source_dirty_events", None)
-    if dirty_targets and dirty_repo is not None:
-        dirty_repo.enqueue_events(
+    if dirty_targets:
+        repos.token_radar_source_dirty_events.enqueue_events(
             dirty_targets,
             reason="resolution_refresh",
             now_ms=now_ms,
             commit=False,
         )
-    repos.conn.commit()
     return {
         "window": window,
         "lookup_keys": lookup_keys or [],
@@ -125,10 +146,12 @@ def deferred_token_radar_projection() -> dict[str, Any]:
     }
 
 
-def _source_dirty_event_for_decision(decision: Any) -> dict[str, Any] | None:
-    target_type = getattr(decision, "target_type", None)
-    target_id = getattr(decision, "target_id", None)
-    event_id = str(getattr(decision, "event_id", "") or "")
+def _source_dirty_event_for_decision(decision: TokenIntentResolutionDecision) -> dict[str, Any] | None:
+    if not isinstance(decision, TokenIntentResolutionDecision):
+        raise RuntimeError("token_resolution_refresh_decision_contract_required")
+    target_type = decision.target_type
+    target_id = decision.target_id
+    event_id = decision.event_id
     if event_id and target_type in {"Asset", "CexToken"} and target_id:
         return {
             "source_event_id": event_id,

@@ -77,6 +77,116 @@ def test_build_binance_oi_radar_rows_marks_now_ms_fallback_observed_timestamp_as
     assert row["observed_at_source"] == "computed"
 
 
+def test_build_binance_oi_radar_rows_rejects_malformed_provider_history_points():
+    try:
+        build_binance_oi_radar_rows(
+            universe=[
+                {
+                    "pricefeed_id": "pricefeed:cex:binance:swap:BTCUSDT",
+                    "native_market_id": "BTCUSDT",
+                    "base_symbol": "BTC",
+                }
+            ],
+            client=_MalformedHistoryClient(),
+            now_ms=1_778_000_000_000,
+            period="5m",
+            limit=10,
+        )
+    except ValueError as exc:
+        assert str(exc) == "cex_oi_radar_provider_contract_required:open_interest_value"
+    else:
+        raise AssertionError("malformed Binance open-interest DTO must not be converted to empty metrics")
+
+
+def test_build_binance_oi_radar_rows_rejects_malformed_provider_ticker_metrics():
+    try:
+        build_binance_oi_radar_rows(
+            universe=[
+                {
+                    "pricefeed_id": "pricefeed:cex:binance:swap:BTCUSDT",
+                    "native_market_id": "BTCUSDT",
+                    "base_symbol": "BTC",
+                }
+            ],
+            client=_MalformedTickerClient(),
+            now_ms=1_778_000_000_000,
+            period="5m",
+            limit=10,
+        )
+    except ValueError as exc:
+        assert str(exc) == "cex_oi_radar_provider_contract_required:quote_volume_24h"
+    else:
+        raise AssertionError("malformed Binance ticker DTO must not be converted to empty metrics")
+
+
+def test_build_binance_oi_radar_rows_preserves_zero_mark_price_from_premium():
+    rows = build_binance_oi_radar_rows(
+        universe=[
+            {
+                "pricefeed_id": "pricefeed:cex:binance:swap:BTCUSDT",
+                "native_market_id": "BTCUSDT",
+                "base_symbol": "BTC",
+            }
+        ],
+        client=_ZeroMarkPriceClient(),
+        now_ms=1_778_000_000_000,
+        period="5m",
+        limit=10,
+    )
+
+    assert rows["rows"][0]["mark_price"] == 0.0
+
+
+def test_build_binance_oi_radar_rows_requires_native_market_id_before_provider_io():
+    client = _CallRecordingClient()
+
+    try:
+        build_binance_oi_radar_rows(
+            universe=[
+                {
+                    "pricefeed_id": "pricefeed:cex:binance:swap:broken",
+                    "native_market_id": "",
+                    "base_symbol": "BTC",
+                }
+            ],
+            client=client,
+            now_ms=1_778_000_000_000,
+            period="5m",
+            limit=10,
+        )
+    except ValueError as exc:
+        assert str(exc) == "cex_oi_radar_identity_required:native_market_id"
+    else:
+        raise AssertionError("missing Binance native market id must fail before provider calls")
+
+    assert client.calls == []
+
+
+def test_build_binance_oi_radar_rows_requires_base_symbol_before_provider_io():
+    client = _CallRecordingClient()
+
+    try:
+        build_binance_oi_radar_rows(
+            universe=[
+                {
+                    "pricefeed_id": "pricefeed:cex:binance:swap:broken",
+                    "native_market_id": "BTCUSDT",
+                    "base_symbol": "",
+                }
+            ],
+            client=client,
+            now_ms=1_778_000_000_000,
+            period="5m",
+            limit=10,
+        )
+    except ValueError as exc:
+        assert str(exc) == "cex_oi_radar_identity_required:base_symbol"
+    else:
+        raise AssertionError("missing Binance base symbol must fail before provider calls")
+
+    assert client.calls == []
+
+
 class _Client:
     def list_24h_tickers(self, symbol=None):
         assert symbol is None
@@ -120,3 +230,53 @@ class _NoObservedAtClient(_Client):
             CexOpenInterestPoint(symbol=symbol, open_interest_value=1000.0, observed_at_ms=None),
             CexOpenInterestPoint(symbol=symbol, open_interest_value=1100.0, observed_at_ms=None),
         ]
+
+
+class _MalformedOpenInterestPoint:
+    observed_at_ms = 2
+
+
+class _MalformedHistoryClient(_Client):
+    def list_open_interest_history(self, symbol, period, limit):
+        assert symbol == "BTCUSDT"
+        assert period == "5m"
+        assert limit == 2
+        return [
+            CexOpenInterestPoint(symbol=symbol, open_interest_value=1000.0, observed_at_ms=1),
+            _MalformedOpenInterestPoint(),
+        ]
+
+
+class _MalformedTicker:
+    symbol = "BTCUSDT"
+    last_price = 100.0
+    price_change_pct_24h = 1.0
+
+
+class _MalformedTickerClient(_Client):
+    def list_24h_tickers(self, symbol=None):
+        assert symbol is None
+        return [_MalformedTicker()]
+
+
+class _ZeroMarkPriceClient(_Client):
+    def list_funding_premium(self, symbol=None):
+        assert symbol is None
+        return [CexFundingPremium(symbol="BTCUSDT", mark_price=0.0, last_funding_rate=0.0001)]
+
+
+class _CallRecordingClient(_Client):
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def list_24h_tickers(self, symbol=None):
+        self.calls.append("list_24h_tickers")
+        return super().list_24h_tickers(symbol=symbol)
+
+    def list_funding_premium(self, symbol=None):
+        self.calls.append("list_funding_premium")
+        return super().list_funding_premium(symbol=symbol)
+
+    def list_open_interest_history(self, symbol, period, limit):
+        self.calls.append("list_open_interest_history")
+        return super().list_open_interest_history(symbol, period, limit)

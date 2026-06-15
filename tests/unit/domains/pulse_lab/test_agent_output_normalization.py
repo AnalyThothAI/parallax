@@ -5,6 +5,7 @@ import pytest
 from parallax.domains.pulse_lab.services.agent_output_normalization import normalize_pulse_stage_output
 from parallax.domains.pulse_lab.services.claim_evidence_verifier import ClaimEvidenceVerifier
 from parallax.domains.pulse_lab.types.agent_decision import FinalDecision
+from parallax.domains.pulse_lab.types.evidence_packet import PulseEvidencePacket
 
 
 def test_exact_allowed_refs_pass_without_repairs() -> None:
@@ -13,7 +14,7 @@ def test_exact_allowed_refs_pass_without_repairs() -> None:
     result = normalize_pulse_stage_output(
         output_type=FinalDecision,
         raw_output=raw,
-        evidence_packet=_packet(refs=["event:event-1"]),
+        evidence_packet=_packet_model(refs=["event:event-1"]),
     )
 
     assert result.payload == raw
@@ -21,14 +22,23 @@ def test_exact_allowed_refs_pass_without_repairs() -> None:
     assert FinalDecision.model_validate(result.payload).supporting_evidence_refs == ("event:event-1",)
 
 
+def test_normalization_requires_formal_evidence_packet_without_dict_compatibility() -> None:
+    with pytest.raises(TypeError, match="pulse_stage_output_normalization_packet_contract_required"):
+        normalize_pulse_stage_output(
+            output_type=FinalDecision,
+            raw_output=_trade_candidate_raw(supporting_refs=["event:event-1"]),
+            evidence_packet=_packet(refs=["event:event-1"]),
+        )
+
+
 def test_unknown_final_ref_is_not_repaired() -> None:
     result = normalize_pulse_stage_output(
         output_type=FinalDecision,
         raw_output=_trade_candidate_raw(supporting_refs=["event:event-l"]),
-        evidence_packet=_packet(refs=["event:event-1"]),
+        evidence_packet=_packet_model(refs=["event:event-1"]),
     )
     decision = FinalDecision.model_validate(result.payload)
-    verification = ClaimEvidenceVerifier().verify(_packet_object(["event:event-1"]), decision)
+    verification = ClaimEvidenceVerifier().verify(_packet_model(refs=["event:event-1"]), decision)
 
     assert decision.supporting_evidence_refs == ("event:event-l",)
     assert verification.valid is False
@@ -48,7 +58,7 @@ def test_playbook_false_clears_signal_lists() -> None:
     result = normalize_pulse_stage_output(
         output_type=FinalDecision,
         raw_output=raw,
-        evidence_packet=_packet(refs=["event:event-1"]),
+        evidence_packet=_packet_model(refs=["event:event-1"]),
     )
     decision = FinalDecision.model_validate(result.payload)
 
@@ -67,7 +77,7 @@ def test_abstain_without_playbook_gets_empty_structural_playbook() -> None:
     result = normalize_pulse_stage_output(
         output_type=FinalDecision,
         raw_output=raw,
-        evidence_packet=_packet(refs=["gate:pulse:blocked_market_contract"]),
+        evidence_packet=_packet_model(refs=["gate:pulse:blocked_market_contract"]),
     )
     decision = FinalDecision.model_validate(result.payload)
 
@@ -85,10 +95,10 @@ def test_data_gap_pseudo_ref_is_not_rewritten_to_missing_ref() -> None:
     result = normalize_pulse_stage_output(
         output_type=FinalDecision,
         raw_output=raw,
-        evidence_packet=_packet(refs=["event:event-1"]),
+        evidence_packet=_packet_model(refs=["event:event-1"]),
     )
     decision = FinalDecision.model_validate(result.payload)
-    verification = ClaimEvidenceVerifier().verify(_packet_object(["event:event-1"]), decision)
+    verification = ClaimEvidenceVerifier().verify(_packet_model(refs=["event:event-1"]), decision)
 
     assert decision.data_gap_refs == ("market:holders_distribution",)
     assert verification.valid is False
@@ -106,7 +116,7 @@ def test_final_decision_unknown_event_ids_are_dropped_without_invalidating_decis
     result = normalize_pulse_stage_output(
         output_type=FinalDecision,
         raw_output=raw,
-        evidence_packet=_packet(refs=["event:gmgn:twitter_monitor_basic:event-1"]),
+        evidence_packet=_packet_model(refs=["event:gmgn:twitter_monitor_basic:event-1"]),
     )
     decision = FinalDecision.model_validate(result.payload)
 
@@ -123,7 +133,7 @@ def test_final_decision_event_ids_do_not_substitute_for_missing_supporting_refs(
     result = normalize_pulse_stage_output(
         output_type=FinalDecision,
         raw_output=raw,
-        evidence_packet=_packet(refs=["event:gmgn:twitter_monitor_basic:event-1"]),
+        evidence_packet=_packet_model(refs=["event:gmgn:twitter_monitor_basic:event-1"]),
     )
 
     assert result.payload["supporting_evidence_refs"] == []
@@ -139,7 +149,7 @@ def test_execution_language_in_final_text_is_neutralized_before_schema_validatio
     result = normalize_pulse_stage_output(
         output_type=FinalDecision,
         raw_output=raw,
-        evidence_packet=_packet(refs=["event:event-1"]),
+        evidence_packet=_packet_model(refs=["event:event-1"]),
     )
     decision = FinalDecision.model_validate(result.payload)
 
@@ -165,8 +175,34 @@ def _packet(*, refs: list[str]) -> dict:
     }
 
 
-def _packet_object(refs: list[str]) -> object:
-    return type("Packet", (), {"allowed_evidence_refs": _packet(refs=refs)["allowed_evidence_refs"]})()
+def _packet_model(*, refs: list[str]) -> PulseEvidencePacket:
+    return PulseEvidencePacket(
+        evidence_packet_id="packet-1",
+        run_id="run-1",
+        evidence_packet_hash="sha256:packet",
+        schema_version="pulse_evidence_packet_v1",
+        candidate_id="candidate-1",
+        target_type="chain_token",
+        target_id="TEST",
+        symbol="TEST",
+        window="1h",
+        scope="default",
+        snapshot_at_ms=1,
+        source_event_ids=("event-1",),
+        allowed_evidence_refs=_packet(refs=refs)["allowed_evidence_refs"],
+        social_evidence={"status": "complete", "event_refs": ("event:event-1",)},
+        market_evidence={
+            "status": "complete",
+            "route": "meme",
+            "target_market_type": "dex",
+            "price_usd": 1.0,
+            "liquidity_usd": 1000.0,
+            "instrument_ref": "pair:solana:test",
+            "freshness_status": "fresh",
+        },
+        identity_evidence={"status": "complete", "identity_refs": ("identity:token",)},
+        quality_metrics={"ref_count": len(refs), "high_quality_ref_count": len(refs), "fresh_ref_count": len(refs)},
+    )
 
 
 def _trade_candidate_raw(*, supporting_refs: list[str]) -> dict:

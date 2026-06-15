@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Iterable, Mapping
-from contextlib import nullcontext
-from typing import Any
+from collections.abc import Callable, Iterable, Mapping
+from contextlib import AbstractContextManager
+from typing import Any, cast
 
 from parallax.platform.db.json_safety import postgres_safe_json
 from parallax.platform.db.queue_terminal import terminalize_source_row
@@ -33,132 +33,134 @@ class NewsProjectionDirtyTargetRepository:
         )
         if not records:
             return 0
-        self.conn.execute(
-            """
-            WITH incoming AS (
-              SELECT *
-              FROM unnest(
-                %(projection_names)s::text[],
-                %(target_kinds)s::text[],
-                %(target_ids)s::text[],
-                %(windows)s::text[],
-                %(payload_hashes)s::text[],
-                %(source_watermark_ms_values)s::bigint[],
-                %(priorities)s::integer[],
-                %(due_at_ms_values)s::bigint[]
-              ) AS incoming(
-                projection_name,
-                target_kind,
-                target_id,
-                "window",
-                payload_hash,
-                source_watermark_ms,
-                priority,
-                due_at_ms
-              )
-            )
-            INSERT INTO news_projection_dirty_targets(
-              projection_name,
-              target_kind,
-              target_id,
-              "window",
-              dirty_reason,
-              payload_hash,
-              source_watermark_ms,
-              priority,
-              due_at_ms,
-              leased_until_ms,
-              lease_owner,
-              attempt_count,
-              last_error,
-              first_dirty_at_ms,
-              updated_at_ms
-            )
-            SELECT
-              incoming.projection_name,
-              incoming.target_kind,
-              incoming.target_id,
-              incoming."window",
-              %(dirty_reason)s,
-              incoming.payload_hash,
-              incoming.source_watermark_ms,
-              incoming.priority,
-              incoming.due_at_ms,
-              NULL,
-              NULL,
-              0,
-              NULL,
-              %(now_ms)s,
-              %(now_ms)s
-            FROM incoming
-            ON CONFLICT(projection_name, target_kind, target_id, "window") DO UPDATE SET
-              dirty_reason = CASE
-                WHEN news_projection_dirty_targets.source_watermark_ms = 0
-                  OR EXCLUDED.source_watermark_ms >= news_projection_dirty_targets.source_watermark_ms
-                  THEN EXCLUDED.dirty_reason
-                ELSE news_projection_dirty_targets.dirty_reason
-              END,
-              payload_hash = CASE
-                WHEN news_projection_dirty_targets.source_watermark_ms = 0
-                  OR EXCLUDED.source_watermark_ms >= news_projection_dirty_targets.source_watermark_ms
-                  THEN EXCLUDED.payload_hash
-                ELSE news_projection_dirty_targets.payload_hash
-              END,
-              source_watermark_ms = GREATEST(
-                news_projection_dirty_targets.source_watermark_ms,
-                EXCLUDED.source_watermark_ms
-              ),
-              priority = LEAST(news_projection_dirty_targets.priority, EXCLUDED.priority),
-              due_at_ms = LEAST(news_projection_dirty_targets.due_at_ms, EXCLUDED.due_at_ms),
-              leased_until_ms = CASE
-                WHEN news_projection_dirty_targets.leased_until_ms IS NOT NULL
-                  AND (
-                    EXCLUDED.source_watermark_ms > news_projection_dirty_targets.source_watermark_ms
-                    OR (
-                      (
-                        news_projection_dirty_targets.source_watermark_ms = 0
-                        OR EXCLUDED.source_watermark_ms >= news_projection_dirty_targets.source_watermark_ms
-                      )
-                      AND (
-                        news_projection_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
-                        OR news_projection_dirty_targets.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
-                      )
-                    )
+
+        def _enqueue_targets() -> int:
+            cursor = self.conn.execute(
+                """
+                WITH incoming AS (
+                  SELECT *
+                  FROM unnest(
+                    %(projection_names)s::text[],
+                    %(target_kinds)s::text[],
+                    %(target_ids)s::text[],
+                    %(windows)s::text[],
+                    %(payload_hashes)s::text[],
+                    %(source_watermark_ms_values)s::bigint[],
+                    %(priorities)s::integer[],
+                    %(due_at_ms_values)s::bigint[]
+                  ) AS incoming(
+                    projection_name,
+                    target_kind,
+                    target_id,
+                    "window",
+                    payload_hash,
+                    source_watermark_ms,
+                    priority,
+                    due_at_ms
                   )
-                  THEN NULL
-                ELSE news_projection_dirty_targets.leased_until_ms
-              END,
-              lease_owner = CASE
-                WHEN news_projection_dirty_targets.leased_until_ms IS NOT NULL
-                  AND (
-                    EXCLUDED.source_watermark_ms > news_projection_dirty_targets.source_watermark_ms
-                    OR (
-                      (
-                        news_projection_dirty_targets.source_watermark_ms = 0
-                        OR EXCLUDED.source_watermark_ms >= news_projection_dirty_targets.source_watermark_ms
-                      )
+                )
+                INSERT INTO news_projection_dirty_targets(
+                  projection_name,
+                  target_kind,
+                  target_id,
+                  "window",
+                  dirty_reason,
+                  payload_hash,
+                  source_watermark_ms,
+                  priority,
+                  due_at_ms,
+                  leased_until_ms,
+                  lease_owner,
+                  attempt_count,
+                  last_error,
+                  first_dirty_at_ms,
+                  updated_at_ms
+                )
+                SELECT
+                  incoming.projection_name,
+                  incoming.target_kind,
+                  incoming.target_id,
+                  incoming."window",
+                  %(dirty_reason)s,
+                  incoming.payload_hash,
+                  incoming.source_watermark_ms,
+                  incoming.priority,
+                  incoming.due_at_ms,
+                  NULL,
+                  NULL,
+                  0,
+                  NULL,
+                  %(now_ms)s,
+                  %(now_ms)s
+                FROM incoming
+                ON CONFLICT(projection_name, target_kind, target_id, "window") DO UPDATE SET
+                  dirty_reason = CASE
+                    WHEN news_projection_dirty_targets.source_watermark_ms = 0
+                      OR EXCLUDED.source_watermark_ms >= news_projection_dirty_targets.source_watermark_ms
+                      THEN EXCLUDED.dirty_reason
+                    ELSE news_projection_dirty_targets.dirty_reason
+                  END,
+                  payload_hash = CASE
+                    WHEN news_projection_dirty_targets.source_watermark_ms = 0
+                      OR EXCLUDED.source_watermark_ms >= news_projection_dirty_targets.source_watermark_ms
+                      THEN EXCLUDED.payload_hash
+                    ELSE news_projection_dirty_targets.payload_hash
+                  END,
+                  source_watermark_ms = GREATEST(
+                    news_projection_dirty_targets.source_watermark_ms,
+                    EXCLUDED.source_watermark_ms
+                  ),
+                  priority = LEAST(news_projection_dirty_targets.priority, EXCLUDED.priority),
+                  due_at_ms = LEAST(news_projection_dirty_targets.due_at_ms, EXCLUDED.due_at_ms),
+                  leased_until_ms = CASE
+                    WHEN news_projection_dirty_targets.leased_until_ms IS NOT NULL
                       AND (
-                        news_projection_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
-                        OR news_projection_dirty_targets.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
+                        EXCLUDED.source_watermark_ms > news_projection_dirty_targets.source_watermark_ms
+                        OR (
+                          (
+                            news_projection_dirty_targets.source_watermark_ms = 0
+                            OR EXCLUDED.source_watermark_ms >= news_projection_dirty_targets.source_watermark_ms
+                          )
+                          AND (
+                            news_projection_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                            OR news_projection_dirty_targets.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
+                          )
+                        )
                       )
-                    )
-                  )
-                  THEN NULL
-                ELSE news_projection_dirty_targets.lease_owner
-              END,
-              last_error = NULL,
-              first_dirty_at_ms = news_projection_dirty_targets.first_dirty_at_ms,
-              updated_at_ms = EXCLUDED.updated_at_ms
-            """,
-            {
-                **_dirty_params(records),
-                "dirty_reason": str(reason),
-                "now_ms": int(now_ms),
-            },
-        )
-        if commit:
-            self.conn.commit()
-        return len(records)
+                      THEN NULL
+                    ELSE news_projection_dirty_targets.leased_until_ms
+                  END,
+                  lease_owner = CASE
+                    WHEN news_projection_dirty_targets.leased_until_ms IS NOT NULL
+                      AND (
+                        EXCLUDED.source_watermark_ms > news_projection_dirty_targets.source_watermark_ms
+                        OR (
+                          (
+                            news_projection_dirty_targets.source_watermark_ms = 0
+                            OR EXCLUDED.source_watermark_ms >= news_projection_dirty_targets.source_watermark_ms
+                          )
+                          AND (
+                            news_projection_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                            OR news_projection_dirty_targets.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
+                          )
+                        )
+                      )
+                      THEN NULL
+                    ELSE news_projection_dirty_targets.lease_owner
+                  END,
+                  last_error = NULL,
+                  first_dirty_at_ms = news_projection_dirty_targets.first_dirty_at_ms,
+                  updated_at_ms = EXCLUDED.updated_at_ms
+                """,
+                {
+                    **_dirty_params(records),
+                    "dirty_reason": str(reason),
+                    "now_ms": int(now_ms),
+                },
+            )
+            return _cursor_rowcount(cursor)
+
+        return _run_repository_write(self.conn, commit, _enqueue_targets)
 
     def claim_due(
         self,
@@ -181,42 +183,47 @@ class NewsProjectionDirtyTargetRepository:
             _validate_projection_name(str(projection_name))
             projection_filter = "AND projection_name = %(projection_name)s"
             params["projection_name"] = str(projection_name)
-        rows = self.conn.execute(
-            f"""
-            WITH due AS (
-              SELECT projection_name, target_kind, target_id, "window"
-              FROM news_projection_dirty_targets
-              WHERE due_at_ms <= %(now_ms)s
-                AND (leased_until_ms IS NULL OR leased_until_ms <= %(now_ms)s)
-                {projection_filter}
-              ORDER BY priority ASC,
-                       source_watermark_ms DESC,
-                       due_at_ms ASC,
-                       updated_at_ms ASC,
-                       projection_name ASC,
-                       target_kind ASC,
-                       target_id ASC,
-                       "window" ASC
-              LIMIT %(limit)s
-              FOR UPDATE SKIP LOCKED
+
+        def _claim_due() -> list[dict[str, Any]]:
+            cursor = self.conn.execute(
+                f"""
+                WITH due AS (
+                  SELECT projection_name, target_kind, target_id, "window"
+                  FROM news_projection_dirty_targets
+                  WHERE due_at_ms <= %(now_ms)s
+                    AND (leased_until_ms IS NULL OR leased_until_ms <= %(now_ms)s)
+                    {projection_filter}
+                  ORDER BY priority ASC,
+                           source_watermark_ms DESC,
+                           due_at_ms ASC,
+                           updated_at_ms ASC,
+                           projection_name ASC,
+                           target_kind ASC,
+                           target_id ASC,
+                           "window" ASC
+                  LIMIT %(limit)s
+                  FOR UPDATE SKIP LOCKED
+                )
+                UPDATE news_projection_dirty_targets
+                SET leased_until_ms = %(leased_until_ms)s,
+                    lease_owner = %(lease_owner)s,
+                    last_error = NULL,
+                    updated_at_ms = %(now_ms)s
+                FROM due
+                WHERE news_projection_dirty_targets.projection_name = due.projection_name
+                  AND news_projection_dirty_targets.target_kind = due.target_kind
+                  AND news_projection_dirty_targets.target_id = due.target_id
+                  AND news_projection_dirty_targets."window" = due."window"
+                RETURNING news_projection_dirty_targets.*
+                """,
+                params,
             )
-            UPDATE news_projection_dirty_targets
-            SET leased_until_ms = %(leased_until_ms)s,
-                lease_owner = %(lease_owner)s,
-                last_error = NULL,
-                updated_at_ms = %(now_ms)s
-            FROM due
-            WHERE news_projection_dirty_targets.projection_name = due.projection_name
-              AND news_projection_dirty_targets.target_kind = due.target_kind
-              AND news_projection_dirty_targets.target_id = due.target_id
-              AND news_projection_dirty_targets."window" = due."window"
-            RETURNING news_projection_dirty_targets.*
-            """,
-            params,
-        ).fetchall()
-        if commit:
-            self.conn.commit()
-        return [dict(row) for row in rows]
+            rows = cursor.fetchall()
+            _returned_rowcount(cursor, rows)
+            claimed_rows = [dict(row) for row in rows]
+            return claimed_rows
+
+        return _run_repository_write(self.conn, commit, _claim_due)
 
     def mark_done(
         self,
@@ -228,49 +235,55 @@ class NewsProjectionDirtyTargetRepository:
         records = _key_records(keys)
         if not records:
             return 0
-        cursor = self.conn.execute(
-            """
-            WITH done AS (
-              SELECT *
-              FROM unnest(
-                %(projection_names)s::text[],
-                %(target_kinds)s::text[],
-                %(target_ids)s::text[],
-                %(windows)s::text[],
-                %(payload_hashes)s::text[],
-                %(lease_owners)s::text[],
-                %(attempt_counts)s::bigint[]
-              ) AS done(
-                projection_name,
-                target_kind,
-                target_id,
-                "window",
-                payload_hash,
-                lease_owner,
-                attempt_count
-              )
+
+        def _mark_done() -> int:
+            cursor = self.conn.execute(
+                """
+                WITH done AS (
+                  SELECT *
+                  FROM unnest(
+                    %(projection_names)s::text[],
+                    %(target_kinds)s::text[],
+                    %(target_ids)s::text[],
+                    %(windows)s::text[],
+                    %(payload_hashes)s::text[],
+                    %(lease_owners)s::text[],
+                    %(attempt_counts)s::bigint[]
+                  ) AS done(
+                    projection_name,
+                    target_kind,
+                    target_id,
+                    "window",
+                    payload_hash,
+                    lease_owner,
+                    attempt_count
+                  )
+                )
+                DELETE FROM news_projection_dirty_targets queue
+                USING done
+                WHERE queue.projection_name = done.projection_name
+                  AND queue.target_kind = done.target_kind
+                  AND queue.target_id = done.target_id
+                  AND queue."window" = done."window"
+                  AND queue.payload_hash = done.payload_hash
+                  AND queue.lease_owner = done.lease_owner
+                  AND queue.attempt_count = done.attempt_count
+                """,
+                _key_params(records),
             )
-            DELETE FROM news_projection_dirty_targets queue
-            USING done
-            WHERE queue.projection_name = done.projection_name
-              AND queue.target_kind = done.target_kind
-              AND queue.target_id = done.target_id
-              AND queue."window" = done."window"
-              AND queue.payload_hash = done.payload_hash
-              AND queue.lease_owner = done.lease_owner
-              AND queue.attempt_count = done.attempt_count
-            """,
-            _key_params(records),
-        )
-        if commit:
-            self.conn.commit()
-        return int(getattr(cursor, "rowcount", 0) or 0)
+            return _cursor_rowcount(cursor)
+
+        return _run_repository_write(self.conn, commit, _mark_done)
 
     def delete_claimed_targets(self, keys: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
         records = _key_records(keys)
+        deleted_records, _deleted_count = self._delete_claimed_target_rows(records)
+        return deleted_records
+
+    def _delete_claimed_target_rows(self, records: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
         if not records:
-            return []
-        rows = self.conn.execute(
+            return [], 0
+        cursor = self.conn.execute(
             """
             WITH done AS (
               SELECT *
@@ -304,8 +317,10 @@ class NewsProjectionDirtyTargetRepository:
             RETURNING queue.*
             """,
             _key_params(records),
-        ).fetchall()
-        return [dict(row) for row in rows]
+        )
+        rows = cursor.fetchall()
+        deleted_count = _returned_rowcount(cursor, rows)
+        return [dict(row) for row in rows], deleted_count
 
     def mark_error(
         self,
@@ -327,49 +342,51 @@ class NewsProjectionDirtyTargetRepository:
             "last_error": str(error)[:2048],
             "attempt_increment": 1 if count_attempt else 0,
         }
-        cursor = self.conn.execute(
-            """
-            WITH failed AS (
-              SELECT *
-              FROM unnest(
-                %(projection_names)s::text[],
-                %(target_kinds)s::text[],
-                %(target_ids)s::text[],
-                %(windows)s::text[],
-                %(payload_hashes)s::text[],
-                %(lease_owners)s::text[],
-                %(attempt_counts)s::bigint[]
-              ) AS failed(
-                projection_name,
-                target_kind,
-                target_id,
-                "window",
-                payload_hash,
-                lease_owner,
-                attempt_count
-              )
+
+        def _mark_error() -> int:
+            cursor = self.conn.execute(
+                """
+                WITH failed AS (
+                  SELECT *
+                  FROM unnest(
+                    %(projection_names)s::text[],
+                    %(target_kinds)s::text[],
+                    %(target_ids)s::text[],
+                    %(windows)s::text[],
+                    %(payload_hashes)s::text[],
+                    %(lease_owners)s::text[],
+                    %(attempt_counts)s::bigint[]
+                  ) AS failed(
+                    projection_name,
+                    target_kind,
+                    target_id,
+                    "window",
+                    payload_hash,
+                    lease_owner,
+                    attempt_count
+                  )
+                )
+                UPDATE news_projection_dirty_targets queue
+                SET due_at_ms = %(due_at_ms)s,
+                    leased_until_ms = NULL,
+                    lease_owner = NULL,
+                    attempt_count = queue.attempt_count + %(attempt_increment)s,
+                    last_error = %(last_error)s,
+                    updated_at_ms = %(now_ms)s
+                FROM failed
+                WHERE queue.projection_name = failed.projection_name
+                  AND queue.target_kind = failed.target_kind
+                  AND queue.target_id = failed.target_id
+                  AND queue."window" = failed."window"
+                  AND queue.payload_hash = failed.payload_hash
+                  AND queue.lease_owner = failed.lease_owner
+                  AND queue.attempt_count = failed.attempt_count
+                """,
+                params,
             )
-            UPDATE news_projection_dirty_targets queue
-            SET due_at_ms = %(due_at_ms)s,
-                leased_until_ms = NULL,
-                lease_owner = NULL,
-                attempt_count = queue.attempt_count + %(attempt_increment)s,
-                last_error = %(last_error)s,
-                updated_at_ms = %(now_ms)s
-            FROM failed
-            WHERE queue.projection_name = failed.projection_name
-              AND queue.target_kind = failed.target_kind
-              AND queue.target_id = failed.target_id
-              AND queue."window" = failed."window"
-              AND queue.payload_hash = failed.payload_hash
-              AND queue.lease_owner = failed.lease_owner
-              AND queue.attempt_count = failed.attempt_count
-            """,
-            params,
-        )
-        if commit:
-            self.conn.commit()
-        return int(getattr(cursor, "rowcount", 0) or 0)
+            return _cursor_rowcount(cursor)
+
+        return _run_repository_write(self.conn, commit, _mark_error)
 
     def terminalize_targets(
         self,
@@ -386,10 +403,8 @@ class NewsProjectionDirtyTargetRepository:
         records = _key_records(keys)
         if not records:
             return 0
-        transaction_factory = getattr(self.conn, "transaction", None)
-        transaction = transaction_factory() if commit and callable(transaction_factory) else nullcontext()
-        with transaction:
-            deleted_records = self.delete_claimed_targets(records)
+        with _transaction(self.conn):
+            deleted_records, deleted_count = self._delete_claimed_target_rows(records)
             for record in deleted_records:
                 target_key = _terminal_target_key(record, semantic_payload_hash=semantic_payload_hash)
                 terminalize_source_row(
@@ -408,9 +423,7 @@ class NewsProjectionDirtyTargetRepository:
                     payload_hash=str(semantic_payload_hash or record["payload_hash"]),
                     commit=False,
                 )
-        if commit and transaction_factory is None:
-            self.conn.commit()
-        return len(deleted_records)
+        return deleted_count
 
     def queue_depth(
         self,
@@ -509,9 +522,6 @@ def _key_records(keys: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
         target_id = str(key.get("target_id") or "")
         has_window = "window" in key
         window = str(key.get("window") or "") if has_window else ""
-        payload_hash = str(key.get("payload_hash") or "")
-        lease_owner = str(key.get("lease_owner") or "")
-        attempt_count = int(key.get("attempt_count") or 0)
         if not projection_name or not target_kind or not target_id:
             raise ValueError("news projection dirty target completion requires full target key from claim_due")
         _validate_projection_name(projection_name)
@@ -521,12 +531,13 @@ def _key_records(keys: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
             raise ValueError("news source_quality dirty target completion requires window from claim_due")
         if projection_name != "source_quality":
             window = ""
+        payload_hash = _completion_payload_hash(key)
+        lease_owner = _completion_lease_owner(key)
+        attempt_count = _completion_attempt_count(key)
         if not payload_hash:
             raise ValueError("news projection dirty target completion requires payload_hash from claim_due")
         if not lease_owner:
             raise ValueError("news projection dirty target completion requires lease_owner from claim_due")
-        if attempt_count < 0:
-            raise ValueError("news projection dirty target completion requires attempt_count from claim_due")
         records.append(
             {
                 "projection_name": projection_name,
@@ -541,9 +552,81 @@ def _key_records(keys: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
     return records
 
 
+def _completion_attempt_count(key: Mapping[str, Any]) -> int:
+    try:
+        attempt_count = int(key["attempt_count"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("news projection dirty target completion requires attempt_count from claim_due") from exc
+    if attempt_count < 0:
+        raise ValueError("news projection dirty target completion requires attempt_count from claim_due")
+    return attempt_count
+
+
+def _completion_lease_owner(key: Mapping[str, Any]) -> str:
+    try:
+        value = key["lease_owner"]
+    except KeyError as exc:
+        raise ValueError("news projection dirty target completion requires lease_owner from claim_due") from exc
+    if value is None:
+        raise ValueError("news projection dirty target completion requires lease_owner from claim_due")
+    lease_owner = str(value).strip()
+    if not lease_owner:
+        raise ValueError("news projection dirty target completion requires lease_owner from claim_due")
+    return lease_owner
+
+
+def _completion_payload_hash(key: Mapping[str, Any]) -> str:
+    try:
+        value = key["payload_hash"]
+    except KeyError as exc:
+        raise ValueError("news projection dirty target completion requires payload_hash from claim_due") from exc
+    if value is None:
+        raise ValueError("news projection dirty target completion requires payload_hash from claim_due")
+    payload_hash = str(value).strip()
+    if not payload_hash:
+        raise ValueError("news projection dirty target completion requires payload_hash from claim_due")
+    return payload_hash
+
+
 def _validate_projection_name(projection_name: str) -> None:
     if projection_name not in _ALLOWED_PROJECTION_NAMES:
         raise ValueError(f"unsupported news projection_name: {projection_name}")
+
+
+def _transaction(conn: Any) -> AbstractContextManager[Any]:
+    try:
+        transaction = conn.transaction
+    except AttributeError as exc:
+        raise RuntimeError("news_projection_dirty_target_transaction_required") from exc
+    if not callable(transaction):
+        raise RuntimeError("news_projection_dirty_target_transaction_required")
+    return cast(AbstractContextManager[Any], transaction())
+
+
+def _run_repository_write[T](conn: Any, commit: bool, write: Callable[[], T]) -> T:
+    if commit:
+        with _transaction(conn):
+            return write()
+    return write()
+
+
+def _cursor_rowcount(cursor: Any) -> int:
+    try:
+        rowcount: object = cursor.rowcount
+    except AttributeError as exc:
+        raise TypeError("news_projection_dirty_target_rowcount_required") from exc
+    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
+        raise TypeError("news_projection_dirty_target_rowcount_invalid")
+    if rowcount < 0:
+        raise TypeError("news_projection_dirty_target_rowcount_invalid")
+    return rowcount
+
+
+def _returned_rowcount(cursor: Any, rows: list[Any]) -> int:
+    count = _cursor_rowcount(cursor)
+    if count != len(rows):
+        raise TypeError("news_projection_dirty_target_rowcount_invalid")
+    return count
 
 
 def _key_params(records: list[dict[str, Any]]) -> dict[str, list[Any]]:

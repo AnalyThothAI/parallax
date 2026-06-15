@@ -1,19 +1,33 @@
 from __future__ import annotations
 
+import pytest
+
 from parallax.domains.pulse_lab.services.pulse_admission_policy import (
     PulseAdmissionPolicy,
 )
 
 
+def _classify(**overrides):
+    values = {
+        "previous_state": {},
+        "current_state": {},
+        "existing_job": None,
+        "edge_events": [],
+        "pending_score_band": None,
+        "pending_score_band_count": 0,
+        "recent_failure_count": 0,
+        "failure_circuit_per_hour": 3,
+        "timeline_debounce_seconds": 600,
+    }
+    values.update(overrides)
+    return PulseAdmissionPolicy().classify(**values)
+
+
 def test_policy_suppresses_unchanged_state() -> None:
     state = {"pulse_status": "token_watch", "score_band": "70-79"}
-    decision = PulseAdmissionPolicy().classify(
+    decision = _classify(
         previous_state=state,
         current_state=state,
-        existing_job=None,
-        edge_events=[],
-        pending_score_band=None,
-        pending_score_band_count=0,
     )
 
     assert decision.action == "suppress"
@@ -21,23 +35,17 @@ def test_policy_suppresses_unchanged_state() -> None:
 
 
 def test_policy_suppresses_pending_and_running_jobs() -> None:
-    policy = PulseAdmissionPolicy()
-
-    pending = policy.classify(
+    pending = _classify(
         previous_state={"pulse_status": "token_watch"},
         current_state={"pulse_status": "trade_candidate"},
         existing_job={"status": "pending", "attempt_count": 0, "max_attempts": 3},
         edge_events=["pulse_status_changed"],
-        pending_score_band=None,
-        pending_score_band_count=0,
     )
-    running = policy.classify(
+    running = _classify(
         previous_state={"pulse_status": "token_watch"},
         current_state={"pulse_status": "trade_candidate"},
         existing_job={"status": "running", "attempt_count": 1, "max_attempts": 3},
         edge_events=["pulse_status_changed"],
-        pending_score_band=None,
-        pending_score_band_count=0,
     )
 
     assert pending.action == "suppress"
@@ -47,27 +55,32 @@ def test_policy_suppresses_pending_and_running_jobs() -> None:
 
 
 def test_policy_suppresses_retryable_failed_job_with_specific_reason() -> None:
-    decision = PulseAdmissionPolicy().classify(
+    decision = _classify(
         previous_state={"pulse_status": "token_watch"},
         current_state={"pulse_status": "trade_candidate"},
         existing_job={"status": "failed", "attempt_count": 1, "max_attempts": 3},
         edge_events=["pulse_status_changed"],
-        pending_score_band=None,
-        pending_score_band_count=0,
     )
 
     assert decision.action == "suppress"
     assert decision.reason == "retryable_failed_job"
 
 
+def test_policy_rejects_failed_job_missing_attempt_contract_without_default() -> None:
+    with pytest.raises(RuntimeError, match="pulse_existing_failed_job_attempt_contract_required"):
+        _classify(
+            previous_state={"pulse_status": "token_watch"},
+            current_state={"pulse_status": "trade_candidate"},
+            existing_job={"status": "failed", "attempt_count": 1},
+            edge_events=["timeline_evidence_changed"],
+        )
+
+
 def test_policy_admits_first_observation_as_material_edge() -> None:
-    decision = PulseAdmissionPolicy().classify(
+    decision = _classify(
         previous_state={},
         current_state={"pulse_status": "token_watch"},
-        existing_job=None,
         edge_events=["pulse_status_changed"],
-        pending_score_band=None,
-        pending_score_band_count=0,
     )
 
     assert decision.action == "enqueue_agent"
@@ -75,13 +88,10 @@ def test_policy_admits_first_observation_as_material_edge() -> None:
 
 
 def test_policy_admits_escalation_edges_with_specific_reason() -> None:
-    decision = PulseAdmissionPolicy().classify(
+    decision = _classify(
         previous_state={"pulse_status": "token_watch"},
         current_state={"pulse_status": "trade_candidate"},
-        existing_job=None,
         edge_events=["pulse_status_changed"],
-        pending_score_band=None,
-        pending_score_band_count=0,
     )
 
     assert decision.action == "enqueue_agent"
@@ -89,13 +99,10 @@ def test_policy_admits_escalation_edges_with_specific_reason() -> None:
 
 
 def test_policy_admits_hard_risk_added_with_specific_reason() -> None:
-    decision = PulseAdmissionPolicy().classify(
+    decision = _classify(
         previous_state={"hard_risks": []},
         current_state={"hard_risks": ["duplicate_text_share_high"]},
-        existing_job=None,
         edge_events=["hard_risk_added"],
-        pending_score_band=None,
-        pending_score_band_count=0,
     )
 
     assert decision.action == "enqueue_agent"
@@ -103,13 +110,10 @@ def test_policy_admits_hard_risk_added_with_specific_reason() -> None:
 
 
 def test_policy_admits_material_evidence_changes_with_specific_reason() -> None:
-    decision = PulseAdmissionPolicy().classify(
+    decision = _classify(
         previous_state={"timeline_signature": "sha256:old"},
         current_state={"timeline_signature": "sha256:new"},
-        existing_job=None,
         edge_events=["timeline_evidence_changed"],
-        pending_score_band=None,
-        pending_score_band_count=0,
     )
 
     assert decision.action == "enqueue_agent"
@@ -117,13 +121,10 @@ def test_policy_admits_material_evidence_changes_with_specific_reason() -> None:
 
 
 def test_policy_failure_circuit_suppresses_material_evidence_changes() -> None:
-    decision = PulseAdmissionPolicy().classify(
+    decision = _classify(
         previous_state={"timeline_signature": "sha256:old"},
         current_state={"timeline_signature": "sha256:new"},
-        existing_job=None,
         edge_events=["timeline_evidence_changed"],
-        pending_score_band=None,
-        pending_score_band_count=0,
         recent_failure_count=3,
     )
 
@@ -132,13 +133,10 @@ def test_policy_failure_circuit_suppresses_material_evidence_changes() -> None:
 
 
 def test_policy_suppresses_first_score_band_observation() -> None:
-    decision = PulseAdmissionPolicy().classify(
+    decision = _classify(
         previous_state={"score_band": "60-69", "pulse_status": "token_watch"},
         current_state={"score_band": "70-79", "pulse_status": "token_watch"},
-        existing_job=None,
         edge_events=["score_band_crossed"],
-        pending_score_band=None,
-        pending_score_band_count=0,
     )
 
     assert decision.action == "suppress"
@@ -146,10 +144,9 @@ def test_policy_suppresses_first_score_band_observation() -> None:
 
 
 def test_policy_requires_two_score_band_observations() -> None:
-    decision = PulseAdmissionPolicy().classify(
+    decision = _classify(
         previous_state={"score_band": "60-69", "pulse_status": "token_watch"},
         current_state={"score_band": "70-79", "pulse_status": "token_watch"},
-        existing_job=None,
         edge_events=["score_band_crossed"],
         pending_score_band="70-79",
         pending_score_band_count=1,
@@ -160,10 +157,9 @@ def test_policy_requires_two_score_band_observations() -> None:
 
 
 def test_policy_opens_failure_circuit_for_non_escalation_edges() -> None:
-    decision = PulseAdmissionPolicy().classify(
+    decision = _classify(
         previous_state={"score_band": "60-69", "pulse_status": "token_watch"},
         current_state={"score_band": "70-79", "pulse_status": "token_watch"},
-        existing_job=None,
         edge_events=["score_band_crossed"],
         pending_score_band="70-79",
         pending_score_band_count=1,

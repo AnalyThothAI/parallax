@@ -26,7 +26,7 @@ def construct_macro_intel_workers(ctx: WorkerFactoryContext) -> dict[str, Worker
             db=ctx.db,
             telemetry=ctx.telemetry,
             settings_root=ctx.settings,
-            wake_bus=ctx.wake_bus,
+            wake_emitter=ctx.wake_bus,
             runner=MacrodataBundleRunner(settings=ctx.settings),
         )
     elif workers.macro_sync.enabled:
@@ -38,7 +38,7 @@ def construct_macro_intel_workers(ctx: WorkerFactoryContext) -> dict[str, Worker
             settings=workers.macro_view_projection,
             db=ctx.db,
             telemetry=ctx.telemetry,
-            wake_bus=ctx.wake_bus,
+            wake_emitter=ctx.wake_bus,
             wake_waiter=ctx.db.wake_listener(worker_name, workers.macro_view_projection.wakes_on),
         )
     if workers.macro_daily_brief_projection.enabled:

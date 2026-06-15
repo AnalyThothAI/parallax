@@ -136,6 +136,52 @@ def test_build_macro_module_view_projects_v3_display_contract() -> None:
     assert "section_boards" not in view
 
 
+@pytest.mark.parametrize(
+    "field_name",
+    (
+        "panels_json",
+        "indicators_json",
+        "triggers_json",
+        "data_gaps_json",
+        "source_coverage_json",
+        "features_json",
+        "chain_json",
+        "scenario_json",
+        "scorecard_json",
+    ),
+)
+def test_build_macro_module_view_requires_formal_snapshot_json_sections(field_name: str) -> None:
+    snapshot = _snapshot()
+    del snapshot[field_name]
+
+    with pytest.raises(ValueError, match=f"macro_module_view_snapshot_section_required:{field_name}"):
+        build_macro_module_view("rates/yield-curve", snapshot=snapshot, observations=[])
+
+
+@pytest.mark.parametrize(
+    ("field_name", "invalid_value"),
+    (
+        ("panels_json", []),
+        ("indicators_json", []),
+        ("source_coverage_json", []),
+        ("features_json", []),
+        ("chain_json", []),
+        ("scenario_json", []),
+        ("scorecard_json", []),
+        ("triggers_json", {}),
+        ("data_gaps_json", {}),
+    ),
+)
+def test_build_macro_module_view_rejects_misshaped_snapshot_json_sections(
+    field_name: str, invalid_value: object
+) -> None:
+    snapshot = _snapshot()
+    snapshot[field_name] = invalid_value
+
+    with pytest.raises(ValueError, match=f"macro_module_view_snapshot_section_invalid:{field_name}"):
+        build_macro_module_view("rates/yield-curve", snapshot=snapshot, observations=[])
+
+
 def test_module_view_provenance_exposes_fact_projection_currentness_without_run_ids() -> None:
     view = build_macro_module_view(
         "rates/yield-curve",
@@ -620,6 +666,7 @@ def _snapshot() -> dict[str, object]:
         },
         "panels_json": {"rates": {"regime": "term_premium_pressure", "score": 7.1}},
         "indicators_json": {"rates:dgs10": {"value": 4.7, "unit": "percent"}},
+        "triggers_json": [{"code": "real_yield_breakout", "description": "10Y real yield keeps rising."}],
         "data_gaps_json": [
             {
                 "code": "missing_rates_dgs5",
@@ -629,6 +676,7 @@ def _snapshot() -> dict[str, object]:
             }
         ],
         "source_coverage_json": {"latest_coverage_ratio": 0.5, "history_coverage_ratio": 0.25},
+        "scorecard_json": {"projection_version": "macro_regime_v4", "chain_average": 7.1},
     }
 
 

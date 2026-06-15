@@ -81,13 +81,19 @@ def test_require_transaction_accepts_real_postgres_transaction() -> None:
         conn.close()
 
 
-def test_require_transaction_allows_fake_connections_without_psycopg_info() -> None:
-    postgres_client.require_transaction(object(), operation="fake_write")
+def test_require_transaction_rejects_fake_connections_without_psycopg_info() -> None:
+    with pytest.raises(RuntimeError, match="fake_write_requires_transaction_status_contract"):
+        postgres_client.require_transaction(object(), operation="fake_write")
 
 
 def test_repository_session_transaction_alias_uses_unit_of_work() -> None:
     conn = FakeTransactionConnection()
-    repos = repositories_for_connection(conn)
+    repos = repositories_for_connection(
+        conn,
+        pulse_job_running_timeout_ms=300_000,
+        notification_delivery_running_timeout_ms=300_000,
+        notification_delivery_stale_running_terminalization_batch_size=100,
+    )
 
     with repos.transaction():
         conn.events.append("body")
@@ -182,7 +188,12 @@ def test_market_tick_current_rebuild_rolls_back_truncate_and_upsert_on_failure()
     new_tick = _market_tick(observed_at_ms=1_900_000_200_000)
     try:
         _delete_market_tick_target(conn, old_tick)
-        repos = repositories_for_connection(conn)
+        repos = repositories_for_connection(
+            conn,
+            pulse_job_running_timeout_ms=300_000,
+            notification_delivery_running_timeout_ms=300_000,
+            notification_delivery_stale_running_terminalization_batch_size=100,
+        )
         repos.market_ticks.insert_tick(old_tick)
         old_row = repos.market_tick_current.latest_tick_for_target(
             target_type=old_tick.target_type,

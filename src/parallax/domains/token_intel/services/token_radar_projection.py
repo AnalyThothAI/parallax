@@ -9,6 +9,7 @@ from typing import Any, cast
 
 from parallax.domains.narrative_intel.interfaces import NARRATIVE_SCHEMA_VERSION
 from parallax.domains.token_intel._constants import (
+    TOKEN_RADAR_DECISIONS,
     TOKEN_RADAR_DEFAULT_VENUE,
     TOKEN_RADAR_FACTOR_FAMILIES,
     TOKEN_RADAR_PROJECTION_NAME,
@@ -42,11 +43,14 @@ from parallax.domains.token_intel.scoring.token_radar_feature_builder import (
     build_radar_features,
 )
 from parallax.domains.token_intel.services.atomic_mention import HIGH_CONF_RESOLUTION_STATUSES, KOL_TIER_TAGS
-from parallax.domains.token_intel.services.token_radar_payload_hash import (
+from parallax.domains.token_intel.types.token_radar_payload_hash import (
     stable_token_radar_payload_hash,
 )
 
 PROJECTION_VERSION = TOKEN_RADAR_PROJECTION_VERSION
+TOKEN_RADAR_DECISION_PRIORITY = {"high_alert": 0, "watch": 1, "discard": 2}
+RANKED_NORMALIZATION_STATUSES = frozenset({"ranked", "no_signal"})
+RANKED_COHORT_STATUSES = frozenset({"ready", "insufficient", "all_tied"})
 STALE_RUNNING_PROJECTION_MS = 10 * 60 * 1000
 STALE_RUNNING_CLEANUP_INTERVAL_MS = STALE_RUNNING_PROJECTION_MS
 MAX_ANALYSIS_LOOKBACK_MS = 48 * 60 * 60 * 1000
@@ -58,12 +62,14 @@ DEX_DECISION_FLOORS = {
 }
 LIVE_LATEST_MAX_AGE_MS = 90 * 1000
 FRESH_LATEST_MAX_AGE_MS = 5 * 60 * 1000
-DIRTY_TARGET_LEASE_MS = 2 * 60 * 1000
-DIRTY_TARGET_RETRY_MS = 30 * 1000
 PULSE_TRIGGER_WINDOWS = frozenset({"1h", "4h"})
 PULSE_TRIGGER_SCOPES = frozenset({"all", "matched"})
 NARRATIVE_ADMISSION_WINDOWS = frozenset({"1h"})
 NARRATIVE_ADMISSION_SCOPE = "all"
+
+
+class TokenRadarProjectionWindowError(ValueError):
+    pass
 
 
 class TokenRadarProjection:
@@ -82,12 +88,65 @@ class TokenRadarProjection:
         *,
         window: str,
         scope: str,
+        limit: int,
         venue: str = TOKEN_RADAR_DEFAULT_VENUE,
         now_ms: int | None = None,
-        limit: int = 100,
     ) -> dict[str, Any]:
         computed_at_ms = int(now_ms or time.time() * 1000)
         return self.refresh_rank_set(window=window, scope=scope, venue=venue, now_ms=computed_at_ms, limit=limit)
+
+    def prune_private_cache(
+        self,
+        *,
+        windows: tuple[str, ...],
+        scopes: tuple[str, ...],
+        now_ms: int,
+        retention_ms: int,
+        limit: int,
+    ) -> dict[str, Any]:
+        computed_at_ms = int(now_ms)
+        cutoff_ms = computed_at_ms - max(1, int(retention_ms))
+        remaining = max(1, int(limit))
+        target_features_deleted = 0
+        rank_source_edges_deleted = 0
+        with _transaction_context(self.repos.conn):
+            for window in windows:
+                for scope in scopes:
+                    if remaining <= 0:
+                        break
+                    deleted = int(
+                        self.repos.token_radar.prune_target_features(
+                            projection_version=PROJECTION_VERSION,
+                            window=str(window),
+                            scope=str(scope),
+                            latest_event_before_ms=cutoff_ms,
+                            limit=remaining,
+                            commit=False,
+                        )
+                        or 0
+                    )
+                    target_features_deleted += deleted
+                    remaining = max(0, remaining - deleted)
+                if remaining <= 0:
+                    break
+            remaining_budget = remaining
+            if remaining_budget > 0:
+                rank_source_edges_deleted = int(
+                    self.repos.token_radar_rank_sources.prune_edges(
+                        projection_version=PROJECTION_VERSION,
+                        event_received_before_ms=cutoff_ms,
+                        limit=remaining_budget,
+                        commit=False,
+                    )
+                    or 0
+                )
+        return {
+            "status": "ready" if target_features_deleted or rank_source_edges_deleted else "idle",
+            "cutoff_ms": cutoff_ms,
+            "target_features_deleted": target_features_deleted,
+            "rank_source_edges_deleted": rank_source_edges_deleted,
+            "limit": max(1, int(limit)),
+        }
 
     def rebuild_dirty_targets(
         self,
@@ -98,13 +157,51 @@ class TokenRadarProjection:
         work_items: tuple[tuple[str, ...], ...] | None = None,
         score_work_items: tuple[tuple[str, ...], ...] | None = None,
         now_ms: int | None = None,
-        limit: int = 100,
-        rank_limit: int = 100,
-        lease_owner: str = "token_radar_projection",
+        limit: int,
+        rank_limit: int,
+        lease_ms: int,
+        retry_ms: int,
+        lease_owner: str,
+        claimed_targets: Sequence[Mapping[str, Any]] | None = None,
+        claimed_source_events: Sequence[Mapping[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        with _transaction_context(self.repos.conn):
+            return self._rebuild_dirty_targets_in_transaction(
+                windows=windows,
+                scopes=scopes,
+                venues=venues,
+                work_items=work_items,
+                score_work_items=score_work_items,
+                now_ms=now_ms,
+                limit=limit,
+                rank_limit=rank_limit,
+                lease_ms=lease_ms,
+                retry_ms=retry_ms,
+                lease_owner=lease_owner,
+                claimed_targets=claimed_targets,
+                claimed_source_events=claimed_source_events,
+            )
+
+    def _rebuild_dirty_targets_in_transaction(
+        self,
+        *,
+        windows: tuple[str, ...] = (),
+        scopes: tuple[str, ...] = (),
+        venues: tuple[str, ...] = (),
+        work_items: tuple[tuple[str, ...], ...] | None = None,
+        score_work_items: tuple[tuple[str, ...], ...] | None = None,
+        now_ms: int | None = None,
+        limit: int,
+        rank_limit: int,
+        lease_ms: int,
+        retry_ms: int,
+        lease_owner: str,
         claimed_targets: Sequence[Mapping[str, Any]] | None = None,
         claimed_source_events: Sequence[Mapping[str, Any]] | None = None,
     ) -> dict[str, Any]:
         computed_at_ms = int(now_ms or time.time() * 1000)
+        dirty_lease_ms = max(1, int(lease_ms))
+        dirty_retry_ms = max(1, int(retry_ms))
         source_work_items = _resolve_work_items(
             windows=windows,
             scopes=scopes,
@@ -117,26 +214,22 @@ class TokenRadarProjection:
             if claimed_targets is not None
             else self.repos.token_radar_dirty_targets.claim_due(
                 limit=limit,
-                lease_ms=DIRTY_TARGET_LEASE_MS,
+                lease_ms=dirty_lease_ms,
                 now_ms=computed_at_ms,
                 lease_owner=lease_owner,
-                commit=True,
+                commit=False,
             )
         )
-        source_dirty_repo = getattr(self.repos, "token_radar_source_dirty_events", None)
+        source_dirty_repo = self.repos.token_radar_source_dirty_events
         source_claims = (
             [dict(claim) for claim in claimed_source_events]
             if claimed_source_events is not None
-            else (
-                source_dirty_repo.claim_due(
-                    limit=limit,
-                    lease_ms=DIRTY_TARGET_LEASE_MS,
-                    now_ms=computed_at_ms,
-                    lease_owner=lease_owner,
-                    commit=True,
-                )
-                if source_dirty_repo is not None
-                else []
+            else source_dirty_repo.claim_due(
+                limit=limit,
+                lease_ms=dirty_lease_ms,
+                now_ms=computed_at_ms,
+                lease_owner=lease_owner,
+                commit=False,
             )
         )
         result: dict[str, Any] = {
@@ -150,6 +243,8 @@ class TokenRadarProjection:
             "windows": {},
             "status": "idle" if not target_claims and not source_claims else "ready",
         }
+        target_claim_keys = [_claim_key(claim) for claim in target_claims]
+        source_claim_keys = [_source_claim_key(claim) for claim in source_claims]
         if not target_claims and not source_claims and not due_work_items:
             return result
 
@@ -160,11 +255,6 @@ class TokenRadarProjection:
         first_error: str | None = None
         first_publish_error: str | None = None
         failed_publish_items: set[tuple[str, str, str]] = set()
-        if source_claims and source_dirty_repo is None:
-            failures += len(source_claims)
-            first_error = first_error or "token_radar_source_dirty_events_repository_required"
-            source_claims = []
-
         source_projection_targets: list[dict[str, Any]] = []
         if source_claims:
             try:
@@ -180,18 +270,17 @@ class TokenRadarProjection:
             except Exception as exc:
                 failures += len(source_claims)
                 first_error = first_error or str(exc)
-                if source_dirty_repo is not None:
-                    source_dirty_repo.mark_error(
-                        [_source_claim_key(claim) for claim in source_claims],
-                        error=str(exc),
-                        retry_ms=DIRTY_TARGET_RETRY_MS,
-                        now_ms=computed_at_ms,
-                        commit=True,
-                    )
+                source_dirty_repo.mark_error(
+                    source_claim_keys,
+                    error=str(exc),
+                    retry_ms=dirty_retry_ms,
+                    now_ms=computed_at_ms,
+                    commit=False,
+                )
                 source_claims = []
                 source_projection_targets = []
         if source_claims and not source_projection_targets:
-            successful_source_claims.extend((_source_claim_key(claim), set()) for claim in source_claims)
+            successful_source_claims.extend((claim_key, set()) for claim_key in source_claim_keys)
 
         if target_claims or source_projection_targets:
             edge_refresh_claims = [claim for claim in target_claims if not bool(claim.get("market_dirty"))]
@@ -212,9 +301,9 @@ class TokenRadarProjection:
                     self.repos.token_radar_dirty_targets.mark_error(
                         [_claim_key(claim) for claim in edge_refresh_claims],
                         error=str(exc),
-                        retry_ms=DIRTY_TARGET_RETRY_MS,
+                        retry_ms=dirty_retry_ms,
                         now_ms=computed_at_ms,
-                        commit=True,
+                        commit=False,
                     )
                     failed_edge_refresh_keys = {_claim_identity_key(claim) for claim in edge_refresh_claims}
                     target_claims = [
@@ -257,24 +346,21 @@ class TokenRadarProjection:
                                 items = _rank_items_for_projection_change(request=request, score_result=score_result)
                                 touched.update(items)
                                 source_touched.update(items)
-                    successful_source_claims.extend(
-                        (_source_claim_key(claim), set(source_touched)) for claim in source_claims
-                    )
+                    successful_source_claims.extend((claim_key, set(source_touched)) for claim_key in source_claim_keys)
                 except Exception as exc:
                     failures += len(source_claims) or 1
                     first_error = first_error or str(exc)
-                    if source_dirty_repo is not None:
-                        source_dirty_repo.mark_error(
-                            [_source_claim_key(claim) for claim in source_claims],
-                            error=str(exc),
-                            retry_ms=DIRTY_TARGET_RETRY_MS,
-                            now_ms=computed_at_ms,
-                            commit=True,
-                        )
+                    source_dirty_repo.mark_error(
+                        source_claim_keys,
+                        error=str(exc),
+                        retry_ms=dirty_retry_ms,
+                        now_ms=computed_at_ms,
+                        commit=False,
+                    )
 
             requests_by_target = _source_requests_by_target(target_requests)
             for claim_index, claim in enumerate(target_claims):
-                claim_key = _claim_key(claim)
+                claim_key = target_claim_keys[claim_index]
                 claim_touched: set[tuple[str, str, str]] = set()
                 try:
                     for request in requests_by_target.get(claim_index, []):
@@ -302,9 +388,9 @@ class TokenRadarProjection:
                     self.repos.token_radar_dirty_targets.mark_error(
                         [claim_key],
                         error=str(exc),
-                        retry_ms=DIRTY_TARGET_RETRY_MS,
+                        retry_ms=dirty_retry_ms,
                         now_ms=computed_at_ms,
-                        commit=True,
+                        commit=False,
                     )
 
         publish_items = set(touched)
@@ -348,28 +434,29 @@ class TokenRadarProjection:
                 successful_claims=successful_target_claims,
                 failed_publish_items=failed_publish_items,
                 error=first_publish_error or first_error or str(result["error"]),
+                retry_ms=dirty_retry_ms,
                 now_ms=computed_at_ms,
             )
-            if source_dirty_repo is not None:
-                self._finish_successful_claims(
-                    repo=source_dirty_repo,
-                    successful_claims=successful_source_claims,
-                    failed_publish_items=failed_publish_items,
-                    error=first_publish_error or first_error or str(result["error"]),
-                    now_ms=computed_at_ms,
-                )
+            self._finish_successful_claims(
+                repo=source_dirty_repo,
+                successful_claims=successful_source_claims,
+                failed_publish_items=failed_publish_items,
+                error=first_publish_error or first_error or str(result["error"]),
+                retry_ms=dirty_retry_ms,
+                now_ms=computed_at_ms,
+            )
         else:
             if successful_target_claims:
                 self.repos.token_radar_dirty_targets.mark_done(
                     [claim_key for claim_key, _touched_items in successful_target_claims],
                     now_ms=computed_at_ms,
-                    commit=True,
+                    commit=False,
                 )
-            if successful_source_claims and source_dirty_repo is not None:
+            if successful_source_claims:
                 source_dirty_repo.mark_done(
                     [claim_key for claim_key, _touched_items in successful_source_claims],
                     now_ms=computed_at_ms,
-                    commit=True,
+                    commit=False,
                 )
         return result
 
@@ -380,6 +467,7 @@ class TokenRadarProjection:
         successful_claims: list[tuple[dict[str, str | int], set[tuple[str, str, str]]]],
         failed_publish_items: set[tuple[str, str, str]],
         error: str,
+        retry_ms: int,
         now_ms: int,
     ) -> None:
         if not successful_claims:
@@ -396,14 +484,14 @@ class TokenRadarProjection:
             if touched_items and not touched_items.intersection(failed_publish_items)
         )
         if done_claims:
-            repo.mark_done(done_claims, now_ms=now_ms, commit=True)
+            repo.mark_done(done_claims, now_ms=now_ms, commit=False)
         if retry_claims:
             repo.mark_error(
                 retry_claims,
                 error=error,
-                retry_ms=DIRTY_TARGET_RETRY_MS,
+                retry_ms=retry_ms,
                 now_ms=now_ms,
-                commit=True,
+                commit=False,
             )
 
     def _project_source_request(
@@ -416,7 +504,9 @@ class TokenRadarProjection:
     ) -> dict[str, Any]:
         window = request.window
         scope = request.scope
-        window_ms = WINDOW_MS.get(window, WINDOW_MS["1h"])
+        target_type_key = _required_target_identity_text(target, "target_type_key")
+        identity_id = _required_target_identity_text(target, "identity_id")
+        window_ms = _window_ms(window)
         score_since_ms = int(request.score_since_ms)
         total_window_events = len(
             {str(row["event_id"]) for row in source_rows if int(row.get("received_at_ms") or 0) >= score_since_ms}
@@ -430,8 +520,6 @@ class TokenRadarProjection:
             window_ms=window_ms,
             total_window_events=total_window_events,
         )
-        target_type_key = str(target.get("target_type_key") or target.get("target_type") or "")
-        identity_id = str(target.get("identity_id") or target.get("target_id") or "")
         if projected is None:
             deleted = 0
             for lane in ("resolved", "attention"):
@@ -494,32 +582,13 @@ class TokenRadarProjection:
         *,
         window: str,
         scope: str,
-        venue: str = TOKEN_RADAR_DEFAULT_VENUE,
         now_ms: int,
-        limit: int = 100,
+        limit: int,
+        venue: str = TOKEN_RADAR_DEFAULT_VENUE,
     ) -> dict[str, Any]:
         computed_at_ms = int(now_ms)
         attempt_id = f"attempt:{PROJECTION_VERSION}:{window}:{scope}:{venue}:{computed_at_ms}"
-        pruned_features = 0
-        pruned_rank_source_edges = 0
         try:
-            retention_cutoff_ms = computed_at_ms - 3 * int(WINDOW_MS[window])
-            pruned_features = int(
-                self.repos.token_radar.prune_target_features(
-                    projection_version=PROJECTION_VERSION,
-                    window=window,
-                    scope=scope,
-                    latest_event_before_ms=retention_cutoff_ms,
-                )
-                or 0
-            )
-            pruned_rank_source_edges = int(
-                self.repos.token_radar_rank_sources.prune_edges(
-                    projection_version=PROJECTION_VERSION,
-                    event_received_before_ms=retention_cutoff_ms,
-                )
-                or 0
-            )
             rank_inputs, rows = self._rank_current_rows(
                 window=window,
                 scope=scope,
@@ -593,8 +662,6 @@ class TokenRadarProjection:
                         "computed_at_ms": computed_at_ms,
                         "generation_id": publication_generation_id,
                         "status": "stale_skipped",
-                        "pruned_features": pruned_features,
-                        "pruned_rank_source_edges": pruned_rank_source_edges,
                     }
                 if publication_status not in {"published", "unchanged"}:
                     raise RuntimeError(f"rank refresh did not publish current rows: {publication_status or 'unknown'}")
@@ -623,8 +690,6 @@ class TokenRadarProjection:
                 "computed_at_ms": computed_at_ms,
                 "generation_id": publication_generation_id,
                 "status": "ready" if publication_status == "published" else "unchanged",
-                "pruned_features": pruned_features,
-                "pruned_rank_source_edges": pruned_rank_source_edges,
             }
         except Exception as exc:
             self.repos.token_radar.mark_publication_failed(
@@ -636,7 +701,7 @@ class TokenRadarProjection:
                 started_at_ms=computed_at_ms,
                 finished_at_ms=_now_ms(),
                 error=str(exc),
-                commit=True,
+                commit=False,
             )
             raise
 
@@ -685,7 +750,7 @@ class TokenRadarProjection:
         rank_inputs = [
             row
             for row in rank_inputs
-            if int(row.get("latest_event_received_at_ms") or 0) >= min_latest_event_received_at_ms
+            if _rank_input_latest_event_received_at_ms(row) >= min_latest_event_received_at_ms
             and (str(venue) == TOKEN_RADAR_DEFAULT_VENUE or token_radar_venue_for_rank_input(row) == str(venue))
         ]
         ranked = self.rank_compact_inputs(rank_inputs)
@@ -744,9 +809,10 @@ class TokenRadarProjection:
             rank_score = (
                 round(float(alpha_rank) * 100.0)
                 if alpha_rank is not None
-                else _display_score_from_value(row.get("raw_composite_score"))
+                else _rank_input_display_score(row, "raw_composite_score")
             )
-            decision = _decision_from_score_and_gates(rank_score, {"max_decision": row.get("gates_max_decision")})
+            max_decision = _rank_input_decision(row, "gates_max_decision")
+            decision = _decision_from_score_and_gates(rank_score, {"max_decision": max_decision})
             compact_rows.append(
                 {
                     **dict(row),
@@ -826,7 +892,7 @@ class TokenRadarProjection:
         targets: list[dict[str, Any]] = []
         for row in rows:
             previous = previous_by_key.get(_current_key(row))
-            if previous is not None and str(previous.get("payload_hash") or "") == str(row.get("payload_hash") or ""):
+            if previous is not None and _rank_change_payload_hash(previous) == _rank_change_payload_hash(row):
                 continue
             target = _pulse_trigger_target(
                 row,
@@ -851,9 +917,7 @@ class TokenRadarProjection:
                 targets.append(target)
         if not targets:
             return
-        repo = getattr(self.repos, "pulse_trigger_dirty_targets", None)
-        if repo is None:
-            raise RuntimeError("pulse_trigger_dirty_targets repository is required for Token Radar Pulse triggers")
+        repo = self.repos.pulse_trigger_dirty_targets
         grouped: dict[str, list[dict[str, Any]]] = {}
         for target in targets:
             grouped.setdefault(str(target.pop("dirty_reason")), []).append(target)
@@ -875,7 +939,7 @@ class TokenRadarProjection:
         targets: list[dict[str, Any]] = []
         for row in rows:
             previous = previous_by_key.get(_current_key(row))
-            if previous is not None and str(previous.get("payload_hash") or "") == str(row.get("payload_hash") or ""):
+            if previous is not None and _rank_change_payload_hash(previous) == _rank_change_payload_hash(row):
                 continue
             target = _narrative_admission_target(
                 row,
@@ -900,11 +964,7 @@ class TokenRadarProjection:
                 targets.append(target)
         if not targets:
             return
-        repo = getattr(self.repos, "narrative_admission_dirty_targets", None)
-        if repo is None:
-            raise RuntimeError(
-                "narrative_admission_dirty_targets repository is required for Token Radar Narrative Admission"
-            )
+        repo = self.repos.narrative_admission_dirty_targets
         grouped: dict[str, list[dict[str, Any]]] = {}
         for target in targets:
             grouped.setdefault(str(target.pop("dirty_reason")), []).append(target)
@@ -924,7 +984,7 @@ class TokenRadarProjection:
         targets: list[dict[str, Any]] = []
         for row in rows:
             previous = previous_by_key.get(_current_key(row))
-            if previous is not None and str(previous.get("payload_hash") or "") == str(row.get("payload_hash") or ""):
+            if previous is not None and _rank_change_payload_hash(previous) == _rank_change_payload_hash(row):
                 continue
             target = _token_profile_current_target(
                 row,
@@ -949,9 +1009,7 @@ class TokenRadarProjection:
                 targets.append(target)
         if not targets:
             return
-        repo = getattr(self.repos, "token_profile_current_dirty_targets", None)
-        if repo is None:
-            raise RuntimeError("token_profile_current_dirty_targets repository is required for Token Radar profiles")
+        repo = self.repos.token_profile_current_dirty_targets
         grouped: dict[str, list[dict[str, Any]]] = {}
         for target in targets:
             grouped.setdefault(str(target.pop("dirty_reason")), []).append(target)
@@ -976,9 +1034,7 @@ class TokenRadarProjection:
             previous_by_key=previous_by_key,
         ):
             return
-        repo = getattr(self.repos, "token_capture_tier_dirty_targets", None)
-        if repo is None:
-            raise RuntimeError("token_capture_tier_dirty_targets repository is required for Token Radar capture tiers")
+        repo = self.repos.token_capture_tier_dirty_targets
         source_watermark_ms = max(
             [
                 *[int(row.get("source_max_received_at_ms") or 0) for row in tier_rows],
@@ -999,11 +1055,8 @@ class TokenRadarProjection:
     def _group_rows(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
         grouped: dict[str, list[dict[str, Any]]] = {}
         for row in rows:
-            key = (
-                f"{row.get('target_type')}:{row.get('target_id')}"
-                if row.get("target_type") and row.get("target_id")
-                else str(row.get("intent_id"))
-            )
+            target_type_key, identity_id = _projection_identity_key(row)
+            key = f"{target_type_key}:{identity_id}"
             grouped.setdefault(key, []).append(row)
         return grouped
 
@@ -1025,6 +1078,13 @@ def _cohort_rank_status(
     return "ready"
 
 
+def _window_ms(window: str) -> int:
+    try:
+        return WINDOW_MS[window]
+    except KeyError as exc:
+        raise TokenRadarProjectionWindowError(window) from exc
+
+
 def _analysis_since_ms(*, computed_at_ms: int, window_ms: int) -> int:
     score_since_ms = computed_at_ms - window_ms
     baseline_since_ms = score_since_ms - BASELINE_SLOT_COUNT * window_ms
@@ -1037,7 +1097,9 @@ def _rank_source_repair_analysis_since_ms(
     work_items: tuple[tuple[str, str, str], ...],
 ) -> int:
     window_names = [str(item[0]) for item in work_items if item]
-    max_window_ms = max((WINDOW_MS.get(window, WINDOW_MS["24h"]) for window in window_names), default=WINDOW_MS["24h"])
+    if not window_names:
+        raise TokenRadarProjectionWindowError("token_radar_projection_work_item_window_required")
+    max_window_ms = max(_window_ms(window) for window in window_names)
     return max(
         0,
         _analysis_since_ms(computed_at_ms=int(computed_at_ms), window_ms=max_window_ms)
@@ -1077,9 +1139,12 @@ def _normalize_work_item(item: tuple[str, ...]) -> tuple[str, str, str]:
 def _source_edge_requests_for_claims(claims: Sequence[Mapping[str, Any]]) -> list[TokenRadarSourceEdgeRequest]:
     event_ids = sorted(
         {
-            source_event_id
+            _required_claim_text(
+                claim,
+                "source_event_id",
+                error="token_radar_source_dirty_claim_identity_contract_required",
+            )
             for claim in claims
-            if (source_event_id := str(claim.get("source_event_id") or claim.get("event_id") or "").strip())
         }
     )
     return [TokenRadarSourceEdgeRequest(source_event_id=event_id) for event_id in event_ids]
@@ -1093,12 +1158,10 @@ def _source_requests_for_targets(
 ) -> list[TokenRadarFeatureSourceRequest]:
     requests: list[TokenRadarFeatureSourceRequest] = []
     for target_index, target in enumerate(targets):
-        target_type_key = str(target.get("target_type_key") or target.get("target_type") or "")
-        identity_id = str(target.get("identity_id") or target.get("target_id") or "")
-        if not target_type_key or not identity_id:
-            continue
+        target_type_key = _required_target_identity_text(target, "target_type_key")
+        identity_id = _required_target_identity_text(target, "identity_id")
         for window, scope, venue in work_items:
-            window_ms = WINDOW_MS.get(window, WINDOW_MS["1h"])
+            window_ms = _window_ms(window)
             score_since_ms = int(now_ms) - window_ms
             requests.append(
                 TokenRadarFeatureSourceRequest(
@@ -1217,41 +1280,353 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
-def _claim_key(claim: dict[str, Any]) -> dict[str, str | int]:
+def _claim_key(claim: Mapping[str, Any]) -> dict[str, str | int]:
     return {
-        "target_type_key": str(claim.get("target_type_key") or claim.get("target_type") or ""),
-        "identity_id": str(claim.get("identity_id") or claim.get("target_id") or ""),
-        "payload_hash": str(claim.get("payload_hash") or ""),
-        "lease_owner": str(claim.get("lease_owner") or ""),
-        "attempt_count": int(claim.get("attempt_count") or 0),
+        "target_type_key": _required_claim_text(
+            claim,
+            "target_type_key",
+            error="token_radar_dirty_claim_identity_contract_required",
+        ),
+        "identity_id": _required_claim_text(
+            claim,
+            "identity_id",
+            error="token_radar_dirty_claim_identity_contract_required",
+        ),
+        "payload_hash": _claim_payload_hash(claim),
+        "lease_owner": _claim_lease_owner(claim),
+        "attempt_count": _claim_attempt_count(claim),
     }
 
 
 def _claim_identity_key(claim: Mapping[str, Any]) -> tuple[str, str]:
     return (
-        str(claim.get("target_type_key") or claim.get("target_type") or ""),
-        str(claim.get("identity_id") or claim.get("target_id") or ""),
+        _required_claim_text(
+            claim,
+            "target_type_key",
+            error="token_radar_dirty_claim_identity_contract_required",
+        ),
+        _required_claim_text(
+            claim,
+            "identity_id",
+            error="token_radar_dirty_claim_identity_contract_required",
+        ),
     )
 
 
 def _source_claim_key(claim: Mapping[str, Any]) -> dict[str, str | int]:
     return {
-        "projection_version": str(claim.get("projection_version") or PROJECTION_VERSION),
-        "source_event_id": str(claim.get("source_event_id") or claim.get("event_id") or ""),
-        "target_type_key": str(claim.get("target_type_key") or claim.get("target_type") or ""),
-        "identity_id": str(claim.get("identity_id") or claim.get("target_id") or ""),
-        "payload_hash": str(claim.get("payload_hash") or ""),
-        "lease_owner": str(claim.get("lease_owner") or ""),
-        "attempt_count": int(claim.get("attempt_count") or 0),
+        "projection_version": _required_claim_text(
+            claim,
+            "projection_version",
+            error="token_radar_source_dirty_claim_identity_contract_required",
+        ),
+        "source_event_id": _required_claim_text(
+            claim,
+            "source_event_id",
+            error="token_radar_source_dirty_claim_identity_contract_required",
+        ),
+        "target_type_key": _required_claim_text(
+            claim,
+            "target_type_key",
+            error="token_radar_source_dirty_claim_identity_contract_required",
+        ),
+        "identity_id": _required_claim_text(
+            claim,
+            "identity_id",
+            error="token_radar_source_dirty_claim_identity_contract_required",
+        ),
+        "payload_hash": _claim_payload_hash(claim),
+        "lease_owner": _claim_lease_owner(claim),
+        "attempt_count": _claim_attempt_count(claim),
     }
+
+
+def _claim_attempt_count(claim: Mapping[str, Any]) -> int:
+    try:
+        attempt_count = int(claim["attempt_count"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError("token_radar_dirty_claim_attempt_contract_required") from exc
+    if attempt_count < 1:
+        raise RuntimeError("token_radar_dirty_claim_attempt_contract_required")
+    return attempt_count
+
+
+def _required_claim_text(claim: Mapping[str, Any], column: str, *, error: str) -> str:
+    try:
+        value = claim[column]
+    except KeyError as exc:
+        raise RuntimeError(error) from exc
+    if value is None:
+        raise RuntimeError(error)
+    text = str(value).strip()
+    if not text:
+        raise RuntimeError(error)
+    return text
+
+
+def _required_target_identity_text(target: Mapping[str, Any], column: str) -> str:
+    try:
+        value = target[column]
+    except KeyError as exc:
+        raise RuntimeError(f"token_radar_projection_target_identity_required:{column}") from exc
+    if value is None:
+        raise RuntimeError(f"token_radar_projection_target_identity_required:{column}")
+    text = str(value).strip()
+    if not text:
+        raise RuntimeError(f"token_radar_projection_target_identity_required:{column}")
+    return text
+
+
+def _claim_lease_owner(claim: Mapping[str, Any]) -> str:
+    try:
+        value = claim["lease_owner"]
+    except KeyError as exc:
+        raise RuntimeError("token_radar_dirty_claim_lease_owner_contract_required") from exc
+    if value is None:
+        raise RuntimeError("token_radar_dirty_claim_lease_owner_contract_required")
+    lease_owner = str(value).strip()
+    if not lease_owner:
+        raise RuntimeError("token_radar_dirty_claim_lease_owner_contract_required")
+    return lease_owner
+
+
+def _claim_payload_hash(claim: Mapping[str, Any]) -> str:
+    try:
+        value = claim["payload_hash"]
+    except KeyError as exc:
+        raise RuntimeError("token_radar_dirty_claim_payload_hash_contract_required") from exc
+    if value is None:
+        raise RuntimeError("token_radar_dirty_claim_payload_hash_contract_required")
+    payload_hash = str(value).strip()
+    if not payload_hash:
+        raise RuntimeError("token_radar_dirty_claim_payload_hash_contract_required")
+    return payload_hash
+
+
+def _rank_change_payload_hash(row: Mapping[str, Any]) -> str:
+    try:
+        value = row["payload_hash"]
+    except KeyError as exc:
+        raise RuntimeError("token_radar_rank_change_payload_hash_required") from exc
+    if value is None:
+        raise RuntimeError("token_radar_rank_change_payload_hash_required")
+    payload_hash = str(value).strip()
+    if not payload_hash:
+        raise RuntimeError("token_radar_rank_change_payload_hash_required")
+    return payload_hash
 
 
 def _current_key(row: Mapping[str, Any]) -> tuple[str, str, str]:
     return (
-        str(row.get("lane") or ""),
-        str(row.get("target_type_key") or row.get("target_type") or ""),
-        str(row.get("identity_id") or row.get("target_id") or row.get("intent_id") or ""),
+        _required_projection_row_text(row, "lane"),
+        _required_projection_row_text(row, "target_type_key"),
+        _required_projection_row_text(row, "identity_id"),
     )
+
+
+def _required_projection_row_text(row: Mapping[str, Any], column: str) -> str:
+    try:
+        value = row[column]
+    except KeyError as exc:
+        raise RuntimeError("token_radar_current_identity_required") from exc
+    if value is None:
+        raise RuntimeError("token_radar_current_identity_required")
+    text = str(value).strip()
+    if not text:
+        raise RuntimeError("token_radar_current_identity_required")
+    return text
+
+
+def _required_target_feature_current_row_text(row: Mapping[str, Any], column: str) -> str:
+    try:
+        value = row[column]
+    except KeyError as exc:
+        raise RuntimeError(f"token_radar_target_feature_current_row_required:{column}") from exc
+    if value is None:
+        raise RuntimeError(f"token_radar_target_feature_current_row_required:{column}")
+    text = str(value).strip()
+    if not text:
+        raise RuntimeError(f"token_radar_target_feature_current_row_invalid:{column}")
+    return text
+
+
+def _required_target_feature_current_row_mapping(row: Mapping[str, Any], column: str) -> dict[str, Any]:
+    try:
+        value = row[column]
+    except KeyError as exc:
+        raise RuntimeError(f"token_radar_target_feature_current_row_required:{column}") from exc
+    if value is None:
+        raise RuntimeError(f"token_radar_target_feature_current_row_required:{column}")
+    payload = _json_ready(value)
+    if not isinstance(payload, Mapping) or not payload:
+        raise RuntimeError(f"token_radar_target_feature_current_row_invalid:{column}")
+    return dict(payload)
+
+
+def _required_target_feature_current_row_int(row: Mapping[str, Any], column: str) -> int:
+    try:
+        value = row[column]
+    except KeyError as exc:
+        raise RuntimeError(f"token_radar_target_feature_current_row_required:{column}") from exc
+    if value is None:
+        raise RuntimeError(f"token_radar_target_feature_current_row_required:{column}")
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise RuntimeError(f"token_radar_target_feature_current_row_invalid:{column}")
+    return int(value)
+
+
+def _rank_input_latest_event_received_at_ms(row: Mapping[str, Any]) -> int:
+    try:
+        value = row["latest_event_received_at_ms"]
+    except KeyError as exc:
+        raise RuntimeError("token_radar_rank_input_required:latest_event_received_at_ms") from exc
+    if value is None:
+        raise RuntimeError("token_radar_rank_input_required:latest_event_received_at_ms")
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise RuntimeError("token_radar_rank_input_invalid:latest_event_received_at_ms")
+    return int(value)
+
+
+def _rank_input_lane(row: Mapping[str, Any]) -> str:
+    try:
+        value = row["lane"]
+    except KeyError as exc:
+        raise RuntimeError("token_radar_rank_input_required:lane") from exc
+    if value is None:
+        raise RuntimeError("token_radar_rank_input_required:lane")
+    lane = str(value).strip()
+    if lane not in {"resolved", "attention"}:
+        raise RuntimeError("token_radar_rank_input_invalid:lane")
+    return lane
+
+
+def _rank_input_decision(row: Mapping[str, Any], column: str) -> str:
+    try:
+        value = row[column]
+    except KeyError as exc:
+        raise RuntimeError(f"token_radar_rank_input_required:{column}") from exc
+    if value is None:
+        raise RuntimeError(f"token_radar_rank_input_required:{column}")
+    decision = str(value).strip()
+    if decision not in TOKEN_RADAR_DECISIONS:
+        raise RuntimeError(f"token_radar_rank_input_invalid:{column}")
+    return decision
+
+
+def _rank_input_number(row: Mapping[str, Any], column: str) -> float:
+    try:
+        value = row[column]
+    except KeyError as exc:
+        raise RuntimeError(f"token_radar_rank_input_required:{column}") from exc
+    if value is None:
+        raise RuntimeError(f"token_radar_rank_input_required:{column}")
+    if isinstance(value, bool) or not isinstance(value, int | float | Decimal):
+        raise RuntimeError(f"token_radar_rank_input_invalid:{column}")
+    return float(value)
+
+
+def _ranked_row_required(row: Mapping[str, Any], column: str) -> Any:
+    try:
+        value = row[column]
+    except KeyError as exc:
+        raise RuntimeError(f"token_radar_ranked_row_required:{column}") from exc
+    if value is None:
+        raise RuntimeError(f"token_radar_ranked_row_required:{column}")
+    return value
+
+
+def _ranked_row_present(row: Mapping[str, Any], column: str) -> Any:
+    try:
+        return row[column]
+    except KeyError as exc:
+        raise RuntimeError(f"token_radar_ranked_row_required:{column}") from exc
+
+
+def _ranked_row_mapping(row: Mapping[str, Any], column: str) -> dict[str, Any]:
+    value = _json_ready(_ranked_row_required(row, column))
+    if not isinstance(value, Mapping):
+        raise RuntimeError(f"token_radar_ranked_row_invalid:{column}")
+    return {str(key): item for key, item in value.items()}
+
+
+def _ranked_row_status(row: Mapping[str, Any], column: str, allowed: frozenset[str]) -> str:
+    value = _ranked_row_required(row, column)
+    if not isinstance(value, str):
+        raise RuntimeError(f"token_radar_ranked_row_invalid:{column}")
+    status = value.strip()
+    if status not in allowed:
+        raise RuntimeError(f"token_radar_ranked_row_invalid:{column}")
+    return status
+
+
+def _ranked_row_non_negative_int(row: Mapping[str, Any], column: str) -> int:
+    value = _ranked_row_required(row, column)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise RuntimeError(f"token_radar_ranked_row_invalid:{column}")
+    return int(value)
+
+
+def _ranked_row_positive_int(row: Mapping[str, Any], column: str) -> int:
+    value = _ranked_row_required(row, column)
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise RuntimeError(f"token_radar_ranked_row_invalid:{column}")
+    return int(value)
+
+
+def _ranked_row_bool(row: Mapping[str, Any], column: str) -> bool:
+    value = _ranked_row_required(row, column)
+    if not isinstance(value, bool):
+        raise RuntimeError(f"token_radar_ranked_row_invalid:{column}")
+    return value
+
+
+def _ranked_alpha_rank(row: Mapping[str, Any], normalization_status: str) -> float | None:
+    value = _ranked_row_present(row, "alpha_rank")
+    if value is None:
+        if normalization_status == "no_signal":
+            return None
+        raise RuntimeError("token_radar_ranked_row_invalid:alpha_rank")
+    if isinstance(value, bool) or not isinstance(value, int | float | Decimal):
+        raise RuntimeError("token_radar_ranked_row_invalid:alpha_rank")
+    alpha_rank = float(value)
+    if alpha_rank < 0.0 or alpha_rank > 1.0:
+        raise RuntimeError("token_radar_ranked_row_invalid:alpha_rank")
+    if normalization_status == "no_signal":
+        raise RuntimeError("token_radar_ranked_row_invalid:alpha_rank")
+    return alpha_rank
+
+
+def _ranked_factor_ranks(ranked: Mapping[str, Any]) -> dict[str, float | None]:
+    raw = _ranked_row_mapping(ranked, "factor_ranks")
+    family_set = set(TOKEN_RADAR_FACTOR_FAMILIES)
+    if set(raw) != family_set:
+        raise RuntimeError("token_radar_ranked_row_invalid:factor_ranks")
+    ranks: dict[str, float | None] = {}
+    for family in TOKEN_RADAR_FACTOR_FAMILIES:
+        value = raw[family]
+        if value is None:
+            ranks[family] = None
+            continue
+        if isinstance(value, bool) or not isinstance(value, int | float | Decimal):
+            raise RuntimeError("token_radar_ranked_row_invalid:factor_ranks")
+        rank = float(value)
+        if rank < 0.0 or rank > 1.0:
+            raise RuntimeError("token_radar_ranked_row_invalid:factor_ranks")
+        ranks[family] = rank
+    return ranks
+
+
+def _rank_input_display_score(row: Mapping[str, Any], column: str) -> int:
+    score = _rank_input_number(row, column)
+    return round(max(0.0, min(100.0, score)))
+
+
+def _current_row_resolved_target(row: Mapping[str, Any]) -> tuple[str, str] | None:
+    target_type = _required_projection_row_text(row, "target_type_key")
+    target_id = _required_projection_row_text(row, "identity_id")
+    if target_type not in {"Asset", "CexToken"}:
+        return None
+    return target_type, target_id
 
 
 def _pulse_trigger_target(
@@ -1263,10 +1638,10 @@ def _pulse_trigger_target(
     computed_at_ms: int,
     exited: bool,
 ) -> dict[str, Any] | None:
-    target_type = str(row.get("target_type") or "").strip()
-    target_id = str(row.get("target_id") or "").strip()
-    if not target_type or not target_id:
+    resolved_target = _current_row_resolved_target(row)
+    if resolved_target is None:
         return None
+    target_type, target_id = resolved_target
     reason = _pulse_trigger_reason(row, previous=previous, exited=exited)
     source_watermark_ms = int(row.get("source_max_received_at_ms") or computed_at_ms)
     payload = {
@@ -1306,10 +1681,10 @@ def _narrative_admission_target(
     computed_at_ms: int,
     exited: bool,
 ) -> dict[str, Any] | None:
-    target_type = str(row.get("target_type") or "").strip()
-    target_id = str(row.get("target_id") or "").strip()
-    if not target_type or not target_id:
+    resolved_target = _current_row_resolved_target(row)
+    if resolved_target is None:
         return None
+    target_type, target_id = resolved_target
     reason = _narrative_admission_reason(row, previous=previous, exited=exited)
     source_watermark_ms = int(row.get("source_max_received_at_ms") or computed_at_ms)
     payload = {
@@ -1353,10 +1728,10 @@ def _token_profile_current_target(
     computed_at_ms: int,
     exited: bool,
 ) -> dict[str, Any] | None:
-    target_type = str(row.get("target_type") or "").strip()
-    target_id = str(row.get("target_id") or "").strip()
-    if target_type not in {"Asset", "CexToken"} or not target_id:
+    resolved_target = _current_row_resolved_target(row)
+    if resolved_target is None:
         return None
+    target_type, target_id = resolved_target
     reason = _token_profile_current_reason(row, previous=previous, exited=exited)
     source_watermark_ms = int(row.get("source_max_received_at_ms") or computed_at_ms)
     payload = {
@@ -1461,9 +1836,11 @@ def _capture_tier_rank_set_changed(
 
 def _capture_tier_rank_payload(row: Mapping[str, Any]) -> tuple[Any, ...]:
     capture_target = _capture_tier_target_key(row)
+    resolved_target = _current_row_resolved_target(row)
+    target_type, target_id = resolved_target if resolved_target is not None else ("", "")
     return (
-        str(row.get("target_type") or row.get("target_type_key") or ""),
-        str(row.get("target_id") or row.get("identity_id") or ""),
+        target_type,
+        target_id,
         capture_target,
         _capture_tier_row_payload_hash(row),
         str(row.get("lane") or ""),
@@ -1476,9 +1853,7 @@ def _capture_tier_rank_payload(row: Mapping[str, Any]) -> tuple[Any, ...]:
 
 
 def _capture_tier_relevant_row(row: Mapping[str, Any]) -> bool:
-    return str(row.get("target_type") or row.get("target_type_key") or "") in {"Asset", "CexToken"} and bool(
-        str(row.get("target_id") or row.get("identity_id") or "").strip()
-    )
+    return _current_row_resolved_target(row) is not None
 
 
 def _capture_tier_fields_from_target(target: Mapping[str, Any]) -> dict[str, str | None]:
@@ -1512,7 +1887,10 @@ def _capture_tier_fields_from_subject(*, target_type: Any, subject: Any) -> dict
 
 
 def _capture_tier_target_key(row: Mapping[str, Any]) -> tuple[str, str]:
-    target_type = str(row.get("target_type") or row.get("target_type_key") or "").strip()
+    resolved_target = _current_row_resolved_target(row)
+    if resolved_target is None:
+        return ("", "")
+    target_type, _ = resolved_target
     subject = _rank_subject(row)
     if target_type == "Asset":
         chain_id = _optional_text(
@@ -1544,10 +1922,12 @@ def _capture_tier_target_key(row: Mapping[str, Any]) -> tuple[str, str]:
 
 
 def _capture_tier_row_payload_hash(row: Mapping[str, Any]) -> str:
+    resolved_target = _current_row_resolved_target(row)
+    target_type, target_id = resolved_target if resolved_target is not None else ("", "")
     return stable_token_radar_payload_hash(
         {
-            "target_type": str(row.get("target_type") or row.get("target_type_key") or ""),
-            "target_id": str(row.get("target_id") or row.get("identity_id") or ""),
+            "target_type": target_type,
+            "target_id": target_id,
             "capture_target": _capture_tier_target_key(row),
             "lane": str(row.get("lane") or ""),
             "rank": row.get("rank"),
@@ -1595,8 +1975,11 @@ def _cex_pricefeed_target(value: Any) -> tuple[str | None, str | None]:
 
 
 def _transaction_context(conn: Any) -> AbstractContextManager[Any]:
-    transaction = getattr(conn, "transaction", None)
-    if transaction is None:
+    try:
+        transaction = conn.transaction
+    except AttributeError as exc:
+        raise RuntimeError("token_radar_projection_requires_transactional_connection") from exc
+    if not callable(transaction):
         raise RuntimeError("token_radar_projection_requires_transactional_connection")
     return cast(AbstractContextManager[Any], transaction())
 
@@ -1620,7 +2003,9 @@ def _project_group(
     window_ms: int | None = None,
     total_window_events: int | None = None,
 ) -> dict[str, Any] | None:
-    resolved_window_ms = window_ms or WINDOW_MS.get(window, WINDOW_MS["1h"])
+    resolved_window_ms = _window_ms(window) if window_ms is None else int(window_ms)
+    if resolved_window_ms <= 0:
+        raise TokenRadarProjectionWindowError(window)
     resolved_score_since_ms = (
         score_since_ms if score_since_ms is not None else min(int(row.get("received_at_ms") or 0) for row in rows)
     )
@@ -1635,12 +2020,16 @@ def _project_group(
     latest = max(window_rows, key=lambda row: int(row.get("received_at_ms") or 0))
     event_ids = sorted({str(row["event_id"]) for row in window_rows})
     latest_seen_ms = max(int(row.get("received_at_ms") or 0) for row in rows)
-    resolution_status = str(latest.get("resolution_status") or "NIL")
+    resolution_status = _required_resolution_text(latest, "resolution_status")
+    reason_codes_json = _required_resolution_list(latest, "reason_codes_json")
+    candidate_ids_json = _required_resolution_list(latest, "candidate_ids_json")
+    lookup_keys_json = _required_resolution_list(latest, "lookup_keys_json")
     target_type = str(latest.get("target_type") or "") or None
     target_id = str(latest.get("target_id") or "") or None
-    resolved = _has_resolved_target(latest)
+    target_type_key, identity_id = _projection_identity_key(latest)
+    resolved = _has_resolved_target(latest, resolution_status=resolution_status)
     lane = "resolved" if resolved else "attention"
-    target = _target(latest)
+    target = _target(latest, resolved=resolved)
     market = _market_context(window_rows, resolved=resolved, now_ms=now_ms)
     scored_window_rows = [{**row, **_market_prefix_for_features(market)} for row in window_rows]
     features = build_radar_features(
@@ -1675,7 +2064,8 @@ def _project_group(
             "token-radar-row",
             window,
             scope,
-            str(target_id or latest.get("intent_id")),
+            target_type_key,
+            identity_id,
             str(now_ms),
         ),
         "source_max_received_at_ms": latest_seen_ms,
@@ -1683,6 +2073,8 @@ def _project_group(
         "rank": 0,
         "intent_id": latest["intent_id"],
         "event_id": latest["event_id"],
+        "target_type_key": target_type_key,
+        "identity_id": identity_id,
         "target_type": target_type,
         "target_id": target_id,
         "pricefeed_id": latest.get("pricefeed_id"),
@@ -1700,10 +2092,10 @@ def _project_group(
             "target_type": target_type,
             "target_id": target_id,
             "pricefeed_id": latest.get("pricefeed_id"),
-            "reason_codes": latest.get("reason_codes_json") or [],
-            "candidate_ids": latest.get("candidate_ids_json") or [],
-            "lookup_keys": latest.get("lookup_keys_json") or [],
-            "discovery": _resolution_discovery(latest),
+            "reason_codes": reason_codes_json,
+            "candidate_ids": candidate_ids_json,
+            "lookup_keys": lookup_keys_json,
+            "discovery": _resolution_discovery(latest, lookup_keys_json=lookup_keys_json),
         },
         "decision": decision,
         "data_health_json": {
@@ -1721,6 +2113,22 @@ def _project_group(
         "_cohort_first_seen_global_24h": cohort_first_seen_global_24h,
         "_cohort_public_followup_count": cohort_public_followup_count,
     }
+
+
+def _projection_identity_key(row: Mapping[str, Any]) -> tuple[str, str]:
+    target_type = str(row.get("target_type") or "").strip()
+    target_id = str(row.get("target_id") or "").strip()
+    if target_type and target_id:
+        return target_type, target_id
+    lookup_key = _first_discovery_lookup_key(_required_resolution_list(row, "lookup_keys_json"))
+    if lookup_key:
+        return "LookupKey", lookup_key
+    raise RuntimeError("token_radar_projection_identity_required")
+
+
+def _first_discovery_lookup_key(raw_keys: list[Any]) -> str | None:
+    keys = _discovery_lookup_keys(raw_keys)
+    return keys[0] if keys else None
 
 
 def _social_semantics(window_rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1770,19 +2178,18 @@ def _mean_or_none(values: list[float]) -> float | None:
     return round(sum(values) / len(values), 6)
 
 
-def _has_resolved_target(row: dict[str, Any]) -> bool:
-    if not bool(row.get("target_id")) or str(row.get("resolution_status") or "") not in {
-        "EXACT",
-        "UNIQUE_BY_CONTEXT",
-    }:
+def _has_resolved_target(row: dict[str, Any], *, resolution_status: str) -> bool:
+    if resolution_status not in HIGH_CONF_RESOLUTION_STATUSES:
         return False
-    return not (
-        row.get("target_type") == "Asset" and row.get("asset_registry_status") not in {"candidate", "canonical"}
-    )
+    target_type = _required_resolved_target_text(row, "target_type")
+    if target_type not in {"Asset", "CexToken"}:
+        raise RuntimeError("token_radar_projection_resolved_target_invalid:target_type")
+    _required_resolved_target_text(row, "target_id")
+    return target_type != "Asset" or row.get("asset_registry_status") in {"candidate", "canonical"}
 
 
-def _resolution_discovery(row: dict[str, Any]) -> list[dict[str, Any]]:
-    lookup_keys = _discovery_lookup_keys(row.get("lookup_keys_json") or [])
+def _resolution_discovery(row: dict[str, Any], *, lookup_keys_json: list[Any]) -> list[dict[str, Any]]:
+    lookup_keys = _discovery_lookup_keys(lookup_keys_json)
     existing = [
         _discovery_result(item)
         for item in row.get("discovery_results_json") or []
@@ -1802,6 +2209,33 @@ def _discovery_lookup_keys(raw_keys: list[Any]) -> list[str]:
         if key.startswith("symbol:") or key.startswith("address:"):
             out.append(key)
     return sorted(set(out))
+
+
+def _required_resolution_text(row: Mapping[str, Any], field: str) -> str:
+    if field not in row or row[field] is None:
+        raise RuntimeError(f"token_radar_projection_resolution_required:{field}")
+    value = str(row[field]).strip()
+    if not value:
+        raise RuntimeError(f"token_radar_projection_resolution_invalid:{field}")
+    return value
+
+
+def _required_resolution_list(row: Mapping[str, Any], field: str) -> list[Any]:
+    if field not in row or row[field] is None:
+        raise RuntimeError(f"token_radar_projection_resolution_required:{field}")
+    value = row[field]
+    if not isinstance(value, list):
+        raise RuntimeError(f"token_radar_projection_resolution_invalid:{field}")
+    return value
+
+
+def _required_resolved_target_text(row: Mapping[str, Any], field: str) -> str:
+    if field not in row or row[field] is None:
+        raise RuntimeError(f"token_radar_projection_resolved_target_required:{field}")
+    value = str(row[field]).strip()
+    if not value:
+        raise RuntimeError(f"token_radar_projection_resolved_target_invalid:{field}")
+    return value
 
 
 def _discovery_result(item: dict[str, Any]) -> dict[str, Any]:
@@ -1839,7 +2273,7 @@ def _lookup_type(lookup_key: str) -> str:
     return "unknown_lookup"
 
 
-def _target(row: dict[str, Any]) -> dict[str, Any]:
+def _target(row: dict[str, Any], *, resolved: bool) -> dict[str, Any]:
     target_type = row.get("target_type")
     target_id = row.get("target_id")
     if not target_type or not target_id:
@@ -1847,7 +2281,7 @@ def _target(row: dict[str, Any]) -> dict[str, Any]:
             "target_type": None,
             "target_id": None,
             "symbol": _display_symbol(row),
-            "status": str(row.get("resolution_status") or "NIL"),
+            "status": _required_resolution_text(row, "resolution_status"),
         }
     if target_type == "CexToken":
         return {
@@ -1861,7 +2295,7 @@ def _target(row: dict[str, Any]) -> dict[str, Any]:
             "feed_type": row.get("feed_type"),
             "provider": row.get("pricefeed_provider"),
         }
-    return {
+    asset_target = {
         "target_type": "Asset",
         "target_id": target_id,
         "symbol": _target_symbol(row),
@@ -1872,12 +2306,55 @@ def _target(row: dict[str, Any]) -> dict[str, Any]:
         "address": row.get("asset_address"),
         "status": row.get("asset_registry_status"),
         "pricefeed_id": row.get("pricefeed_id"),
-        "identity": {
-            "confidence": row.get("asset_identity_confidence"),
-            "reason_codes": row.get("asset_identity_reason_codes") or [],
-            "conflict_count": row.get("asset_identity_conflict_count") or 0,
-        },
     }
+    identity = _asset_identity_payload(row, required=resolved)
+    if identity is not None:
+        asset_target["identity"] = identity
+    return asset_target
+
+
+def _asset_identity_payload(row: Mapping[str, Any], *, required: bool) -> dict[str, Any] | None:
+    if not required and all(
+        row.get(field) is None
+        for field in (
+            "asset_identity_confidence",
+            "asset_identity_reason_codes",
+            "asset_identity_conflict_count",
+        )
+    ):
+        return None
+    return {
+        "confidence": _required_asset_identity_text(row, "asset_identity_confidence"),
+        "reason_codes": _required_asset_identity_list(row, "asset_identity_reason_codes"),
+        "conflict_count": _required_asset_identity_int(row, "asset_identity_conflict_count"),
+    }
+
+
+def _required_asset_identity_text(row: Mapping[str, Any], field: str) -> str:
+    if field not in row or row[field] is None:
+        raise RuntimeError(f"token_radar_projection_asset_identity_required:{field}")
+    value = str(row[field]).strip()
+    if not value:
+        raise RuntimeError(f"token_radar_projection_asset_identity_invalid:{field}")
+    return value
+
+
+def _required_asset_identity_list(row: Mapping[str, Any], field: str) -> list[Any]:
+    if field not in row or row[field] is None:
+        raise RuntimeError(f"token_radar_projection_asset_identity_required:{field}")
+    value = row[field]
+    if not isinstance(value, list):
+        raise RuntimeError(f"token_radar_projection_asset_identity_invalid:{field}")
+    return value
+
+
+def _required_asset_identity_int(row: Mapping[str, Any], field: str) -> int:
+    if field not in row or row[field] is None:
+        raise RuntimeError(f"token_radar_projection_asset_identity_required:{field}")
+    value = row[field]
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise RuntimeError(f"token_radar_projection_asset_identity_invalid:{field}")
+    return int(value)
 
 
 def _market_context(window_rows: list[dict[str, Any]], *, resolved: bool, now_ms: int) -> dict[str, Any]:
@@ -2206,35 +2683,12 @@ def _optional_str(value: Any) -> str | None:
     return text or None
 
 
-def _rank_key(row: dict[str, Any]) -> tuple[int, float, int, int, int]:
-    snapshot = _factor_snapshot_for_ranking(row)
-    if snapshot is None:
-        return (3, 0.0, 0, 0, 0)
-    composite = _dict(snapshot.get("composite"))
-    families = _dict(snapshot.get("families"))
-    social_heat = _dict(families.get("social_heat"))
-    social_propagation = _dict(families.get("social_propagation"))
-    attention = _dict(social_heat.get("facts"))
-    diffusion = _dict(social_propagation.get("facts"))
-    decision_priority = {"high_alert": 0, "watch": 1, "discard": 2}
-    decision = composite.get("recommended_decision") or "discard"
-    rank_score = _float_or_none(composite.get("rank_score")) or 0.0
-    return (
-        decision_priority.get(str(decision), 2),
-        -rank_score,
-        -int(attention.get("watched_mentions") or 0),
-        -int(attention.get("mentions_1h") or diffusion.get("mentions") or 0),
-        -int(attention.get("latest_seen_ms") or 0),
-    )
-
-
 def _compact_rank_key(row: dict[str, Any]) -> tuple[int, float, int, int, int]:
-    decision_priority = {"high_alert": 0, "watch": 1, "discard": 2}
-    decision = row.get("recommended_decision") or "discard"
-    rank_score = _float_or_none(row.get("rank_score")) or 0.0
+    decision = _rank_input_decision(row, "recommended_decision")
+    rank_score = _rank_input_number(row, "rank_score")
     mentions_1h = int(row.get("social_heat_mentions_1h") or row.get("social_propagation_mentions") or 0)
     return (
-        decision_priority.get(str(decision), 2),
+        TOKEN_RADAR_DECISION_PRIORITY[decision],
         -rank_score,
         -int(row.get("social_heat_watched_mentions") or 0),
         -mentions_1h,
@@ -2246,14 +2700,17 @@ def _select_top_ranked_by_lane(ranked: list[dict[str, Any]], *, limit: int) -> l
     selected: list[dict[str, Any]] = []
     lane_order = ("resolved", "attention")
     for lane in lane_order:
-        lane_rows = [row for row in ranked if str(row.get("lane") or "") == lane]
+        lane_rows = [row for row in ranked if _rank_input_lane(row) == lane]
         for rank, row in enumerate(lane_rows[: max(0, int(limit))], start=1):
             selected.append({**row, "rank": rank})
     return selected
 
 
 def token_radar_venue_for_rank_input(row: Mapping[str, Any]) -> str:
-    target_type = str(row.get("target_type") or row.get("target_type_key") or "").strip()
+    target_type_value = row.get("target_type_key")
+    if target_type_value is None:
+        target_type_value = row.get("target_type")
+    target_type = str(target_type_value or "").strip()
     if target_type == "CexToken":
         return "cex"
     if target_type != "Asset":
@@ -2300,11 +2757,19 @@ def _venue_for_chain(value: Any) -> str:
 
 
 def _row_from_target_feature(row: dict[str, Any], *, venue: str = TOKEN_RADAR_DEFAULT_VENUE) -> dict[str, Any]:
-    factor_snapshot = _json_ready(row.get("factor_snapshot_json")) or {}
+    projection_version = _required_target_feature_current_row_text(row, "projection_version")
+    window = _required_target_feature_current_row_text(row, "window")
+    scope = _required_target_feature_current_row_text(row, "scope")
+    lane = _required_target_feature_current_row_text(row, "lane")
+    target_type_key = _required_projection_row_text(row, "target_type_key")
+    identity_id = _required_projection_row_text(row, "identity_id")
+    factor_snapshot = _required_target_feature_current_row_mapping(row, "factor_snapshot_json")
+    latest_event_received_at_ms = _required_target_feature_current_row_int(row, "latest_event_received_at_ms")
+    last_scored_at_ms = _required_target_feature_current_row_int(row, "last_scored_at_ms")
     source_event_ids = _json_list(row.get("source_event_ids_json"))
     source_intent_ids = _json_list(row.get("source_intent_ids_json"))
     source_resolution_ids = _json_list(row.get("source_resolution_ids_json"))
-    intent_id = source_intent_ids[0] if source_intent_ids else str(row.get("identity_id") or "")
+    intent_id = source_intent_ids[0] if source_intent_ids else identity_id
     event_id = source_event_ids[-1] if source_event_ids else intent_id
     target_type = row.get("target_type")
     target_id = row.get("target_id")
@@ -2319,22 +2784,22 @@ def _row_from_target_feature(row: dict[str, Any], *, venue: str = TOKEN_RADAR_DE
     return {
         "row_id": _stable_id(
             "token-radar-row",
-            str(row.get("projection_version") or ""),
-            str(row.get("window") or ""),
-            str(row.get("scope") or ""),
+            projection_version,
+            window,
+            scope,
             str(venue),
-            str(row.get("lane") or ""),
-            str(row.get("target_type_key") or ""),
-            str(row.get("identity_id") or ""),
+            lane,
+            target_type_key,
+            identity_id,
         ),
-        "source_max_received_at_ms": int(row.get("latest_event_received_at_ms") or 0),
-        "lane": str(row.get("lane") or "attention"),
+        "source_max_received_at_ms": latest_event_received_at_ms,
+        "lane": lane,
         "rank": 0,
         "venue": str(venue),
         "intent_id": intent_id,
         "event_id": event_id,
-        "target_type_key": str(row.get("target_type_key") or ""),
-        "identity_id": str(row.get("identity_id") or ""),
+        "target_type_key": target_type_key,
+        "identity_id": identity_id,
         "target_type": target_type,
         "target_id": target_id,
         "pricefeed_id": row.get("pricefeed_id"),
@@ -2369,8 +2834,8 @@ def _row_from_target_feature(row: dict[str, Any], *, venue: str = TOKEN_RADAR_DE
             "alpha": (data_health or {}).get("alpha") if isinstance(data_health, dict) else None,
         },
         "source_event_ids_json": source_event_ids,
-        "payload_hash": str(row.get("payload_hash") or ""),
-        "created_at_ms": int(row.get("last_scored_at_ms") or row.get("updated_at_ms") or _now_ms()),
+        "payload_hash": _rank_change_payload_hash(row),
+        "created_at_ms": last_scored_at_ms,
     }
 
 
@@ -2385,36 +2850,48 @@ def _patch_ranked_current_row(row: dict[str, Any], ranked: dict[str, Any]) -> di
     patched = dict(row)
     factor_snapshot = _factor_snapshot_or_raise(patched)
     families = _dict(factor_snapshot.get("families"))
-    factor_ranks = _dict(ranked.get("factor_ranks"))
+    factor_ranks = _ranked_factor_ranks(ranked)
+    normalization_status = _ranked_row_status(ranked, "normalization_status", RANKED_NORMALIZATION_STATUSES)
+    cohort_status = _ranked_row_status(ranked, "cohort_status", RANKED_COHORT_STATUSES)
+    cohort_in_cohort = _ranked_row_bool(ranked, "cohort_in_cohort")
+    cohort_size = _ranked_row_non_negative_int(ranked, "cohort_size")
+    cohort_metadata = _ranked_row_mapping(ranked, "cohort_metadata")
+    current_rank = _ranked_row_positive_int(ranked, "rank")
+    latest_event_received_at_ms = _ranked_row_non_negative_int(ranked, "latest_event_received_at_ms")
+    alpha_rank = _ranked_alpha_rank(ranked, normalization_status)
+    _ranked_row_required(ranked, "rank_score")
+    _ranked_row_required(ranked, "recommended_decision")
+    rank_score = _rank_input_number(ranked, "rank_score")
+    recommended_decision = _rank_input_decision(ranked, "recommended_decision")
     for family in TOKEN_RADAR_FACTOR_FAMILIES:
         rank = factor_ranks.get(family)
         if rank is not None and isinstance(families.get(family), dict):
-            families[family]["score"] = round(float(rank) * 100.0)
+            families[family]["score"] = round(rank * 100.0)
     family_scores = {family: _family_display_score(families.get(family)) for family in TOKEN_RADAR_FACTOR_FAMILIES}
     factor_snapshot["normalization"] = {
-        "status": ranked.get("normalization_status") or "no_signal",
-        "cohort_status": ranked.get("cohort_status") or "not_ranked",
+        "status": normalization_status,
+        "cohort_status": cohort_status,
         "cohort": {
-            "in_cohort": ranked.get("cohort_in_cohort") is True,
-            "size": int(ranked.get("cohort_size") or 0),
+            "in_cohort": cohort_in_cohort,
+            "size": cohort_size,
             "definition_version": COHORT_DEFINITION_VERSION,
             "normalizer_version": NORMALIZER_VERSION,
-            **_dict(ranked.get("cohort_metadata")),
+            **cohort_metadata,
         },
         "factor_ranks": factor_ranks,
-        "alpha_rank": ranked.get("alpha_rank"),
+        "alpha_rank": alpha_rank,
     }
     factor_snapshot["composite"]["family_scores"] = family_scores
-    factor_snapshot["composite"]["rank_score"] = ranked.get("rank_score")
-    factor_snapshot["composite"]["recommended_decision"] = ranked.get("recommended_decision")
+    factor_snapshot["composite"]["rank_score"] = rank_score
+    factor_snapshot["composite"]["recommended_decision"] = recommended_decision
     quality_status, degraded_reasons = _quality_from_factor_snapshot(factor_snapshot)
     patched["factor_snapshot_json"] = factor_snapshot
-    patched["decision"] = ranked.get("recommended_decision")
-    patched["rank_score"] = ranked.get("rank_score")
+    patched["decision"] = recommended_decision
+    patched["rank_score"] = rank_score
     patched["quality_status"] = quality_status
     patched["degraded_reasons_json"] = degraded_reasons
-    patched["rank"] = int(ranked.get("rank") or 0)
-    patched["source_max_received_at_ms"] = int(ranked.get("latest_event_received_at_ms") or 0)
+    patched["rank"] = current_rank
+    patched["source_max_received_at_ms"] = latest_event_received_at_ms
     return patched
 
 
@@ -2428,18 +2905,6 @@ def _compact_family_raw_score(row: dict[str, Any], family: str) -> float | None:
 
 def _compact_family_weight(row: dict[str, Any], family: str) -> float:
     return _float_or_none(row.get(f"{family}_weight")) or 0.0
-
-
-def _display_score_from_value(value: Any) -> int:
-    score = _float_or_none(value) or 0.0
-    return round(max(0.0, min(100.0, score)))
-
-
-def _factor_snapshot_for_ranking(row: dict[str, Any]) -> dict[str, Any] | None:
-    try:
-        return _factor_snapshot_or_raise(row)
-    except ValueError:
-        return None
 
 
 def _factor_snapshot_or_raise(row: dict[str, Any]) -> dict[str, Any]:
@@ -2528,16 +2993,8 @@ def _family_display_score(family: Any) -> int:
     return round(max(0.0, min(100.0, score)))
 
 
-def _raw_composite_score(factor_snapshot: dict[str, Any]) -> int:
-    composite = _dict(factor_snapshot.get("composite"))
-    score = _float_or_none(composite.get("rank_score"))
-    if score is None:
-        score = _float_or_none(composite.get("raw_alpha_score"))
-    return round(max(0.0, min(100.0, score or 0.0)))
-
-
 def _decision_from_score_and_gates(score: int, gates: dict[str, Any]) -> str:
-    max_decision = str(gates.get("max_decision") or "discard")
+    max_decision = _rank_input_decision(gates, "max_decision")
     if max_decision == "discard":
         return "discard"
     if score >= 70 and max_decision == "high_alert":

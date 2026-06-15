@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import json
 
-from parallax.domains.pulse_lab.services.pulse_timeline_context import build_pulse_timeline_context
+import pytest
+
+from parallax.domains.pulse_lab.services.pulse_timeline_context import (
+    PulseTimelineContextScopeError,
+    PulseTimelineContextWindowError,
+    build_pulse_timeline_context,
+)
 
 TARGET = {
     "target_type": "CexToken",
@@ -27,6 +33,7 @@ def test_build_context_has_all_windows_and_budget_limits():
         target=TARGET,
         rows=rows,
         window="1h",
+        scope="all",
         now_ms=NOW_MS,
         max_selected_posts=24,
         max_post_clusters=16,
@@ -56,7 +63,7 @@ def test_deduplicates_same_author_text_and_clusters_multi_author_duplicates():
         row("event-5", "carol", NOW_MS - 6_000, text="Different $PEPE confirmation"),
     ]
 
-    context = build_pulse_timeline_context(target=TARGET, rows=rows, now_ms=NOW_MS)
+    context = build_pulse_timeline_context(target=TARGET, rows=rows, window="1h", scope="all", now_ms=NOW_MS)
 
     assert context["windows"]["1h"]["duplicate_text_share"] > 0
     duplicate_cluster = next(cluster for cluster in context["post_clusters"] if len(cluster["authors"]) > 1)
@@ -73,7 +80,7 @@ def test_window_duplicate_metrics_are_computed_per_window():
         row("event-3", "carol", NOW_MS - 60_000, text="Fresh unique PEPE post"),
     ]
 
-    context = build_pulse_timeline_context(target=TARGET, rows=rows, window="5m", now_ms=NOW_MS)
+    context = build_pulse_timeline_context(target=TARGET, rows=rows, window="5m", scope="all", now_ms=NOW_MS)
 
     assert context["windows"]["5m"]["duplicate_text_share"] == 0
     assert context["windows"]["1h"]["duplicate_text_share"] > 0
@@ -98,7 +105,7 @@ def test_selected_posts_include_required_roles():
         row("event-8", "dupe-b", NOW_MS - 800, text="Copied PEPE phrase"),
     ]
 
-    context = build_pulse_timeline_context(target=TARGET, rows=rows, now_ms=NOW_MS)
+    context = build_pulse_timeline_context(target=TARGET, rows=rows, window="1h", scope="all", now_ms=NOW_MS)
 
     roles = {role for post in context["selected_posts"] for role in post["roles"]}
     assert {
@@ -120,7 +127,7 @@ def test_selected_posts_preserve_overlapping_roles_for_same_event():
         row("event-1", "watcher", NOW_MS - 1_000, text="$PEPE watched seed", watched=True),
     ]
 
-    context = build_pulse_timeline_context(target=TARGET, rows=rows, now_ms=NOW_MS)
+    context = build_pulse_timeline_context(target=TARGET, rows=rows, window="1h", scope="all", now_ms=NOW_MS)
 
     assert len(context["selected_posts"]) == 1
     post = context["selected_posts"][0]
@@ -145,6 +152,8 @@ def test_selected_posts_include_multiple_watched_posts_under_budget():
     context = build_pulse_timeline_context(
         target=TARGET,
         rows=rows,
+        window="1h",
+        scope="all",
         now_ms=NOW_MS,
         max_selected_posts=4,
     )
@@ -164,6 +173,8 @@ def test_selected_posts_include_multiple_direct_ticker_evidence_posts_under_budg
     context = build_pulse_timeline_context(
         target=TARGET,
         rows=rows,
+        window="1h",
+        scope="all",
         now_ms=NOW_MS,
         max_selected_posts=4,
     )
@@ -185,12 +196,16 @@ def test_timeline_signature_changes_when_cluster_membership_changes_same_cluster
     first = build_pulse_timeline_context(
         target=TARGET,
         rows=rows,
+        window="1h",
+        scope="all",
         now_ms=NOW_MS,
         max_selected_posts=0,
     )
     changed = build_pulse_timeline_context(
         target=TARGET,
         rows=changed_rows,
+        window="1h",
+        scope="all",
         now_ms=NOW_MS,
         max_selected_posts=0,
     )
@@ -206,11 +221,19 @@ def test_timeline_signature_is_stable_and_materially_changes():
         row("event-3", "carol", NOW_MS - 10_000, text="PEPE latest"),
     ]
 
-    first = build_pulse_timeline_context(target=TARGET, rows=rows, now_ms=NOW_MS)
-    reordered = build_pulse_timeline_context(target=TARGET, rows=list(reversed(rows)), now_ms=NOW_MS)
+    first = build_pulse_timeline_context(target=TARGET, rows=rows, window="1h", scope="all", now_ms=NOW_MS)
+    reordered = build_pulse_timeline_context(
+        target=TARGET,
+        rows=list(reversed(rows)),
+        window="1h",
+        scope="all",
+        now_ms=NOW_MS,
+    )
     changed = build_pulse_timeline_context(
         target=TARGET,
         rows=[*rows, row("event-4", "dave", NOW_MS - 5_000, text="New independent PEPE evidence")],
+        window="1h",
+        scope="all",
         now_ms=NOW_MS,
     )
 
@@ -224,11 +247,25 @@ def test_context_is_stable_json_serializable():
         row("event-2", "bob", NOW_MS - 20_000, text="$PEPE confirmation"),
     ]
 
-    first = build_pulse_timeline_context(target=TARGET, rows=rows, now_ms=NOW_MS)
-    second = build_pulse_timeline_context(target=TARGET, rows=rows, now_ms=NOW_MS)
+    first = build_pulse_timeline_context(target=TARGET, rows=rows, window="1h", scope="all", now_ms=NOW_MS)
+    second = build_pulse_timeline_context(target=TARGET, rows=rows, window="1h", scope="all", now_ms=NOW_MS)
 
     assert json.dumps(first, sort_keys=True)
     assert first == second
+
+
+def test_rejects_unknown_window_without_1h_fallback():
+    rows = [row("event-1", "alice", NOW_MS - 30_000, text="PEPE seed")]
+
+    with pytest.raises(PulseTimelineContextWindowError):
+        build_pulse_timeline_context(target=TARGET, rows=rows, window="bad", scope="all", now_ms=NOW_MS)
+
+
+def test_rejects_unknown_scope_without_all_fallback():
+    rows = [row("event-1", "alice", NOW_MS - 30_000, text="PEPE seed")]
+
+    with pytest.raises(PulseTimelineContextScopeError):
+        build_pulse_timeline_context(target=TARGET, rows=rows, window="1h", scope="bad", now_ms=NOW_MS)
 
 
 def row(

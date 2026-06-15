@@ -63,7 +63,13 @@ def test_catalog_configs_have_stable_contract_fields() -> None:
     assert assets.route_path == "/macro/assets"
     assert assets.title == "大类资产"
     assert assets.section == "assets"
-    assert assets.required_concepts == ("asset:spx", "rates:dgs10", "fx:dxy", "commodity:wti", "crypto:btc")
+    assert assets.required_concepts == (
+        "asset:spx",
+        "rates:dgs10",
+        "fx:dxy",
+        "commodity:wti_futures",
+        "crypto:btc",
+    )
     assert assets.chart_specs[0].chart_id == "asset_cross_market_snapshot"
     assert assets.table_specs[0].table_id == "asset_group_snapshot"
 

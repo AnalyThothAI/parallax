@@ -3,12 +3,11 @@ from __future__ import annotations
 import hashlib
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
 from typing import Any
 
 from parallax.domains.news_intel._constants import NEWS_FACT_POLICY_VERSION
-from parallax.domains.news_intel.services.news_token_mentions import NewsTokenMention
 from parallax.domains.news_intel.services.source_authority import validate_source_authority
+from parallax.domains.news_intel.types.news_extraction import NewsFactCandidate, NewsTokenMention
 
 _EVENT_PATTERNS = (
     ("exchange_listing", re.compile(r"\b(?:lists?|listing|goes live|launches trading)\b", re.IGNORECASE)),
@@ -27,27 +26,6 @@ _EVENT_PATTERNS = (
 )
 _PRODUCTION_TARGET_TYPES = frozenset({"Asset", "CexToken"})
 _PRODUCTION_RESOLUTION_STATUSES = frozenset({"exact_address", "known_symbol", "unique_by_context"})
-
-
-@dataclass(frozen=True, slots=True)
-class NewsFactCandidate:
-    fact_candidate_id: str
-    news_item_id: str
-    event_type: str
-    claim: str
-    realis: str
-    evidence_quote: str
-    evidence_span_start: int
-    evidence_span_end: int
-    source_role: str
-    required_slots: dict[str, bool]
-    affected_targets: list[dict[str, object]]
-    validation_status: str
-    rejection_reasons: list[str]
-    extraction_method: str
-    policy_version: str
-    created_at_ms: int
-    updated_at_ms: int
 
 
 def build_fact_candidates(

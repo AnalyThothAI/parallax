@@ -6,7 +6,6 @@ from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
-from types import SimpleNamespace
 from typing import Any, cast
 
 from parallax.app.runtime.worker_base import WorkerBase
@@ -24,7 +23,6 @@ from parallax.domains.asset_market.types import (
 SOURCE_TIER: MarketTickSourceTier = "tier2_poll"
 DEX_SOURCE_PROVIDER: MarketTickSourceProvider = "okx_dex_rest"
 CEX_SOURCE_PROVIDER: MarketTickSourceProvider = "binance_cex_rest"
-DEFAULT_BATCH_SIZE = 100
 
 
 class MarketTickPollWorker(WorkerBase):
@@ -33,34 +31,32 @@ class MarketTickPollWorker(WorkerBase):
     def __init__(
         self,
         *,
-        pool_bundle: Any | None = None,
-        providers: Any | None = None,
-        dex_quote_market: Any | None = None,
-        cex_market: Any | None = None,
+        pool_bundle: Any,
+        providers: Any,
+        settings: Any,
         wake_emitter: Any | None = None,
-        wake_bus: Any | None = None,
-        batch_size: int = DEFAULT_BATCH_SIZE,
-        interval_seconds: float | None = None,
         clock: Any | None = None,
         name: str = "market_tick_poll",
-        settings: Any | None = None,
-        db: Any | None = None,
         telemetry: Any | None = None,
     ) -> None:
-        resolved_settings = _settings(settings, interval_seconds=interval_seconds, batch_size=batch_size)
+        if settings is None:
+            raise RuntimeError("market_tick_poll_settings_required")
+        if providers is None:
+            raise RuntimeError("market_tick_poll_providers_required")
+        if pool_bundle is None:
+            raise RuntimeError("market_tick_poll_db_required")
         super().__init__(
             name=name,
-            settings=resolved_settings,
-            db=pool_bundle or db,
+            settings=settings,
+            db=pool_bundle,
             telemetry=telemetry or object(),
         )
-        self.providers = providers or SimpleNamespace(
-            dex_quote_market=dex_quote_market,
-            cex_market=cex_market,
-        )
-        self.wake_emitter = wake_emitter or wake_bus
-        self.batch_size = max(1, int(getattr(resolved_settings, "batch_size", batch_size)))
-        self.concurrency = max(1, int(getattr(resolved_settings, "concurrency", 4) or 4))
+        self.providers = providers
+        self.dex_quote_market = providers.dex_quote_market
+        self.cex_market = providers.cex_market
+        self.wake_emitter = wake_emitter
+        self.batch_size = max(1, int(settings.batch_size))
+        self.concurrency = max(1, int(settings.concurrency))
         self.clock = clock or _now_ms
         self._recent_tier2_attempts: set[tuple[str, str]] = set()
 
@@ -125,7 +121,7 @@ class MarketTickPollWorker(WorkerBase):
         targets: list[_ChainTarget],
         semaphore: asyncio.Semaphore,
     ) -> _PollProviderResult:
-        provider = getattr(self.providers, "dex_quote_market", None)
+        provider = self.dex_quote_market
         if provider is None:
             skipped: Counter[str] = Counter()
             skipped["dex_provider_unavailable"] += len(targets)
@@ -198,7 +194,7 @@ class MarketTickPollWorker(WorkerBase):
         targets: list[_CexTarget],
         semaphore: asyncio.Semaphore,
     ) -> _PollProviderResult:
-        provider = getattr(self.providers, "cex_market", None)
+        provider = self.cex_market
         if provider is None:
             skipped: Counter[str] = Counter()
             skipped["cex_provider_unavailable"] += len(targets)
@@ -522,26 +518,6 @@ def _provider_error_reason(exc: Exception) -> str:
     if "timeout" in text or "timed out" in text:
         return "provider_timeout"
     return "provider_error"
-
-
-def _settings(settings: Any | None, *, interval_seconds: float | None, batch_size: int) -> Any:
-    if settings is None:
-        return SimpleNamespace(
-            enabled=True,
-            interval_seconds=interval_seconds if interval_seconds is not None else 5.0,
-            soft_timeout_seconds=120.0,
-            hard_timeout_seconds=180.0,
-            batch_size=batch_size,
-        )
-    if interval_seconds is None:
-        return settings
-    try:
-        settings.interval_seconds = interval_seconds
-        return settings
-    except Exception:
-        values = dict(getattr(settings, "__dict__", {}))
-        values["interval_seconds"] = interval_seconds
-        return SimpleNamespace(**values)
 
 
 def _now_ms() -> int:

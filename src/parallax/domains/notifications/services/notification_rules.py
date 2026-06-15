@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -12,17 +11,8 @@ from parallax.platform.config.settings import NotificationRuleConfig, Settings
 
 from ..types import NotificationCandidate
 
-WATCHED_ACTIVITY_WINDOW_MS = 60 * 60_000
-DEFAULT_LIMIT = 50
-MAX_SIGNAL_PULSE_NOTIFICATION_PAGES = 5
-NEWS_HIGH_SIGNAL_QUERY_MIN_LIMIT = 500
-NEWS_HIGH_SIGNAL_QUERY_MULTIPLIER = 20
-NEWS_HIGH_SIGNAL_RECENCY_WINDOW_MS = 2 * 60 * 60_000
 SIGNAL_PULSE_RULE_ID = "signal_pulse_candidate"
 NEWS_HIGH_SIGNAL_RULE_ID = "news_high_signal"
-DEFAULT_SIGNAL_PULSE_WINDOW = "1h"
-DEFAULT_SIGNAL_PULSE_SCOPES = ("all", "matched")
-DEFAULT_SIGNAL_PULSE_STATUSES = ("trade_candidate", "token_watch", "risk_rejected_high_info")
 SIGNAL_PULSE_SEVERITY = {
     "trade_candidate": "critical",
     "risk_rejected_high_info": "warning",
@@ -52,8 +42,8 @@ class NotificationRuleEngine:
         self.pulse = pulse
         self.news = news
 
-    def evaluate(self, *, now_ms: int | None = None) -> list[NotificationCandidate]:
-        now = int(now_ms if now_ms is not None else _now_ms())
+    def evaluate(self, *, now_ms: int) -> list[NotificationCandidate]:
+        now = int(now_ms)
         if not self.settings.notifications.enabled:
             return []
         candidates: list[NotificationCandidate] = []
@@ -68,9 +58,10 @@ class NotificationRuleEngine:
         rule = self._rule(rule_id)
         if not rule.enabled:
             return []
-        since_ms = now_ms - WATCHED_ACTIVITY_WINDOW_MS
+        since_ms = now_ms - int(self.settings.notifications.watched_activity_window_ms)
         events = self.evidence.recent_events(
             limit=self._limit(),
+            since_ms=since_ms,
             watched_only=True,
         )
         candidates: list[NotificationCandidate] = []
@@ -125,6 +116,7 @@ class NotificationRuleEngine:
         alerts = self.account_alerts.account_alerts(
             window="1h",
             limit=self._limit(),
+            now_ms=now_ms,
         )
         candidates: list[NotificationCandidate] = []
         for alert in alerts:
@@ -183,32 +175,24 @@ class NotificationRuleEngine:
             return []
         rows: list[dict[str, Any]] = []
         seen: set[str] = set()
-        window = rule.window or DEFAULT_SIGNAL_PULSE_WINDOW
-        scopes = rule.scopes or DEFAULT_SIGNAL_PULSE_SCOPES
-        statuses = set(rule.statuses or DEFAULT_SIGNAL_PULSE_STATUSES) & set(DEFAULT_SIGNAL_PULSE_STATUSES)
-        for scope in scopes:
-            for status in sorted(statuses):
-                cursor = None
-                for _ in range(MAX_SIGNAL_PULSE_NOTIFICATION_PAGES):
-                    page = self.pulse.list_candidates(
-                        window=window,
-                        scope=scope,
-                        status=status,
-                        limit=self._limit(),
-                        cursor=cursor,
-                        displayable_only=True,
-                    )
-                    for row in page.get("items", []) if isinstance(page, dict) else []:
-                        if not isinstance(row, dict):
-                            continue
-                        candidate_id = str(row.get("candidate_id") or "")
-                        if not candidate_id or candidate_id in seen:
-                            continue
-                        seen.add(candidate_id)
-                        rows.append(row)
-                    cursor = page.get("next_cursor") if isinstance(page, dict) else None
-                    if not cursor:
-                        break
+        if rule.window is None or rule.scopes is None or rule.statuses is None:
+            raise RuntimeError("signal_pulse_notification_rule_config_required")
+        window = rule.window
+        scopes = rule.scopes
+        statuses = set(rule.statuses)
+        for row in self.pulse.list_signal_pulse_notification_candidates(
+            window=window,
+            scopes=scopes,
+            statuses=tuple(sorted(statuses)),
+            per_scope_status_limit=self._signal_pulse_per_scope_status_limit(),
+        ):
+            if not isinstance(row, dict):
+                continue
+            candidate_id = str(row.get("candidate_id") or "")
+            if not candidate_id or candidate_id in seen:
+                continue
+            seen.add(candidate_id)
+            rows.append(row)
 
         candidates: list[NotificationCandidate] = []
         seen_external_push_signatures: set[str] = set()
@@ -293,7 +277,9 @@ class NotificationRuleEngine:
                 continue
             story_key = str(row.get("story_key") or "")
             source_latest_at_ms = _int(row.get("latest_at_ms"))
-            if source_latest_at_ms and source_latest_at_ms < now_ms - NEWS_HIGH_SIGNAL_RECENCY_WINDOW_MS:
+            if source_latest_at_ms and source_latest_at_ms < now_ms - int(
+                self.settings.notifications.news_high_signal_recency_window_ms
+            ):
                 continue
             signal = _dict(row.get("signal"))
             display_signal = _news_display_signal(row)
@@ -385,13 +371,16 @@ class NotificationRuleEngine:
         return self.settings.notifications.rules[rule_id]
 
     def _limit(self) -> int:
-        return max(DEFAULT_LIMIT, int(self.settings.notifications.candidate_limit))
+        return int(self.settings.notifications.candidate_limit)
 
     def _news_high_signal_query_limit(self) -> int:
         return max(
-            NEWS_HIGH_SIGNAL_QUERY_MIN_LIMIT,
-            self._limit() * NEWS_HIGH_SIGNAL_QUERY_MULTIPLIER,
+            int(self.settings.notifications.news_high_signal_query_min_limit),
+            self._limit() * int(self.settings.notifications.news_high_signal_query_multiplier),
         )
+
+    def _signal_pulse_per_scope_status_limit(self) -> int:
+        return self._limit() * int(self.settings.notifications.signal_pulse_max_pages)
 
 
 def _score_version(block: Any) -> str | None:
@@ -954,7 +943,3 @@ def _news_body(row: dict[str, Any], *, summary: str) -> str:
     if url:
         lines.append(url)
     return "\n".join(lines)
-
-
-def _now_ms() -> int:
-    return int(time.time() * 1000)

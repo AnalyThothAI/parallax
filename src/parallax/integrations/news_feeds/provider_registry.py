@@ -7,8 +7,6 @@ from parallax.integrations.news_feeds.cryptopanic_client import CryptopanicFeedC
 from parallax.integrations.news_feeds.feed_client import FeedClient, FeedFetchResult
 from parallax.integrations.news_feeds.opennews_client import OpenNewsFeedClient
 
-SUPPORTED_NEWS_PROVIDER_TYPES = ("atom", "cryptopanic", "json_feed", "opennews", "rss")
-
 
 class NewsFeedClient(Protocol):
     def fetch(
@@ -221,7 +219,6 @@ def default_news_feed_provider_registry(
 
 
 __all__ = [
-    "SUPPORTED_NEWS_PROVIDER_TYPES",
     "CryptopanicNewsFeedProvider",
     "NewsFeedProviderRegistry",
     "OpenNewsNewsFeedProvider",

@@ -11,6 +11,7 @@ from parallax.app.surfaces.api.exceptions import ApiBadRequest
 from parallax.app.surfaces.api.responses import _json
 from parallax.app.surfaces.api.validators import _limit
 from parallax.domains.news_intel.queries.news_page_query import NewsPageQuery
+from parallax.platform.config.news_provider_types import RUNTIME_SUPPORTED_NEWS_PROVIDER_TYPES
 
 router = APIRouter()
 
@@ -66,10 +67,15 @@ def get_news_source_status(request: Request) -> JSONResponse:
     runtime = _authenticated_runtime(request)
     with runtime.repositories() as repos:
         sources = _news_read_model(repos).source_status()
-        supported_types = _supported_news_provider_types(runtime)
         data = {
-            "provider_capabilities": _provider_capabilities(sources, supported_types=supported_types),
-            "source_hygiene": _source_hygiene(sources, supported_types=supported_types),
+            "provider_capabilities": _provider_capabilities(
+                sources,
+                supported_types=RUNTIME_SUPPORTED_NEWS_PROVIDER_TYPES,
+            ),
+            "source_hygiene": _source_hygiene(
+                sources,
+                supported_types=RUNTIME_SUPPORTED_NEWS_PROVIDER_TYPES,
+            ),
             "sources": sources,
         }
     return _json({"ok": True, "data": data})
@@ -127,16 +133,3 @@ def _source_hygiene(sources: list[dict[str, Any]], *, supported_types: tuple[str
         "degraded_sources": degraded_sources,
         "warnings": warnings,
     }
-
-
-def _supported_news_provider_types(runtime: Any) -> tuple[str, ...]:
-    news_intel = getattr(getattr(runtime, "providers", None), "news_intel", None)
-    feed_client = getattr(news_intel, "feed_client", None)
-    supported = getattr(feed_client, "supported_provider_types", None)
-    if callable(supported):
-        return tuple(str(value) for value in supported())
-    registry = getattr(feed_client, "_registry", None)
-    registry_supported = getattr(registry, "supported_provider_types", None)
-    if callable(registry_supported):
-        return tuple(str(value) for value in registry_supported())
-    return ()

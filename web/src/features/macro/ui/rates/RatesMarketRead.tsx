@@ -4,7 +4,8 @@ import { MacroPanel } from "../primitives/MacroPanel";
 export function RatesMarketRead({ view }: { view: RatesWorkbenchView }) {
   const asOf = compactAsOfLabel(view.asOfLabel);
   const gapCount = view.missingPrimaryItems.length;
-  const proxyNote = view.proxyNote && view.proxyNote !== view.marketHeadline ? view.proxyNote : null;
+  const proxyNote =
+    view.proxyNote && view.proxyNote !== view.marketHeadline ? view.proxyNote : null;
 
   return (
     <MacroPanel

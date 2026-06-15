@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from parallax.domains.asset_market.services.us_equity_symbol_sync import (
     NasdaqTraderSymbol,
     parse_nasdaq_trader_symbols,
@@ -141,7 +143,32 @@ def test_sync_us_equity_symbols_upserts_and_deactivates_missing_symbols():
         "observed_at_ms": 1_778_000_000_000,
         "commit": False,
     }
-    assert registry.conn.commits == 1
+    assert registry.conn.events == ["enter", "exit"]
+    assert registry.conn.commits == 0
+
+
+def test_sync_us_equity_symbols_requires_transaction_before_writes():
+    registry = _Registry(conn=object())
+
+    with pytest.raises(RuntimeError, match="us_equity_symbol_sync_transaction_required"):
+        sync_us_equity_symbols(
+            registry=registry,
+            client=_Client(
+                [
+                    NasdaqTraderSymbol(
+                        symbol="AAOI",
+                        exchange="NASDAQ",
+                        security_name="Applied Optoelectronics, Inc. Common Stock",
+                        instrument_type="equity",
+                        raw_payload={"Symbol": "AAOI"},
+                    )
+                ]
+            ),
+            observed_at_ms=1_778_000_000_000,
+        )
+
+    assert registry.upserts == []
+    assert registry.deactivate_call is None
 
 
 class _Client:
@@ -153,16 +180,18 @@ class _Client:
 
 
 class _Registry:
-    def __init__(self) -> None:
-        self.conn = _Conn()
+    def __init__(self, *, conn=None) -> None:
+        self.conn = conn or _Conn()
         self.upserts = []
         self.deactivate_call = None
 
     def upsert_us_equity_symbol(self, **kwargs):
+        assert self.conn.transaction_depth == 1
         self.upserts.append(kwargs)
         return {"symbol": kwargs["symbol"]}
 
     def deactivate_missing_us_equity_symbols(self, **kwargs):
+        assert self.conn.transaction_depth == 1
         self.deactivate_call = kwargs
         return 2
 
@@ -170,6 +199,27 @@ class _Registry:
 class _Conn:
     def __init__(self) -> None:
         self.commits = 0
+        self.transaction_depth = 0
+        self.events: list[str] = []
+
+    def transaction(self):
+        return _Transaction(self)
 
     def commit(self) -> None:
         self.commits += 1
+        raise AssertionError("sync_us_equity_symbols must use conn.transaction(), not conn.commit()")
+
+
+class _Transaction:
+    def __init__(self, conn: _Conn) -> None:
+        self.conn = conn
+
+    def __enter__(self):
+        self.conn.transaction_depth += 1
+        self.conn.events.append("enter")
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.conn.events.append("rollback" if exc_type is not None else "exit")
+        self.conn.transaction_depth -= 1
+        return False

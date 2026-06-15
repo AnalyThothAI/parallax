@@ -60,7 +60,6 @@ def stocks_radar(
     with runtime.repositories() as repos:
         data = StocksRadarService(
             conn=repos.conn,
-            quote_provider=runtime.stock_quote_provider,
         ).stocks_radar(
             window=parsed_window,
             limit=_limit(limit),
@@ -109,53 +108,13 @@ def _token_radar_data(
             venue=venue,
             now_ms=now_ms,
         )
-        hydrated = _narrative_read_model(repos).hydrate_token_radar(
-            _with_top_level_targets(data),
+        return _narrative_read_model(repos).hydrate_token_radar(
+            data,
             window=window,
             scope=scope,
             now_ms=now_ms,
         )
-        return _strip_synthetic_targets(hydrated)
 
 
 def _narrative_read_model(repos: Any) -> Any:
     return NarrativeReadModel(repository=repos.narratives)
-
-
-def _dict(value: Any) -> dict[str, Any]:
-    return value if isinstance(value, dict) else {}
-
-
-def _with_top_level_targets(data: dict[str, Any]) -> dict[str, Any]:
-    hydrated = dict(data)
-    for key in ("targets", "attention"):
-        hydrated[key] = [_row_with_top_level_target(item) for item in data.get(key, [])]
-    return hydrated
-
-
-def _row_with_top_level_target(item: Any) -> dict[str, Any]:
-    row = dict(_dict(item))
-    target = _dict(row.get("target"))
-    if "target_type" not in row and target.get("target_type"):
-        row["_synthetic_target_type"] = True
-        row["target_type"] = target.get("target_type")
-    if "target_id" not in row and target.get("target_id"):
-        row["_synthetic_target_id"] = True
-        row["target_id"] = target.get("target_id")
-    return row
-
-
-def _strip_synthetic_targets(data: dict[str, Any]) -> dict[str, Any]:
-    stripped = dict(data)
-    for key in ("targets", "attention"):
-        stripped[key] = [_strip_synthetic_target(item) for item in data.get(key, [])]
-    return stripped
-
-
-def _strip_synthetic_target(item: Any) -> dict[str, Any]:
-    row = dict(_dict(item))
-    if row.pop("_synthetic_target_type", False):
-        row.pop("target_type", None)
-    if row.pop("_synthetic_target_id", False):
-        row.pop("target_id", None)
-    return row

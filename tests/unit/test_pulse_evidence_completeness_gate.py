@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
+import pytest
+
 from parallax.domains.pulse_lab.services.evidence_completeness_gate import EvidenceCompletenessGate
-from parallax.domains.pulse_lab.types.evidence_packet import PulseEvidenceDataGap
+from parallax.domains.pulse_lab.types.evidence_packet import PulseEvidenceDataGap, PulseEvidencePacket
 
 
 def test_cex_with_baseline_only_is_partial_token_watch() -> None:
@@ -104,13 +106,15 @@ def test_unknown_route_social_only_is_hidden_abstain() -> None:
 
 
 def test_gate_json_serializes_packet_model_data_gaps() -> None:
-    packet = _packet(market=[])
-    packet.data_gaps = (
-        PulseEvidenceDataGap(
-            gap_id="market_missing",
-            ref_type="market",
-            severity="high",
-            summary_zh="缺少可引用市场证据",
+    packet = _packet(
+        market=[],
+        data_gaps=(
+            PulseEvidenceDataGap(
+                gap_id="market_missing",
+                ref_type="market",
+                severity="high",
+                summary_zh="缺少可引用市场证据",
+            ),
         ),
     )
 
@@ -121,6 +125,31 @@ def test_gate_json_serializes_packet_model_data_gaps() -> None:
     assert payload["data_gaps"][0]["gap_id"] == "market_missing"
 
 
+def test_evidence_gate_requires_formal_pulse_evidence_packet_without_reflection() -> None:
+    packet = SimpleNamespace(
+        target_type="chain_token",
+        allowed_evidence_refs=[
+            _ref("event:event-1", "event"),
+            _ref("metric:market:price_usd", "metric"),
+            _ref("identity:token", "identity"),
+        ],
+        social_evidence={"event_refs": ("event:event-1",)},
+        market_evidence={
+            "route": "meme",
+            "target_market_type": "dex",
+            "price_usd": 1.0,
+            "liquidity_usd": 1000.0,
+            "pair_ref": "pair:solana:abc",
+            "freshness_status": "fresh",
+        },
+        identity_evidence={"identity_refs": ("identity:token",)},
+        data_gaps=(),
+    )
+
+    with pytest.raises(TypeError, match="pulse_evidence_packet_contract_required"):
+        EvidenceCompletenessGate().evaluate(packet)
+
+
 def _packet(
     *,
     route: str = "cex",
@@ -128,7 +157,8 @@ def _packet(
     market: list[dict[str, object]] | None = None,
     identity: list[dict[str, object]] | None = None,
     refs: list[dict[str, object]] | None = None,
-) -> SimpleNamespace:
+    data_gaps: tuple[PulseEvidenceDataGap, ...] = (),
+) -> PulseEvidencePacket:
     social = [{"event_id": "event-1", "ref_id": "event:event-1"}] if social is None else social
     market = (
         [
@@ -150,13 +180,48 @@ def _packet(
         _ref("metric:market:price_usd", "metric"),
         _ref("identity:token", "identity"),
     ]
-    return SimpleNamespace(
+    market_row = dict(market[0]) if market else {"route": "unknown", "target_market_type": "unknown"}
+    market_route = str(market_row.get("route") or route)
+    if market_route not in {"cex", "dex", "meme", "unknown"}:
+        market_route = "unknown"
+    target_market_type = str(market_row.get("target_market_type") or ("cex" if market_route == "cex" else "dex"))
+    event_refs = tuple(str(row.get("ref_id") or row.get("event_id") or "") for row in social)
+    identity_refs = tuple(str(row.get("ref_id") or row.get("source_id") or "") for row in identity)
+
+    return PulseEvidencePacket(
+        evidence_packet_id="packet-1",
+        run_id="run-1",
+        evidence_packet_hash="sha256:packet",
+        schema_version="pulse_evidence_packet_v1",
+        candidate_id="candidate-1",
         target_type="cex_token" if route == "cex" else "chain_token",
-        market_evidence=market,
-        social_evidence=social,
-        identity_evidence=identity,
+        target_id="TEST",
+        symbol="TEST",
+        window="1h",
+        scope="default",
+        snapshot_at_ms=1,
+        source_event_ids=("event-1",),
         allowed_evidence_refs=refs,
-        data_gaps=[],
+        social_evidence={
+            "status": "complete" if event_refs else "insufficient",
+            "event_refs": tuple(ref for ref in event_refs if ref),
+        },
+        market_evidence={
+            **market_row,
+            "status": "complete" if market_row.get("price_usd") is not None else "insufficient",
+            "route": market_route,
+            "target_market_type": target_market_type,
+        },
+        identity_evidence={
+            "status": "complete" if identity_refs else "insufficient",
+            "identity_refs": tuple(ref for ref in identity_refs if ref),
+        },
+        quality_metrics={
+            "ref_count": len(refs),
+            "high_quality_ref_count": len(refs),
+            "fresh_ref_count": len(refs),
+        },
+        data_gaps=data_gaps,
     )
 
 

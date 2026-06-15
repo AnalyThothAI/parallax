@@ -12,10 +12,13 @@ from parallax.domains.pulse_lab.interfaces import (
     PULSE_DECISION_PROMPT_VERSION,
     PULSE_DECISION_SCHEMA_VERSION,
 )
+from parallax.domains.pulse_lab.providers import PulseDecisionStageSpec
 from parallax.domains.pulse_lab.services.agent_runtime import build_pulse_runtime_manifest
+from parallax.domains.pulse_lab.services.evidence_completeness_gate import EvidenceCompletenessGateResult
 from parallax.domains.pulse_lab.services.prompt_loader import pulse_decision_prompt_text_hash
 from parallax.domains.pulse_lab.services.pulse_decision_runtime import PulseDecisionRuntimeService
 from parallax.domains.pulse_lab.types.agent_decision import FinalDecision, PulseStageFailure
+from parallax.domains.pulse_lab.types.evidence_packet import PulseEvidencePacket
 from parallax.integrations.model_execution.output_schema import StrictJsonOutputSchema
 from parallax.integrations.model_execution.pulse_decision_agent_client import LiteLLMPulseDecisionClient
 from parallax.platform.agent_execution import (
@@ -153,6 +156,53 @@ class _NoStartBackpressureGateway(_FakeAgentGateway):
         )
 
 
+class _LooseErrorAuditGateway(_FakeAgentGateway):
+    async def execute(self, stage, **kwargs):
+        self.execute_calls.append({"stage": stage, "kwargs": kwargs})
+        raise AgentExecutionError(
+            AgentExecutionErrorClass.TIMEOUT,
+            "agent lane timed out",
+            audit=SimpleNamespace(
+                input_hash=stage.input_hash,
+                output_hash=None,
+                latency_ms=23.0,
+                usage={"input_tokens": 2},
+                parse_mode="strict",
+                safety_net={"safety_net_used": False, "safety_net_retries": 0},
+                trace_metadata={"stage": stage.stage},
+                error_class=AgentExecutionErrorClass.TIMEOUT,
+                error_message="loose audit timeout",
+            ),
+            execution_started=True,
+        )
+
+
+class _MissingTraceAuditRuntime(PulseDecisionRuntimeService):
+    def request_audit(self, **kwargs):
+        audit = super().request_audit(**kwargs)
+        audit.pop("trace_metadata", None)
+        return audit
+
+
+class _MismatchedTraceRunAuditRuntime(PulseDecisionRuntimeService):
+    def request_audit(self, **kwargs):
+        audit = super().request_audit(**kwargs)
+        audit["trace_metadata"] = {**audit["trace_metadata"], "run_id": "run-other"}
+        return audit
+
+
+class _MissingStageGroupRuntime(PulseDecisionRuntimeService):
+    def pulse_decision_stage_spec(self, **kwargs):
+        spec = super().pulse_decision_stage_spec(**kwargs)
+        return PulseDecisionStageSpec(
+            stage=spec.stage,
+            prompt_text=spec.prompt_text,
+            input_payload={**spec.input_payload, "evidence_packet": {}},
+            knowledge_refs=spec.knowledge_refs,
+            read_only_tool_refs=spec.read_only_tool_refs,
+        )
+
+
 def _request_audit_base(audit: AgentExecutionRequestAudit) -> dict:
     return audit.model_dump(
         mode="json",
@@ -187,6 +237,25 @@ def test_pulse_client_requires_decision_runtime_only() -> None:
             agent_gateway=_FakeAgentGateway(),
             decision_runtime=None,  # type: ignore[arg-type]
         )
+
+
+@pytest.mark.parametrize("workflow_name", ["", " ", None])
+def test_pulse_client_requires_non_empty_workflow_name_without_defaulting_blank(workflow_name: str | None) -> None:
+    with pytest.raises(ValueError, match="pulse_decision_workflow_name_required"):
+        LiteLLMPulseDecisionClient(
+            agent_gateway=_FakeAgentGateway(),
+            decision_runtime=PulseDecisionRuntimeService(),
+            workflow_name=workflow_name,  # type: ignore[arg-type]
+        )
+
+
+def test_pulse_client_does_not_expose_provider_timeout_budget() -> None:
+    client = LiteLLMPulseDecisionClient(
+        agent_gateway=_FakeAgentGateway(),
+        decision_runtime=PulseDecisionRuntimeService(),
+    )
+
+    assert not hasattr(client, "timeout_seconds")
 
 
 def test_pulse_client_runtime_contract_is_packet_only() -> None:
@@ -254,24 +323,17 @@ def test_pulse_client_artifact_hash_includes_prompt_text_hash() -> None:
 
 def test_pulse_decision_stage_input_contains_packet_hash_and_allowed_refs() -> None:
     runtime = PulseDecisionRuntimeService()
-    packet = {
-        "evidence_packet_id": "pkt-1",
-        "evidence_packet_hash": "sha256:packet",
-        "schema_version": "pulse-evidence-packet-v1",
-        "candidate_id": "candidate-1",
-        "target_id": "asset:pepe",
-        "summary_json": {"social_rows": [{"unref_field": "must stay out of agent prompt"}]},
-        "admission_context": {"factor_snapshot": {"social_heat": {"watched_seed_strength": 10}}},
-        "allowed_evidence_refs": [
-            {"ref_id": "event:evt-1", "summary_zh": "高粉账号提及"},
-            {"ref_id": "metric:market:price_usd", "summary_zh": "价格快照"},
-        ],
-    }
+    packet = _evidence_packet(
+        refs=("event:evt-1", "metric:market:price_usd"),
+        source_event_ids=("evt-1",),
+        summary_json={"social_rows": [{"unref_field": "must stay out of agent prompt"}]},
+        admission_context={"factor_snapshot": {"social_heat": {"watched_seed_strength": 10}}},
+    )
 
     spec = runtime.pulse_decision_stage_spec(
         route="meme",
         evidence_packet=packet,
-        evidence_gate={"status": "complete"},
+        evidence_gate=_evidence_gate(),
         recommendation_constraints={"route": "meme"},
     )
 
@@ -286,6 +348,170 @@ def test_pulse_decision_stage_input_contains_packet_hash_and_allowed_refs() -> N
     assert spec.knowledge_refs == ("market_research_harness",)
     assert spec.read_only_tool_refs == ("token_radar.current_rows", "pulse.current_candidates")
     assert "## Loaded Knowledge: Market Research Harness" in spec.prompt_text
+
+
+def test_pulse_decision_stage_spec_requires_formal_packet_and_gate_without_dict_compatibility() -> None:
+    runtime = PulseDecisionRuntimeService()
+    packet = _evidence_packet()
+    gate = _evidence_gate()
+
+    with pytest.raises(TypeError, match="pulse_decision_stage_packet_contract_required"):
+        runtime.pulse_decision_stage_spec(
+            route="meme",
+            evidence_packet=packet.model_dump(mode="json"),
+            evidence_gate=gate,
+            recommendation_constraints={"route": "meme"},
+        )
+    with pytest.raises(TypeError, match="pulse_decision_stage_gate_contract_required"):
+        runtime.pulse_decision_stage_spec(
+            route="meme",
+            evidence_packet=packet,
+            evidence_gate=gate.to_json(),
+            recommendation_constraints={"route": "meme"},
+        )
+
+
+def test_pulse_decision_request_audit_requires_claim_attempt_count() -> None:
+    runtime = PulseDecisionRuntimeService()
+
+    with pytest.raises(ValueError, match="pulse_agent_job_claim_attempt_count_required"):
+        runtime.request_audit(
+            context=_pipeline_context(),
+            run_id="run-1",
+            job={"job_id": "job-1"},
+            route="meme",
+            completeness=_evidence_gate(),
+            runtime_manifest=_request_runtime_manifest(),
+            model="gpt-test",
+            artifact_version_hash="artifact",
+            workflow_name="pulse",
+            agent_name="pulse_agent",
+        )
+
+
+@pytest.mark.parametrize(
+    ("overrides", "error"),
+    (
+        ({"run_id": ""}, "pulse_decision_request_audit_run_id_required"),
+        ({"job": {"attempt_count": 1}}, "pulse_decision_request_audit_job_id_required"),
+        ({"model": ""}, "pulse_decision_request_audit_model_required"),
+        ({"artifact_version_hash": ""}, "pulse_decision_request_audit_artifact_version_hash_required"),
+        ({"workflow_name": ""}, "pulse_decision_request_audit_workflow_name_required"),
+        ({"agent_name": ""}, "pulse_decision_request_audit_agent_name_required"),
+    ),
+)
+def test_pulse_decision_request_audit_requires_execution_identity_fields(
+    overrides: dict[str, object],
+    error: str,
+) -> None:
+    runtime = PulseDecisionRuntimeService()
+    kwargs = {
+        "context": _pipeline_context(),
+        "run_id": "run-1",
+        "job": {"job_id": "job-1", "attempt_count": 1},
+        "route": "meme",
+        "completeness": _evidence_gate(),
+        "runtime_manifest": _request_runtime_manifest(),
+        "model": "gpt-test",
+        "artifact_version_hash": "artifact",
+        "workflow_name": "pulse",
+        "agent_name": "pulse_agent",
+    }
+    kwargs.update(overrides)
+
+    with pytest.raises(ValueError, match=error):
+        runtime.request_audit(**kwargs)
+
+
+def test_pulse_decision_request_audit_requires_context_evidence_packet_contract() -> None:
+    runtime = PulseDecisionRuntimeService()
+
+    with pytest.raises(ValueError, match="pulse_decision_request_audit_packet_contract_required"):
+        runtime.request_audit(
+            context={
+                "candidate_id": "candidate-1",
+                "evidence_packet_hash": "sha256:legacy-top-level",
+            },
+            run_id="run-1",
+            job={"job_id": "job-1", "attempt_count": 1},
+            route="meme",
+            completeness=_evidence_gate(),
+            runtime_manifest=_request_runtime_manifest(),
+            model="gpt-test",
+            artifact_version_hash="artifact",
+            workflow_name="pulse",
+            agent_name="pulse_agent",
+        )
+
+
+def test_pulse_decision_request_audit_requires_formal_gate_contract() -> None:
+    runtime = PulseDecisionRuntimeService()
+
+    with pytest.raises(TypeError, match="pulse_decision_request_audit_gate_contract_required"):
+        runtime.request_audit(
+            context=_pipeline_context(),
+            run_id="run-1",
+            job={"job_id": "job-1", "attempt_count": 1},
+            route="meme",
+            completeness=_pipeline_completeness(),
+            runtime_manifest=_request_runtime_manifest(),
+            model="gpt-test",
+            artifact_version_hash="artifact",
+            workflow_name="pulse",
+            agent_name="pulse_agent",
+        )
+
+
+def test_pulse_decision_request_audit_requires_runtime_version_contract() -> None:
+    runtime = PulseDecisionRuntimeService()
+
+    with pytest.raises(ValueError, match="pulse_decision_runtime_manifest_version_required"):
+        runtime.request_audit(
+            context=_pipeline_context(),
+            run_id="run-1",
+            job={"job_id": "job-1", "attempt_count": 1},
+            route="meme",
+            completeness=_evidence_gate(),
+            runtime_manifest={},
+            model="gpt-test",
+            artifact_version_hash="artifact",
+            workflow_name="pulse",
+            agent_name="pulse_agent",
+        )
+
+
+@pytest.mark.parametrize(
+    ("manifest_kwargs", "error"),
+    (
+        (
+            {"model": "other-model"},
+            "pulse_decision_runtime_manifest_model_mismatch",
+        ),
+        (
+            {"artifact_version_hash": "artifact:other"},
+            "pulse_decision_runtime_manifest_artifact_version_hash_mismatch",
+        ),
+    ),
+)
+def test_pulse_decision_request_audit_requires_runtime_manifest_execution_identity_match(
+    manifest_kwargs: dict[str, str],
+    error: str,
+) -> None:
+    runtime = PulseDecisionRuntimeService()
+
+    with pytest.raises(ValueError, match=error):
+        runtime.request_audit(
+            context=_pipeline_context(),
+            run_id="run-1",
+            job={"job_id": "job-1", "attempt_count": 1},
+            route="meme",
+            completeness=_evidence_gate(),
+            runtime_manifest=_request_runtime_manifest(**manifest_kwargs),
+            model="gpt-test",
+            artifact_version_hash="artifact",
+            workflow_name="pulse",
+            agent_name="pulse_agent",
+        )
 
 
 def test_pulse_client_routes_single_stage_through_gateway_and_preserves_stage_audit_fields() -> None:
@@ -313,8 +539,8 @@ def test_pulse_client_routes_single_stage_through_gateway_and_preserves_stage_au
             run_id="run-1",
             job={"job_id": "job-1", "attempt_count": 1},
             route="meme",
-            completeness={"status": "complete"},
-            runtime_manifest={"runtime_version": "test"},
+            completeness=_pipeline_completeness(),
+            runtime_manifest=_client_runtime_manifest(client),
         )
     )
 
@@ -338,6 +564,64 @@ def test_pulse_client_routes_single_stage_through_gateway_and_preserves_stage_au
     assert result.stage_audits[0].output_hash == "sha256:output-pulse_decision"
 
 
+@pytest.mark.parametrize(
+    ("runtime", "expected_error"),
+    [
+        (_MissingTraceAuditRuntime(), "pulse_decision_stage_request_audit_trace_metadata_required"),
+        (_MismatchedTraceRunAuditRuntime(), "pulse_decision_stage_request_audit_run_id_mismatch"),
+    ],
+)
+def test_pulse_client_stage_spec_requires_request_audit_trace_run_identity(
+    runtime: PulseDecisionRuntimeService,
+    expected_error: str,
+) -> None:
+    gateway = _FakeAgentGateway(
+        {"pulse_decision": _final_decision_raw(supporting_refs=["event:event-1"], playbook=_empty_playbook())}
+    )
+    client = LiteLLMPulseDecisionClient(
+        agent_gateway=gateway,
+        decision_runtime=runtime,
+    )
+
+    with pytest.raises(ValueError, match=expected_error):
+        asyncio.run(
+            client.run_decision_pipeline(
+                context=_pipeline_context(),
+                run_id="run-1",
+                job={"job_id": "job-1", "attempt_count": 1},
+                route="meme",
+                completeness=_pipeline_completeness(),
+                runtime_manifest=_client_runtime_manifest(client),
+            )
+        )
+
+    assert gateway.execute_calls == []
+
+
+def test_pulse_client_stage_spec_requires_packet_group_identity_without_run_id_fallback() -> None:
+    gateway = _FakeAgentGateway(
+        {"pulse_decision": _final_decision_raw(supporting_refs=["event:event-1"], playbook=_empty_playbook())}
+    )
+    client = LiteLLMPulseDecisionClient(
+        agent_gateway=gateway,
+        decision_runtime=_MissingStageGroupRuntime(),
+    )
+
+    with pytest.raises(ValueError, match="pulse_decision_stage_group_id_required"):
+        asyncio.run(
+            client.run_decision_pipeline(
+                context=_pipeline_context(),
+                run_id="run-1",
+                job={"job_id": "job-1", "attempt_count": 1},
+                route="meme",
+                completeness=_pipeline_completeness(),
+                runtime_manifest=_client_runtime_manifest(client),
+            )
+        )
+
+    assert gateway.execute_calls == []
+
+
 def test_pulse_client_cost_guard_skip_decision_skips_llm() -> None:
     gateway = _FakeAgentGateway()
     client = LiteLLMPulseDecisionClient(
@@ -351,8 +635,8 @@ def test_pulse_client_cost_guard_skip_decision_skips_llm() -> None:
             run_id="run-1",
             job={"job_id": "job-1", "attempt_count": 1},
             route="meme",
-            completeness={"status": "complete"},
-            runtime_manifest={"runtime_version": "test"},
+            completeness=_pipeline_completeness(),
+            runtime_manifest=_client_runtime_manifest(client),
         )
     )
 
@@ -387,8 +671,8 @@ def test_pulse_client_cost_guard_run_decision_runs_single_stage() -> None:
             run_id="run-1",
             job={"job_id": "job-1", "attempt_count": 1},
             route="meme",
-            completeness={"status": "complete"},
-            runtime_manifest={"runtime_version": "test"},
+            completeness=_pipeline_completeness(),
+            runtime_manifest=_client_runtime_manifest(client),
         )
     )
 
@@ -421,8 +705,8 @@ def test_pulse_client_passes_parent_reservation_to_stage_execution() -> None:
             run_id="run-1",
             job={"job_id": "job-1", "attempt_count": 1},
             route="meme",
-            completeness={"status": "complete"},
-            runtime_manifest={"runtime_version": "test"},
+            completeness=_pipeline_completeness(),
+            runtime_manifest=_client_runtime_manifest(client),
             parent_reservation=parent,
         )
     )
@@ -455,8 +739,8 @@ def test_pulse_client_rejects_typo_refs_instead_of_canonicalizing_gateway_output
             run_id="run-1",
             job={"job_id": "job-1", "attempt_count": 1},
             route="meme",
-            completeness={"status": "complete"},
-            runtime_manifest={"runtime_version": "test"},
+            completeness=_pipeline_completeness(),
+            runtime_manifest=_client_runtime_manifest(client),
         )
     )
 
@@ -487,8 +771,8 @@ def test_invalid_evidence_refs_remain_pulse_domain_failures_not_gateway_failures
             run_id="run-1",
             job={"job_id": "job-1", "attempt_count": 1},
             route="meme",
-            completeness={"status": "complete"},
-            runtime_manifest={"runtime_version": "test"},
+            completeness=_pipeline_completeness(),
+            runtime_manifest=_client_runtime_manifest(client),
         )
     )
 
@@ -518,8 +802,8 @@ def test_schema_invalid_pulse_decision_returns_invalid_model_output_abstain() ->
             run_id="run-1",
             job={"job_id": "job-1", "attempt_count": 1},
             route="meme",
-            completeness={"status": "complete"},
-            runtime_manifest={"runtime_version": "test"},
+            completeness=_pipeline_completeness(),
+            runtime_manifest=_client_runtime_manifest(client),
         )
     )
 
@@ -543,8 +827,8 @@ def test_provider_transport_failure_preserves_error_class_without_unknown_ref_la
                 run_id="run-1",
                 job={"job_id": "job-1", "attempt_count": 1},
                 route="meme",
-                completeness={"status": "complete"},
-                runtime_manifest={"runtime_version": "test"},
+                completeness=_pipeline_completeness(),
+                runtime_manifest=_client_runtime_manifest(client),
             )
         )
 
@@ -567,8 +851,8 @@ def test_gateway_execution_timeout_degrades_to_abstain_without_retrying_job() ->
             run_id="run-1",
             job={"job_id": "job-1", "attempt_count": 1},
             route="meme",
-            completeness={"status": "complete"},
-            runtime_manifest={"runtime_version": "test"},
+            completeness=_pipeline_completeness(),
+            runtime_manifest=_client_runtime_manifest(client),
         )
     )
 
@@ -579,6 +863,26 @@ def test_gateway_execution_timeout_degrades_to_abstain_without_retrying_job() ->
     assert result.stage_audits[0].error == "agent lane timed out"
     assert result.stage_audits[0].usage_json == {"input_tokens": 2}
     assert result.stage_audits[0].input_hash == gateway.execute_calls[0]["stage"].input_hash
+
+
+def test_gateway_execution_error_requires_formal_audit_contract() -> None:
+    gateway = _LooseErrorAuditGateway()
+    client = LiteLLMPulseDecisionClient(
+        agent_gateway=gateway,
+        decision_runtime=PulseDecisionRuntimeService(),
+    )
+
+    with pytest.raises(TypeError, match="pulse_decision_execution_audit_contract_required"):
+        asyncio.run(
+            client.run_decision_pipeline(
+                context=_pipeline_context(),
+                run_id="run-1",
+                job={"job_id": "job-1", "attempt_count": 1},
+                route="meme",
+                completeness=_pipeline_completeness(),
+                runtime_manifest=_client_runtime_manifest(client),
+            )
+        )
 
 
 def test_no_start_agent_execution_error_is_not_collapsed_into_stage_failure() -> None:
@@ -595,8 +899,8 @@ def test_no_start_agent_execution_error_is_not_collapsed_into_stage_failure() ->
                 run_id="run-1",
                 job={"job_id": "job-1", "attempt_count": 1},
                 route="meme",
-                completeness={"status": "complete"},
-                runtime_manifest={"runtime_version": "test"},
+                completeness=_pipeline_completeness(),
+                runtime_manifest=_client_runtime_manifest(client),
             )
         )
 
@@ -611,19 +915,94 @@ def _pipeline_context(*, cost_guard: dict | None = None) -> dict:
         "subject_key": "pepe",
         "target_type": "Asset",
         "target_id": "asset:pepe",
-        "evidence_packet": {
-            "evidence_packet_id": "pkt-1",
-            "evidence_packet_hash": "sha256:packet",
-            "schema_version": "pulse-evidence-packet-v1",
-            "candidate_id": "candidate-1",
-            "target_id": "asset:pepe",
-            "source_event_ids": ["event-1"],
-            "allowed_evidence_refs": [{"ref_id": "event:event-1", "ref_type": "event", "summary_zh": "高粉账号提及"}],
-        },
+        "evidence_packet": _evidence_packet().model_dump(mode="json"),
     }
     if cost_guard is not None:
         context["cost_guard"] = cost_guard
     return context
+
+
+def _pipeline_completeness() -> dict:
+    return _evidence_gate().to_json()
+
+
+def _request_runtime_manifest(*, model: str = "gpt-test", artifact_version_hash: str = "artifact") -> dict:
+    return build_pulse_runtime_manifest(
+        provider="litellm",
+        model=model,
+        artifact_version_hash=artifact_version_hash,
+        timeout_seconds=20.0,
+    )
+
+
+def _client_runtime_manifest(client: LiteLLMPulseDecisionClient) -> dict:
+    return _request_runtime_manifest(
+        model=client.model,
+        artifact_version_hash=client.artifact_version_hash,
+    )
+
+
+def _evidence_packet(
+    *,
+    refs: tuple[str, ...] = ("event:event-1",),
+    source_event_ids: tuple[str, ...] = ("event-1",),
+    summary_json: dict | None = None,
+    admission_context: dict | None = None,
+) -> PulseEvidencePacket:
+    return PulseEvidencePacket(
+        evidence_packet_id="pkt-1",
+        run_id="run-1",
+        evidence_packet_hash="sha256:packet",
+        schema_version="pulse-evidence-packet-v1",
+        candidate_id="candidate-1",
+        target_type="chain_token",
+        target_id="asset:pepe",
+        symbol="PEPE",
+        window="1h",
+        scope="default",
+        snapshot_at_ms=1,
+        source_event_ids=source_event_ids,
+        allowed_evidence_refs=[
+            {
+                "ref_id": ref,
+                "ref_type": ref.split(":", 1)[0],
+                "source_table": "test",
+                "source_id": ref,
+                "observed_at_ms": 1,
+                "summary_zh": "高粉账号提及" if ref.startswith("event:") else "价格快照",
+                "quality": "high",
+            }
+            for ref in refs
+        ],
+        social_evidence={"status": "complete", "event_refs": tuple(ref for ref in refs if ref.startswith("event:"))},
+        market_evidence={
+            "status": "complete",
+            "route": "meme",
+            "target_market_type": "dex",
+            "price_usd": 1.0,
+            "liquidity_usd": 1000.0,
+            "instrument_ref": "pair:solana:pepe",
+            "freshness_status": "fresh",
+        },
+        identity_evidence={"status": "complete", "identity_refs": ("identity:token",)},
+        quality_metrics={"ref_count": len(refs), "high_quality_ref_count": len(refs), "fresh_ref_count": len(refs)},
+        summary_json=summary_json or {},
+        admission_context=admission_context or {},
+    )
+
+
+def _evidence_gate() -> EvidenceCompletenessGateResult:
+    return EvidenceCompletenessGateResult(
+        evidence_status="complete",
+        hard_blocked=False,
+        blocked_reason=None,
+        max_decision_status="trade_candidate",
+        required_ref_ids=("event:event-1",),
+        missing_ref_types=(),
+        data_gaps=(),
+        public_allowed=True,
+        display_status="display_trade_candidate",
+    )
 
 
 def _empty_playbook() -> dict:

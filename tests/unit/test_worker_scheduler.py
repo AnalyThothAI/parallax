@@ -26,6 +26,21 @@ class FakeDB:
         self.api_pool = FakePool()
         self.worker_pool = FakePool()
         self.wake_pool = FakePool()
+        self.closed = False
+
+    async def aclose(self) -> None:
+        self.closed = True
+        await self.api_pool.aclose()
+        await self.worker_pool.aclose()
+        await self.wake_pool.aclose()
+
+
+class SyncLifecycleDB:
+    def __init__(self) -> None:
+        self.closed = 0
+
+    def aclose(self) -> None:
+        self.closed += 1
 
 
 class FakeWorker:
@@ -57,6 +72,7 @@ class FakeWorker:
         self.run_order: list[str] | None = None
         self.last_error: str | None = None
         self.last_result: dict[str, Any] | None = None
+        self.active_run_once_hard_timed_out_at_ms: int | None = None
 
     async def run(self) -> None:
         if self.run_order is not None:
@@ -94,7 +110,23 @@ class FakeWorker:
             "running": self.started_event.is_set() and not self.stop_event.is_set(),
             "last_result": self.last_result,
             "last_error": self.last_error,
+            "active_run_once_hard_timed_out_at_ms": self.active_run_once_hard_timed_out_at_ms,
         }
+
+
+class SyncLifecycleWorker:
+    def __init__(self) -> None:
+        self.stopped = 0
+        self.closed = 0
+
+    def stop(self) -> None:
+        self.stopped += 1
+
+    def aclose(self) -> None:
+        self.closed += 1
+
+    def status_payload(self) -> dict[str, Any]:
+        return {"enabled": True, "running": False}
 
 
 def test_scheduler_starts_enabled_workers_in_dependency_order_with_task_names() -> None:
@@ -231,6 +263,37 @@ def test_scheduler_keeps_disabled_workers_in_status_without_starting_them() -> N
     asyncio.run(scenario())
 
 
+@pytest.mark.parametrize(
+    ("worker", "exception_type", "match"),
+    [
+        (
+            SimpleNamespace(),
+            AttributeError,
+            "status_payload",
+        ),
+        (
+            SimpleNamespace(status_payload=lambda: (_ for _ in ()).throw(RuntimeError("status failed"))),
+            RuntimeError,
+            "status failed",
+        ),
+        (
+            SimpleNamespace(status_payload=lambda: ["not", "a", "dict"]),
+            TypeError,
+            "worker_status_payload_must_be_dict",
+        ),
+    ],
+)
+def test_scheduler_liveness_requires_formal_status_payload_contract(
+    worker: object,
+    exception_type: type[Exception],
+    match: str,
+) -> None:
+    scheduler = WorkerScheduler(workers={"collector": worker}, db=FakeDB(), stop_timeout_seconds=0.1)
+
+    with pytest.raises(exception_type, match=match):
+        scheduler.unhealthy_reasons()
+
+
 def test_scheduler_stop_stops_workers_cancels_stubborn_tasks_closes_workers_then_db_pools() -> None:
     async def scenario() -> None:
         db = FakeDB()
@@ -307,6 +370,43 @@ def test_scheduler_stop_collects_close_errors_but_closes_other_workers_and_pools
     asyncio.run(scenario())
 
 
+def test_scheduler_stop_requires_db_bundle_aclose_without_pool_fallback() -> None:
+    async def scenario() -> None:
+        db = SimpleNamespace(
+            api_pool=FakePool(),
+            worker_pool=FakePool(),
+            wake_pool=FakePool(),
+        )
+        scheduler = WorkerScheduler(workers={"collector": FakeWorker("collector")}, db=db, stop_timeout_seconds=0.01)
+
+        with pytest.raises(ExceptionGroup, match="worker_scheduler_stop_failed") as excinfo:
+            await scheduler.stop()
+
+        assert any(isinstance(error, AttributeError) and "aclose" in str(error) for error in excinfo.value.exceptions)
+        assert db.api_pool.aclosed is False
+        assert db.worker_pool.aclosed is False
+        assert db.wake_pool.aclosed is False
+
+    asyncio.run(scenario())
+
+
+def test_scheduler_stop_requires_async_lifecycle_hooks_without_maybe_await_fallback() -> None:
+    async def scenario() -> None:
+        worker = SyncLifecycleWorker()
+        db = SyncLifecycleDB()
+        scheduler = WorkerScheduler(workers={"collector": worker}, db=db, stop_timeout_seconds=0.01)
+
+        with pytest.raises(ExceptionGroup, match="worker_scheduler_stop_failed") as excinfo:
+            await scheduler.stop()
+
+        assert worker.stopped == 1
+        assert worker.closed == 1
+        assert db.closed == 1
+        assert sum(isinstance(error, TypeError) for error in excinfo.value.exceptions) == 3
+
+    asyncio.run(scenario())
+
+
 def test_scheduler_unhealthy_reasons_reports_enabled_stopped_or_errored_workers_only() -> None:
     async def scenario() -> None:
         healthy = FakeWorker("market_tick_poll")
@@ -353,6 +453,44 @@ def test_scheduler_unhealthy_reasons_reports_hard_timeout_as_liveness_failure() 
         assert "worker:pulse_candidate:hard_timeout" in scheduler.unhealthy_reasons()
 
     asyncio.run(scenario())
+
+
+def test_scheduler_unhealthy_reasons_use_formal_status_payload_for_reason_details() -> None:
+    workers = {
+        "token_radar_projection": SimpleNamespace(
+            last_error="stale attribute error",
+            status_payload=lambda: {
+                "enabled": True,
+                "running": False,
+                "last_error": "payload error",
+            },
+        ),
+        "live_price_gateway": SimpleNamespace(
+            unavailable_reason="stale attribute unavailable",
+            status_payload=lambda: {
+                "enabled": True,
+                "running": False,
+                "effective_status": "unavailable",
+                "unavailable_reason": "payload unavailable",
+            },
+        ),
+        "pulse_candidate": SimpleNamespace(
+            active_run_once_hard_timed_out_at_ms=None,
+            status_payload=lambda: {
+                "enabled": True,
+                "running": True,
+                "active_run_once_hard_timed_out_at_ms": 1_778_000_000_000,
+            },
+        ),
+    }
+    scheduler = WorkerScheduler(workers=workers, db=FakeDB(), stop_timeout_seconds=0.1)
+
+    reasons = scheduler.unhealthy_reasons()
+
+    assert "worker:token_radar_projection:errored:payload error" in reasons
+    assert "worker:live_price_gateway:unavailable:payload unavailable" in reasons
+    assert "worker:pulse_candidate:hard_timeout" in reasons
+    assert not any("stale attribute" in reason for reason in reasons)
 
 
 def test_scheduler_unhealthy_reasons_reports_result_derived_failed_workers() -> None:

@@ -30,6 +30,27 @@ class FakePulse:
         self.page_size = page_size
         self.calls = []
 
+    def list_signal_pulse_notification_candidates(self, **kwargs):
+        self.calls.append(kwargs)
+        rows: list[dict] = []
+        scopes = tuple(kwargs.get("scopes") or ())
+        statuses = tuple(kwargs.get("statuses") or ())
+        per_scope_status_limit = int(kwargs.get("per_scope_status_limit") or 0)
+        for scope in scopes:
+            for status in statuses:
+                bucket = [
+                    item
+                    for item in self.items
+                    if item.get("window") == kwargs.get("window")
+                    and item.get("scope") == scope
+                    and item.get("pulse_status") == status
+                    and item.get("pulse_status")
+                    in {"trade_candidate", "token_watch", "risk_rejected_high_info"}
+                    and item.get("verdict") != "blocked_low_information"
+                ]
+                rows.extend(bucket[:per_scope_status_limit])
+        return rows
+
     def list_candidates(self, **kwargs):
         self.calls.append(kwargs)
         rows = [
@@ -175,8 +196,70 @@ def test_watched_account_activity_does_not_fall_back_to_event_key_when_cooldown_
     assert candidate.dedup_key == f"watched_account_activity:account:toly:post:{NOW_MS // 1000}"
 
 
+def test_notification_rule_query_windows_and_news_overscan_use_formal_config():
+    notifications = NotificationsConfig(
+        candidate_limit=4,
+        watched_activity_window_ms=2 * 60 * 60_000,
+        news_high_signal_recency_window_ms=10_000,
+        news_high_signal_query_min_limit=7,
+        news_high_signal_query_multiplier=3,
+    )
+    news = FakeNews(
+        [
+            _market_scoped_news_row(
+                {
+                    "news_item_id": "news-stale-by-config",
+                    "latest_at_ms": NOW_MS - 15_000,
+                    "headline": "Stale by configured notification recency",
+                    "source_domain": "example.test",
+                    "canonical_url": "https://example.test/stale",
+                    "signal": {
+                        "direction": "bullish",
+                        "alert_eligibility": {
+                            "in_app_eligible": True,
+                            "external_push_ready": True,
+                            "external_push_basis": "agent_brief",
+                            "decision_class": "driver",
+                        },
+                    },
+                    "token_impacts": [{"symbol": "OLD"}],
+                    "agent_brief": {
+                        "status": "ready",
+                        "direction": "bullish",
+                        "decision_class": "driver",
+                        "title_zh": "旧新闻",
+                        "summary_zh": "超过配置窗口。",
+                    },
+                }
+            )
+        ]
+    )
+
+    rule_engine = engine(
+        events=[
+            {
+                "event_id": "event-old-but-configured",
+                "author_handle": "toly",
+                "action": "post",
+                "received_at_ms": NOW_MS - 90 * 60_000,
+                "text": "inside configured activity window",
+            }
+        ],
+        news=news,
+        notifications=notifications,
+    )
+    candidates = rule_engine.evaluate(now_ms=NOW_MS)
+
+    assert news.calls == [{"limit": 12}]
+    assert rule_engine.evidence.kwargs["since_ms"] == NOW_MS - 2 * 60 * 60_000
+    assert [item.source_id for item in candidates if item.rule_id == "watched_account_activity"] == [
+        "event-old-but-configured"
+    ]
+    assert [item for item in candidates if item.rule_id == "news_high_signal"] == []
+
+
 def test_account_token_alert_candidate_preserves_first_seen_flags():
-    candidates = engine(
+    rule_engine = engine(
         alerts=[
             {
                 "alert_id": "alert-1",
@@ -190,10 +273,12 @@ def test_account_token_alert_candidate_preserves_first_seen_flags():
                 "is_first_seen_by_author": 1,
             }
         ]
-    ).evaluate(now_ms=NOW_MS)
+    )
+    candidates = rule_engine.evaluate(now_ms=NOW_MS)
 
     candidate = next(item for item in candidates if item.rule_id == "watched_account_token_alert")
     bucket = (NOW_MS - 10_000) // 900_000
+    assert rule_engine.account_alerts.kwargs["now_ms"] == NOW_MS
     assert candidate.dedup_key == f"watched_account_token_alert:symbol:PEPE:author:toly:{bucket}"
     assert candidate.severity == "warning"
     assert candidate.entity_type == "token"
@@ -303,7 +388,14 @@ def test_signal_pulse_notifications_use_materialized_candidates_and_severity_map
         "risk": "warning",
     }
     assert all(item.source_id != "blocked" for item in candidates)
-    assert pulse.calls[0]["displayable_only"] is True
+    assert pulse.calls == [
+        {
+            "window": "1h",
+            "scopes": ("all", "matched"),
+            "statuses": ("risk_rejected_high_info", "token_watch", "trade_candidate"),
+            "per_scope_status_limit": 250,
+        }
+    ]
     trade = next(item for item in candidates if item.source_id == "trade")
     assert trade.payload["candidate_id"] == "trade"
     assert "decision" in trade.payload
@@ -359,7 +451,7 @@ def test_signal_pulse_signature_changes_on_stable_dimension_shifts():
     gate_changed = pulse_candidate("watch")
     gate_changed["factor_snapshot_json"] = {
         **gate_changed["factor_snapshot_json"],
-        "gates": {**gate_changed["factor_snapshot_json"]["gates"], "max_decision": "alert"},
+        "gates": {**gate_changed["factor_snapshot_json"]["gates"], "max_decision": "watch"},
     }
     # decision-route shift
     route_changed = pulse_candidate("watch")
@@ -736,11 +828,42 @@ def test_signal_pulse_candidate_rule_uses_window_scope_status_without_downstream
     assert pulse.calls == [
         {
             "window": "1h",
-            "scope": "all",
-            "status": "token_watch",
-            "limit": 50,
-            "cursor": None,
-            "displayable_only": True,
+            "scopes": ("all",),
+            "statuses": ("token_watch",),
+            "per_scope_status_limit": 250,
+        }
+    ]
+
+
+def test_signal_pulse_candidate_limit_uses_configured_notification_limit_without_service_floor():
+    row = pulse_candidate("pulse-config-limit", window="1h", scope="all", status="token_watch")
+    pulse = FakePulse([row])
+    notifications = NotificationsConfig(
+        candidate_limit=12,
+        rules={
+            "signal_pulse_candidate": {
+                "enabled": True,
+                "channels": ["in_app"],
+                "window": "1h",
+                "scopes": ["all"],
+                "statuses": ["token_watch"],
+            }
+        },
+    )
+
+    candidates = [
+        item
+        for item in engine(pulse=pulse, notifications=notifications).evaluate(now_ms=NOW_MS)
+        if item.rule_id == "signal_pulse_candidate"
+    ]
+
+    assert [item.source_id for item in candidates] == ["pulse-config-limit"]
+    assert pulse.calls == [
+        {
+            "window": "1h",
+            "scopes": ("all",),
+            "statuses": ("token_watch",),
+            "per_scope_status_limit": 60,
         }
     ]
 
@@ -750,20 +873,11 @@ def test_signal_pulse_candidate_rule_paginates_with_status_filter_at_source():
         def __init__(self):
             self.calls = []
 
-        def list_candidates(self, **kwargs):
+        def list_signal_pulse_notification_candidates(self, **kwargs):
             self.calls.append(kwargs)
-            status = kwargs.get("status")
-            if status == "trade_candidate":
-                return {
-                    "items": [pulse_candidate("trade-only", status="trade_candidate", symbol="TRADE")],
-                    "next_cursor": None,
-                }
-            if status is None:
-                return {
-                    "items": [pulse_candidate(f"watch-{idx}", status="token_watch") for idx in range(100)],
-                    "next_cursor": None,
-                }
-            return {"items": [], "next_cursor": None}
+            if tuple(kwargs.get("statuses") or ()) == ("trade_candidate",):
+                return [pulse_candidate("trade-only", status="trade_candidate", symbol="TRADE")]
+            return [pulse_candidate(f"watch-{idx}", status="token_watch") for idx in range(100)]
 
     notifications = NotificationsConfig(
         rules={
@@ -784,7 +898,7 @@ def test_signal_pulse_candidate_rule_paginates_with_status_filter_at_source():
         if item.rule_id == "signal_pulse_candidate"
     ]
 
-    assert [call["status"] for call in pulse.calls] == ["trade_candidate"]
+    assert [tuple(call["statuses"]) for call in pulse.calls] == [("trade_candidate",)]
     assert [item.source_id for item in candidates] == ["trade-only"]
 
 
@@ -894,7 +1008,7 @@ def test_signal_pulse_notification_rejects_malformed_v3_snapshot_shape(mutate):
     assert candidates == []
 
 
-def test_signal_pulse_notifications_follow_candidate_pages():
+def test_signal_pulse_notifications_read_dedicated_candidate_keyset_once():
     pulse = FakePulse(
         [
             pulse_candidate("page-1", status="token_watch"),
@@ -909,8 +1023,54 @@ def test_signal_pulse_notifications_follow_candidate_pages():
     ]
 
     assert [item.source_id for item in candidates] == ["page-1", "page-2", "page-3"]
-    token_watch_calls = [call for call in pulse.calls if call["status"] == "token_watch"]
-    assert [call["cursor"] for call in token_watch_calls[:3]] == [None, "1", "2"]
+    assert pulse.calls == [
+        {
+            "window": "1h",
+            "scopes": ("all", "matched"),
+            "statuses": ("risk_rejected_high_info", "token_watch", "trade_candidate"),
+            "per_scope_status_limit": 250,
+        }
+    ]
+
+
+def test_signal_pulse_notification_page_budget_uses_formal_config():
+    pulse = FakePulse(
+        [
+            pulse_candidate("page-budget-1", status="token_watch"),
+            pulse_candidate("page-budget-2", status="token_watch"),
+            pulse_candidate("page-budget-3", status="token_watch"),
+        ],
+        page_size=1,
+    )
+    notifications = NotificationsConfig(
+        candidate_limit=1,
+        signal_pulse_max_pages=2,
+        rules={
+            "signal_pulse_candidate": {
+                "enabled": True,
+                "channels": ["in_app"],
+                "window": "1h",
+                "scopes": ["all"],
+                "statuses": ["token_watch"],
+            }
+        },
+    )
+
+    candidates = [
+        item
+        for item in engine(pulse=pulse, notifications=notifications).evaluate(now_ms=NOW_MS)
+        if item.rule_id == "signal_pulse_candidate"
+    ]
+
+    assert [item.source_id for item in candidates] == ["page-budget-1", "page-budget-2"]
+    assert pulse.calls == [
+        {
+            "window": "1h",
+            "scopes": ("all",),
+            "statuses": ("token_watch",),
+            "per_scope_status_limit": 2,
+        }
+    ]
 
 
 def test_news_high_signal_uses_ready_agent_brief_for_display_and_builds_push_signatures():

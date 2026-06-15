@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import AbstractContextManager
 from decimal import Decimal
+from types import SimpleNamespace, TracebackType
+from typing import Any
 
+import pytest
 import yaml
 
 from parallax.app.runtime.worker_base import WorkerBase
@@ -17,6 +21,28 @@ from parallax.domains.token_intel._constants import TOKEN_RADAR_PROJECTION_VERSI
 from parallax.platform.config.settings import WorkersSettings, default_workers_yaml
 
 
+def _worker_settings(
+    *,
+    batch_size: int = 100,
+    ws_limit: int = 50,
+    poll_limit: int = 200,
+    lease_ms: int = 60_000,
+    interval_seconds: float = 30.0,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        enabled=True,
+        interval_seconds=interval_seconds,
+        soft_timeout_seconds=120.0,
+        hard_timeout_seconds=180.0,
+        backoff=SimpleNamespace(base_ms=1_000, max_ms=60_000),
+        batch_size=batch_size,
+        ws_limit=ws_limit,
+        poll_limit=poll_limit,
+        lease_ms=lease_ms,
+        advisory_lock_key=ADVISORY_LOCK_KEY,
+    )
+
+
 def test_project_once_promotes_hottest_targets_to_tier1_ws_subscribed() -> None:
     repos = FakeRepos(
         [
@@ -26,7 +52,8 @@ def test_project_once_promotes_hottest_targets_to_tier1_ws_subscribed() -> None:
         ]
     )
 
-    processed = project_once(repos, now_ms=1_800_000_000_000, batch_size=10, ws_limit=2, poll_limit=10)
+    with repos.transaction():
+        processed = project_once(repos, now_ms=1_800_000_000_000, batch_size=10, ws_limit=2, poll_limit=10)
 
     assert processed == 3
     assert repos.registry.calls == [
@@ -43,7 +70,8 @@ def test_project_once_promotes_hottest_targets_to_tier1_ws_subscribed() -> None:
         tier("chain_token", "sol:mid", 1, "ws_subscribed", "7"),
         tier("cex_symbol", "binance:ETHUSDT", 2, "batch_poll", "12"),
     ]
-    assert repos.conn.commit_count == 1
+    assert repos.transaction_events == ["commit"]
+    assert repos.conn.commit_count == 0
 
 
 def test_project_once_never_assigns_cex_symbol_to_tier1_ws_even_when_hottest() -> None:
@@ -59,7 +87,8 @@ def test_project_once_never_assigns_cex_symbol_to_tier1_ws_even_when_hottest() -
         ]
     )
 
-    processed = project_once(repos, now_ms=1_777_800_000_000, batch_size=10, ws_limit=1, poll_limit=10)
+    with repos.transaction():
+        processed = project_once(repos, now_ms=1_777_800_000_000, batch_size=10, ws_limit=1, poll_limit=10)
 
     assert processed == 2
     assert repos.token_capture_tiers.upserts == [
@@ -101,7 +130,8 @@ def test_project_once_demotes_old_hot_rows_absent_from_current_projection() -> N
         ],
     )
 
-    project_once(repos, now_ms=1_777_800_000_000, batch_size=10, ws_limit=1, poll_limit=10)
+    with repos.transaction():
+        project_once(repos, now_ms=1_777_800_000_000, batch_size=10, ws_limit=1, poll_limit=10)
 
     assert repos.token_capture_tiers.demotion_calls == [
         {
@@ -127,7 +157,8 @@ def test_project_once_assigns_tier2_and_tier3_deterministically() -> None:
         ]
     )
 
-    processed = project_once(repos, now_ms=1_800_000_000_000, batch_size=4, ws_limit=1, poll_limit=1)
+    with repos.transaction():
+        processed = project_once(repos, now_ms=1_800_000_000_000, batch_size=4, ws_limit=1, poll_limit=1)
 
     assert processed == 4
     assert repos.token_capture_tiers.upserts == [
@@ -158,7 +189,8 @@ def test_project_once_maps_active_target_rows_to_market_targets() -> None:
         ]
     )
 
-    processed = project_once(repos, now_ms=1_800_000_000_000, batch_size=10, ws_limit=10, poll_limit=10)
+    with repos.transaction():
+        processed = project_once(repos, now_ms=1_800_000_000_000, batch_size=10, ws_limit=10, poll_limit=10)
 
     assert processed == 2
     # Tier 1 is DEX WS only: the chain_token row goes to Tier 1 even though the CEX symbol
@@ -183,12 +215,55 @@ def test_project_once_uses_zero_score_when_rank_score_is_missing() -> None:
         ]
     )
 
-    project_once(repos, now_ms=1_800_000_000_000, batch_size=10, ws_limit=10, poll_limit=10)
+    with repos.transaction():
+        project_once(repos, now_ms=1_800_000_000_000, batch_size=10, ws_limit=10, poll_limit=10)
 
     assert repos.token_capture_tiers.upserts == [
         tier("chain_token", "sol:newer", 1, "ws_subscribed", "0"),
         tier("chain_token", "sol:older", 1, "ws_subscribed", "0"),
     ]
+
+
+def test_worker_requires_formal_settings_and_db_contracts() -> None:
+    db = FakeDB(FakeRepos([]))
+
+    with pytest.raises(RuntimeError, match="token_capture_tier_settings_required"):
+        TokenCaptureTierWorker(pool_bundle=db, settings=None)
+    with pytest.raises(RuntimeError, match="token_capture_tier_db_required"):
+        TokenCaptureTierWorker(pool_bundle=None, settings=_worker_settings())
+
+
+def test_worker_reads_formal_settings_fields_directly() -> None:
+    db = FakeDB(FakeRepos([]))
+
+    with pytest.raises(AttributeError, match="batch_size"):
+        TokenCaptureTierWorker(
+            pool_bundle=db,
+            settings=SimpleNamespace(enabled=True, interval_seconds=30.0, ws_limit=1, poll_limit=1),
+        )
+    with pytest.raises(AttributeError, match="ws_limit"):
+        TokenCaptureTierWorker(
+            pool_bundle=db,
+            settings=SimpleNamespace(enabled=True, interval_seconds=30.0, batch_size=5, poll_limit=1),
+        )
+    with pytest.raises(AttributeError, match="poll_limit"):
+        TokenCaptureTierWorker(
+            pool_bundle=db,
+            settings=SimpleNamespace(enabled=True, interval_seconds=30.0, batch_size=5, ws_limit=1),
+        )
+
+    lease_repos = FakeRepos([asset_target("asset-hot", chain_id="sol", address="hot", score=3)])
+    lease_worker = TokenCaptureTierWorker(
+        pool_bundle=FakeDB(lease_repos),
+        settings=SimpleNamespace(enabled=True, interval_seconds=30.0, batch_size=5, ws_limit=1, poll_limit=1),
+    )
+
+    with pytest.raises(AttributeError, match="lease_ms"):
+        asyncio.run(lease_worker.run_once(now_ms=1_800_000_000_000))
+
+    assert lease_repos.token_capture_tier_dirty_targets.claim_calls == []
+    assert lease_repos.token_capture_tiers.upserts == []
+    assert lease_repos.token_capture_tier_dirty_targets.done_count == 0
 
 
 def test_worker_run_once_returns_worker_result_processed_count() -> None:
@@ -200,7 +275,11 @@ def test_worker_run_once_returns_worker_result_processed_count() -> None:
             ]
         )
     )
-    worker = TokenCaptureTierWorker(db=db, telemetry=object(), batch_size=5, ws_limit=1, poll_limit=1)
+    worker = TokenCaptureTierWorker(
+        pool_bundle=db,
+        telemetry=object(),
+        settings=_worker_settings(batch_size=5, ws_limit=1, poll_limit=1),
+    )
 
     result = asyncio.run(worker.run_once(now_ms=1_800_000_000_000))
 
@@ -222,7 +301,11 @@ def test_worker_run_once_reports_zero_rows_written_when_projection_unchanged() -
             unchanged_upserts=True,
         )
     )
-    worker = TokenCaptureTierWorker(db=db, telemetry=object(), batch_size=5, ws_limit=1, poll_limit=1)
+    worker = TokenCaptureTierWorker(
+        pool_bundle=db,
+        telemetry=object(),
+        settings=_worker_settings(batch_size=5, ws_limit=1, poll_limit=1),
+    )
 
     result = asyncio.run(worker.run_once(now_ms=1_800_000_000_000))
 
@@ -233,8 +316,40 @@ def test_worker_run_once_reports_zero_rows_written_when_projection_unchanged() -
     assert db.repos.token_capture_tier_dirty_targets.done_count == 1
 
 
+def test_project_once_requires_external_session_transaction() -> None:
+    repos = FakeRepos([asset_target("asset-hot", chain_id="sol", address="hot", score=3)])
+
+    with pytest.raises(RuntimeError, match="token_capture_tier_projection:transaction_required"):
+        project_once(repos, now_ms=1_800_000_000_000, batch_size=5, ws_limit=1, poll_limit=1)
+
+    assert repos.registry.calls == []
+    assert repos.token_capture_tiers.upserts == []
+    assert repos.token_capture_tiers.demotion_calls == []
+    assert repos.conn.commit_count == 0
+
+
+def test_worker_requires_session_transaction_before_claiming_dirty_target() -> None:
+    repos = FakeReposWithoutTransaction([asset_target("asset-hot", chain_id="sol", address="hot", score=3)])
+    worker = TokenCaptureTierWorker(
+        pool_bundle=FakeDB(repos),
+        telemetry=object(),
+        settings=_worker_settings(batch_size=5, ws_limit=1, poll_limit=1),
+    )
+
+    with pytest.raises(AttributeError, match="transaction"):
+        asyncio.run(worker.run_once(now_ms=1_800_000_000_000))
+
+    assert repos.token_capture_tier_dirty_targets.claim_calls == []
+    assert repos.token_capture_tiers.upserts == []
+    assert repos.token_capture_tier_dirty_targets.done_count == 0
+
+
 def test_worker_exposes_single_writer_advisory_lock_key() -> None:
-    worker = TokenCaptureTierWorker(db=FakeDB(FakeRepos([])), telemetry=object())
+    worker = TokenCaptureTierWorker(
+        pool_bundle=FakeDB(FakeRepos([])),
+        telemetry=object(),
+        settings=_worker_settings(),
+    )
 
     assert ADVISORY_LOCK_KEY == 2026051503
     assert worker.SINGLE_WRITER_KEY == ADVISORY_LOCK_KEY
@@ -242,7 +357,11 @@ def test_worker_exposes_single_writer_advisory_lock_key() -> None:
 
 
 def test_worker_has_no_provider_dependency_slots() -> None:
-    worker = TokenCaptureTierWorker(db=FakeDB(FakeRepos([])), telemetry=object())
+    worker = TokenCaptureTierWorker(
+        pool_bundle=FakeDB(FakeRepos([])),
+        telemetry=object(),
+        settings=_worker_settings(),
+    )
 
     assert not hasattr(worker, "cex_market")
     assert not hasattr(worker, "dex_quote_market")
@@ -360,11 +479,42 @@ class FakeRepos:
         )
         self.token_capture_tier_dirty_targets = FakeCaptureDirtyTargets()
         self.conn = FakeConn()
+        self.transaction_depth = 0
+        self.transaction_events: list[str] = []
 
     def transaction(self):
-        from contextlib import nullcontext
+        return FakeTransaction(self)
 
-        return nullcontext()
+    def require_transaction(self, *, operation: str) -> None:
+        if self.transaction_depth <= 0:
+            raise RuntimeError(f"{operation}:transaction_required")
+
+
+class FakeReposWithoutTransaction:
+    def __init__(self, rows: list[dict[str, object]]) -> None:
+        self.registry = FakeRegistry(rows)
+        self.token_capture_tiers = FakeTokenCaptureTiers()
+        self.token_capture_tier_dirty_targets = FakeCaptureDirtyTargets()
+        self.conn = FakeConn()
+
+
+class FakeTransaction(AbstractContextManager[FakeRepos]):
+    def __init__(self, repos: FakeRepos) -> None:
+        self.repos = repos
+
+    def __enter__(self) -> FakeRepos:
+        self.repos.transaction_depth += 1
+        return self.repos
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> bool:
+        self.repos.transaction_events.append("rollback" if exc_type is not None else "commit")
+        self.repos.transaction_depth -= 1
+        return False
 
 
 class FakeRegistry:
@@ -419,8 +569,10 @@ class FakeTokenCaptureTiers:
 class FakeCaptureDirtyTargets:
     def __init__(self) -> None:
         self.done_count = 0
+        self.claim_calls: list[dict[str, object]] = []
 
     def claim_due(self, **kwargs):
+        self.claim_calls.append(dict(kwargs))
         return [
             {
                 "work_name": "active_live_market_rank_set",
@@ -448,7 +600,7 @@ class FakeConn:
 
 
 class FakeDB:
-    def __init__(self, repos: FakeRepos) -> None:
+    def __init__(self, repos: Any) -> None:
         self.repos = repos
         self.session_names: list[str] = []
 

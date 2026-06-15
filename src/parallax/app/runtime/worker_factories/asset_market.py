@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from parallax.app.runtime.worker_base import WorkerBase
-from parallax.app.runtime.worker_factories import WorkerFactoryContext, disabled_worker, unavailable_worker
+from parallax.app.runtime.worker_factories import WorkerFactoryContext, unavailable_worker
 from parallax.app.runtime.worker_manifest import manifest_names_for_factory
 from parallax.domains.asset_market.runtime.asset_profile_refresh_worker import AssetProfileRefreshWorker
 from parallax.domains.asset_market.runtime.event_anchor_backfill_worker import EventAnchorBackfillWorker
@@ -23,11 +23,11 @@ WORKER_KEYS = manifest_names_for_factory("asset_market.py")
 def construct_asset_market_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerBase]:
     workers = ctx.settings.workers
     asset_market = ctx.providers.asset_market
-    cex_market = getattr(asset_market, "cex_market", None)
-    dex_quote_market = getattr(asset_market, "dex_quote_market", None)
-    dex_profile_sources = tuple(getattr(asset_market, "dex_profile_sources", ()) or ())
-    dex_discovery_market = getattr(asset_market, "dex_discovery_market", None)
-    stream_dex_market = getattr(asset_market, "stream_dex_market", None)
+    cex_market = asset_market.cex_market
+    dex_quote_market = asset_market.dex_quote_market
+    dex_profile_sources = tuple(asset_market.dex_profile_sources or ())
+    dex_discovery_market = asset_market.dex_discovery_market
+    stream_dex_market = asset_market.stream_dex_market
     constructed: dict[str, WorkerBase] = {}
 
     if workers.token_profile_current.enabled:
@@ -51,9 +51,6 @@ def construct_asset_market_workers(ctx: WorkerFactoryContext) -> dict[str, Worke
             settings=workers.token_capture_tier,
             pool_bundle=ctx.db,
             telemetry=ctx.telemetry,
-            batch_size=workers.token_capture_tier.batch_size,
-            ws_limit=workers.token_capture_tier.ws_limit,
-            poll_limit=workers.token_capture_tier.poll_limit,
         )
     if workers.market_tick_stream.enabled:
         if stream_dex_market is not None:
@@ -64,7 +61,6 @@ def construct_asset_market_workers(ctx: WorkerFactoryContext) -> dict[str, Worke
                 telemetry=ctx.telemetry,
                 stream_dex_market=stream_dex_market,
                 wake_emitter=ctx.wake_bus,
-                subscription_limit=workers.market_tick_stream.subscription_limit,
             )
         else:
             constructed["market_tick_stream"] = unavailable_worker(
@@ -79,7 +75,6 @@ def construct_asset_market_workers(ctx: WorkerFactoryContext) -> dict[str, Worke
                 telemetry=ctx.telemetry,
                 providers=asset_market,
                 wake_emitter=ctx.wake_bus,
-                batch_size=workers.market_tick_poll.batch_size,
             )
         else:
             constructed["market_tick_poll"] = unavailable_worker(
@@ -103,11 +98,6 @@ def construct_asset_market_workers(ctx: WorkerFactoryContext) -> dict[str, Worke
             telemetry=ctx.telemetry,
             providers=asset_market,
             wake_emitter=ctx.wake_bus,
-            batch_size=workers.event_anchor_backfill.batch_size,
-            concurrency=workers.event_anchor_backfill.concurrency,
-            min_age_ms=workers.event_anchor_backfill.min_age_ms,
-            active_window_ms=workers.event_anchor_backfill.active_window_ms,
-            max_anchor_lag_ms=workers.event_anchor_backfill.max_anchor_lag_ms,
         )
     if workers.asset_profile_refresh.enabled:
         if dex_profile_sources:
@@ -119,7 +109,9 @@ def construct_asset_market_workers(ctx: WorkerFactoryContext) -> dict[str, Worke
                 dex_profile_sources=dex_profile_sources,
             )
         else:
-            constructed["asset_profile_refresh"] = disabled_worker(ctx, "asset_profile_refresh")
+            constructed["asset_profile_refresh"] = unavailable_worker(
+                ctx, "asset_profile_refresh", "missing_asset_profile_provider"
+            )
     if workers.resolution_refresh.enabled:
         if dex_discovery_market is not None:
             constructed["resolution_refresh"] = ResolutionRefreshWorker(
@@ -128,19 +120,18 @@ def construct_asset_market_workers(ctx: WorkerFactoryContext) -> dict[str, Worke
                 db=ctx.db,
                 telemetry=ctx.telemetry,
                 dex_discovery_market=dex_discovery_market,
-                dex_quote_market=dex_quote_market,
-                chain_ids=workers.resolution_refresh.chain_ids,
-                wake_bus=ctx.wake_bus,
+                wake_emitter=ctx.wake_bus,
             )
         else:
-            constructed["resolution_refresh"] = disabled_worker(ctx, "resolution_refresh")
+            constructed["resolution_refresh"] = unavailable_worker(
+                ctx, "resolution_refresh", "missing_asset_discovery_provider"
+            )
     if workers.live_price_gateway.enabled:
         constructed["live_price_gateway"] = LivePriceGateway(
             name="live_price_gateway",
+            settings=workers.live_price_gateway,
             pool_bundle=ctx.db,
             telemetry=ctx.telemetry,
-            providers=asset_market,
-            interval_seconds=workers.live_price_gateway.interval_seconds,
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
             on_live_market_update=ctx.hub.publish,
         )

@@ -26,7 +26,6 @@ describe("SignalLabPulse", () => {
             query: { window: "1h", scope: "all" },
             health: {
               pulse_ready: true,
-              agent_worker_running: true,
               candidate_count: 1,
               public_candidate_count: 1,
               hidden_candidate_count: 2,
@@ -82,7 +81,6 @@ describe("SignalLabPulse", () => {
             query: { window: "4h", scope: "all", visibility: "public" },
             health: {
               pulse_ready: true,
-              agent_worker_running: true,
               candidate_count: 4,
               public_candidate_count: 1,
               hidden_candidate_count: 3,
@@ -104,7 +102,6 @@ describe("SignalLabPulse", () => {
             query: { window: "4h", scope: "all", visibility: "hidden" },
             health: {
               pulse_ready: true,
-              agent_worker_running: true,
               candidate_count: 4,
               public_candidate_count: 1,
               hidden_candidate_count: 3,

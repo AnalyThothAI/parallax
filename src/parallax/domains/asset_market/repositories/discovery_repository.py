@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Iterable, Mapping
-from contextlib import AbstractContextManager, nullcontext
+from collections.abc import Callable, Iterable, Mapping
+from contextlib import AbstractContextManager
 from typing import Any, cast
 
 from psycopg.types.json import Jsonb
@@ -10,7 +10,6 @@ from psycopg.types.json import Jsonb
 from parallax.platform.db.queue_terminal import terminalize_source_row
 
 DISCOVERY_PROVIDER = "okx_dex_search"
-RUNNING_LOOKUP_TIMEOUT_MS = 5 * 60 * 1000
 DISCOVERY_LOOKUP_QUEUE_TABLE = "token_discovery_dirty_lookup_keys"
 
 
@@ -39,163 +38,94 @@ class DiscoveryRepository:
         )
         if not records:
             return 0
-        cursor = self.conn.execute(
-            """
-            WITH incoming(
-              provider, lookup_key, lookup_type, dirty_reason, payload_hash,
-              due_at_ms, latest_seen_ms, intent_count, refresh_priority
-            ) AS (
-              SELECT *
-              FROM unnest(
-                %(providers)s::text[],
-                %(lookup_keys)s::text[],
-                %(lookup_types)s::text[],
-                %(dirty_reasons)s::text[],
-                %(payload_hashes)s::text[],
-                %(due_at_ms_values)s::bigint[],
-                %(latest_seen_ms_values)s::bigint[],
-                %(intent_counts)s::bigint[],
-                %(refresh_priorities)s::integer[]
-              )
-            )
-            INSERT INTO token_discovery_dirty_lookup_keys(
-              provider,
-              lookup_key,
-              lookup_type,
-              dirty_reason,
-              payload_hash,
-              due_at_ms,
-              latest_seen_ms,
-              intent_count,
-              refresh_priority,
-              leased_until_ms,
-              lease_owner,
-              attempt_count,
-              last_error,
-              first_dirty_at_ms,
-              updated_at_ms
-            )
-            SELECT
-              incoming.provider,
-              incoming.lookup_key,
-              incoming.lookup_type,
-              incoming.dirty_reason,
-              incoming.payload_hash,
-              incoming.due_at_ms,
-              incoming.latest_seen_ms,
-              incoming.intent_count,
-              incoming.refresh_priority,
-              NULL,
-              NULL,
-              0,
-              NULL,
-              %(now_ms)s,
-              %(now_ms)s
-            FROM incoming
-            ON CONFLICT(provider, lookup_key) DO UPDATE SET
-              lookup_type = EXCLUDED.lookup_type,
-              dirty_reason = EXCLUDED.dirty_reason,
-              payload_hash = EXCLUDED.payload_hash,
-              due_at_ms = LEAST(token_discovery_dirty_lookup_keys.due_at_ms, EXCLUDED.due_at_ms),
-              latest_seen_ms = GREATEST(
-                token_discovery_dirty_lookup_keys.latest_seen_ms,
-                EXCLUDED.latest_seen_ms
-              ),
-              intent_count = GREATEST(token_discovery_dirty_lookup_keys.intent_count, EXCLUDED.intent_count),
-              refresh_priority = LEAST(
-                token_discovery_dirty_lookup_keys.refresh_priority,
-                EXCLUDED.refresh_priority
-              ),
-              leased_until_ms = NULL,
-              lease_owner = NULL,
-              last_error = NULL,
-              first_dirty_at_ms = token_discovery_dirty_lookup_keys.first_dirty_at_ms,
-              updated_at_ms = EXCLUDED.updated_at_ms
-            WHERE token_discovery_dirty_lookup_keys.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
-               OR token_discovery_dirty_lookup_keys.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
-               OR token_discovery_dirty_lookup_keys.due_at_ms > EXCLUDED.due_at_ms
-               OR token_discovery_dirty_lookup_keys.latest_seen_ms < EXCLUDED.latest_seen_ms
-               OR token_discovery_dirty_lookup_keys.intent_count < EXCLUDED.intent_count
-               OR token_discovery_dirty_lookup_keys.refresh_priority > EXCLUDED.refresh_priority
-               OR token_discovery_dirty_lookup_keys.leased_until_ms IS NOT NULL
-               OR token_discovery_dirty_lookup_keys.last_error IS NOT NULL
-            """,
-            _lookup_key_params(records, now_ms=now_ms),
-        )
-        if commit:
-            self.conn.commit()
-        return int(getattr(cursor, "rowcount", 0) or 0)
 
-    def due_lookup_keys(
-        self,
-        *,
-        since_ms: int,
-        now_ms: int,
-        limit: int,
-        hot_since_ms: int | None = None,
-        hot_not_found_retry_ms: int | None = None,
-    ) -> list[dict[str, Any]]:
-        rows = self.conn.execute(
-            """
-            SELECT
-              queue.lookup_key,
-              queue.lookup_type,
-              queue.provider,
-              queue.latest_seen_ms,
-              queue.intent_count,
-              queue.refresh_priority,
-              CASE
-                WHEN %(hot_since_ms)s::bigint IS NOT NULL AND queue.latest_seen_ms >= %(hot_since_ms)s::bigint THEN 0
-                ELSE 1
-              END AS hot_priority,
-              results.status,
-              results.result_hash,
-              results.next_refresh_at_ms,
-              COALESCE(results.error_count, 0) AS error_count
-            FROM token_discovery_dirty_lookup_keys queue
-            LEFT JOIN token_discovery_results
-              AS results
-              ON results.provider = queue.provider
-             AND results.lookup_key = queue.lookup_key
-            WHERE queue.provider = %(provider)s
-              AND queue.due_at_ms <= %(now_ms)s
-              AND (queue.leased_until_ms IS NULL OR queue.leased_until_ms <= %(now_ms)s)
-              AND (
-                results.lookup_key IS NULL
-                OR results.next_refresh_at_ms <= %(now_ms)s
-               OR (
-                 results.status = 'running'
-                 AND results.updated_at_ms < %(running_expired_ms)s
-               )
-               OR (
-                 %(hot_since_ms)s::bigint IS NOT NULL
-                 AND %(hot_not_found_retry_ms)s::bigint IS NOT NULL
-                 AND queue.latest_seen_ms >= %(hot_since_ms)s::bigint
-                 AND results.status = 'not_found'
-                 AND results.last_lookup_at_ms <= %(now_ms)s::bigint - %(hot_not_found_retry_ms)s::bigint
-               )
-              )
-            ORDER BY
-              hot_priority ASC,
-              queue.refresh_priority ASC,
-              queue.latest_seen_ms DESC,
-              CASE
-                WHEN results.lookup_key IS NULL THEN 0
-                WHEN results.status = 'error' THEN 1
-                ELSE 2
-              END,
-              queue.intent_count DESC,
-              queue.lookup_key ASC
-            LIMIT %(limit)s
-            """,
-            _due_params(
-                now_ms=now_ms,
-                limit=limit,
-                hot_since_ms=hot_since_ms,
-                hot_not_found_retry_ms=hot_not_found_retry_ms,
-            ),
-        ).fetchall()
-        return [dict(row) for row in rows]
+        def _write() -> int:
+            cursor = self.conn.execute(
+                """
+                WITH incoming(
+                  provider, lookup_key, lookup_type, dirty_reason, payload_hash,
+                  due_at_ms, latest_seen_ms, intent_count, refresh_priority
+                ) AS (
+                  SELECT *
+                  FROM unnest(
+                    %(providers)s::text[],
+                    %(lookup_keys)s::text[],
+                    %(lookup_types)s::text[],
+                    %(dirty_reasons)s::text[],
+                    %(payload_hashes)s::text[],
+                    %(due_at_ms_values)s::bigint[],
+                    %(latest_seen_ms_values)s::bigint[],
+                    %(intent_counts)s::bigint[],
+                    %(refresh_priorities)s::integer[]
+                  )
+                )
+                INSERT INTO token_discovery_dirty_lookup_keys(
+                  provider,
+                  lookup_key,
+                  lookup_type,
+                  dirty_reason,
+                  payload_hash,
+                  due_at_ms,
+                  latest_seen_ms,
+                  intent_count,
+                  refresh_priority,
+                  leased_until_ms,
+                  lease_owner,
+                  attempt_count,
+                  last_error,
+                  first_dirty_at_ms,
+                  updated_at_ms
+                )
+                SELECT
+                  incoming.provider,
+                  incoming.lookup_key,
+                  incoming.lookup_type,
+                  incoming.dirty_reason,
+                  incoming.payload_hash,
+                  incoming.due_at_ms,
+                  incoming.latest_seen_ms,
+                  incoming.intent_count,
+                  incoming.refresh_priority,
+                  NULL,
+                  NULL,
+                  0,
+                  NULL,
+                  %(now_ms)s,
+                  %(now_ms)s
+                FROM incoming
+                ON CONFLICT(provider, lookup_key) DO UPDATE SET
+                  lookup_type = EXCLUDED.lookup_type,
+                  dirty_reason = EXCLUDED.dirty_reason,
+                  payload_hash = EXCLUDED.payload_hash,
+                  due_at_ms = LEAST(token_discovery_dirty_lookup_keys.due_at_ms, EXCLUDED.due_at_ms),
+                  latest_seen_ms = GREATEST(
+                    token_discovery_dirty_lookup_keys.latest_seen_ms,
+                    EXCLUDED.latest_seen_ms
+                  ),
+                  intent_count = GREATEST(token_discovery_dirty_lookup_keys.intent_count, EXCLUDED.intent_count),
+                  refresh_priority = LEAST(
+                    token_discovery_dirty_lookup_keys.refresh_priority,
+                    EXCLUDED.refresh_priority
+                  ),
+                  leased_until_ms = NULL,
+                  lease_owner = NULL,
+                  last_error = NULL,
+                  first_dirty_at_ms = token_discovery_dirty_lookup_keys.first_dirty_at_ms,
+                  updated_at_ms = EXCLUDED.updated_at_ms
+                WHERE token_discovery_dirty_lookup_keys.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                   OR token_discovery_dirty_lookup_keys.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
+                   OR token_discovery_dirty_lookup_keys.due_at_ms > EXCLUDED.due_at_ms
+                   OR token_discovery_dirty_lookup_keys.latest_seen_ms < EXCLUDED.latest_seen_ms
+                   OR token_discovery_dirty_lookup_keys.intent_count < EXCLUDED.intent_count
+                   OR token_discovery_dirty_lookup_keys.refresh_priority > EXCLUDED.refresh_priority
+                   OR token_discovery_dirty_lookup_keys.leased_until_ms IS NOT NULL
+                   OR token_discovery_dirty_lookup_keys.last_error IS NOT NULL
+                """,
+                _lookup_key_params(records, now_ms=now_ms),
+            )
+            return _cursor_rowcount(cursor)
+
+        return _run_repository_write(self.conn, commit, _write)
 
     def claim_due_lookup_keys(
         self,
@@ -203,6 +133,7 @@ class DiscoveryRepository:
         now_ms: int,
         limit: int,
         lease_ms: int,
+        running_timeout_ms: int,
         lease_owner: str,
         hot_since_ms: int | None = None,
         hot_not_found_retry_ms: int | None = None,
@@ -211,6 +142,7 @@ class DiscoveryRepository:
         params = _due_params(
             now_ms=now_ms,
             limit=limit,
+            running_timeout_ms=running_timeout_ms,
             hot_since_ms=hot_since_ms,
             hot_not_found_retry_ms=hot_not_found_retry_ms,
         )
@@ -220,74 +152,78 @@ class DiscoveryRepository:
                 "leased_until_ms": int(now_ms) + max(1, int(lease_ms)),
             }
         )
-        rows = self.conn.execute(
-            """
-            WITH due AS (
-              SELECT queue.provider, queue.lookup_key
-              FROM token_discovery_dirty_lookup_keys queue
-              LEFT JOIN token_discovery_results AS results
-                ON results.provider = queue.provider
-               AND results.lookup_key = queue.lookup_key
-              WHERE queue.provider = %(provider)s
-                AND queue.due_at_ms <= %(now_ms)s
-                AND (queue.leased_until_ms IS NULL OR queue.leased_until_ms <= %(now_ms)s)
-                AND (
-                  results.lookup_key IS NULL
-                  OR results.next_refresh_at_ms <= %(now_ms)s
-                  OR (
-                    results.status = 'running'
-                    AND results.updated_at_ms < %(running_expired_ms)s
-                  )
-                  OR (
-                    %(hot_since_ms)s::bigint IS NOT NULL
-                    AND %(hot_not_found_retry_ms)s::bigint IS NOT NULL
-                    AND queue.latest_seen_ms >= %(hot_since_ms)s::bigint
-                    AND results.status = 'not_found'
-                    AND results.last_lookup_at_ms <= %(now_ms)s::bigint - %(hot_not_found_retry_ms)s::bigint
-                  )
+
+        def _write() -> list[dict[str, Any]]:
+            cursor = self.conn.execute(
+                """
+                WITH due AS (
+                  SELECT queue.provider, queue.lookup_key
+                  FROM token_discovery_dirty_lookup_keys queue
+                  LEFT JOIN token_discovery_results AS results
+                    ON results.provider = queue.provider
+                   AND results.lookup_key = queue.lookup_key
+                  WHERE queue.provider = %(provider)s
+                    AND queue.due_at_ms <= %(now_ms)s
+                    AND (queue.leased_until_ms IS NULL OR queue.leased_until_ms <= %(now_ms)s)
+                    AND (
+                      results.lookup_key IS NULL
+                      OR results.next_refresh_at_ms <= %(now_ms)s
+                      OR (
+                        results.status = 'running'
+                        AND results.updated_at_ms < %(running_expired_ms)s
+                      )
+                      OR (
+                        %(hot_since_ms)s::bigint IS NOT NULL
+                        AND %(hot_not_found_retry_ms)s::bigint IS NOT NULL
+                        AND queue.latest_seen_ms >= %(hot_since_ms)s::bigint
+                        AND results.status = 'not_found'
+                        AND results.last_lookup_at_ms <= %(now_ms)s::bigint - %(hot_not_found_retry_ms)s::bigint
+                      )
+                    )
+                  ORDER BY
+                    CASE
+                      WHEN %(hot_since_ms)s::bigint IS NOT NULL AND queue.latest_seen_ms >= %(hot_since_ms)s::bigint
+                        THEN 0
+                      ELSE 1
+                    END ASC,
+                    queue.refresh_priority ASC,
+                    queue.latest_seen_ms DESC,
+                    CASE
+                      WHEN results.lookup_key IS NULL THEN 0
+                      WHEN results.status = 'error' THEN 1
+                      ELSE 2
+                    END,
+                    queue.intent_count DESC,
+                    queue.lookup_key ASC
+                  LIMIT %(limit)s
+                  FOR UPDATE OF queue SKIP LOCKED
                 )
-              ORDER BY
-                CASE
-                  WHEN %(hot_since_ms)s::bigint IS NOT NULL AND queue.latest_seen_ms >= %(hot_since_ms)s::bigint
-                    THEN 0
-                  ELSE 1
-                END ASC,
-                queue.refresh_priority ASC,
-                queue.latest_seen_ms DESC,
-                CASE
-                  WHEN results.lookup_key IS NULL THEN 0
-                  WHEN results.status = 'error' THEN 1
-                  ELSE 2
-                END,
-                queue.intent_count DESC,
-                queue.lookup_key ASC
-              LIMIT %(limit)s
-              FOR UPDATE OF queue SKIP LOCKED
+                UPDATE token_discovery_dirty_lookup_keys queue
+                SET leased_until_ms = %(leased_until_ms)s,
+                    lease_owner = %(lease_owner)s,
+                    attempt_count = queue.attempt_count + 1,
+                    last_error = NULL,
+                    updated_at_ms = %(now_ms)s
+                FROM due
+                LEFT JOIN token_discovery_results AS results
+                  ON results.provider = due.provider
+                 AND results.lookup_key = due.lookup_key
+                WHERE queue.provider = due.provider
+                  AND queue.lookup_key = due.lookup_key
+                RETURNING
+                  queue.*,
+                  results.status,
+                  results.result_hash,
+                  results.next_refresh_at_ms,
+                  COALESCE(results.error_count, 0) AS error_count
+                """,
+                params,
             )
-            UPDATE token_discovery_dirty_lookup_keys queue
-            SET leased_until_ms = %(leased_until_ms)s,
-                lease_owner = %(lease_owner)s,
-                attempt_count = queue.attempt_count + 1,
-                last_error = NULL,
-                updated_at_ms = %(now_ms)s
-            FROM due
-            LEFT JOIN token_discovery_results AS results
-              ON results.provider = due.provider
-             AND results.lookup_key = due.lookup_key
-            WHERE queue.provider = due.provider
-              AND queue.lookup_key = due.lookup_key
-            RETURNING
-              queue.*,
-              results.status,
-              results.result_hash,
-              results.next_refresh_at_ms,
-              COALESCE(results.error_count, 0) AS error_count
-            """,
-            params,
-        ).fetchall()
-        if commit:
-            self.conn.commit()
-        return [dict(row) for row in rows]
+            rows = cursor.fetchall()
+            _returned_rowcount(cursor, rows)
+            return [dict(row) for row in rows]
+
+        return _run_repository_write(self.conn, commit, _write)
 
     def mark_lookup_done(
         self,
@@ -299,31 +235,33 @@ class DiscoveryRepository:
         records = _claim_records(claims)
         if not records:
             return 0
-        cursor = self.conn.execute(
-            """
-            WITH done AS (
-              SELECT *
-              FROM unnest(
-                %(providers)s::text[],
-                %(lookup_keys)s::text[],
-                %(payload_hashes)s::text[],
-                %(lease_owners)s::text[],
-                %(attempt_counts)s::bigint[]
-              ) AS done(provider, lookup_key, payload_hash, lease_owner, attempt_count)
+
+        def _write() -> int:
+            cursor = self.conn.execute(
+                """
+                WITH done AS (
+                  SELECT *
+                  FROM unnest(
+                    %(providers)s::text[],
+                    %(lookup_keys)s::text[],
+                    %(payload_hashes)s::text[],
+                    %(lease_owners)s::text[],
+                    %(attempt_counts)s::bigint[]
+                  ) AS done(provider, lookup_key, payload_hash, lease_owner, attempt_count)
+                )
+                DELETE FROM token_discovery_dirty_lookup_keys queue
+                USING done
+                WHERE queue.provider = done.provider
+                  AND queue.lookup_key = done.lookup_key
+                  AND queue.payload_hash = done.payload_hash
+                  AND queue.lease_owner = done.lease_owner
+                  AND queue.attempt_count = done.attempt_count
+                """,
+                _claim_params(records),
             )
-            DELETE FROM token_discovery_dirty_lookup_keys queue
-            USING done
-            WHERE queue.provider = done.provider
-              AND queue.lookup_key = done.lookup_key
-              AND queue.payload_hash = done.payload_hash
-              AND queue.lease_owner = done.lease_owner
-              AND queue.attempt_count = done.attempt_count
-            """,
-            _claim_params(records),
-        )
-        if commit:
-            self.conn.commit()
-        return int(getattr(cursor, "rowcount", 0) or 0)
+            return _cursor_rowcount(cursor)
+
+        return _run_repository_write(self.conn, commit, _write)
 
     def reschedule_lookup_claims(
         self,
@@ -345,36 +283,38 @@ class DiscoveryRepository:
                 "last_error": str(last_error)[:2048] if last_error else None,
             }
         )
-        cursor = self.conn.execute(
-            """
-            WITH rescheduled AS (
-              SELECT *
-              FROM unnest(
-                %(providers)s::text[],
-                %(lookup_keys)s::text[],
-                %(payload_hashes)s::text[],
-                %(lease_owners)s::text[],
-                %(attempt_counts)s::bigint[]
-              ) AS rescheduled(provider, lookup_key, payload_hash, lease_owner, attempt_count)
+
+        def _write() -> int:
+            cursor = self.conn.execute(
+                """
+                WITH rescheduled AS (
+                  SELECT *
+                  FROM unnest(
+                    %(providers)s::text[],
+                    %(lookup_keys)s::text[],
+                    %(payload_hashes)s::text[],
+                    %(lease_owners)s::text[],
+                    %(attempt_counts)s::bigint[]
+                  ) AS rescheduled(provider, lookup_key, payload_hash, lease_owner, attempt_count)
+                )
+                UPDATE token_discovery_dirty_lookup_keys queue
+                SET due_at_ms = %(due_at_ms)s,
+                    leased_until_ms = NULL,
+                    lease_owner = NULL,
+                    last_error = %(last_error)s,
+                    updated_at_ms = %(now_ms)s
+                FROM rescheduled
+                WHERE queue.provider = rescheduled.provider
+                  AND queue.lookup_key = rescheduled.lookup_key
+                  AND queue.payload_hash = rescheduled.payload_hash
+                  AND queue.lease_owner = rescheduled.lease_owner
+                  AND queue.attempt_count = rescheduled.attempt_count
+                """,
+                params,
             )
-            UPDATE token_discovery_dirty_lookup_keys queue
-            SET due_at_ms = %(due_at_ms)s,
-                leased_until_ms = NULL,
-                lease_owner = NULL,
-                last_error = %(last_error)s,
-                updated_at_ms = %(now_ms)s
-            FROM rescheduled
-            WHERE queue.provider = rescheduled.provider
-              AND queue.lookup_key = rescheduled.lookup_key
-              AND queue.payload_hash = rescheduled.payload_hash
-              AND queue.lease_owner = rescheduled.lease_owner
-              AND queue.attempt_count = rescheduled.attempt_count
-            """,
-            params,
-        )
-        if commit:
-            self.conn.commit()
-        return int(getattr(cursor, "rowcount", 0) or 0)
+            return _cursor_rowcount(cursor)
+
+        return _run_repository_write(self.conn, commit, _write)
 
     def terminalize_lookup_claims(
         self,
@@ -391,8 +331,8 @@ class DiscoveryRepository:
         if not records:
             return {"terminalized": 0, "deleted": 0}
         with _transaction(self.conn):
-            deleted_rows = self._delete_lookup_claims_returning(records)
-            if len(deleted_rows) != len(records):
+            deleted_rows, deleted_count = self._delete_lookup_claims_returning(records)
+            if deleted_count != len(records):
                 raise ValueError("terminalize_lookup_delete_mismatch")
             terminalized = 0
             for row in deleted_rows:
@@ -409,19 +349,16 @@ class DiscoveryRepository:
                     final_status=final_status,
                     final_reason=final_reason,
                     now_ms=now_ms,
-                    attempt_count=int(row.get("attempt_count") or 0),
-                    payload_hash=str(row.get("payload_hash") or ""),
+                    payload_hash=_terminal_source_payload_hash(row),
                     first_seen_at_ms=_optional_int(row.get("first_dirty_at_ms")),
                     last_attempted_at_ms=now_ms,
                     commit=False,
                 )
                 terminalized += 1
-        if commit:
-            self.conn.commit()
-        return {"terminalized": terminalized, "deleted": len(deleted_rows)}
+        return {"terminalized": terminalized, "deleted": deleted_count}
 
-    def _delete_lookup_claims_returning(self, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        rows = self.conn.execute(
+    def _delete_lookup_claims_returning(self, records: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+        cursor = self.conn.execute(
             """
             WITH done AS (
               SELECT *
@@ -443,8 +380,10 @@ class DiscoveryRepository:
             RETURNING queue.*
             """,
             _claim_params(records),
-        ).fetchall()
-        return [dict(row) for row in rows]
+        )
+        rows = cursor.fetchall()
+        deleted_count = _returned_rowcount(cursor, rows)
+        return [dict(row) for row in rows], deleted_count
 
     def start_lookup(
         self,
@@ -453,35 +392,39 @@ class DiscoveryRepository:
         lookup_key: str,
         lookup_type: str,
         now_ms: int,
+        running_timeout_ms: int,
         commit: bool = True,
     ) -> dict[str, Any]:
-        self.conn.execute(
-            """
-            INSERT INTO token_discovery_results(
-              provider, lookup_key, lookup_type, status, candidate_count, candidate_ids_json,
-              result_hash, last_lookup_at_ms, next_refresh_at_ms, created_at_ms, updated_at_ms
+        def _write() -> dict[str, Any]:
+            cursor = self.conn.execute(
+                """
+                INSERT INTO token_discovery_results(
+                  provider, lookup_key, lookup_type, status, candidate_count, candidate_ids_json,
+                  result_hash, last_lookup_at_ms, next_refresh_at_ms, created_at_ms, updated_at_ms
+                )
+                VALUES (%s, %s, %s, 'running', 0, '[]'::jsonb, NULL, %s, %s, %s, %s)
+                ON CONFLICT(provider, lookup_key) DO UPDATE SET
+                  lookup_type = excluded.lookup_type,
+                  status = 'running',
+                  last_lookup_at_ms = excluded.last_lookup_at_ms,
+                  next_refresh_at_ms = excluded.next_refresh_at_ms,
+                  updated_at_ms = excluded.updated_at_ms
+                RETURNING *
+                """,
+                (
+                    provider,
+                    lookup_key,
+                    lookup_type,
+                    int(now_ms),
+                    int(now_ms) + max(1, int(running_timeout_ms)),
+                    int(now_ms),
+                    int(now_ms),
+                ),
             )
-            VALUES (%s, %s, %s, 'running', 0, '[]'::jsonb, NULL, %s, %s, %s, %s)
-            ON CONFLICT(provider, lookup_key) DO UPDATE SET
-              lookup_type = excluded.lookup_type,
-              status = 'running',
-              last_lookup_at_ms = excluded.last_lookup_at_ms,
-              next_refresh_at_ms = excluded.next_refresh_at_ms,
-              updated_at_ms = excluded.updated_at_ms
-            """,
-            (
-                provider,
-                lookup_key,
-                lookup_type,
-                int(now_ms),
-                int(now_ms) + RUNNING_LOOKUP_TIMEOUT_MS,
-                int(now_ms),
-                int(now_ms),
-            ),
-        )
-        if commit:
-            self.conn.commit()
-        return self.result(provider=provider, lookup_key=lookup_key) or {}
+            row = cursor.fetchone()
+            return _required_returning_row(cursor, row)
+
+        return _run_repository_write(self.conn, commit, _write)
 
     def finish_lookup(
         self,
@@ -496,50 +439,52 @@ class DiscoveryRepository:
         now_ms: int,
         commit: bool = True,
     ) -> bool:
-        current = self.result(provider=provider, lookup_key=lookup_key)
-        current_status = str((current or {}).get("status") or "")
-        changed = (
-            current is None
-            or str(current.get("result_hash") or "") != result_hash
-            or (current_status not in {"running", status})
-        )
-        self.conn.execute(
-            """
-            INSERT INTO token_discovery_results(
-              provider, lookup_key, lookup_type, status, candidate_count, candidate_ids_json,
-              result_hash, last_lookup_at_ms, next_refresh_at_ms, last_error, error_count,
-              created_at_ms, updated_at_ms
+        def _write() -> bool:
+            current = self.result(provider=provider, lookup_key=lookup_key)
+            current_status = str((current or {}).get("status") or "")
+            changed = (
+                current is None
+                or str(current.get("result_hash") or "") != result_hash
+                or (current_status not in {"running", status})
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NULL, 0, %s, %s)
-            ON CONFLICT(provider, lookup_key) DO UPDATE SET
-              lookup_type = excluded.lookup_type,
-              status = excluded.status,
-              candidate_count = excluded.candidate_count,
-              candidate_ids_json = excluded.candidate_ids_json,
-              result_hash = excluded.result_hash,
-              last_lookup_at_ms = excluded.last_lookup_at_ms,
-              next_refresh_at_ms = excluded.next_refresh_at_ms,
-              last_error = NULL,
-              error_count = 0,
-              updated_at_ms = excluded.updated_at_ms
-            """,
-            (
-                provider,
-                lookup_key,
-                lookup_type,
-                status,
-                len(candidate_ids),
-                Jsonb(sorted(set(candidate_ids))),
-                result_hash,
-                int(now_ms),
-                int(next_refresh_at_ms),
-                int(now_ms),
-                int(now_ms),
-            ),
-        )
-        if commit:
-            self.conn.commit()
-        return changed
+            cursor = self.conn.execute(
+                """
+                INSERT INTO token_discovery_results(
+                  provider, lookup_key, lookup_type, status, candidate_count, candidate_ids_json,
+                  result_hash, last_lookup_at_ms, next_refresh_at_ms, last_error, error_count,
+                  created_at_ms, updated_at_ms
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NULL, 0, %s, %s)
+                ON CONFLICT(provider, lookup_key) DO UPDATE SET
+                  lookup_type = excluded.lookup_type,
+                  status = excluded.status,
+                  candidate_count = excluded.candidate_count,
+                  candidate_ids_json = excluded.candidate_ids_json,
+                  result_hash = excluded.result_hash,
+                  last_lookup_at_ms = excluded.last_lookup_at_ms,
+                  next_refresh_at_ms = excluded.next_refresh_at_ms,
+                  last_error = NULL,
+                  error_count = 0,
+                  updated_at_ms = excluded.updated_at_ms
+                """,
+                (
+                    provider,
+                    lookup_key,
+                    lookup_type,
+                    status,
+                    len(candidate_ids),
+                    Jsonb(sorted(set(candidate_ids))),
+                    result_hash,
+                    int(now_ms),
+                    int(next_refresh_at_ms),
+                    int(now_ms),
+                    int(now_ms),
+                ),
+            )
+            _required_single_rowcount(cursor)
+            return changed
+
+        return _run_repository_write(self.conn, commit, _write)
 
     def fail_lookup(
         self,
@@ -552,37 +497,40 @@ class DiscoveryRepository:
         now_ms: int,
         commit: bool = True,
     ) -> dict[str, Any]:
-        self.conn.execute(
-            """
-            INSERT INTO token_discovery_results(
-              provider, lookup_key, lookup_type, status, candidate_count, candidate_ids_json,
-              result_hash, last_lookup_at_ms, next_refresh_at_ms, last_error, error_count,
-              created_at_ms, updated_at_ms
+        def _write() -> dict[str, Any]:
+            cursor = self.conn.execute(
+                """
+                INSERT INTO token_discovery_results(
+                  provider, lookup_key, lookup_type, status, candidate_count, candidate_ids_json,
+                  result_hash, last_lookup_at_ms, next_refresh_at_ms, last_error, error_count,
+                  created_at_ms, updated_at_ms
+                )
+                VALUES (%s, %s, %s, 'error', 0, '[]'::jsonb, NULL, %s, %s, %s, 1, %s, %s)
+                ON CONFLICT(provider, lookup_key) DO UPDATE SET
+                  lookup_type = excluded.lookup_type,
+                  status = 'error',
+                  last_lookup_at_ms = excluded.last_lookup_at_ms,
+                  next_refresh_at_ms = excluded.next_refresh_at_ms,
+                  last_error = excluded.last_error,
+                  error_count = token_discovery_results.error_count + 1,
+                  updated_at_ms = excluded.updated_at_ms
+                RETURNING *
+                """,
+                (
+                    provider,
+                    lookup_key,
+                    lookup_type,
+                    int(now_ms),
+                    int(next_refresh_at_ms),
+                    last_error[:500],
+                    int(now_ms),
+                    int(now_ms),
+                ),
             )
-            VALUES (%s, %s, %s, 'error', 0, '[]'::jsonb, NULL, %s, %s, %s, 1, %s, %s)
-            ON CONFLICT(provider, lookup_key) DO UPDATE SET
-              lookup_type = excluded.lookup_type,
-              status = 'error',
-              last_lookup_at_ms = excluded.last_lookup_at_ms,
-              next_refresh_at_ms = excluded.next_refresh_at_ms,
-              last_error = excluded.last_error,
-              error_count = token_discovery_results.error_count + 1,
-              updated_at_ms = excluded.updated_at_ms
-            """,
-            (
-                provider,
-                lookup_key,
-                lookup_type,
-                int(now_ms),
-                int(next_refresh_at_ms),
-                last_error[:500],
-                int(now_ms),
-                int(now_ms),
-            ),
-        )
-        if commit:
-            self.conn.commit()
-        return self.result(provider=provider, lookup_key=lookup_key) or {}
+            row = cursor.fetchone()
+            return _required_returning_row(cursor, row)
+
+        return _run_repository_write(self.conn, commit, _write)
 
     def counts(self) -> dict[str, int]:
         rows = self.conn.execute(
@@ -669,13 +617,14 @@ def _due_params(
     *,
     now_ms: int,
     limit: int,
+    running_timeout_ms: int,
     hot_since_ms: int | None,
     hot_not_found_retry_ms: int | None,
 ) -> dict[str, Any]:
     return {
         "provider": DISCOVERY_PROVIDER,
         "now_ms": int(now_ms),
-        "running_expired_ms": int(now_ms) - RUNNING_LOOKUP_TIMEOUT_MS,
+        "running_expired_ms": int(now_ms) - max(1, int(running_timeout_ms)),
         "hot_since_ms": int(hot_since_ms) if hot_since_ms is not None else None,
         "hot_not_found_retry_ms": int(hot_not_found_retry_ms) if hot_not_found_retry_ms is not None else None,
         "limit": max(0, int(limit)),
@@ -685,22 +634,76 @@ def _due_params(
 def _claim_records(claims: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for claim in claims:
-        provider = str(claim.get("provider") or DISCOVERY_PROVIDER)
-        lookup_key = str(claim.get("lookup_key") or "")
-        payload_hash = str(claim.get("payload_hash") or "")
-        lease_owner = str(claim.get("lease_owner") or "")
-        attempt_count = int(claim.get("attempt_count") or 0)
-        if provider and lookup_key and payload_hash is not None and lease_owner and attempt_count > 0:
-            records.append(
-                {
-                    "provider": provider,
-                    "lookup_key": lookup_key,
-                    "payload_hash": payload_hash,
-                    "lease_owner": lease_owner,
-                    "attempt_count": attempt_count,
-                }
-            )
+        provider = str(claim.get("provider") or "").strip()
+        lookup_key = str(claim.get("lookup_key") or "").strip()
+        if not provider or not lookup_key:
+            raise ValueError("token discovery lookup claim completion requires full lookup key from claim_due")
+        payload_hash = _completion_payload_hash(claim)
+        lease_owner = _completion_lease_owner(claim)
+        attempt_count = _completion_attempt_count(claim)
+        if not payload_hash:
+            raise ValueError("token discovery lookup claim completion requires payload_hash from claim_due")
+        if not lease_owner:
+            raise ValueError("token discovery lookup claim completion requires lease_owner from claim_due")
+        records.append(
+            {
+                "provider": provider,
+                "lookup_key": lookup_key,
+                "payload_hash": payload_hash,
+                "lease_owner": lease_owner,
+                "attempt_count": attempt_count,
+            }
+        )
     return records
+
+
+def _completion_attempt_count(claim: Mapping[str, Any]) -> int:
+    try:
+        attempt_count = int(claim["attempt_count"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("token discovery lookup claim completion requires attempt_count from claim_due") from exc
+    if attempt_count <= 0:
+        raise ValueError("token discovery lookup claim completion requires attempt_count from claim_due")
+    return attempt_count
+
+
+def _completion_lease_owner(claim: Mapping[str, Any]) -> str:
+    try:
+        value = claim["lease_owner"]
+    except KeyError as exc:
+        raise ValueError("token discovery lookup claim completion requires lease_owner from claim_due") from exc
+    if value is None:
+        raise ValueError("token discovery lookup claim completion requires lease_owner from claim_due")
+    lease_owner = str(value).strip()
+    if not lease_owner:
+        raise ValueError("token discovery lookup claim completion requires lease_owner from claim_due")
+    return lease_owner
+
+
+def _completion_payload_hash(claim: Mapping[str, Any]) -> str:
+    try:
+        value = claim["payload_hash"]
+    except KeyError as exc:
+        raise ValueError("token discovery lookup claim completion requires payload_hash from claim_due") from exc
+    if value is None:
+        raise ValueError("token discovery lookup claim completion requires payload_hash from claim_due")
+    payload_hash = str(value).strip()
+    if not payload_hash:
+        raise ValueError("token discovery lookup claim completion requires payload_hash from claim_due")
+    return payload_hash
+
+
+def _terminal_source_payload_hash(row: Mapping[str, Any]) -> str:
+    try:
+        value = row["payload_hash"]
+    except KeyError as exc:
+        raise ValueError("token discovery lookup terminalization requires source payload_hash") from exc
+    if value is None:
+        raise ValueError("token discovery lookup terminalization requires source payload_hash")
+    payload_hash = str(value).strip()
+    if not payload_hash:
+        raise ValueError("token discovery lookup terminalization requires source payload_hash")
+    return payload_hash
 
 
 def _claim_params(records: list[dict[str, Any]]) -> dict[str, Any]:
@@ -719,8 +722,51 @@ def _optional_int(value: Any) -> int | None:
     return int(value)
 
 
+def _cursor_rowcount(cursor: Any) -> int:
+    try:
+        rowcount = cursor.rowcount
+    except AttributeError as exc:
+        raise TypeError("discovery_repository_rowcount_required") from exc
+    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
+        raise TypeError("discovery_repository_rowcount_invalid")
+    if rowcount < 0:
+        raise TypeError("discovery_repository_rowcount_invalid")
+    return int(rowcount)
+
+
+def _returned_rowcount(cursor: Any, rows: list[Any]) -> int:
+    count = _cursor_rowcount(cursor)
+    if count != len(rows):
+        raise TypeError("discovery_repository_rowcount_invalid")
+    return count
+
+
+def _required_single_rowcount(cursor: Any) -> int:
+    count = _cursor_rowcount(cursor)
+    if count != 1:
+        raise TypeError("discovery_repository_rowcount_invalid")
+    return count
+
+
+def _required_returning_row(cursor: Any, row: Any) -> dict[str, Any]:
+    _required_single_rowcount(cursor)
+    if row is None:
+        raise TypeError("discovery_repository_rowcount_invalid")
+    return dict(row)
+
+
 def _transaction(conn: Any) -> AbstractContextManager[Any]:
-    transaction = getattr(conn, "transaction", None)
-    if callable(transaction):
-        return cast(AbstractContextManager[Any], transaction())
-    return nullcontext()
+    try:
+        transaction = conn.transaction
+    except AttributeError as exc:
+        raise RuntimeError("discovery_repository_transaction_required") from exc
+    if not callable(transaction):
+        raise RuntimeError("discovery_repository_transaction_required")
+    return cast(AbstractContextManager[Any], transaction())
+
+
+def _run_repository_write[T](conn: Any, commit: bool, write: Callable[[], T]) -> T:
+    if commit:
+        with _transaction(conn):
+            return write()
+    return write()

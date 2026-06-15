@@ -87,6 +87,16 @@ signals only; they are not product readiness and are not business facts.
 
 - Auth: `{"type":"auth","token":"..."}`
 - Subscribe: `{"type":"subscribe","handles":[...],"replay":N,"market_targets":[{"target_type":"Asset","target_id":"..."}]}`
+- Replay is a bounded read-side query: `replay` is capped at 1000, the total
+  subscription filter values across `handles`, `cas`, `symbols`, and
+  `market_targets` is capped at 50, oversized subscriptions receive
+  `{"type":"error","code":"too_many_filters","limit":50}`, and token-filter
+  replay divides the total replay budget across the selected `cas`/`symbols`
+  inside one PostgreSQL keyset/window query instead of running one
+  `recent_events` query per filter. Replay payload hydration batches projected
+  entities, alerts, token intents, and public
+  event-token resolutions for the page; it must not run per-event projection
+  lookups for every replay item.
 - Push payloads include `event` messages with `entities`, `alerts`,
   `token_intents`, and `token_resolutions`; `notification` messages when
   notifications are subscribed; `social_event_enrichment_update` messages after
@@ -94,7 +104,22 @@ signals only; they are not product readiness and are not business facts.
   targets.
 - Event payload `token_resolutions` is the same public event-token projection
   used by `/api/recent`: resolved token target identity plus event-anchored
-  `price`. It is not a raw `token_intent_resolutions` row.
+  `price`. It is not a raw `token_intent_resolutions` row. A selected current
+  resolution row must carry non-empty resolution, intent, event, and status
+  fields plus list-shaped reason/candidate/lookup arrays; malformed persisted
+  rows are projection errors, not empty public arrays.
+- The upstream token facts behind `token_intents` and `token_resolutions`
+  require PostgreSQL mutation evidence before public read models can trust
+  them: token evidence, token intent, and resolution upserts require
+  `RETURNING *` with rowcount=1; intent-evidence links allow only explicit
+  `ON CONFLICT DO NOTHING` rowcount 0/1; lookup-key replacement deletes require
+  real non-negative rowcount and each replacement upsert requires rowcount=1.
+  Fallback `SELECT` readback is not write success evidence.
+- Event payload `alerts` and `/api/notifications/account-alerts` read
+  persisted `account_token_alerts`; the write-side `INSERT ... DO NOTHING`
+  state classification for those alerts requires PostgreSQL single-row
+  `cursor.rowcount` evidence. Missing or invalid rowcount fails before an alert
+  insert is reported as created or existing.
 
 ## HTTP
 
@@ -123,6 +148,10 @@ Runtime health/status contract:
   `pool_wait_ms_p99`. `queue_health` is read-only observability for
   manifest-declared job queues, delivery queues, status queues, and dirty
   target tables; it does not change claim/retry semantics.
+  `app/runtime/job_queue.py` contributes only descriptor metadata for these
+  diagnostics; it is not a generic executor for `pulse_agent_jobs` or
+  `notification_deliveries` and must not own claim, finalize, retry, lease, or
+  stale-running SQL for those tables.
 - `workers.collector.details` carries collector counters such as
   `frames_received`, `matched_twitter_events`, parse/duplicate counts,
   provider counters, and `snapshot_gate_outcomes`.
@@ -139,21 +168,11 @@ Runtime health/status contract:
   aggregate status only; it must not include prompts, inputs, outputs,
   provider secrets, API keys, or tokens. `priority` is an
   operator-facing policy label, not strict scheduling behavior.
-- `/api/status/narrative-health` is an authenticated ops read for Narrative
-  backlog health. It returns domain-owned aggregates for current admissions
-  (`current_admissions`, `suppressed_admissions`, source-event and independent
-  author totals), semantic backlog (`current_source_rows`,
-  `semantic_rows_for_current_sources`, `missing_semantic_rows`,
-  `admissions_with_missing_semantics`, `pending_existing_rows`, `queued`,
-  `retryable`, `stale`, `unavailable`, `suppressed_current_digest_count`,
-  `stale_fingerprint_current_digest_count`, `oldest_due_age_ms`), recent
-  Narrative model-run success/failure/timeout counts, digest status/reason
-  counts, and current pending digest count. `semantic_backlog.total_pending` is
-  `missing_semantic_rows + queued + retryable + stale`; source rows come from
-  admitted `narrative_admissions.source_event_ids_json`, not from existing
-  semantics rows alone. API/frontend consumers must use this surface instead of
-  writing raw SQL.
-
+- `/readyz` and `/api/status` expose `news_provider_contract` as a News
+  provider-type validation payload over configured sources, the live
+  `news_sources` database constraint, and the static runtime-supported provider
+  types. This status block must not inspect the live provider object, feed
+  client, or private provider registry for capability discovery.
 Token image contract:
 
 - `/api/token-images/{image_id}` is the only public token image surface.
@@ -221,13 +240,21 @@ News Intel contract:
   `affected_entities`, `transmission_paths`, bull/bear strengths,
   and evidence/data-gap metadata. Agent run ids, prompt/schema/validator
   versions, hashes, raw requests, raw responses, tool traces, and usage
-  metadata are audit storage, not public News API fields. OpenNews provider
-  rows can carry provider signal and token impact facts without requiring an
+metadata are audit storage, not public News API fields. `news_item_agent_runs`
+inserts and `news_item_agent_briefs` current upserts must have rowcount=1 with
+a returned row before the projected page row can depend on that audit/current
+brief state. Schema-version cleanup of current `news_item_agent_briefs` rows
+through `DELETE ... RETURNING news_item_id` must validate cursor rowcount
+against returned ids before stale-brief cleanup accounting is reported. OpenNews provider
+rows can carry provider signal and token impact facts without requiring an
   agent brief. OpenNews ingestion is
   REST-only through
   `/open/news_search`; the client merges partial/ready article fragments by
   provider article id so delayed `aiRating.score`, direction, grade, and
-  `coins[]` impact scores update the same material facts.
+  `coins[]` impact scores update the same material facts. Source policy must
+  provide REST scan budgets (`rest_limit`, `max_rest_pages`,
+  `rest_overlap_ms`) unless the worker fetch limit or durable cursor supplies
+  the equivalent runtime boundary.
 - `/api/news/sources/status` exposes source classification fields, item counts,
   control-plane fetch status, redacted latest fetch errors,
   `source_quality_status`, provider capability summaries, source hygiene
@@ -235,9 +262,11 @@ News Intel contract:
   Source quality may be `unknown`, `stale`, or `degraded`; it does not block
   `/api/news` rows from serving canonical item facts.
   Supported provider types are currently `rss`, `atom`, `json_feed`,
-  `cryptopanic`, and `opennews`; configured unsupported provider types are
-  reported before an operator expects data from them. OpenNews credentials live
-  under `news_intel.opennews` in operator-owned `config.yaml`; only
+  `cryptopanic`, and `opennews`; this list comes from the static runtime
+  provider-type contract, not the per-process provider object. Configured
+  unsupported provider types are reported before an operator expects data from
+  them. OpenNews credentials live under `news_intel.opennews` in
+  operator-owned `config.yaml`; only
   `api_token` and `api_base_url` are accepted. Removed WebSocket settings and
   source policy keys hard-fail configuration instead of becoming compatibility
   behavior. Provider tokens are not exposed through this status route.
@@ -252,7 +281,29 @@ News Intel contract:
   the projected market-wide `signal.alert_eligibility` envelope. In-app dedup
   and entity identity prefer `news_story:{story_key}`; fallback item identity is
   used only when no story key exists. External pushes continue to require a
-  ready, publishable current brief.
+  ready, publishable current brief. Aggregated high-signal notifications that
+  should reactivate failed/dead external push rows use the
+  `notification_deliveries` requeue contract; insert-only delivery enqueue is
+  not a compatibility fallback for that path.
+- Notification fact insertion and insert-only `notification_deliveries` enqueue
+  classify created-vs-existing state only from PostgreSQL single-row
+  `cursor.rowcount` evidence. Missing or invalid rowcount fails before the
+  repository reports notification creation, aggregation, or delivery enqueue
+  state.
+- Existing notification aggregation through `UPDATE notifications` requires
+  `rowcount=1`; missing, zero, multi-row, or otherwise invalid rowcount fails
+  before `NotificationInsertOutcome.aggregated` is reported or delivery requeue
+  state can advance.
+- `notification_deliveries` requeue and claim paths that use `RETURNING *`
+  also require PostgreSQL rowcount evidence to match returned-row presence:
+  rowcount=0/no row is the only no-op/no-delivery result, rowcount=1/row is the
+  only changed/claimed delivery result, and mismatch fails as malformed
+  repository/driver state.
+- Notification read-marker writes (`mark_read`, `mark_all_read`,
+  `mark_author_read`) also require PostgreSQL `cursor.rowcount` evidence before
+  success or changed-row counts are returned. Bulk read-marker counts must come
+  from one `INSERT ... SELECT ... RETURNING` result whose rowcount matches the
+  returned rows, not from preselected `len(rows)` compatibility accounting.
 - The frontend item URL is `/news/items/:newsItemId`; `/news/:newsItemId` is
   not a compatibility route.
 - Missing or unavailable brief state is represented as
@@ -271,6 +322,9 @@ Token Radar market contract:
   and `readiness`.
 - `/api/token-radar` rows expose `discussion_digest` from the persisted
   narrative read model and may expose a read-only public `pulse_overlay`.
+  Narrative hydration reads target identity from the row's formal nested
+  `target.target_type` / `target.target_id` object; API routes do not synthesize
+  temporary top-level target identity fields for hydration.
   Digest status is `ready`, `pending`, `insufficient`,
   `semantic_unavailable`, or `stale`; clients must render data gaps instead of
   recreating narrative text from factor snapshots. A digest may include optional
@@ -301,7 +355,9 @@ Token Radar market contract:
 - `market.decision_latest` is the latest response object available to ranking,
   UI, and Signal Pulse from persisted market ticks. Provider raw frames are not
   public facts and are not serialized into Token Radar rows unless they became
-  `market_ticks`.
+  `market_ticks`. Market tick creation/conflict state is classified from
+  PostgreSQL rowcount evidence matching `RETURNING tick_id`, not from raw
+  provider payloads or returned-row presence alone.
 - `market.readiness` carries `anchor_status`, `latest_status`,
   `dex_floor_status`, `missing_fields`, and `stale_fields`. Consumers must treat
   missing, stale, or below-floor market state as data health / gate context, not
@@ -329,7 +385,10 @@ Token Radar market contract:
   `pricefeed_id`, status/reason arrays, `symbol`, and the standard message
   `price` payload. Internal fact/audit fields such as `identity_status`,
   `confidence`, `record_status`, `is_current`, and market join columns are not
-  part of the public contract.
+  part of the public contract. For rows selected by the projection, resolution
+  identity/status text and `reason_codes_json`, `candidate_ids_json`, and
+  `lookup_keys_json` array shapes are required; read paths do not parse JSON
+  strings or manufacture empty arrays for malformed current facts.
 - Resolved DEX asset rows may expose a top-level `profile` block. Profile facts
   come from the persisted `token_profile_current` read model, not request-time provider
   calls and not `factor_snapshot_json`. `profile.status` is one of `ready`,
@@ -341,7 +400,10 @@ Token Radar market contract:
   or a same-origin `/api/token-images/{image_id}` path. Provider logo URLs from
   GMGN, Binance, OKX, or CEX profile sources are retained only as server-side
   mirror inputs and provenance; frontend clients must not derive or render
-  provider image URLs from raw payloads. `logo_mirror_pending` means an image
+  provider image URLs from raw payloads. `pending` is a public state for absent
+  current rows; a present `token_profile_current` row must expose formal
+  current-row fields and must not be repaired into pending or empty source JSON
+  by the read path. `logo_mirror_pending` means an image
   dirty target is already pending or in flight. `logo_mirror_unsupported` is
   terminal. `logo_mirror_failed` means the current mirrored asset is in
   error/backoff and may be retried; clients must still render no provider URL.
@@ -353,12 +415,11 @@ US Stocks radar contract:
 - Rows are current `MarketInstrument` resolutions with
   `resolution_status = NON_CRYPTO` and `CONFIRMED_US_EQUITY`; `Asset` and
   `CexToken` rows are not part of this response.
-- Rows expose social attention facts, latest evidence, source event ids, and a
-  request-time `quote` snapshot from the runtime `stock_quote_provider`, wired
-  from macrodata-cli's Yahoo price provider when `providers.macrodata.enabled`
-  is true. Quotes are not persisted as a Stocks read model. Per-row provider
-  failure returns `quote.status = "unavailable"` and does not fail the whole
-  response; a missing provider reports `quote_provider_unavailable`.
+- Rows expose social attention facts, latest evidence, bounded latest source
+  event ids, and a schema-stable `quote` block. The endpoint performs no
+  provider IO. Until a persisted US equity quote read model exists, every row reports
+  `quote.status = "unavailable"` with
+  `quote.error = "quote_read_model_unavailable"`.
 
 Macro contract:
 
@@ -408,6 +469,10 @@ Macro contract:
   `data_gaps` field are not compatibility surfaces. Frontend module pages
   consume v3 directly and must not recompute scoring, readiness, or module
   reads locally. There is no v1 or v2 compatibility read path.
+  The `assets` module may include a persisted `daily_brief` from
+  `macro_daily_briefs(brief_key='assets_today')`; an absent row is exposed as
+  no daily brief, but a missing repository read method is a server-side contract
+  failure rather than a fallback to `null`.
   Supported module ids include `overview`; asset subpages
   (`assets/equities`, `assets/bonds`, `assets/commodities`, `assets/fx`,
   `assets/crypto`, `assets/crypto-derivatives`); rates subpages
@@ -429,7 +494,15 @@ Macro contract:
   score. Optional richer derivatives facts are exposed only when persisted read
   models add them through the v3 table-cell contract; internal audit and join
   fields such as target ids, pricefeed ids, and score component JSON are not
-  part of the macro module contract.
+  part of the macro module contract. Missing board rows are represented by the
+  persisted board read returning `status="missing"` and empty rows; a missing
+  `cex_oi_radar` repository contract is a server-side failure, not a fallback
+  that omits the table.
+- `/api/cex/radar-board` reads the same persisted board repository contract.
+  The route requires the repository payload to include a formal `rows` list and
+  each row to include mapping-shaped `score_components_json`; missing fields
+  are server-side read-model contract failures, not empty board or empty score
+  explanation defaults.
 - `/api/macro/series` is authenticated and read-only. It accepts
   `concept_keys=<comma-separated canonical macro concepts>` and
   `window=20d|60d|120d|1y|3y` and returns grouped observation points for chart
@@ -482,7 +555,11 @@ Watchlist handle intel contract:
 Search V2 contract:
 
 - `/api/search` accepts `q`, `limit`, `scope`, `cursor`, and `window`. Search is
-  window-scoped; the default window is `24h`.
+  window-scoped; the default window is `24h`. Public API/CLI entrypoints own
+  the default `limit`, `scope`, and `window`; the token-intel search read
+  service receives those query boundaries explicitly. Malformed API scope values
+  return `invalid_scope`; the shared scope validator does not rewrite unknown
+  values to `matched`.
 - `symbol`, `ca`, `chain`, and `handle` query params are rejected. Callers express
   those searches in `q` as `$BTC`, `eth:0x...`, `0x...`, or `@handle`.
 - Responses return `data.query`, `data.page`, `data.target_candidates`, and
@@ -504,7 +581,9 @@ Search V2 contract:
   - `data.token_result`: the same token case dossier shape as `/api/token-case`
     for the selected target, including `discussion_digest` and no
     `agent_brief`. The Search page renders this payload directly and must not
-    issue a second `/api/token-case` request for the same result.
+    issue a second `/api/token-case` request for the same result. When the
+    selected target is `CexToken`, this includes the same persisted
+    `cex_detail_snapshots` read contract as `/api/token-case`.
   - `data.topic_result`: 24h search items, post/author summary, and
     `agent_brief`.
   - `data.ambiguous_result`: candidates plus topic evidence; callers must not
@@ -527,7 +606,8 @@ Search V2 contract:
 - `scope` is the Token Case UI contract: `all` for all public mentions and
   `watched` for watched-account mentions. The backend also normalizes
   `matched` to the watched scope for callers that still speak radar/search
-  terminology.
+  terminology. Unsupported scope values fail with `invalid_scope` before
+  timeline/post read services run.
 - Response shape:
   - `data.target`: canonical resolved target identity.
   - `data.profile`: persisted token profile block when available, otherwise a
@@ -539,6 +619,9 @@ Search V2 contract:
     payload field.
   - `data.posts`: the initial recent post page for the same target/window/scope.
     Additional pages use `/api/target-posts` with the returned `next_cursor`.
+    Token Case and target-post read services receive `window`, `scope`, and
+    page limits explicitly from API callers; malformed direct service calls do
+    not fall back to `1h` or `all`.
   - `data.discussion_digest`: persisted narrative digest with explicit status,
     required `currentness`, semantic coverage, evidence refs, data gaps, and
     optional compact `processing.backlog`.
@@ -548,10 +631,19 @@ Search V2 contract:
   - `data.narrative_clusters`: digest cluster summaries when available.
   - `data.pulse_overlay`: optional public Signal Pulse overlay; it is
     display-gated and never changes Radar rank or Token Case narrative.
-  - `data.market_live`: request-time/process-local live market snapshot with
-    `status` (`ready`, `live`, `missing`, `unsupported`, `stale`, or `error`),
-    provider metadata, and nullable price, market-cap, liquidity, open-interest,
-    holder, volume, and observation fields.
+  - `data.market_live`: persisted latest-market-tick snapshot with `status`
+    (`ready`, `missing`, `unsupported`, `stale`, or `error`), provider
+    metadata, and nullable price, market-cap, liquidity, open-interest, holder,
+    volume, and observation fields. Request handlers do not call market
+    providers to fill this block. Missing current tick rows return
+    `status = "missing"`; a missing `latest_market_tick` repository method is a
+    server-side repository/session contract failure, not a successful missing
+    market response.
+  - `data.cex_detail`: for `CexToken`, persisted CEX detail state read from
+    `cex_detail_snapshots`. Missing snapshot rows return a structured
+    `status = "missing"` block; a missing repository method is a server-side
+    repository/session contract failure, not a successful no-detail response.
+    For non-CEX targets this field is `null`.
 - Token Case responses do not expose Token Radar score audit blocks. Ranking
   facts remain owned by `/api/token-radar`; dossier pages show evidence,
   propagation, profile, discussion digest, semantic timeline labels, and live
@@ -569,7 +661,10 @@ queue tables exist. `ops refresh-asset-profiles` is the one-shot
 operator path for due DEX profile source refreshes; it returns an explicit
 skipped result when no profile source is configured. `ops
 sync-binance-cex-profiles` refreshes the Binance CEX profile source cache for
-existing routed CEX tokens. `ops rebuild-token-profiles` rebuilds canonical
+existing routed CEX tokens. Its source-cache writes validate optional single-row
+`RETURNING` rowcount evidence: no matching routed token is rowcount=0/no row,
+and a refreshed `cex_token_profiles` row is rowcount=1 with a returned row.
+`ops rebuild-token-profiles` rebuilds canonical
 `token_profile_current` rows from persisted source facts without wiring
 upstream providers. Narrative Intelligence no longer exposes
 `ops rebuild-narrative-intel`; runtime LLM workers for mention semantics and
@@ -579,6 +674,190 @@ Runtime dirty-target consumers must self-heal from their material fact sources
 with bounded catch-up inside their own projection path. There is no generic
 runtime-worker repair CLI because such a surface blurs the boundary between
 normal runtime and operator maintenance.
+Market Tick Current dirty-target enqueue and done/error accounting requires
+PostgreSQL `cursor.rowcount` evidence. Missing or invalid rowcount is malformed
+repository/driver state, not zero changed market-current work, and enqueue
+paths must not report candidate `len(records)` as write evidence.
+Pulse trigger dirty-target done/error/reschedule accounting requires PostgreSQL
+`cursor.rowcount` evidence. Missing or invalid rowcount is malformed
+repository/driver state, not zero changed dirty-trigger work.
+Pulse agent run and run-step audit writes that use `RETURNING` require
+PostgreSQL `cursor.rowcount` evidence. Required insert/upsert paths must return
+exactly one row with rowcount=1; finish paths validate rowcount against returned
+row presence after the run existence check. Missing, invalid, or mismatched
+rowcount fails before agent audit rows are returned.
+Pulse agent runtime-version, eval-case, and eval-result writes that use
+`RETURNING` are required single-row audit writes and must fail on missing,
+invalid, or mismatched rowcount before eval audit rows are returned.
+Pulse evidence packet persistence is a required single-row `RETURNING` write.
+`PulseEvidenceRepository.upsert_packet(...)` must validate PostgreSQL
+`cursor.rowcount=1` with a returned packet row before updating the associated
+`pulse_agent_runs` evidence packet id/hash. The associated
+`UPDATE pulse_agent_runs` is a separate required single-row mutation and must
+validate rowcount=1 before the run-link is trusted.
+Pulse public candidate upsert and low-information hide writes that use
+`RETURNING` require PostgreSQL `cursor.rowcount` evidence. Unchanged candidate
+upserts and no-op hide attempts are valid only as rowcount=0 with no returned
+row; changed candidate writes require rowcount=1 with a returned row. Repository
+code must not restore candidate success through fallback `SELECT` or returned-row
+presence alone.
+Pulse admission edge-state and candidate edge-budget writes that use single-row
+`RETURNING` require PostgreSQL `cursor.rowcount` evidence. The rowcount must be
+valid 0/1 and match returned-row presence before edge rows, optional state rows,
+or budget booleans are reported; missing, invalid, or mismatched rowcount is
+malformed repository/driver state, not returned-row success.
+Pulse playbook snapshot/outcome writes also require PostgreSQL `cursor.rowcount`
+evidence before playbook rows are returned. Snapshot no-change writes are valid
+only as rowcount=0 with no row and must not be restored through fallback
+`SELECT`; changed snapshot and outcome writes require rowcount=1 with a returned
+row.
+Pulse stale agent-run timeout cleanup requires PostgreSQL `cursor.rowcount`
+evidence. Missing or invalid rowcount fails before the repository reports zero
+stale `pulse_agent_runs` updated.
+Pulse job terminal/dead batch transitions over `pulse_agent_jobs` use
+`UPDATE ... RETURNING` and must validate PostgreSQL `cursor.rowcount` before
+terminal ledger writes. The cursor rowcount must match the returned rows;
+missing, invalid, or mismatched rowcount is malformed repository/driver state,
+not zero or returned-row-count terminalized jobs.
+Discovery terminal lookup-claim transitions over `token_discovery_dirty_lookup_keys`
+use `DELETE ... RETURNING` and must validate PostgreSQL `cursor.rowcount` before
+`worker_queue_terminal_events` writes. The cursor rowcount must match returned
+deleted lookup rows; missing, invalid, or mismatched rowcount fails before
+terminal counts or terminal ledger rows are reported.
+Queue Terminal platform ledger writes over `worker_queue_terminal_events` use
+`INSERT ... ON CONFLICT ... RETURNING *` for source-row terminalization and
+`UPDATE ... RETURNING *` for operator actions. Both paths must validate
+PostgreSQL `cursor.rowcount` as a valid 0/1 value matching returned-row presence
+before terminal rows, operator payloads, or retry transitions are reported.
+Registry fact upserts in `RegistryRepository` for registry assets, CEX tokens,
+price feeds, and US equity symbols require `RETURNING` rowcount=1 plus a
+returned row before facts are returned; fallback readback is not execution
+evidence. US equity symbol deactivation in `RegistryRepository` follows the same
+`UPDATE ... RETURNING symbol` evidence rule: cursor rowcount must match returned
+symbols before changed-row counts are reported; missing, invalid, or mismatched
+rowcount fails before deactivation counts.
+Evidence ingest writes for `raw_frames`, `events`, and `event_entities` require
+PostgreSQL single-row `cursor.rowcount` evidence. Missing, boolean, negative,
+multi-row, or otherwise invalid rowcount fails before raw-frame/event
+created-vs-existing state or inserted-entity counts are returned.
+Narrative Admission dirty-target done/error/reschedule accounting follows the
+same rule: returned changed-row counts require PostgreSQL `cursor.rowcount`
+evidence, and missing or invalid rowcount fails before the repository reports
+queue completion or retry work.
+Narrative admission serving-row upsert and stale deletion accounting require
+the same PostgreSQL `cursor.rowcount` evidence; missing or invalid rowcount fails
+before the repository reports zero changed admission rows.
+News projection dirty-target enqueue and done/error accounting follows the same
+rule: returned changed-row counts require PostgreSQL `cursor.rowcount` evidence,
+and missing or invalid rowcount fails before the repository reports queue
+enqueue, completion, or retry work. Enqueue paths must not report candidate
+`len(records)` as write evidence.
+Claim paths over `news_projection_dirty_targets` must also validate PostgreSQL
+`cursor.rowcount` against returned `RETURNING news_projection_dirty_targets.*`
+rows before page/source-quality projection workers treat those rows as leased
+targets.
+Terminal delete paths over `news_projection_dirty_targets` also validate
+PostgreSQL `cursor.rowcount` before `worker_queue_terminal_events` writes. The
+cursor rowcount must match returned deleted rows; missing, invalid, or
+mismatched rowcount fails before terminal counts or terminal ledger rows are
+reported.
+NewsRepository item lifecycle, source-quality status, source disable, and page-row
+changed-row accounting also require PostgreSQL `cursor.rowcount`; missing or
+invalid rowcount fails before the repository reports zero changed News work.
+`news_page_rows` upserts through `RETURNING (xmax = 0)` classify inserted,
+updated, or unchanged rows only after rowcount is valid 0/1 and matches
+returned-row presence; rowcount=0/no row is the only unchanged projection result.
+Configured-source upserts that use
+`INSERT INTO news_sources ... ON CONFLICT ... RETURNING *` must validate
+required rowcount=1 with a returned source row before inserted/updated source
+rows are returned. Source disable paths that use
+`UPDATE news_sources ... RETURNING *` must also validate that cursor rowcount
+matches returned disabled source rows before counts or reconcile rows are
+returned. News fetch source claims that use
+`UPDATE news_sources ... RETURNING sources.*` must validate that cursor rowcount
+matches returned claim rows before due sources are returned to
+`NewsFetchWorker`. News fetch-run start must validate rowcount=1 for the
+`news_fetch_runs` running-row insert and the matching
+`news_sources.last_fetch_at_ms` update before returning a run id. News fetch-run
+finalization through
+`UPDATE news_fetch_runs ... RETURNING *` must validate required single-row
+rowcount/row evidence before `news_sources` status is updated or a finalized
+fetch-run row is returned. News provider-item upserts that use
+`INSERT INTO news_provider_items ... ON CONFLICT ... RETURNING *` must validate
+rowcount=1 with a returned provider-item row before inserted/updated provider
+observations are returned to fetch accounting. Canonical News item upserts that
+use `INSERT INTO news_items ... ON CONFLICT ... RETURNING *` must validate
+rowcount=1 with a returned `news_items` row before observation edges, canonical
+remap cleanup, or affected-item accounting can use the canonical `news_item_id`.
+`news_item_observation_edges` upserts must also validate rowcount=1 before
+provider-article remap, material duplicate remap, summary refresh, or
+affected-item accounting treats the provider observation as linked.
+Provider-article and material duplicate edge-remap CTEs must validate cursor
+rowcount against returned old item-id rows before old-item summary cleanup,
+dirty-target remap, or affected-item accounting uses those ids.
+Observation summary `UPDATE news_items ... RETURNING items.*` refreshes must
+validate rowcount=1 with a returned current item row before affected-item
+accounting uses refreshed source/provider-article aggregates; old zero-edge
+cleanup paths may accept rowcount=0/no row only as explicit optional cleanup
+state and must not restore state through fallback `SELECT` readback. Old-item
+representative reselection
+`UPDATE news_items ... RETURNING items.*` uses optional single-row rowcount
+evidence as well: rowcount=0/no row is only an explicit no-representative-edge
+cleanup result, and rowcount=1/row is the only valid representative fact refresh
+before item-scoped derived facts are cleared or affected-item accounting
+continues.
+`NewsRepository.claim_unprocessed_items(...)` claim rows from `UPDATE
+news_items ... RETURNING items.*` must validate cursor rowcount against returned
+claim rows before `NewsItemProcessWorker` treats the rows as leased work for
+deterministic writes, retry/terminal transitions, or dirty enqueue.
+Asset Profile Refresh target reschedule/error accounting follows the same rule:
+changed-row counts require PostgreSQL `cursor.rowcount`, and missing or invalid
+rowcount fails before the repository reports zero changed refresh-target work.
+CEX token profile source-cache writes use optional single-row `RETURNING`
+accounting: rowcount=0 must have no returned row, rowcount=1 must have one
+returned row, and missing, invalid, multi-row, or mismatched rowcount fails
+before source-cache rows are reported.
+Token Profile Current dirty-target done/error accounting also follows this
+rule: changed-row counts require PostgreSQL `cursor.rowcount`, and missing or
+invalid rowcount fails before the repository reports zero changed
+profile-current work.
+Token Image Source dirty-target done/error accounting follows the same rule:
+changed-row counts require PostgreSQL `cursor.rowcount`, and missing or invalid
+rowcount fails before the repository reports zero changed image-source work.
+Token Image Asset lifecycle writes for local media mirrors also require
+PostgreSQL single-row `cursor.rowcount` evidence. Pending and ready paths that
+use `RETURNING` must validate rowcount against returned-row presence before
+affected counts or ready rows are reported; error and unsupported updates must
+reject missing, invalid, or multi-row rowcount before lifecycle results are
+accepted.
+Token Capture Tier dirty-target enqueue/done accounting follows the same rule:
+changed-row counts require PostgreSQL `cursor.rowcount`, and missing or invalid
+rowcount fails before the repository reports zero changed capture-tier dirty work.
+Token Capture Tier projection demotion accounting also requires PostgreSQL
+`cursor.rowcount`; missing or invalid rowcount fails before the repository
+reports zero demoted hot rows.
+Discovery lookup queue enqueue/done/reschedule accounting requires PostgreSQL
+`cursor.rowcount` evidence. Missing or invalid rowcount fails before the
+repository reports zero changed lookup work.
+Enriched event backfill lifecycle attach/terminal accounting requires
+PostgreSQL single-row `cursor.rowcount` evidence. Missing, boolean, negative,
+multi-row, or otherwise invalid rowcount fails before the repository reports an
+event-anchor lifecycle no-op, attach, or terminal transition.
+Macro Intel repository write-count accounting for sync-window completion,
+retry, failure, sync-state repair, projection dirty enqueue/done/error, and
+observation-series current-row delete/upsert requires PostgreSQL
+`cursor.rowcount` evidence. Missing or invalid rowcount fails before the
+repository reports zero changed Macro work or fabricated success/length counts;
+single-row sync/state paths also reject multi-row rowcount.
+Macro sync-window enqueue and claim paths that use `RETURNING` also require
+rowcount evidence matching returned-row presence. Enqueue is a required
+single-row result; claim/no-work outcomes are valid only as rowcount=0 with no
+row or rowcount=1 with the claimed `macro_sync_windows` row.
+CEX read-model write-count accounting for OI board delete/upsert, detail
+snapshot upsert, and derivative-series upsert requires PostgreSQL
+`cursor.rowcount` evidence. Missing, boolean, negative, or non-integer rowcount
+fails before the repositories report zero, one, or fabricated CEX serving-row
+write counts.
 
 Macro one-shot CLI commands are operator surfaces, not background workers.
 `macro sync --bundle macro-core --start <date> --end <date>` delegates to the
@@ -626,6 +905,10 @@ Before running them against real data, operators must first run
 or ranking-contract change. Current runtime explanations come from
 `factor_snapshot_json`; public Signal Pulse payloads expose `factor_snapshot`,
 `decision`, `gate`, and `fact_card`, not old score/thesis JSON fields.
+When a `pulse_candidates` row is present and displayable, its public mapper
+requires `decision_json` to be mapping-shaped and the public reason/event JSON
+fields to be list-shaped; malformed rows fail instead of being repaired into
+empty decision text, empty reason arrays, or empty event id arrays.
 Downstream evaluation services filter by version, otherwise A/B comparisons
 silently mix populations. No black-box scores.
 
@@ -643,11 +926,20 @@ Radar window mirror:
 - `scope=all` is the default discovery lane. `scope=matched` is watchlist
   alert/context: it can explain why a watched source matters, but matched or
   watched evidence alone does not bypass independent-source display quality.
+  Malformed scope values fail with `invalid_scope` rather than being coerced to
+  `matched`.
+- `handle=@name` filters by the candidate/job normalized `subject_key` only.
+  It does not expand candidate event-id arrays or join back to event authors on
+  the public read path.
 - The frontend default query is `4h/all`; `1h` is the early-confirmation lane.
   Token Radar may still expose `5m` outside Signal Pulse.
 - Public Signal Pulse list/detail payloads do not expose run identity or
   run-step audit fields such as `agent_run_id`, `run_id`, or `stages`. Those
   remain in `pulse_agent_runs` / `pulse_agent_run_steps` for operator replay.
+- Public Signal Pulse `health` fields are derived from persisted candidate
+  summaries and bounded freshness queries. They do not expose scheduler or
+  worker liveness; runtime worker status belongs to `/api/status` and ops
+  diagnostics.
 
 Signal Pulse `decision` blocks are the runtime contract for agent output:
 
@@ -740,9 +1032,15 @@ v1/v2 shapes and reject legacy gate blocks. The v3 contract separates:
   positive alpha.
 - `normalization`: cohort metadata, per-family cross-section ranks, alpha rank,
   and status.
-- `composite`: raw alpha score, rank score, family scores, and
-  `recommended_decision`.
+- `composite`: final rank score, recommended decision, and optional display
+  aliases such as `family_scores`; formal family diagnostics come from
+  `families.*.score`.
 - `provenance`: source event ids and compute time.
+
+`composite.rank_score`, `composite.recommended_decision`, and
+`gates.max_decision` are required formal fields. Runtime contracts reject
+snapshots missing those fields; Token Radar target-feature cache writes do not
+repair missing score or decision output through `0.0` or `discard`.
 
 Token Radar online serving is `token_radar_current_rows` plus
 `token_radar_publication_state`. `fresh` is allowed only when publication state
@@ -751,7 +1049,108 @@ empty ready publication is fresh with zero rows. Failed latest attempts serve
 the previous product/window rows as `stale` or no rows as `failed`.
 `current_generation_id` remains attempt audit metadata, not an online serving
 join key. Compact first-seen metadata preserves `listed_at_ms`; rank source
-edges are lazy evidence/detail, not a current-row fallback.
+edges are lazy evidence/detail, not a current-row fallback. Current-row
+`resolution_json` preserves the selected resolution row's non-empty status and
+list-shaped reason/candidate/lookup arrays. Unresolved attention identity is
+derived from formal `lookup_keys_json`, not from display-symbol reconstruction,
+and malformed resolution fields are projection errors rather than empty public
+arrays. Projection-private target-feature rows must carry formal
+`target_type_key` plus `identity_id` before current-row construction; missing
+private-cache identity is a projection error, not an empty serving key. They
+must also carry non-empty row-id dimensions (`projection_version`, `window`,
+`scope`, `lane`), integer `latest_event_received_at_ms`, and mapping-shaped
+`factor_snapshot_json`; missing target-feature control fields are projection
+errors, not empty row-id segments, `attention` defaults, zero source frontiers,
+or empty factor payloads. Current-row `created_at_ms` uses formal
+`last_scored_at_ms`; target-feature `updated_at_ms` and the runtime wall clock
+are not compatibility inputs for this public timestamp. Rank-set selection also
+requires formal `latest_event_received_at_ms` and a known `lane` before
+filtering and resolved/attention picking; malformed rank inputs fail instead of
+disappearing as expired or lane-less work. Compact rank inputs also require
+`raw_composite_score` and `gates_max_decision`, and ranked rows require
+`rank_score` and `recommended_decision`; missing score/gate/decision fields do
+not become `0.0` or `discard`. Token Radar projection does not keep retired
+snapshot-row rank helpers as compatibility code: rank publication uses compact
+rank inputs, not `_rank_key`, `raw_alpha_score` fallback, or invalid-snapshot
+demotion. Ranked current-row patching requires formal `normalization_status`,
+`cohort_status`, `cohort_size`, `cohort_in_cohort`, `cohort_metadata`, complete
+per-family `factor_ranks`, `alpha_rank`, `rank`, `rank_score`,
+`recommended_decision`, and `latest_event_received_at_ms`; missing or malformed
+ranked metadata fails before current-row / `factor_snapshot_json` mutation
+instead of being repaired to `no_signal`, `not_ranked`, false cohort membership,
+empty or incomplete rank maps, alpha rank `None`, rank `0`, or source watermark
+`0`. Family rank values must be `None` or bounded `0..1` ranks. Target-feature cache writes require
+formal `lane`, `source_max_received_at_ms`, `source_event_ids_json`,
+`created_at_ms`, and `factor_snapshot_json` before repository payload hashing or
+SQL; malformed projection output fails instead of being repaired through
+`attention`, `computed_at_ms`, `[]`, or `{}` defaults. The writer also requires
+the factor snapshot core fields `composite.rank_score`,
+`composite.recommended_decision`, and `gates.max_decision`; malformed scoring
+output fails before SQL rather than becoming `0.0` or `discard`.
+Token Radar current-row delete/upsert, target-feature write/delete, and
+target-feature retention accounting require PostgreSQL `cursor.rowcount`
+evidence. Missing, boolean, negative, or non-integer rowcount is malformed
+repository/driver state, not a default zero- or one-row write count.
+`token_radar_target_first_seen` upsert accounting follows the same rule:
+returned first-seen write counts must come from PostgreSQL `cursor.rowcount`,
+not projection candidate `len(records)`.
+Token Radar target/source dirty queue enqueue, completion, retry, and repair or
+catch-up accounting also require PostgreSQL `cursor.rowcount` evidence. Missing,
+boolean, negative, or non-integer rowcount fails as malformed repository/driver
+state before changed-row counts are returned. Generic target/source dirty enqueue
+paths must report PostgreSQL changed-row counts, not candidate `len(records)`
+values.
+Projection-run stale-running cleanup accounting also requires PostgreSQL
+`cursor.rowcount`; missing or invalid rowcount fails before abandoned-run counts
+are returned.
+Ordinary projection offset, run-ledger, dirty-range enqueue, and finish writes
+require exactly one PostgreSQL `cursor.rowcount`; starting a projection run must
+come from `INSERT ... RETURNING *` evidence and cannot be proven by fallback
+`run_by_id` readback.
+Projection dirty-range claims from `UPDATE ... RETURNING` require cursor
+rowcount to match returned claimed rows before the projection worker treats the
+dirty ranges as leased; rowcount=0 with no rows is the only no-work claim
+result.
+`token_score_evaluations` uses this same formal v3 factor snapshot contract:
+missing `composite.rank_score` fails before score bucket, IC, or coverage
+calculation and is not counted as a `0-19` sample. Token Factor Evaluation is a
+settlement consumer, so it additionally requires `factor_snapshot_json.subject`
+to carry non-empty `target_type` and `target_id` for the sample being settled;
+it does not restore those fields from current-row top-level identity. This
+consumer rule is separate from the global snapshot shape, where unresolved
+attention snapshots may remain valid without a resolved asset id. CEX settlement
+targets require subject-owned `provider` and `native_market_id`; the evaluator
+does not repair missing CEX subject market identity from `market.decision_latest`
+or an `instrument` alias. Settlement subject `target_type` must be formal
+`Asset` or `CexToken`; direct market-tick target types `chain_token` and
+`cex_symbol` are not settlement subjects and fail before market lookup or bucket
+upsert. Asset settlement market identity must come from subject-owned `chain`
+and `address`; `chain_id` and `asset_address` aliases are not settlement
+identity fallbacks. Settlement time comes from
+`factor_snapshot_json.provenance.computed_at_ms`; current-row
+top-level `computed_at_ms` and epoch-zero defaults are not compatibility inputs.
+Family rank IC and family coverage read the formal `families.*.score` blocks;
+`composite.family_scores` is not a diagnostic compatibility source.
+High-confidence `EXACT` / `UNIQUE_BY_CONTEXT` resolution rows require
+formal `Asset` or `CexToken` target identity before resolved-lane publication;
+malformed target identity is not a valid attention fallback.
+Resolved `Asset` target payloads require formal `asset_identity_current`
+explanation fields: non-empty `asset_identity_confidence`, list-shaped
+`asset_identity_reason_codes`, and non-negative integer
+`asset_identity_conflict_count`. Missing identity-current evidence is a
+projection error, not an empty reason list or zero-conflict default.
+Rank-source repair targets, latest-market-context input/output rows,
+affected-target output rows, and projection source request target lists require
+formal `target_type_key` plus `identity_id`. Legacy `target_type` /
+`target_id` aliases are not public or operator-facing repair input at this
+boundary, and malformed target payloads fail before rank-source SQL/result
+mapping, source request generation, or target-feature delete/upsert instead of
+becoming empty work.
+Rank-source edge population and prune changed-row counts are also formal
+projection evidence: population paths require explicit SQL aggregate count rows,
+and prune paths require PostgreSQL `cursor.rowcount`. Missing, boolean,
+negative, or non-integer count evidence fails before changed-row counts are
+returned instead of becoming zero edge changes.
 
 Operational commands:
 
@@ -764,7 +1163,33 @@ Operational commands:
 - Token Radar has no runtime hard-reset command. Schema retirement belongs to
   migrations; online repair uses `ops enqueue-token-radar-dirty-targets` or the
   projection worker's bounded catch-up from material facts.
+- `parallax ops enqueue-token-capture-tier-rank-set` accepts an explicit
+  `--window` from the CLI parser choices; helper code resolves that window
+  directly and rejects malformed direct-call windows instead of running a `24h`
+  repair scan.
 
 ## Privacy boundary
 
 GMGN chains, channels, app versions, and protocol frames are internal collector strategy — never expose them in user-facing payloads.
+
+## Query Boundary Ownership
+
+API routes and CLI parsers own public defaults and validation for `window`,
+`scope`, `limit`, and ops repair ranges. Lower layers receive those values
+explicitly and fail malformed direct-call input instead of restoring compatible
+defaults. This applies to read-model services, runtime diagnostics payloads,
+projection helpers, and operator repair helpers.
+
+`/api/ops/diagnostics` keeps the user-facing defaults on the route:
+`since_hours=4`, `window=1h`, and `scope=all`. The route validates `window` and
+`scope` before calling `ops_diagnostics_payload(...)`; the runtime helper does
+not define its own `1h` or `all` fallback.
+
+Signal Pulse public freshness health currently uses a 4h health horizon from
+the public read model service. That horizon is passed explicitly into the
+repository/service health contract; lower layers do not restore `since_hours=4`
+for direct callers.
+
+Macro asset correlation defaults to `window=60d` at the API route. The
+correlation builder receives that validated window explicitly and does not
+restore a 60d service default for direct callers.

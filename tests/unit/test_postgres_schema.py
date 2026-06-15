@@ -215,6 +215,9 @@ NEWS_ANALYSIS_STORY_HARD_CUT_MIGRATION = Path(
 NEWS_PAGE_SEARCH_DOCUMENT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260606_0152_news_page_search_document.py"
 )
+PULSE_PUBLIC_SEARCH_TRGM_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260612_0179_pulse_public_search_trgm_indexes.py"
+)
 NEWS_AGENT_MARKET_ADMISSION_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260606_0151_news_agent_market_admission_hard_cut.py"
 )
@@ -1157,6 +1160,17 @@ def test_queue_claim_migration_indexes_postgres_worker_paths() -> None:
     assert "idx_enrichment_jobs_claim" in text
     assert "idx_notification_deliveries_claim" in text
     assert "WHERE status IN ('pending', 'failed')" in text
+
+
+def test_notification_deliveries_running_stale_index_exists() -> None:
+    migration = Path(
+        "src/parallax/platform/db/alembic/versions/20260612_0178_notification_delivery_stale_claim_index.py"
+    )
+    text = migration.read_text()
+
+    assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_notification_deliveries_running_stale" in text
+    assert "ON notification_deliveries(updated_at_ms ASC, delivery_id ASC)" in text
+    assert "WHERE status = 'running'" in text
 
 
 def test_enrichment_stale_running_migration_indexes_postgres_recovery_path() -> None:
@@ -2147,7 +2161,7 @@ def test_news_story_identity_v2_migration_rekeys_opennews_article_stories() -> N
         "story_identity_json = jsonb_build_object",
         "WHERE items.story_key ~ '^news-story:opennews-article:'",
         "INSERT INTO news_projection_dirty_targets",
-        "projection_name, target_kind, target_id, \"window\"",
+        'projection_name, target_kind, target_id, "window"',
         "'page'",
         "'news_item'",
         "'news_story_identity_v2'",
@@ -2251,8 +2265,7 @@ def test_news_agent_admission_retired_policy_reprocess_hard_cuts_stale_admission
 
 def test_news_page_rows_require_story_identity_purges_incomplete_serving_rows() -> None:
     assert NEWS_PAGE_ROWS_REQUIRE_STORY_IDENTITY_MIGRATION.exists(), (
-        f"{NEWS_PAGE_ROWS_REQUIRE_STORY_IDENTITY_MIGRATION} missing; "
-        "News page rows must require current story identity"
+        f"{NEWS_PAGE_ROWS_REQUIRE_STORY_IDENTITY_MIGRATION} missing; News page rows must require current story identity"
     )
     text = NEWS_PAGE_ROWS_REQUIRE_STORY_IDENTITY_MIGRATION.read_text()
     normalized_text = " ".join(text.split())
@@ -2778,6 +2791,33 @@ def test_signal_pulse_agent_hard_cut_migration_defines_pulse_tables() -> None:
     assert "idx_pulse_playbook_snapshots_candidate" in text
     assert "idx_pulse_playbook_snapshots_target" in text
     assert "idx_pulse_playbook_outcomes_settled" in text
+
+
+def test_signal_pulse_public_search_migration_adds_trigram_indexes() -> None:
+    assert PULSE_PUBLIC_SEARCH_TRGM_MIGRATION.exists(), (
+        f"{PULSE_PUBLIC_SEARCH_TRGM_MIGRATION} missing; add trigram indexes for Signal Pulse public q search"
+    )
+    text = PULSE_PUBLIC_SEARCH_TRGM_MIGRATION.read_text()
+    normalized_text = re.sub(r"\s+", " ", text)
+
+    assert 'revision = "20260612_0179"' in text
+    assert 'down_revision = "20260612_0178"' in text
+    assert "CREATE EXTENSION IF NOT EXISTS pg_trgm" in text
+    for index_name in (
+        "idx_pulse_candidates_symbol_trgm",
+        "idx_pulse_candidates_subject_key_trgm",
+        "idx_pulse_candidates_target_id_trgm",
+        "idx_pulse_agent_jobs_subject_key_trgm",
+        "idx_pulse_agent_jobs_target_id_trgm",
+    ):
+        assert f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {index_name}" in text
+        assert f"DROP INDEX CONCURRENTLY IF EXISTS {index_name}" in text
+
+    assert "ON pulse_candidates USING GIN (symbol gin_trgm_ops) WHERE symbol IS NOT NULL" in normalized_text
+    assert "ON pulse_candidates USING GIN (subject_key gin_trgm_ops)" in normalized_text
+    assert "ON pulse_candidates USING GIN (target_id gin_trgm_ops) WHERE target_id IS NOT NULL" in normalized_text
+    assert "ON pulse_agent_jobs USING GIN (subject_key gin_trgm_ops)" in normalized_text
+    assert "ON pulse_agent_jobs USING GIN (target_id gin_trgm_ops) WHERE target_id IS NOT NULL" in normalized_text
 
 
 def test_token_search_demotion_migration_demotes_only_unprotected_search_assets() -> None:

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from contextlib import nullcontext
-from typing import Any
+from contextlib import AbstractContextManager, nullcontext
+from typing import Any, cast
 
 from parallax.domains.news_intel.runtime.news_projection_work import (
     enqueue_item_brief_work,
@@ -69,9 +69,13 @@ def _enqueue_news_targets(
 ) -> dict[str, int]:
     news_item_projections = _selected_projections(projection, _NEWS_ITEM_PROJECTIONS)
     include_source_quality = projection in {"all", "source_quality"}
-    news_item_rows = _fetch_news_item_rows(
-        repos.conn,
-        since_ms=since_ms,
+    news_item_rows = (
+        _fetch_news_item_rows(
+            repos.conn,
+            since_ms=since_ms,
+        )
+        if news_item_projections
+        else []
     )
     source_ids = (
         _fetch_ids(
@@ -167,42 +171,8 @@ def _fetch_news_item_rows(conn: Any, *, since_ms: int | None) -> list[dict[str, 
         SELECT items.news_item_id,
                items.published_at_ms,
                items.published_at_ms AS source_watermark_ms,
-               items.lifecycle_status,
-               items.content_class,
-               items.content_classification_json,
-               items.agent_admission_status,
-               items.agent_admission_reason,
-               items.agent_admission_json,
-               items.agent_admission_version,
-               items.agent_representative_news_item_id,
-               items.agent_admission_computed_at_ms,
-               items.story_key,
-               items.story_identity_json,
-               items.story_identity_version,
-               items.provider_signal_json,
-               items.provider_token_impacts_json,
-               sources.provider_type,
-               sources.source_domain,
-               sources.source_name,
-               sources.source_role,
-               sources.enabled AS source_enabled,
-               sources.coverage_tags_json,
-               sources.trust_tier,
-               sources.authority_scope_json,
-               COALESCE(mentions.token_mentions_json, '[]'::jsonb) AS token_mentions_json,
-               COALESCE(facts.fact_candidates_json, '[]'::jsonb) AS fact_candidates_json
+               items.agent_admission_status
           FROM news_items AS items
-          JOIN news_sources AS sources ON sources.source_id = items.source_id
-          LEFT JOIN LATERAL (
-            SELECT jsonb_agg(to_jsonb(mentions.*) ORDER BY mentions.mention_id) AS token_mentions_json
-              FROM news_token_mentions AS mentions
-             WHERE mentions.news_item_id = items.news_item_id
-          ) AS mentions ON true
-          LEFT JOIN LATERAL (
-            SELECT jsonb_agg(to_jsonb(facts.*) ORDER BY facts.fact_candidate_id) AS fact_candidates_json
-              FROM news_fact_candidates AS facts
-             WHERE facts.news_item_id = items.news_item_id
-          ) AS facts ON true
          {where_clause}
          ORDER BY items.news_item_id ASC
         """,
@@ -211,11 +181,14 @@ def _fetch_news_item_rows(conn: Any, *, since_ms: int | None) -> list[dict[str, 
     return [dict(row) for row in rows if row["news_item_id"] is not None]
 
 
-def _transaction(conn: Any) -> Any:
-    transaction = getattr(conn, "transaction", None)
-    if transaction is None:
-        return nullcontext()
-    return transaction()
+def _transaction(conn: Any) -> AbstractContextManager[Any]:
+    try:
+        transaction = conn.transaction
+    except AttributeError as exc:
+        raise RuntimeError("projection_dirty_targets_transaction_required") from exc
+    if not callable(transaction):
+        raise RuntimeError("projection_dirty_targets_transaction_required")
+    return cast(AbstractContextManager[Any], transaction())
 
 
 __all__ = ["DOMAIN_CHOICES", "PROJECTION_CHOICES", "enqueue_projection_dirty_targets"]

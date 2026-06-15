@@ -39,8 +39,8 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
         }
 
     constructed: dict[str, WorkerBase] = {}
-    news_providers = getattr(ctx.providers, "news_intel", None)
-    feed_client = getattr(news_providers, "feed_client", None)
+    news_providers = ctx.providers.news_intel
+    feed_client = news_providers.feed_client
     if workers.news_fetch.enabled:
         if feed_client is not None:
             constructed["news_fetch"] = NewsFetchWorker(
@@ -49,7 +49,7 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
                 db=ctx.db,
                 telemetry=ctx.telemetry,
                 news_settings=ctx.settings.news_intel,
-                wake_bus=ctx.wake_bus,
+                wake_emitter=ctx.wake_bus,
                 feed_client=feed_client,
             )
         else:
@@ -66,11 +66,11 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
                 db=ctx.db,
                 statement_timeout_seconds=workers.news_item_process.statement_timeout_seconds,
             ),
-            wake_bus=ctx.wake_bus,
+            wake_emitter=ctx.wake_bus,
             wake_waiter=ctx.db.wake_listener(worker_name, workers.news_item_process.wakes_on),
         )
 
-    brief_provider = getattr(news_providers, "brief_provider", None)
+    brief_provider = news_providers.brief_provider
     if workers.news_item_brief.enabled:
         worker_name = "news_item_brief"
         if not ctx.settings.news_item_brief_configured:
@@ -82,7 +82,7 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
                 db=ctx.db,
                 telemetry=ctx.telemetry,
                 provider=brief_provider,
-                wake_bus=ctx.wake_bus,
+                wake_emitter=ctx.wake_bus,
                 wake_waiter=ctx.db.wake_listener(worker_name, workers.news_item_brief.wakes_on),
             )
         else:
@@ -95,7 +95,6 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
             settings=workers.news_page_projection,
             db=ctx.db,
             telemetry=ctx.telemetry,
-            wake_bus=ctx.wake_bus,
             wake_waiter=ctx.db.wake_listener(worker_name, workers.news_page_projection.wakes_on),
         )
 
@@ -106,7 +105,7 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
             settings=workers.news_source_quality_projection,
             db=ctx.db,
             telemetry=ctx.telemetry,
-            wake_bus=ctx.wake_bus,
+            wake_emitter=ctx.wake_bus,
             wake_waiter=ctx.db.wake_listener(worker_name, workers.news_source_quality_projection.wakes_on),
         )
     return constructed

@@ -11,14 +11,14 @@ def enrich_rows_with_coinglass(
     client: CoinglassDerivativesProvider | None,
     now_ms: int,
     limit: int,
-    level_limit: int = 6,
+    level_limit: int,
 ) -> list[dict[str, Any]]:
     if client is None or limit <= 0:
-        return rows
+        return [_coinglass_unavailable(row) for row in rows]
     enriched: list[dict[str, Any]] = []
     for index, row in enumerate(rows):
         if index >= limit:
-            enriched.append(row)
+            enriched.append(_coinglass_unavailable(row))
             continue
         enriched.append(enrich_row_with_coinglass(row=row, client=client, now_ms=now_ms, level_limit=level_limit))
     return enriched
@@ -29,12 +29,13 @@ def enrich_row_with_coinglass(
     row: dict[str, Any],
     client: CoinglassDerivativesProvider,
     now_ms: int,
-    level_limit: int = 6,
+    level_limit: int,
 ) -> dict[str, Any]:
-    base_symbol = str(row.get("base_symbol") or "").strip().upper()
-    if not base_symbol:
-        return {**row, "coinglass_status": "unavailable", "degraded_reasons": ["coinglass_symbol_missing"]}
+    base_symbol = _required_symbol(row, "base_symbol")
+    inherited_degraded_reasons = _inherited_degraded_reasons(row)
     payload = dict(row)
+    if "degraded_reasons" in row:
+        payload["degraded_reasons"] = inherited_degraded_reasons
     degraded_reasons: list[str] = []
     try:
         for time_type, field in (("1", "oi_change_pct_1h"), ("2", "oi_change_pct_4h"), ("4", "oi_change_pct_24h")):
@@ -65,13 +66,46 @@ def enrich_row_with_coinglass(
         degraded_reasons.append(f"coinglass_levels_{type(exc).__name__}")
     payload["coinglass_status"] = "ready" if not degraded_reasons else "partial"
     payload["coinglass_observed_at_ms"] = int(now_ms)
-    if degraded_reasons:
-        payload["degraded_reasons"] = [*list(row.get("degraded_reasons") or []), *degraded_reasons]
+    if degraded_reasons or "degraded_reasons" in row:
+        payload["degraded_reasons"] = [*inherited_degraded_reasons, *degraded_reasons]
     return payload
 
 
 def _lookback(time_type: str) -> str:
     return {"1": "2h", "2": "8h", "4": "48h"}.get(time_type, "")
+
+
+def _coinglass_unavailable(row: dict[str, Any]) -> dict[str, Any]:
+    inherited_degraded_reasons = _inherited_degraded_reasons(row)
+    payload = {**row, "coinglass_status": "unavailable"}
+    if "degraded_reasons" in row:
+        payload["degraded_reasons"] = inherited_degraded_reasons
+    return payload
+
+
+def _required_symbol(row: dict[str, Any], field: str) -> str:
+    value = _symbol(row.get(field))
+    if not value:
+        raise ValueError(f"coinglass_detail_identity_required:{field}")
+    return value
+
+
+def _inherited_degraded_reasons(row: dict[str, Any]) -> list[str]:
+    if "degraded_reasons" not in row or row.get("degraded_reasons") is None:
+        return []
+    value = row.get("degraded_reasons")
+    if not isinstance(value, list | tuple):
+        raise ValueError("coinglass_detail_degraded_reasons_invalid")
+    reasons: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError("coinglass_detail_degraded_reason_invalid:item")
+        reasons.append(item.strip())
+    return reasons
+
+
+def _symbol(value: Any) -> str:
+    return str(value or "").strip().upper()
 
 
 def _change_pct_from_points(payload: dict[str, Any], *, value_keys: tuple[str, ...]) -> float | None:

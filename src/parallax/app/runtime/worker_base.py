@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 import time
 from abc import ABC, abstractmethod
-from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -13,9 +11,6 @@ from loguru import logger as default_logger
 from parallax.app.runtime.worker_result import WorkerResult
 from parallax.platform.cancellation import WORKER_HARD_TIMEOUT_CANCEL_REASON
 
-_DEFAULT_INTERVAL_SECONDS = 5.0
-_DEFAULT_BACKOFF_BASE_MS = 1000
-_DEFAULT_BACKOFF_MAX_MS = 60_000
 _MIN_WAIT_SECONDS = 0.001
 _MAX_DURATION_SAMPLES = 256
 
@@ -167,9 +162,8 @@ class WorkerBase(ABC):
 
     async def stop(self) -> None:
         self._stop_event.set()
-        wake = getattr(self.wake_waiter, "wake", None)
-        if wake is not None:
-            wake()
+        if self.wake_waiter is not None:
+            self.wake_waiter.wake()
 
     async def aclose(self) -> None:
         if self._closed:
@@ -204,7 +198,7 @@ class WorkerBase(ABC):
 
     @property
     def enabled(self) -> bool:
-        return bool(getattr(self.settings, "enabled", True))
+        return bool(self.settings.enabled)
 
     @property
     def effective_status(self) -> str:
@@ -228,7 +222,7 @@ class WorkerBase(ABC):
 
     @property
     def interval_seconds(self) -> float:
-        return max(0.0, float(getattr(self.settings, "interval_seconds", _DEFAULT_INTERVAL_SECONDS)))
+        return max(0.0, float(self.settings.interval_seconds))
 
     @property
     def soft_timeout_seconds(self) -> float:
@@ -378,18 +372,23 @@ class WorkerBase(ABC):
         return True
 
     def _advisory_lock_key(self) -> int | None:
-        settings_key = getattr(self.settings, "advisory_lock_key", None)
+        try:
+            settings_key = self.settings.advisory_lock_key
+        except AttributeError as exc:
+            if self.SINGLE_WRITER_KEY is None:
+                return None
+            raise RuntimeError("worker_advisory_lock_key_required") from exc
         if settings_key is not None:
             return int(settings_key)
         if self.SINGLE_WRITER_KEY is not None:
-            return int(self.SINGLE_WRITER_KEY)
+            raise RuntimeError("worker_advisory_lock_key_required")
         return None
 
     async def _wait_for_next_iteration(self, timeout: float) -> None:  # noqa: ASYNC109 - worker waits use wake hints.
         if self._stop_event.is_set():
             return
         timeout = _loop_wait_seconds(timeout)
-        if self.wake_waiter is not None and hasattr(self.wake_waiter, "async_wait"):
+        if self.wake_waiter is not None:
             await self.wake_waiter.async_wait(timeout)
             return
         try:
@@ -439,9 +438,9 @@ class WorkerBase(ABC):
         del self._iteration_duration_ms[:-_MAX_DURATION_SAMPLES]
 
     def _backoff_seconds(self) -> float:
-        backoff = getattr(self.settings, "backoff", None)
-        base_ms = int(getattr(backoff, "base_ms", _DEFAULT_BACKOFF_BASE_MS))
-        max_ms = int(getattr(backoff, "max_ms", _DEFAULT_BACKOFF_MAX_MS))
+        backoff = self.settings.backoff
+        base_ms = int(backoff.base_ms)
+        max_ms = int(backoff.max_ms)
         delay_ms = min(max(0, max_ms), max(0, base_ms) * max(1, self._consecutive_failures))
         return _loop_wait_seconds(delay_ms / 1000)
 
@@ -472,22 +471,24 @@ class WorkerBase(ABC):
     def _release_advisory_lock(self) -> None:
         if self._advisory_lock_connection is None:
             return
-        release = getattr(self._advisory_lock_connection, "release", None)
-        close = getattr(self._advisory_lock_connection, "close", None)
-        releaser: Callable[[], Any] | None = release or close
+        lock_connection = self._advisory_lock_connection
         try:
-            if releaser is not None:
-                releaser()
+            try:
+                release = lock_connection.release
+            except AttributeError as exc:
+                raise RuntimeError("worker_advisory_lock_release_required") from exc
+            if not callable(release):
+                raise RuntimeError("worker_advisory_lock_release_required")
+            release()
         finally:
             self._advisory_lock_connection = None
 
     async def _close_wake_waiter(self) -> None:
-        close = getattr(self.wake_waiter, "close", None)
-        if close is None:
+        if self.wake_waiter is None:
             return
-        result = close()
-        if inspect.isawaitable(result):
-            await result
+        result = self.wake_waiter.close()
+        if result is not None:
+            raise RuntimeError("worker_wake_waiter_close_must_be_sync")
 
 
 def _worker_result_payload(result: WorkerResult | None) -> dict[str, Any] | None:

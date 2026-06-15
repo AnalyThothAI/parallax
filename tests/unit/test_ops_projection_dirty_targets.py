@@ -4,6 +4,8 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
 
+import pytest
+
 from parallax.app.runtime.projection_dirty_targets import enqueue_projection_dirty_targets
 from parallax.app.surfaces.cli.parser import build_parser
 
@@ -86,6 +88,22 @@ def test_enqueue_projection_dirty_targets_execute_enqueues_only_dirty_targets() 
     ]
 
 
+def test_enqueue_projection_dirty_targets_execute_requires_transaction_before_reads_or_writes() -> None:
+    repos = MissingTransactionRepos()
+
+    with pytest.raises(RuntimeError, match="projection_dirty_targets_transaction_required"):
+        enqueue_projection_dirty_targets(
+            repos,
+            domain="news",
+            execute=True,
+            now_ms=NOW_MS,
+            projection="page",
+        )
+
+    assert repos.conn.statements == []
+    assert repos.news_dirty.enqueued == []
+
+
 def test_enqueue_projection_dirty_targets_parser_requires_explicit_mode() -> None:
     args = build_parser().parse_args(
         [
@@ -162,6 +180,45 @@ def test_enqueue_projection_dirty_targets_page_repair_can_run_unbounded_for_page
     ]
 
 
+def test_enqueue_projection_dirty_targets_source_quality_only_does_not_scan_news_items() -> None:
+    repos = FakeRepos()
+
+    result = enqueue_projection_dirty_targets(
+        repos,
+        domain="news",
+        execute=True,
+        now_ms=NOW_MS,
+        projection="source_quality",
+    )
+
+    assert result["projection"] == "source_quality"
+    assert result["news"]["news_item_ids"] == 0
+    assert result["news"]["news_item_targets"] == 0
+    assert result["news"]["source_quality_targets"] == 2
+    assert repos.news_dirty.enqueued == [
+        {
+            "rows": [
+                {
+                    "projection_name": "source_quality",
+                    "target_kind": "source",
+                    "target_id": "source-1",
+                    "window": "_refresh",
+                },
+                {
+                    "projection_name": "source_quality",
+                    "target_kind": "source",
+                    "target_id": "source-2",
+                    "window": "_refresh",
+                },
+            ],
+            "reason": "ops_projection_dirty_repair",
+            "now_ms": NOW_MS,
+            "commit": False,
+        }
+    ]
+    assert all("FROM news_items" not in sql for sql, _params in repos.conn.statements)
+
+
 def test_enqueue_projection_dirty_targets_can_scope_brief_input_repair() -> None:
     repos = FakeRepos()
 
@@ -197,8 +254,23 @@ def test_enqueue_projection_dirty_targets_can_scope_brief_input_repair() -> None
 class FakeRepos:
     def __init__(self) -> None:
         self.conn = FakeConn()
+        self.news = self
         self.news_dirty = FakeDirtyRepo()
         self.news_projection_dirty_targets = self.news_dirty
+
+    def servable_news_item_ids(self, news_item_ids: list[str]) -> list[str]:
+        return [str(news_item_id) for news_item_id in news_item_ids if str(news_item_id)]
+
+
+class MissingTransactionRepos:
+    def __init__(self) -> None:
+        self.conn = MissingTransactionConn()
+        self.news = self
+        self.news_dirty = FakeDirtyRepo()
+        self.news_projection_dirty_targets = self.news_dirty
+
+    def servable_news_item_ids(self, news_item_ids: list[str]) -> list[str]:
+        return [str(news_item_id) for news_item_id in news_item_ids if str(news_item_id)]
 
 
 class FakeConn:
@@ -210,7 +282,10 @@ class FakeConn:
         self.statements.append((sql, _params))
         if "FROM news_items" in sql:
             assert "items.agent_admission_status" in sql
-            assert "items.agent_admission_json" in sql
+            assert "items.agent_admission_json" not in sql
+            assert "JOIN news_sources" not in sql
+            assert "news_token_mentions" not in sql
+            assert "news_fact_candidates" not in sql
             return FakeCursor(
                 [
                     {
@@ -307,6 +382,17 @@ class FakeConn:
     def transaction(self) -> Iterator[None]:
         self.transactions += 1
         yield
+
+
+class MissingTransactionConn:
+    transaction = None
+
+    def __init__(self) -> None:
+        self.statements: list[tuple[str, Any]] = []
+
+    def execute(self, sql: str, _params: dict[str, Any] | None = None) -> FakeCursor:
+        self.statements.append((sql, _params))
+        raise AssertionError("execute repair must fail before SQL when transaction is missing")
 
 
 class FakeCursor:

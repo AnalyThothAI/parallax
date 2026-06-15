@@ -180,6 +180,28 @@ def test_write_macrodata_bundle_import_requires_external_transaction() -> None:
     assert repos.macro_intel.import_runs == []
 
 
+def test_import_macrodata_bundle_requires_repository_session_unit_of_work() -> None:
+    repos = MissingUnitOfWorkRepositorySession()
+
+    with pytest.raises(AttributeError, match="unit_of_work"):
+        import_macrodata_bundle(ENVELOPE, repos=repos, now_ms=NOW_MS)
+
+    assert repos.conn.transaction_events == []
+    assert repos.macro_intel.observations == []
+    assert repos.macro_intel.import_runs == []
+
+
+def test_write_macrodata_bundle_import_requires_session_transaction_contract() -> None:
+    repos = MissingRequireTransactionRepositorySession()
+    parsed = parse_macrodata_bundle(ENVELOPE, now_ms=NOW_MS)
+
+    with pytest.raises(AttributeError, match="require_transaction"):
+        write_macrodata_bundle_import(parsed, repos=repos)
+
+    assert repos.macro_intel.observations == []
+    assert repos.macro_intel.import_runs == []
+
+
 def test_import_macrodata_bundle_rejects_unknown_macro_core_series_before_writing() -> None:
     envelope = deepcopy(ENVELOPE)
     envelope["data"]["snapshot"]["observations"][0]["series_key"] = "fred:NOT_A_CORE_SERIES"
@@ -290,6 +312,45 @@ class FakeConnection:
 
     def commit(self) -> None:
         self.commits += 1
+
+
+class MissingUnitOfWorkRepositorySession:
+    def __init__(self) -> None:
+        self.conn = FakeConnectionWithTransaction()
+        self.macro_intel = FakeMacroIntelRepository()
+
+    def require_transaction(self, *, operation: str) -> None:
+        if not self.conn.transaction_open:
+            raise RuntimeError(f"{operation}:transaction_required")
+
+
+class MissingRequireTransactionRepositorySession:
+    def __init__(self) -> None:
+        self.conn = FakeConnection()
+        self.macro_intel = FakeMacroIntelRepository()
+
+
+class FakeConnectionWithTransaction:
+    def __init__(self) -> None:
+        self.transaction_events: list[str] = []
+        self.transaction_open = False
+
+    def transaction(self):
+        return FakeConnectionTransaction(self)
+
+
+class FakeConnectionTransaction:
+    def __init__(self, conn: FakeConnectionWithTransaction) -> None:
+        self.conn = conn
+
+    def __enter__(self):
+        self.conn.transaction_open = True
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        self.conn.transaction_events.append("rollback" if exc_type is not None else "commit")
+        self.conn.transaction_open = False
+        return False
 
 
 class FakeMacroIntelRepository:

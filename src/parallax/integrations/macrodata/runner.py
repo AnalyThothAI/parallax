@@ -13,8 +13,6 @@ from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
-DEFAULT_FRED_API_KEY_ENV = "FINANCE_FRED_API_KEY"
-
 
 @dataclass(frozen=True)
 class MacrodataBundleRunResult:
@@ -44,8 +42,9 @@ class MacrodataBundleRunner:
         child_env = dict(self.environ)
         child_env.pop("FRED_API_KEY", None)
         key_value = _configured_fred_api_key(settings=self.settings)
-        if not key_value:
-            key_value = self.environ.get(fred_state["fred_api_key_env"], "").strip()
+        env_name = fred_state["fred_api_key_env"]
+        if not key_value and isinstance(env_name, str) and env_name:
+            key_value = self.environ.get(env_name, "").strip()
         if key_value:
             child_env["FRED_API_KEY"] = key_value
 
@@ -236,31 +235,28 @@ def fred_api_key_state(settings: object, *, environ: Mapping[str, str] | None = 
     configured_key = _configured_fred_api_key(settings=settings)
     return {
         "fred_api_key_env": env_name,
-        "fred_api_key_configured": bool(configured_key or env.get(env_name, "").strip()),
+        "fred_api_key_configured": bool(configured_key or (env.get(env_name, "").strip() if env_name else "")),
     }
 
 
-def _configured_fred_env_name(settings: object) -> str:
-    env_name = getattr(settings, "macrodata_fred_api_key_env", None)
+def _configured_fred_env_name(settings: object) -> str | None:
+    try:
+        env_name = settings.macrodata_fred_api_key_env
+    except AttributeError as exc:
+        raise RuntimeError("macrodata_fred_api_key_env_settings_required") from exc
+    if env_name is None:
+        return None
     if isinstance(env_name, str) and env_name.strip():
         return env_name.strip()
-    providers = getattr(settings, "providers", None)
-    macrodata = getattr(providers, "macrodata", None)
-    nested_env_name = getattr(macrodata, "fred_api_key_env", None)
-    if isinstance(nested_env_name, str) and nested_env_name.strip():
-        return nested_env_name.strip()
-    return DEFAULT_FRED_API_KEY_ENV
+    return None
 
 
 def _configured_fred_api_key(*, settings: object) -> str | None:
-    value = getattr(settings, "macrodata_fred_api_key", None)
-    normalized = _secret_string(value)
-    if normalized:
-        return normalized
-    providers = getattr(settings, "providers", None)
-    macrodata = getattr(providers, "macrodata", None)
-    nested_value = getattr(macrodata, "fred_api_key", None)
-    return _secret_string(nested_value)
+    try:
+        value = settings.macrodata_fred_api_key
+    except AttributeError as exc:
+        raise RuntimeError("macrodata_fred_api_key_settings_required") from exc
+    return _secret_string(value)
 
 
 def _secret_string(value: object) -> str | None:
@@ -274,16 +270,14 @@ def _secret_string(value: object) -> str | None:
 
 
 def _macrodata_timeout_seconds(settings: object) -> float:
-    value = getattr(settings, "macrodata_timeout_seconds", None)
-    if value is None:
-        workers = getattr(settings, "workers", None)
-        macro_sync = getattr(workers, "macro_sync", None)
-        value = getattr(macro_sync, "macrodata_timeout_seconds", None)
-    return max(1.0, float(value if value is not None else 240.0))
+    try:
+        value = settings.workers.macro_sync.macrodata_timeout_seconds
+    except AttributeError as exc:
+        raise RuntimeError("macrodata_timeout_settings_required") from exc
+    return max(1.0, float(value))
 
 
 __all__ = [
-    "DEFAULT_FRED_API_KEY_ENV",
     "MacrodataBundleRunResult",
     "MacrodataBundleRunner",
     "MacrodataRunnerError",

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from parallax.domains.macro_intel.observation_identity import (
     macro_series_current_row_payload_hash,
 )
@@ -82,6 +84,35 @@ def test_partition_refresh_skips_unchanged_concepts_without_delete_insert() -> N
     assert result["status"] == "unchanged"
     assert result["rows_written"] == 0
     assert result["source_rows"] == 1
+    assert "DELETE FROM macro_observation_series_rows" not in queries
+    assert "INSERT INTO macro_observation_series_rows" not in queries
+
+
+def test_partition_refresh_requires_existing_current_payload_hash_before_change_detection() -> None:
+    selected_row = _series_row(concept_key="rates:dgs10")
+    conn = PartitionRefreshConnection(
+        selected_rows=[selected_row],
+        existing_rows=[
+            {
+                "concept_key": "rates:dgs10",
+                "observed_at": "2026-05-20",
+                "series_rank": 1,
+            }
+        ],
+    )
+    repo = MacroIntelRepository(conn)
+
+    with pytest.raises(RuntimeError, match="macro_series_current_existing_payload_hash_required"):
+        repo.refresh_observation_series_rows_for_concepts(
+            projection_version="macro_regime_v4",
+            now_ms=1_779_000_000_000,
+            lookback_days=730,
+            limit_per_series=252,
+            claimed_targets=[_dirty_target("rates:dgs10")],
+            concept_keys=("rates:dgs10",),
+        )
+
+    queries = "\n".join(query for query, _params in conn.executions)
     assert "DELETE FROM macro_observation_series_rows" not in queries
     assert "INSERT INTO macro_observation_series_rows" not in queries
 

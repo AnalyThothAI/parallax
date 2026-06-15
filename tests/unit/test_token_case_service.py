@@ -112,6 +112,23 @@ def test_token_case_uses_missing_live_market_when_no_persisted_tick_exists():
     assert dossier["market_live"]["target_id"] == TARGET_ID
 
 
+def test_token_case_requires_latest_market_tick_repository_contract():
+    service = TokenCaseService(
+        targets=FakeTargetsWithoutMarketTick(rows=[target_row("event-1")]),
+        profiles=FakeProfiles(),
+    )
+
+    with pytest.raises(AttributeError, match="latest_market_tick"):
+        service.dossier(
+            target_type="Asset",
+            target_id=TARGET_ID,
+            window="1h",
+            scope="all",
+            posts_limit=2,
+            now_ms=NOW_MS,
+        )
+
+
 def test_token_case_uses_latest_persisted_market_tick():
     service = TokenCaseService(
         targets=FakeTargets(
@@ -205,6 +222,82 @@ def test_token_case_returns_cex_detail_snapshot_for_cex_tokens():
     assert dossier["cex_detail"]["native_market_id"] == "BTCUSDT"
     assert dossier["cex_detail"]["open_interest_usd"] == 1_200_000_000
     assert dossier["cex_detail"]["coinglass_status"] == "unavailable"
+
+
+def test_token_case_requires_cex_detail_snapshot_repository_for_cex_tokens():
+    service = TokenCaseService(
+        targets=FakeTargets(
+            rows=[],
+            identity={
+                "target_type": "CexToken",
+                "target_id": "cex_token:BTC",
+                "symbol": "BTC",
+                "name": "Bitcoin",
+                "chain_id": None,
+                "address": None,
+                "status": "canonical",
+                "source": "cex_tokens",
+                "reason": "TARGET_ID",
+                "pricefeed_id": "pricefeed:cex:binance:swap:BTCUSDT",
+                "provider": "binance",
+                "native_market_id": "BTCUSDT",
+                "quote_symbol": "USDT",
+                "feed_type": "cex_swap",
+            },
+        ),
+        profiles=FakeProfiles(),
+    )
+
+    with pytest.raises(AttributeError, match="latest_snapshot"):
+        service.dossier(
+            target_type="CexToken",
+            target_id="cex_token:BTC",
+            window="1h",
+            scope="all",
+            posts_limit=2,
+            now_ms=NOW_MS,
+        )
+
+
+def test_token_case_missing_cex_detail_does_not_synthesize_snapshot_identity():
+    service = TokenCaseService(
+        targets=FakeTargets(
+            rows=[],
+            identity={
+                "target_type": "CexToken",
+                "target_id": "cex_token:BTC",
+                "symbol": "BTC",
+                "name": "Bitcoin",
+                "chain_id": None,
+                "address": None,
+                "status": "canonical",
+                "source": "cex_tokens",
+                "reason": "TARGET_ID",
+                "pricefeed_id": "pricefeed:cex:binance:swap:BTCUSDT",
+                "provider": "binance",
+                "native_market_id": "BTCUSDT",
+                "quote_symbol": "USDT",
+                "feed_type": "cex_swap",
+            },
+        ),
+        profiles=FakeProfiles(),
+        cex_detail_snapshots=FakeCexDetailSnapshots(),
+    )
+
+    dossier = service.dossier(
+        target_type="CexToken",
+        target_id="cex_token:BTC",
+        window="1h",
+        scope="all",
+        posts_limit=2,
+        now_ms=NOW_MS,
+    )
+
+    assert dossier["cex_detail"]["status"] == "missing"
+    assert dossier["cex_detail"]["snapshot_id"] is None
+    assert dossier["cex_detail"]["exchange"] is None
+    assert dossier["cex_detail"]["native_market_id"] == "BTCUSDT"
+    assert dossier["cex_detail"]["degraded_reasons"] == ["cex_detail_snapshot_missing"]
 
 
 def test_token_case_keeps_profile_and_market_context_without_agent_brief():
@@ -393,6 +486,27 @@ class FakeTargets:
         if self.identity["target_type"] != target_type or self.identity["target_id"] != target_id:
             return None
         return self.market_tick
+
+
+class FakeTargetsWithoutMarketTick:
+    def __init__(self, *, rows):
+        self.rows = rows
+        self.identity = target_identity()
+
+    def target_identity(self, *, target_type, target_id):
+        if self.identity["target_type"] != target_type or self.identity["target_id"] != target_id:
+            return None
+        return self.identity
+
+    def timeline_rows(self, *, target_type, target_id, since_ms, watched_only, limit, cursor=None):
+        return [
+            row
+            for row in self.rows
+            if row["target_type"] == target_type
+            and row["target_id"] == target_id
+            and row["received_at_ms"] >= since_ms
+            and (not watched_only or row["is_watched"])
+        ][:limit]
 
 
 class FakeProfiles:

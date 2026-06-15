@@ -18,9 +18,9 @@ _HIGH_SIGNAL_SUMMARY = (
 
 def _service() -> Any:
     try:
-        return import_module("parallax.domains.news_intel.services.news_canonical_identity")
+        return import_module("parallax.domains.news_intel.types.news_canonical_identity")
     except ModuleNotFoundError as exc:
-        pytest.fail(f"news_canonical_identity service is required: {exc}")
+        pytest.fail(f"news_canonical_identity type module is required: {exc}")
 
 
 def test_public_canonical_url_wins_over_opennews_id_and_content_hash() -> None:

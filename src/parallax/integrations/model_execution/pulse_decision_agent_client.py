@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -11,6 +12,7 @@ from parallax.domains.pulse_lab.interfaces import (
 from parallax.domains.pulse_lab.providers import (
     DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT,
     PULSE_DECISION_LANE,
+    EvidenceCompletenessGateResult,
     PulseAgentRuntimeContract,
     PulseDecisionRuntime,
     PulseDecisionStageSpec,
@@ -31,6 +33,7 @@ from parallax.platform.agent_execution import (
     AgentExecutionError,
     AgentExecutionErrorClass,
     AgentExecutionRequestAudit,
+    AgentExecutionResult,
     AgentExecutionResultAudit,
     AgentStageSpec,
 )
@@ -38,7 +41,6 @@ from parallax.platform.agent_hashing import artifact_hash_for, json_sha256
 
 WORKFLOW_NAME = "parallax.pulse_decision"
 AGENT_NAME = "PulseDecisionDesk"
-_DEFAULT_TIMEOUT_SECONDS = 120.0
 
 
 @dataclass(frozen=True)
@@ -46,6 +48,12 @@ class PulseDecisionAgentResult:
     final_decision: FinalDecision
     agent_run_audit: dict[str, Any]
     stage_audits: tuple[StageRunAudit, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _PulseStageRequestAudit:
+    run_id: str
+    trace_metadata: dict[str, Any]
 
 
 class LiteLLMPulseDecisionClient:
@@ -66,11 +74,7 @@ class LiteLLMPulseDecisionClient:
             raise ValueError("decision_runtime is required")
         self._agent_gateway = agent_gateway
         self._decision_runtime = decision_runtime
-        self.workflow_name = str(workflow_name or "").strip() or WORKFLOW_NAME
-
-    @property
-    def timeout_seconds(self) -> float:
-        return _DEFAULT_TIMEOUT_SECONDS
+        self.workflow_name = _workflow_name(workflow_name)
 
     @property
     def model(self) -> str:
@@ -117,12 +121,13 @@ class LiteLLMPulseDecisionClient:
         completeness: dict[str, Any],
         runtime_manifest: dict[str, Any],
     ) -> dict[str, Any]:
+        evidence_gate = _evidence_gate_from_completeness(completeness)
         return self._decision_runtime.request_audit(
             context=context,
             run_id=run_id,
             job=job,
             route=route,
-            completeness=completeness,
+            completeness=evidence_gate,
             runtime_manifest=runtime_manifest,
             model=self._pipeline_model_manifest(),
             artifact_version_hash=self.artifact_version_hash,
@@ -150,7 +155,6 @@ class LiteLLMPulseDecisionClient:
             runtime_manifest=runtime_manifest,
         )
         evidence_packet = _evidence_packet_from_context(context)
-        evidence_gate = completeness
 
         if not _decision_allowed(context):
             final = _stage_failure_abstain_decision(
@@ -166,6 +170,7 @@ class LiteLLMPulseDecisionClient:
                 stage_audits=(),
             )
 
+        evidence_gate = _evidence_gate_from_completeness(completeness)
         decision_step = await self._run_pulse_decision(
             route=route,
             evidence_packet=evidence_packet,
@@ -221,7 +226,7 @@ class LiteLLMPulseDecisionClient:
         *,
         route: DecisionRoute,
         evidence_packet: PulseEvidencePacket,
-        evidence_gate: dict[str, Any],
+        evidence_gate: EvidenceCompletenessGateResult,
         run_id: str,
         audit: dict[str, Any],
         parent_reservation: AgentCapacityReservation | None = None,
@@ -230,12 +235,13 @@ class LiteLLMPulseDecisionClient:
             route=route,
             evidence_packet=evidence_packet,
             evidence_gate=evidence_gate,
-            recommendation_constraints=_recommendation_constraints(route=route, completeness=evidence_gate),
+            recommendation_constraints=_recommendation_constraints(route=route, evidence_gate=evidence_gate),
         )
         return await self._run_stage(
             spec=spec,
             route=route,
             output_type=FinalDecision,
+            evidence_packet=evidence_packet,
             run_id=run_id,
             audit=audit,
             parent_reservation=parent_reservation,
@@ -247,6 +253,7 @@ class LiteLLMPulseDecisionClient:
         spec: PulseDecisionStageSpec,
         route: DecisionRoute,
         output_type: type[Any],
+        evidence_packet: PulseEvidencePacket,
         run_id: str,
         audit: dict[str, Any],
         parent_reservation: AgentCapacityReservation | None = None,
@@ -268,6 +275,7 @@ class LiteLLMPulseDecisionClient:
                     stage_spec,
                     parent_reservation=parent_reservation,
                 )
+            execution = _require_execution_result(execution)
             execution_audit = execution.audit
             raw_output = execution.final_output
             normalization_input = (
@@ -276,7 +284,7 @@ class LiteLLMPulseDecisionClient:
             normalized = self._decision_runtime.normalize_stage_output(
                 output_type=output_type,
                 raw_output=normalization_input,
-                evidence_packet=spec.input_payload.get("evidence_packet"),
+                evidence_packet=evidence_packet,
             )
             output = output_type.model_validate(normalized.payload)
             return _stage_audit_from_execution(
@@ -299,6 +307,8 @@ class LiteLLMPulseDecisionClient:
                 exc=exc,
             )
         except Exception as exc:
+            if _is_execution_contract_error(exc):
+                raise
             return _stage_audit_from_execution(
                 stage_spec=stage_spec,
                 route=route,
@@ -319,6 +329,7 @@ class LiteLLMPulseDecisionClient:
         run_id: str,
         audit: dict[str, Any],
     ) -> AgentStageSpec:
+        request_audit = _stage_request_audit(audit, run_id=run_id)
         return AgentStageSpec(
             lane=_stage_lane(spec.stage),
             stage=spec.stage,
@@ -329,12 +340,12 @@ class LiteLLMPulseDecisionClient:
             schema_version=PULSE_DECISION_SCHEMA_VERSION,
             workflow_name=self.workflow_name,
             agent_name=_stage_agent_name(spec.stage, route),
-            group_id=_group_id(spec.input_payload.get("evidence_packet")) or str(run_id or ""),
+            group_id=_stage_group_id(spec.input_payload),
             knowledge_refs=spec.knowledge_refs,
             read_only_tool_refs=spec.read_only_tool_refs,
             trace_metadata={
-                **dict(audit.get("trace_metadata") or {}),
-                "run_id": str(run_id or ""),
+                **request_audit.trace_metadata,
+                "run_id": request_audit.run_id,
                 "stage": spec.stage,
                 "route": route,
                 "lane": _stage_lane(spec.stage),
@@ -375,17 +386,17 @@ def _stage_audit_from_execution(
     error: str | None,
     trace_extra: dict[str, Any],
 ) -> StageRunAudit:
-    audit = execution_audit
-    safety = dict(getattr(audit, "safety_net", {}) or {}) if audit is not None else {}
-    input_hash = str(getattr(audit, "input_hash", None) or stage_spec.input_hash)
-    output_hash = getattr(audit, "output_hash", None) if audit is not None else None
+    audit = _require_execution_audit(execution_audit)
+    safety = dict(audit.safety_net or {})
+    input_hash = str(audit.input_hash)
+    output_hash = audit.output_hash
     trace_metadata = {
         **_stage_trace_metadata(audit),
         **dict(trace_extra or {}),
         "input_hash": input_hash,
         "output_hash": output_hash,
     }
-    if getattr(audit, "error_class", None):
+    if audit.error_class is not None:
         trace_metadata["error_class"] = str(audit.error_class)
     return _stage_audit(
         stage=stage_spec.stage,
@@ -395,15 +406,15 @@ def _stage_audit_from_execution(
         prompt_text=prompt,
         response_json=response_json,
         trace_metadata_json=trace_metadata,
-        usage_json=dict(getattr(audit, "usage", {}) or {}),
-        latency_ms=_latency_ms(getattr(audit, "latency_ms", None)),
+        usage_json=dict(audit.usage or {}),
+        latency_ms=_latency_ms(audit.latency_ms),
         started_at_ms=None,
         finished_at_ms=None,
         status=status,
         error=error,
         safety_net_used=bool(safety.get("safety_net_used", False)),
         safety_net_retries=int(safety.get("safety_net_retries") or 0),
-        parse_mode=str(getattr(audit, "parse_mode", None) or "strict"),
+        parse_mode=str(audit.parse_mode or "strict"),
         input_hash=input_hash,
         output_hash=output_hash,
     )
@@ -416,9 +427,9 @@ def _stage_audit_from_execution_error(
     prompt: str,
     exc: AgentExecutionError,
 ) -> StageRunAudit:
-    audit = exc.audit
+    audit = _require_execution_audit(exc.audit)
     status: StageStatus = "timeout" if exc.error_class == AgentExecutionErrorClass.TIMEOUT else "failed"
-    error = str(getattr(audit, "error_message", None) or exc)[:1000]
+    error = str(audit.error_message or exc)[:1000]
     return _stage_audit_from_execution(
         stage_spec=stage_spec,
         route=route,
@@ -431,22 +442,41 @@ def _stage_audit_from_execution_error(
     )
 
 
-def _stage_trace_metadata(audit: AgentExecutionRequestAudit | AgentExecutionResultAudit | None) -> dict[str, Any]:
-    if audit is None:
-        return {}
+def _stage_trace_metadata(audit: AgentExecutionRequestAudit | AgentExecutionResultAudit) -> dict[str, Any]:
     return {
         str(key): value
-        for key, value in dict(getattr(audit, "trace_metadata", {}) or {}).items()
+        for key, value in dict(audit.trace_metadata or {}).items()
         if str(key) not in {"safety_net", "safety_net_used", "safety_net_retries", "parse_mode"}
     }
 
 
 def _is_no_start_agent_backpressure(exc: AgentExecutionError) -> bool:
-    return bool(getattr(exc, "execution_started", True)) is False and exc.error_class in {
+    return exc.execution_started is False and exc.error_class in {
         AgentExecutionErrorClass.CAPACITY_DENIED,
         AgentExecutionErrorClass.CIRCUIT_OPEN,
         AgentExecutionErrorClass.RATE_LIMITED,
         AgentExecutionErrorClass.QUOTA_EXHAUSTED,
+    }
+
+
+def _require_execution_result(value: Any) -> AgentExecutionResult:
+    if not isinstance(value, AgentExecutionResult):
+        raise TypeError("pulse_decision_execution_result_contract_required")
+    return value
+
+
+def _require_execution_audit(
+    value: AgentExecutionRequestAudit | AgentExecutionResultAudit | None,
+) -> AgentExecutionRequestAudit | AgentExecutionResultAudit:
+    if not isinstance(value, AgentExecutionRequestAudit):
+        raise TypeError("pulse_decision_execution_audit_contract_required")
+    return value
+
+
+def _is_execution_contract_error(exc: Exception) -> bool:
+    return str(exc) in {
+        "pulse_decision_execution_result_contract_required",
+        "pulse_decision_execution_audit_contract_required",
     }
 
 
@@ -460,6 +490,38 @@ def _input_json(input_payload: Any) -> dict[str, Any]:
     return {"input_payload": input_payload}
 
 
+def _stage_request_audit(audit: Mapping[str, Any], *, run_id: str) -> _PulseStageRequestAudit:
+    try:
+        trace_raw = audit["trace_metadata"]
+    except KeyError as exc:
+        raise ValueError("pulse_decision_stage_request_audit_trace_metadata_required") from exc
+    if not isinstance(trace_raw, Mapping) or not trace_raw:
+        raise ValueError("pulse_decision_stage_request_audit_trace_metadata_required")
+    trace_metadata = dict(trace_raw)
+    run_id_value = _required_identity_text(run_id, "pulse_decision_stage_request_audit_run_id_required")
+    try:
+        trace_run_id = _required_identity_text(
+            trace_metadata["run_id"],
+            "pulse_decision_stage_request_audit_run_id_required",
+        )
+    except KeyError as exc:
+        raise ValueError("pulse_decision_stage_request_audit_run_id_required") from exc
+    if trace_run_id != run_id_value:
+        raise ValueError("pulse_decision_stage_request_audit_run_id_mismatch")
+    return _PulseStageRequestAudit(run_id=run_id_value, trace_metadata=trace_metadata)
+
+
+def _stage_group_id(input_payload: Mapping[str, Any]) -> str:
+    try:
+        packet = input_payload["evidence_packet"]
+    except KeyError as exc:
+        raise ValueError("pulse_decision_stage_group_id_required") from exc
+    group_id = _group_id(packet)
+    if not group_id:
+        raise ValueError("pulse_decision_stage_group_id_required")
+    return group_id
+
+
 def _group_id(context: Any) -> str | None:
     if not isinstance(context, dict):
         return None
@@ -469,23 +531,43 @@ def _group_id(context: Any) -> str | None:
     return _context_string(context, "subject_key")
 
 
-def _evidence_packet_from_context(context: dict[str, Any]) -> dict[str, Any]:
+def _evidence_packet_from_context(context: dict[str, Any]) -> PulseEvidencePacket:
     packet = context.get("evidence_packet") if isinstance(context, dict) else None
-    if isinstance(packet, dict):
-        return dict(packet)
-    model_dump = getattr(packet, "model_dump", None)
-    if callable(model_dump):
-        payload = model_dump(mode="json")
-        return payload if isinstance(payload, dict) else {}
-    if isinstance(context, dict) and context.get("evidence_packet_hash"):
-        return dict(context)
-    return dict(context)
+    if not isinstance(packet, dict):
+        raise ValueError("pulse_decision_evidence_packet_contract_required")
+    try:
+        return PulseEvidencePacket.model_validate(packet)
+    except ValueError as exc:
+        raise ValueError("pulse_decision_evidence_packet_contract_required") from exc
 
 
-def _recommendation_constraints(*, route: DecisionRoute, completeness: dict[str, Any]) -> dict[str, Any]:
+def _evidence_gate_from_completeness(completeness: dict[str, Any]) -> EvidenceCompletenessGateResult:
+    if not isinstance(completeness, dict):
+        raise ValueError("pulse_decision_evidence_gate_contract_required")
+    try:
+        return EvidenceCompletenessGateResult(
+            evidence_status=_required_text(completeness, "evidence_status"),
+            hard_blocked=_required_bool(completeness, "hard_blocked"),
+            blocked_reason=_optional_text(completeness.get("blocked_reason")),
+            max_decision_status=_required_text(completeness, "max_decision_status"),
+            required_ref_ids=_string_tuple(completeness["required_ref_ids"]),
+            missing_ref_types=_string_tuple(completeness["missing_ref_types"]),
+            data_gaps=_mapping_tuple(completeness["data_gaps"]),
+            public_allowed=_required_bool(completeness, "public_allowed"),
+            display_status=_required_text(completeness, "display_status"),
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("pulse_decision_evidence_gate_contract_required") from exc
+
+
+def _recommendation_constraints(
+    *,
+    route: DecisionRoute,
+    evidence_gate: EvidenceCompletenessGateResult,
+) -> dict[str, Any]:
     return {
         "route": route,
-        "gate_status": completeness.get("status") if isinstance(completeness, dict) else None,
+        "gate_status": evidence_gate.evidence_status,
         "non_abstain_requires_allowed_evidence_refs": True,
         "high_conviction_requires_multiple_supporting_refs": True,
         "when_fact_absent": "lower_confidence_or_abstain",
@@ -502,17 +584,59 @@ def _decision_allowed(context: dict[str, Any]) -> bool:
     return bool(decision.get("decision_allowed", True))
 
 
+def _required_text(payload: dict[str, Any], field: str) -> str:
+    text = str(payload[field]).strip()
+    if not text:
+        raise ValueError(field)
+    return text
+
+
+def _required_identity_text(value: Any, error_name: str) -> str:
+    text = str(value).strip() if value is not None else ""
+    if not text:
+        raise ValueError(error_name)
+    return text
+
+
+def _workflow_name(value: str) -> str:
+    return _required_identity_text(value, "pulse_decision_workflow_name_required")
+
+
+def _optional_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _required_bool(payload: dict[str, Any], field: str) -> bool:
+    value = payload[field]
+    if type(value) is not bool:
+        raise ValueError(field)
+    return value
+
+
+def _string_tuple(value: Any) -> tuple[str, ...]:
+    if not isinstance(value, list | tuple):
+        raise ValueError("string_tuple")
+    return tuple(str(item).strip() for item in value if str(item or "").strip())
+
+
+def _mapping_tuple(value: Any) -> tuple[dict[str, Any], ...]:
+    if not isinstance(value, list | tuple):
+        raise ValueError("mapping_tuple")
+    return tuple(dict(item) for item in value if isinstance(item, dict))
+
+
 def _stage_failure_abstain_decision(
     *,
     route: DecisionRoute,
     reason: str,
-    evidence_packet: PulseEvidencePacket | dict[str, Any],
+    evidence_packet: PulseEvidencePacket,
     abstain_reason: str,
 ) -> FinalDecision:
     gate_refs = tuple(
-        ref_id
-        for ref in _allowed_refs_from_packet(evidence_packet)
-        if (ref_id := _ref_value(ref, "ref_id")) and _ref_value(ref, "ref_type") == "gate"
+        ref.ref_id for ref in evidence_packet.allowed_evidence_refs if ref.ref_type == "gate" and ref.ref_id.strip()
     )
     return FinalDecision(
         route=route,
@@ -583,19 +707,6 @@ def _stage_failure_thesis(abstain_reason: str) -> str:
     if abstain_reason == "invalid_model_output":
         return "模型输出未通过结构化合同校验，无法形成可靠结论；本次仅记录无效输出并等待下一轮有效证据综合。"
     return "模型输出包含证据包以外的引用，违反封闭证据合同；本次仅记录无效输出并等待下一轮有效证据综合。"
-
-
-def _allowed_refs_from_packet(packet: PulseEvidencePacket | dict[str, Any]) -> tuple[Any, ...]:
-    if isinstance(packet, dict):
-        refs = packet.get("allowed_evidence_refs")
-    else:
-        refs = getattr(packet, "allowed_evidence_refs", ())
-    return tuple(refs) if isinstance(refs, list | tuple) else tuple()
-
-
-def _ref_value(ref: Any, key: str) -> str:
-    value = ref.get(key) if isinstance(ref, dict) else getattr(ref, key, None)
-    return str(value or "").strip()
 
 
 def _context_string(context: dict[str, Any], key: str) -> str | None:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
+import pytest
 import yaml
 
 from parallax.domains.asset_market.runtime import token_profile_current_worker as module
@@ -43,6 +44,7 @@ def test_token_profile_current_worker_run_once_records_result_and_uses_one_db_se
     assert result.processed == 3
     assert result.failed == 0
     assert result.notes["result"] == result_payload
+    assert db.session_kwargs == [{"statement_timeout_seconds": 45.0}]
     assert calls == [
         {
             "repos": db.repos,
@@ -54,6 +56,31 @@ def test_token_profile_current_worker_run_once_records_result_and_uses_one_db_se
         }
     ]
     assert db.session_names == ["token_profile_current"]
+
+
+def test_token_profile_current_worker_requires_formal_statement_timeout_settings_contract(monkeypatch):
+    calls: list[dict] = []
+
+    def fake_rebuild(**kwargs):
+        calls.append(kwargs)
+        return {"claimed": 0}
+
+    monkeypatch.setattr(module, "rebuild_token_profile_current_once", fake_rebuild)
+    settings = worker_settings()
+    delattr(settings, "statement_timeout_seconds")
+    db = FakeDB()
+    worker = module.TokenProfileCurrentWorker(
+        name="token_profile_current",
+        settings=settings,
+        db=db,
+        telemetry=object(),
+    )
+
+    with pytest.raises(AttributeError, match="statement_timeout_seconds"):
+        asyncio.run(worker.run_once(now_ms=1_700_000_000_000))
+
+    assert calls == []
+    assert db.session_names == []
 
 
 def test_rebuild_token_profile_current_once_projects_sources_and_writes_rows():
@@ -324,6 +351,38 @@ def test_rebuild_token_profile_current_once_marks_claim_error_when_exact_load_fa
     ]
 
 
+def test_rebuild_token_profile_current_once_requires_session_source_query_contract():
+    repos = FakeRepos(
+        claims=[claim("Asset", "asset:gmgn")],
+        gmgn_openapi={},
+        gmgn_stream={},
+        okx_dex={},
+    )
+    del repos.source_query
+
+    result = module.rebuild_token_profile_current_once(
+        repos=repos,
+        now_ms=10_000,
+        limit=100,
+        lease_owner="profile-worker",
+        lease_ms=60_000,
+        retry_ms=30_000,
+    )
+
+    assert result["error"] == 1
+    assert "source_query" in result["last_error"]
+    assert "execute" not in result["last_error"]
+    assert repos.dirty_targets.errors == [
+        {
+            **claim("Asset", "asset:gmgn"),
+            "error": result["last_error"],
+            "retry_ms": 30_000,
+            "now_ms": 10_000,
+            "commit": False,
+        }
+    ]
+
+
 def test_worker_exposes_single_writer_advisory_lock_key() -> None:
     worker = module.TokenProfileCurrentWorker(
         name="token_profile_current",
@@ -340,6 +399,7 @@ def test_default_workers_yaml_includes_token_profile_current_advisory_lock() -> 
     workers = WorkersSettings(**yaml.safe_load(default_workers_yaml()))
 
     assert workers.token_profile_current.advisory_lock_key == ADVISORY_LOCK_KEY
+    assert workers.token_profile_current.retry_ms == 30_000
 
 
 def worker_settings(**overrides):
@@ -347,6 +407,7 @@ def worker_settings(**overrides):
         "enabled": True,
         "interval_seconds": 60.0,
         "timeout_seconds": 120.0,
+        "statement_timeout_seconds": 45.0,
         "batch_size": 500,
         "lease_ms": 60_000,
         "retry_ms": 30_000,
@@ -360,9 +421,11 @@ class FakeDB:
     def __init__(self) -> None:
         self.repos = object()
         self.session_names: list[str] = []
+        self.session_kwargs: list[dict] = []
 
     def worker_session(self, name: str, **kwargs):
         self.session_names.append(name)
+        self.session_kwargs.append(dict(kwargs))
         return FakeSession(self.repos)
 
 

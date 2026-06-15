@@ -5,7 +5,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from parallax.domains.news_intel.types.news_item_brief import NewsItemBriefInputPacket
+from parallax.domains.news_intel.types.news_item_brief import (
+    NewsItemBriefEntityLane,
+    NewsItemBriefInputPacket,
+)
 
 _ASCII_TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{1,31}")
 _CJK_TOKEN_RE = re.compile(r"[\u3400-\u9fff]{2,}")
@@ -907,18 +910,18 @@ def _domain_proxy_source_keys(packet: NewsItemBriefInputPacket, *, domain: str) 
     return keys
 
 
-def _entity_lane_domains(entity: Any) -> set[str]:
+def _entity_lane_domains(entity: NewsItemBriefEntityLane) -> set[str]:
     domains = {
-        _norm(getattr(entity, "market_domain", "")),
-        _ENTITY_TYPE_DOMAINS.get(_norm(getattr(entity, "entity_type", "")), ""),
+        _norm(entity.market_domain),
+        _ENTITY_TYPE_DOMAINS.get(_norm(entity.entity_type), ""),
     }
     domains.update(
         _domains_from_target_fields(
-            getattr(entity, "target_id", None),
-            getattr(entity, "target_type", None),
+            entity.target_id,
+            entity.target_type,
         )
     )
-    for target in getattr(entity, "candidate_targets", ()) or ():
+    for target in entity.candidate_targets:
         if isinstance(target, Mapping):
             domains.update(_domains_in_mapping(target))
     return {domain for domain in domains if domain in _KNOWN_DOMAINS}

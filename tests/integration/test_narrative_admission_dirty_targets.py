@@ -32,7 +32,12 @@ def test_token_radar_publish_enqueues_narrative_admission_in_same_transaction(tm
         _insert_token_intent(conn, intent_id="intent-1", event_id="event-1")
         _insert_pricefeed(conn, "feed-1")
 
-        repos = repositories_for_connection(conn)
+        repos = repositories_for_connection(
+            conn,
+            pulse_job_running_timeout_ms=300_000,
+            notification_delivery_running_timeout_ms=300_000,
+            notification_delivery_stale_running_terminalization_batch_size=100,
+        )
         repos.token_radar.upsert_target_feature(
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
             window="1h",
@@ -77,7 +82,12 @@ def test_token_radar_refresh_rolls_back_current_rows_when_narrative_enqueue_fail
         migrate(conn)
         _insert_token_intent(conn, intent_id="intent-1", event_id="event-1")
         _insert_pricefeed(conn, "feed-1")
-        repos = repositories_for_connection(conn)
+        repos = repositories_for_connection(
+            conn,
+            pulse_job_running_timeout_ms=300_000,
+            notification_delivery_running_timeout_ms=300_000,
+            notification_delivery_stale_running_terminalization_batch_size=100,
+        )
         repos = replace(repos, narrative_admission_dirty_targets=_FailingNarrativeAdmissionDirtyTargets(conn))
         repos.token_radar.upsert_target_feature(
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,

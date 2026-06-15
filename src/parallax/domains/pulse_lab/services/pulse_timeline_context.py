@@ -22,12 +22,20 @@ _CA_RE = re.compile(r"\b0x[a-fA-F0-9]{40}\b")
 _NON_WORD_RE = re.compile(r"[^\w\s]+", re.UNICODE)
 
 
+class PulseTimelineContextScopeError(ValueError):
+    pass
+
+
+class PulseTimelineContextWindowError(ValueError):
+    pass
+
+
 def build_pulse_timeline_context(
     *,
     target: dict[str, Any],
     rows: list[dict[str, Any]],
-    window: str = "1h",
-    scope: str = "all",
+    window: str,
+    scope: str,
     now_ms: int | None = None,
     max_selected_posts: int = 24,
     max_post_clusters: int = 16,
@@ -35,7 +43,7 @@ def build_pulse_timeline_context(
 ) -> dict[str, Any]:
     ordered = sorted(_scope_rows(rows, scope), key=_row_sort_key)
     resolved_now_ms = _resolve_now_ms(ordered, now_ms)
-    active_window_ms = WINDOW_MS.get(window, WINDOW_MS["1h"])
+    active_window_ms = _window_ms(window)
     active_rows = [row for row in ordered if int(row.get("received_at_ms") or 0) >= resolved_now_ms - active_window_ms]
     all_row_infos = [_row_info(row, target=target) for row in ordered]
     row_infos = [info for info in all_row_infos if int(info["received_at_ms"]) >= resolved_now_ms - active_window_ms]
@@ -76,17 +84,26 @@ def build_pulse_timeline_context(
             post_clusters=post_clusters,
             stage_segments=stage_segments,
             author_count=len({_author(row) for row in active_rows if _author(row)}),
-            duplicate_text_share=windows.get(window, windows["1h"])["duplicate_text_share"],
-            price_change_since_social_pct=windows.get(window, windows["1h"])["price_change_since_social_pct"],
+            duplicate_text_share=windows[window]["duplicate_text_share"],
+            price_change_since_social_pct=windows[window]["price_change_since_social_pct"],
             risk_flags=risk_flags,
         ),
     }
 
 
+def _window_ms(window: str) -> int:
+    try:
+        return WINDOW_MS[window]
+    except KeyError as exc:
+        raise PulseTimelineContextWindowError(window) from exc
+
+
 def _scope_rows(rows: list[dict[str, Any]], scope: str) -> list[dict[str, Any]]:
     if scope == "matched":
         return [row for row in rows if row.get("is_watched")]
-    return list(rows)
+    if scope == "all":
+        return list(rows)
+    raise PulseTimelineContextScopeError(scope)
 
 
 def _row_info(row: dict[str, Any], *, target: dict[str, Any]) -> dict[str, Any]:

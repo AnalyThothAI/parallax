@@ -169,6 +169,43 @@ def test_token_case_market_live_uses_durable_ticks_only() -> None:
         assert "live_price_gateway" not in source
         assert ".snapshot(" not in source
 
+    service_source = (SRC / "domains/token_intel/read_models/token_case_service.py").read_text()
+    latest_tick_source = service_source.split("def _latest_market_tick", maxsplit=1)[1].split(
+        "\ndef _market_snapshot_from_tick", maxsplit=1
+    )[0]
+
+    forbidden_latest_tick_tokens = (
+        'getattr(targets, "latest_market_tick", None)',
+        "if not callable(latest):",
+    )
+    assert [token for token in forbidden_latest_tick_tokens if token in latest_tick_source] == []
+    assert "targets.latest_market_tick" in latest_tick_source
+
+
+@pytest.mark.architecture
+def test_token_case_cex_detail_requires_snapshot_repository_contract() -> None:
+    service_source = (SRC / "domains/token_intel/read_models/token_case_service.py").read_text()
+    cex_detail_source = service_source.split("def _cex_detail", maxsplit=1)[1].split(
+        "\ndef _latest_market_tick", maxsplit=1
+    )[0]
+    inspect_source = (SRC / "domains/token_intel/read_models/search_inspect_service.py").read_text()
+    route_source = (SRC / "app/surfaces/api/routes_search.py").read_text()
+
+    forbidden_service_tokens = (
+        'getattr(self.cex_detail_snapshots, "latest_snapshot", None)',
+        "or self.cex_detail_snapshots is None",
+        "if not callable(latest):",
+        'f"cex-detail:binance:{native_market_id}"',
+        'target.get("provider") or "binance"',
+    )
+
+    assert [token for token in forbidden_service_tokens if token in cex_detail_source] == []
+    assert "self.cex_detail_snapshots.latest_snapshot" in cex_detail_source
+    assert '"snapshot_id": None' in cex_detail_source
+    assert '"exchange": None' in cex_detail_source
+    assert "cex_detail_snapshots=self.cex_detail_snapshots" in inspect_source
+    assert "cex_detail_snapshots=repos.cex_detail_snapshots" in route_source
+
 
 @pytest.mark.architecture
 def test_manifest_classifies_cache_and_delivery_without_product_fact_drift() -> None:

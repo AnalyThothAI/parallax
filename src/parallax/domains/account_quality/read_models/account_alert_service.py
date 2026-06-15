@@ -17,13 +17,15 @@ class AccountAlertService:
     def account_alerts(
         self,
         *,
-        window: str = "24h",
-        limit: int = 50,
+        window: str,
+        limit: int,
+        now_ms: int,
         handles: set[str] | None = None,
         alert_type: str | None = None,
     ) -> list[dict[str, Any]]:
         result: list[dict[str, Any]] = self.signals.account_alerts(
             window_ms=WINDOW_MS[window],
+            now_ms=int(now_ms),
             limit=limit,
             handles=handles,
             alert_type=alert_type,

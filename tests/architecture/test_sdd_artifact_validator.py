@@ -165,11 +165,7 @@ def test_verified_feature_rejects_extra_verification_output_block(tmp_path: Path
     verification_path.write_text(
         verification_path.read_text(encoding="utf-8").replace(
             "## Coverage",
-            "```text\n"
-            "diagnostic output from a separate run\n"
-            "exit code: 1\n"
-            "```\n\n"
-            "## Coverage",
+            "```text\ndiagnostic output from a separate run\nexit code: 1\n```\n\n## Coverage",
         ),
         encoding="utf-8",
     )
@@ -594,8 +590,7 @@ def test_required_sections_ignore_fenced_heading_tokens(tmp_path: Path) -> None:
     spec_path = feature / "spec.md"
     spec_text = spec_path.read_text(encoding="utf-8")
     cited_sentence = (
-        "The fixture spec is grounded by its own source record "
-        f"(`{_feature_relative_dir(spec_path)}/spec.md:1`)."
+        f"The fixture spec is grounded by its own source record (`{_feature_relative_dir(spec_path)}/spec.md:1`)."
     )
     spec_text = spec_text.replace(
         cited_sentence,
@@ -629,8 +624,7 @@ def test_required_sections_ignore_tilde_fenced_heading_tokens(tmp_path: Path) ->
     spec_path = feature / "spec.md"
     spec_text = spec_path.read_text(encoding="utf-8")
     cited_sentence = (
-        "The fixture spec is grounded by its own source record "
-        f"(`{_feature_relative_dir(spec_path)}/spec.md:1`)."
+        f"The fixture spec is grounded by its own source record (`{_feature_relative_dir(spec_path)}/spec.md:1`)."
     )
     spec_text = spec_text.replace(
         cited_sentence,
@@ -1136,9 +1130,7 @@ def test_plan_acceptance_commands_must_cover_spec_acceptance_criteria(tmp_path: 
     issues = validate_sdd_root(tmp_path)
 
     assert "acceptance-command-mismatch" in _issue_codes(issues)
-    assert any(
-        "missing commands for AC2; commands without spec criteria for AC3" in issue.message for issue in issues
-    )
+    assert any("missing commands for AC2; commands without spec criteria for AC3" in issue.message for issue in issues)
 
 
 def test_acceptance_criteria_require_when_then_shall_format(tmp_path: Path) -> None:
@@ -1653,8 +1645,7 @@ def test_verified_feature_rejects_symbolic_completion_status_tokens(tmp_path: Pa
         verification_text.replace(
             "| AC1 | Pass | `make check-all` exited 0. |",
             "| AC1 | ✅ | `make check-all` exited 0. |",
-        )
-        .replace("| line | 91% | >= 80% | Pass |", "| line | 91% | >= 80% | ✅ |"),
+        ).replace("| line | 91% | >= 80% | Pass |", "| line | 91% | >= 80% | ✅ |"),
         encoding="utf-8",
     )
 
@@ -1676,8 +1667,7 @@ def test_verification_tables_reject_symbolic_status_tokens_before_final_verifica
         verification_text.replace(
             "| AC1 | Pass | `make check-all` exited 0. |",
             "| AC1 | ✅ | `make check-all` exited 0. |",
-        )
-        .replace("| line | 91% | >= 80% | Pass |", "| line | 91% | >= 80% | ❌ |"),
+        ).replace("| line | 91% | >= 80% | Pass |", "| line | 91% | >= 80% | ❌ |"),
         encoding="utf-8",
     )
 
@@ -1952,8 +1942,7 @@ def test_verified_feature_rejects_golden_skip_switch(tmp_path: Path) -> None:
     verification_path.write_text(
         verification_text.replace(
             "- [x] testcontainers PG and uvicorn subprocess cleaned up",
-            "- [x] testcontainers PG and uvicorn subprocess cleaned up\n"
-            "- [x] SKIP_GOLDEN=1 bypassed the golden lane",
+            "- [x] testcontainers PG and uvicorn subprocess cleaned up\n- [x] SKIP_GOLDEN=1 bypassed the golden lane",
         ),
         encoding="utf-8",
     )
@@ -2023,9 +2012,7 @@ def test_complete_tasks_require_failing_test_reference_evidence(tmp_path: Path) 
     _write_valid_tasks(
         feature / "tasks.md",
         status="In Progress",
-        failing_test_first=(
-            "tests/architecture/test_never_ran.py::test_missing_red - asserts missing RED coverage."
-        ),
+        failing_test_first=("tests/architecture/test_never_ran.py::test_missing_red - asserts missing RED coverage."),
         verification="uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_expected_gate -q",
         task_status="[x]",
     )
@@ -2598,9 +2585,7 @@ def test_delegated_tasks_require_embedded_context_packet_mode_constraints(tmp_pa
 
     invalid_issues = [issue for issue in issues if issue.code == "task-invalid-subagent-handoff-artifact"]
     assert invalid_issues
-    assert "embedded Context Packet missing Mode constraints" in " ".join(
-        issue.message for issue in invalid_issues
-    )
+    assert "embedded Context Packet missing Mode constraints" in " ".join(issue.message for issue in invalid_issues)
 
 
 def test_delegated_tasks_require_top_level_handoff_mode_constraints(tmp_path: Path) -> None:
@@ -2777,9 +2762,7 @@ def test_delegated_tasks_require_exact_report_validation_command(tmp_path: Path)
 
     invalid_issues = [issue for issue in issues if issue.code == "task-invalid-subagent-handoff-artifact"]
     assert invalid_issues
-    assert "report validation command must be exact" in " ".join(
-        issue.message for issue in invalid_issues
-    )
+    assert "report validation command must be exact" in " ".join(issue.message for issue in invalid_issues)
 
 
 def test_delegated_tasks_validate_report_artifact_against_task(tmp_path: Path) -> None:
@@ -3059,6 +3042,8 @@ def _write_valid_spec(path: Path, *, status: str) -> None:
         ),
         encoding="utf-8",
     )
+
+
 def _task_fixture_paths(values: tuple[str, ...]) -> tuple[str, ...]:
     paths: list[str] = []
     for value in values:
@@ -3541,8 +3526,7 @@ def _replace_spec_compliance_row(path: Path, replacement: str) -> None:
 
 def _append_machine_successor_reference(path: Path) -> None:
     path.write_text(
-        path.read_text(encoding="utf-8")
-        + "\n\n**Superseded by**: `docs/sdd/features/active/2026-06-09-successor/`\n",
+        path.read_text(encoding="utf-8") + "\n\n**Superseded by**: `docs/sdd/features/active/2026-06-09-successor/`\n",
         encoding="utf-8",
     )
 
@@ -3560,8 +3544,7 @@ def _insert_successor_reference(path: Path, successor_slug: str) -> None:
 
 def _append_prose_successor_reference(path: Path) -> None:
     path.write_text(
-        path.read_text(encoding="utf-8")
-        + "\n\nThis record was superseded by the current active harness feature.\n",
+        path.read_text(encoding="utf-8") + "\n\nThis record was superseded by the current active harness feature.\n",
         encoding="utf-8",
     )
 

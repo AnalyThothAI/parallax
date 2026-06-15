@@ -4,6 +4,8 @@ from typing import Any
 
 from parallax.domains.token_intel.interfaces import TOKEN_RADAR_RESOLVER_POLICY_VERSION
 
+STOCKS_RADAR_SOURCE_EVENT_LIMIT = 25
+
 
 class StocksRadarQuery:
     def __init__(self, conn: Any) -> None:
@@ -48,6 +50,15 @@ class StocksRadarQuery:
                 ON ues.market_instrument_id = tir.target_id
                AND ues.status = 'active'
             ),
+            ranked_mentions AS MATERIALIZED (
+              SELECT
+                stock_mentions.*,
+                row_number() OVER (
+                  PARTITION BY target_id
+                  ORDER BY received_at_ms DESC, event_id DESC
+                ) AS event_rank
+              FROM stock_mentions
+            ),
             ranked AS MATERIALIZED (
               SELECT
                 target_id,
@@ -59,10 +70,13 @@ class StocksRadarQuery:
                 COUNT(DISTINCT NULLIF(LOWER(author_handle), ''))::int AS unique_authors,
                 SUM(CASE WHEN is_watched THEN 1 ELSE 0 END)::int AS watched_mentions,
                 MAX(received_at_ms)::bigint AS latest_seen_ms,
-                (ARRAY_AGG(event_id ORDER BY received_at_ms DESC, event_id DESC))[1] AS latest_event_id,
-                (ARRAY_AGG(author_handle ORDER BY received_at_ms DESC, event_id DESC))[1] AS latest_author_handle,
-                ARRAY_AGG(event_id ORDER BY received_at_ms DESC, event_id DESC) AS source_event_ids
-              FROM stock_mentions
+                MAX(CASE WHEN event_rank = 1 THEN event_id END) AS latest_event_id,
+                MAX(CASE WHEN event_rank = 1 THEN author_handle END) AS latest_author_handle,
+                COALESCE(
+                  ARRAY_AGG(event_id ORDER BY event_rank) FILTER (WHERE event_rank <= %s),
+                  ARRAY[]::text[]
+                ) AS source_event_ids
+              FROM ranked_mentions
               GROUP BY target_id, symbol, security_name, exchange, instrument_type
               ORDER BY mentions DESC, watched_mentions DESC, latest_seen_ms DESC, symbol ASC
               LIMIT %s
@@ -89,6 +103,7 @@ class StocksRadarQuery:
                 int(since_ms),
                 int(now_ms),
                 TOKEN_RADAR_RESOLVER_POLICY_VERSION,
+                STOCKS_RADAR_SOURCE_EVENT_LIMIT,
                 int(limit),
             ),
         ).fetchall()

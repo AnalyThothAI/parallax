@@ -34,6 +34,75 @@ class SearchEventsQuery:
             return self._resolve_ca(address=intent.ca, chain=intent.chain)
         return []
 
+    def resolve_symbols(self, symbols: list[str]) -> list[dict[str, Any]]:
+        normalized = [str(symbol).strip().lstrip("$").upper() for symbol in symbols if str(symbol).strip()]
+        if not normalized:
+            return []
+        rows = self.conn.execute(
+            """
+            WITH input_symbols AS (
+              SELECT
+                upper(trim(symbol_value)) AS symbol,
+                ordinality
+              FROM unnest(%s::text[]) WITH ORDINALITY AS input(symbol_value, ordinality)
+              WHERE trim(symbol_value) <> ''
+            ),
+            distinct_symbols AS (
+              SELECT symbol, MIN(ordinality) AS ordinality
+              FROM input_symbols
+              GROUP BY symbol
+            ),
+            cex_candidates AS (
+              SELECT
+                distinct_symbols.ordinality AS input_ordinal,
+                'CexToken' AS target_type,
+                cex_tokens.cex_token_id AS target_id,
+                cex_tokens.base_symbol AS symbol,
+                NULL::text AS chain_id,
+                NULL::text AS address,
+                'resolved' AS status,
+                'cex_token' AS source,
+                'CONFIRMED_CEX_TOKEN' AS reason,
+                0 AS sort_group
+              FROM distinct_symbols
+              JOIN cex_tokens
+                ON upper(cex_tokens.base_symbol) = distinct_symbols.symbol
+              WHERE cex_tokens.status IN ('candidate', 'canonical')
+            ),
+            asset_candidates AS (
+              SELECT
+                distinct_symbols.ordinality AS input_ordinal,
+                'Asset' AS target_type,
+                registry_assets.asset_id AS target_id,
+                asset_identity_current.canonical_symbol AS symbol,
+                registry_assets.chain_id,
+                registry_assets.address,
+                CASE
+                  WHEN COUNT(*) OVER (PARTITION BY distinct_symbols.symbol) = 1 THEN 'resolved'
+                  ELSE 'ambiguous'
+                END AS status,
+                'asset_identity_current' AS source,
+                'CANONICAL_SYMBOL_MATCH' AS reason,
+                1 AS sort_group
+              FROM distinct_symbols
+              JOIN asset_identity_current
+                ON upper(asset_identity_current.canonical_symbol) = distinct_symbols.symbol
+              JOIN registry_assets
+                ON registry_assets.asset_id = asset_identity_current.asset_id
+              WHERE registry_assets.status IN ('candidate', 'canonical')
+            )
+            SELECT target_type, target_id, symbol, chain_id, address, status, source, reason
+            FROM (
+              SELECT * FROM cex_candidates
+              UNION ALL
+              SELECT * FROM asset_candidates
+            ) candidates
+            ORDER BY input_ordinal, sort_group, target_id
+            """,
+            (normalized,),
+        ).fetchall()
+        return [_candidate(row) for row in rows]
+
     def route_hits(
         self,
         *,

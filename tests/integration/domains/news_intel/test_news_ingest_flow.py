@@ -64,6 +64,13 @@ def test_news_workers_ingest_process_project_and_query_visible_news(tmp_path) ->
                             "summary": "Trading opens today for the BTC/USDT pair.",
                             "language": "en",
                         },
+                        provider_signal={
+                            "source": "provider",
+                            "provider": "fixture",
+                            "status": "ready",
+                            "score": 95,
+                            "method": "deterministic_fixture",
+                        },
                     )
                 ],
                 etag="etag-1",
@@ -129,6 +136,8 @@ def test_news_workers_ingest_process_project_and_query_visible_news(tmp_path) ->
     assert row["headline"] == "Binance lists $BTC for spot trading"
     assert row["canonical_url"] == "https://www.binance.com/en/support/announcement/btc-listing"
     assert row["lifecycle_status"] == "accepted"
+    assert row["agent_admission_status"] == "eligible"
+    assert row["provider_rating"]["score"] == 95
     assert "story_id" not in row
     assert row["story"]["story_key"].startswith("news-story:")
     assert row["source"]["source_role"] == "official_exchange"
@@ -156,7 +165,12 @@ class _SingleConnectionWorkerDB:
     def worker_session(self, name: str, statement_timeout_seconds: float | None = None):
         assert name in {"news_fetch", "news_item_process", "news_page_projection"}
         assert statement_timeout_seconds == 30
-        yield repositories_for_connection(self.conn)
+        yield repositories_for_connection(
+            self.conn,
+            pulse_job_running_timeout_ms=300_000,
+            notification_delivery_running_timeout_ms=300_000,
+            notification_delivery_stale_running_terminalization_batch_size=100,
+        )
 
 
 class _FakeFeedClient:

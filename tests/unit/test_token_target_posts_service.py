@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from parallax.domains.token_intel.read_models.token_target_posts_service import TokenTargetPostsService
+import pytest
+
+from parallax.domains.token_intel.read_models.token_target_posts_service import (
+    TokenTargetPostsScopeError,
+    TokenTargetPostsService,
+    TokenTargetPostsWindowError,
+)
 from parallax.domains.token_intel.repositories.token_target_repository import TokenTargetRepository
 
 
@@ -57,6 +63,42 @@ def test_target_posts_cursor_keeps_same_millisecond_rows_reachable():
     assert first["next_cursor"] == "1000:event-2"
     assert targets.seen_cursors[-1] == (1_000, "event-2")
     assert [item["event_id"] for item in second["items"]] == ["event-1"]
+
+
+def test_target_posts_rejects_invalid_scope_before_repository_call():
+    targets = FakeTargets(pages={})
+
+    with pytest.raises(TokenTargetPostsScopeError):
+        TokenTargetPostsService(targets=targets).target_posts(
+            target_type="CexToken",
+            target_id="cex_token:BTC",
+            window="1h",
+            scope="everything",
+            post_range="current_window",
+            sort="recent",
+            limit=2,
+            now_ms=2_000_000,
+        )
+
+    assert targets.seen_cursors == []
+
+
+def test_target_posts_rejects_invalid_window_before_repository_call():
+    targets = FakeTargets(pages={})
+
+    with pytest.raises(TokenTargetPostsWindowError):
+        TokenTargetPostsService(targets=targets).target_posts(
+            target_type="CexToken",
+            target_id="cex_token:BTC",
+            window="7d",
+            scope="all",
+            post_range="current_window",
+            sort="recent",
+            limit=2,
+            now_ms=2_000_000,
+        )
+
+    assert targets.seen_cursors == []
 
 
 def test_target_repository_reads_post_prices_from_enriched_events_and_market_ticks():

@@ -214,11 +214,10 @@ def _servable_news_item_ids(repos: Any, news_item_ids: Iterable[str]) -> list[st
     item_ids = _unique(news_item_ids)
     if not item_ids:
         return []
-    news_repo = getattr(repos, "news", None)
-    servable = getattr(news_repo, "servable_news_item_ids", None)
-    if not callable(servable):
-        return item_ids
-    return list(servable(item_ids))
+    try:
+        return list(repos.news.servable_news_item_ids(item_ids))
+    except AttributeError as exc:
+        raise ValueError("news repository must expose servable_news_item_ids for projection dirty targets") from exc
 
 
 def _news_item_target(

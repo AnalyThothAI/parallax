@@ -13,7 +13,7 @@ Cboe, CFTC, crypto providers, or macrodata directly.
 |--------|----------|----------------|
 | `macro_observations` | Fact | `MacroSyncWorker` in normal runtime; `macro import-bundle` only for offline replay/seed. |
 | `macro_import_runs` | Import audit | `MacroSyncWorker` and offline replay. It records coverage and diagnostics; it is not the product truth. |
-| `macro_sync_windows` | Sync control | `MacroSyncWorker` only. It owns claim, retry, and bounded catch-up state. |
+| `macro_sync_windows` | Sync control | `MacroSyncWorker` only. It owns claim, retry, and bounded catch-up state; claimed windows must carry valid `attempt_count` and `max_attempts` before retry-budget classification. |
 | `macro_sync_runs` | Sync audit | `MacroSyncWorker` and `macro sync` through the same service. It records redacted provider/source health. |
 | `macro_projection_dirty_targets` | Projection control | `MacroSyncWorker` enqueues after changed facts; `MacroViewProjectionWorker` claims before reading facts. |
 | `macro_observation_series_rows` | Read model | `MacroViewProjectionWorker` only. It is a compact current-only projection from `macro_observations` and owns request-path latest/history rows. |
@@ -64,13 +64,67 @@ may not. Refresh is source-signature based: unchanged facts update only
 `macro_observation_series_publication_state` with
 `latest_attempt_status='unchanged'` and write zero serving rows, while changed
 facts replace the compact current rows and the single current snapshot for the
-projection version in one transaction. A refresh that selects zero rows marks
+projection version in one `RepositorySession.transaction`. Dirty-target claim,
+series refresh, snapshot write, and dirty-target done state are committed by the
+worker session transaction, not by worker-level `commit=True` fragments. If the
+projection fails after claim, partial read-model writes are rolled back before
+the dirty target is marked retryable. `macro_view_snapshot_updated` is emitted
+only after that transaction exits. A refresh that selects zero rows marks
 publication state `failed`, raises `macro_observation_series_empty`, and leaves
 existing current rows untouched. Runtime physical generations, run ids, and
-timestamp snapshot ids are not a serving contract.
+timestamp snapshot ids are not a serving contract. Existing current-series rows
+must carry non-empty `payload_hash` values before change detection; malformed
+current rows fail before delete/insert instead of comparing as empty signatures.
+
+`MacroViewProjectionWorker` is configured only by the formal
+`macro_view_projection` worker settings. Its worker-session statement timeout,
+dirty-target claim batch, lease, retry cadence, lookback window, and
+per-series history cap are direct settings reads. The minimum history coverage
+for `lookback_days` and `limit_per_series` is enforced by the settings schema,
+not by runtime fallback constants in the worker. The factory injects a
+post-commit `wake_emitter`; there is no constructor `wake_bus` alias for this
+read-model writer.
+
+`MacroDailyBriefProjectionWorker` is also configured only by its formal
+`macro_daily_brief_projection` worker settings. It reads worker-session
+statement timeout directly, has no provider IO, and keeps `assets_today` as the
+stable current-row key for `macro_daily_briefs`.
+
+`MacroIntelRepository.refresh_observation_series_rows_for_concepts(...)`
+requires a connection transaction before deleting exited current rows, inserting
+changed current rows, or updating `macro_observation_series_publication_state`.
+Missing connection transaction support is a repository/session contract failure,
+not a `nullcontext` compatibility path. Existing current-row payload hashes are
+required read-model signatures for changed/unchanged comparison.
+Macro sync-window terminal/retry/failure writes, `macro_sync_state` repair,
+`macro_projection_dirty_targets` enqueue/done/error mutations, and
+`macro_observation_series_rows` delete/upsert paths also require PostgreSQL
+`cursor.rowcount` evidence before returning write counts. Missing or invalid
+rowcount is malformed repository/driver state, not zero Macro work or inferred
+target/row-length success; single-row sync/state paths reject multi-row counts.
+Macro sync-window enqueue and claim `RETURNING` paths validate rowcount against
+returned-row presence before reporting enqueued, no-work, or claimed control
+state; returned-row presence alone is not a sync-window state-machine contract.
+`macro_view_snapshots` and `macro_daily_briefs` current-row
+`RETURNING true AS changed` writes use the same evidence rule: the cursor
+rowcount must be a valid single-row count and must match returned-row presence
+before snapshot changed booleans, downstream wakes, daily-brief writes, or
+worker `rows_written` accounting are reported.
+
+`MacroIntelRepository` repository-owned `macro_projection_dirty_targets`
+claim/done/error mutations also require a callable connection transaction before
+dirty-target SQL. `MacroViewProjectionWorker` keeps those queue writes
+caller-owned with `commit=False` inside `RepositorySession.transaction`; direct
+repository callers that omit transaction support fail before claim, delete, or
+retry SQL instead of falling back to naked `self.conn.commit()`.
 
 The `macro_regime_v4` snapshot stores:
 
+- `panels_json`, `indicators_json`, `triggers_json`, and `data_gaps_json`:
+  deterministic display/module payloads emitted by the regime engine. Empty
+  objects or arrays are valid only when the engine emits those fields
+  explicitly; `MacroIntelRepository` must not restore missing sections through
+  `{}` or `[]` defaults before payload hash or `macro_view_snapshots` upsert.
 - `features_json`: concept-keyed semantic label fields, latest value,
   freshness days, history point counts, `20d` / `60d` / `252d` history windows,
   deltas, z-score, percentile, score participation, structured data gaps, and
@@ -98,6 +152,13 @@ Snapshot status is history-aware:
 UI and LLM-facing surfaces must read those deterministic fields rather than
 recomputing or inventing macro conclusions. Sparse source coverage should
 surface as `data_gap` / neutral scenario context, not as a false stress signal.
+When a current snapshot is absent, `/api/macro` may return the explicit
+`macro_view_snapshot_missing` data-gap response. When a snapshot is present,
+its JSON sections are part of the persisted read-model contract; the API must
+require mapping/list-shaped `panels_json`, `indicators_json`, `triggers_json`,
+`data_gaps_json`, `source_coverage_json`, `features_json`, `chain_json`,
+`scenario_json`, and `scorecard_json` instead of repairing malformed rows with
+empty objects or arrays.
 Module pages consume only `macro_module_view_v3`, whose payload is
 display-ready: semantic snapshot headers, tiles, one primary chart with
 minimum-point status, typed display tables, `module_read`, `module_evidence`,
@@ -105,11 +166,30 @@ minimum-point status, typed display tables, `module_read`, `module_evidence`,
 and related routes. The `/macro/assets` module is a real page, not a parent
 redirect. It combines the assets module view with the optional
 `assets_today` daily brief read model; the API reads the persisted brief and
-does not recompute the daily judgement during request handling. Overview/global
-regime fields describe the whole macro state; module-local `data_health`
-describes page readiness without overriding global scores. Raw provider payloads,
-old provenance JSON blobs, and old v1/v2 module fields are not public
-compatibility surfaces.
+does not recompute the daily judgement during request handling. A missing
+`assets_today` row is an honest absent read-model value; a missing
+`latest_macro_daily_brief` repository method is a route/repository contract
+failure and must not be treated as "no brief". Overview/global regime fields
+describe the whole macro state; module-local `data_health` describes page
+readiness without overriding global scores. Raw provider payloads, old
+provenance JSON blobs, and old v1/v2 module fields are not public compatibility
+surfaces.
+Module view shaping follows the same persisted-snapshot contract as
+`/api/macro`: `snapshot=None` may render an explicit missing module view, but a
+present snapshot must carry the formal mapping/list-shaped JSON sections before
+the builder can produce `macro_module_view_v3`. The builder must not restore
+missing `features_json`, `chain_json`, `scenario_json`, or `data_gaps_json`
+through empty compatibility payloads.
+The `/macro/assets/crypto-derivatives` module reads optional CEX board data
+through the persisted `cex_oi_radar` repository. Missing board rows are exposed
+as a `missing` board state; a missing repository contract is a route/session
+failure, not a reason to omit the board.
+
+Offline replay is also a fact-ingest path. `macro import-bundle` writes
+`macro_observations`, `macro_import_runs`, and
+`macro_projection_dirty_targets` through `RepositorySession.unit_of_work` and
+`require_transaction`; it must not fall back to raw `conn.transaction` or
+manual commits when test/runtime sessions omit the formal contract.
 
 ## CLI And Operations
 
@@ -122,16 +202,31 @@ compatibility surfaces.
 - Docker operators provide `FINANCE_FRED_API_KEY` through environment or a
   deployment secret manager. Config stores only the env var name and status
   surfaces expose only env names/booleans, never secret values.
+- Runtime macrodata execution reads the formal root settings properties
+  `macrodata_fred_api_key_env` and `macrodata_fred_api_key`, plus
+  `workers.macro_sync.macrodata_timeout_seconds`; it must not probe older
+  nested `providers.macrodata` shapes or root-level timeout fallbacks.
+  The default FRED env name is owned by settings. If
+  `macrodata_fred_api_key_env` is `null` or blank, runtime code treats env
+  lookup as disabled and must not restore `FINANCE_FRED_API_KEY` locally.
 - `workers.macro_sync.macrodata_timeout_seconds` bounds the macrodata child
   process. Timeout is recorded as source health and does not rely on worker
   thread cancellation to stop provider IO.
+- `workers.macro_sync` is the single formal execution-budget contract for
+  sync source/bundle identity, due-window enqueue cadence, claim lease, retry
+  delay, session timeout, and bounded windows per cycle. Runtime code must read
+  those fields directly and must not synthesize defaults from older settings
+  shapes or constructor wake aliases.
 - `uv run parallax macro sync --bundle macro-core --start <YYYY-MM-DD>
   --end <YYYY-MM-DD>` runs one operator-triggered bounded window through the
   same `MacroSyncService` as `macro_sync`.
 - `uv run parallax macro import-bundle --file /path/bundle.json`
   imports a saved macrodata-cli `macro-core` envelope for offline replay/seed.
   `--stdin` is the streaming equivalent. It emits the persisted-fact wake hint
-  but is not the normal freshness path.
+  but is not the normal freshness path. The importer requires
+  `RepositorySession.unit_of_work` and `require_transaction`; it must not fall
+  back to raw `conn.transaction` or manual commits when test/runtime sessions
+  omit the formal contract.
 - `uv run parallax macro status` reports migration readiness,
   observation count, concept count, history readiness, concepts below minimum
   history, latest import run, latest sync run, sync queue state,
@@ -140,6 +235,14 @@ compatibility surfaces.
   `required_bundle_series_available` is false, the packaged macrodata
   dependency is too old for the current Parallax series map even if individual
   providers can fetch data manually.
+- `MacroSyncService.enqueue_due_windows(...)` reports sync queue state only
+  through the formal `MacroIntelRepository.macro_sync_queue_summary(...)`
+  contract over persisted `macro_sync_windows`; missing method support is
+  repository/session wiring failure, not an empty queue-summary state.
+- Macro Sync provider-failure classification reads the claimed window
+  `attempt_count` and `max_attempts` directly before choosing retryable versus
+  failed state. Missing or non-positive values are malformed claim-window state,
+  not first-attempt defaults.
 - `uv run parallax db health` must report the expected migration
   version before real-data verification.
 

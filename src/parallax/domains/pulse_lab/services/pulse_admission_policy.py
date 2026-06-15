@@ -26,10 +26,11 @@ class PulseAdmissionPolicy:
         edge_events: list[str] | tuple[str, ...],
         pending_score_band: str | None,
         pending_score_band_count: int,
-        recent_failure_count: int = 0,
+        recent_failure_count: int,
+        failure_circuit_per_hour: int,
+        timeline_debounce_seconds: int,
         last_processed_at_ms: int | None = None,
         now_ms: int | None = None,
-        timeline_debounce_seconds: int = 600,
     ) -> PulseAdmissionDecision:
         previous = _mapping(previous_state)
         events = tuple(str(event) for event in edge_events if str(event or "").strip())
@@ -38,7 +39,7 @@ class PulseAdmissionPolicy:
             return PulseAdmissionDecision("suppress", active_reason, events)
         if not events:
             return PulseAdmissionDecision("suppress", "unchanged", events)
-        if recent_failure_count >= 3 and not _is_escalation(events):
+        if recent_failure_count >= max(1, int(failure_circuit_per_hour)) and not _is_escalation(events):
             return PulseAdmissionDecision("suppress", "failure_circuit_open", events)
         if events == ("score_band_crossed",):
             score_band = _clean(current_state.get("score_band"))
@@ -70,11 +71,21 @@ def _active_job_suppression_reason(job: dict[str, Any] | None) -> str | None:
     if status in {"pending", "running"}:
         return "active_job"
     if status == "failed":
-        attempt_count = _int(job.get("attempt_count"))
-        max_attempts = _int(job.get("max_attempts")) or 3
+        attempt_count, max_attempts = _failed_job_attempt_contract(job)
         if attempt_count < max_attempts:
             return "retryable_failed_job"
     return None
+
+
+def _failed_job_attempt_contract(job: dict[str, Any]) -> tuple[int, int]:
+    try:
+        attempt_count = int(job["attempt_count"])
+        max_attempts = int(job["max_attempts"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError("pulse_existing_failed_job_attempt_contract_required") from exc
+    if attempt_count < 0 or max_attempts < 1:
+        raise RuntimeError("pulse_existing_failed_job_attempt_contract_required")
+    return attempt_count, max_attempts
 
 
 def _is_escalation(edge_events: tuple[str, ...]) -> bool:
@@ -108,13 +119,6 @@ def _clean(value: Any) -> str | None:
 
 def _mapping(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
-
-
-def _int(value: Any) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return 0
 
 
 __all__ = [

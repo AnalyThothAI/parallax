@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from alembic import op
 
-
 revision = "20260609_0168"
 down_revision = "20260609_0167"
 branch_labels = None
@@ -61,7 +60,8 @@ def upgrade() -> None:
           UPDATE news_items AS items
              SET story_key = CASE
                    WHEN story_rekeys.identity_method = 'material_title_shifted_time_bucket'
-                     THEN 'news-story:title:' || story_rekeys.identity_slug || chr(58) || 't' || story_rekeys.title_bucket
+                     THEN 'news-story:title:' || story_rekeys.identity_slug || chr(58) || 't' ||
+                          story_rekeys.title_bucket
                    ELSE 'news-story:item:' || story_rekeys.identity_slug
                  END,
                  story_identity_version = 'news_story_identity_v2',

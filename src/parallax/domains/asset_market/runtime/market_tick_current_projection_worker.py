@@ -10,7 +10,6 @@ from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_result import WorkerResult
 
 ADVISORY_LOCK_KEY = 2026052401
-DEFAULT_RETRY_MS = 30_000
 
 
 class MarketTickCurrentProjectionWorker(WorkerBase):
@@ -75,14 +74,14 @@ class MarketTickCurrentProjectionWorker(WorkerBase):
     def _claim_due(self, *, now_ms: int) -> list[dict[str, Any]]:
         with self.db.worker_session(
             self.name,
-            statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
+            statement_timeout_seconds=self.settings.statement_timeout_seconds,
         ) as repos:
             return cast(
                 list[dict[str, Any]],
                 repos.market_tick_current_dirty_targets.claim_due(
-                    limit=max(1, int(getattr(self.settings, "batch_size", 100) or 100)),
+                    limit=max(1, int(self.settings.batch_size)),
                     now_ms=int(now_ms),
-                    lease_ms=max(1, int(getattr(self.settings, "lease_ms", 120_000) or 120_000)),
+                    lease_ms=max(1, int(self.settings.lease_ms)),
                     lease_owner=self.name,
                     commit=True,
                 ),
@@ -94,7 +93,7 @@ class MarketTickCurrentProjectionWorker(WorkerBase):
         token_radar_dirty_enqueued = 0
         with self.db.worker_transaction(
             self.name,
-            statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
+            statement_timeout_seconds=self.settings.statement_timeout_seconds,
         ) as repos:
             tick_row = repos.market_tick_current.latest_tick_for_target(
                 target_type=target_type,
@@ -124,12 +123,12 @@ class MarketTickCurrentProjectionWorker(WorkerBase):
     def _mark_error(self, claim: Mapping[str, Any], *, error: str, now_ms: int) -> None:
         with self.db.worker_transaction(
             self.name,
-            statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
+            statement_timeout_seconds=self.settings.statement_timeout_seconds,
         ) as repos:
             repos.market_tick_current_dirty_targets.mark_error(
                 [claim],
                 error=error,
-                retry_ms=max(1, int(getattr(self.settings, "retry_ms", DEFAULT_RETRY_MS) or DEFAULT_RETRY_MS)),
+                retry_ms=max(1, int(self.settings.retry_ms)),
                 now_ms=now_ms,
                 commit=False,
             )
@@ -139,9 +138,7 @@ class MarketTickCurrentProjectionWorker(WorkerBase):
             return
         if self.wake_emitter is None:
             return
-        notify_market_tick_current_updated = getattr(self.wake_emitter, "notify_market_tick_current_updated", None)
-        if notify_market_tick_current_updated is not None:
-            notify_market_tick_current_updated(target_type="batch", target_id="market_tick_current")
+        self.wake_emitter.notify_market_tick_current_updated(target_type="batch", target_id="market_tick_current")
 
 
 @dataclass(frozen=True)

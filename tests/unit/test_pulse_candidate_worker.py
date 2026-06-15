@@ -7,6 +7,8 @@ from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from parallax.app.runtime import providers_wiring
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_result import WorkerResult
@@ -19,8 +21,10 @@ from parallax.domains.pulse_lab.runtime.pulse_candidate_worker import (
     PulseCandidateWorker,
     _asset_candidate_id,
     _asset_trigger_metrics,
+    _terminalize_exhausted_stale_running_jobs,
 )
 from parallax.domains.pulse_lab.services import pulse_candidate_job_service as job_module
+from parallax.domains.pulse_lab.services.claim_evidence_verifier import ClaimEvidenceVerificationResult
 from parallax.domains.pulse_lab.services.evidence_completeness_gate import (
     EvidenceCompletenessGateResult,
 )
@@ -99,7 +103,7 @@ def test_default_trigger_floor_enqueues_rank_45_without_decision_or_watched_shor
         _radar_row(
             factor_snapshot_json=_factor_snapshot(
                 rank_score=45,
-                recommended_decision="low_info",
+                recommended_decision="discard",
                 watched_mentions=0,
             )
         )
@@ -120,7 +124,7 @@ def test_default_trigger_floor_skips_rank_44_without_decision_or_watched_shortcu
         _radar_row(
             factor_snapshot_json=_factor_snapshot(
                 rank_score=44,
-                recommended_decision="low_info",
+                recommended_decision="discard",
                 watched_mentions=0,
             )
         )
@@ -142,7 +146,7 @@ def test_watched_only_rank_44_is_not_enqueued() -> None:
         _radar_row(
             factor_snapshot_json=_factor_snapshot(
                 rank_score=44,
-                recommended_decision="low_info",
+                recommended_decision="discard",
                 watched_mentions=1,
                 unique_authors=1,
                 independent_authors=1,
@@ -196,7 +200,7 @@ def test_abstain_decision_maps_to_evidence_insufficient_outcome() -> None:
         display_status="display_trade_candidate",
     )
 
-    assert _run_outcome(final_decision, evidence_gate=gate, claim_verification_valid=True) == (
+    assert _run_outcome(final_decision, evidence_gate=gate, claim_verification=_valid_claim_verification()) == (
         "abstain_insufficient_evidence"
     )
 
@@ -234,8 +238,19 @@ def test_invalid_ref_abstain_maps_to_unknown_evidence_outcome() -> None:
         display_status="display_trade_candidate",
     )
 
-    assert _run_outcome(final_decision, evidence_gate=gate, claim_verification_valid=True) == (
+    assert _run_outcome(final_decision, evidence_gate=gate, claim_verification=_valid_claim_verification()) == (
         "invalid_unknown_evidence_ref"
+    )
+
+
+def _valid_claim_verification() -> ClaimEvidenceVerificationResult:
+    return ClaimEvidenceVerificationResult(
+        valid=True,
+        unknown_ref_ids=(),
+        unsupported_claims=(),
+        missing_required_ref_claims=(),
+        decision_status="valid",
+        display_status_if_failed=None,
     )
 
 
@@ -412,6 +427,27 @@ def test_low_information_gate_hides_existing_public_candidate_without_hydration(
     assert repos.pulse_candidates.candidates[candidate_id]["pulse_status"] == "blocked_low_information"
     assert repos.pulse_candidates.candidates[candidate_id]["source_event_ids_json"] == ["event-1"]
     assert repos.pulse_candidates.low_information_hides == [candidate_id]
+
+
+def test_low_information_hide_requires_repository_contract() -> None:
+    repos = FakeRepos()
+    snapshot = _factor_snapshot(rank_score=82)
+    snapshot["gates"]["eligible_for_high_alert"] = False
+    snapshot["gates"]["blocked_reasons"] = []
+    snapshot["gates"]["risk_reasons"] = []
+    repos.token_radar.rows = [_radar_row(factor_snapshot_json=snapshot)]
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+    repos.pulse_candidates = MissingLowInformationHidePulseCandidates()
+    worker = _worker(repos, settings=_settings(trigger_error_retry_ms=12_345))
+
+    result = worker.scan_triggers_once(now_ms=NOW_MS)
+
+    assert result["dirty_triggers_failed"] == 1
+    assert result["dirty_triggers_done"] == 0
+    assert repos.pulse_trigger_dirty_targets.done == []
+    assert repos.pulse_trigger_dirty_targets.errors
+    assert "hide_public_candidate_for_low_information" in repos.pulse_trigger_dirty_targets.errors[0]["error"]
+    assert repos.pulse_trigger_dirty_targets.errors[0]["retry_ms"] == 12_345
 
 
 def test_low_information_hide_advances_edge_state_so_public_recovery_reenqueues() -> None:
@@ -687,6 +723,39 @@ def test_worker_suppresses_unchanged_edge_state_without_cooldown_compatibility()
     assert repos.pulse_jobs.jobs == []
 
 
+def test_malformed_failed_existing_job_fails_dirty_trigger_instead_of_defaulting_attempts() -> None:
+    repos = FakeRepos()
+    snapshot = _factor_snapshot(rank_score=82)
+    repos.token_radar.rows = [_radar_row(factor_snapshot_json=snapshot)]
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+    candidate_id = _asset_candidate_id(
+        candidate_type="token_target",
+        window="1h",
+        scope="all",
+        target_type="Asset",
+        target_id="asset-1",
+    )
+    repos.pulse_jobs.jobs.append(
+        {
+            "job_id": "job-malformed-failed",
+            "candidate_id": candidate_id,
+            "status": "failed",
+            "attempt_count": 1,
+            "window": "1h",
+            "scope": "all",
+        }
+    )
+    worker = _worker(repos)
+
+    result = worker.scan_triggers_once(now_ms=NOW_MS)
+
+    assert result["dirty_triggers_failed"] == 1
+    assert result["dirty_triggers_done"] == 0
+    assert repos.pulse_trigger_dirty_targets.done == []
+    assert repos.pulse_trigger_dirty_targets.errors
+    assert "pulse_existing_failed_job_attempt_contract_required" in repos.pulse_trigger_dirty_targets.errors[0]["error"]
+
+
 def test_worker_can_be_woken_by_token_radar_update_before_interval() -> None:
     repos = FakeRepos()
     wake_listener = FakeWakeListener()
@@ -726,6 +795,28 @@ def test_edge_budget_caps_candidate_enqueues_per_hour() -> None:
     assert result["asset_enqueued"] == 0
     assert result["asset_skipped"] == 1
     assert repos.pulse_jobs.jobs == []
+
+
+def test_edge_budget_uses_formal_candidate_limit_setting() -> None:
+    repos = FakeRepos()
+    snapshot = _factor_snapshot(rank_score=82)
+    repos.token_radar.rows = [_radar_row(factor_snapshot_json=snapshot)]
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+    candidate_id = _asset_candidate_id(
+        candidate_type="token_target",
+        window="1h",
+        scope="all",
+        target_type="Asset",
+        target_id="asset-1",
+    )
+    repos.pulse_admission.budget_claims[(candidate_id, NOW_MS // 3_600_000 * 3_600_000)] = 3
+    worker = _worker(repos, settings=_settings(candidate_edge_budget_per_hour=4))
+
+    result = worker.scan_triggers_once(now_ms=NOW_MS)
+
+    assert result["asset_enqueued"] == 1
+    assert repos.pulse_admission.admission_claims[-1]["candidate_limit"] == 4
+    assert repos.pulse_jobs.jobs
 
 
 def test_score_band_only_edge_waits_for_confirmation_without_job() -> None:
@@ -789,6 +880,8 @@ def test_admission_policy_debounces_timeline_only_edge_inside_window() -> None:
         edge_events=("timeline_evidence_changed",),
         pending_score_band=None,
         pending_score_band_count=0,
+        recent_failure_count=0,
+        failure_circuit_per_hour=3,
         last_processed_at_ms=NOW_MS - 120_000,
         now_ms=NOW_MS,
         timeline_debounce_seconds=600,
@@ -806,6 +899,8 @@ def test_admission_policy_escalation_and_hard_risk_bypass_timeline_debounce() ->
         edge_events=("timeline_evidence_changed", "pulse_status_changed"),
         pending_score_band=None,
         pending_score_band_count=0,
+        recent_failure_count=0,
+        failure_circuit_per_hour=3,
         last_processed_at_ms=NOW_MS - 120_000,
         now_ms=NOW_MS,
         timeline_debounce_seconds=600,
@@ -817,6 +912,8 @@ def test_admission_policy_escalation_and_hard_risk_bypass_timeline_debounce() ->
         edge_events=("timeline_evidence_changed", "hard_risk_added"),
         pending_score_band=None,
         pending_score_band_count=0,
+        recent_failure_count=0,
+        failure_circuit_per_hour=3,
         last_processed_at_ms=NOW_MS - 120_000,
         now_ms=NOW_MS,
         timeline_debounce_seconds=600,
@@ -836,6 +933,8 @@ def test_admission_policy_score_band_confirmation_still_requires_second_observat
         edge_events=("score_band_crossed",),
         pending_score_band=None,
         pending_score_band_count=0,
+        recent_failure_count=0,
+        failure_circuit_per_hour=3,
         last_processed_at_ms=NOW_MS - 120_000,
         now_ms=NOW_MS,
         timeline_debounce_seconds=600,
@@ -847,6 +946,8 @@ def test_admission_policy_score_band_confirmation_still_requires_second_observat
         edge_events=("score_band_crossed",),
         pending_score_band="high_conviction",
         pending_score_band_count=1,
+        recent_failure_count=0,
+        failure_circuit_per_hour=3,
         last_processed_at_ms=NOW_MS - 120_000,
         now_ms=NOW_MS,
         timeline_debounce_seconds=600,
@@ -889,6 +990,44 @@ def test_recent_schema_failure_circuit_suppresses_non_escalation_edge() -> None:
     assert repos.pulse_jobs.jobs == []
     edge = repos.pulse_admission.edge_states[candidate_id]
     assert edge["last_suppressed_reason"] == "failure_circuit_open"
+
+
+def test_recent_schema_failure_circuit_uses_formal_threshold_and_reason_settings() -> None:
+    repos = FakeRepos()
+    repos.pulse_admission.recent_failure_count = 3
+    snapshot = _factor_snapshot(rank_score=82)
+    repos.token_radar.rows = [_radar_row(factor_snapshot_json=snapshot)]
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+    candidate_id = _asset_candidate_id(
+        candidate_type="token_target",
+        window="1h",
+        scope="all",
+        target_type="Asset",
+        target_id="asset-1",
+    )
+    repos.pulse_admission.edge_states[candidate_id] = {
+        "candidate_id": candidate_id,
+        "last_processed_state_json": _processed_edge_state(
+            candidate_id=candidate_id,
+            pulse_status="trade_candidate",
+            score_band="watch",
+        ),
+        "pending_score_band": "high_conviction",
+        "pending_score_band_count": 1,
+    }
+    worker = _worker(
+        repos,
+        settings=_settings(
+            failure_circuit_per_hour=4,
+            failure_circuit_reasons=("schema_validation_failed",),
+        ),
+    )
+
+    result = worker.scan_triggers_once(now_ms=NOW_MS)
+
+    assert result["asset_enqueued"] == 1
+    assert repos.pulse_admission.recent_failure_calls[-1]["reasons"] == ("schema_validation_failed",)
+    assert repos.pulse_jobs.jobs
 
 
 def test_recent_schema_failure_circuit_does_not_suppress_escalation_edge() -> None:
@@ -942,6 +1081,7 @@ def test_scan_global_pending_cap_bounds_enqueues_across_windows_and_scopes() -> 
             max_enqueues_per_cycle=10,
             max_pending_jobs_global=2,
             max_pending_jobs_per_window_scope=10,
+            trigger_capacity_retry_ms=4_242,
         ),
     )
 
@@ -952,6 +1092,7 @@ def test_scan_global_pending_cap_bounds_enqueues_across_windows_and_scopes() -> 
     assert result["asset_skipped"] == 2
     assert result["asset_suppressed_pending_global"] == 2
     assert result["dirty_triggers_rescheduled"] == 2
+    assert {call["due_at_ms"] for call in repos.pulse_trigger_dirty_targets.rescheduled} == {NOW_MS + 4_242}
     assert len(repos.pulse_jobs.jobs) == 2
 
 
@@ -1206,6 +1347,120 @@ def test_pulse_worker_run_once_returns_worker_result() -> None:
     assert repos.db_worker_sessions[0] == {"name": "pulse_candidate", "statement_timeout_seconds": 30.0}
 
 
+def test_pulse_worker_requires_formal_settings_db_and_client_contract() -> None:
+    repos = FakeRepos()
+    settings = _settings()
+
+    with pytest.raises(RuntimeError, match="pulse_candidate_settings_required"):
+        PulseCandidateWorker(
+            name="pulse_candidate",
+            settings=None,
+            db=FakeDB(repos),
+            telemetry=object(),
+            decision_client=FakeClient(),
+        )
+    with pytest.raises(RuntimeError, match="pulse_candidate_db_required"):
+        PulseCandidateWorker(
+            name="pulse_candidate",
+            settings=settings,
+            db=None,
+            telemetry=object(),
+            decision_client=FakeClient(),
+        )
+    with pytest.raises(RuntimeError, match="pulse_candidate_decision_client_required"):
+        PulseCandidateWorker(
+            name="pulse_candidate",
+            settings=settings,
+            db=FakeDB(repos),
+            telemetry=object(),
+            decision_client=None,
+        )
+
+
+def test_pulse_worker_uses_formal_settings_fields_and_session_timeout() -> None:
+    repos = FakeRepos()
+    settings = _settings(
+        windows=("4h",),
+        scopes=("matched",),
+        batch_size=3,
+        max_agent_jobs_per_cycle=4,
+        max_attempts=5,
+        max_enqueues_per_cycle=6,
+        max_pending_jobs_global=7,
+        max_pending_jobs_per_window_scope=8,
+        stale_running_terminalization_batch_size=16,
+        trigger_lease_ms=9,
+        trigger_capacity_retry_ms=10,
+        trigger_error_retry_ms=11,
+        target_edge_budget_per_hour=12,
+        candidate_edge_budget_per_hour=13,
+        failure_circuit_per_hour=14,
+        timeline_debounce_seconds=15,
+        failure_circuit_reasons=("schema_validation_failed",),
+        statement_timeout_seconds=13.0,
+        trigger_thresholds=SimpleNamespace(min_rank_score=64),
+        gate_thresholds=SimpleNamespace(
+            trade_candidate_min=73,
+            token_watch_min=46,
+            high_info_rejection_min=31,
+            high_conviction_min=79,
+        ),
+    )
+
+    worker = _worker(repos, settings=settings)
+
+    assert worker.windows == ("4h",)
+    assert worker.scopes == ("matched",)
+    assert worker.batch_size == 3
+    assert worker.max_agent_jobs_per_cycle == 4
+    assert worker.max_attempts == 5
+    assert worker.max_enqueues_per_cycle == 6
+    assert worker.max_pending_jobs_global == 7
+    assert worker.max_pending_jobs_per_window_scope == 8
+    assert worker.stale_running_terminalization_batch_size == 16
+    assert worker.trigger_lease_ms == 9
+    assert worker.trigger_capacity_retry_ms == 10
+    assert worker.trigger_error_retry_ms == 11
+    assert worker.target_edge_budget_per_hour == 12
+    assert worker.candidate_edge_budget_per_hour == 13
+    assert worker.failure_circuit_per_hour == 14
+    assert worker.timeline_debounce_seconds == 15
+    assert worker.failure_circuit_reasons == ("schema_validation_failed",)
+    assert worker.trigger_thresholds.min_rank_score == 64
+    assert worker.gate_thresholds.trade_candidate_min == 73
+    assert worker.gate_thresholds.token_watch_min == 46
+    assert worker.gate_thresholds.high_info_rejection_min == 31
+    assert worker.gate_thresholds.high_conviction_min == 79
+
+    result = asyncio.run(worker.run_once(now_ms=NOW_MS))
+
+    assert result.processed == 0
+    assert repos.pulse_trigger_dirty_targets.claim_due_calls[0]["lease_ms"] == 9
+    assert repos.db_worker_sessions[0] == {"name": "pulse_candidate", "statement_timeout_seconds": 13.0}
+
+
+def test_terminalize_exhausted_stale_running_jobs_uses_formal_batch_limit() -> None:
+    class PulseJobs:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, int]] = []
+
+        def terminalize_exhausted_stale_running_jobs(self, *, now_ms: int, stale_after_ms: int, limit: int) -> int:
+            self.calls.append({"now_ms": now_ms, "stale_after_ms": stale_after_ms, "limit": limit})
+            return 2
+
+    pulse_jobs = PulseJobs()
+
+    result = _terminalize_exhausted_stale_running_jobs(
+        pulse_jobs,
+        now_ms=NOW_MS,
+        running_timeout_ms=300_000,
+        limit=7,
+    )
+
+    assert result == 2
+    assert pulse_jobs.calls == [{"now_ms": NOW_MS, "stale_after_ms": 300_000, "limit": 7}]
+
+
 def test_pulse_worker_aclose_keeps_base_cleanup_owner() -> None:
     repos = FakeRepos()
     lock = TrackingAdvisoryLock()
@@ -1219,6 +1474,21 @@ def test_pulse_worker_aclose_keeps_base_cleanup_owner() -> None:
     assert lock.released is True
     assert worker._advisory_lock_connection is None
     assert worker._closed is True
+
+
+def test_pulse_worker_aclose_requires_decision_client_aclose_contract_without_close_fallback() -> None:
+    repos = FakeRepos()
+    client = CloseOnlyFakeClient()
+    worker = _worker(repos, client=client)
+
+    try:
+        asyncio.run(worker.aclose())
+    except RuntimeError as exc:
+        assert "pulse_candidate_decision_client_aclose_required" in str(exc)
+    else:
+        raise AssertionError("expected Pulse candidate provider cleanup to require decision_client.aclose()")
+
+    assert client.close_calls == 0
 
 
 def test_process_due_jobs_does_not_claim_when_agent_capacity_denied() -> None:
@@ -1365,6 +1635,17 @@ def _settings(**overrides: Any) -> SimpleNamespace:
         "max_enqueues_per_cycle": 10,
         "max_pending_jobs_global": 100,
         "max_pending_jobs_per_window_scope": 25,
+        "job_running_timeout_ms": 300_000,
+        "stale_running_terminalization_batch_size": 100,
+        "trigger_lease_ms": 60_000,
+        "trigger_capacity_retry_ms": 30_000,
+        "trigger_error_retry_ms": 60_000,
+        "target_edge_budget_per_hour": 3,
+        "candidate_edge_budget_per_hour": 3,
+        "failure_circuit_per_hour": 3,
+        "failure_circuit_reasons": ("schema_validation_failed", "unknown_evidence_id"),
+        "timeline_debounce_seconds": 600,
+        "evidence_market_freshness_ms": 3_600_000,
         "stale_job_ttl_by_window_seconds": {},
         "trigger_thresholds": SimpleNamespace(min_rank_score=45),
         "gate_thresholds": SimpleNamespace(
@@ -1546,6 +1827,11 @@ class FakeRepos:
         self.pulse_evidence_sources = pulse_state
         self.db_worker_sessions: list[dict[str, Any]] = []
 
+    @contextmanager
+    def transaction(self):
+        with self.conn.transaction():
+            yield
+
 
 class FakeConn:
     @contextmanager
@@ -1616,6 +1902,7 @@ class FakePulseTriggerDirtyTargets:
         self.windows = ("1h",)
         self.scopes = ("all",)
         self.claim_calls = 0
+        self.claim_due_calls: list[dict[str, Any]] = []
         self.done: list[dict[str, Any]] = []
         self.errors: list[dict[str, Any]] = []
         self.rescheduled: list[dict[str, Any]] = []
@@ -1627,8 +1914,9 @@ class FakePulseTriggerDirtyTargets:
     def queue_depth(self, **_: Any) -> int:
         return len(self._claim_candidates())
 
-    def claim_due(self, *, limit: int, **_: Any) -> list[dict[str, Any]]:
+    def claim_due(self, *, limit: int, **kwargs: Any) -> list[dict[str, Any]]:
         self.claim_calls += 1
+        self.claim_due_calls.append({"limit": limit, **kwargs})
         return self._claim_candidates()[: max(0, int(limit))]
 
     def mark_done(self, claims: list[dict[str, Any]], **_: Any) -> int:
@@ -1696,6 +1984,10 @@ class FakeTokenTargets:
         return rows[: int(call.get("limit") or len(rows))]
 
 
+class MissingLowInformationHidePulseCandidates:
+    pass
+
+
 class FakePulseStore:
     def __init__(self) -> None:
         self.jobs: list[dict[str, Any]] = []
@@ -1704,6 +1996,7 @@ class FakePulseStore:
         self.budget_claims: dict[tuple[str, int], int] = {}
         self.target_budget_claims: dict[tuple[str, str, int], int] = {}
         self.recent_failure_count = 0
+        self.recent_failure_calls: list[dict[str, Any]] = []
         self.agent_runs: list[dict[str, Any]] = []
         self.agent_run_steps: list[dict[str, Any]] = []
         self.finished_runs: list[dict[str, Any]] = []
@@ -1750,6 +2043,7 @@ class FakePulseStore:
                 "source_table": "asset_identity_current",
             }
         ]
+        self.discussion_digest: dict[str, Any] | None = None
 
     def candidate_by_id(self, candidate_id: str) -> dict[str, Any] | None:
         return self.candidates.get(candidate_id)
@@ -1888,7 +2182,8 @@ class FakePulseStore:
         self.edge_states[candidate_id] = row
         return row
 
-    def recent_target_failure_count(self, **_: Any) -> int:
+    def recent_target_failure_count(self, **kwargs: Any) -> int:
+        self.recent_failure_calls.append(dict(kwargs))
         return self.recent_failure_count
 
     def pending_agent_job_count(self) -> int:
@@ -1925,7 +2220,7 @@ class FakePulseStore:
         *,
         now_ms: int,
         stale_after_ms: int,
-        limit: int = 100,
+        limit: int,
         **_: Any,
     ) -> int:
         count = 0
@@ -1953,7 +2248,7 @@ class FakePulseStore:
             "job_id": f"job-{len(self.jobs) + 1}",
             "status": "pending",
             "attempt_count": 0,
-            "max_attempts": kwargs.get("max_attempts", 3),
+            "max_attempts": kwargs["max_attempts"],
             "created_at_ms": kwargs.get("now_ms"),
             "updated_at_ms": kwargs.get("now_ms"),
         }
@@ -2028,6 +2323,17 @@ class FakePulseStore:
 
     def list_identity_facts(self, context: Any) -> list[dict[str, Any]]:
         return list(self.identity_facts)
+
+    def get_current_discussion_digest(
+        self,
+        *,
+        target_type: str,
+        target_id: str,
+        window: str,
+        scope: str,
+        schema_version: str,
+    ) -> dict[str, Any] | None:
+        return self.discussion_digest
 
     def mark_job_succeeded(self, job_id: str, **_: Any) -> dict[str, Any]:
         for job in self.jobs:
@@ -2162,6 +2468,7 @@ class FakeClient:
         runtime_manifest: dict[str, Any],
     ) -> dict[str, Any]:
         self.contexts.append(context)
+        runtime_hash = job_module.pulse_runtime_hash(runtime_manifest)
         return {
             "backend": "fake",
             "execution_trace_id": f"trace-{run_id}",
@@ -2171,13 +2478,13 @@ class FakeClient:
             "schema_version": "pulse_decision_v1",
             "artifact_version_hash": self.artifact_version_hash,
             "runtime_version": runtime_manifest["runtime_version"],
-            "runtime_hash": "sha256:fake-runtime",
+            "runtime_hash": runtime_hash,
             "trace_metadata": {
                 "candidate_id": context["candidate_id"],
                 "route": route,
                 "completeness": completeness,
                 "runtime_version": runtime_manifest["runtime_version"],
-                "runtime_hash": "sha256:fake-runtime",
+                "runtime_hash": runtime_hash,
             },
             "input_hash": "input-hash",
         }
@@ -2361,6 +2668,15 @@ class ClosingFakeClient(FakeClient):
 
     async def aclose(self) -> None:
         self.closed = True
+
+
+class CloseOnlyFakeClient(FakeClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self.close_calls = 0
+
+    def close(self) -> None:
+        self.close_calls += 1
 
 
 class FakeWakeListener:

@@ -76,67 +76,6 @@ class WorkerStatusData(ApiSchema):
     details: JsonObject = Field(default_factory=dict)
 
 
-class NarrativeSemanticBacklog(ApiSchema):
-    total_pending: int = 0
-    estimated_semantic_drain_seconds: int = 0
-    current_source_rows: int = 0
-    semantic_rows_for_current_sources: int = 0
-    missing_semantic_rows: int = 0
-    admissions_with_missing_semantics: int = 0
-    pending_existing_rows: int = 0
-    queued: int = 0
-    retryable: int = 0
-    stale: int = 0
-    unavailable: int = 0
-    suppressed_current_digest_count: int = 0
-    stale_fingerprint_current_digest_count: int = 0
-    oldest_due_age_ms: int | None = None
-
-
-class NarrativeRunHealth(ApiSchema):
-    success: int = 0
-    failure: int = 0
-    timeout: int = 0
-
-
-class NarrativeAdmissionHealth(ApiSchema):
-    current_admissions: int = 0
-    suppressed_admissions: int = 0
-    current_source_events: int = 0
-    current_independent_authors: int = 0
-
-
-class NarrativeEpochHealth(ApiSchema):
-    epoch_policy_version: str | None = None
-    unsupported_window_admissions: int = 0
-    last_ready_digest_count: int = 0
-    updating_snapshot_count: int = 0
-    material_delta_due_count: int = 0
-    no_material_delta_deferred_count: int = 0
-    last_ready_p50_age_ms: int | None = None
-    last_ready_p95_age_ms: int | None = None
-    delta_source_rows: int = 0
-    delta_independent_authors: int = 0
-    digest_refresh_due_by_window: dict[str, int] = Field(default_factory=dict)
-    digest_refresh_deferred_by_epoch_policy: dict[str, int] = Field(default_factory=dict)
-
-
-class NarrativeBacklogHealthData(ApiSchema):
-    schema_version: str | None = None
-    now_ms: int | None = None
-    since_hours: int = 4
-    realtime_windows: list[str] = Field(default_factory=list)
-    realtime_scopes: list[str] = Field(default_factory=list)
-    admissions: NarrativeAdmissionHealth = Field(default_factory=NarrativeAdmissionHealth)
-    semantic_backlog: NarrativeSemanticBacklog = Field(default_factory=NarrativeSemanticBacklog)
-    epoch: NarrativeEpochHealth = Field(default_factory=NarrativeEpochHealth)
-    recent_runs: dict[str, NarrativeRunHealth] = Field(default_factory=dict)
-    digest_status_counts: dict[str, int] = Field(default_factory=dict)
-    digest_reason_counts: dict[str, int] = Field(default_factory=dict)
-    pending_digest_count: int = 0
-    estimated_digest_drain_seconds: int = 0
-
-
 class RecentData(ApiSchema):
     scope: str
     events: list[JsonObject] = Field(default_factory=list)
@@ -558,7 +497,6 @@ class SignalPulseDecision(ApiSchema):
 class SignalPulseHealth(ApiSchema):
     pulse_ready: bool | None = None
     public_ready: bool | None = None
-    agent_worker_running: bool | None = None
     candidate_count: int | None = None
     public_candidate_count: int | None = None
     hidden_candidate_count: int | None = None
@@ -634,7 +572,6 @@ class SignalPulseData(ApiSchema):
     has_more: bool | None = None
     total_count: int | None = None
     returned_count: int | None = None
-    agent_worker_running: bool | None = None
 
 
 class SourceEventDetail(ApiSchema):

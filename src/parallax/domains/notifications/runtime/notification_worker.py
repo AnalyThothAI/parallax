@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Callable
-from contextlib import AbstractContextManager, nullcontext
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
@@ -14,6 +14,7 @@ from parallax.domains.notifications.types import NotificationCandidate
 if TYPE_CHECKING:
     from parallax.app.runtime.repository_session import RepositorySession
     from parallax.domains.notifications.repositories.notification_repository import (
+        NotificationInsertOutcome,
         NotificationRepository,
     )
     from parallax.platform.config.settings import NotificationChannelConfig
@@ -39,9 +40,13 @@ class NotificationWorker(WorkerBase):
         publisher: Any = None,
         delivery_channels: dict[str, NotificationChannelConfig] | None = None,
         rule_engine_factory: Callable[[Any], Any] | None = None,
-        delivery_max_attempts: int = 5,
+        delivery_max_attempts: int,
         delivery_wake: Any | None = None,
     ) -> None:
+        if settings is None:
+            raise RuntimeError("notification_rule_settings_required")
+        if db is None:
+            raise RuntimeError("notification_rule_db_required")
         super().__init__(name=name, settings=settings, db=db, telemetry=telemetry)
         self.rule_engine_factory = rule_engine_factory
         self.rule_engine = rule_engine
@@ -49,7 +54,7 @@ class NotificationWorker(WorkerBase):
         self.delivery_channels = delivery_channels or {}
         self.delivery_max_attempts = max(1, int(delivery_max_attempts))
         self.delivery_wake = delivery_wake
-        self.batch_limit = max(1, int(getattr(settings, "batch_size", 50) or 50))
+        self.batch_limit = max(1, int(settings.batch_size))
 
     async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
         result = await self._process_once(now_ms=now_ms)
@@ -74,23 +79,21 @@ class NotificationWorker(WorkerBase):
             for row in result.created:
                 await self.publisher.publish({"type": "notification", "notification": row})
         if result.external_deliveries_enqueued and self.delivery_wake is not None:
-            wake = getattr(self.delivery_wake, "wake", None)
-            if wake is not None:
-                wake()
+            self.delivery_wake.wake()
         return result
 
     def _process_once_sync(self, *, now_ms: int) -> NotificationProcessResult:
-        with self._repository_session() as repos, _unit_of_work_if_available(repos):
+        with self._repository_session() as repos, repos.unit_of_work():
             rule_engine = self.rule_engine_factory(repos) if self.rule_engine_factory is not None else self.rule_engine
             candidates = list(rule_engine.evaluate(now_ms=now_ms))
             created: list[dict[str, Any]] = []
             external_deliveries_enqueued = False
             for candidate in candidates:
                 outcome = self._insert_candidate_with_repository(repos.notifications, candidate)
-                row = getattr(outcome, "row", outcome)
+                row = outcome.row
                 if row is None:
                     continue
-                if bool(getattr(outcome, "created", True)):
+                if outcome.created:
                     external_deliveries_enqueued = (
                         self._enqueue_external_deliveries_with_repository(repos.notifications, row, candidate)
                         or external_deliveries_enqueued
@@ -98,7 +101,7 @@ class NotificationWorker(WorkerBase):
                     created.append(row)
                     if len(created) >= self.batch_limit:
                         break
-                elif bool(getattr(outcome, "aggregated", False)) and _reactivate_aggregated_delivery(candidate):
+                elif outcome.aggregated and _reactivate_aggregated_delivery(candidate):
                     external_deliveries_enqueued = (
                         self._enqueue_external_deliveries_with_repository(
                             repos.notifications,
@@ -108,15 +111,15 @@ class NotificationWorker(WorkerBase):
                         )
                         or external_deliveries_enqueued
                     )
-            if not _has_unit_of_work(repos):
-                _commit_if_available(getattr(repos, "notifications", None))
         return NotificationProcessResult(
             created=created,
             external_deliveries_enqueued=external_deliveries_enqueued,
         )
 
     @staticmethod
-    def _insert_candidate_with_repository(repository: NotificationRepository, candidate: NotificationCandidate) -> Any:
+    def _insert_candidate_with_repository(
+        repository: NotificationRepository, candidate: NotificationCandidate
+    ) -> NotificationInsertOutcome:
         return repository.insert_notification_with_outcome(
             dedup_key=candidate.dedup_key,
             rule_id=candidate.rule_id,
@@ -157,13 +160,7 @@ class NotificationWorker(WorkerBase):
                 continue
             if SEVERITY_RANK.get(candidate.severity, 0) < SEVERITY_RANK.get(channel.min_severity, 1):
                 continue
-            enqueue = (
-                getattr(repository, "enqueue_or_requeue_delivery", None)
-                if reactivate_failed
-                else repository.enqueue_delivery
-            )
-            if enqueue is None:
-                enqueue = repository.enqueue_delivery
+            enqueue = repository.enqueue_or_requeue_delivery if reactivate_failed else repository.enqueue_delivery
             delivery = enqueue(
                 notification_id=str(row["notification_id"]),
                 channel_id=channel_id,
@@ -179,31 +176,13 @@ class NotificationWorker(WorkerBase):
             "AbstractContextManager[RepositorySession]",
             self.db.worker_session(
                 self.name,
-                statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
+                statement_timeout_seconds=self.settings.statement_timeout_seconds,
             ),
         )
 
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
-
-
-def _commit_if_available(repository: Any) -> None:
-    conn = getattr(repository, "conn", None)
-    commit = getattr(conn, "commit", None)
-    if commit is not None:
-        commit()
-
-
-def _has_unit_of_work(repos: Any) -> bool:
-    return getattr(repos, "unit_of_work", None) is not None
-
-
-def _unit_of_work_if_available(repos: Any) -> AbstractContextManager[Any]:
-    unit_of_work = getattr(repos, "unit_of_work", None)
-    if unit_of_work is None:
-        return nullcontext()
-    return cast("AbstractContextManager[Any]", unit_of_work())
 
 
 def _delivery_channels(row: dict[str, Any], candidate: NotificationCandidate) -> tuple[str, ...]:

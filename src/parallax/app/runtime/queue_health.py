@@ -100,7 +100,6 @@ CONTRACT_FAILURE_ERROR_CODES = frozenset(
         "adapter_query_failure",
         "connection_context_enter_failure",
         "manifest_mismatch",
-        "missing_connection",
         "queue_table_unavailable",
     }
 )
@@ -117,23 +116,13 @@ def fill_worker_queue_healths(
     *,
     now_ms: int | None = None,
 ) -> None:
-    db = getattr(runtime, "db", None)
-    api_pool = getattr(db, "api_pool", None)
-    connection = getattr(api_pool, "connection", None)
     worker_tables = worker_queue_health_tables()
     resolved_now_ms = int(now_ms if now_ms is not None else time.time() * 1000)
     if _fill_cached_worker_queue_healths(workers, runtime, worker_tables, now_ms=resolved_now_ms):
         return
-    if not callable(connection):
-        _fill_unavailable_worker_queue_healths(
-            workers,
-            worker_tables,
-            error_code="missing_connection",
-            exc=None,
-        )
-        return
+    connection_context = runtime.db.api_pool.connection()
     try:
-        with connection() as conn:
+        with connection_context as conn:
             for worker_name, tables in worker_tables.items():
                 table_health = {
                     table: fetch_queue_table_health(

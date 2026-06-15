@@ -14,6 +14,8 @@ from parallax.domains.evidence.interfaces import EVM_QUERY_CHAINS, normalize_ca
 from parallax.domains.ingestion.services.subscriptions import normalize_handles
 
 DEFAULT_SEND_TIMEOUT_SECONDS = 0.25
+MAX_REPLAY_LIMIT = 1000
+MAX_SUBSCRIPTION_FILTER_VALUES = 50
 
 
 @dataclass(eq=False)
@@ -109,37 +111,60 @@ class PublicWebSocketHub:
             await client.websocket.send_text(_json_message({"type": "error", "code": "unsupported_message"}))
             return
 
-        client.handles = normalize_handles(message.get("handles") or [])
+        handles = normalize_handles(message.get("handles") or [])
         try:
-            client.cas = _normalize_cas(message.get("cas") or message.get("ca") or [])
+            cas = _normalize_cas(message.get("cas") or message.get("ca") or [])
         except ValueError:
             await client.websocket.send_text(_json_message({"type": "error", "code": "invalid_ca"}))
             return
-        client.symbols = _normalize_symbols(message.get("symbols") or message.get("tokens") or [])
-        client.market_targets = _normalize_market_targets(message.get("market_targets") or [])
-        client.notifications = bool(message.get("notifications"))
+        symbols = _normalize_symbols(message.get("symbols") or message.get("tokens") or [])
+        market_targets = _normalize_market_targets(message.get("market_targets") or [])
+        if _subscription_filter_count(handles=handles, cas=cas, symbols=symbols, market_targets=market_targets) > (
+            MAX_SUBSCRIPTION_FILTER_VALUES
+        ):
+            await client.websocket.send_text(
+                _json_message(
+                    {
+                        "type": "error",
+                        "code": "too_many_filters",
+                        "limit": MAX_SUBSCRIPTION_FILTER_VALUES,
+                    }
+                )
+            )
+            return
+
         replay_limit = _replay_limit(message.get("replay"), self.default_replay_limit)
+        client.handles = handles
+        client.cas = cas
+        client.symbols = symbols
+        client.market_targets = market_targets
+        client.notifications = bool(message.get("notifications"))
         replay_events = self._replay_events(client, replay_limit)
         for payload in reversed(replay_events):
             await client.websocket.send_text(_json_message(payload))
 
     def _replay_events(self, client: ClientSubscription, limit: int) -> list[dict[str, Any]]:
+        if limit <= 0:
+            return []
         collected: dict[str, dict[str, Any]] = {}
         with self.repository_session() as repos:
             if client.cas or client.symbols:
-                for chain, ca in client.cas:
-                    for event in repos.evidence.recent_events(limit=limit, ca=ca, chain=chain):
-                        collected[event["event_id"]] = self._payload_for_event(repos, event)
-                for symbol in client.symbols:
-                    for event in repos.evidence.recent_events(limit=limit, symbol=symbol):
-                        collected[event["event_id"]] = self._payload_for_event(repos, event)
-                payloads = list(collected.values())
-                payloads.sort(key=lambda item: item["event"].get("received_at_ms") or 0, reverse=True)
-                return payloads[:limit]
-            return [
-                self._payload_for_event(repos, event)
-                for event in repos.evidence.recent_events(limit=limit, handles=client.handles)
-            ]
+                per_filter_limit = _per_filter_replay_limit(
+                    total_limit=limit,
+                    filter_count=len(client.cas) + len(client.symbols),
+                )
+                for event in repos.evidence.recent_events_for_token_filters(
+                    limit=limit,
+                    per_filter_limit=per_filter_limit,
+                    cas=client.cas,
+                    symbols=client.symbols,
+                ):
+                    collected[str(event["event_id"])] = event
+                events = list(collected.values())
+                events.sort(key=lambda item: item.get("received_at_ms") or 0, reverse=True)
+                return self._payloads_for_events(repos, events[:limit])
+            events = repos.evidence.recent_events(limit=limit, handles=client.handles)
+            return self._payloads_for_events(repos, events)
 
     def _payload_matches_subscription(self, payload: dict[str, Any], client: ClientSubscription) -> bool:
         if payload.get("type") == "notification":
@@ -187,6 +212,25 @@ class PublicWebSocketHub:
             "token_resolutions": repos.event_tokens.for_event(event_id),
         }
 
+    @staticmethod
+    def _payloads_for_events(repos, events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        event_ids = tuple(str(event["event_id"]) for event in events)
+        entities_by_event = repos.entities.entities_for_events(event_ids)
+        alerts_by_event = repos.signals.alerts_for_events(event_ids)
+        intents_by_event = repos.token_intents.intents_for_events(event_ids)
+        token_resolutions_by_event = repos.event_tokens.for_events(event_ids)
+        return [
+            {
+                "type": "event",
+                "event": event,
+                "entities": entities_by_event.get(str(event["event_id"]), []),
+                "alerts": alerts_by_event.get(str(event["event_id"]), []),
+                "token_intents": intents_by_event.get(str(event["event_id"]), []),
+                "token_resolutions": token_resolutions_by_event.get(str(event["event_id"]), []),
+            }
+            for event in events
+        ]
+
 
 def _json_message(message: dict[str, Any]) -> str:
     return json.dumps(message, ensure_ascii=False, separators=(",", ":"))
@@ -197,7 +241,23 @@ def _replay_limit(value: Any, default: int) -> int:
         parsed = int(value)
     except (TypeError, ValueError):
         parsed = default
-    return max(0, min(parsed, 1000))
+    return max(0, min(parsed, MAX_REPLAY_LIMIT))
+
+
+def _subscription_filter_count(
+    *,
+    handles: set[str],
+    cas: set[tuple[str, str]],
+    symbols: set[str],
+    market_targets: set[tuple[str, str]],
+) -> int:
+    return len(handles) + len(cas) + len(symbols) + len(market_targets)
+
+
+def _per_filter_replay_limit(*, total_limit: int, filter_count: int) -> int:
+    if total_limit <= 0 or filter_count <= 0:
+        return 0
+    return max(1, (int(total_limit) + int(filter_count) - 1) // int(filter_count))
 
 
 def _normalize_cas(raw: Any) -> set[tuple[str, str]]:

@@ -5,7 +5,6 @@ import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
-from types import SimpleNamespace
 from typing import Any
 
 from parallax.app.runtime.worker_base import WorkerBase
@@ -13,11 +12,7 @@ from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION, WINDOW_MS
 
 SCORE_KEYS = ("score", "rank_score")
-DEFAULT_BATCH_SIZE = 100
-DEFAULT_WS_LIMIT = 50
-DEFAULT_POLL_LIMIT = 200
 ADVISORY_LOCK_KEY = 2026051503
-DEFAULT_LEASE_MS = 60_000
 
 
 class TokenCaptureTierWorker(WorkerBase):
@@ -27,27 +22,25 @@ class TokenCaptureTierWorker(WorkerBase):
     def __init__(
         self,
         *,
-        pool_bundle: Any | None = None,
-        interval_seconds: float | None = None,
-        batch_size: int = DEFAULT_BATCH_SIZE,
-        ws_limit: int = DEFAULT_WS_LIMIT,
-        poll_limit: int = DEFAULT_POLL_LIMIT,
+        pool_bundle: Any,
+        settings: Any,
         clock: Any | None = None,
         name: str = "token_capture_tier",
-        settings: Any | None = None,
-        db: Any | None = None,
         telemetry: Any | None = None,
     ) -> None:
-        resolved_settings = _settings(settings, interval_seconds=interval_seconds, batch_size=batch_size)
+        if settings is None:
+            raise RuntimeError("token_capture_tier_settings_required")
+        if pool_bundle is None:
+            raise RuntimeError("token_capture_tier_db_required")
         super().__init__(
             name=name,
-            settings=resolved_settings,
-            db=pool_bundle or db,
+            settings=settings,
+            db=pool_bundle,
             telemetry=telemetry or object(),
         )
-        self.batch_size = max(1, int(getattr(resolved_settings, "batch_size", batch_size)))
-        self.ws_limit = max(0, int(getattr(resolved_settings, "ws_limit", ws_limit)))
-        self.poll_limit = max(0, int(getattr(resolved_settings, "poll_limit", poll_limit)))
+        self.batch_size = max(1, int(settings.batch_size))
+        self.ws_limit = max(0, int(settings.ws_limit))
+        self.poll_limit = max(0, int(settings.poll_limit))
         self.clock = clock or _now_ms
 
     async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
@@ -68,33 +61,35 @@ class TokenCaptureTierWorker(WorkerBase):
 
     def _project_once(self, now_ms: int) -> dict[str, Any]:
         with self.db.worker_session(self.name) as repos:
-            claims = repos.token_capture_tier_dirty_targets.claim_due(
-                now_ms=now_ms,
-                limit=1,
-                lease_owner=self.name,
-                lease_ms=max(1, int(getattr(self.settings, "lease_ms", DEFAULT_LEASE_MS) or DEFAULT_LEASE_MS)),
-                commit=True,
-            )
-            result = {
-                "claimed": len(claims),
-                "queue_depth": repos.token_capture_tier_dirty_targets.queue_depth(now_ms=now_ms),
+            result: dict[str, Any] = {
+                "claimed": 0,
+                "queue_depth": 0,
                 "source_rows_scanned": 0,
-                "targets_loaded": len(claims),
+                "targets_loaded": 0,
                 "rows_written": 0,
                 "started_at_ms": int(now_ms),
                 "finished_at_ms": int(now_ms),
             }
-            if not claims:
-                result["reason"] = "no_due_token_capture_tier_rank_sets"
-                return result
             with repos.transaction():
+                claims = repos.token_capture_tier_dirty_targets.claim_due(
+                    now_ms=now_ms,
+                    limit=1,
+                    lease_owner=self.name,
+                    lease_ms=max(1, int(self.settings.lease_ms)),
+                    commit=False,
+                )
+                result["claimed"] = len(claims)
+                result["queue_depth"] = repos.token_capture_tier_dirty_targets.queue_depth(now_ms=now_ms)
+                result["targets_loaded"] = len(claims)
+                if not claims:
+                    result["reason"] = "no_due_token_capture_tier_rank_sets"
+                    return result
                 result["rows_written"] = project_once(
                     repos,
                     now_ms=now_ms,
                     batch_size=self.batch_size,
                     ws_limit=self.ws_limit,
                     poll_limit=self.poll_limit,
-                    commit=False,
                 )
                 repos.token_capture_tier_dirty_targets.mark_done(claims, now_ms=now_ms, commit=False)
             return result
@@ -104,11 +99,11 @@ def project_once(
     repos: Any,
     *,
     now_ms: int,
-    batch_size: int = DEFAULT_BATCH_SIZE,
-    ws_limit: int = DEFAULT_WS_LIMIT,
-    poll_limit: int = DEFAULT_POLL_LIMIT,
-    commit: bool = True,
+    batch_size: int,
+    ws_limit: int,
+    poll_limit: int,
 ) -> int:
+    repos.require_transaction(operation="token_capture_tier_projection")
     resolved_batch_size = max(1, int(batch_size))
     resolved_ws_limit = max(0, int(ws_limit))
     resolved_poll_limit = max(0, int(poll_limit))
@@ -185,8 +180,6 @@ def project_once(
             updated_at_ms=int(now_ms),
         )
     )
-    if commit:
-        _commit_if_supported(repos)
     return rows_written
 
 
@@ -249,17 +242,6 @@ def _decimal(value: Any) -> Decimal:
         return Decimal("0")
 
 
-def _commit_if_supported(repos: Any) -> None:
-    conn = getattr(repos, "conn", None)
-    commit = getattr(conn, "commit", None)
-    if callable(commit):
-        commit()
-        return
-    commit = getattr(repos, "commit", None)
-    if callable(commit):
-        commit()
-
-
 def _changed_count(value: Any) -> int:
     if isinstance(value, bool):
         return 1 if value else 0
@@ -267,26 +249,6 @@ def _changed_count(value: Any) -> int:
         return max(0, int(value or 0))
     except (TypeError, ValueError):
         return 0
-
-
-def _settings(settings: Any | None, *, interval_seconds: float | None, batch_size: int) -> Any:
-    if settings is None:
-        return SimpleNamespace(
-            enabled=True,
-            interval_seconds=interval_seconds if interval_seconds is not None else 5.0,
-            soft_timeout_seconds=120.0,
-            hard_timeout_seconds=180.0,
-            batch_size=batch_size,
-        )
-    if interval_seconds is None:
-        return settings
-    try:
-        settings.interval_seconds = interval_seconds
-        return settings
-    except Exception:
-        values = dict(getattr(settings, "__dict__", {}))
-        values["interval_seconds"] = interval_seconds
-        return SimpleNamespace(**values)
 
 
 def _now_ms() -> int:

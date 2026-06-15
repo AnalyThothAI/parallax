@@ -301,17 +301,16 @@ def test_terminal_evidence_query_failure_is_adapter_error() -> None:
     assert health["adapter_error_kind"] == "RuntimeError"
 
 
-def test_missing_connection_is_reported_on_manifest_workers() -> None:
+def test_fill_worker_queue_healths_requires_api_pool_connection_contract() -> None:
     runtime = SimpleNamespace(db=SimpleNamespace(api_pool=SimpleNamespace()))
     workers = manifest_worker_statuses({manifest.name: {} for manifest in all_worker_manifests()})
 
-    fill_worker_queue_healths(workers, runtime, now_ms=1_000)
-
-    health = workers["token_radar_projection"]["queue_health"]
-    table_health = health["tables"]["token_radar_dirty_targets"]
-    assert health["status"] == "unavailable"
-    assert health["unavailable_table_count"] == 2
-    assert table_health["error_code"] == "missing_connection"
+    try:
+        fill_worker_queue_healths(workers, runtime, now_ms=1_000)
+    except AttributeError as exc:
+        assert "connection" in str(exc)
+    else:  # pragma: no cover - RED guard expectation
+        raise AssertionError("queue health must not hide missing api_pool.connection as unavailable queue state")
 
 
 def test_connection_context_enter_failure_is_reported_on_manifest_workers() -> None:

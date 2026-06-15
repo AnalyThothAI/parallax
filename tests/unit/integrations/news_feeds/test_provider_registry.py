@@ -6,12 +6,12 @@ import pytest
 
 from parallax.integrations.news_feeds.feed_client import FeedFetchResult
 from parallax.integrations.news_feeds.provider_registry import (
-    SUPPORTED_NEWS_PROVIDER_TYPES,
     NewsFeedProviderRegistry,
     OpenNewsNewsFeedProvider,
     RssLikeNewsFeedProvider,
     default_news_feed_provider_registry,
 )
+from parallax.platform.config.news_provider_types import RUNTIME_SUPPORTED_NEWS_PROVIDER_TYPES
 
 
 def test_provider_wiring_exposes_only_source_provider_surface() -> None:
@@ -86,7 +86,7 @@ def test_registry_routes_rss_atom_json_feed_and_cryptopanic_to_expected_wrappers
             "source_id": "opennews-realtime",
         }
     ]
-    assert registry.supported_provider_types() == SUPPORTED_NEWS_PROVIDER_TYPES
+    assert registry.supported_provider_types() == RUNTIME_SUPPORTED_NEWS_PROVIDER_TYPES
 
 
 def test_registry_unknown_provider_type_raises_compact_value_error() -> None:

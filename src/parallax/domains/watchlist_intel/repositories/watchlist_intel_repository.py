@@ -66,44 +66,79 @@ class WatchlistIntelRepository:
         normalized = [normalize_watchlist_handle(handle) for handle in handles]
         if not normalized:
             return []
-        return [self._handle_overview_counts(handle=handle, since_ms=since_ms) for handle in normalized]
-
-    def _handle_overview_counts(self, *, handle: str, since_ms: int) -> dict[str, Any]:
-        last_event = self.conn.execute(
+        rows = self.conn.execute(
             """
-            SELECT received_at_ms
-            FROM events
-            WHERE lower(author_handle) = %s
-            ORDER BY received_at_ms DESC, event_id DESC
-            LIMIT 1
+            WITH input_handles AS (
+              SELECT handle, ordinality
+              FROM unnest(%s::text[]) WITH ORDINALITY AS input(handle, ordinality)
+            ),
+            distinct_handles AS (
+              SELECT DISTINCT handle
+              FROM input_handles
+            ),
+            latest_by_handle AS (
+              SELECT
+                distinct_handles.handle,
+                latest.received_at_ms AS last_source_event_at_ms
+              FROM distinct_handles
+              LEFT JOIN LATERAL (
+                SELECT events.received_at_ms
+                FROM events
+                WHERE lower(events.author_handle) = distinct_handles.handle
+                ORDER BY events.received_at_ms DESC, events.event_id DESC
+                LIMIT 1
+              ) latest ON true
+            ),
+            recent_counts AS (
+              SELECT
+                distinct_handles.handle,
+                COUNT(events.event_id) AS recent_source_event_count
+              FROM distinct_handles
+              LEFT JOIN events
+                ON lower(events.author_handle) = distinct_handles.handle
+               AND events.received_at_ms >= %s
+              GROUP BY distinct_handles.handle
+            )
+            SELECT
+              input_handles.handle,
+              latest_by_handle.last_source_event_at_ms,
+              COALESCE(recent_counts.recent_source_event_count, 0) AS recent_source_event_count,
+              0 AS recent_signal_event_count,
+              0 AS total_signal_event_count
+            FROM input_handles
+            LEFT JOIN latest_by_handle ON latest_by_handle.handle = input_handles.handle
+            LEFT JOIN recent_counts ON recent_counts.handle = input_handles.handle
+            ORDER BY input_handles.ordinality ASC
             """,
-            (handle,),
-        ).fetchone()
-        recent_source = self.conn.execute(
-            """
-            SELECT COUNT(*) AS count
-            FROM events
-            WHERE lower(author_handle) = %s
-              AND received_at_ms >= %s
-            """,
-            (handle, int(since_ms)),
-        ).fetchone()
-        return _decode_handle_overview_row(
-            {
-                "handle": handle,
-                "last_source_event_at_ms": last_event["received_at_ms"] if last_event else None,
-                "recent_source_event_count": int(recent_source["count"] if recent_source else 0),
-                "recent_signal_event_count": 0,
-                "total_signal_event_count": 0,
-            }
-        )
+            (normalized, int(since_ms)),
+        ).fetchall()
+        return [_decode_handle_overview_row(dict(row)) for row in rows]
 
-    def handle_overview(self, *, handle: str, scope: str, since_ms: int, limit: int = 500) -> dict[str, Any]:
+    def handle_overview(
+        self,
+        *,
+        handle: str,
+        scope: str,
+        since_ms: int,
+        source_limit: int,
+        cluster_limit: int,
+    ) -> dict[str, Any]:
         normalized = normalize_watchlist_handle(handle)
         parsed_scope = _timeline_scope(scope)
-        cluster_limit = max(0, int(limit))
+        parsed_source_limit = max(0, int(source_limit))
+        parsed_cluster_limit = max(0, int(cluster_limit))
         clauses = ["lower(e.author_handle) = %s", "e.received_at_ms >= %s"]
         params: list[Any] = [normalized, int(since_ms)]
+        metrics_row = self.conn.execute(
+            f"""
+            SELECT
+              COUNT(*) AS source_event_count,
+              MAX(e.received_at_ms) AS last_source_event_at_ms
+            FROM events e
+            WHERE {" AND ".join(clauses)}
+            """,
+            tuple(params),
+        ).fetchone()
         rows = self.conn.execute(
             f"""
             SELECT
@@ -111,22 +146,27 @@ class WatchlistIntelRepository:
             FROM events e
             WHERE {" AND ".join(clauses)}
             ORDER BY e.received_at_ms DESC, e.event_id DESC
+            LIMIT %s
             """,
-            tuple(params),
+            (*params, parsed_source_limit + 1),
         ).fetchall()
-        events = [_decode_timeline_row(dict(row)) for row in rows]
+        sampled_rows = rows[:parsed_source_limit]
+        source_events_truncated = len(rows) > parsed_source_limit
+        events = [_decode_timeline_row(dict(row)) for row in sampled_rows]
         event_ids = tuple(str(item["event_id"]) for item in events)
         resolutions_by_event = self.token_resolutions_for_events(event_ids)
         for item in events:
             item["token_resolutions"] = resolutions_by_event.get(str(item["event_id"]), [])
         clusters = _overview_clusters(events)
-        source_event_count = len(events)
+        source_event_count = int(metrics_row["source_event_count"] if metrics_row else 0)
         signal_event_count = 0
-        last_source_event_at_ms = max((int(item.get("received_at_ms") or 0) for item in events), default=None)
+        last_source_event_at_ms = metrics_row["last_source_event_at_ms"] if metrics_row else None
         candidate_mention_count = _cluster_count(clusters["candidate_mention_clusters"])
         resolved_token_count = _cluster_count(clusters["resolved_token_clusters"])
-        public_clusters = _limit_overview_clusters(clusters, cluster_limit)
+        public_clusters = _limit_overview_clusters(clusters, parsed_cluster_limit)
         risk_notes = list(clusters["risk_notes"])
+        if source_events_truncated:
+            risk_notes.append("source_events_sampled")
         if candidate_mention_count:
             risk_notes.append("candidate_mentions_unresolved")
         return {
@@ -142,7 +182,8 @@ class WatchlistIntelRepository:
             "resolved_token_clusters": public_clusters["resolved_token_clusters"],
             "candidate_mention_clusters": public_clusters["candidate_mention_clusters"],
             "narrative_clusters": public_clusters["narrative_clusters"],
-            "clusters_truncated": _overview_clusters_truncated(clusters, cluster_limit),
+            "clusters_truncated": source_events_truncated
+            or _overview_clusters_truncated(clusters, parsed_cluster_limit),
             "risk_notes": sorted(dict.fromkeys(risk_notes)),
         }
 

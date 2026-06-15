@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from parallax.domains.asset_market.repositories.discovery_repository import DiscoveryRepository
 from parallax.domains.token_intel.interfaces import TOKEN_RADAR_RESOLVER_POLICY_VERSION
 from parallax.domains.token_intel.repositories.token_intent_lookup_repository import (
@@ -25,18 +27,19 @@ def test_discovery_results_claim_only_explicitly_enqueued_unresolved_lookup_keys
             created_at_ms=1_000,
         )
 
-        not_enqueued = discovery.due_lookup_keys(since_ms=0, now_ms=2_000, limit=10)
+        not_enqueued = _due_lookup_keys_for_test(conn, now_ms=2_000, limit=10, running_timeout_ms=60_000)
         enqueued = discovery.enqueue_lookup_keys(
             ["symbol:UPEG", "cex_token:UPEG"],
             reason="intent_unresolved",
             now_ms=2_000,
         )
-        due = discovery.due_lookup_keys(since_ms=0, now_ms=2_000, limit=10)
+        due = _due_lookup_keys_for_test(conn, now_ms=2_000, limit=10, running_timeout_ms=60_000)
         discovery.start_lookup(
             provider="okx_dex_search",
             lookup_key="symbol:UPEG",
             lookup_type="dex_symbol_lookup",
             now_ms=2_000,
+            running_timeout_ms=60_000,
         )
         discovery.finish_lookup(
             provider="okx_dex_search",
@@ -48,8 +51,8 @@ def test_discovery_results_claim_only_explicitly_enqueued_unresolved_lookup_keys
             next_refresh_at_ms=62_000,
             now_ms=2_100,
         )
-        suppressed = discovery.due_lookup_keys(since_ms=0, now_ms=61_000, limit=10)
-        stale = discovery.due_lookup_keys(since_ms=0, now_ms=62_000, limit=10)
+        suppressed = _due_lookup_keys_for_test(conn, now_ms=61_000, limit=10, running_timeout_ms=60_000)
+        stale = _due_lookup_keys_for_test(conn, now_ms=62_000, limit=10, running_timeout_ms=60_000)
         conn.execute(
             """
             UPDATE token_intent_resolutions
@@ -59,7 +62,7 @@ def test_discovery_results_claim_only_explicitly_enqueued_unresolved_lookup_keys
             """
         )
         conn.commit()
-        known_ambiguous = discovery.due_lookup_keys(since_ms=0, now_ms=63_000, limit=10)
+        known_ambiguous = _due_lookup_keys_for_test(conn, now_ms=63_000, limit=10, running_timeout_ms=60_000)
         intents = lookup.intents_for_lookup_keys(["cex_token:UPEG"], limit=10)
     finally:
         conn.close()
@@ -133,7 +136,7 @@ def test_discovery_refreshes_ambiguous_lookup_after_nil_backlog(tmp_path):
             latest_seen_ms=100_000,
         )
 
-        due = discovery.due_lookup_keys(since_ms=0, now_ms=120_000, limit=2)
+        due = _due_lookup_keys_for_test(conn, now_ms=120_000, limit=2, running_timeout_ms=60_000)
     finally:
         conn.close()
 
@@ -201,7 +204,7 @@ def test_discovery_prioritizes_recent_due_lookup_over_old_never_seen_backlog(tmp
             now_ms=80_000,
         )
 
-        due = discovery.due_lookup_keys(since_ms=0, now_ms=120_000, limit=1)
+        due = _due_lookup_keys_for_test(conn, now_ms=120_000, limit=1, running_timeout_ms=60_000)
     finally:
         conn.close()
 
@@ -269,10 +272,11 @@ def test_discovery_retries_hot_not_found_before_old_backlog(tmp_path):
             now_ms=80_000,
         )
 
-        due = discovery.due_lookup_keys(
-            since_ms=0,
+        due = _due_lookup_keys_for_test(
+            conn,
             now_ms=120_000,
             limit=1,
+            running_timeout_ms=60_000,
             hot_since_ms=90_000,
             hot_not_found_retry_ms=30_000,
         )
@@ -328,7 +332,7 @@ def test_discovery_result_hash_reports_changed_only_when_lookup_result_changes(t
     assert counts == {"found": 1}
 
 
-def test_due_lookup_keys_includes_error_count_for_backoff(tmp_path):
+def test_discovery_due_order_includes_error_count_for_backoff(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -357,7 +361,7 @@ def test_due_lookup_keys_includes_error_count_for_backoff(tmp_path):
             now_ms=1_000,
         )
 
-        due = discovery.due_lookup_keys(since_ms=0, now_ms=2_000, limit=10)
+        due = _due_lookup_keys_for_test(conn, now_ms=2_000, limit=10, running_timeout_ms=60_000)
     finally:
         conn.close()
 
@@ -396,6 +400,78 @@ def test_lookup_key_reprocess_can_revisit_already_resolved_intents(tmp_path):
         conn.close()
 
     assert [item["intent_id"] for item in intents] == ["intent-1"]
+
+
+def _due_lookup_keys_for_test(
+    conn: Any,
+    *,
+    now_ms: int,
+    limit: int,
+    running_timeout_ms: int,
+    hot_since_ms: int | None = None,
+    hot_not_found_retry_ms: int | None = None,
+) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT
+          queue.lookup_key,
+          queue.lookup_type,
+          queue.provider,
+          queue.latest_seen_ms,
+          queue.intent_count,
+          queue.refresh_priority,
+          CASE
+            WHEN %(hot_since_ms)s::bigint IS NOT NULL AND queue.latest_seen_ms >= %(hot_since_ms)s::bigint THEN 0
+            ELSE 1
+          END AS hot_priority,
+          results.status,
+          results.result_hash,
+          results.next_refresh_at_ms,
+          COALESCE(results.error_count, 0) AS error_count
+        FROM token_discovery_dirty_lookup_keys queue
+        LEFT JOIN token_discovery_results AS results
+          ON results.provider = queue.provider
+         AND results.lookup_key = queue.lookup_key
+        WHERE queue.provider = 'okx_dex_search'
+          AND queue.due_at_ms <= %(now_ms)s
+          AND (queue.leased_until_ms IS NULL OR queue.leased_until_ms <= %(now_ms)s)
+          AND (
+            results.lookup_key IS NULL
+            OR results.next_refresh_at_ms <= %(now_ms)s
+            OR (
+              results.status = 'running'
+              AND results.updated_at_ms < %(running_expired_ms)s
+            )
+            OR (
+              %(hot_since_ms)s::bigint IS NOT NULL
+              AND %(hot_not_found_retry_ms)s::bigint IS NOT NULL
+              AND queue.latest_seen_ms >= %(hot_since_ms)s::bigint
+              AND results.status = 'not_found'
+              AND results.last_lookup_at_ms <= %(now_ms)s::bigint - %(hot_not_found_retry_ms)s::bigint
+            )
+          )
+        ORDER BY
+          hot_priority ASC,
+          queue.refresh_priority ASC,
+          queue.latest_seen_ms DESC,
+          CASE
+            WHEN results.lookup_key IS NULL THEN 0
+            WHEN results.status = 'error' THEN 1
+            ELSE 2
+          END,
+          queue.intent_count DESC,
+          queue.lookup_key ASC
+        LIMIT %(limit)s
+        """,
+        {
+            "now_ms": int(now_ms),
+            "running_expired_ms": int(now_ms) - max(1, int(running_timeout_ms)),
+            "hot_since_ms": int(hot_since_ms) if hot_since_ms is not None else None,
+            "hot_not_found_retry_ms": int(hot_not_found_retry_ms) if hot_not_found_retry_ms is not None else None,
+            "limit": max(0, int(limit)),
+        },
+    ).fetchall()
+    return [dict(row) for row in rows]
 
 
 def _insert_event_intent_and_evidence(

@@ -20,7 +20,7 @@ class TokenCaptureTierRepository:
         score: Decimal,
         updated_at_ms: int,
     ) -> bool:
-        row = self._conn.execute(
+        cursor = self._conn.execute(
             """
             INSERT INTO token_capture_tier(
                 target_type,
@@ -56,8 +56,9 @@ class TokenCaptureTierRepository:
                 "score": score,
                 "updated_at_ms": updated_at_ms,
             },
-        ).fetchone()
-        return row is not None and bool(row.get("changed", True))
+        )
+        row = cursor.fetchone()
+        return _single_returning_changed(cursor, row)
 
     def list_by_tier(
         self,
@@ -161,7 +162,7 @@ class TokenCaptureTierRepository:
             """,
             {"active_keys": Jsonb(list(active_keys)), "updated_at_ms": int(updated_at_ms)},
         )
-        return int(getattr(cursor, "rowcount", 0) or 0)
+        return _cursor_rowcount(cursor)
 
     def live_target_rows(self, *, limit: int) -> list[dict[str, Any]]:
         rows = self._conn.execute(
@@ -199,3 +200,24 @@ class TokenCaptureTierRepository:
             {"limit": max(0, int(limit))},
         ).fetchall()
         return [dict(row) for row in rows]
+
+
+def _cursor_rowcount(cursor: Any) -> int:
+    try:
+        rowcount: object = cursor.rowcount
+    except AttributeError as exc:
+        raise TypeError("token_capture_tier_repository_rowcount_required") from exc
+    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
+        raise TypeError("token_capture_tier_repository_rowcount_invalid")
+    if rowcount < 0:
+        raise TypeError("token_capture_tier_repository_rowcount_invalid")
+    return rowcount
+
+
+def _single_returning_changed(cursor: Any, row: Any | None) -> bool:
+    count = _cursor_rowcount(cursor)
+    if count not in (0, 1):
+        raise TypeError("token_capture_tier_repository_rowcount_invalid")
+    if count != (1 if row is not None else 0):
+        raise TypeError("token_capture_tier_repository_rowcount_invalid")
+    return row is not None and bool(row.get("changed", True))

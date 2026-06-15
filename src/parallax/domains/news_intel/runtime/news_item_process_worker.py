@@ -35,14 +35,28 @@ class NewsItemProcessWorker(WorkerBase):
     def __init__(
         self,
         *,
+        settings: Any,
+        db: Any,
+        telemetry: Any,
         identity_lookup: TokenIdentityLookup | None = None,
-        wake_bus: Any | None = None,
+        wake_waiter: Any | None = None,
+        wake_emitter: Any | None = None,
         clock_ms: Callable[[], int] | None = None,
-        **kwargs: Any,
+        name: str = "news_item_process",
     ) -> None:
-        super().__init__(**kwargs)
+        if settings is None:
+            raise RuntimeError("news_item_process_settings_required")
+        if db is None:
+            raise RuntimeError("news_item_process_db_required")
+        super().__init__(
+            name=name,
+            settings=settings,
+            db=db,
+            telemetry=telemetry,
+            wake_waiter=wake_waiter,
+        )
         self.identity_lookup = identity_lookup
-        self.wake_bus = wake_bus
+        self.wake_emitter = wake_emitter
         self.clock_ms = clock_ms or _now_ms
 
     async def run_once(self) -> WorkerResult:
@@ -53,7 +67,7 @@ class NewsItemProcessWorker(WorkerBase):
             return WorkerResult(skipped=1, notes={"reason": "missing_identity_lookup"})
 
         now = int(now_ms if now_ms is not None else self.clock_ms())
-        with self._repository_session() as repos, repos.conn.transaction():
+        with self._repository_session() as repos, repos.transaction():
             repos.news.release_expired_processing_items(now_ms=now, commit=False)
             items = repos.news.claim_unprocessed_items(
                 limit=self._batch_size(),
@@ -134,7 +148,7 @@ class NewsItemProcessWorker(WorkerBase):
                         "story_identity_version": story_identity_payload["version"],
                     }
                 )
-                with self._repository_session() as repos, repos.conn.transaction():
+                with self._repository_session() as repos, repos.transaction():
                     repos.news.replace_item_entities(news_item_id=news_item_id, entities=entities, commit=False)
                     repos.news.replace_token_mentions(news_item_id=news_item_id, mentions=mentions, commit=False)
                     repos.news.replace_fact_candidates(
@@ -178,16 +192,16 @@ class NewsItemProcessWorker(WorkerBase):
                     )
                     context_payload = _agent_admission_context(
                         repos.news.load_agent_admission_contexts(news_item_ids=[news_item_id], now_ms=now),
-                        fallback_item=processed_item,
-                        fallback_entities=[_object_payload(entity) for entity in entities],
-                        fallback_token_mentions=mention_payloads,
-                        fallback_fact_candidates=candidate_payloads,
+                        news_item_id=news_item_id,
                     )
+                    context_item = _json_dict(context_payload["item"])
+                    context_token_mentions = _list_of_dicts(context_payload["token_mentions"])
+                    context_fact_candidates = _list_of_dicts(context_payload["fact_candidates"])
                     agent_admission = decide_news_item_agent_admission(
-                        item=_json_dict(context_payload.get("item")) or processed_item,
+                        item=context_item,
                         entities=_list_of_dicts(context_payload.get("entities")),
-                        token_mentions=_list_of_dicts(context_payload.get("token_mentions")) or mention_payloads,
-                        fact_candidates=_list_of_dicts(context_payload.get("fact_candidates")) or candidate_payloads,
+                        token_mentions=context_token_mentions,
+                        fact_candidates=context_fact_candidates,
                         context=NewsItemAgentAdmissionContext.from_repository_context(context_payload),
                         now_ms=now,
                     )
@@ -203,9 +217,7 @@ class NewsItemProcessWorker(WorkerBase):
                             repos,
                             news_item_ids=[representative_news_item_id],
                             priority_by_news_item_id={
-                                representative_news_item_id: news_item_agent_brief_priority(
-                                    item=_json_dict(context_payload.get("item")) or processed_item
-                                )
+                                representative_news_item_id: news_item_agent_brief_priority(item=context_item)
                             },
                             source_watermark_ms_by_news_item_id={
                                 representative_news_item_id: _source_watermark_ms(processed_item, fallback_ms=now)
@@ -230,8 +242,8 @@ class NewsItemProcessWorker(WorkerBase):
                     continue
                 failed += 1
 
-        if processed > 0 and self.wake_bus is not None:
-            self.wake_bus.notify_news_item_processed(count=processed)
+        if processed > 0 and self.wake_emitter is not None:
+            self.wake_emitter.notify_news_item_processed(count=processed)
         notes = {"claimed": len(items)}
         if stale_claims > 0:
             notes["stale_claims"] = stale_claims
@@ -248,7 +260,7 @@ class NewsItemProcessWorker(WorkerBase):
         failure_now_ms = int(self.clock_ms())
         error_text = str(error)[:2_000]
         try:
-            with self._repository_session() as repos, repos.conn.transaction():
+            with self._repository_session() as repos, repos.transaction():
                 if attempt_after_claim >= self._max_attempts():
                     return int(
                         repos.news.mark_item_process_terminal_failed(
@@ -277,20 +289,20 @@ class NewsItemProcessWorker(WorkerBase):
     def _repository_session(self) -> Any:
         return self.db.worker_session(
             self.name,
-            statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
+            statement_timeout_seconds=self.settings.statement_timeout_seconds,
         )
 
     def _batch_size(self) -> int:
-        return max(1, int(getattr(self.settings, "batch_size", 10)))
+        return max(1, int(self.settings.batch_size))
 
     def _lease_ms(self) -> int:
-        return max(1, int(getattr(self.settings, "lease_ms", 120_000)))
+        return max(1, int(self.settings.lease_ms))
 
     def _max_attempts(self) -> int:
-        return max(1, int(getattr(self.settings, "max_attempts", 3)))
+        return max(1, int(self.settings.max_attempts))
 
     def _retry_delay_ms(self) -> int:
-        return max(1, int(getattr(self.settings, "retry_delay_ms", 60_000)))
+        return max(1, int(self.settings.retry_delay_ms))
 
 
 def _required_text(item: Mapping[str, Any], key: str) -> str:
@@ -337,32 +349,48 @@ def _list_of_dicts(value: object) -> list[dict[str, Any]]:
 def _agent_admission_context(
     rows: object,
     *,
-    fallback_item: Mapping[str, Any],
-    fallback_entities: list[dict[str, Any]],
-    fallback_token_mentions: list[dict[str, Any]],
-    fallback_fact_candidates: list[dict[str, Any]],
+    news_item_id: str,
 ) -> dict[str, Any]:
     row = next((dict(candidate) for candidate in _json_list(rows) if isinstance(candidate, Mapping)), None)
     if row is None:
-        row = {}
-    row.setdefault("item", dict(fallback_item))
-    row.setdefault("entities", list(fallback_entities))
-    row.setdefault("token_mentions", list(fallback_token_mentions))
-    row.setdefault("fact_candidates", list(fallback_fact_candidates))
-    row.setdefault("exact_duplicate_candidates", [])
-    row.setdefault("story_candidates", [])
+        raise ValueError(f"news item {news_item_id} missing agent admission context")
+    required_keys = (
+        "item",
+        "entities",
+        "token_mentions",
+        "fact_candidates",
+        "exact_duplicate_candidates",
+        "story_candidates",
+    )
+    missing = [key for key in required_keys if key not in row]
+    if missing:
+        missing_text = ", ".join(missing)
+        raise ValueError(f"news item {news_item_id} missing agent admission context fields: {missing_text}")
+    if not _json_dict(row["item"]):
+        raise ValueError(f"news item {news_item_id} missing agent admission context item")
     return row
 
 
 def _processing_attempts(item: Mapping[str, Any]) -> int:
     try:
-        return max(0, int(item.get("processing_attempts", 0) or 0))
+        attempts = int(item["processing_attempts"])
     except (TypeError, ValueError):
-        return 0
+        raise ValueError("news_item_process_claim_attempt_required") from None
+    except KeyError as exc:
+        raise ValueError("news_item_process_claim_attempt_required") from exc
+    if attempts <= 0:
+        raise ValueError("news_item_process_claim_attempt_required")
+    return attempts
 
 
 def _processing_lease_owner(item: Mapping[str, Any]) -> str:
-    return str(item.get("processing_lease_owner") or "").strip()
+    try:
+        lease_owner = str(item["processing_lease_owner"] or "").strip()
+    except KeyError as exc:
+        raise ValueError("news_item_process_claim_lease_owner_required") from exc
+    if not lease_owner:
+        raise ValueError("news_item_process_claim_lease_owner_required")
+    return lease_owner
 
 
 def _source_watermark_ms(item: Mapping[str, Any], *, fallback_ms: int) -> int:
@@ -376,9 +404,9 @@ def _source_watermark_ms(item: Mapping[str, Any], *, fallback_ms: int) -> int:
     return int(fallback_ms)
 
 
-def _optional_int(value: object) -> int | None:
+def _optional_int(value: Any) -> int | None:
     try:
-        parsed = int(value)  # type: ignore[arg-type]
+        parsed = int(value)
     except (TypeError, ValueError):
         return None
     return parsed if parsed > 0 else None
@@ -393,13 +421,10 @@ def _object_payload(value: Any) -> dict[str, Any]:
         return dict(value)
     if is_dataclass(value) and not isinstance(value, type):
         return {field.name: getattr(value, field.name) for field in fields(value)}
-    dump = getattr(value, "model_dump", None)
-    if dump is not None:
-        return dict(dump(mode="json"))
-    return dict(getattr(value, "__dict__", {}) or {})
+    raise ValueError("unsupported news item process payload shape")
 
 
-def _market_scope_payload(value: NewsMarketScope | Mapping[str, object]) -> dict[str, object]:
+def _market_scope_payload(value: NewsMarketScope) -> dict[str, object]:
     payload = _strict_current_payload(
         value,
         expected_type=NewsMarketScope,
@@ -416,7 +441,7 @@ def _market_scope_payload(value: NewsMarketScope | Mapping[str, object]) -> dict
     }
 
 
-def _story_identity_payload(value: NewsStoryIdentity | Mapping[str, object]) -> dict[str, object]:
+def _story_identity_payload(value: NewsStoryIdentity) -> dict[str, object]:
     payload = _strict_current_payload(
         value,
         expected_type=NewsStoryIdentity,
@@ -432,23 +457,15 @@ def _story_identity_payload(value: NewsStoryIdentity | Mapping[str, object]) -> 
 
 
 def _strict_current_payload(
-    value: NewsMarketScope | NewsStoryIdentity | Mapping[str, object],
+    value: NewsMarketScope | NewsStoryIdentity,
     *,
     expected_type: type[NewsMarketScope] | type[NewsStoryIdentity],
     label: str,
     required_fields: tuple[str, ...],
 ) -> dict[str, object]:
-    if isinstance(value, Mapping):
-        payload = dict(value)
-    elif isinstance(value, expected_type):
-        to_payload = getattr(value, "to_payload", None)
-        payload = dict(
-            to_payload()
-            if to_payload is not None
-            else {field.name: getattr(value, field.name) for field in fields(value)}
-        )
-    else:
+    if not isinstance(value, expected_type):
         raise ValueError(f"unsupported {label} shape")
+    payload = {field.name: getattr(value, field.name) for field in fields(value)}
     missing = [field for field in required_fields if field not in payload]
     if missing:
         raise ValueError(f"unsupported {label} shape: missing {', '.join(missing)}")

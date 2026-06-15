@@ -6,7 +6,7 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 
 from parallax.app.surfaces.api import schemas as api_schemas
-from parallax.app.surfaces.api.dependencies import _authenticated_runtime, _worker_running
+from parallax.app.surfaces.api.dependencies import _authenticated_runtime
 from parallax.app.surfaces.api.responses import _json
 from parallax.app.surfaces.api.validators import (
     _limit,
@@ -52,7 +52,6 @@ def signal_lab_pulse(
         visibility=parsed_visibility,
         limit=parsed_limit,
         cursor=cursor or None,
-        agent_worker_running=_worker_running(runtime, "pulse_candidate"),
     )
     return _json({"ok": True, "data": data})
 
@@ -100,7 +99,6 @@ def _signal_lab_pulse_data(
     visibility: str,
     limit: int,
     cursor: str | None,
-    agent_worker_running: bool,
 ) -> dict[str, Any]:
     with runtime.repositories() as repos:
         return SignalPulseService(
@@ -114,5 +112,4 @@ def _signal_lab_pulse_data(
             visibility=visibility,
             limit=limit,
             cursor=cursor,
-            agent_worker_running=agent_worker_running,
         )

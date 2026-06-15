@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from typing import Any
+from typing import Any, cast
 
 from parallax.app.runtime.queue_health import fetch_queue_table_health
 from parallax.app.runtime.worker_manifest import worker_queue_health_tables
@@ -66,11 +66,10 @@ def _bind_retry_transition(
 
 
 def _conn(repos: object) -> object:
-    signals = getattr(repos, "signals", None)
-    conn = getattr(signals, "conn", None)
-    if conn is None:
-        raise ValueError("signals_connection_required")
-    return conn
+    try:
+        return cast(Any, repos).signals.conn
+    except AttributeError as exc:
+        raise ValueError("signals_connection_required") from exc
 
 
 def _inspect_active_queues(
@@ -113,8 +112,10 @@ def _retry_discovery_lookup_key(
     now_ms: int,
     reason: str,
 ) -> dict[str, Any]:
-    discovery = getattr(repos, "discovery", None)
-    enqueue_lookup_keys = getattr(discovery, "enqueue_lookup_keys", None)
+    try:
+        enqueue_lookup_keys = cast(Any, repos).discovery.enqueue_lookup_keys
+    except AttributeError as exc:
+        raise ValueError("discovery_repository_required") from exc
     if not callable(enqueue_lookup_keys):
         raise ValueError("discovery_repository_required")
     source_row = _source_row(event)
@@ -152,8 +153,10 @@ def _retry_event_anchor_job(
     now_ms: int,
     reason: str,
 ) -> dict[str, Any]:
-    repo = getattr(repos, "event_anchor_jobs", None)
-    retry = getattr(repo, "retry_terminal_job_from_snapshot", None)
+    try:
+        retry = cast(Any, repos).event_anchor_jobs.retry_terminal_job_from_snapshot
+    except AttributeError as exc:
+        raise ValueError("event_anchor_job_repository_required") from exc
     if not callable(retry):
         raise ValueError("event_anchor_job_repository_required")
     row = retry(_source_row(event), now_ms=int(now_ms), reason=reason)
@@ -168,8 +171,10 @@ def _retry_pulse_agent_job(
     now_ms: int,
     reason: str,
 ) -> dict[str, Any]:
-    repo = getattr(repos, "pulse_jobs", None)
-    retry = getattr(repo, "retry_terminal_job_from_snapshot", None)
+    try:
+        retry = cast(Any, repos).pulse_jobs.retry_terminal_job_from_snapshot
+    except AttributeError as exc:
+        raise ValueError("pulse_jobs_repository_required") from exc
     if not callable(retry):
         raise ValueError("pulse_jobs_repository_required")
     row = retry(_source_row(event), now_ms=int(now_ms), reason=reason)

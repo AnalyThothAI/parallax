@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from psycopg.types.json import Jsonb
 
 from parallax.platform.current_read_model_payload_hash import stable_current_payload_hash
+
+_OBSERVED_AT_SOURCE_VALUES = frozenset({"provider", "computed"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,7 +79,18 @@ class CexOiRadarRepository:
         notes: dict[str, Any] | None = None,
         commit: bool = True,
     ) -> CexBoardPublicationResult:
-        board_period = str(period)
+        if commit:
+            with _transaction(self.conn):
+                return self.publish_board_with_result(
+                    rows=rows,
+                    computed_at_ms=computed_at_ms,
+                    period=period,
+                    status=status,
+                    notes=notes,
+                    commit=False,
+                )
+
+        board_period = _required_board_text(period, "period")
         computed_at = int(computed_at_ms)
         board_key = _board_key(board_period)
         frontier_ms = _source_frontier_ms(rows, default=computed_at)
@@ -87,7 +102,7 @@ class CexOiRadarRepository:
                 period=board_period,
                 status=status,
                 latest_error=latest_error,
-                commit=commit,
+                commit=False,
             )
             return CexBoardPublicationResult(board_changed=False, board_rows_written=0)
 
@@ -111,7 +126,7 @@ class CexOiRadarRepository:
                 period=board_period,
                 status=status,
                 latest_error=latest_error,
-                commit=commit,
+                commit=False,
             )
             return CexBoardPublicationResult(board_changed=False, board_rows_written=0)
 
@@ -158,7 +173,7 @@ class CexOiRadarRepository:
                 computed_at,
             ),
         )
-        incoming_row_ids = [_row_id(board_period, str(row["target_id"])) for row in rows]
+        incoming_row_ids = [_row_id(board_period, _required_board_row_text(row, "target_id")) for row in rows]
         if incoming_row_ids:
             delete_cursor = self.conn.execute(
                 """
@@ -185,8 +200,12 @@ class CexOiRadarRepository:
                 (board_period,),
             )
 
-        written = _cursor_rowcount(delete_cursor, default=0)
+        written = _cursor_rowcount(delete_cursor)
         for row, row_id in zip(rows, incoming_row_ids, strict=True):
+            row_target_id = _required_board_row_text(row, "target_id")
+            row_native_market_id = _required_board_row_text(row, "native_market_id")
+            row_base_symbol = _required_board_row_text(row, "base_symbol")
+            row_quote_symbol = _required_board_row_text(row, "quote_symbol")
             upsert_cursor = self.conn.execute(
                 """
                 INSERT INTO cex_oi_radar_rows(
@@ -239,26 +258,24 @@ class CexOiRadarRepository:
                     "USDT",
                     "PERPETUAL",
                     int(row["rank"]),
-                    row["target_id"],
+                    row_target_id,
                     row.get("pricefeed_id"),
-                    row["native_market_id"],
-                    row["base_symbol"],
-                    row["quote_symbol"],
+                    row_native_market_id,
+                    row_base_symbol,
+                    row_quote_symbol,
                     row.get("open_interest_usd"),
                     row.get("open_interest_change_pct_1h"),
                     row.get("volume_24h_usd"),
                     row.get("funding_rate"),
                     row.get("mark_price"),
                     row["score"],
-                    Jsonb(row.get("score_components") or {}),
-                    int(row.get("observed_at_ms") or computed_at),
+                    Jsonb(_required_score_components(row)),
+                    _required_observed_at_ms(row),
                     computed_at,
                 ),
             )
-            written += _cursor_rowcount(upsert_cursor, default=1)
+            written += _cursor_rowcount(upsert_cursor)
 
-        if commit:
-            self.conn.commit()
         return CexBoardPublicationResult(board_changed=True, board_rows_written=written)
 
     def record_attempt_failure(
@@ -269,7 +286,7 @@ class CexOiRadarRepository:
         notes: dict[str, Any] | None = None,
         commit: bool = True,
     ) -> None:
-        board_period = str(period)
+        board_period = _required_board_text(period, "period")
         computed_at = int(computed_at_ms)
         latest_error = _latest_attempt_error(status="failed", notes=notes)
 
@@ -290,7 +307,18 @@ class CexOiRadarRepository:
         latest_error: str | None,
         commit: bool,
     ) -> None:
-        board_period = str(period)
+        if commit:
+            with _transaction(self.conn):
+                self._record_attempt_without_publication(
+                    computed_at_ms=computed_at_ms,
+                    period=period,
+                    status=status,
+                    latest_error=latest_error,
+                    commit=False,
+                )
+            return
+
+        board_period = _required_board_text(period, "period")
         computed_at = int(computed_at_ms)
 
         self.conn.execute(
@@ -328,8 +356,6 @@ class CexOiRadarRepository:
                 computed_at,
             ),
         )
-        if commit:
-            self.conn.commit()
 
     def latest_board(self, *, limit: int) -> dict[str, Any]:
         state = self.conn.execute(
@@ -370,24 +396,35 @@ class CexOiRadarRepository:
 
 
 def _board_key(period: str) -> str:
-    return f"binance:USDT:PERPETUAL:{period}"
+    board_period = _required_board_text(period, "period")
+    return f"binance:USDT:PERPETUAL:{board_period}"
 
 
 def _row_id(period: str, target_id: str) -> str:
-    digest = hashlib.sha256(f"binance|binance|USDT|PERPETUAL|{period}|{target_id}".encode()).hexdigest()[:32]
+    board_period = _required_board_text(period, "period")
+    target = _required_board_text(target_id, "target_id")
+    digest = hashlib.sha256(f"binance|binance|USDT|PERPETUAL|{board_period}|{target}".encode()).hexdigest()[:32]
     return f"cex-oi-radar-row:{digest}"
 
 
-def _cursor_rowcount(cursor: Any, *, default: int) -> int:
-    rowcount = getattr(cursor, "rowcount", default)
+def _cursor_rowcount(cursor: Any) -> int:
     try:
-        return max(0, int(rowcount))
-    except (TypeError, ValueError):
-        return default
+        rowcount: object = cursor.rowcount
+    except AttributeError as exc:
+        raise TypeError("cex_oi_radar_rowcount_required") from exc
+    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
+        raise TypeError("cex_oi_radar_rowcount_invalid")
+    if rowcount < 0:
+        raise TypeError("cex_oi_radar_rowcount_invalid")
+    return rowcount
 
 
 def _source_frontier_ms(rows: list[dict[str, Any]], *, default: int) -> int:
-    observed_values = [int(row["observed_at_ms"]) for row in rows if row.get("observed_at_ms") is not None]
+    observed_values = [
+        provider_observed_at_ms
+        for row in rows
+        if (provider_observed_at_ms := _provider_observed_at_ms(row)) is not None
+    ]
     if not observed_values:
         return default
     return max(observed_values)
@@ -400,18 +437,35 @@ def _latest_attempt_error(*, status: str, notes: dict[str, Any] | None) -> str |
     return str(reason) if reason else status
 
 
+def _transaction(conn: Any) -> AbstractContextManager[Any]:
+    try:
+        transaction = conn.transaction
+    except AttributeError as exc:
+        raise TypeError("cex_oi_radar_transaction_required") from exc
+    if not callable(transaction):
+        raise TypeError("cex_oi_radar_transaction_required")
+    return cast(AbstractContextManager[Any], transaction())
+
+
 def _board_payload_hash(*, rows: list[dict[str, Any]], period: str, source_frontier_ms: int) -> str:
+    board_period = _required_board_text(period, "period")
     return stable_current_payload_hash(
         {
             "provider": "binance",
             "exchange": "binance",
             "quote_symbol": "USDT",
             "contract_type": "PERPETUAL",
-            "period": period,
-            "source_frontier_ms": source_frontier_ms,
+            "period": board_period,
+            "source_frontier_ms": _board_hash_source_frontier_ms(
+                rows=rows,
+                source_frontier_ms=source_frontier_ms,
+            ),
             "rows": [
                 _board_row_payload(row)
-                for row in sorted(rows, key=lambda item: (int(item["rank"]), str(item["target_id"])))
+                for row in sorted(
+                    rows,
+                    key=lambda item: (int(item["rank"]), _required_board_row_text(item, "target_id")),
+                )
             ],
         }
     )
@@ -420,20 +474,93 @@ def _board_payload_hash(*, rows: list[dict[str, Any]], period: str, source_front
 def _board_row_payload(row: dict[str, Any]) -> dict[str, Any]:
     return {
         "rank": int(row["rank"]),
-        "target_id": row["target_id"],
+        "target_id": _required_board_row_text(row, "target_id"),
         "pricefeed_id": row.get("pricefeed_id"),
-        "native_market_id": row["native_market_id"],
-        "base_symbol": row["base_symbol"],
-        "quote_symbol": row["quote_symbol"],
+        "native_market_id": _required_board_row_text(row, "native_market_id"),
+        "base_symbol": _required_board_row_text(row, "base_symbol"),
+        "quote_symbol": _required_board_row_text(row, "quote_symbol"),
         "open_interest_usd": row.get("open_interest_usd"),
         "open_interest_change_pct_1h": row.get("open_interest_change_pct_1h"),
         "volume_24h_usd": row.get("volume_24h_usd"),
         "funding_rate": row.get("funding_rate"),
         "mark_price": row.get("mark_price"),
         "score": row["score"],
-        "score_components": row.get("score_components") or {},
-        "observed_at_ms": row.get("observed_at_ms"),
+        "score_components": _required_score_components(row),
+        "observed_at_ms": _provider_observed_at_ms(row),
     }
+
+
+def _board_hash_source_frontier_ms(
+    *,
+    rows: list[dict[str, Any]],
+    source_frontier_ms: int,
+) -> int | None:
+    provider_observed_values = [
+        provider_observed_at_ms
+        for row in rows
+        if (provider_observed_at_ms := _provider_observed_at_ms(row)) is not None
+    ]
+    if provider_observed_values:
+        return max(provider_observed_values)
+    if not rows or any(_observed_at_source(row) == "computed" for row in rows):
+        return None
+    return source_frontier_ms
+
+
+def _provider_observed_at_ms(row: dict[str, Any]) -> int | None:
+    observed_at_ms = _required_observed_at_ms(row)
+    source = _observed_at_source(row)
+    if source == "provider":
+        return observed_at_ms
+    if source == "computed":
+        return None
+    raise ValueError("cex_oi_radar_observation_invalid:observed_at_source")
+
+
+def _observed_at_source(row: dict[str, Any]) -> str:
+    return _required_observed_at_source(row)
+
+
+def _required_observed_at_ms(row: dict[str, Any]) -> int:
+    value = row.get("observed_at_ms")
+    if value is None:
+        raise ValueError("cex_oi_radar_observation_required:observed_at_ms")
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("cex_oi_radar_observation_invalid:observed_at_ms") from exc
+
+
+def _required_observed_at_source(row: dict[str, Any]) -> str:
+    value = row.get("observed_at_source")
+    if value is None:
+        raise ValueError("cex_oi_radar_observation_required:observed_at_source")
+    source = str(value).strip().lower()
+    if not source:
+        raise ValueError("cex_oi_radar_observation_required:observed_at_source")
+    if source not in _OBSERVED_AT_SOURCE_VALUES:
+        raise ValueError("cex_oi_radar_observation_invalid:observed_at_source")
+    return source
+
+
+def _required_score_components(row: dict[str, Any]) -> dict[Any, Any]:
+    value = row.get("score_components")
+    if value is None:
+        raise ValueError("cex_oi_radar_score_components_required")
+    if not isinstance(value, Mapping):
+        raise ValueError("cex_oi_radar_score_components_invalid")
+    return dict(value)
+
+
+def _required_board_row_text(row: dict[str, Any], field: str) -> str:
+    return _required_board_text(row.get(field), field)
+
+
+def _required_board_text(value: Any, field: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError(f"cex_oi_radar_identity_required:{field}")
+    return text
 
 
 def _publication_payload(state: dict[str, Any]) -> dict[str, Any]:

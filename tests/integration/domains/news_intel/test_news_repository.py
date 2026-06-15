@@ -27,6 +27,8 @@ from parallax.domains.news_intel.types.news_item_brief import (
     NEWS_ITEM_BRIEF_LANE,
     NEWS_ITEM_BRIEF_WORKFLOW_NAME,
 )
+from parallax.domains.news_intel.types.news_market_scope import NewsMarketScope
+from parallax.domains.news_intel.types.news_story_identity import NewsStoryIdentity
 from parallax.platform.db.postgres_migrations import alembic_config
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
@@ -1102,7 +1104,7 @@ def test_opennews_public_url_later_remaps_dirty_targets_without_rewriting_agent_
                 )
             ],
         )
-        repositories_for_connection(conn).news_projection_dirty_targets.enqueue_targets(
+        _repositories_for_test_connection(conn).news_projection_dirty_targets.enqueue_targets(
             [
                 {
                     "projection_name": "brief_input",
@@ -2388,7 +2390,7 @@ def test_identity_promotion_reselects_old_representative_when_edges_remain(tmp_p
             created_at_ms=NOW_MS + 110,
             updated_at_ms=NOW_MS + 110,
         )
-        repositories_for_connection(conn).news_projection_dirty_targets.enqueue_targets(
+        _repositories_for_test_connection(conn).news_projection_dirty_targets.enqueue_targets(
             [
                 {
                     "projection_name": "brief_input",
@@ -4773,7 +4775,7 @@ def test_updating_news_item_clears_stale_item_facts_and_refreshes_page_projectio
             "SELECT lifecycle_status FROM news_items WHERE news_item_id = %s",
             (news_item_id,),
         ).fetchone()["lifecycle_status"]
-        repos = repositories_for_connection(conn)
+        repos = _repositories_for_test_connection(conn)
         repos.news_projection_dirty_targets.enqueue_targets(
             [{"projection_name": "page", "target_kind": "news_item", "target_id": news_item_id}],
             reason="news_item_written",
@@ -5568,11 +5570,20 @@ def test_repository_session_exposes_news_repository(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        repos = repositories_for_connection(conn)
+        repos = _repositories_for_test_connection(conn)
     finally:
         conn.close()
 
     assert isinstance(repos.news, NewsRepository)
+
+
+def _repositories_for_test_connection(conn):
+    return repositories_for_connection(
+        conn,
+        pulse_job_running_timeout_ms=300_000,
+        notification_delivery_running_timeout_ms=300_000,
+        notification_delivery_stale_running_terminalization_batch_size=100,
+    )
 
 
 def test_news_repository_exposes_only_canonical_news_item_writer_surface() -> None:
@@ -6031,20 +6042,20 @@ def _set_market_scope_story(
 ) -> None:
     repo.update_item_market_scope_and_story_identity(
         news_item_id=news_item_id,
-        market_scope={
-            "scope": [primary_scope],
-            "primary": primary_scope,
-            "status": "classified",
-            "reason": f"{primary_scope}_context",
-            "basis": {"test": True},
-            "version": "test_news_market_scope_v1",
-        },
-        story_identity={
-            "story_key": story_key,
-            "confidence": "strong",
-            "basis": {"test": True, "market_scope": [primary_scope], "market_scope_primary": primary_scope},
-            "version": NEWS_STORY_IDENTITY_VERSION,
-        },
+        market_scope=NewsMarketScope(
+            scope=(primary_scope,),
+            primary=primary_scope,
+            status="classified",
+            reason=f"{primary_scope}_context",
+            basis={"test": True},
+            version="test_news_market_scope_v1",
+        ),
+        story_identity=NewsStoryIdentity(
+            story_key=story_key,
+            confidence="strong",
+            basis={"test": True, "market_scope": [primary_scope], "market_scope_primary": primary_scope},
+            version=NEWS_STORY_IDENTITY_VERSION,
+        ),
         now_ms=NOW_MS,
     )
     repo.mark_item_processed(news_item_id=news_item_id, processed_at_ms=NOW_MS)
@@ -6528,7 +6539,7 @@ class _SingleConnectionWorkerDB:
 
     @contextmanager
     def worker_session(self, name: str, statement_timeout_seconds: float | None = None):
-        yield repositories_for_connection(self.conn)
+        yield _repositories_for_test_connection(self.conn)
 
 
 def _insert_agent_run(repo: NewsRepository, *, news_item_id: str, run_id: str) -> dict[str, object]:

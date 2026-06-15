@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 from collections.abc import Mapping
 from typing import Any
 
@@ -58,7 +57,7 @@ class WorkerScheduler:
         errors: list[Exception] = []
         for worker in self.workers.values():
             try:
-                await _maybe_await(worker.stop())
+                await worker.stop()
             except Exception as exc:
                 errors.append(exc)
         pending = [task for task in self.tasks.values() if not task.done()]
@@ -75,29 +74,33 @@ class WorkerScheduler:
                 _consume_task_exception(task)
         for worker in self.workers.values():
             try:
-                await _maybe_await(worker.aclose())
+                await worker.aclose()
             except Exception as exc:
                 errors.append(exc)
-        await self._close_pools(errors)
+        try:
+            await self.db.aclose()
+        except Exception as exc:
+            errors.append(exc)
         self._started = False
         if errors:
             raise ExceptionGroup("worker_scheduler_stop_failed", errors)
 
     def status_payload(self) -> dict[str, dict[str, Any]]:
-        return {name: worker.status_payload() for name, worker in self.workers.items()}
+        return {name: _worker_status_payload(worker) for name, worker in self.workers.items()}
 
     def unhealthy_reasons(self) -> list[str]:
         reasons: list[str] = []
         for name, worker in self.workers.items():
-            effective_status = worker_effective_status(worker)
+            payload = _worker_status_payload(worker)
+            effective_status = _payload_effective_status(payload)
             if effective_status in {"disabled", "intentionally_not_started"}:
                 continue
             if effective_status == "unavailable":
-                reasons.append(f"worker:{name}:unavailable:{_worker_unavailable_reason(worker)}")
+                reasons.append(f"worker:{name}:unavailable:{_worker_unavailable_reason(payload)}")
                 continue
             task_items = _worker_task_items(self.tasks, name)
             if not task_items:
-                failure_reason = _worker_failure_reason(name, worker, effective_status)
+                failure_reason = _worker_failure_reason(name, payload, effective_status)
                 if failure_reason is not None:
                     reasons.append(failure_reason)
                     continue
@@ -116,7 +119,7 @@ class WorkerScheduler:
                     else:
                         reasons.append(f"worker:{task_key}:stopped")
                     continue
-            failure_reason = _worker_failure_reason(name, worker, effective_status)
+            failure_reason = _worker_failure_reason(name, payload, effective_status)
             if failure_reason is not None and not task_failure_emitted:
                 reasons.append(failure_reason)
         return reasons
@@ -127,62 +130,30 @@ class WorkerScheduler:
             key=lambda name: (_START_PRIORITY.get(name, 25), name),
         )
 
-    async def _close_pools(self, errors: list[Exception]) -> None:
-        close_bundle = getattr(self.db, "aclose", None)
-        if close_bundle is not None:
-            try:
-                await _maybe_await(close_bundle())
-            except Exception as exc:
-                errors.append(exc)
-            return
-        for attr in ("api_pool", "worker_pool", "lock_pool", "tool_pool", "wake_pool"):
-            pool = getattr(self.db, attr, None)
-            if pool is not None:
-                try:
-                    await _close_resource(pool)
-                except Exception as exc:
-                    errors.append(exc)
-
-
-def _worker_enabled(worker: Any) -> bool:
-    settings = getattr(worker, "settings", None)
-    return bool(getattr(settings, "enabled", True))
-
 
 def _worker_startable(worker: Any) -> bool:
     return worker_effective_status(worker) not in {"disabled", "intentionally_not_started", "unavailable"}
 
 
 def worker_effective_status(worker: Any) -> str:
-    explicit = getattr(worker, "effective_status", None)
-    if isinstance(explicit, str) and explicit:
-        return explicit
     payload = _worker_status_payload(worker)
-    if payload:
-        return effective_worker_status(payload)
-    if not _worker_enabled(worker):
-        return "disabled"
-    if getattr(worker, "last_error", None):
-        return "failed"
-    if bool(getattr(worker, "running", False)):
-        return "running"
-    return "stopped"
+    return _payload_effective_status(payload)
 
 
-def _worker_unavailable_reason(worker: Any) -> str:
-    reason = getattr(worker, "unavailable_reason", None)
-    if isinstance(reason, str) and reason:
-        return reason
-    payload = _worker_status_payload(worker)
+def _payload_effective_status(payload: Mapping[str, Any]) -> str:
+    return effective_worker_status(payload)
+
+
+def _worker_unavailable_reason(payload: Mapping[str, Any]) -> str:
     payload_reason = payload.get("unavailable_reason")
     if isinstance(payload_reason, str) and payload_reason:
         return payload_reason
     return "unavailable"
 
 
-def _worker_failure_reason(name: str, worker: Any, effective_status: str) -> str | None:
-    last_error = getattr(worker, "last_error", None)
-    if _worker_hard_timed_out(worker):
+def _worker_failure_reason(name: str, payload: Mapping[str, Any], effective_status: str) -> str | None:
+    last_error = payload.get("last_error")
+    if _worker_hard_timed_out(payload):
         return f"worker:{name}:hard_timeout"
     if last_error:
         return f"worker:{name}:errored:{last_error}"
@@ -192,14 +163,10 @@ def _worker_failure_reason(name: str, worker: Any, effective_status: str) -> str
 
 
 def _worker_status_payload(worker: Any) -> dict[str, Any]:
-    status_payload = getattr(worker, "status_payload", None)
-    if not callable(status_payload):
-        return {}
-    try:
-        payload = status_payload()
-    except Exception:
-        return {}
-    return payload if isinstance(payload, dict) else {}
+    payload = worker.status_payload()
+    if not isinstance(payload, Mapping):
+        raise TypeError("worker_status_payload_must_be_dict")
+    return dict(payload)
 
 
 def _worker_concurrency(name: str, worker: Any) -> int:
@@ -207,11 +174,11 @@ def _worker_concurrency(name: str, worker: Any) -> int:
     return 1
 
 
-def _worker_hard_timed_out(worker: Any) -> bool:
-    hard_timed_out_at_ms = getattr(worker, "active_run_once_hard_timed_out_at_ms", None)
+def _worker_hard_timed_out(payload: Mapping[str, Any]) -> bool:
+    hard_timed_out_at_ms = payload.get("active_run_once_hard_timed_out_at_ms")
     if hard_timed_out_at_ms is not None:
         return True
-    last_error = getattr(worker, "last_error", None)
+    last_error = payload.get("last_error")
     return isinstance(last_error, str) and last_error.startswith("WorkerRunHardTimeout")
 
 
@@ -224,22 +191,6 @@ def _worker_task_items(
         return [(name, direct)]
     prefix = f"{name}#"
     return [(task_key, task) for task_key, task in tasks.items() if task_key.startswith(prefix)]
-
-
-async def _close_resource(resource: Any) -> None:
-    aclose = getattr(resource, "aclose", None)
-    if aclose is not None:
-        await _maybe_await(aclose())
-        return
-    close = getattr(resource, "close", None)
-    if close is not None:
-        await _maybe_await(close())
-
-
-async def _maybe_await(value: Any) -> Any:
-    if inspect.isawaitable(value):
-        return await value
-    return value
 
 
 def _consume_task_exception(task: asyncio.Task[Any]) -> None:

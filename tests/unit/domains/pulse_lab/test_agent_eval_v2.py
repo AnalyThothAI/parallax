@@ -13,6 +13,7 @@ from parallax.domains.pulse_lab.types.agent_decision import (
     StageRunAudit,
     TradePlaybook,
 )
+from parallax.domains.pulse_lab.types.evidence_packet import PulseEvidencePacket
 
 
 def test_evidence_first_eval_passes_complete_packet_run() -> None:
@@ -25,6 +26,19 @@ def test_evidence_first_eval_passes_complete_packet_run() -> None:
 def test_evidence_first_eval_requires_packet_and_refs() -> None:
     case = _case()
     case["input_json"]["context"]["evidence_packet"] = {}
+
+    result = grade_pulse_deterministic_eval_case(case)
+
+    assert result["status"] == "fail"
+    assert "evidence_packet_exists" in result["details_json"]["violations"]
+
+
+def test_evidence_first_eval_requires_formal_packet_contract() -> None:
+    case = _case()
+    case["input_json"]["context"]["evidence_packet"] = {
+        "evidence_packet_hash": "sha256:packet",
+        "allowed_evidence_refs": [{"ref_id": "event:event-1", "ref_type": "event"}],
+    }
 
     result = grade_pulse_deterministic_eval_case(case)
 
@@ -140,15 +154,45 @@ def _case(
 
 
 def _packet() -> dict[str, Any]:
-    return {
-        "evidence_packet_hash": "sha256:packet",
-        "allowed_evidence_refs": [
-            {"ref_id": "event:event-1", "ref_type": "event"},
-            {"ref_id": "market:pf-1", "ref_type": "market"},
-            {"ref_id": "metric:market:price_usd", "ref_type": "metric"},
-            {"ref_id": "gate:pulse:market_missing", "ref_type": "gate"},
+    refs = ("event:event-1", "market:pf-1", "metric:market:price_usd", "gate:pulse:market_missing")
+    return PulseEvidencePacket(
+        evidence_packet_id="packet-1",
+        run_id="run-1",
+        evidence_packet_hash="sha256:packet",
+        schema_version="pulse-evidence-packet-v1",
+        candidate_id="candidate-1",
+        target_type="chain_token",
+        target_id="asset:test",
+        symbol="TEST",
+        window="1h",
+        scope="default",
+        snapshot_at_ms=1,
+        source_event_ids=("event-1",),
+        allowed_evidence_refs=[
+            {
+                "ref_id": ref,
+                "ref_type": ref.split(":", 1)[0],
+                "source_table": "events",
+                "source_id": ref.rsplit(":", 1)[-1],
+                "observed_at_ms": 1,
+                "summary_zh": "证据摘要",
+                "quality": "high",
+            }
+            for ref in refs
         ],
-    }
+        social_evidence={"status": "complete", "event_refs": ("event:event-1",)},
+        market_evidence={
+            "status": "complete",
+            "route": "meme",
+            "target_market_type": "dex",
+            "price_usd": 1.0,
+            "liquidity_usd": 1000.0,
+            "freshness_status": "fresh",
+            "market_refs": ("market:pf-1", "metric:market:price_usd"),
+        },
+        identity_evidence={"status": "complete", "identity_refs": ("identity:token",)},
+        quality_metrics={"ref_count": len(refs), "high_quality_ref_count": len(refs), "fresh_ref_count": len(refs)},
+    ).model_dump(mode="json")
 
 
 def _stage(stage: str, *, status: str = "ok") -> StageRunAudit:

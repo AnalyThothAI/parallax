@@ -15,7 +15,6 @@ from parallax.integrations.news_feeds.cryptopanic_client import CryptopanicFeedC
 from parallax.integrations.news_feeds.feed_client import FeedClient
 from parallax.integrations.news_feeds.opennews_client import OpenNewsFeedClient
 from parallax.integrations.news_feeds.provider_registry import (
-    SUPPORTED_NEWS_PROVIDER_TYPES,
     NewsFeedProviderRegistry,
     default_news_feed_provider_registry,
 )
@@ -35,18 +34,11 @@ def news_feed_client(settings: Settings) -> NewsSourceProvider:
     return RegistryBackedNewsSourceProvider(registry=registry)
 
 
-def supported_news_provider_types() -> tuple[str, ...]:
-    return tuple(SUPPORTED_NEWS_PROVIDER_TYPES)
-
-
 class RegistryBackedNewsSourceProvider:
     provider_type = "registry"
 
     def __init__(self, *, registry: NewsFeedProviderRegistry) -> None:
         self._registry = registry
-
-    def supported_provider_types(self) -> tuple[str, ...]:
-        return self._registry.supported_provider_types()
 
     def fetch(
         self,
@@ -132,5 +124,4 @@ def _optional_mapping_list(value: Any) -> list[dict[str, Any]]:
 __all__ = [
     "RegistryBackedNewsSourceProvider",
     "news_feed_client",
-    "supported_news_provider_types",
 ]

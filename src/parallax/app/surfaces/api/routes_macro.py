@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from datetime import date
 from typing import Annotated, Any
 
@@ -167,16 +168,36 @@ def _public_macro(snapshot: dict[str, Any] | None, *, currentness: dict[str, Any
             "computed_at_ms": snapshot["computed_at_ms"],
         },
         "currentness": currentness,
-        "panels": snapshot.get("panels_json") or {},
-        "indicators": snapshot.get("indicators_json") or {},
-        "triggers": snapshot.get("triggers_json") or [],
-        "data_gaps": snapshot.get("data_gaps_json") or [],
-        "source_coverage": snapshot.get("source_coverage_json") or {},
-        "features": snapshot.get("features_json") or {},
-        "chain": snapshot.get("chain_json") or {},
-        "scenario": snapshot.get("scenario_json") or {},
-        "scorecard": snapshot.get("scorecard_json") or {},
+        "panels": _required_snapshot_mapping(snapshot, "panels_json"),
+        "indicators": _required_snapshot_mapping(snapshot, "indicators_json"),
+        "triggers": _required_snapshot_list(snapshot, "triggers_json"),
+        "data_gaps": _required_snapshot_list(snapshot, "data_gaps_json"),
+        "source_coverage": _required_snapshot_mapping(snapshot, "source_coverage_json"),
+        "features": _required_snapshot_mapping(snapshot, "features_json"),
+        "chain": _required_snapshot_mapping(snapshot, "chain_json"),
+        "scenario": _required_snapshot_mapping(snapshot, "scenario_json"),
+        "scorecard": _required_snapshot_mapping(snapshot, "scorecard_json"),
     }
+
+
+def _required_snapshot_mapping(snapshot: Mapping[str, Any], field_name: str) -> dict[str, Any]:
+    if field_name not in snapshot or snapshot.get(field_name) is None:
+        raise ValueError(f"macro_view_snapshot_section_required:{field_name}")
+    value = snapshot.get(field_name)
+    if not isinstance(value, Mapping):
+        raise ValueError(f"macro_view_snapshot_section_invalid:{field_name}")
+    return dict(value)
+
+
+def _required_snapshot_list(snapshot: Mapping[str, Any], field_name: str) -> list[Any]:
+    if field_name not in snapshot or snapshot.get(field_name) is None:
+        raise ValueError(f"macro_view_snapshot_section_required:{field_name}")
+    value = snapshot.get(field_name)
+    if isinstance(value, Mapping | str | bytes | bytearray):
+        raise ValueError(f"macro_view_snapshot_section_invalid:{field_name}")
+    if not isinstance(value, Sequence):
+        raise ValueError(f"macro_view_snapshot_section_invalid:{field_name}")
+    return list(value)
 
 
 def _validate_correlation_query_params(request: Request) -> None:
@@ -242,10 +263,7 @@ def _module_concepts(config: Any) -> tuple[str, ...]:
 def _cex_board(repos: Any, module_id: str) -> dict[str, Any] | None:
     if module_id != "assets/crypto-derivatives":
         return None
-    board_repo = getattr(repos, "cex_oi_radar", None)
-    if board_repo is None:
-        return None
-    board = board_repo.latest_board(limit=20)
+    board = repos.cex_oi_radar.latest_board(limit=20)
     publication = board.get("publication") if isinstance(board, dict) else None
     state = board.get("state") if isinstance(board, dict) else None
     rows = board.get("rows") if isinstance(board, dict) else []
@@ -264,10 +282,7 @@ def _cex_board(repos: Any, module_id: str) -> dict[str, Any] | None:
 def _daily_brief(repos: Any, module_id: str) -> dict[str, Any] | None:
     if module_id != "assets":
         return None
-    loader = getattr(repos.macro_intel, "latest_macro_daily_brief", None)
-    if loader is None:
-        return None
-    brief = loader(brief_key="assets_today")
+    brief = repos.macro_intel.latest_macro_daily_brief(brief_key="assets_today")
     return brief if isinstance(brief, dict) else None
 
 

@@ -63,8 +63,6 @@ providers:
     timeout_seconds: 15
   macrodata:
     enabled: true
-    quote_timeout_seconds: 5
-    quote_cache_ttl_seconds: 30
     fred_api_key_env: "FINANCE_FRED_API_KEY"
 
 news_intel:

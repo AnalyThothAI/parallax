@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
 from typing import Any
 
 from parallax.domains.news_intel._constants import NEWS_TOKEN_MENTION_POLICY_VERSION
-from parallax.domains.news_intel.services.news_entity_extraction import NewsEntity
+from parallax.domains.news_intel.types.news_extraction import NewsEntity, NewsTokenMention
 from parallax.domains.token_intel.interfaces import TokenIdentityLookup, TokenIdentityLookupResult
 
 _V1_RESOLUTION_STATUSES = frozenset(
@@ -19,26 +18,6 @@ _V1_RESOLUTION_STATUSES = frozenset(
         "nil",
     }
 )
-
-
-@dataclass(frozen=True, slots=True)
-class NewsTokenMention:
-    mention_id: str
-    news_item_id: str
-    entity_id: str | None
-    observed_symbol: str | None
-    chain_id: str | None
-    address: str | None
-    resolution_status: str
-    target_type: str | None
-    target_id: str | None
-    display_symbol: str | None
-    display_name: str | None
-    reason_codes: list[str]
-    candidate_targets: list[dict[str, object]]
-    evidence_strength: str
-    confidence: float
-    created_at_ms: int
 
 
 def build_news_token_mentions(

@@ -1,13 +1,24 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
+from parallax.domains.pulse_lab.queries.pulse_freshness_health_queries import (
+    fetch_pulse_health_candidates,
+    fetch_pulse_health_clocks,
+    fetch_pulse_health_jobs,
+    fetch_pulse_health_runs,
+)
 from parallax.domains.pulse_lab.repositories._pulse_repository_shared import (
     _decode_cursor,
     _encode_cursor,
     _normalize_subject,
     _optional_row,
     _row,
+)
+from parallax.domains.pulse_lab.types.pulse_freshness_health import (
+    classify_pulse_freshness_health,
+    pulse_freshness_since_ms,
 )
 
 PUBLIC_DISPLAY_STATUS_SQL = "('display_trade_candidate', 'display_token_watch', 'display_risk_rejected_high_info')"
@@ -19,16 +30,15 @@ PUBLIC_DISPLAY_STATUS_BY_PUBLIC_STATUS = {
 
 
 class PulseReadRepository:
-    def __init__(self, conn: Any, *, running_timeout_ms: int = 300_000):
+    def __init__(self, conn: Any):
         self.conn = conn
-        self.running_timeout_ms = int(running_timeout_ms)
 
     def list_candidates(
         self,
         window: str,
         scope: str,
+        limit: int,
         status: str | None = None,
-        limit: int = 50,
         cursor: str | None = None,
         q: str | None = None,
         handle: str | None = None,
@@ -54,8 +64,9 @@ class PulseReadRepository:
             if handle_clause:
                 clauses.append(handle_clause)
                 params.extend(handle_params)
-        if q:
-            pattern = f"%{q.strip()}%"
+        normalized_q = _normalize_public_search_q(q)
+        if normalized_q:
+            pattern = f"%{normalized_q}%"
             clauses.append(
                 "(candidate.symbol ILIKE %s OR candidate.subject_key ILIKE %s OR candidate.target_id ILIKE %s)"
             )
@@ -83,6 +94,65 @@ class PulseReadRepository:
             next_cursor = _encode_cursor(last["updated_at_ms"], last["candidate_id"])
         return {"items": items, "next_cursor": next_cursor}
 
+    def list_signal_pulse_notification_candidates(
+        self,
+        *,
+        window: str,
+        scopes: Sequence[str],
+        statuses: Sequence[str],
+        per_scope_status_limit: int,
+    ) -> list[dict[str, Any]]:
+        normalized_scopes = _ordered_non_empty(scopes)
+        normalized_statuses = _ordered_non_empty(statuses)
+        bounded_limit = max(0, int(per_scope_status_limit))
+        if not normalized_scopes or not normalized_statuses or bounded_limit == 0:
+            return []
+        display_statuses = [_public_display_status(status) for status in normalized_statuses]
+        rows = self.conn.execute(
+            f"""
+            WITH input_scopes AS (
+              SELECT scope, ordinality AS scope_ordinal
+              FROM unnest(%s::text[]) WITH ORDINALITY AS input(scope, ordinality)
+            ),
+            input_statuses AS (
+              SELECT public_status, display_status, ordinality AS status_ordinal
+              FROM unnest(%s::text[], %s::text[])
+                WITH ORDINALITY AS input(public_status, display_status, ordinality)
+            ),
+            candidate_rows AS (
+              SELECT
+                candidate.*,
+                input_scopes.scope_ordinal,
+                input_statuses.status_ordinal,
+                ROW_NUMBER() OVER (
+                  PARTITION BY input_scopes.scope, input_statuses.public_status
+                  ORDER BY candidate.updated_at_ms DESC, candidate.candidate_id DESC
+                ) AS bucket_rank
+              FROM input_scopes
+              JOIN input_statuses ON true
+              JOIN pulse_candidates AS candidate
+                ON candidate."window" = %s
+               AND candidate.scope = input_scopes.scope
+               AND candidate.pulse_status = input_statuses.public_status
+               AND candidate.display_status = input_statuses.display_status
+              WHERE input_statuses.display_status IN {PUBLIC_DISPLAY_STATUS_SQL}
+                AND candidate.evidence_packet_hash IS NOT NULL
+            )
+            SELECT *
+            FROM candidate_rows
+            WHERE bucket_rank <= %s
+            ORDER BY scope_ordinal ASC, status_ordinal ASC, bucket_rank ASC
+            """,
+            (
+                normalized_scopes,
+                normalized_statuses,
+                display_statuses,
+                window,
+                bounded_limit,
+            ),
+        ).fetchall()
+        return [_row(row) for row in rows]
+
     def pulse_summary(
         self,
         window: str,
@@ -97,8 +167,9 @@ class PulseReadRepository:
             if handle_clause:
                 clauses.append(handle_clause)
                 params.extend(handle_params)
-        if q:
-            pattern = f"%{q.strip()}%"
+        normalized_q = _normalize_public_search_q(q)
+        if normalized_q:
+            pattern = f"%{normalized_q}%"
             clauses.append(
                 "(candidate.symbol ILIKE %s OR candidate.subject_key ILIKE %s OR candidate.target_id ILIKE %s)"
             )
@@ -182,8 +253,8 @@ class PulseReadRepository:
             if normalized_handle and candidate_handle_clause:
                 job_clauses.append(f"(lower(job.subject_key) = %s OR {candidate_handle_clause})")
                 job_params.extend([normalized_handle, *candidate_handle_params])
-        if q:
-            pattern = f"%{q.strip()}%"
+        if normalized_q:
+            pattern = f"%{normalized_q}%"
             job_clauses.append("(candidate.symbol ILIKE %s OR job.subject_key ILIKE %s OR job.target_id ILIKE %s)")
             job_params.extend([pattern, pattern, pattern])
         job_row = self.conn.execute(
@@ -292,37 +363,55 @@ class PulseReadRepository:
             "job_counts": job_counts,
         }
 
+    def freshness_health(self, *, window: str, scope: str, now_ms: int, since_hours: int) -> dict[str, Any]:
+        since_ms = pulse_freshness_since_ms(now_ms=now_ms, since_hours=since_hours)
+        clocks = fetch_pulse_health_clocks(self.conn, window=window, scope=scope)
+        jobs = fetch_pulse_health_jobs(self.conn, window=window, scope=scope, now_ms=now_ms, since_ms=since_ms)
+        runs = fetch_pulse_health_runs(self.conn, window=window, scope=scope, since_ms=since_ms)
+        candidates = fetch_pulse_health_candidates(self.conn, window=window, scope=scope, since_ms=since_ms)
+        status, reasons = classify_pulse_freshness_health(
+            clocks=clocks,
+            jobs=jobs,
+            runs=runs,
+            now_ms=now_ms,
+        )
+        return {
+            "window": window,
+            "scope": scope,
+            "since_hours": max(1, int(since_hours)),
+            "publish_status": status,
+            "reasons": reasons,
+            **clocks,
+            **jobs,
+            **runs,
+            **candidates,
+        }
+
 
 def _candidate_handle_filter_clause(candidate_alias: str, handle: str | None) -> tuple[str, list[Any]]:
     normalized = _normalize_subject(handle)
     if not normalized:
         return "", []
-    event_ids_sql = f"""
-        (
-          CASE
-            WHEN jsonb_typeof({candidate_alias}.source_event_ids_json) = 'array'
-            THEN {candidate_alias}.source_event_ids_json
-            ELSE '[]'::jsonb
-          END
-          ||
-          CASE
-            WHEN jsonb_typeof({candidate_alias}.evidence_event_ids_json) = 'array'
-            THEN {candidate_alias}.evidence_event_ids_json
-            ELSE '[]'::jsonb
-          END
-        )
-    """
     return (
         f"""
-        (
-          lower({candidate_alias}.subject_key) = %s
-          OR EXISTS (
-            SELECT 1
-            FROM jsonb_array_elements_text({event_ids_sql}) AS pulse_event(event_id)
-            LEFT JOIN events ON events.event_id = pulse_event.event_id
-            WHERE lower(coalesce(events.author_handle, '')) = %s
-          )
-        )
+        lower({candidate_alias}.subject_key) = %s
         """,
-        [normalized, normalized],
+        [normalized],
     )
+
+
+def _normalize_public_search_q(q: str | None) -> str:
+    if q is None:
+        return ""
+    return str(q).strip()
+
+
+def _ordered_non_empty(values: Sequence[str]) -> list[str]:
+    return list(dict.fromkeys(str(value).strip() for value in values if str(value or "").strip()))
+
+
+def _public_display_status(status: str) -> str:
+    public_display_status = PUBLIC_DISPLAY_STATUS_BY_PUBLIC_STATUS.get(status)
+    if public_display_status is None:
+        raise ValueError(f"invalid public Signal Pulse status: {status}")
+    return public_display_status

@@ -9,6 +9,7 @@ from parallax.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
     TOKEN_RADAR_FACTOR_FAMILIES,
 )
+from parallax.domains.token_intel.scoring.factor_snapshot_contract import require_token_factor_snapshot
 
 HORIZON_MS = {
     "15m": 15 * 60 * 1000,
@@ -102,12 +103,11 @@ def settle_token_factor_scores(
 
 
 def _settle_row(row: dict[str, Any], *, repos: Any, horizon_ms: int, generated_at_ms: int) -> dict[str, Any]:
-    snapshot = _mapping(row.get("factor_snapshot_json"))
-    subject = _mapping(snapshot.get("subject"))
-    subject_type = str(subject.get("target_type") or row.get("target_type") or "").strip()
-    subject_id = str(subject.get("target_id") or row.get("target_id") or "").strip()
-    market_target_type, market_target_id = _market_tick_target(row=row, subject=subject)
-    computed_at_ms = int(row.get("computed_at_ms") or 0)
+    snapshot = require_token_factor_snapshot(row.get("factor_snapshot_json"), field_name="factor_snapshot_json")
+    subject = _mapping(snapshot["subject"])
+    subject_type, subject_id = _subject_identity(subject)
+    market_target_type, market_target_id = _market_tick_target(subject=subject)
+    computed_at_ms = _snapshot_computed_at_ms(snapshot)
     rank_score = _rank_score(snapshot)
     family_scores = _family_scores(snapshot)
     base = {
@@ -154,23 +154,33 @@ def _settle_row(row: dict[str, Any], *, repos: Any, horizon_ms: int, generated_a
     }
 
 
-def _market_tick_target(*, row: dict[str, Any], subject: dict[str, Any]) -> tuple[str | None, str | None]:
-    subject_type = str(subject.get("target_type") or row.get("target_type") or "").strip()
-    subject_id = str(subject.get("target_id") or row.get("target_id") or "").strip()
-    if subject_type in {"chain_token", "cex_symbol"} and subject_id:
-        return subject_type, subject_id
+def _subject_identity(subject: dict[str, Any]) -> tuple[str, str]:
+    subject_type = _clean(subject.get("target_type"))
+    if not subject_type:
+        raise ValueError("factor_snapshot_json.subject.target_type is required")
+    if subject_type not in {"Asset", "CexToken"}:
+        raise ValueError("factor_snapshot_json.subject.target_type is invalid")
+    subject_id = _clean(subject.get("target_id"))
+    if not subject_id:
+        raise ValueError("factor_snapshot_json.subject.target_id is required")
+    return (subject_type, subject_id)
 
+
+def _snapshot_computed_at_ms(snapshot: dict[str, Any]) -> int:
+    provenance = _mapping(snapshot["provenance"])
+    return int(provenance["computed_at_ms"])
+
+
+def _market_tick_target(*, subject: dict[str, Any]) -> tuple[str | None, str | None]:
+    subject_type, _subject_id = _subject_identity(subject)
     if subject_type == "Asset":
-        chain = _clean(subject.get("chain") or subject.get("chain_id"))
-        address = _clean(subject.get("address") or subject.get("asset_address"))
+        chain = _clean(subject.get("chain"))
+        address = _clean(subject.get("address"))
         if chain and address:
             return "chain_token", f"{chain}:{address}"
     if subject_type == "CexToken":
-        snapshot = _mapping(row.get("factor_snapshot_json"))
-        market = _mapping(snapshot.get("market"))
-        decision_latest = _mapping(market.get("decision_latest"))
-        provider = _clean(subject.get("provider") or decision_latest.get("provider"))
-        native_market_id = _clean(subject.get("native_market_id") or subject.get("instrument"))
+        provider = _clean(subject.get("provider"))
+        native_market_id = _clean(subject.get("native_market_id"))
         if provider and native_market_id:
             return "cex_symbol", f"{provider}:{native_market_id}"
     return None, None
@@ -229,26 +239,18 @@ def _bucket_summary(
 
 
 def _rank_score(snapshot: dict[str, Any]) -> float:
-    composite = _mapping(snapshot.get("composite"))
-    try:
-        return max(0.0, min(100.0, float(composite.get("rank_score") or 0.0)))
-    except (TypeError, ValueError):
-        return 0.0
+    composite = _mapping(snapshot["composite"])
+    return max(0.0, min(100.0, float(composite["rank_score"])))
 
 
 def _family_scores(snapshot: dict[str, Any]) -> dict[str, float | None]:
-    composite = _mapping(snapshot.get("composite"))
-    raw_scores = _mapping(composite.get("family_scores"))
-    return {family: _factor_score(raw_scores.get(family)) for family in TOKEN_RADAR_FACTOR_FAMILIES}
+    families = _mapping(snapshot["families"])
+    return {family: _family_score(families, family) for family in TOKEN_RADAR_FACTOR_FAMILIES}
 
 
-def _factor_score(value: Any) -> float | None:
-    if value is None:
-        return None
-    try:
-        return max(0.0, min(100.0, float(value)))
-    except (TypeError, ValueError):
-        return None
+def _family_score(families: dict[str, Any], family: str) -> float:
+    family_block = _mapping(families[family])
+    return max(0.0, min(100.0, float(family_block["score"])))
 
 
 def _bucket_label(rank_score: float) -> str:

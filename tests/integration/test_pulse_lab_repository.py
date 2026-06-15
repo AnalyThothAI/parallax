@@ -39,6 +39,7 @@ def test_terminalize_exhausted_stale_running_jobs_marks_dead_and_writes_bucket(t
         terminalized = repo.terminalize_exhausted_stale_running_jobs(
             now_ms=1_201,
             stale_after_ms=100,
+            limit=100,
         )
         rows = conn.execute(
             """

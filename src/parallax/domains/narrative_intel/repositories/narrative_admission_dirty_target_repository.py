@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from typing import Any
+from contextlib import AbstractContextManager
+from typing import Any, cast
 
 from parallax.platform.current_read_model_payload_hash import stable_dirty_target_payload_hash
 
@@ -22,14 +23,24 @@ class _NarrativeDirtyTargetRepository:
         due_at_ms: int | None = None,
         commit: bool = True,
     ) -> dict[str, int]:
+        target_list = list(targets)
         records = _target_records(
-            targets,
+            target_list,
             reason=reason,
             now_ms=int(now_ms),
             default_due_at_ms=int(due_at_ms if due_at_ms is not None else now_ms),
         )
         if not records:
             return {"targets": 0}
+        if commit:
+            with _transaction(self.conn):
+                return self.enqueue_targets(
+                    target_list,
+                    reason=reason,
+                    now_ms=now_ms,
+                    due_at_ms=due_at_ms,
+                    commit=False,
+                )
         table = self.table_name
         self.conn.execute(
             f"""
@@ -178,8 +189,6 @@ class _NarrativeDirtyTargetRepository:
                 "now_ms": int(now_ms),
             },
         )
-        if commit:
-            self.conn.commit()
         return {"targets": len(records)}
 
     def claim_due(
@@ -195,6 +204,19 @@ class _NarrativeDirtyTargetRepository:
         schema_version: str | None = None,
         commit: bool = True,
     ) -> list[dict[str, Any]]:
+        if commit:
+            with _transaction(self.conn):
+                return self.claim_due(
+                    now_ms=now_ms,
+                    limit=limit,
+                    lease_owner=lease_owner,
+                    lease_ms=lease_ms,
+                    windows=windows,
+                    scopes=scopes,
+                    projection_version=projection_version,
+                    schema_version=schema_version,
+                    commit=False,
+                )
         table = self.table_name
         rows = self.conn.execute(
             f"""
@@ -243,8 +265,6 @@ class _NarrativeDirtyTargetRepository:
                 "schema_version": schema_version,
             },
         ).fetchall()
-        if commit:
-            self.conn.commit()
         return [dict(row) for row in rows]
 
     def mark_done(
@@ -254,9 +274,13 @@ class _NarrativeDirtyTargetRepository:
         now_ms: int,
         commit: bool = True,
     ) -> int:
-        records = _claim_records(claims, label=self.error_label)
+        claim_list = list(claims)
+        records = _claim_records(claim_list, label=self.error_label)
         if not records:
             return 0
+        if commit:
+            with _transaction(self.conn):
+                return self.mark_done(claim_list, now_ms=now_ms, commit=False)
         table = self.table_name
         cursor = self.conn.execute(
             f"""
@@ -298,9 +322,7 @@ class _NarrativeDirtyTargetRepository:
             """,
             _claim_params(records),
         )
-        if commit:
-            self.conn.commit()
-        return int(getattr(cursor, "rowcount", 0) or 0)
+        return _cursor_rowcount(cursor)
 
     def mark_error(
         self,
@@ -311,9 +333,19 @@ class _NarrativeDirtyTargetRepository:
         retry_ms: int,
         commit: bool = True,
     ) -> int:
-        records = _claim_records(claims, label=self.error_label)
+        claim_list = list(claims)
+        records = _claim_records(claim_list, label=self.error_label)
         if not records:
             return 0
+        if commit:
+            with _transaction(self.conn):
+                return self.mark_error(
+                    claim_list,
+                    error=error,
+                    now_ms=now_ms,
+                    retry_ms=retry_ms,
+                    commit=False,
+                )
         params: dict[str, Any] = {
             **_claim_params(records),
             "due_at_ms": int(now_ms) + max(1, int(retry_ms)),
@@ -366,9 +398,7 @@ class _NarrativeDirtyTargetRepository:
             """,
             params,
         )
-        if commit:
-            self.conn.commit()
-        return int(getattr(cursor, "rowcount", 0) or 0)
+        return _cursor_rowcount(cursor)
 
     def reschedule(
         self,
@@ -378,9 +408,18 @@ class _NarrativeDirtyTargetRepository:
         now_ms: int,
         commit: bool = True,
     ) -> int:
-        records = _claim_records(claims, label=self.error_label)
+        claim_list = list(claims)
+        records = _claim_records(claim_list, label=self.error_label)
         if not records:
             return 0
+        if commit:
+            with _transaction(self.conn):
+                return self.reschedule(
+                    claim_list,
+                    due_at_ms=due_at_ms,
+                    now_ms=now_ms,
+                    commit=False,
+                )
         params: dict[str, Any] = {
             **_claim_params(records),
             "due_at_ms": int(due_at_ms),
@@ -431,9 +470,7 @@ class _NarrativeDirtyTargetRepository:
             """,
             params,
         )
-        if commit:
-            self.conn.commit()
-        return int(getattr(cursor, "rowcount", 0) or 0)
+        return _cursor_rowcount(cursor)
 
     def queue_depth(
         self,
@@ -469,6 +506,16 @@ class _NarrativeDirtyTargetRepository:
 class NarrativeAdmissionDirtyTargetRepository(_NarrativeDirtyTargetRepository):
     table_name = "narrative_admission_dirty_targets"
     error_label = "narrative admission dirty target"
+
+
+def _transaction(conn: Any) -> AbstractContextManager[Any]:
+    try:
+        transaction = conn.transaction
+    except AttributeError as exc:
+        raise RuntimeError("narrative_admission_dirty_target_transaction_required") from exc
+    if not callable(transaction):
+        raise RuntimeError("narrative_admission_dirty_target_transaction_required")
+    return cast(AbstractContextManager[Any], transaction())
 
 
 def _target_records(
@@ -554,15 +601,15 @@ def _claim_records(claims: Iterable[Mapping[str, Any]], *, label: str) -> list[d
         scope = str(claim.get("scope") or "").strip()
         projection_version = str(claim.get("projection_version") or "").strip()
         schema_version = str(claim.get("schema_version") or "").strip()
-        payload_hash = str(claim.get("payload_hash") or "")
-        lease_owner = str(claim.get("lease_owner") or "")
-        attempt_count = int(claim.get("attempt_count") or 0)
         if not target_type or not target_id or not window or not scope:
             raise ValueError(f"{label} completion requires full target key from claim_due")
         if not projection_version:
             raise ValueError(f"{label} completion requires projection_version from claim_due")
         if not schema_version:
             raise ValueError(f"{label} completion requires schema_version from claim_due")
+        payload_hash = _completion_payload_hash(claim, label=label)
+        lease_owner = _completion_lease_owner(claim, label=label)
+        attempt_count = _completion_attempt_count(claim, label=label)
         if not payload_hash:
             raise ValueError(f"{label} completion requires payload_hash from claim_due")
         if not lease_owner:
@@ -585,6 +632,42 @@ def _claim_records(claims: Iterable[Mapping[str, Any]], *, label: str) -> list[d
     return records
 
 
+def _completion_attempt_count(claim: Mapping[str, Any], *, label: str) -> int:
+    try:
+        attempt_count = int(claim["attempt_count"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"{label} completion requires attempt_count from claim_due") from exc
+    if attempt_count <= 0:
+        raise ValueError(f"{label} completion requires attempt_count from claim_due")
+    return attempt_count
+
+
+def _completion_lease_owner(claim: Mapping[str, Any], *, label: str) -> str:
+    try:
+        value = claim["lease_owner"]
+    except KeyError as exc:
+        raise ValueError(f"{label} completion requires lease_owner from claim_due") from exc
+    if value is None:
+        raise ValueError(f"{label} completion requires lease_owner from claim_due")
+    lease_owner = str(value).strip()
+    if not lease_owner:
+        raise ValueError(f"{label} completion requires lease_owner from claim_due")
+    return lease_owner
+
+
+def _completion_payload_hash(claim: Mapping[str, Any], *, label: str) -> str:
+    try:
+        value = claim["payload_hash"]
+    except KeyError as exc:
+        raise ValueError(f"{label} completion requires payload_hash from claim_due") from exc
+    if value is None:
+        raise ValueError(f"{label} completion requires payload_hash from claim_due")
+    payload_hash = str(value).strip()
+    if not payload_hash:
+        raise ValueError(f"{label} completion requires payload_hash from claim_due")
+    return payload_hash
+
+
 def _claim_params(records: list[dict[str, Any]]) -> dict[str, list[Any]]:
     return {
         "target_types": [str(record["target_type"]) for record in records],
@@ -597,6 +680,18 @@ def _claim_params(records: list[dict[str, Any]]) -> dict[str, list[Any]]:
         "lease_owners": [str(record["lease_owner"]) for record in records],
         "attempt_counts": [int(record["attempt_count"]) for record in records],
     }
+
+
+def _cursor_rowcount(cursor: Any) -> int:
+    try:
+        rowcount: object = cursor.rowcount
+    except AttributeError as exc:
+        raise TypeError("narrative_admission_dirty_target_rowcount_required") from exc
+    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
+        raise TypeError("narrative_admission_dirty_target_rowcount_invalid")
+    if rowcount < 0:
+        raise TypeError("narrative_admission_dirty_target_rowcount_invalid")
+    return rowcount
 
 
 def _priority_value(row: Mapping[str, Any]) -> int:

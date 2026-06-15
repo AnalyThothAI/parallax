@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
@@ -275,7 +275,7 @@ class AgentExecutionCancelled(asyncio.CancelledError):
         self.cancellation_reason = cancellation_reason
 
 
-ReleaseCallback = Callable[[], None | Awaitable[None]]
+ReleaseCallback = Callable[[], None]
 
 
 def _lane_has_capability_override(lane_policy: AgentLanePolicy) -> bool:
@@ -331,7 +331,7 @@ class AgentCapacityReservation:
         self.acquired = False
         result = release()
         if result is not None:
-            await result
+            raise RuntimeError("agent_capacity_release_must_be_sync")
 
 
 __all__ = [

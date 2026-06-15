@@ -6,11 +6,6 @@ from parallax.domains.asset_market.providers import (
     DexProfileSource,
     DexTokenProfile,
 )
-from parallax.domains.asset_market.repositories.asset_profile_repository import (
-    ERROR_REFRESH_MS,
-    MISSING_REFRESH_MS,
-    READY_REFRESH_MS,
-)
 
 
 def fetch_asset_profile(*, profile_source: DexProfileSource, row: dict[str, Any]) -> DexTokenProfile | None:
@@ -24,17 +19,47 @@ def fetch_asset_profile(*, profile_source: DexProfileSource, row: dict[str, Any]
 
 
 def write_ready_asset_profile(
-    *, repos: Any, provider: str, row: dict[str, Any], profile: DexTokenProfile, now_ms: int
+    *,
+    repos: Any,
+    provider: str,
+    row: dict[str, Any],
+    profile: DexTokenProfile,
+    now_ms: int,
+    next_refresh_at_ms: int,
 ) -> None:
-    _write_ready_profile(repos=repos, provider=provider, row=row, profile=profile, now_ms=now_ms)
+    _write_ready_profile(
+        repos=repos,
+        provider=provider,
+        row=row,
+        profile=profile,
+        now_ms=now_ms,
+        next_refresh_at_ms=next_refresh_at_ms,
+    )
 
 
-def write_missing_asset_profile(*, repos: Any, provider: str, row: dict[str, Any], now_ms: int) -> None:
-    _write_missing_profile(repos=repos, provider=provider, row=row, now_ms=now_ms)
+def write_missing_asset_profile(
+    *, repos: Any, provider: str, row: dict[str, Any], now_ms: int, next_refresh_at_ms: int
+) -> None:
+    _write_missing_profile(
+        repos=repos,
+        provider=provider,
+        row=row,
+        now_ms=now_ms,
+        next_refresh_at_ms=next_refresh_at_ms,
+    )
 
 
-def write_error_asset_profile(*, repos: Any, provider: str, row: dict[str, Any], exc: Exception, now_ms: int) -> None:
-    _write_error_profile(repos=repos, provider=provider, row=row, exc=exc, now_ms=now_ms)
+def write_error_asset_profile(
+    *, repos: Any, provider: str, row: dict[str, Any], exc: Exception, now_ms: int, next_refresh_at_ms: int
+) -> None:
+    _write_error_profile(
+        repos=repos,
+        provider=provider,
+        row=row,
+        exc=exc,
+        now_ms=now_ms,
+        next_refresh_at_ms=next_refresh_at_ms,
+    )
 
 
 def _write_ready_profile(
@@ -44,6 +69,7 @@ def _write_ready_profile(
     row: dict[str, Any],
     profile: DexTokenProfile,
     now_ms: int,
+    next_refresh_at_ms: int,
 ) -> None:
     repos.asset_profiles.upsert_ready_profile(
         asset_id=str(row["asset_id"]),
@@ -61,27 +87,40 @@ def _write_ready_profile(
         description=profile.description,
         raw_payload=profile.raw,
         observed_at_ms=int(now_ms),
-        next_refresh_at_ms=int(now_ms) + READY_REFRESH_MS,
+        next_refresh_at_ms=int(next_refresh_at_ms),
+        commit=False,
     )
 
 
-def _write_missing_profile(*, repos: Any, provider: str, row: dict[str, Any], now_ms: int) -> None:
+def _write_missing_profile(
+    *, repos: Any, provider: str, row: dict[str, Any], now_ms: int, next_refresh_at_ms: int
+) -> None:
     repos.asset_profiles.upsert_status(
         asset_id=str(row["asset_id"]),
         provider=provider,
         status="missing",
         observed_at_ms=int(now_ms),
-        next_refresh_at_ms=int(now_ms) + MISSING_REFRESH_MS,
+        next_refresh_at_ms=int(next_refresh_at_ms),
         last_error=None,
+        commit=False,
     )
 
 
-def _write_error_profile(*, repos: Any, provider: str, row: dict[str, Any], exc: Exception, now_ms: int) -> None:
+def _write_error_profile(
+    *,
+    repos: Any,
+    provider: str,
+    row: dict[str, Any],
+    exc: Exception,
+    now_ms: int,
+    next_refresh_at_ms: int,
+) -> None:
     repos.asset_profiles.upsert_status(
         asset_id=str(row["asset_id"]),
         provider=provider,
         status="error",
         observed_at_ms=int(now_ms),
-        next_refresh_at_ms=int(now_ms) + ERROR_REFRESH_MS,
+        next_refresh_at_ms=int(next_refresh_at_ms),
         last_error=str(exc)[:500],
+        commit=False,
     )

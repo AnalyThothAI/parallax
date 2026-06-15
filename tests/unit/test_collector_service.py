@@ -46,6 +46,21 @@ class MemoryPublisher:
 
 
 class CollectorServiceTests(unittest.TestCase):
+    def test_collector_requires_snapshot_timeout_settings_contract(self):
+        settings = SimpleNamespace(enabled=True, interval_seconds=3.0)
+
+        with self.assertRaisesRegex(AttributeError, "snapshot_timeout_seconds"):
+            CollectorService(
+                name="collector",
+                settings=settings,
+                db=object(),
+                telemetry=object(),
+                handles=("toly",),
+                store=MemoryStore(),
+                publisher=MemoryPublisher(),
+                upstream_client=None,
+            )
+
     def test_handle_frame_stores_all_observed_events_and_publishes_only_matches(self):
         async def scenario():
             store = MemoryStore()
@@ -265,6 +280,27 @@ class CollectorServiceTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
+    def test_collector_close_requires_upstream_client_aclose_contract_without_close_fallback(self):
+        async def scenario():
+            upstream = CloseOnlyUpstreamClient()
+            service = CollectorService(
+                name="collector",
+                settings=worker_settings(),
+                db=object(),
+                telemetry=object(),
+                handles=("toly",),
+                store=MemoryStore(),
+                publisher=MemoryPublisher(),
+                upstream_client=upstream,
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "collector_upstream_client_aclose_required"):
+                await service.on_close()
+
+            self.assertEqual(upstream.close_calls, 0)
+
+        asyncio.run(scenario())
+
 
 def worker_settings(**overrides):
     values = {
@@ -303,8 +339,16 @@ class ClosingUpstreamClient:
     def __init__(self):
         self.closed = False
 
-    async def close(self):
+    async def aclose(self):
         self.closed = True
+
+
+class CloseOnlyUpstreamClient:
+    def __init__(self):
+        self.close_calls = 0
+
+    async def close(self):
+        self.close_calls += 1
 
 
 if __name__ == "__main__":

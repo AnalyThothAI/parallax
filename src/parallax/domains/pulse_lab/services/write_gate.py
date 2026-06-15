@@ -3,6 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from parallax.domains.pulse_lab.services.claim_evidence_verifier import ClaimEvidenceVerificationResult
+from parallax.domains.pulse_lab.services.evidence_completeness_gate import EvidenceCompletenessGateResult
+from parallax.domains.pulse_lab.services.pulse_candidate_gate import PulseGateResult
+from parallax.domains.pulse_lab.services.pulse_source_quality import PulseSourceQualityDecision
 from parallax.domains.pulse_lab.types.agent_decision import FinalDecision
 from parallax.domains.pulse_lab.types.pulse_state import (
     display_status_from_decision,
@@ -35,14 +39,33 @@ class PulseWriteGate:
         *,
         final_decision: FinalDecision,
         eval_result: dict[str, Any],
-        gate: Any,
-        evidence_gate: Any | None = None,
-        claim_verification: Any | None = None,
-        source_quality: Any | None = None,
+        gate: PulseGateResult,
+        evidence_gate: EvidenceCompletenessGateResult,
+        claim_verification: ClaimEvidenceVerificationResult,
+        source_quality: PulseSourceQualityDecision,
     ) -> PulseWriteGateDecision:
-        evidence_status = str(getattr(evidence_gate, "evidence_status", "") or "complete")
-        claim_valid = bool(getattr(claim_verification, "valid", True))
-        decision_status = str(getattr(claim_verification, "decision_status", "") or _decision_status(final_decision))
+        if not isinstance(gate, PulseGateResult):
+            raise TypeError(
+                f"pulse_write_gate_gate_contract_required: expected PulseGateResult, got {type(gate).__name__}"
+            )
+        if not isinstance(evidence_gate, EvidenceCompletenessGateResult):
+            raise TypeError(
+                "pulse_write_gate_evidence_gate_contract_required: "
+                f"expected EvidenceCompletenessGateResult, got {type(evidence_gate).__name__}"
+            )
+        if not isinstance(claim_verification, ClaimEvidenceVerificationResult):
+            raise TypeError(
+                "pulse_write_gate_claim_verification_contract_required: "
+                f"expected ClaimEvidenceVerificationResult, got {type(claim_verification).__name__}"
+            )
+        if not isinstance(source_quality, PulseSourceQualityDecision):
+            raise TypeError(
+                "pulse_write_gate_source_quality_contract_required: "
+                f"expected PulseSourceQualityDecision, got {type(source_quality).__name__}"
+            )
+        evidence_status = str(evidence_gate.evidence_status or "invalid")
+        claim_valid = bool(claim_verification.valid)
+        decision_status = str(claim_verification.decision_status or _decision_status(final_decision))
         if not claim_valid:
             return PulseWriteGateDecision(
                 write_allowed=True,
@@ -62,7 +85,7 @@ class PulseWriteGate:
                 display_status="hidden_invalid_output",
                 reason="deterministic_eval_failed",
             )
-        if source_quality is not None and not bool(getattr(source_quality, "public_allowed", True)):
+        if not bool(source_quality.public_allowed):
             return PulseWriteGateDecision(
                 write_allowed=True,
                 public_write_allowed=False,
@@ -71,7 +94,7 @@ class PulseWriteGate:
                 display_status="hidden_source_quality",
                 reason="source_quality_failed",
             )
-        publish_allowed = bool(getattr(evidence_gate, "public_allowed", True))
+        publish_allowed = bool(evidence_gate.public_allowed)
         display_status = display_status_from_decision(
             _normalized_decision_status(decision_status),
             _normalized_evidence_status(evidence_status),
@@ -96,8 +119,7 @@ class PulseWriteGate:
                 reason="ignore_no_playbook",
             )
         playbook_allowed = bool(
-            str(getattr(gate, "pulse_status", "") or "") in {"trade_candidate", "token_watch"}
-            and final_decision.playbook.has_playbook
+            str(gate.pulse_status or "") in {"trade_candidate", "token_watch"} and final_decision.playbook.has_playbook
         )
         return PulseWriteGateDecision(
             write_allowed=True,

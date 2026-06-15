@@ -15,11 +15,76 @@ from parallax.domains.asset_market.runtime.market_tick_poll_worker import Market
 from parallax.domains.asset_market.types import market_tick_id
 
 
+def _settings(
+    *,
+    batch_size: int = 100,
+    concurrency: int = 4,
+    interval_seconds: float = 5.0,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        enabled=True,
+        interval_seconds=interval_seconds,
+        soft_timeout_seconds=120.0,
+        hard_timeout_seconds=180.0,
+        batch_size=batch_size,
+        concurrency=concurrency,
+    )
+
+
+def test_market_tick_poll_worker_requires_formal_settings_provider_and_db_contracts() -> None:
+    state = FakeSessionState()
+    db = FakeDB(state, FakeRepos(state, []))
+    providers = FakeProviders(dex_quote_market=None, cex_market=None)
+
+    with pytest.raises(RuntimeError, match="market_tick_poll_settings_required"):
+        MarketTickPollWorker(pool_bundle=db, providers=providers, settings=None)
+    with pytest.raises(RuntimeError, match="market_tick_poll_providers_required"):
+        MarketTickPollWorker(pool_bundle=db, providers=None, settings=_settings())
+    with pytest.raises(RuntimeError, match="market_tick_poll_db_required"):
+        MarketTickPollWorker(pool_bundle=None, providers=providers, settings=_settings())
+
+
+def test_market_tick_poll_worker_requires_formal_provider_bundle_fields() -> None:
+    state = FakeSessionState()
+    db = FakeDB(state, FakeRepos(state, []))
+
+    with pytest.raises(AttributeError, match="dex_quote_market"):
+        MarketTickPollWorker(
+            pool_bundle=db,
+            providers=SimpleNamespace(cex_market=None),
+            settings=_settings(),
+        )
+    with pytest.raises(AttributeError, match="cex_market"):
+        MarketTickPollWorker(
+            pool_bundle=db,
+            providers=SimpleNamespace(dex_quote_market=None),
+            settings=_settings(),
+        )
+
+
+def test_market_tick_poll_worker_reads_formal_settings_fields_directly() -> None:
+    state = FakeSessionState()
+
+    with pytest.raises(AttributeError, match="batch_size"):
+        MarketTickPollWorker(
+            pool_bundle=FakeDB(state, FakeRepos(state, [])),
+            providers=FakeProviders(dex_quote_market=None, cex_market=None),
+            settings=SimpleNamespace(enabled=True, interval_seconds=5.0, concurrency=4),
+        )
+    with pytest.raises(AttributeError, match="concurrency"):
+        MarketTickPollWorker(
+            pool_bundle=FakeDB(state, FakeRepos(state, [])),
+            providers=FakeProviders(dex_quote_market=None, cex_market=None),
+            settings=SimpleNamespace(enabled=True, interval_seconds=5.0, batch_size=100),
+        )
+
+
 def test_market_tick_poll_worker_is_append_only_without_single_writer_lock() -> None:
     state = FakeSessionState()
     worker = MarketTickPollWorker(
         pool_bundle=FakeDB(state, FakeRepos(state, [])),
         providers=FakeProviders(dex_quote_market=None, cex_market=None),
+        settings=_settings(),
     )
 
     assert isinstance(worker, WorkerBase)
@@ -70,7 +135,7 @@ def test_market_tick_poll_worker_polls_tier2_targets_outside_session_inserts_and
         pool_bundle=FakeDB(state, repos),
         providers=FakeProviders(dex_quote_market=dex_provider, cex_market=cex_provider),
         wake_emitter=wake,
-        batch_size=10,
+        settings=_settings(batch_size=10),
         clock=lambda: 1_800_000_000_100,
     )
 
@@ -174,6 +239,7 @@ def test_market_tick_poll_worker_preserves_gmgn_quote_source_provider() -> None:
     worker = MarketTickPollWorker(
         pool_bundle=FakeDB(state, repos),
         providers=FakeProviders(dex_quote_market=dex_provider, cex_market=None),
+        settings=_settings(),
         clock=lambda: 1_800_000_000_100,
     )
 
@@ -217,7 +283,7 @@ def test_market_tick_poll_worker_skips_bad_targets_unavailable_quotes_and_provid
         pool_bundle=FakeDB(state, repos),
         providers=FakeProviders(dex_quote_market=dex_provider, cex_market=cex_provider),
         wake_emitter=wake,
-        batch_size=20,
+        settings=_settings(batch_size=20),
     )
 
     result = asyncio.run(worker.run_once())
@@ -266,6 +332,7 @@ def test_market_tick_poll_worker_retries_dex_batch_individually_to_preserve_vali
         pool_bundle=FakeDB(state, repos),
         providers=FakeProviders(dex_quote_market=dex_provider, cex_market=None),
         wake_emitter=wake,
+        settings=_settings(),
         clock=lambda: 1_800_000_000_100,
     )
 
@@ -327,6 +394,7 @@ def test_market_tick_poll_worker_rejects_invalid_non_finite_and_non_positive_pri
         pool_bundle=FakeDB(state, repos),
         providers=FakeProviders(dex_quote_market=dex_provider, cex_market=cex_provider),
         wake_emitter=wake,
+        settings=_settings(),
     )
 
     result = asyncio.run(worker.run_once())
@@ -362,14 +430,7 @@ def test_market_tick_poll_worker_reselects_from_freshness_order_each_run() -> No
     worker = MarketTickPollWorker(
         pool_bundle=FakeDB(state, repos),
         providers=FakeProviders(dex_quote_market=None, cex_market=provider),
-        batch_size=2,
-        settings=SimpleNamespace(
-            enabled=True,
-            interval_seconds=5.0,
-            timeout_seconds=120.0,
-            batch_size=2,
-            concurrency=2,
-        ),
+        settings=_settings(batch_size=2, concurrency=2),
     )
 
     asyncio.run(worker.run_once())
@@ -399,14 +460,7 @@ def test_market_tick_poll_worker_uses_stable_freshness_order_without_empty_page_
     worker = MarketTickPollWorker(
         pool_bundle=FakeDB(state, repos),
         providers=FakeProviders(dex_quote_market=None, cex_market=FakeCexProvider(state, {})),
-        batch_size=2,
-        settings=SimpleNamespace(
-            enabled=True,
-            interval_seconds=5.0,
-            timeout_seconds=120.0,
-            batch_size=2,
-            concurrency=2,
-        ),
+        settings=_settings(batch_size=2, concurrency=2),
     )
 
     asyncio.run(worker.run_once())
@@ -435,14 +489,7 @@ def test_market_tick_poll_worker_rotates_recently_attempted_no_quote_targets_wit
     worker = MarketTickPollWorker(
         pool_bundle=FakeDB(state, repos),
         providers=FakeProviders(dex_quote_market=None, cex_market=provider),
-        batch_size=2,
-        settings=SimpleNamespace(
-            enabled=True,
-            interval_seconds=5.0,
-            timeout_seconds=120.0,
-            batch_size=2,
-            concurrency=2,
-        ),
+        settings=_settings(batch_size=2, concurrency=2),
     )
 
     asyncio.run(worker.run_once())
@@ -473,14 +520,7 @@ def test_market_tick_poll_worker_polls_cex_targets_with_bounded_concurrency() ->
     worker = MarketTickPollWorker(
         pool_bundle=FakeDB(state, repos),
         providers=FakeProviders(dex_quote_market=None, cex_market=provider),
-        batch_size=4,
-        settings=SimpleNamespace(
-            enabled=True,
-            interval_seconds=5.0,
-            timeout_seconds=120.0,
-            batch_size=4,
-            concurrency=2,
-        ),
+        settings=_settings(batch_size=4, concurrency=2),
     )
 
     async def driver() -> WorkerResult:

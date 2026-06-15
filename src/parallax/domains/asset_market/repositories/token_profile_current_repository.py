@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any
+from contextlib import AbstractContextManager
+from typing import Any, cast
 
 from psycopg.types.json import Jsonb
 
@@ -15,6 +16,9 @@ class TokenProfileCurrentRepository:
         self.conn = conn
 
     def upsert_current(self, row: dict[str, Any], *, commit: bool = True) -> bool:
+        if commit:
+            with _transaction(self.conn):
+                return self.upsert_current(row, commit=False)
         computed_at_ms = int(row["computed_at_ms"])
         payload = {
             "target_type": _required_text(row.get("target_type")),
@@ -46,7 +50,7 @@ class TokenProfileCurrentRepository:
         payload_hash = stable_current_payload_hash(
             {key: value for key, value in payload.items() if key not in _PUBLICATION_METADATA_FIELDS}
         )
-        returned = self.conn.execute(
+        cursor = self.conn.execute(
             """
             INSERT INTO token_profile_current(
               target_type, target_id, status, profile_provider, source_kind, source_ref,
@@ -117,11 +121,8 @@ class TokenProfileCurrentRepository:
                 payload_hash,
             ),
         )
-        fetchone = getattr(returned, "fetchone", None)
-        changed_row = fetchone() if fetchone is not None else None
-        if commit:
-            self.conn.commit()
-        return changed_row is not None and bool(changed_row.get("changed", True))
+        row = cursor.fetchone()
+        return _single_returning_changed(cursor, row)
 
     def current_for_targets(self, targets: list[tuple[str, str]]) -> dict[tuple[str, str], dict[str, Any]]:
         requested = _dedupe_targets(targets)
@@ -175,3 +176,34 @@ def _sanitize_json(value: Any) -> Any:
 
 def _int_or_none(value: Any) -> int | None:
     return int(value) if value is not None else None
+
+
+def _cursor_rowcount(cursor: Any) -> int:
+    try:
+        rowcount: object = cursor.rowcount
+    except AttributeError as exc:
+        raise TypeError("token_profile_current_repository_rowcount_required") from exc
+    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
+        raise TypeError("token_profile_current_repository_rowcount_invalid")
+    if rowcount < 0:
+        raise TypeError("token_profile_current_repository_rowcount_invalid")
+    return rowcount
+
+
+def _single_returning_changed(cursor: Any, row: Any | None) -> bool:
+    count = _cursor_rowcount(cursor)
+    if count not in (0, 1):
+        raise TypeError("token_profile_current_repository_rowcount_invalid")
+    if count != (1 if row is not None else 0):
+        raise TypeError("token_profile_current_repository_rowcount_invalid")
+    return row is not None and bool(row.get("changed", True))
+
+
+def _transaction(conn: Any) -> AbstractContextManager[Any]:
+    try:
+        transaction = conn.transaction
+    except AttributeError as exc:
+        raise RuntimeError("token_profile_current_repository_transaction_required") from exc
+    if not callable(transaction):
+        raise RuntimeError("token_profile_current_repository_transaction_required")
+    return cast(AbstractContextManager[Any], transaction())

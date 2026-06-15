@@ -26,6 +26,9 @@ from parallax.domains.token_intel.repositories.token_intent_lookup_repository im
     TokenIntentLookupRepository,
 )
 from parallax.domains.token_intel.repositories.token_intent_repository import TokenIntentRepository
+from parallax.domains.token_intel.repositories.token_radar_source_dirty_event_repository import (
+    TokenRadarSourceDirtyEventRepository,
+)
 from parallax.domains.token_intel.scoring.factor_snapshot_contract import (
     is_token_factor_snapshot,
     require_token_factor_snapshot,
@@ -38,8 +41,7 @@ from parallax.domains.token_intel.services.token_intent_resolver import (
     TokenIntentResolver,
 )
 from parallax.domains.token_intel.services.token_resolution_refresh import (
-    DEFAULT_REPROCESS_LIMIT,
-    DEFAULT_REPROCESS_WINDOW,
+    TOKEN_REPROCESS_WINDOW,
     deferred_token_radar_projection,
     refresh_recent_token_state,
     reprocess_recent_token_intents,
@@ -64,8 +66,6 @@ class TokenIdentityLookup(Protocol):
 
 
 __all__ = [
-    "DEFAULT_REPROCESS_LIMIT",
-    "DEFAULT_REPROCESS_WINDOW",
     "TOKEN_FACTOR_SNAPSHOT_VERSION",
     "TOKEN_RADAR_DEFAULT_VENUE",
     "TOKEN_RADAR_FACTOR_FAMILIES",
@@ -74,6 +74,7 @@ __all__ = [
     "TOKEN_RADAR_RESOLVER_POLICY_VERSION",
     "TOKEN_RADAR_SOURCE_TABLE",
     "TOKEN_RADAR_VENUES",
+    "TOKEN_REPROCESS_WINDOW",
     "WINDOW_MS",
     "EventTokenProjectionQuery",
     "IntentResolutionRepository",
@@ -86,6 +87,7 @@ __all__ = [
     "TokenIntentRepository",
     "TokenIntentResolutionDecision",
     "TokenIntentResolver",
+    "TokenRadarSourceDirtyEventRepository",
     "build_token_evidence",
     "build_token_intents",
     "build_token_target_stages",

@@ -1,17 +1,19 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from contextlib import AbstractContextManager
 from decimal import Decimal
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 from psycopg.types.json import Jsonb
 
 from parallax.domains.token_intel._constants import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
+    TOKEN_RADAR_DECISIONS,
 )
 from parallax.domains.token_intel.scoring.factor_snapshot_contract import require_token_factor_snapshot
-from parallax.domains.token_intel.services.token_radar_payload_hash import (
+from parallax.domains.token_intel.types.token_radar_payload_hash import (
     canonical_token_radar_payload,
     stable_token_radar_payload_hash,
 )
@@ -50,6 +52,7 @@ RADAR_ROW_COLUMNS = (
     "listed_at_ms",
     "created_at_ms",
 )
+TARGET_FEATURE_PAYLOAD_LANES = frozenset({"attention", "resolved"})
 RADAR_ROW_INSERT_COLUMNS_SQL = """
   row_id, projection_version, "window", scope, venue, computed_at_ms, source_max_received_at_ms,
   generation_id, published_at_ms, source_frontier_ms,
@@ -99,6 +102,23 @@ class TokenRadarRepository:
         on_current_changes: Callable[..., None] | None = None,
         commit: bool = True,
     ) -> PublicationResult:
+        if commit:
+            with _transaction(self.conn):
+                return self.publish_current_generation(
+                    projection_version=projection_version,
+                    window=window,
+                    scope=scope,
+                    venue=venue,
+                    generation_id=generation_id,
+                    published_at_ms=published_at_ms,
+                    source_frontier_ms=source_frontier_ms,
+                    rows=rows,
+                    source_rows=source_rows,
+                    started_at_ms=started_at_ms,
+                    finished_at_ms=finished_at_ms,
+                    on_current_changes=on_current_changes,
+                    commit=False,
+                )
         self.conn.execute(
             """
             SELECT pg_advisory_xact_lock(hashtext(%s), hashtext(%s))
@@ -125,8 +145,6 @@ class TokenRadarRepository:
             else None
         )
         if latest_published_at_ms is not None and latest_published_at_ms > int(published_at_ms):
-            if commit:
-                self.conn.commit()
             return {"status": "stale_skipped", "generation_id": str(generation_id), "rows_written": 0}
 
         for row in rows:
@@ -187,8 +205,6 @@ class TokenRadarRepository:
                 started_at_ms=started_at_ms,
                 finished_at_ms=finished_at_ms,
             )
-            if commit:
-                self.conn.commit()
             return {"status": "unchanged", "generation_id": existing_generation_id, "rows_written": 0}
 
         existing_by_key = {_current_key(row): row for row in existing_current}
@@ -209,7 +225,7 @@ class TokenRadarRepository:
                 """,
                 (projection_version, window, scope, venue, *_current_key(row)),
             )
-            rows_written += int(getattr(cursor, "rowcount", 0) or 0)
+            rows_written += _cursor_rowcount(cursor)
         for row in rows_to_insert:
             cursor = self.conn.execute(
                 f"""
@@ -248,7 +264,7 @@ class TokenRadarRepository:
                 """,
                 _json_payload(row),
             )
-            rows_written += int(getattr(cursor, "rowcount", 1) or 0)
+            rows_written += _cursor_rowcount(cursor)
         self.upsert_first_seen_batch(
             projection_version=projection_version,
             window=window,
@@ -281,8 +297,6 @@ class TokenRadarRepository:
                 previous_by_key=existing_by_key,
                 computed_at_ms=int(published_at_ms),
             )
-        if commit:
-            self.conn.commit()
         return {"status": "published", "generation_id": str(generation_id), "rows_written": rows_written}
 
     def _upsert_ready_publication_state(
@@ -462,6 +476,16 @@ class TokenRadarRepository:
         computed_at_ms: int,
         commit: bool = True,
     ) -> int:
+        if commit:
+            with _transaction(self.conn):
+                return self.upsert_target_feature(
+                    projection_version=projection_version,
+                    window=window,
+                    scope=scope,
+                    row=row,
+                    computed_at_ms=computed_at_ms,
+                    commit=False,
+                )
         _validate_factor_contract(row)
         payload = _target_feature_payload(
             row,
@@ -544,9 +568,7 @@ class TokenRadarRepository:
             """,
             payload,
         )
-        if commit:
-            self.conn.commit()
-        return int(getattr(cursor, "rowcount", 0) or 0)
+        return _cursor_rowcount(cursor)
 
     def delete_target_feature(
         self,
@@ -559,6 +581,17 @@ class TokenRadarRepository:
         identity_id: str,
         commit: bool = True,
     ) -> int:
+        if commit:
+            with _transaction(self.conn):
+                return self.delete_target_feature(
+                    projection_version=projection_version,
+                    window=window,
+                    scope=scope,
+                    lane=lane,
+                    target_type_key=target_type_key,
+                    identity_id=identity_id,
+                    commit=False,
+                )
         cursor = self.conn.execute(
             """
             DELETE FROM token_radar_target_features
@@ -571,9 +604,7 @@ class TokenRadarRepository:
             """,
             (projection_version, window, scope, lane, target_type_key, identity_id),
         )
-        if commit:
-            self.conn.commit()
-        return int(getattr(cursor, "rowcount", 0) or 0)
+        return _cursor_rowcount(cursor)
 
     def prune_target_features(
         self,
@@ -582,21 +613,36 @@ class TokenRadarRepository:
         window: str,
         scope: str,
         latest_event_before_ms: int,
+        limit: int,
         commit: bool = True,
     ) -> int:
+        if commit:
+            with _transaction(self.conn):
+                return self.prune_target_features(
+                    projection_version=projection_version,
+                    window=window,
+                    scope=scope,
+                    latest_event_before_ms=latest_event_before_ms,
+                    limit=limit,
+                    commit=False,
+                )
         cursor = self.conn.execute(
             """
             DELETE FROM token_radar_target_features
-            WHERE projection_version = %s
-              AND "window" = %s
-              AND scope = %s
-              AND latest_event_received_at_ms < %s
+            WHERE ctid IN (
+              SELECT ctid
+              FROM token_radar_target_features
+              WHERE projection_version = %s
+                AND "window" = %s
+                AND scope = %s
+                AND latest_event_received_at_ms < %s
+              ORDER BY latest_event_received_at_ms ASC
+              LIMIT %s
+            )
             """,
-            (projection_version, window, scope, int(latest_event_before_ms)),
+            (projection_version, window, scope, int(latest_event_before_ms), max(1, int(limit))),
         )
-        if commit:
-            self.conn.commit()
-        return int(getattr(cursor, "rowcount", 0) or 0)
+        return _cursor_rowcount(cursor)
 
     def list_rank_inputs_for_rank_set(
         self,
@@ -710,6 +756,17 @@ class TokenRadarRepository:
         computed_at_ms: int,
         commit: bool = True,
     ) -> int:
+        if commit:
+            with _transaction(self.conn):
+                return self.upsert_first_seen_batch(
+                    projection_version=projection_version,
+                    window=window,
+                    scope=scope,
+                    venue=venue,
+                    rows=rows,
+                    computed_at_ms=computed_at_ms,
+                    commit=False,
+                )
         now_ms = _now_ms()
         records: list[tuple[Any, ...]] = []
         seen: set[tuple[str, str]] = set()
@@ -741,7 +798,7 @@ class TokenRadarRepository:
             return 0
         values_sql = ",".join(["(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"] * len(records))
         params = [value for record in records for value in record]
-        self.conn.execute(
+        cursor = self.conn.execute(
             f"""
             INSERT INTO token_radar_target_first_seen(
               projection_version, "window", scope, venue, target_type_key, identity_id,
@@ -766,9 +823,7 @@ class TokenRadarRepository:
             """,
             params,
         )
-        if commit:
-            self.conn.commit()
-        return len(records)
+        return _cursor_rowcount(cursor)
 
     def mark_publication_failed(
         self,
@@ -783,6 +838,19 @@ class TokenRadarRepository:
         error: str | None = None,
         commit: bool = True,
     ) -> None:
+        if commit:
+            with _transaction(self.conn):
+                return self.mark_publication_failed(
+                    projection_version=projection_version,
+                    window=window,
+                    scope=scope,
+                    venue=venue,
+                    generation_id=generation_id,
+                    started_at_ms=started_at_ms,
+                    finished_at_ms=finished_at_ms,
+                    error=error,
+                    commit=False,
+                )
         now_ms = _now_ms()
         self.conn.execute(
             """
@@ -813,8 +881,6 @@ class TokenRadarRepository:
                 now_ms,
             ),
         )
-        if commit:
-            self.conn.commit()
 
     def latest_publication_state(
         self,
@@ -918,7 +984,16 @@ def _target_feature_payload(
     computed_at_ms: int,
 ) -> dict[str, Any]:
     target_type_key, identity_id = _identity_key(row)
-    factor_snapshot = row.get("factor_snapshot_json") or {}
+    factor_snapshot = _required_target_feature_payload_mapping(row, "factor_snapshot_json")
+    lane = _required_target_feature_payload_lane(row)
+    latest_event_received_at_ms = _required_target_feature_payload_int(row, "source_max_received_at_ms")
+    source_event_ids = _required_target_feature_payload_list(row, "source_event_ids_json")
+    created_at_ms = _required_target_feature_payload_int(row, "created_at_ms")
+    composite = _required_target_feature_payload_mapping(factor_snapshot, "composite")
+    gates = _required_target_feature_payload_mapping(factor_snapshot, "gates")
+    rank_score = _required_target_feature_payload_number(composite, "rank_score")
+    recommended_decision = _required_target_feature_payload_decision(composite, "recommended_decision")
+    gates_max_decision = _required_target_feature_payload_decision(gates, "max_decision")
     families = factor_snapshot.get("families") if isinstance(factor_snapshot, dict) else {}
     social_heat = families.get("social_heat") if isinstance(families, dict) else {}
     social_propagation = families.get("social_propagation") if isinstance(families, dict) else {}
@@ -926,32 +1001,30 @@ def _target_feature_payload(
     timing_risk = families.get("timing_risk") if isinstance(families, dict) else {}
     social_heat_facts = social_heat.get("facts") if isinstance(social_heat, dict) else {}
     social_propagation_facts = social_propagation.get("facts") if isinstance(social_propagation, dict) else {}
-    composite = factor_snapshot.get("composite") if isinstance(factor_snapshot, dict) else {}
-    gates = factor_snapshot.get("gates") if isinstance(factor_snapshot, dict) else {}
     subject = factor_snapshot.get("subject") if isinstance(factor_snapshot, dict) else {}
     latest_market_observed_at_ms = _latest_market_observed_at_ms(factor_snapshot)
     payload = {
         "projection_version": projection_version,
         "window": window,
         "scope": scope,
-        "lane": str(row.get("lane") or "attention"),
+        "lane": lane,
         "target_type_key": target_type_key,
         "identity_id": identity_id,
         "target_type": row.get("target_type"),
         "target_id": row.get("target_id"),
         "pricefeed_id": row.get("pricefeed_id"),
-        "latest_event_received_at_ms": int(row.get("source_max_received_at_ms") or computed_at_ms),
+        "latest_event_received_at_ms": latest_event_received_at_ms,
         "latest_market_observed_at_ms": latest_market_observed_at_ms,
         "attention_score": _family_score(social_heat),
         "market_score": _family_score(families.get("timing_risk") if isinstance(families, dict) else {}),
         "credibility_score": max(_family_score(social_propagation), _family_score(semantic_catalyst)),
-        "rank_score": _rank_score(factor_snapshot) or 0.0,
+        "rank_score": rank_score,
         "factor_snapshot_json": factor_snapshot,
-        "source_event_ids_json": list(row.get("source_event_ids_json") or []),
+        "source_event_ids_json": source_event_ids,
         "source_intent_ids_json": [str(row.get("intent_id") or "")] if row.get("intent_id") else [],
         "source_resolution_ids_json": _resolution_ids(row),
         "last_scored_at_ms": int(computed_at_ms),
-        "created_at_ms": int(row.get("created_at_ms") or computed_at_ms),
+        "created_at_ms": created_at_ms,
         "updated_at_ms": int(computed_at_ms),
         "social_heat_raw_score": _family_raw_score(social_heat),
         "social_heat_weight": _family_weight(social_heat),
@@ -983,11 +1056,9 @@ def _target_feature_payload(
         "social_heat_latest_seen_ms": _optional_int_value(
             social_heat_facts.get("latest_seen_ms") if isinstance(social_heat_facts, dict) else None
         ),
-        "raw_composite_score": _composite_score(composite if isinstance(composite, dict) else {}),
-        "recommended_decision": str(
-            (composite.get("recommended_decision") if isinstance(composite, dict) else None) or "discard"
-        ),
-        "gates_max_decision": str((gates.get("max_decision") if isinstance(gates, dict) else None) or "discard"),
+        "raw_composite_score": rank_score,
+        "recommended_decision": recommended_decision,
+        "gates_max_decision": gates_max_decision,
     }
     payload["payload_hash"] = _target_feature_hash(payload)
     for key in (
@@ -998,6 +1069,84 @@ def _target_feature_payload(
     ):
         payload[key] = Jsonb(_json_ready(payload[key]))
     return payload
+
+
+def _required_target_feature_payload_mapping(row: Mapping[str, Any], column: str) -> dict[str, Any]:
+    try:
+        value = row[column]
+    except KeyError as exc:
+        raise ValueError(f"token_radar_target_feature_payload_required:{column}") from exc
+    if value is None:
+        raise ValueError(f"token_radar_target_feature_payload_required:{column}")
+    if not isinstance(value, dict) or not value:
+        raise ValueError(f"token_radar_target_feature_payload_invalid:{column}")
+    return value
+
+
+def _required_target_feature_payload_lane(row: Mapping[str, Any]) -> str:
+    lane = _required_target_feature_payload_text(row, "lane")
+    if lane not in TARGET_FEATURE_PAYLOAD_LANES:
+        raise ValueError("token_radar_target_feature_payload_invalid:lane")
+    return lane
+
+
+def _required_target_feature_payload_decision(row: Mapping[str, Any], column: str) -> str:
+    decision = _required_target_feature_payload_text(row, column)
+    if decision not in TOKEN_RADAR_DECISIONS:
+        raise ValueError(f"token_radar_target_feature_payload_invalid:{column}")
+    return decision
+
+
+def _required_target_feature_payload_text(row: Mapping[str, Any], column: str) -> str:
+    try:
+        value = row[column]
+    except KeyError as exc:
+        raise ValueError(f"token_radar_target_feature_payload_required:{column}") from exc
+    if value is None:
+        raise ValueError(f"token_radar_target_feature_payload_required:{column}")
+    text = str(value).strip()
+    if not text:
+        raise ValueError(f"token_radar_target_feature_payload_invalid:{column}")
+    return text
+
+
+def _required_target_feature_payload_int(row: Mapping[str, Any], column: str) -> int:
+    try:
+        value = row[column]
+    except KeyError as exc:
+        raise ValueError(f"token_radar_target_feature_payload_required:{column}") from exc
+    if value is None:
+        raise ValueError(f"token_radar_target_feature_payload_required:{column}")
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"token_radar_target_feature_payload_invalid:{column}")
+    parsed = int(value)
+    if parsed < 0:
+        raise ValueError(f"token_radar_target_feature_payload_invalid:{column}")
+    return parsed
+
+
+def _required_target_feature_payload_list(row: Mapping[str, Any], column: str) -> list[Any]:
+    try:
+        value = row[column]
+    except KeyError as exc:
+        raise ValueError(f"token_radar_target_feature_payload_required:{column}") from exc
+    if value is None:
+        raise ValueError(f"token_radar_target_feature_payload_required:{column}")
+    if not isinstance(value, list):
+        raise ValueError(f"token_radar_target_feature_payload_invalid:{column}")
+    return list(value)
+
+
+def _required_target_feature_payload_number(row: Mapping[str, Any], column: str) -> float:
+    try:
+        value = row[column]
+    except KeyError as exc:
+        raise ValueError(f"token_radar_target_feature_payload_required:{column}") from exc
+    if value is None:
+        raise ValueError(f"token_radar_target_feature_payload_required:{column}")
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(f"token_radar_target_feature_payload_invalid:{column}")
+    return float(value)
 
 
 def _json_payload(row: dict[str, Any]) -> dict[str, Any]:
@@ -1019,21 +1168,20 @@ def _json_payload(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _current_key(row: dict[str, Any]) -> tuple[str, str, str]:
+    target_type_key, identity_id = _current_row_identity_key(row)
     return (
-        str(row.get("lane") or ""),
-        str(row.get("target_type_key") or row.get("target_type") or ""),
-        str(row.get("identity_id") or row.get("target_id") or row.get("intent_id") or ""),
+        _required_current_text(row, "lane"),
+        target_type_key,
+        identity_id,
     )
 
 
 def _identity_key(row: dict[str, Any]) -> tuple[str, str]:
-    target_type_key = str(row.get("target_type_key") or row.get("target_type") or "")
-    identity_id = str(row.get("identity_id") or row.get("target_id") or row.get("intent_id") or "")
-    return (target_type_key, identity_id)
+    return _current_row_identity_key(row)
 
 
 def _nonempty_identities(rows: list[dict[str, Any]]) -> list[tuple[str, str]]:
-    return list(dict.fromkeys(identity for identity in (_identity_key(row) for row in rows) if identity[1]))
+    return list(dict.fromkeys(_identity_key(row) for row in rows))
 
 
 def stable_generation_id(
@@ -1046,10 +1194,10 @@ def stable_generation_id(
 ) -> str:
     stable_rows = [
         {
-            "lane": str(row.get("lane") or ""),
+            "lane": _required_current_text(row, "lane"),
             "rank": int(row.get("rank") or 0),
-            "target_type_key": str(row.get("target_type_key") or row.get("target_type") or ""),
-            "identity_id": str(row.get("identity_id") or row.get("target_id") or row.get("intent_id") or ""),
+            "target_type_key": _current_row_identity_key(row)[0],
+            "identity_id": _current_row_identity_key(row)[1],
             "decision": row.get("decision"),
             "rank_score": _stable_rank_score(row),
             "quality_status": row.get("quality_status"),
@@ -1070,6 +1218,26 @@ def stable_generation_id(
         }
     )
     return stable_token_radar_payload_hash(payload)
+
+
+def _current_row_identity_key(row: Mapping[str, Any]) -> tuple[str, str]:
+    return (
+        _required_current_text(row, "target_type_key"),
+        _required_current_text(row, "identity_id"),
+    )
+
+
+def _required_current_text(row: Mapping[str, Any], column: str) -> str:
+    try:
+        value = row[column]
+    except KeyError as exc:
+        raise ValueError("token_radar_current_identity_required") from exc
+    if value is None:
+        raise ValueError("token_radar_current_identity_required")
+    text = str(value).strip()
+    if not text:
+        raise ValueError("token_radar_current_identity_required")
+    return text
 
 
 def _first_generation_id(rows: list[dict[str, Any]]) -> str | None:
@@ -1118,6 +1286,28 @@ def _payload_hash(row: dict[str, Any]) -> str:
         }
     )
     return stable_token_radar_payload_hash(stable_payload)
+
+
+def _transaction(conn: Any) -> AbstractContextManager[Any]:
+    try:
+        transaction = conn.transaction
+    except AttributeError as exc:
+        raise RuntimeError("token_radar_repository_transaction_required") from exc
+    if not callable(transaction):
+        raise RuntimeError("token_radar_repository_transaction_required")
+    return cast(AbstractContextManager[Any], transaction())
+
+
+def _cursor_rowcount(cursor: Any) -> int:
+    try:
+        rowcount: object = cursor.rowcount
+    except AttributeError as exc:
+        raise TypeError("token_radar_repository_rowcount_required") from exc
+    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
+        raise TypeError("token_radar_repository_rowcount_invalid")
+    if rowcount < 0:
+        raise TypeError("token_radar_repository_rowcount_invalid")
+    return rowcount
 
 
 def _now_ms() -> int:

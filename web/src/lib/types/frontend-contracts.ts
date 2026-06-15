@@ -1681,7 +1681,6 @@ export type SignalPulseQuery = {
 export type SignalPulseHealth = {
   pulse_ready: boolean;
   public_ready?: boolean | null;
-  agent_worker_running: boolean;
   candidate_count: number;
   public_candidate_count?: number | null;
   hidden_candidate_count?: number | null;

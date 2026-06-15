@@ -10,6 +10,11 @@ from parallax.domains.macro_intel.services.macro_asset_correlation import (
 )
 
 
+def test_build_macro_asset_correlation_requires_explicit_window_without_60d_default() -> None:
+    with pytest.raises(TypeError, match="window"):
+        build_macro_asset_correlation([], assets=("asset:spy",))
+
+
 def test_build_macro_asset_correlation_uses_aligned_daily_returns() -> None:
     dates = _dates(24)
     base_returns = [

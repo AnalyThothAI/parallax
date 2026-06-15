@@ -4,6 +4,8 @@ import json
 from datetime import date, datetime
 from types import TracebackType
 
+import pytest
+
 from parallax.integrations.macrodata.runner import MacrodataBundleRunResult, MacrodataRunnerError
 
 NOW_MS = 1_779_000_000_000
@@ -57,13 +59,53 @@ def test_sync_service_idle_claims_no_window_and_does_not_call_runner() -> None:
         settings=FakeSettings(),
         repository_factory=FakeRepositoryFactory(repo),
         runner=runner,
-        wake_bus=FakeWakeBus(),
+        wake_emitter=FakeWakeBus(),
         clock_ms=lambda: NOW_MS,
     )
 
     assert service.run_claimed_window_once(lease_owner="macro_sync") is None
     assert runner.calls == []
     assert repo.sync_runs == []
+
+
+def test_sync_service_enqueue_due_windows_uses_formal_queue_summary_repository_contract() -> None:
+    from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
+
+    repo = FakeMacroSyncQueueRepository(max_observed_at=date(2026, 5, 27))
+    service = MacroSyncService(
+        settings=FakeSettings(),
+        repository_factory=FakeRepositoryFactory(repo),
+        runner=FakeRunner(),
+        wake_emitter=FakeWakeBus(),
+        clock_ms=lambda: NOW_MS,
+    )
+
+    summary = service.enqueue_due_windows(now_ms=NOW_MS)
+
+    assert repo.queue_summary_calls == [{"now_ms": NOW_MS}]
+    assert summary["open_count"] == 9
+    assert summary["due_count"] == 4
+    assert summary["enqueued_steady_windows"] == 1
+
+
+def test_sync_service_enqueue_due_windows_requires_formal_queue_summary_repository_contract() -> None:
+    from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
+
+    repo = FakeMacroSyncQueueRepositoryWithoutSummary(max_observed_at=date(2026, 5, 27))
+    service = MacroSyncService(
+        settings=FakeSettings(),
+        repository_factory=FakeRepositoryFactory(repo),
+        runner=FakeRunner(),
+        wake_emitter=FakeWakeBus(),
+        clock_ms=lambda: NOW_MS,
+    )
+
+    try:
+        service.enqueue_due_windows(now_ms=NOW_MS)
+    except AttributeError as exc:
+        assert "macro_sync_queue_summary" in str(exc)
+    else:
+        raise AssertionError("missing macro_sync_queue_summary should fail as repository wiring error")
 
 
 def test_sync_service_claims_window_before_provider_io() -> None:
@@ -76,7 +118,7 @@ def test_sync_service_claims_window_before_provider_io() -> None:
         settings=FakeSettings(),
         repository_factory=FakeRepositoryFactory(repo, events=events),
         runner=runner,
-        wake_bus=FakeWakeBus(events=events),
+        wake_emitter=FakeWakeBus(events=events),
         clock_ms=lambda: NOW_MS,
     )
 
@@ -97,7 +139,7 @@ def test_sync_service_import_success_writes_facts_completes_window_and_wakes_pro
         settings=FakeSettings(),
         repository_factory=FakeRepositoryFactory(repo, events=events),
         runner=FakeRunner(events=events),
-        wake_bus=wake_bus,
+        wake_emitter=wake_bus,
         clock_ms=lambda: NOW_MS,
     )
 
@@ -157,7 +199,7 @@ def test_sync_service_empty_import_does_not_enqueue_projection_dirty_target() ->
         settings=FakeSettings(),
         repository_factory=FakeRepositoryFactory(repo),
         runner=FakeRunner(envelope=_empty_envelope()),
-        wake_bus=FakeWakeBus(),
+        wake_emitter=FakeWakeBus(),
         clock_ms=lambda: NOW_MS,
     )
 
@@ -187,7 +229,7 @@ def test_sync_service_noop_overlap_records_seen_and_does_not_wake_or_dirty() -> 
         settings=FakeSettings(),
         repository_factory=FakeRepositoryFactory(repo),
         runner=FakeRunner(),
-        wake_bus=wake_bus,
+        wake_emitter=wake_bus,
         clock_ms=lambda: NOW_MS,
     )
 
@@ -222,7 +264,7 @@ def test_sync_service_wake_failure_preserves_committed_success() -> None:
         settings=FakeSettings(),
         repository_factory=FakeRepositoryFactory(repo, events=events),
         runner=FakeRunner(events=events),
-        wake_bus=wake_bus,
+        wake_emitter=wake_bus,
         clock_ms=lambda: NOW_MS,
     )
 
@@ -248,7 +290,7 @@ def test_sync_service_stale_completion_rolls_back_facts_and_does_not_wake() -> N
         settings=FakeSettings(),
         repository_factory=FakeRepositoryFactory(repo, events=events),
         runner=FakeRunner(events=events),
-        wake_bus=wake_bus,
+        wake_emitter=wake_bus,
         clock_ms=lambda: NOW_MS,
     )
 
@@ -273,7 +315,7 @@ def test_sync_service_provider_failure_records_retry_without_fabricating_facts()
         settings=FakeSettings(),
         repository_factory=FakeRepositoryFactory(repo),
         runner=runner,
-        wake_bus=FakeWakeBus(),
+        wake_emitter=FakeWakeBus(),
         clock_ms=lambda: NOW_MS,
     )
 
@@ -298,7 +340,7 @@ def test_sync_service_provider_failure_at_attempt_budget_records_failed_without_
         settings=FakeSettings(),
         repository_factory=FakeRepositoryFactory(repo),
         runner=runner,
-        wake_bus=FakeWakeBus(),
+        wake_emitter=FakeWakeBus(),
         clock_ms=lambda: NOW_MS,
     )
 
@@ -311,6 +353,20 @@ def test_sync_service_provider_failure_at_attempt_budget_records_failed_without_
     assert repo.failed_windows[0]["error_code"] == "provider_down"
 
 
+def test_sync_service_attempt_budget_requires_claim_attempt_fields_without_defaults() -> None:
+    from parallax.domains.macro_intel.services.macro_sync_service import _attempt_budget_exhausted
+
+    missing_attempt = _window()
+    missing_attempt.pop("attempt_count")
+    with pytest.raises(ValueError, match="macro_sync_window_attempt_count_required"):
+        _attempt_budget_exhausted(missing_attempt)
+
+    missing_max = _window()
+    missing_max.pop("max_attempts")
+    with pytest.raises(ValueError, match="macro_sync_window_max_attempts_required"):
+        _attempt_budget_exhausted(missing_max)
+
+
 def test_sync_service_stale_retry_rolls_back_failure_audit() -> None:
     from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
 
@@ -320,7 +376,7 @@ def test_sync_service_stale_retry_rolls_back_failure_audit() -> None:
         settings=FakeSettings(),
         repository_factory=FakeRepositoryFactory(repo),
         runner=runner,
-        wake_bus=FakeWakeBus(),
+        wake_emitter=FakeWakeBus(),
         clock_ms=lambda: NOW_MS,
     )
 
@@ -347,7 +403,7 @@ def test_sync_service_stale_fail_rolls_back_failure_audit() -> None:
         settings=FakeSettings(),
         repository_factory=FakeRepositoryFactory(repo),
         runner=runner,
-        wake_bus=FakeWakeBus(),
+        wake_emitter=FakeWakeBus(),
         clock_ms=lambda: NOW_MS,
     )
 
@@ -374,7 +430,7 @@ def test_sync_service_missing_macrodata_executable_is_config_error_without_retry
         settings=FakeSettings(),
         repository_factory=FakeRepositoryFactory(repo),
         runner=runner,
-        wake_bus=FakeWakeBus(),
+        wake_emitter=FakeWakeBus(),
         clock_ms=lambda: NOW_MS,
     )
 
@@ -386,6 +442,40 @@ def test_sync_service_missing_macrodata_executable_is_config_error_without_retry
     assert repo.failed_windows[0]["error_code"] == "macrodata_executable_missing"
 
 
+def test_sync_service_reads_formal_settings_for_session_claim_and_retry() -> None:
+    from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
+
+    repo = FakeMacroIntelRepository(claimed_window=_window() | {"max_attempts": 5})
+    db = FakeDB(repo)
+    runner = FakeRunner(error=MacrodataRunnerError("provider failed", diagnostics={"error_code": "provider_down"}))
+    service = MacroSyncService(
+        settings=FakeSettings(
+            lease_ms=45_000,
+            retry_delay_ms=12_000,
+            statement_timeout_seconds=17.0,
+            max_attempts=5,
+        ),
+        db=db,
+        runner=runner,
+        wake_emitter=FakeWakeBus(),
+        clock_ms=lambda: NOW_MS,
+    )
+
+    result = service.run_claimed_window_once(lease_owner="macro_sync")
+
+    assert result is not None
+    assert result.status == "retryable_error"
+    assert db.worker_sessions == [{"name": "macro_sync", "statement_timeout_seconds": 17.0}] * 2
+    assert repo.claim_calls == [
+        {
+            "lease_owner": "macro_sync",
+            "lease_ms": 45_000,
+            "now_ms": NOW_MS,
+        }
+    ]
+    assert repo.retry_windows[0]["retry_delay_ms"] == 12_000
+
+
 def test_sync_service_explicit_window_enqueues_and_claims_target_in_one_transaction() -> None:
     from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
 
@@ -395,7 +485,7 @@ def test_sync_service_explicit_window_enqueues_and_claims_target_in_one_transact
         settings=FakeSettings(),
         repository_factory=FakeRepositoryFactory(repo, events=events),
         runner=FakeRunner(events=events),
-        wake_bus=FakeWakeBus(),
+        wake_emitter=FakeWakeBus(),
         clock_ms=lambda: NOW_MS,
     )
 
@@ -431,7 +521,7 @@ def test_sync_service_explicit_window_trigger_identity_allows_repeated_repairs()
         settings=FakeSettings(),
         repository_factory=FakeRepositoryFactory(repo),
         runner=FakeRunner(),
-        wake_bus=FakeWakeBus(),
+        wake_emitter=FakeWakeBus(),
         clock_ms=lambda: NOW_MS,
     )
 
@@ -469,7 +559,7 @@ def test_sync_service_redacts_secret_from_run_payload_and_diagnostics() -> None:
         settings=FakeSettings(fred_env="APP_FRED_KEY"),
         repository_factory=FakeRepositoryFactory(repo),
         runner=runner,
-        wake_bus=FakeWakeBus(),
+        wake_emitter=FakeWakeBus(),
         clock_ms=lambda: NOW_MS,
     )
 
@@ -482,6 +572,27 @@ def test_sync_service_redacts_secret_from_run_payload_and_diagnostics() -> None:
     assert repo.sync_runs[0]["fred_api_key_configured"] is True
 
 
+def test_sync_service_requires_formal_fred_env_settings_contract() -> None:
+    from parallax.domains.macro_intel.services import macro_sync_service as service_module
+
+    with pytest.raises(RuntimeError, match="macrodata_fred_api_key_env_settings_required"):
+        service_module._fred_api_key_state(object())
+
+
+def test_sync_service_honors_disabled_fred_env_without_defaulting(monkeypatch) -> None:
+    from parallax.domains.macro_intel.services import macro_sync_service as service_module
+
+    class Settings:
+        macrodata_fred_api_key_env = None
+
+    monkeypatch.delenv("FINANCE_FRED_API_KEY", raising=False)
+
+    assert service_module._fred_api_key_state(Settings()) == {
+        "fred_api_key_env": None,
+        "fred_api_key_configured": False,
+    }
+
+
 def test_sync_service_redacts_secret_like_error_messages_before_persisting() -> None:
     from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
 
@@ -492,7 +603,7 @@ def test_sync_service_redacts_secret_like_error_messages_before_persisting() -> 
         settings=FakeSettings(),
         repository_factory=FakeRepositoryFactory(repo),
         runner=runner,
-        wake_bus=FakeWakeBus(),
+        wake_emitter=FakeWakeBus(),
         clock_ms=lambda: NOW_MS,
     )
 
@@ -538,33 +649,32 @@ def _empty_envelope() -> dict[str, object]:
     }
 
 
+class FakeMacroSyncSettings:
+    def __init__(self, **overrides: object) -> None:
+        self.bundle_name = "macro-core"
+        self.source_name = "macrodata-cli"
+        self.bootstrap_lookback_days = 1095
+        self.max_window_days = 31
+        self.steady_overlap_days = 7
+        self.interval_seconds = 900.0
+        self.max_bootstrap_windows_per_cycle = 1
+        self.max_attempts = 8
+        self.lease_ms = 300_000
+        self.retry_delay_ms = 900_000
+        self.statement_timeout_seconds = 30.0
+        for key, value in overrides.items():
+            setattr(self, key, value)
+
+
 class FakeSettings:
     macrodata_enabled = True
 
-    def __init__(self, *, fred_env: str | None = None) -> None:
+    def __init__(self, *, fred_env: str | None = None, **sync_overrides: object) -> None:
         self.macrodata_fred_api_key_env = fred_env
         self.workers = type(
             "Workers",
             (),
-            {
-                "macro_sync": type(
-                    "MacroSyncSettings",
-                    (),
-                    {
-                        "bundle_name": "macro-core",
-                        "source_name": "macrodata-cli",
-                        "bootstrap_lookback_days": 1095,
-                        "max_window_days": 31,
-                        "steady_overlap_days": 7,
-                        "interval_seconds": 900.0,
-                        "max_bootstrap_windows_per_cycle": 1,
-                        "max_attempts": 8,
-                        "lease_ms": 300_000,
-                        "retry_delay_ms": 900_000,
-                        "statement_timeout_seconds": 30.0,
-                    },
-                )()
-            },
+            {"macro_sync": FakeMacroSyncSettings(**sync_overrides)},
         )()
 
 
@@ -607,6 +717,21 @@ class FakeRepositoryFactory:
 
     def __call__(self):
         return FakeRepositoryContext(self.repo, events=self.events)
+
+
+class FakeDB:
+    def __init__(self, repo: FakeMacroIntelRepository) -> None:
+        self.repo = repo
+        self.worker_sessions: list[dict[str, object]] = []
+
+    def worker_session(self, name: str, statement_timeout_seconds: float | None = None):
+        self.worker_sessions.append(
+            {
+                "name": name,
+                "statement_timeout_seconds": statement_timeout_seconds,
+            }
+        )
+        return FakeRepositoryContext(self.repo)
 
 
 class FakeRepositoryContext:
@@ -771,6 +896,49 @@ class FakeMacroIntelRepository:
         if self.fail_result:
             self.failed_windows.append(dict(kwargs))
         return self.fail_result
+
+
+class FakeMacroSyncQueueRepository:
+    def __init__(self, *, max_observed_at: date | None) -> None:
+        self.max_observed_at = max_observed_at
+        self.enqueued_windows: list[dict[str, object]] = []
+        self.queue_summary_calls: list[dict[str, object]] = []
+
+    def macro_sync_state_max_observed_at(self, *, source_name: str, bundle_name: str) -> date | None:
+        assert source_name == "macrodata-cli"
+        assert bundle_name == "macro-core"
+        return self.max_observed_at
+
+    def enqueue_macro_sync_window(self, **kwargs: object) -> str:
+        self.enqueued_windows.append(dict(kwargs))
+        return f"window-{len(self.enqueued_windows)}"
+
+    def macro_sync_queue_summary(self, *, now_ms: int) -> dict[str, object]:
+        self.queue_summary_calls.append({"now_ms": now_ms})
+        return {
+            "open_count": 9,
+            "due_count": 4,
+            "running_count": 1,
+            "expired_running_count": 0,
+            "expired_running_exhausted_count": 0,
+            "exhausted_count": 0,
+            "failed_count": 0,
+        }
+
+
+class FakeMacroSyncQueueRepositoryWithoutSummary:
+    def __init__(self, *, max_observed_at: date | None) -> None:
+        self.max_observed_at = max_observed_at
+        self.enqueued_windows: list[dict[str, object]] = []
+
+    def macro_sync_state_max_observed_at(self, *, source_name: str, bundle_name: str) -> date | None:
+        assert source_name == "macrodata-cli"
+        assert bundle_name == "macro-core"
+        return self.max_observed_at
+
+    def enqueue_macro_sync_window(self, **kwargs: object) -> str:
+        self.enqueued_windows.append(dict(kwargs))
+        return f"window-{len(self.enqueued_windows)}"
 
 
 class FakeWakeBus:

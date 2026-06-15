@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 import pytest
@@ -128,6 +129,73 @@ def test_payload_hash_ignores_queue_lifecycle_fields() -> None:
     assert second == first
 
 
+@pytest.mark.parametrize(
+    "operation",
+    [
+        pytest.param(
+            lambda repo: repo.enqueue_targets(
+                [_target()],
+                reason="token_radar_changed",
+                now_ms=1_700_000_000_000,
+            ),
+            id="enqueue_targets",
+        ),
+        pytest.param(
+            lambda repo: repo.claim_due(
+                now_ms=1_700_000_000_000,
+                limit=1,
+                lease_owner="narrative_admission",
+                lease_ms=60_000,
+            ),
+            id="claim_due",
+        ),
+        pytest.param(
+            lambda repo: repo.mark_done([_claim()], now_ms=1_700_000_010_000),
+            id="mark_done",
+        ),
+        pytest.param(
+            lambda repo: repo.mark_error(
+                [_claim()],
+                error="boom",
+                now_ms=1_700_000_010_000,
+                retry_ms=30_000,
+            ),
+            id="mark_error",
+        ),
+        pytest.param(
+            lambda repo: repo.reschedule(
+                [_claim()],
+                due_at_ms=1_700_000_120_000,
+                now_ms=1_700_000_010_000,
+            ),
+            id="reschedule",
+        ),
+    ],
+)
+def test_dirty_target_mutations_require_connection_transaction_before_sql_when_committing(operation) -> None:
+    conn = _NoTransactionConnection([])
+
+    with pytest.raises(RuntimeError, match="narrative_admission_dirty_target_transaction_required"):
+        operation(NarrativeAdmissionDirtyTargetRepository(conn))
+
+    assert conn.sql == []
+
+
+def test_enqueue_targets_commit_owned_write_uses_connection_transaction_without_manual_commit() -> None:
+    conn = _ScriptedConnection([])
+
+    count = NarrativeAdmissionDirtyTargetRepository(conn).enqueue_targets(
+        [_target()],
+        reason="token_radar_changed",
+        now_ms=1_700_000_000_000,
+    )
+
+    assert count == {"targets": 1}
+    assert conn.transaction_commits == 1
+    assert conn.manual_commits == 0
+    assert conn.sql_depths == [1]
+
+
 def test_mark_done_requires_full_stale_completion_token_including_versions() -> None:
     conn = _ScriptedConnection([])
     conn.rowcount = 1
@@ -227,23 +295,192 @@ def test_completion_rejects_claim_without_projection_version() -> None:
     assert conn.sql == []
 
 
+@pytest.mark.parametrize(
+    ("operation", "error_code"),
+    [
+        pytest.param(
+            lambda repo, claim: repo.mark_done([claim], now_ms=1_700_000_010_000, commit=False),
+            "narrative_admission_dirty_target_rowcount_required",
+            id="done",
+        ),
+        pytest.param(
+            lambda repo, claim: repo.mark_error(
+                [claim],
+                error="boom",
+                now_ms=1_700_000_010_000,
+                retry_ms=30_000,
+                commit=False,
+            ),
+            "narrative_admission_dirty_target_rowcount_required",
+            id="error",
+        ),
+        pytest.param(
+            lambda repo, claim: repo.reschedule(
+                [claim],
+                due_at_ms=1_700_000_120_000,
+                now_ms=1_700_000_010_000,
+                commit=False,
+            ),
+            "narrative_admission_dirty_target_rowcount_required",
+            id="reschedule",
+        ),
+    ],
+)
+def test_completion_write_counts_require_cursor_rowcount(
+    operation: Callable[[NarrativeAdmissionDirtyTargetRepository, dict[str, Any]], int],
+    error_code: str,
+) -> None:
+    conn = _ScriptedConnection([], omit_rowcount=True)
+
+    with pytest.raises(TypeError, match=error_code):
+        operation(NarrativeAdmissionDirtyTargetRepository(conn), _claim())
+
+
+@pytest.mark.parametrize(
+    "rowcount",
+    [
+        pytest.param("bad", id="string"),
+        pytest.param(True, id="bool"),
+        pytest.param(-1, id="negative"),
+    ],
+)
+@pytest.mark.parametrize(
+    "operation",
+    [
+        pytest.param(lambda repo, claim: repo.mark_done([claim], now_ms=1_700_000_010_000, commit=False), id="done"),
+        pytest.param(
+            lambda repo, claim: repo.mark_error(
+                [claim],
+                error="boom",
+                now_ms=1_700_000_010_000,
+                retry_ms=30_000,
+                commit=False,
+            ),
+            id="error",
+        ),
+        pytest.param(
+            lambda repo, claim: repo.reschedule(
+                [claim],
+                due_at_ms=1_700_000_120_000,
+                now_ms=1_700_000_010_000,
+                commit=False,
+            ),
+            id="reschedule",
+        ),
+    ],
+)
+def test_completion_write_counts_reject_invalid_cursor_rowcount(
+    operation: Callable[[NarrativeAdmissionDirtyTargetRepository, dict[str, Any]], int],
+    rowcount: object,
+) -> None:
+    conn = _ScriptedConnection([], rowcount=rowcount)
+
+    with pytest.raises(TypeError, match="narrative_admission_dirty_target_rowcount_invalid"):
+        operation(NarrativeAdmissionDirtyTargetRepository(conn), _claim())
+
+
+@pytest.mark.parametrize(
+    "operation",
+    [
+        pytest.param(lambda repo, claim: repo.mark_done([claim], now_ms=1_700_000_010_000, commit=False), id="done"),
+        pytest.param(
+            lambda repo, claim: repo.mark_error(
+                [claim],
+                error="boom",
+                now_ms=1_700_000_010_000,
+                retry_ms=30_000,
+                commit=False,
+            ),
+            id="error",
+        ),
+        pytest.param(
+            lambda repo, claim: repo.reschedule(
+                [claim],
+                due_at_ms=1_700_000_120_000,
+                now_ms=1_700_000_010_000,
+                commit=False,
+            ),
+            id="reschedule",
+        ),
+    ],
+)
+def test_completion_requires_claim_attempt_field_without_default(operation) -> None:
+    conn = _ScriptedConnection([])
+    claim = _claim()
+    claim.pop("attempt_count")
+
+    with pytest.raises(
+        ValueError,
+        match="narrative admission dirty target completion requires attempt_count",
+    ) as exc_info:
+        operation(NarrativeAdmissionDirtyTargetRepository(conn), claim)
+
+    assert isinstance(exc_info.value.__cause__, KeyError)
+    assert conn.sql == []
+
+
 def test_repository_session_exposes_narrative_dirty_targets() -> None:
-    session = repositories_for_connection(_ScriptedConnection([]))
+    session = repositories_for_connection(
+        _ScriptedConnection([]),
+        pulse_job_running_timeout_ms=300_000,
+        notification_delivery_running_timeout_ms=300_000,
+        notification_delivery_stale_running_terminalization_batch_size=100,
+    )
 
     assert isinstance(session.narrative_admission_dirty_targets, NarrativeAdmissionDirtyTargetRepository)
 
 
+def _target() -> dict[str, Any]:
+    return {
+        "target_type": "Asset",
+        "target_id": "asset-1",
+        "window": "1h",
+        "scope": "all",
+        "projection_version": "admission-v1",
+        "schema_version": "schema-v1",
+        "source_watermark_ms": 10,
+        "priority": 50,
+        "payload_hash": "payload-1",
+    }
+
+
+def _claim() -> dict[str, Any]:
+    return {
+        "target_type": "Asset",
+        "target_id": "asset-1",
+        "window": "1h",
+        "scope": "all",
+        "projection_version": "admission-v1",
+        "schema_version": "schema-v1",
+        "payload_hash": "payload-1",
+        "lease_owner": "admission-a",
+        "attempt_count": 2,
+    }
+
+
 class _ScriptedConnection:
-    def __init__(self, results: list[list[dict[str, Any]] | None]) -> None:
+    def __init__(
+        self,
+        results: list[list[dict[str, Any]] | None],
+        *,
+        rowcount: object = 0,
+        omit_rowcount: bool = False,
+    ) -> None:
         self.results = list(results)
         self.sql: list[str] = []
         self.params: list[dict[str, Any]] = []
-        self.rowcount = 0
-        self.commits = 0
+        self.sql_depths: list[int] = []
+        if not omit_rowcount:
+            self.rowcount = rowcount
+        self.manual_commits = 0
+        self.transaction_commits = 0
+        self.transaction_rollbacks = 0
+        self.transaction_depth = 0
 
     def execute(self, sql: str, params: dict[str, Any] | None = None) -> _ScriptedConnection:
         self.sql.append(str(sql))
         self.params.append(params or {})
+        self.sql_depths.append(self.transaction_depth)
         return self
 
     def fetchall(self) -> list[dict[str, Any]]:
@@ -258,4 +495,28 @@ class _ScriptedConnection:
         return rows[0] if rows else None
 
     def commit(self) -> None:
-        self.commits += 1
+        self.manual_commits += 1
+
+    def transaction(self) -> _Transaction:
+        return _Transaction(self)
+
+
+class _NoTransactionConnection(_ScriptedConnection):
+    transaction = None
+
+
+class _Transaction:
+    def __init__(self, conn: _ScriptedConnection) -> None:
+        self.conn = conn
+
+    def __enter__(self) -> _ScriptedConnection:
+        self.conn.transaction_depth += 1
+        return self.conn
+
+    def __exit__(self, exc_type, *_args) -> bool:
+        self.conn.transaction_depth -= 1
+        if exc_type is None:
+            self.conn.transaction_commits += 1
+        else:
+            self.conn.transaction_rollbacks += 1
+        return False

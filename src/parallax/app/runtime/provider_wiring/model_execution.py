@@ -154,11 +154,8 @@ def build_agent_execution_gateway(
 
 
 def _agent_runtime_lane_timeout_seconds(settings: Settings, lane: str) -> float:
-    lanes = getattr(settings.workers.agent_runtime, "lanes", {}) or {}
-    lane_policy = lanes.get(lane)
-    if lane_policy is None:
-        return 120.0
-    return float(getattr(lane_policy, "timeout_seconds", 120.0) or 120.0)
+    lane_policy = settings.workers.agent_runtime.lanes[lane]
+    return float(lane_policy.timeout_seconds)
 
 
 def _require_llm_gateway(llm_gateway: object | None) -> object:

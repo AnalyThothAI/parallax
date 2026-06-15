@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import AbstractContextManager
 from types import SimpleNamespace
+from typing import Any
+
+import pytest
 
 from parallax.domains.asset_market.providers import DexTokenCandidate
 from parallax.domains.asset_market.runtime import resolution_refresh_worker as module
@@ -10,7 +14,9 @@ from parallax.domains.asset_market.runtime.resolution_refresh_worker import (
     FOUND_SYMBOL_REFRESH_MS,
     NOT_FOUND_ADDRESS_REFRESH_MS,
     NOT_FOUND_SYMBOL_REFRESH_MS,
-    _process_dex_symbol_lookup,
+    _claim_retry_budget_exhausted,
+    _fetch_lookup_provider_result,
+    _persist_lookup_provider_result,
     _refresh_ms,
 )
 
@@ -35,9 +41,9 @@ def test_discovery_refresh_keeps_found_and_not_found_cadences():
 def test_symbol_lookup_writes_provider_rank_to_identity_payload():
     repos = FakeRepos()
 
-    result = _process_dex_symbol_lookup(
-        repos=repos,
+    result = _fetch_lookup_provider_result(
         lookup_key="symbol:SPARSE",
+        lookup_type="dex_symbol_lookup",
         dex_discovery_market=FakeDexMarket(
             candidates=[
                 _candidate(chain_id="eip155:1", address="0x1111111111111111111111111111111111111111"),
@@ -45,8 +51,8 @@ def test_symbol_lookup_writes_provider_rank_to_identity_payload():
             ]
         ),
         chain_ids=("eip155:1", "eip155:56"),
-        now_ms=1_778_200_000_000,
     )
+    _persist_lookup_provider_result(repos=repos, lookup_result=result, now_ms=1_778_200_000_000)
 
     assert result["search_hits"] == 2
     by_asset_id = {item["asset_id"]: item["raw_payload"] for item in repos.identity_evidence.writes}
@@ -54,46 +60,11 @@ def test_symbol_lookup_writes_provider_rank_to_identity_payload():
     assert by_asset_id["asset:eip155:56:erc20:0x2222222222222222222222222222222222222222"]["provider_rank"] == 1
 
 
-def test_resolution_refresh_notifies_without_inline_anchor_or_projection(monkeypatch):
-    repos = FakeRefreshRepos()
-    wake_bus = FakeWakeBus()
-
-    monkeypatch.setattr(
-        module,
-        "_process_lookup",
-        lambda **_: {
-            **module._lookup_result(search_requests=1, search_hits=1),
-            "candidate_ids": ["asset-1"],
-            "affected_lookup_keys": ["symbol:ABC"],
-            "assets_written": 1,
-        },
-    )
-    monkeypatch.setattr(
-        module,
-        "reprocess_recent_token_intents",
-        lambda **_: {"reprocessed_intents": 1, "resolved_intents": 1},
-    )
-
-    result = module.run_resolution_refresh_once(
-        repos=repos,
-        dex_discovery_market=object(),
-        dex_quote_market=object(),
-        chain_ids=("solana",),
-        now_ms=1_778_200_000_000,
-        wake_bus=wake_bus,
-    )
-
-    assert result["reprocessed_intents"] == 1
-    assert result["affected_lookup_keys"] == ["symbol:ABC"]
-    assert result["anchor"] is None
-    assert result["projection"]["status"] == "deferred_to_worker"
-    assert wake_bus.resolution_notifications == [["symbol:ABC"]]
-
-
 def test_resolution_refresh_worker_notifies_from_workerbase_path(monkeypatch):
     repos = FakeRefreshRepos()
     db = FakeDB(repos)
     wake_bus = FakeWakeBus()
+    reprocess_calls: list[dict[str, object]] = []
 
     monkeypatch.setattr(
         module,
@@ -105,27 +76,20 @@ def test_resolution_refresh_worker_notifies_from_workerbase_path(monkeypatch):
             "assets_written": 1,
         },
     )
-    monkeypatch.setattr(
-        module,
-        "reprocess_recent_token_intents",
-        lambda **_: {"reprocessed_intents": 1, "resolved_intents": 1},
-    )
+
+    def fake_reprocess_recent_token_intents(**kwargs):
+        reprocess_calls.append(kwargs)
+        return {"reprocessed_intents": 1, "resolved_intents": 1}
+
+    monkeypatch.setattr(module, "reprocess_recent_token_intents", fake_reprocess_recent_token_intents)
 
     worker = module.ResolutionRefreshWorker(
         name="resolution_refresh",
-        settings=SimpleNamespace(
-            enabled=True,
-            interval_seconds=30,
-            timeout_seconds=120,
-            batch_size=50,
-            reprocess_limit=500,
-        ),
+        settings=worker_settings(),
         db=db,
         telemetry=object(),
         dex_discovery_market=object(),
-        dex_quote_market=object(),
-        chain_ids=("solana",),
-        wake_bus=wake_bus,
+        wake_emitter=wake_bus,
     )
 
     result = asyncio.run(worker.run_once(now_ms=1_778_200_000_000)).notes["result"]
@@ -135,6 +99,8 @@ def test_resolution_refresh_worker_notifies_from_workerbase_path(monkeypatch):
     assert result["anchor"] is None
     assert result["projection"]["status"] == "deferred_to_worker"
     assert wake_bus.resolution_notifications == [["symbol:ABC"]]
+    assert repos.discovery.claim_calls[0]["limit"] == 50
+    assert reprocess_calls[0]["limit"] == 500
     assert db.session_names == [
         "resolution_refresh",
         "resolution_refresh",
@@ -156,18 +122,10 @@ def test_resolution_refresh_terminalizes_provider_error_after_retry_budget(monke
 
     worker = module.ResolutionRefreshWorker(
         name="resolution_refresh",
-        settings=SimpleNamespace(
-            enabled=True,
-            interval_seconds=30,
-            timeout_seconds=120,
-            batch_size=50,
-            reprocess_limit=500,
-            max_attempts=1,
-        ),
+        settings=worker_settings(max_attempts=1),
         db=db,
         telemetry=object(),
         dex_discovery_market=object(),
-        chain_ids=("solana",),
     )
 
     result = asyncio.run(worker.run_once(now_ms=1_778_200_000_000)).notes["result"]
@@ -199,22 +157,149 @@ def test_resolution_refresh_terminalizes_provider_error_after_retry_budget(monke
 
 def test_resolution_refresh_terminalizes_hot_not_found_after_retry_budget(monkeypatch):
     repos = FakeRefreshRepos()
+    db = FakeDB(repos)
 
-    monkeypatch.setattr(module, "_process_lookup", lambda **_: module._lookup_result(search_requests=1))
+    monkeypatch.setattr(module, "_fetch_lookup_provider_result", lambda **_: module._lookup_result(search_requests=1))
 
-    result = module.run_resolution_refresh_once(
-        repos=repos,
+    worker = module.ResolutionRefreshWorker(
+        name="resolution_refresh",
+        settings=worker_settings(max_attempts=1),
+        db=db,
+        telemetry=object(),
         dex_discovery_market=object(),
-        chain_ids=("solana",),
-        now_ms=1_778_200_000_000,
-        max_attempts=1,
     )
+    result = asyncio.run(worker.run_once(now_ms=1_778_200_000_000)).notes["result"]
 
     assert result["lookups_done"] == 1
     assert result["lookups_terminalized"] == 1
     assert repos.discovery.rescheduled == []
     assert repos.discovery.terminalized[0]["final_status"] == "not_found"
     assert repos.discovery.terminalized[0]["final_reason"] == "not_found_retry_budget_exhausted"
+
+
+def test_resolution_refresh_retry_budget_requires_claim_attempt_field_without_default() -> None:
+    claim = {
+        "lookup_key": "symbol:ABC",
+        "lookup_type": "dex_symbol_lookup",
+        "payload_hash": "hash-abc",
+        "lease_owner": "resolution_refresh",
+    }
+
+    with pytest.raises(ValueError, match="resolution_refresh_claim_attempt_count_required") as exc_info:
+        _claim_retry_budget_exhausted(claim, max_attempts=1)
+
+    assert isinstance(exc_info.value.__cause__, KeyError)
+
+
+def test_resolution_refresh_requires_session_transaction_before_start_lookup(monkeypatch):
+    repos = FakeRefreshReposWithoutTransaction()
+    db = FakeDB(repos)
+    provider_called = False
+
+    def provider_should_not_be_called(**_kwargs):
+        nonlocal provider_called
+        provider_called = True
+        return module._lookup_result(search_requests=1)
+
+    monkeypatch.setattr(module, "_fetch_lookup_provider_result", provider_should_not_be_called)
+
+    worker = module.ResolutionRefreshWorker(
+        name="resolution_refresh",
+        settings=worker_settings(),
+        db=db,
+        telemetry=object(),
+        dex_discovery_market=object(),
+    )
+
+    with pytest.raises(RuntimeError, match="resolution_refresh_session_transaction_required"):
+        asyncio.run(worker.run_once(now_ms=1_778_200_000_000))
+
+    assert provider_called is False
+    assert repos.discovery.started == []
+
+
+def test_resolution_refresh_worker_reads_formal_settings_contract() -> None:
+    repos = FakeRefreshRepos()
+    db = FakeDB(repos)
+    worker = module.ResolutionRefreshWorker(
+        name="resolution_refresh",
+        settings=worker_settings(batch_size=7, reprocess_limit=11, max_attempts=2, chain_ids=(" solana ", "")),
+        db=db,
+        telemetry=object(),
+        dex_discovery_market=object(),
+    )
+
+    assert worker.chain_ids == ("solana",)
+    assert worker.max_attempts == 2
+
+
+def test_resolution_refresh_worker_uses_formal_queue_timing_settings(monkeypatch) -> None:
+    repos = FakeRefreshRepos()
+    db = FakeDB(repos)
+    now_ms = 1_778_200_000_000
+
+    monkeypatch.setattr(module, "_fetch_lookup_provider_result", lambda **_: module._lookup_result(search_requests=1))
+
+    worker = module.ResolutionRefreshWorker(
+        name="resolution_refresh",
+        settings=worker_settings(lease_ms=45_000, hot_not_found_retry_ms=7_000),
+        db=db,
+        telemetry=object(),
+        dex_discovery_market=object(),
+    )
+
+    result = asyncio.run(worker.run_once(now_ms=now_ms)).notes["result"]
+
+    assert result["lookups_done"] == 1
+    assert repos.discovery.claim_calls[0]["lease_ms"] == 45_000
+    assert repos.discovery.claim_calls[0]["running_timeout_ms"] == 45_000
+    assert repos.discovery.claim_calls[0]["hot_not_found_retry_ms"] == 7_000
+    assert repos.discovery.started[0]["running_timeout_ms"] == 45_000
+    assert repos.discovery.rescheduled[0]["due_at_ms"] == now_ms + 7_000
+
+
+def test_resolution_refresh_worker_requires_formal_chain_settings_contract() -> None:
+    repos = FakeRefreshRepos()
+    settings = worker_settings()
+    delattr(settings, "chain_ids")
+
+    with pytest.raises(AttributeError, match="chain_ids"):
+        module.ResolutionRefreshWorker(
+            name="resolution_refresh",
+            settings=settings,
+            db=FakeDB(repos),
+            telemetry=object(),
+            dex_discovery_market=object(),
+        )
+
+
+def test_resolution_refresh_worker_requires_discovery_provider_contract() -> None:
+    repos = FakeRefreshRepos()
+
+    with pytest.raises(RuntimeError, match="resolution_refresh_provider_required"):
+        module.ResolutionRefreshWorker(
+            name="resolution_refresh",
+            settings=worker_settings(),
+            db=FakeDB(repos),
+            telemetry=object(),
+            dex_discovery_market=None,
+        )
+
+
+def worker_settings(**overrides: object) -> SimpleNamespace:
+    values = {
+        "enabled": True,
+        "interval_seconds": 30,
+        "timeout_seconds": 120,
+        "batch_size": 50,
+        "lease_ms": 300_000,
+        "hot_not_found_retry_ms": 60_000,
+        "reprocess_limit": 500,
+        "max_attempts": 3,
+        "chain_ids": ("solana",),
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
 
 
 def _candidate(*, chain_id: str, address: str, symbol: str = "SPARSE") -> DexTokenCandidate:
@@ -247,6 +332,18 @@ class FakeRepos:
 
 
 class FakeRefreshRepos:
+    def __init__(self) -> None:
+        self.conn = FakeRefreshConn()
+        self.discovery = FakeRefreshDiscovery()
+        self.transactions: list[FakeTransaction] = []
+
+    def transaction(self):
+        transaction = FakeTransaction()
+        self.transactions.append(transaction)
+        return transaction
+
+
+class FakeRefreshReposWithoutTransaction:
     def __init__(self) -> None:
         self.conn = FakeRefreshConn()
         self.discovery = FakeRefreshDiscovery()
@@ -285,12 +382,27 @@ class FakeRefreshConn:
         self.rollbacks += 1
 
 
+class FakeTransaction(AbstractContextManager[Any]):
+    def __init__(self) -> None:
+        self.entered = False
+        self.exited = False
+
+    def __enter__(self) -> None:
+        self.entered = True
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.exited = True
+
+
 class FakeRefreshDiscovery:
     def __init__(self) -> None:
+        self.claim_calls: list[dict[str, object]] = []
+        self.started: list[dict[str, object]] = []
         self.rescheduled: list[dict[str, object]] = []
         self.terminalized: list[dict[str, object]] = []
 
     def claim_due_lookup_keys(self, **kwargs):
+        self.claim_calls.append(kwargs)
         return [
             {
                 "lookup_key": "symbol:ABC",
@@ -303,10 +415,8 @@ class FakeRefreshDiscovery:
             }
         ]
 
-    def due_lookup_keys(self, **kwargs):
-        raise AssertionError("resolution_refresh runtime must claim dirty lookup queue, not scan recent facts")
-
     def start_lookup(self, **kwargs):
+        self.started.append(kwargs)
         return {}
 
     def finish_lookup(self, **kwargs):

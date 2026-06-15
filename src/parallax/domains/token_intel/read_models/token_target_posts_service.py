@@ -21,6 +21,14 @@ class TokenTargetPostsSortError(Exception):
     pass
 
 
+class TokenTargetPostsScopeError(ValueError):
+    pass
+
+
+class TokenTargetPostsWindowError(ValueError):
+    pass
+
+
 class TokenTargetPostsService:
     def __init__(self, *, targets: Any) -> None:
         self.targets = targets
@@ -47,16 +55,18 @@ class TokenTargetPostsService:
         except TokenTargetCursorError as exc:
             raise TokenTargetPostsCursorError(cursor) from exc
         resolved_now_ms = int(now_ms or time.time() * 1000)
+        window_ms = _window_ms(window)
+        watched_only = _watched_only(scope)
         since_ms = (
             0
             if post_range in {"since_ignition", "all_history"}
-            else resolved_now_ms - WINDOW_MS.get(window, WINDOW_MS["1h"])
+            else resolved_now_ms - window_ms
         )
         rows = self.targets.timeline_rows(
             target_type=target_type,
             target_id=target_id,
             since_ms=since_ms,
-            watched_only=scope == "matched",
+            watched_only=watched_only,
             limit=max(0, int(limit)) + 1,
             cursor=timeline_cursor,
         )
@@ -86,3 +96,18 @@ class TokenTargetPostsService:
                 for row in page_rows
             ],
         }
+
+
+def _window_ms(window: str) -> int:
+    try:
+        return WINDOW_MS[window]
+    except KeyError as exc:
+        raise TokenTargetPostsWindowError(window) from exc
+
+
+def _watched_only(scope: str) -> bool:
+    if scope == "matched":
+        return True
+    if scope == "all":
+        return False
+    raise TokenTargetPostsScopeError(scope)

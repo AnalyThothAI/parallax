@@ -5,8 +5,10 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
 
+import pytest
+
 from parallax.app.runtime import bootstrap as bootstrap_module
-from parallax.app.runtime.bootstrap import _PooledIngestStore
+from parallax.app.runtime.bootstrap import _ingest_service_for_repos, _PooledIngestStore
 from parallax.app.runtime.providers_wiring import AssetMarketProviders
 from parallax.domains.asset_market.providers import DexTokenQuote
 from parallax.domains.ingestion.interfaces import IngestedEvent
@@ -29,6 +31,7 @@ def test_pooled_ingest_does_not_call_inline_provider_when_no_fresh_tick(monkeypa
     store = _PooledIngestStore(
         db,
         providers=AssetMarketProviders(dex_quote_market=provider),
+        event_anchor_active_window_ms=300_000,
         now_ms=lambda: event.received_at_ms + 100,
     )
 
@@ -50,6 +53,7 @@ def test_pooled_ingest_duplicate_event_skips_inline_provider(monkeypatch) -> Non
     store = _PooledIngestStore(
         db,
         providers=AssetMarketProviders(dex_quote_market=provider),
+        event_anchor_active_window_ms=300_000,
         now_ms=lambda: event.received_at_ms + 100,
     )
 
@@ -58,6 +62,40 @@ def test_pooled_ingest_duplicate_event_skips_inline_provider(monkeypatch) -> Non
     assert result.inserted is False
     assert provider.calls == []
     assert db.session_names == ["collector"]
+
+
+@pytest.mark.parametrize(
+    "repository_name",
+    [
+        "token_evidence",
+        "token_intents",
+        "intent_resolutions",
+        "discovery",
+        "market_ticks",
+        "enriched_events",
+        "event_anchor_jobs",
+    ],
+)
+def test_ingest_service_wiring_requires_formal_repository_session_contract(repository_name: str, monkeypatch) -> None:
+    repos = _FakeRepos(event_exists=False)
+    delattr(repos, repository_name)
+    monkeypatch.setattr(bootstrap_module, "IngestService", _FakeIngestService)
+
+    with pytest.raises(AttributeError, match=repository_name):
+        _ingest_service_for_repos(repos, event_anchor_active_window_ms=300_000)
+
+
+def test_pooled_ingest_store_requires_event_anchor_window_contract() -> None:
+    with pytest.raises(TypeError, match="event_anchor_active_window_ms"):
+        _PooledIngestStore(
+            _FakeDB(_FakeState(), event_exists=False),
+            providers=AssetMarketProviders(),
+        )
+
+
+def test_ingest_service_for_repos_requires_event_anchor_window_contract() -> None:
+    with pytest.raises(TypeError, match="event_anchor_active_window_ms"):
+        _ingest_service_for_repos(_FakeRepos(event_exists=False))
 
 
 @dataclass
@@ -101,12 +139,14 @@ class _FakeRepos:
         self.token_evidence = self
         self.token_intents = self
         self.intent_resolutions = self
+        self.discovery = self
         self.enriched_events = self
         self.event_exists = event_exists
         self.market_ticks = _FakeMarketTicks()
         self.market_tick_current_dirty_targets = self
         self.event_anchor_jobs = self
         self.token_radar_dirty_targets = self
+        self.token_radar_source_dirty_events = self
 
 
 class _FakeDB:

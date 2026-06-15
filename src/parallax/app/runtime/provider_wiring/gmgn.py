@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from parallax.app.runtime.provider_wiring.types import UpstreamClientFactory
@@ -143,7 +143,7 @@ def gmgn_provider_health(settings: Settings) -> ProviderHealth:
 
 
 def gmgn_upstream_factory(settings: Settings) -> UpstreamClientFactory:
-    def factory(on_frame: Callable[..., Any]) -> UpstreamClientProtocol:
+    def factory(on_frame: Callable[[str], Awaitable[None]]) -> UpstreamClientProtocol:
         return DirectGmgnWebSocketClient(
             app_version=settings.upstream_app_version,
             channels=list(settings.upstream_channels),

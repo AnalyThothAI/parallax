@@ -136,6 +136,7 @@ class FakeRuntime:
             unhealthy_reasons=lambda: [],
             status_payload=lambda: {},
         )
+        self.agent_execution_gateway = None
 
     def repositories(self) -> FakeRepos:
         return FakeRepos()

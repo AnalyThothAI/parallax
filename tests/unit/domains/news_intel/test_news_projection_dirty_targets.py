@@ -1,13 +1,17 @@
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
+from dataclasses import asdict, is_dataclass
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 from parallax.app.runtime.projection_dirty_targets import enqueue_projection_dirty_targets
+from parallax.domains.news_intel.repositories import (
+    news_projection_dirty_target_repository as dirty_target_repository_module,
+)
 from parallax.domains.news_intel.repositories.news_projection_dirty_target_repository import (
     NewsProjectionDirtyTargetRepository,
 )
@@ -25,8 +29,59 @@ from parallax.domains.news_intel.types.source_provider import (
     NewsSourceSnapshot,
 )
 from parallax.domains.token_intel.interfaces import TokenIdentityLookupResult
+from parallax.platform.config.settings import (
+    NewsFetchWorkerSettings,
+    NewsItemProcessWorkerSettings,
+    NewsPageProjectionWorkerSettings,
+    NewsSourceQualityProjectionWorkerSettings,
+)
 
 NOW_MS = 1_779_000_000_000
+NEWS_SOURCE_PROVIDER_SCHEMA_TYPES = ("atom", "cryptopanic", "json_feed", "opennews", "rss")
+
+
+def _page_projection_settings(**overrides: Any) -> NewsPageProjectionWorkerSettings:
+    payload: dict[str, Any] = {
+        "batch_size": 10,
+        "lease_ms": 60_000,
+        "retry_ms": 30_000,
+        "statement_timeout_seconds": 30,
+    }
+    payload.update(overrides)
+    return NewsPageProjectionWorkerSettings(**payload)
+
+
+def _news_fetch_settings(**overrides: Any) -> NewsFetchWorkerSettings:
+    payload = {
+        "batch_size": 10,
+        "statement_timeout_seconds": 30,
+    }
+    payload.update(overrides)
+    return NewsFetchWorkerSettings(**payload)
+
+
+def _item_process_settings(**overrides: Any) -> NewsItemProcessWorkerSettings:
+    payload: dict[str, Any] = {
+        "batch_size": 10,
+        "lease_ms": 120_000,
+        "max_attempts": 3,
+        "retry_delay_ms": 60_000,
+        "statement_timeout_seconds": 30,
+    }
+    payload.update(overrides)
+    return NewsItemProcessWorkerSettings(**payload)
+
+
+def _source_quality_projection_settings(**overrides: Any) -> NewsSourceQualityProjectionWorkerSettings:
+    payload: dict[str, Any] = {
+        "batch_size": 10,
+        "lease_ms": 60_000,
+        "retry_ms": 30_000,
+        "statement_timeout_seconds": 30,
+        "windows": ("24h",),
+    }
+    payload.update(overrides)
+    return NewsSourceQualityProjectionWorkerSettings(**payload)
 
 
 def test_dirty_target_repository_rejects_retired_story_projection_name() -> None:
@@ -44,6 +99,317 @@ def test_dirty_target_repository_rejects_retired_story_projection_name() -> None
             reason="legacy_story_projection",
             now_ms=NOW_MS,
         )
+
+
+def test_dirty_target_terminalize_requires_connection_transaction_before_delete_or_ledger_sql() -> None:
+    conn = MissingTransactionConnection()
+    repo = NewsProjectionDirtyTargetRepository(conn)
+
+    with pytest.raises(RuntimeError, match="news_projection_dirty_target_transaction_required"):
+        repo.terminalize_targets(
+            [_claim("news-1", payload_hash="hash-1", attempt_count=2)],
+            worker_name="news_page_projection",
+            final_reason="projection_terminal",
+            final_reason_bucket="missing_fact",
+            now_ms=NOW_MS,
+        )
+
+    assert conn.sql == []
+    assert conn.commits == 0
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        pytest.param(
+            lambda repo: repo.enqueue_targets(
+                [{"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"}],
+                reason="unit",
+                now_ms=NOW_MS,
+            ),
+            id="enqueue_targets",
+        ),
+        pytest.param(
+            lambda repo: repo.claim_due(limit=1, lease_ms=60_000, now_ms=NOW_MS, lease_owner="news_page_projection"),
+            id="claim_due",
+        ),
+        pytest.param(
+            lambda repo: repo.mark_done([_claim("news-1")], now_ms=NOW_MS),
+            id="mark_done",
+        ),
+        pytest.param(
+            lambda repo: repo.mark_error(
+                [_claim("news-1")],
+                error="projection failed",
+                retry_ms=30_000,
+                now_ms=NOW_MS,
+            ),
+            id="mark_error",
+        ),
+    ],
+)
+def test_news_projection_dirty_target_mutations_require_connection_transaction_before_sql_when_committing(
+    mutation: Callable[[NewsProjectionDirtyTargetRepository], object],
+) -> None:
+    conn = MissingTransactionConnection()
+    repo = NewsProjectionDirtyTargetRepository(conn)
+
+    with pytest.raises(RuntimeError, match="news_projection_dirty_target_transaction_required"):
+        mutation(repo)
+
+    assert conn.sql == []
+    assert conn.commits == 0
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        pytest.param(lambda repo, token: repo.mark_done([token], now_ms=NOW_MS), id="mark_done"),
+        pytest.param(
+            lambda repo, token: repo.mark_error(
+                [token],
+                error="projection failed",
+                retry_ms=30_000,
+                now_ms=NOW_MS,
+            ),
+            id="mark_error",
+        ),
+        pytest.param(
+            lambda repo, token: repo.terminalize_targets(
+                [token],
+                worker_name="news_page_projection",
+                final_reason="projection_terminal",
+                final_reason_bucket="missing_fact",
+                now_ms=NOW_MS,
+            ),
+            id="terminalize_targets",
+        ),
+    ],
+)
+def test_news_projection_dirty_target_completion_requires_claim_attempt_contract_before_sql(
+    mutation: Callable[[NewsProjectionDirtyTargetRepository, dict[str, Any]], object],
+) -> None:
+    conn = TransactionalScriptedConnection([])
+    repo = NewsProjectionDirtyTargetRepository(conn)
+    token = _claim("news-1", payload_hash="hash-1")
+    token.pop("attempt_count")
+
+    with pytest.raises(ValueError, match="news projection dirty target completion requires attempt_count"):
+        mutation(repo, token)
+
+    assert conn.sql == []
+    assert conn.transaction_enter_count == 0
+    assert conn.commits == 0
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        pytest.param(lambda repo: repo.mark_done([_claim("news-1")], now_ms=NOW_MS), id="mark_done"),
+        pytest.param(
+            lambda repo: repo.mark_error(
+                [_claim("news-1")],
+                error="projection failed",
+                retry_ms=30_000,
+                now_ms=NOW_MS,
+            ),
+            id="mark_error",
+        ),
+    ],
+)
+def test_news_projection_dirty_completion_counts_require_cursor_rowcount(
+    mutation: Callable[[NewsProjectionDirtyTargetRepository], int],
+) -> None:
+    conn = TransactionalScriptedConnection([[]], omit_rowcount=True)
+    repo = NewsProjectionDirtyTargetRepository(conn)
+
+    with pytest.raises(TypeError, match="news_projection_dirty_target_rowcount_required"):
+        mutation(repo)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        pytest.param(lambda repo: repo.mark_done([_claim("news-1")], now_ms=NOW_MS), id="mark_done"),
+        pytest.param(
+            lambda repo: repo.mark_error(
+                [_claim("news-1")],
+                error="projection failed",
+                retry_ms=30_000,
+                now_ms=NOW_MS,
+            ),
+            id="mark_error",
+        ),
+    ],
+)
+@pytest.mark.parametrize("rowcount", ["bad", True, -1])
+def test_news_projection_dirty_completion_counts_reject_invalid_cursor_rowcount(
+    mutation: Callable[[NewsProjectionDirtyTargetRepository], int],
+    rowcount: object,
+) -> None:
+    conn = TransactionalScriptedConnection([[]], rowcount=rowcount)
+    repo = NewsProjectionDirtyTargetRepository(conn)
+
+    with pytest.raises(TypeError, match="news_projection_dirty_target_rowcount_invalid"):
+        mutation(repo)
+
+
+def test_news_projection_dirty_terminal_returning_counts_require_cursor_rowcount(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    claimed = _claim("news-1", payload_hash="hash-1", attempt_count=2)
+    conn = TransactionalScriptedConnection([[claimed]], omit_rowcount=True)
+    repo = NewsProjectionDirtyTargetRepository(conn)
+    terminal_ledger_calls = 0
+
+    def fake_terminalize_source_row(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        nonlocal terminal_ledger_calls
+        terminal_ledger_calls += 1
+        raise AssertionError("terminal ledger must wait for RETURNING rowcount validation")
+
+    monkeypatch.setattr(dirty_target_repository_module, "terminalize_source_row", fake_terminalize_source_row)
+
+    with pytest.raises(TypeError, match="news_projection_dirty_target_rowcount_required"):
+        repo.terminalize_targets(
+            [claimed],
+            worker_name="news_page_projection",
+            final_reason="projection_terminal",
+            final_reason_bucket="missing_fact",
+            now_ms=NOW_MS,
+        )
+
+    assert terminal_ledger_calls == 0
+
+
+@pytest.mark.parametrize("rowcount", [True, False, "1", None, -1, 0, 2])
+def test_news_projection_dirty_terminal_returning_counts_reject_invalid_or_mismatched_rowcount(
+    monkeypatch: pytest.MonkeyPatch,
+    rowcount: object,
+) -> None:
+    claimed = _claim("news-1", payload_hash="hash-1", attempt_count=2)
+    conn = TransactionalScriptedConnection([[claimed]], rowcount=rowcount)
+    repo = NewsProjectionDirtyTargetRepository(conn)
+    terminal_ledger_calls = 0
+
+    def fake_terminalize_source_row(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        nonlocal terminal_ledger_calls
+        terminal_ledger_calls += 1
+        raise AssertionError("terminal ledger must wait for RETURNING rowcount validation")
+
+    monkeypatch.setattr(dirty_target_repository_module, "terminalize_source_row", fake_terminalize_source_row)
+
+    with pytest.raises(TypeError, match="news_projection_dirty_target_rowcount_invalid"):
+        repo.terminalize_targets(
+            [claimed],
+            worker_name="news_page_projection",
+            final_reason="projection_terminal",
+            final_reason_bucket="missing_fact",
+            now_ms=NOW_MS,
+        )
+
+    assert terminal_ledger_calls == 0
+
+
+def test_news_projection_dirty_enqueue_counts_require_cursor_rowcount() -> None:
+    conn = TransactionalScriptedConnection([[]], omit_rowcount=True)
+    repo = NewsProjectionDirtyTargetRepository(conn)
+
+    with pytest.raises(TypeError, match="news_projection_dirty_target_rowcount_required"):
+        repo.enqueue_targets(
+            [{"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"}],
+            reason="unit",
+            now_ms=NOW_MS,
+        )
+
+
+@pytest.mark.parametrize("rowcount", ["bad", True, -1])
+def test_news_projection_dirty_enqueue_counts_reject_invalid_cursor_rowcount(rowcount: object) -> None:
+    conn = TransactionalScriptedConnection([[]], rowcount=rowcount)
+    repo = NewsProjectionDirtyTargetRepository(conn)
+
+    with pytest.raises(TypeError, match="news_projection_dirty_target_rowcount_invalid"):
+        repo.enqueue_targets(
+            [{"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"}],
+            reason="unit",
+            now_ms=NOW_MS,
+        )
+
+
+def test_news_projection_dirty_enqueue_count_uses_postgres_rowcount_not_candidate_count() -> None:
+    conn = TransactionalScriptedConnection([[]], rowcount=0)
+    repo = NewsProjectionDirtyTargetRepository(conn)
+
+    changed = repo.enqueue_targets(
+        [
+            {"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"},
+            {"projection_name": "page", "target_kind": "news_item", "target_id": "news-2"},
+        ],
+        reason="unit",
+        now_ms=NOW_MS,
+    )
+
+    assert changed == 0
+
+
+def test_news_projection_dirty_claim_due_returning_rows_require_cursor_rowcount() -> None:
+    conn = TransactionalScriptedConnection([[_claim("news-1")]], omit_rowcount=True)
+    repo = NewsProjectionDirtyTargetRepository(conn)
+
+    with pytest.raises(TypeError, match="news_projection_dirty_target_rowcount_required"):
+        repo.claim_due(
+            limit=1,
+            lease_ms=60_000,
+            now_ms=NOW_MS,
+            lease_owner="news_page_projection",
+        )
+
+    assert "UPDATE news_projection_dirty_targets" in conn.sql[0]
+    assert "RETURNING news_projection_dirty_targets.*" in conn.sql[0]
+
+
+@pytest.mark.parametrize("rowcount", [True, False, "1", None, -1, 0, 2])
+def test_news_projection_dirty_claim_due_returning_rows_reject_invalid_or_mismatched_rowcount(
+    rowcount: object,
+) -> None:
+    conn = TransactionalScriptedConnection([[_claim("news-1")]], rowcount=rowcount)
+    repo = NewsProjectionDirtyTargetRepository(conn)
+
+    with pytest.raises(TypeError, match="news_projection_dirty_target_rowcount_invalid"):
+        repo.claim_due(
+            limit=1,
+            lease_ms=60_000,
+            now_ms=NOW_MS,
+            lease_owner="news_page_projection",
+        )
+
+
+def test_news_projection_dirty_claim_due_returning_rows_accept_zero_row_noop() -> None:
+    conn = TransactionalScriptedConnection([[]], rowcount=0)
+    repo = NewsProjectionDirtyTargetRepository(conn)
+
+    rows = repo.claim_due(
+        limit=1,
+        lease_ms=60_000,
+        now_ms=NOW_MS,
+        lease_owner="news_page_projection",
+    )
+
+    assert rows == []
+
+
+def test_news_projection_dirty_claim_due_returning_rows_accept_matching_claim_rows() -> None:
+    claimed = _claim("news-1", payload_hash="hash-1", attempt_count=3)
+    conn = TransactionalScriptedConnection([[claimed]], rowcount=1)
+    repo = NewsProjectionDirtyTargetRepository(conn)
+
+    rows = repo.claim_due(
+        limit=1,
+        lease_ms=60_000,
+        now_ms=NOW_MS,
+        lease_owner="news_page_projection",
+    )
+
+    assert rows == [claimed]
 
 
 def test_page_projection_worker_empty_dirty_queue_does_not_scan() -> None:
@@ -104,6 +470,42 @@ def test_page_projection_worker_marks_error_with_full_claim_token_when_projectio
     assert repos.dirty.marked_error == [[token]]
 
 
+def test_page_projection_worker_reads_formal_settings_for_claim_session_and_retry() -> None:
+    token = _claim("news-1", payload_hash="hash-1", attempt_count=3)
+    repos = FakePageRepos(claimed=[token])
+    repos.news.payloads = [_page_payload("news-1")]
+    repos.news.raise_on_replace = RuntimeError("write failed")
+    worker = NewsPageProjectionWorker(
+        name="news_page_projection",
+        settings=_page_projection_settings(
+            batch_size=7,
+            lease_ms=45_000,
+            retry_ms=90_000,
+            statement_timeout_seconds=17,
+        ),
+        db=FakeDB("news_page_projection", repos, expected_statement_timeout=17),
+        telemetry=object(),
+        clock_ms=lambda: NOW_MS,
+    )
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.failed == 1
+    assert repos.dirty.claim_calls == [
+        {
+            "projection_name": "page",
+            "limit": 7,
+            "lease_ms": 45_000,
+            "now_ms": NOW_MS,
+            "lease_owner": "news_page_projection",
+            "commit": False,
+        }
+    ]
+    assert repos.dirty.mark_error_calls == [
+        {"error": "write failed", "retry_ms": 90_000, "now_ms": NOW_MS, "commit": False}
+    ]
+
+
 def test_page_projection_worker_deletes_missing_claimed_items_without_fallback_scan() -> None:
     token_1 = _claim("news-1")
     token_2 = _claim("news-deleted")
@@ -133,6 +535,27 @@ def test_page_projection_worker_deletes_missing_claimed_items_without_fallback_s
     assert repos.dirty.marked_done == [[token_1, token_2]]
 
 
+def test_page_projection_worker_requires_repository_session_transaction_before_claiming() -> None:
+    repos = FakePageRepos(claimed=[_claim("news-1")])
+    repos.news.payloads = [_page_payload("news-1")]
+    worker = NewsPageProjectionWorker(
+        name="news_page_projection",
+        settings=_page_projection_settings(),
+        db=MissingSessionTransactionDB("news_page_projection", repos),
+        telemetry=object(),
+        clock_ms=lambda: NOW_MS,
+    )
+
+    with pytest.raises(AttributeError, match="transaction"):
+        worker.run_once_sync(now_ms=NOW_MS)
+
+    assert repos.dirty.claim_calls == []
+    assert repos.news.loaded_ids == []
+    assert repos.news.replacements == []
+    assert repos.dirty.marked_done == []
+    assert repos.dirty.marked_error == []
+
+
 def test_load_items_for_page_projection_filters_target_items_before_projection_joins() -> None:
     conn = ScriptedConnection([[]])
 
@@ -156,8 +579,8 @@ def test_fetch_worker_enqueues_news_item_and_source_quality_dirty_for_inserted_a
     repos = FakeFetchRepos(
         source=source,
         news_statuses=[
-            {"news_item_id": "news-inserted", "status": "inserted"},
-            {"news_item_id": "news-updated", "status": "updated"},
+            {"news_item_id": "news-inserted", "status": "inserted", "affected_news_item_ids": ["news-inserted"]},
+            {"news_item_id": "news-updated", "status": "updated", "affected_news_item_ids": ["news-updated"]},
             {"news_item_id": "news-duplicate", "status": "duplicate"},
         ],
     )
@@ -279,6 +702,22 @@ def test_fetch_worker_enqueues_page_and_source_quality_dirty_for_material_source
     ]
 
 
+def test_fetch_worker_requires_news_page_dirty_wake_contract_after_metadata_dirty_enqueue() -> None:
+    source = _source()
+    repos = FakeFetchRepos(
+        source=source,
+        reconcile_rows=[{"source_id": "source-updated", "status": "updated"}],
+        existing_items_by_source={"source-updated": ["news-1"]},
+    )
+    worker = _fetch_worker(repos, observations=[], wake_bus=object())
+
+    with pytest.raises(AttributeError, match="notify_news_page_dirty"):
+        worker.run_once_sync(now_ms=NOW_MS)
+
+    assert repos.dirty.enqueued[0]["reason"] == "source_metadata_changed"
+    assert repos.conn.events[-1] == "commit"
+
+
 def test_news_repository_source_reconcile_noop_does_not_update_timestamp() -> None:
     source = _source()
     existing = {
@@ -330,15 +769,69 @@ def test_news_repository_material_source_reconcile_reports_updated_status() -> N
     assert any("ON CONFLICT (source_id) DO UPDATE SET" in sql for sql in conn.sql)
 
 
+def test_news_repository_writes_require_connection_transaction_before_sql_when_committing() -> None:
+    conn = MissingNewsRepositoryTransactionConnection()
+
+    with pytest.raises(RuntimeError, match="news_repository_transaction_required"):
+        NewsRepository(conn).upsert_source(**_source(), now_ms=NOW_MS)
+
+    assert conn.sql == []
+    assert conn.commits == 0
+
+
+def test_news_repository_commit_owned_writes_use_connection_transaction_without_manual_commit() -> None:
+    source = _source()
+    inserted = {
+        **source,
+        "coverage_tags_json": [],
+        "asset_universe_json": [],
+        "authority_scope_json": {},
+        "fetch_policy_json": {},
+        "cost_policy_json": {},
+        "updated_at_ms": NOW_MS,
+    }
+    conn = TransactionalScriptedConnection([[], inserted])
+
+    row = NewsRepository(conn).upsert_source(**source, now_ms=NOW_MS)
+
+    assert row["status"] == "inserted"
+    assert conn.transaction_enter_count == 1
+    assert conn.transaction_exit_count == 1
+    assert conn.commits == 0
+    assert conn.sql_transaction_depths == [1, 1]
+
+
+def test_news_repository_caller_owned_writes_do_not_open_inner_transaction() -> None:
+    source = _source()
+    inserted = {
+        **source,
+        "coverage_tags_json": [],
+        "asset_universe_json": [],
+        "authority_scope_json": {},
+        "fetch_policy_json": {},
+        "cost_policy_json": {},
+        "updated_at_ms": NOW_MS,
+    }
+    conn = TransactionalScriptedConnection([[], inserted])
+
+    row = NewsRepository(conn).upsert_source(**source, now_ms=NOW_MS, commit=False)
+
+    assert row["status"] == "inserted"
+    assert conn.transaction_enter_count == 0
+    assert conn.transaction_exit_count == 0
+    assert conn.commits == 0
+    assert conn.sql_transaction_depths == [0, 0]
+
+
 def test_process_worker_enqueues_page_and_brief_dirty_in_same_transaction_after_writes() -> None:
     repos = FakeProcessRepos()
     worker = NewsItemProcessWorker(
         name="news_item_process",
-        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30),
+        settings=_item_process_settings(),
         db=FakeDB("news_item_process", repos),
         telemetry=object(),
         identity_lookup=FakeIdentityLookup(),
-        wake_bus=None,
+        wake_emitter=None,
     )
 
     result = worker.run_once_sync(now_ms=NOW_MS)
@@ -461,10 +954,10 @@ def test_source_quality_worker_enqueues_page_dirty_when_source_quality_status_ch
     wake_bus = FakeWakeBus(transaction_events=repos.conn.events)
     worker = NewsSourceQualityProjectionWorker(
         name="news_source_quality_projection",
-        settings=SimpleNamespace(windows=("24h",), statement_timeout_seconds=30),
+        settings=_source_quality_projection_settings(),
         db=FakeDB("news_source_quality_projection", repos),
         telemetry=object(),
-        wake_bus=wake_bus,
+        wake_emitter=wake_bus,
         clock_ms=lambda: NOW_MS,
     )
 
@@ -520,13 +1013,51 @@ def test_source_quality_worker_enqueues_page_dirty_when_source_quality_status_ch
     ]
 
 
+def test_source_quality_worker_requires_repository_session_transaction_before_claiming() -> None:
+    repos = FakeSourceQualityRepos()
+    worker = NewsSourceQualityProjectionWorker(
+        name="news_source_quality_projection",
+        settings=_source_quality_projection_settings(),
+        db=MissingSessionTransactionDB("news_source_quality_projection", repos),
+        telemetry=object(),
+        wake_emitter=None,
+        clock_ms=lambda: NOW_MS,
+    )
+
+    with pytest.raises(AttributeError, match="transaction"):
+        worker.run_once_sync(now_ms=NOW_MS)
+
+    assert repos.dirty.claim_calls == []
+    assert repos.news_item_ids_requested_for_sources == []
+    assert repos.dirty.enqueued == []
+    assert repos.dirty.marked_done == []
+    assert repos.dirty.marked_error == []
+
+
+def test_source_quality_worker_requires_news_page_dirty_wake_contract_after_page_dirty_enqueue() -> None:
+    repos = FakeSourceQualityRepos()
+    worker = NewsSourceQualityProjectionWorker(
+        name="news_source_quality_projection",
+        settings=_source_quality_projection_settings(),
+        db=FakeDB("news_source_quality_projection", repos),
+        telemetry=object(),
+        wake_emitter=object(),
+        clock_ms=lambda: NOW_MS,
+    )
+
+    with pytest.raises(AttributeError, match="notify_news_page_dirty"):
+        worker.run_once_sync(now_ms=NOW_MS)
+
+    assert repos.dirty.enqueued[0]["reason"] == "source_quality_status_changed"
+    assert repos.conn.events[-1] == "commit"
+
+
 def _page_worker(repos: FakePageRepos) -> NewsPageProjectionWorker:
     return NewsPageProjectionWorker(
         name="news_page_projection",
-        settings=SimpleNamespace(batch_size=10, lease_ms=60_000, retry_ms=30_000, statement_timeout_seconds=30),
+        settings=_page_projection_settings(),
         db=FakeDB("news_page_projection", repos),
         telemetry=object(),
-        wake_bus=None,
         clock_ms=lambda: NOW_MS,
     )
 
@@ -617,12 +1148,19 @@ class FakePageRepos:
         self.dirty = FakeDirtyRepository(claimed)
         self.news_projection_dirty_targets = self.dirty
 
+    def transaction(self) -> Iterator[None]:
+        return self.conn.transaction()
+
 
 class FakeOpsProjectionRepos:
     def __init__(self) -> None:
         self.conn = FakeOpsProjectionConn()
+        self.news = self
         self.dirty = FakeDirtyRepository(expected_projection_name=None)
         self.news_projection_dirty_targets = self.dirty
+
+    def servable_news_item_ids(self, news_item_ids: list[str]) -> list[str]:
+        return [str(news_item_id) for news_item_id in news_item_ids if str(news_item_id)]
 
 
 class FakeOpsProjectionConn:
@@ -751,11 +1289,14 @@ class FakeDirtyRepository:
         self.claimed = claimed or []
         self.expected_projection_name = expected_projection_name
         self.enqueued: list[dict[str, Any]] = []
+        self.claim_calls: list[dict[str, Any]] = []
         self.marked_done: list[list[dict[str, Any]]] = []
         self.marked_error: list[list[dict[str, Any]]] = []
+        self.mark_error_calls: list[dict[str, Any]] = []
         self.conn: FakeConn | None = None
 
     def claim_due(self, **kwargs: Any) -> list[dict[str, Any]]:
+        self.claim_calls.append(dict(kwargs))
         if self.expected_projection_name is not None:
             assert kwargs["projection_name"] == self.expected_projection_name
         assert kwargs["commit"] is False
@@ -798,6 +1339,7 @@ class FakeDirtyRepository:
         commit: bool = True,
     ) -> int:
         del count_attempt
+        self.mark_error_calls.append({"error": error, "retry_ms": retry_ms, "now_ms": now_ms, "commit": commit})
         self.marked_error.append([dict(row) for row in rows])
         return len(rows)
 
@@ -810,11 +1352,11 @@ def _fetch_worker(
 ) -> NewsFetchWorker:
     return NewsFetchWorker(
         name="news_fetch",
-        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30),
+        settings=_news_fetch_settings(),
         db=FakeDB("news_fetch", repos),
         telemetry=object(),
         news_settings=SimpleNamespace(sources=(_source(),)),
-        wake_bus=wake_bus,
+        wake_emitter=wake_bus,
         feed_client=FakeProvider(observations),
     )
 
@@ -841,6 +1383,9 @@ class FakeFetchRepos:
         self.sync_cursors: dict[str, dict[str, Any]] = {}
         self.sync_updates: list[dict[str, Any]] = []
 
+    def transaction(self) -> Iterator[None]:
+        return self.conn.transaction()
+
     def reconcile_configured_sources(
         self,
         sources: tuple[dict[str, Any], ...],
@@ -852,7 +1397,18 @@ class FakeFetchRepos:
         self.conn.record("source_reconcile")
         return [dict(row) for row in self.reconcile_rows]
 
-    def claim_due_sources(self, *, now_ms: int, limit: int, commit: bool = True) -> list[dict[str, Any]]:
+    def news_source_provider_constraint_values(self) -> tuple[str, ...]:
+        return NEWS_SOURCE_PROVIDER_SCHEMA_TYPES
+
+    def claim_due_sources(
+        self,
+        *,
+        now_ms: int,
+        limit: int,
+        claim_lease_ms: int,
+        commit: bool = True,
+    ) -> list[dict[str, Any]]:
+        del claim_lease_ms
         assert commit is False
         return [dict(self.source)]
 
@@ -862,6 +1418,9 @@ class FakeFetchRepos:
         for source_id in source_ids:
             result.extend(self.existing_items_by_source.get(source_id, []))
         return result
+
+    def servable_news_item_ids(self, news_item_ids: list[str]) -> list[str]:
+        return [str(news_item_id) for news_item_id in news_item_ids if str(news_item_id)]
 
     def start_fetch_run(self, *, source_id: str, started_at_ms: int, commit: bool = True) -> str:
         assert commit is False
@@ -949,6 +1508,35 @@ class FakeProcessRepos:
         self.dirty.conn = self.conn
         self.news_projection_dirty_targets = self.dirty
         self.write_commits: list[bool] = []
+        self.items = [
+            {
+                "news_item_id": "news-1",
+                "source_id": "source-1",
+                "source_role": "official_exchange",
+                "source_domain": "coinbase.com",
+                "authority_scope_json": {"event_types": ["exchange_listing"], "domains": ["coinbase.com"]},
+                "title": "Coinbase lists $BTC for trading",
+                "summary": "",
+                "body_text": "",
+                "published_at_ms": NOW_MS - 1_000,
+                "processing_attempts": 1,
+                "processing_lease_owner": "news_item_process",
+                "provider_signal_json": {
+                    "source": "provider",
+                    "provider": "opennews",
+                    "status": "ready",
+                    "score": 86,
+                },
+            }
+        ]
+        self.entities: dict[str, list[dict[str, Any]]] = {}
+        self.mentions: dict[str, list[dict[str, Any]]] = {}
+        self.fact_candidates: dict[str, list[dict[str, Any]]] = {}
+        self.content_classifications: dict[str, dict[str, Any]] = {}
+        self.market_scope_story_updates: dict[str, dict[str, Any]] = {}
+
+    def transaction(self) -> Iterator[None]:
+        return self.conn.transaction()
 
     def release_expired_processing_items(self, *, now_ms: int, commit: bool = True) -> int:
         self.conn.record("release_expired_processing_items")
@@ -965,51 +1553,76 @@ class FakeProcessRepos:
     ) -> list[dict[str, Any]]:
         del lease_ms, commit
         self.conn.record("claim_unprocessed_items")
-        return [
-            {
-                "news_item_id": "news-1",
-                "source_id": "source-1",
-                "source_role": "official_exchange",
-                "source_domain": "coinbase.com",
-                "authority_scope_json": {"event_types": ["exchange_listing"], "domains": ["coinbase.com"]},
-                "title": "Coinbase lists $BTC for trading",
-                "summary": "",
-                "body_text": "",
-                "published_at_ms": NOW_MS - 1_000,
-                "processing_attempts": 1,
-                "processing_lease_owner": lease_owner,
-                "provider_signal_json": {
-                    "source": "provider",
-                    "provider": "opennews",
-                    "status": "ready",
-                    "score": 86,
-                },
-            }
-        ]
+        self.items[0]["processing_lease_owner"] = lease_owner
+        return [dict(row) for row in self.items[:limit]]
 
     def replace_item_entities(self, news_item_id: str, entities: list[Any], *, commit: bool = True) -> None:
         self.conn.record("replace_item_entities")
         self.write_commits.append(commit)
+        self.entities[news_item_id] = [_object_payload(entity) for entity in entities]
 
     def replace_token_mentions(self, news_item_id: str, mentions: list[Any], *, commit: bool = True) -> None:
         self.conn.record("replace_token_mentions")
         self.write_commits.append(commit)
+        self.mentions[news_item_id] = [_object_payload(mention) for mention in mentions]
 
     def replace_fact_candidates(self, news_item_id: str, candidates: list[Any], *, commit: bool = True) -> None:
         self.conn.record("replace_fact_candidates")
         self.write_commits.append(commit)
+        self.fact_candidates[news_item_id] = [_object_payload(candidate) for candidate in candidates]
 
     def update_item_content_classification(self, **payload: Any) -> None:
         self.conn.record("update_item_content_classification")
         self.write_commits.append(payload["commit"])
+        self.content_classifications[str(payload["news_item_id"])] = dict(payload)
 
     def update_item_market_scope_and_story_identity(self, **payload: Any) -> None:
         self.conn.record("update_item_market_scope_and_story_identity")
         self.write_commits.append(payload["commit"])
+        self.market_scope_story_updates[str(payload["news_item_id"])] = dict(payload)
 
     def load_agent_admission_contexts(self, *, news_item_ids: list[str], now_ms: int) -> list[dict[str, Any]]:
-        del news_item_ids, now_ms
-        return []
+        del now_ms
+        rows: list[dict[str, Any]] = []
+        for news_item_id in news_item_ids:
+            item = next((dict(row) for row in self.items if row.get("news_item_id") == news_item_id), None)
+            if item is None:
+                continue
+            classification = self.content_classifications.get(news_item_id, {})
+            story_update = self.market_scope_story_updates.get(news_item_id, {})
+            market_scope = story_update.get("market_scope")
+            story_identity = story_update.get("story_identity")
+            item.update(
+                {
+                    "lifecycle_status": "processed",
+                    "content_class": classification.get("content_class") or "",
+                    "content_classification_json": classification.get("classification_payload") or {},
+                    "market_scope_json": (
+                        market_scope.to_payload()
+                        if hasattr(market_scope, "to_payload")
+                        else getattr(market_scope, "__dict__", {})
+                    ),
+                    "agent_admission_status": item.get("agent_admission_status", ""),
+                    "agent_admission_reason": item.get("agent_admission_reason", ""),
+                    "agent_admission_json": item.get("agent_admission_json", {}),
+                    "story_key": getattr(story_identity, "story_key", item.get("story_key", "")),
+                }
+            )
+            rows.append(
+                {
+                    "item": item,
+                    "entities": list(self.entities.get(news_item_id, [])),
+                    "token_mentions": list(self.mentions.get(news_item_id, [])),
+                    "fact_candidates": list(self.fact_candidates.get(news_item_id, [])),
+                    "current_brief": None,
+                    "exact_duplicate_candidates": [],
+                    "story_candidates": [],
+                }
+            )
+        return rows
+
+    def servable_news_item_ids(self, news_item_ids: list[str]) -> list[str]:
+        return [str(news_item_id) for news_item_id in news_item_ids if str(news_item_id)]
 
     def update_item_agent_admission(self, **payload: Any) -> int:
         self.conn.record("update_item_agent_admission")
@@ -1053,6 +1666,14 @@ class FakeIdentityLookup:
         )
 
 
+def _object_payload(value: Any) -> dict[str, Any]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    if is_dataclass(value):
+        return dict(asdict(value))
+    return dict(getattr(value, "__dict__", {}))
+
+
 class FakeBriefRepos:
     def __init__(self) -> None:
         self.conn = FakeConn()
@@ -1062,6 +1683,9 @@ class FakeBriefRepos:
         self.news_projection_dirty_targets = self.dirty
         self.brief_commits: list[bool] = []
 
+    def transaction(self) -> Iterator[None]:
+        return self.conn.transaction()
+
     def upsert_news_item_agent_brief(self, **payload: Any) -> dict[str, Any]:
         self.conn.record("upsert_news_item_agent_brief")
         self.brief_commits.append(payload["commit"])
@@ -1070,6 +1694,9 @@ class FakeBriefRepos:
     def list_source_ids_for_news_items(self, *, news_item_ids: list[str]) -> list[str]:
         assert news_item_ids == ["news-1"]
         return ["source-1"]
+
+    def servable_news_item_ids(self, news_item_ids: list[str]) -> list[str]:
+        return [str(news_item_id) for news_item_id in news_item_ids if str(news_item_id)]
 
 
 class FakeSourceQualityRepos:
@@ -1083,6 +1710,9 @@ class FakeSourceQualityRepos:
         self.dirty.conn = self.conn
         self.news_projection_dirty_targets = self.dirty
         self.news_item_ids_requested_for_sources: list[list[str]] = []
+
+    def transaction(self) -> Iterator[None]:
+        return self.conn.transaction()
 
     def list_source_quality_inputs_for_targets(
         self,
@@ -1129,8 +1759,24 @@ class FakeSourceQualityRepos:
         self.news_item_ids_requested_for_sources.append(list(source_ids))
         return ["news-1"]
 
+    def servable_news_item_ids(self, news_item_ids: list[str]) -> list[str]:
+        return [str(news_item_id) for news_item_id in news_item_ids if str(news_item_id)]
+
 
 class FakeDB:
+    def __init__(self, expected_name: str, repos: Any, *, expected_statement_timeout: float | None = 30) -> None:
+        self.expected_name = expected_name
+        self.repos = repos
+        self.expected_statement_timeout = expected_statement_timeout
+
+    @contextmanager
+    def worker_session(self, name: str, statement_timeout_seconds: float | None = None) -> Iterator[Any]:
+        assert name == self.expected_name
+        assert statement_timeout_seconds == self.expected_statement_timeout
+        yield self.repos
+
+
+class MissingSessionTransactionDB:
     def __init__(self, expected_name: str, repos: Any) -> None:
         self.expected_name = expected_name
         self.repos = repos
@@ -1139,7 +1785,11 @@ class FakeDB:
     def worker_session(self, name: str, statement_timeout_seconds: float | None = None) -> Iterator[Any]:
         assert name == self.expected_name
         assert statement_timeout_seconds == 30
-        yield self.repos
+        yield SimpleNamespace(
+            conn=object(),
+            news=self.repos.news,
+            news_projection_dirty_targets=self.repos.news_projection_dirty_targets,
+        )
 
 
 class FakeWakeBus:
@@ -1186,27 +1836,120 @@ class FakeConn:
             self._transaction_depth -= 1
 
 
+_DEFAULT_CURSOR_ROWCOUNT = object()
+
+
 class ScriptedConnection:
-    def __init__(self, results: list[Any]) -> None:
+    def __init__(
+        self,
+        results: list[Any],
+        *,
+        rowcount: object = _DEFAULT_CURSOR_ROWCOUNT,
+        omit_rowcount: bool = False,
+    ) -> None:
         self.results = list(results)
         self.sql: list[str] = []
         self.params: list[Any] = []
         self.commits = 0
+        self.rowcount = rowcount
+        self.omit_rowcount = omit_rowcount
 
     def execute(self, sql: str, params: Any = None) -> ScriptedCursor:
         self.sql.append(sql)
         self.params.append(params)
         result = self.results.pop(0) if self.results else []
-        return ScriptedCursor(result)
+        return ScriptedCursor(result, rowcount=self.rowcount, omit_rowcount=self.omit_rowcount)
 
     def commit(self) -> None:
         self.commits += 1
 
 
+class TransactionalScriptedConnection(ScriptedConnection):
+    def __init__(
+        self,
+        results: list[Any],
+        *,
+        rowcount: object = _DEFAULT_CURSOR_ROWCOUNT,
+        omit_rowcount: bool = False,
+    ) -> None:
+        super().__init__(results, rowcount=rowcount, omit_rowcount=omit_rowcount)
+        self.transaction_depth = 0
+        self.transaction_enter_count = 0
+        self.transaction_exit_count = 0
+        self.sql_transaction_depths: list[int] = []
+
+    def execute(self, sql: str, params: Any = None) -> ScriptedCursor:
+        self.sql_transaction_depths.append(self.transaction_depth)
+        return super().execute(sql, params)
+
+    def transaction(self) -> TransactionalScriptedConnectionTransaction:
+        return TransactionalScriptedConnectionTransaction(self)
+
+    def commit(self) -> None:
+        self.commits += 1
+        raise AssertionError("news repository must not manually commit when commit is owned")
+
+
+class TransactionalScriptedConnectionTransaction:
+    def __init__(self, conn: TransactionalScriptedConnection) -> None:
+        self.conn = conn
+
+    def __enter__(self) -> TransactionalScriptedConnectionTransaction:
+        self.conn.transaction_enter_count += 1
+        self.conn.transaction_depth += 1
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        self.conn.transaction_exit_count += 1
+        self.conn.transaction_depth -= 1
+
+
+class MissingNewsRepositoryTransactionConnection:
+    transaction = None
+
+    def __init__(self) -> None:
+        self.sql: list[str] = []
+        self.commits = 0
+
+    def execute(self, sql: str, params: Any = None) -> ScriptedCursor:
+        self.sql.append(sql)
+        raise AssertionError("news repository must fail before SQL when transaction is missing")
+
+    def commit(self) -> None:
+        self.commits += 1
+        raise AssertionError("news repository must not manually commit when transaction is missing")
+
+
+class MissingTransactionConnection:
+    transaction = None
+
+    def __init__(self) -> None:
+        self.sql: list[str] = []
+        self.commits = 0
+
+    def execute(self, sql: str, params: Any = None) -> ScriptedCursor:
+        self.sql.append(sql)
+        raise AssertionError("dirty target repository must fail before SQL when transaction is missing")
+
+    def commit(self) -> None:
+        self.commits += 1
+        raise AssertionError("dirty target repository must not manually commit when transaction is missing")
+
+
 class ScriptedCursor:
-    def __init__(self, result: Any) -> None:
+    def __init__(
+        self,
+        result: Any,
+        *,
+        rowcount: object = _DEFAULT_CURSOR_ROWCOUNT,
+        omit_rowcount: bool = False,
+    ) -> None:
         self.result = result
-        self.rowcount = len(result) if isinstance(result, list) else 1
+        if not omit_rowcount:
+            if rowcount is _DEFAULT_CURSOR_ROWCOUNT:
+                self.rowcount = len(result) if isinstance(result, list) else 1
+            else:
+                self.rowcount = rowcount
 
     def fetchone(self) -> Any:
         if isinstance(self.result, list):

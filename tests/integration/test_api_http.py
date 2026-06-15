@@ -688,6 +688,9 @@ def test_token_radar_public_payload_excludes_unresolved_source_dirty_rows(tmp_pa
 
 def test_token_radar_uses_live_market_endpoint_without_legacy_overlay(tmp_path):
     class FakeLiveGateway:
+        def status_payload(self) -> dict[str, object]:
+            return {"enabled": True, "running": True}
+
         def stop(self) -> None:
             return None
 
@@ -729,7 +732,7 @@ def test_token_radar_uses_live_market_endpoint_without_legacy_overlay(tmp_path):
             ),
             is_watched=True,
         )
-        runtime.workers["live_price_gateway"].worker = FakeLiveGateway()
+        runtime.scheduler.workers["live_price_gateway"] = FakeLiveGateway()
         rebuild_token_radar(client, now_ms=rebuild_now_ms)
 
         response = client.get(
@@ -758,13 +761,12 @@ def test_token_radar_uses_live_market_endpoint_without_legacy_overlay(tmp_path):
     assert payload["provider"] == "test_live"
 
 
-def test_stocks_radar_returns_us_equity_market_instruments_with_quote_snapshots(tmp_path):
+def test_stocks_radar_returns_us_equity_market_instruments_with_unavailable_quote_state(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
     now_ms = int(time.time() * 1000)
 
     with TestClient(app) as client:
         runtime = client.app.state.service
-        runtime.stock_quote_provider = FakeStockQuoteProvider()
         with runtime.repositories() as repos:
             repos.registry.upsert_us_equity_symbol(
                 symbol="AAPL",
@@ -826,34 +828,20 @@ def test_stocks_radar_returns_us_equity_market_instruments_with_quote_snapshots(
     assert "PEPE" not in symbols
     assert data["health"] == {
         "returned_count": 2,
-        "quote_ready_count": 2,
-        "quote_unavailable_count": 0,
+        "quote_ready_count": 0,
+        "quote_unavailable_count": 2,
     }
     by_symbol = {row["target"]["symbol"]: row for row in rows}
     assert by_symbol["AAPL"]["attention"]["mentions"] == 2
     assert by_symbol["AAPL"]["attention"]["unique_authors"] == 2
-    assert by_symbol["AAPL"]["quote"]["status"] == "ready"
-    assert by_symbol["AAPL"]["quote"]["provider"] == "test_yahoo"
-    assert by_symbol["AAPL"]["row_health"] == []
-    assert by_symbol["RKLB"]["quote"]["status"] == "ready"
+    assert by_symbol["AAPL"]["quote"]["status"] == "unavailable"
+    assert by_symbol["AAPL"]["quote"]["error"] == "quote_read_model_unavailable"
+    assert by_symbol["AAPL"]["quote"]["provider"] is None
+    assert by_symbol["AAPL"]["row_health"] == ["quote_unavailable"]
+    assert by_symbol["RKLB"]["quote"]["status"] == "unavailable"
+    assert by_symbol["RKLB"]["quote"]["error"] == "quote_read_model_unavailable"
     assert by_symbol["RKLB"]["quote"]["provider_symbol"] == "RKLB"
-    assert by_symbol["RKLB"]["row_health"] == []
-
-
-class FakeStockQuoteProvider:
-    def quote(self, symbol: str) -> dict:
-        return {
-            "status": "ready",
-            "price": 100.0,
-            "reference_close_price": 95.0,
-            "change_pct": 0.0526315789,
-            "asof": "2026-05-20",
-            "provider": "test_yahoo",
-            "provider_symbol": symbol,
-            "latency_class": "daily",
-            "freshness_class": "daily",
-            "error": None,
-        }
+    assert by_symbol["RKLB"]["row_health"] == ["quote_unavailable"]
 
 
 def test_api_exposes_notification_list_summary_and_read_state(tmp_path):
@@ -1894,6 +1882,7 @@ def test_api_signal_pulse_by_id_does_not_expose_run_step_audit(tmp_path):
                 timeline_signature="timeline-sig",
                 priority=1,
                 status="done",
+                max_attempts=3,
             )
             repos.pulse_runs.insert_agent_run(
                 run_id="run-stages",

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -43,8 +44,18 @@ class PulseDecisionRuntimeService:
         evidence_gate: EvidenceCompletenessGateResult,
         recommendation_constraints: dict[str, Any],
     ) -> PulseDecisionStageSpec:
+        if not isinstance(evidence_packet, PulseEvidencePacket):
+            raise TypeError(
+                "pulse_decision_stage_packet_contract_required: "
+                f"expected PulseEvidencePacket, got {type(evidence_packet).__name__}"
+            )
+        if not isinstance(evidence_gate, EvidenceCompletenessGateResult):
+            raise TypeError(
+                "pulse_decision_stage_gate_contract_required: "
+                f"expected EvidenceCompletenessGateResult, got {type(evidence_gate).__name__}"
+            )
         packet_payload = _agent_packet_payload(evidence_packet)
-        gate_payload = _model_payload(evidence_gate)
+        gate_payload = evidence_gate.to_json()
         return PulseDecisionStageSpec(
             stage="pulse_decision",
             prompt_text=load_pulse_decision_prompt(route),
@@ -69,7 +80,7 @@ class PulseDecisionRuntimeService:
         *,
         evidence_packet: PulseEvidencePacket,
     ) -> None:
-        packet_payload = _model_payload(evidence_packet)
+        packet_payload = _agent_packet_payload(evidence_packet)
         allowed_refs = _allowed_evidence_ref_ids(packet_payload)
         allowed_events = _packet_event_ids(packet_payload)
         fields = _final_ref_fields(final)
@@ -90,7 +101,7 @@ class PulseDecisionRuntimeService:
         *,
         output_type: type[Any],
         raw_output: Any,
-        evidence_packet: Any,
+        evidence_packet: PulseEvidencePacket,
     ) -> Any:
         return normalize_pulse_stage_output(
             output_type=output_type,
@@ -114,30 +125,53 @@ class PulseDecisionRuntimeService:
         run_id: str,
         job: dict[str, Any],
         route: DecisionRoute,
-        completeness: dict[str, Any],
+        completeness: EvidenceCompletenessGateResult,
         runtime_manifest: dict[str, Any],
         model: str,
         artifact_version_hash: str,
         workflow_name: str,
         agent_name: str,
     ) -> dict[str, Any]:
-        packet_payload = _context_packet_payload(context)
-        evidence_packet_hash = _packet_hash(packet_payload) if packet_payload else None
-        input_hash = _sha256(
-            {"evidence_packet": packet_payload or context, "route": route, "evidence_gate": completeness}
+        evidence_packet = _context_evidence_packet(context)
+        if not isinstance(completeness, EvidenceCompletenessGateResult):
+            raise TypeError(
+                "pulse_decision_request_audit_gate_contract_required: "
+                f"expected EvidenceCompletenessGateResult, got {type(completeness).__name__}"
+            )
+        packet_payload = _agent_packet_payload(evidence_packet)
+        gate_payload = completeness.to_json()
+        evidence_packet_hash = _packet_hash(packet_payload)
+        input_hash = _sha256({"evidence_packet": packet_payload, "route": route, "evidence_gate": gate_payload})
+        run_id_value = _required_request_audit_text(run_id, "pulse_decision_request_audit_run_id_required")
+        try:
+            job_id = _required_request_audit_text(job["job_id"], "pulse_decision_request_audit_job_id_required")
+        except KeyError as exc:
+            raise ValueError("pulse_decision_request_audit_job_id_required") from exc
+        model_value = _required_request_audit_text(model, "pulse_decision_request_audit_model_required")
+        artifact_hash = _required_request_audit_text(
+            artifact_version_hash,
+            "pulse_decision_request_audit_artifact_version_hash_required",
         )
+        runtime_version = _runtime_manifest_version(runtime_manifest)
+        runtime_model, runtime_artifact_hash = _runtime_manifest_model_identity(runtime_manifest)
+        if runtime_model != model_value:
+            raise ValueError("pulse_decision_runtime_manifest_model_mismatch")
+        if runtime_artifact_hash != artifact_hash:
+            raise ValueError("pulse_decision_runtime_manifest_artifact_version_hash_mismatch")
+        workflow = _required_request_audit_text(workflow_name, "pulse_decision_request_audit_workflow_name_required")
+        agent = _required_request_audit_text(agent_name, "pulse_decision_request_audit_agent_name_required")
         runtime_hash = pulse_runtime_hash(runtime_manifest)
         trace_metadata = {
             "backend": BACKEND,
-            "run_id": str(run_id or ""),
-            "job_id": str(job.get("job_id") or ""),
-            "attempt_count": int(job.get("attempt_count") or 0),
+            "run_id": run_id_value,
+            "job_id": job_id,
+            "attempt_count": _pulse_job_claim_attempt_count(job),
             "prompt_version": PULSE_DECISION_PROMPT_VERSION,
             "schema_version": PULSE_DECISION_SCHEMA_VERSION,
-            "model": str(model or ""),
-            "artifact_version_hash": artifact_version_hash,
+            "model": model_value,
+            "artifact_version_hash": artifact_hash,
             "input_hash": input_hash,
-            "runtime_version": str(runtime_manifest.get("runtime_version") or ""),
+            "runtime_version": runtime_version,
             "runtime_hash": runtime_hash,
             "candidate_id": _context_string(context, "candidate_id"),
             "candidate_type": _context_string(context, "candidate_type"),
@@ -145,21 +179,21 @@ class PulseDecisionRuntimeService:
             "target_type": _context_string(context, "target_type"),
             "target_id": _context_string(context, "target_id"),
             "route": route,
-            "evidence_gate": completeness,
+            "evidence_gate": gate_payload,
             "evidence_packet_hash": evidence_packet_hash,
             "evidence_packet_schema_version": _packet_schema_version(packet_payload),
         }
         return {
             "backend": BACKEND,
-            "execution_trace_id": _trace_id(run_id),
-            "workflow_name": str(workflow_name or ""),
-            "agent_name": str(agent_name or ""),
+            "execution_trace_id": _trace_id(run_id_value),
+            "workflow_name": workflow,
+            "agent_name": agent,
             "prompt_version": PULSE_DECISION_PROMPT_VERSION,
             "schema_version": PULSE_DECISION_SCHEMA_VERSION,
-            "artifact_version_hash": artifact_version_hash,
+            "artifact_version_hash": artifact_hash,
             "trace_metadata": trace_metadata,
             "input_hash": input_hash,
-            "runtime_version": str(runtime_manifest.get("runtime_version") or ""),
+            "runtime_version": runtime_version,
             "runtime_hash": runtime_hash,
             "runtime_manifest": runtime_manifest,
         }
@@ -168,22 +202,59 @@ class PulseDecisionRuntimeService:
         return {**audit, "output_hash": _sha256(final.model_dump(mode="json"))}
 
 
-def _model_payload(value: Any) -> dict[str, Any]:
-    if isinstance(value, dict):
-        return dict(value)
-    model_dump = getattr(value, "model_dump", None)
-    if callable(model_dump):
-        payload = model_dump(mode="json")
-        return payload if isinstance(payload, dict) else {}
-    return {}
+def _pulse_job_claim_attempt_count(job: Mapping[str, Any]) -> int:
+    try:
+        attempt_count = int(job["attempt_count"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("pulse_agent_job_claim_attempt_count_required") from exc
+    if attempt_count <= 0:
+        raise ValueError("pulse_agent_job_claim_attempt_count_required")
+    return attempt_count
 
 
-def _agent_packet_payload(value: Any) -> dict[str, Any]:
-    payload = _model_payload(value)
-    if not payload and isinstance(value, dict):
-        payload = dict(value)
-    if not payload:
-        return {}
+def _runtime_manifest_version(runtime_manifest: Mapping[str, Any]) -> str:
+    try:
+        runtime_version = str(runtime_manifest["runtime_version"]).strip()
+    except (KeyError, TypeError) as exc:
+        raise ValueError("pulse_decision_runtime_manifest_version_required") from exc
+    if not runtime_version:
+        raise ValueError("pulse_decision_runtime_manifest_version_required")
+    return runtime_version
+
+
+def _runtime_manifest_model_identity(runtime_manifest: Mapping[str, Any]) -> tuple[str, str]:
+    try:
+        model_payload = runtime_manifest["model"]
+    except (KeyError, TypeError) as exc:
+        raise ValueError("pulse_decision_runtime_manifest_model_required") from exc
+    if not isinstance(model_payload, Mapping):
+        raise ValueError("pulse_decision_runtime_manifest_model_required")
+    try:
+        runtime_model = _required_request_audit_text(
+            model_payload["model"],
+            "pulse_decision_runtime_manifest_model_required",
+        )
+    except KeyError as exc:
+        raise ValueError("pulse_decision_runtime_manifest_model_required") from exc
+    try:
+        runtime_artifact_hash = _required_request_audit_text(
+            model_payload["artifact_version_hash"],
+            "pulse_decision_runtime_manifest_artifact_version_hash_required",
+        )
+    except KeyError as exc:
+        raise ValueError("pulse_decision_runtime_manifest_artifact_version_hash_required") from exc
+    return runtime_model, runtime_artifact_hash
+
+
+def _required_request_audit_text(value: Any, error_name: str) -> str:
+    text = str(value).strip() if value is not None else ""
+    if not text:
+        raise ValueError(error_name)
+    return text
+
+
+def _agent_packet_payload(packet: PulseEvidencePacket) -> dict[str, Any]:
+    payload = packet.model_dump(mode="json", exclude={"summary_json", "admission_context"})
     return {
         key: item
         for key, item in payload.items()
@@ -195,14 +266,14 @@ def _agent_packet_payload(value: Any) -> dict[str, Any]:
     }
 
 
-def _context_packet_payload(context: dict[str, Any]) -> dict[str, Any]:
+def _context_evidence_packet(context: dict[str, Any]) -> PulseEvidencePacket:
     packet = context.get("evidence_packet") if isinstance(context, dict) else None
-    if isinstance(packet, dict):
-        return dict(packet)
-    packet_payload = _model_payload(packet)
-    if packet_payload:
-        return packet_payload
-    return dict(context) if isinstance(context, dict) and context.get("evidence_packet_hash") else {}
+    if not isinstance(packet, dict):
+        raise ValueError("pulse_decision_request_audit_packet_contract_required")
+    try:
+        return PulseEvidencePacket.model_validate(packet)
+    except ValueError as exc:
+        raise ValueError("pulse_decision_request_audit_packet_contract_required") from exc
 
 
 def _packet_hash(packet_payload: dict[str, Any]) -> str:
@@ -220,9 +291,9 @@ def _allowed_evidence_refs(packet_payload: dict[str, Any]) -> list[dict[str, Any
         return []
     result: list[dict[str, Any]] = []
     for ref in refs:
-        ref_payload = _model_payload(ref)
-        if not ref_payload and isinstance(ref, dict):
-            ref_payload = dict(ref)
+        if not isinstance(ref, dict):
+            continue
+        ref_payload = dict(ref)
         if _string_value(ref_payload.get("ref_id")):
             result.append(ref_payload)
     return result
@@ -299,7 +370,7 @@ def _mapping(value: Any) -> dict[str, Any]:
 
 
 def _trace_id(run_id: str) -> str:
-    digest = hashlib.sha256(str(run_id or "").encode("utf-8")).hexdigest()[:24]
+    digest = hashlib.sha256(str(run_id).encode("utf-8")).hexdigest()[:24]
     return f"trace_{digest}"
 
 

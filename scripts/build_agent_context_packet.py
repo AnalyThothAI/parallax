@@ -139,6 +139,7 @@ def render_context_packet(feature: SddFeature, task: TaskRecord, mode: str) -> s
     ]
     return "\n".join(lines)
 
+
 def _find_feature(features: list[SddFeature], slug: str) -> SddFeature | None:
     for feature in features:
         if feature.slug == slug:

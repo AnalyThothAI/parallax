@@ -9,7 +9,7 @@ from parallax.app.surfaces.api import schemas as api_schemas
 from parallax.app.surfaces.api.dependencies import _authenticated_runtime
 from parallax.app.surfaces.api.responses import _json
 from parallax.app.surfaces.api.validators import _handle_set, _limit, _scope
-from parallax.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
+from parallax.domains.account_quality.read_models.account_quality_service import AccountQualityService
 
 router = APIRouter()
 
@@ -123,12 +123,9 @@ def _watched_handle_set(repos: Any, handles: list[str]) -> set[str]:
     if not handles:
         return set()
     try:
-        profiles = AccountQualityRepository(repos.conn).profiles_by_handles(handles)
+        return AccountQualityService.from_conn(repos.conn).watched_handles(handles)
     except Exception:
         return set()
-    return {
-        handle for handle, profile in profiles.items() if (profile or {}).get("watched_status") in {"active", "watched"}
-    }
 
 
 def _source_event_detail(event: dict[str, Any], watched: set[str]) -> dict[str, Any]:

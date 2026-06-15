@@ -19,7 +19,7 @@ class RecordingConn:
 def repository(tmp_path) -> NotificationRepository:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     migrate(conn)
-    return NotificationRepository(conn)
+    return NotificationRepository(conn, running_timeout_ms=300_000, stale_running_terminalization_batch_size=100)
 
 
 def test_insert_notification_aggregates_duplicate_dedup_key_without_returning_new_row(tmp_path):
@@ -519,7 +519,9 @@ def test_summary_uses_sql_aggregates_without_materializing_unread_rows(tmp_path)
             )
 
     recording = RecordingConn(repo.conn)
-    summary = NotificationRepository(recording).summary(subscriber_key="local")
+    summary = NotificationRepository(
+        recording, running_timeout_ms=300_000, stale_running_terminalization_batch_size=100
+    ).summary(subscriber_key="local")
 
     assert summary["unread_count"] == 18
     assert summary["critical_unread_count"] == 0
@@ -564,7 +566,7 @@ def test_claim_next_delivery_skips_row_locked_by_another_worker(tmp_path):
     migrate(conn)
     second_conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
-        repo = NotificationRepository(conn)
+        repo = NotificationRepository(conn, running_timeout_ms=300_000, stale_running_terminalization_batch_size=100)
         locked_notification = repo.insert_notification(
             dedup_key="delivery:locked",
             rule_id="news_high_signal",
@@ -635,7 +637,9 @@ def test_claim_next_delivery_skips_row_locked_by_another_worker(tmp_path):
         )
         second_conn.execute("SET statement_timeout TO 200")
 
-        claimed = NotificationRepository(second_conn).claim_next_delivery(now_ms=1_700_000_000_100)
+        claimed = NotificationRepository(
+            second_conn, running_timeout_ms=300_000, stale_running_terminalization_batch_size=100
+        ).claim_next_delivery(now_ms=1_700_000_000_100)
     finally:
         conn.execute("ROLLBACK")
         second_conn.execute("RESET statement_timeout")
@@ -681,12 +685,80 @@ def test_claim_next_delivery_reclaims_stale_running_delivery(tmp_path):
     )
     repo.conn.commit()
 
-    claimed = NotificationRepository(repo.conn, running_timeout_ms=1_000).claim_next_delivery(now_ms=1_700_000_002_000)
+    claimed = NotificationRepository(
+        repo.conn, running_timeout_ms=1_000, stale_running_terminalization_batch_size=100
+    ).claim_next_delivery(now_ms=1_700_000_002_000)
 
     assert claimed is not None
     assert claimed["delivery_id"] == delivery["delivery_id"]
     assert claimed["status"] == "running"
     assert claimed["attempt_count"] == 2
+
+
+def test_claim_next_delivery_terminalizes_stale_running_rows_in_bounded_batches(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    migrate(conn)
+    now_ms = 1_700_000_002_000
+    stale_ms = 1_700_000_000_000
+    try:
+        conn.execute(
+            """
+            INSERT INTO notifications(
+              notification_id, dedup_key, rule_id, severity, title, body,
+              entity_type, entity_key, source_table, source_id,
+              first_seen_at_ms, last_seen_at_ms, created_at_ms, updated_at_ms
+            )
+            SELECT 'notif-stale-' || item::text,
+                   'dedup-stale-' || item::text,
+                   'news_high_signal',
+                   'high',
+                   'stale',
+                   'stale',
+                   'news_item',
+                   'news:' || item::text,
+                   'news_items',
+                   'news:' || item::text,
+                   %s,
+                   %s,
+                   %s,
+                   %s
+              FROM generate_series(1, 101) AS item
+            """,
+            (stale_ms, stale_ms, stale_ms, stale_ms),
+        )
+        conn.execute(
+            """
+            INSERT INTO notification_deliveries(
+              delivery_id, notification_id, channel_id, provider, status,
+              attempt_count, max_attempts, next_run_at_ms, last_attempt_at_ms,
+              created_at_ms, updated_at_ms
+            )
+            SELECT 'delivery-stale-' || item::text,
+                   'notif-stale-' || item::text,
+                   'pushdeer',
+                   'apprise',
+                   'running',
+                   5,
+                   5,
+                   %s,
+                   %s,
+                   %s,
+                   %s
+              FROM generate_series(1, 101) AS item
+            """,
+            (stale_ms, stale_ms, stale_ms, stale_ms),
+        )
+        repo = NotificationRepository(conn, running_timeout_ms=1_000, stale_running_terminalization_batch_size=100)
+
+        claimed = repo.claim_next_delivery(now_ms=now_ms)
+        dead_count = conn.execute(
+            "SELECT count(*) AS value FROM notification_deliveries WHERE status = 'dead'"
+        ).fetchone()["value"]
+    finally:
+        conn.close()
+
+    assert claimed is None
+    assert dead_count == 100
 
 
 def test_enqueue_or_requeue_delivery_only_reactivates_failed_or_dead_rows(tmp_path):

@@ -1,13 +1,22 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import asdict, is_dataclass
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import patch
 
+import pytest
+
 from parallax.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker, _source_fetch_since_ms
-from parallax.domains.news_intel.runtime.news_item_process_worker import NewsItemProcessWorker
+from parallax.domains.news_intel.runtime.news_item_process_worker import (
+    NewsItemProcessWorker,
+)
+from parallax.domains.news_intel.runtime.news_item_process_worker import (
+    _object_payload as _process_worker_object_payload,
+)
 from parallax.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
 from parallax.domains.news_intel.types.source_provider import (
     NewsProviderFetchResult,
@@ -16,8 +25,47 @@ from parallax.domains.news_intel.types.source_provider import (
     NewsSourceSnapshot,
 )
 from parallax.domains.token_intel.interfaces import TokenIdentityLookupResult
+from parallax.platform.config.settings import (
+    NewsFetchWorkerSettings,
+    NewsItemProcessWorkerSettings,
+    NewsPageProjectionWorkerSettings,
+)
 
 NOW_MS = 1_779_000_000_000
+NEWS_SOURCE_PROVIDER_SCHEMA_TYPES = ("atom", "cryptopanic", "json_feed", "opennews", "rss")
+
+
+def _news_page_projection_settings(**overrides: Any) -> NewsPageProjectionWorkerSettings:
+    payload: dict[str, Any] = {
+        "batch_size": 10,
+        "lease_ms": 120_000,
+        "retry_ms": 30_000,
+        "statement_timeout_seconds": 30,
+    }
+    payload.update(overrides)
+    return NewsPageProjectionWorkerSettings(**payload)
+
+
+def _news_fetch_settings(**overrides: Any) -> NewsFetchWorkerSettings:
+    payload = {
+        "batch_size": 10,
+        "lease_ms": 60_000,
+        "statement_timeout_seconds": 30,
+    }
+    payload.update(overrides)
+    return NewsFetchWorkerSettings(**payload)
+
+
+def _news_item_process_settings(**overrides: Any) -> NewsItemProcessWorkerSettings:
+    payload: dict[str, Any] = {
+        "batch_size": 10,
+        "lease_ms": 120_000,
+        "max_attempts": 3,
+        "retry_delay_ms": 60_000,
+        "statement_timeout_seconds": 30,
+    }
+    payload.update(overrides)
+    return NewsItemProcessWorkerSettings(**payload)
 
 
 def test_news_fetch_worker_fetches_outside_db_session_and_writes_items() -> None:
@@ -102,6 +150,52 @@ def test_news_fetch_worker_fetches_outside_db_session_and_writes_items() -> None
     assert db.repo.finished_runs[0]["fetched_count"] == 1
     assert db.repo.finished_runs[0]["inserted_count"] == 1
     assert wake_bus.notifications == [{"source_id": "example-rss", "count": 1}]
+
+
+def test_news_fetch_worker_reads_formal_settings_for_session_claim_and_fetch_limit() -> None:
+    source = {
+        "source_id": "example-rss",
+        "provider_type": "rss",
+        "feed_url": "https://example.com/rss.xml",
+        "source_domain": "example.com",
+        "source_name": "Example",
+    }
+    repo = FakeNewsRepository([source])
+    db = FakeDB(repo, expected_statement_timeout=17)
+    feed = FakeNewsSourceProvider(db, NewsProviderFetchResult(status_code=200, observations=[]))
+    worker = _worker(
+        db=db,
+        feed_client=feed,
+        wake_bus=FakeWakeBus(),
+        sources=[source],
+        settings=_news_fetch_settings(batch_size=7, lease_ms=45_000, statement_timeout_seconds=17),
+    )
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.processed == 0
+    assert repo.claim_due_calls == [{"now_ms": NOW_MS, "limit": 7, "claim_lease_ms": 45_000, "commit": False}]
+    assert feed.calls[0]["limit"] == 7
+
+
+def test_news_fetch_worker_requires_repository_session_transaction_before_reconciling_sources() -> None:
+    source = {
+        "source_id": "example-rss",
+        "provider_type": "rss",
+        "feed_url": "https://example.com/rss.xml",
+        "source_domain": "example.com",
+        "source_name": "Example",
+    }
+    repo = FakeNewsRepository([])
+    db = FakeDB(repo, expose_transaction=False)
+    feed = FakeNewsSourceProvider(db, NewsProviderFetchResult(status_code=304, observations=[]))
+    worker = _worker(db=db, feed_client=feed, wake_bus=FakeWakeBus(), sources=[source])
+
+    with pytest.raises(AttributeError, match="transaction"):
+        worker.run_once_sync(now_ms=NOW_MS)
+
+    assert repo.reconciled_sources == []
+    assert feed.calls == []
 
 
 def test_news_fetch_worker_skips_canonical_upsert_for_duplicate_provider_observation() -> None:
@@ -339,6 +433,67 @@ def test_news_fetch_worker_enqueues_dirty_targets_for_all_affected_news_items() 
     ]
 
 
+def test_news_fetch_worker_on_close_requires_sync_feed_client_close_contract() -> None:
+    source = {
+        "source_id": "example-rss",
+        "provider_type": "rss",
+        "feed_url": "https://example.com/rss.xml",
+        "source_domain": "example.com",
+        "source_name": "Example",
+    }
+    db = FakeDB(FakeNewsRepository([source]))
+    feed = AwaitableCloseNewsSourceProvider(db, NewsProviderFetchResult(status_code=304, observations=[]))
+    worker = _worker(db=db, feed_client=feed, wake_bus=FakeWakeBus(), sources=[source])
+
+    with pytest.raises(RuntimeError, match="news_fetch_feed_client_close_must_be_sync"):
+        asyncio.run(worker.on_close())
+
+    assert feed.close_calls == 1
+    assert feed.close_result.awaited is False
+
+
+def test_news_fetch_worker_fails_when_canonical_upsert_omits_affected_news_item_ids() -> None:
+    source = {
+        "source_id": "example-rss",
+        "provider_type": "rss",
+        "feed_url": "https://example.com/rss.xml",
+        "source_domain": "example.com",
+        "source_name": "Example",
+    }
+    repo = FakeNewsRepository([source])
+    repo.news_results = [{"news_item_id": "news-new", "status": "inserted"}]
+    db = FakeDB(repo)
+    feed = FakeNewsSourceProvider(
+        db,
+        NewsProviderFetchResult(
+            status_code=200,
+            observations=[
+                NewsProviderObservation(
+                    source_item_key="guid-1",
+                    canonical_url="https://example.com/news/story",
+                    title="Updated story",
+                    summary="Summary",
+                    body_text="Body",
+                    language="en",
+                    published_at_ms=NOW_MS,
+                    raw_payload={"id": "guid-1", "title": "Updated story"},
+                )
+            ],
+        ),
+    )
+    wake_bus = FakeWakeBus()
+    worker = _worker(db=db, feed_client=feed, wake_bus=wake_bus, sources=[source])
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.processed == 0
+    assert result.failed == 1
+    assert "affected_news_item_ids" in str(repo.finished_runs[0]["error"])
+    assert repo.finished_runs[0]["status"] == "failed"
+    assert all(batch["reason"] != "news_item_written" for batch in db.dirty.enqueued)
+    assert wake_bus.notifications == []
+
+
 def test_news_fetch_worker_does_not_enqueue_brief_input_for_provider_signal_update() -> None:
     source = {
         "source_id": "opennews-news",
@@ -463,11 +618,11 @@ def test_news_item_process_worker_extracts_mentions_candidates_and_wakes() -> No
     wake_bus = FakeItemProcessWakeBus()
     worker = NewsItemProcessWorker(
         name="news_item_process",
-        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30),
+        settings=_news_item_process_settings(),
         db=db,
         telemetry=object(),
         identity_lookup=FakeItemProcessLookup(db),
-        wake_bus=wake_bus,
+        wake_emitter=wake_bus,
     )
 
     result = worker.run_once_sync(now_ms=NOW_MS)
@@ -519,6 +674,122 @@ def test_news_item_process_worker_extracts_mentions_candidates_and_wakes() -> No
     assert "tx:mark_item_processed" in db.conn.events
 
 
+def test_news_item_process_worker_requires_repository_session_transaction_before_claiming_items() -> None:
+    repo = FakeItemProcessRepository([])
+    db = FakeItemProcessDB(repo, expose_transaction=False)
+    worker = NewsItemProcessWorker(
+        name="news_item_process",
+        settings=_news_item_process_settings(lease_ms=60_000),
+        db=db,
+        telemetry=object(),
+        identity_lookup=FakeItemProcessLookup(db),
+        wake_emitter=FakeItemProcessWakeBus(),
+        clock_ms=lambda: NOW_MS,
+    )
+
+    with pytest.raises(AttributeError, match="transaction"):
+        worker.run_once_sync(now_ms=NOW_MS)
+
+    assert repo.release_calls == []
+    assert repo.claim_calls == []
+
+
+@pytest.mark.parametrize("malformed", ("missing_attempt", "zero_attempt", "missing_lease_owner"))
+def test_news_item_process_worker_requires_claim_attempt_and_lease_owner_before_processing_state(
+    malformed: str,
+) -> None:
+    item = _crypto_process_item() | {
+        "processing_attempts": 1,
+        "processing_lease_owner": "news_item_process",
+    }
+    if malformed == "missing_attempt":
+        item.pop("processing_attempts")
+        expected_error = "news_item_process_claim_attempt_required"
+    elif malformed == "zero_attempt":
+        item["processing_attempts"] = 0
+        expected_error = "news_item_process_claim_attempt_required"
+    else:
+        item.pop("processing_lease_owner")
+        expected_error = "news_item_process_claim_lease_owner_required"
+    db = FakeItemProcessDB(FakeItemProcessRepository([item]))
+    wake_bus = FakeItemProcessWakeBus()
+    worker = NewsItemProcessWorker(
+        name="news_item_process",
+        settings=_news_item_process_settings(),
+        db=db,
+        telemetry=object(),
+        identity_lookup=FakeItemProcessLookup(db),
+        wake_emitter=wake_bus,
+    )
+
+    with pytest.raises(ValueError, match=expected_error):
+        worker.run_once_sync(now_ms=NOW_MS)
+
+    assert db.repo.entities == {}
+    assert db.repo.mentions == {}
+    assert db.repo.processed_items == []
+    assert db.repo.retryable_items == []
+    assert db.repo.terminal_failed_items == []
+    assert wake_bus.notifications == []
+
+
+def test_news_item_process_worker_reads_formal_settings_for_claim_session_and_retry() -> None:
+    item = {
+        "news_item_id": "news-1",
+        "source_id": "source-1",
+        "source_role": "official_exchange",
+        "source_domain": "coinbase.com",
+        "authority_scope_json": {},
+        "title": "Coinbase lists $BTC for trading",
+        "summary": "Trading starts today",
+        "body_text": "",
+        "processing_attempts": 1,
+        "processing_lease_owner": "news_item_process",
+    }
+    db = FakeItemProcessDB(
+        FakeItemProcessRepository([item]),
+        expected_statement_timeout=17,
+    )
+    worker = NewsItemProcessWorker(
+        name="news_item_process",
+        settings=_news_item_process_settings(
+            batch_size=7,
+            lease_ms=45_000,
+            retry_delay_ms=90_000,
+            max_attempts=4,
+            statement_timeout_seconds=17,
+        ),
+        db=db,
+        telemetry=object(),
+        identity_lookup=ExplodingIdentityLookup(RuntimeError("extract failed")),
+        wake_emitter=FakeItemProcessWakeBus(),
+        clock_ms=lambda: NOW_MS,
+    )
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.failed == 1
+    assert db.repo.claim_calls == [
+        {
+            "limit": 7,
+            "lease_owner": "news_item_process",
+            "lease_ms": 45_000,
+            "now_ms": NOW_MS,
+        }
+    ]
+    assert db.repo.retryable_items == [
+        {
+            "news_item_id": "news-1",
+            "error": "extract failed",
+            "next_due_at_ms": NOW_MS + 90_000,
+            "now_ms": NOW_MS,
+            "lease_owner": "news_item_process",
+            "processing_attempts": 1,
+        }
+    ]
+    assert db.repo.terminal_failed_items == []
+
+
 def test_news_item_process_worker_passes_authority_scope_to_fact_candidates() -> None:
     item = {
         "news_item_id": "news-1",
@@ -535,11 +806,11 @@ def test_news_item_process_worker_passes_authority_scope_to_fact_candidates() ->
     db = FakeItemProcessDB(FakeItemProcessRepository([item]))
     worker = NewsItemProcessWorker(
         name="news_item_process",
-        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30),
+        settings=_news_item_process_settings(),
         db=db,
         telemetry=object(),
         identity_lookup=FakeItemProcessLookup(db),
-        wake_bus=FakeItemProcessWakeBus(),
+        wake_emitter=FakeItemProcessWakeBus(),
     )
 
     result = worker.run_once_sync(now_ms=NOW_MS)
@@ -579,11 +850,11 @@ def test_news_item_process_provider_only_non_crypto_row_enqueues_page_and_brief(
     db = FakeItemProcessDB(FakeItemProcessRepository([item]))
     worker = NewsItemProcessWorker(
         name="news_item_process",
-        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30),
+        settings=_news_item_process_settings(),
         db=db,
         telemetry=object(),
         identity_lookup=FakeItemProcessLookup(db),
-        wake_bus=FakeItemProcessWakeBus(),
+        wake_emitter=FakeItemProcessWakeBus(),
     )
 
     result = worker.run_once_sync(now_ms=NOW_MS)
@@ -643,6 +914,8 @@ def test_news_item_process_admitted_crypto_row_enqueues_page_and_brief_with_stor
         "summary": "Zcash trading starts today on Coinbase.",
         "body_text": "",
         "published_at_ms": NOW_MS - 1_000,
+        "processing_attempts": 1,
+        "processing_lease_owner": "news_item_process",
         "provider_signal_json": {
             "source": "provider",
             "provider": "opennews",
@@ -655,11 +928,11 @@ def test_news_item_process_admitted_crypto_row_enqueues_page_and_brief_with_stor
     db = FakeItemProcessDB(FakeItemProcessRepository([item]))
     worker = NewsItemProcessWorker(
         name="news_item_process",
-        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30),
+        settings=_news_item_process_settings(),
         db=db,
         telemetry=object(),
         identity_lookup=FakeItemProcessLookup(db),
-        wake_bus=FakeItemProcessWakeBus(),
+        wake_emitter=FakeItemProcessWakeBus(),
     )
 
     result = worker.run_once_sync(now_ms=NOW_MS)
@@ -703,6 +976,55 @@ def test_news_item_process_admitted_crypto_row_enqueues_page_and_brief_with_stor
     ]
 
 
+def test_news_item_process_worker_fails_when_agent_admission_context_missing() -> None:
+    item = {
+        "news_item_id": "news-zec",
+        "source_id": "opennews-realtime",
+        "provider_type": "opennews",
+        "source_role": "official_exchange",
+        "source_domain": "coinbase.com",
+        "source_name": "Coinbase",
+        "coverage_tags_json": ["crypto"],
+        "authority_scope_json": {
+            "event_types": ["exchange_listing"],
+            "domains": ["coinbase.com"],
+            "targets": [{"target_type": "CexToken", "target_id": "cex:ZEC"}],
+        },
+        "title": "Coinbase lists $ZEC for trading",
+        "summary": "Zcash trading starts today on Coinbase.",
+        "body_text": "",
+        "published_at_ms": NOW_MS - 1_000,
+        "provider_signal_json": {
+            "source": "provider",
+            "provider": "opennews",
+            "status": "ready",
+            "direction": "bullish",
+            "score": 88,
+        },
+        "provider_token_impacts_json": [{"symbol": "ZEC", "score": 88, "signal": "long", "grade": "A"}],
+        "processing_attempts": 1,
+        "processing_lease_owner": "news_item_process",
+    }
+    repo = FakeItemProcessRepository([item], agent_context_rows=[])
+    db = FakeItemProcessDB(repo)
+    worker = NewsItemProcessWorker(
+        name="news_item_process",
+        settings=_news_item_process_settings(),
+        db=db,
+        telemetry=object(),
+        identity_lookup=FakeItemProcessLookup(db),
+        wake_emitter=FakeItemProcessWakeBus(),
+    )
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.processed == 0
+    assert result.failed == 1
+    assert repo.agent_admission_updates == []
+    assert repo.retryable_items[0]["news_item_id"] == "news-zec"
+    assert "agent admission context" in repo.retryable_items[0]["error"]
+
+
 def test_news_item_process_worker_marks_retryable_failure_with_next_due_at_ms() -> None:
     item = {
         "news_item_id": "news-1",
@@ -719,17 +1041,11 @@ def test_news_item_process_worker_marks_retryable_failure_with_next_due_at_ms() 
     db = FakeItemProcessDB(FakeItemProcessRepository([item]))
     worker = NewsItemProcessWorker(
         name="news_item_process",
-        settings=SimpleNamespace(
-            batch_size=10,
-            statement_timeout_seconds=30,
-            retry_delay_ms=45_000,
-            max_attempts=3,
-            lease_ms=120_000,
-        ),
+        settings=_news_item_process_settings(retry_delay_ms=45_000),
         db=db,
         telemetry=object(),
         identity_lookup=ExplodingIdentityLookup(RuntimeError("extract failed")),
-        wake_bus=FakeItemProcessWakeBus(),
+        wake_emitter=FakeItemProcessWakeBus(),
         clock_ms=lambda: NOW_MS,
     )
 
@@ -776,17 +1092,11 @@ def test_news_item_process_worker_uses_failure_time_for_retry_delay() -> None:
     db = FakeItemProcessDB(FakeItemProcessRepository([item]))
     worker = NewsItemProcessWorker(
         name="news_item_process",
-        settings=SimpleNamespace(
-            batch_size=10,
-            statement_timeout_seconds=30,
-            retry_delay_ms=45_000,
-            max_attempts=3,
-            lease_ms=120_000,
-        ),
+        settings=_news_item_process_settings(retry_delay_ms=45_000),
         db=db,
         telemetry=object(),
         identity_lookup=ExplodingIdentityLookup(RuntimeError("slow failure")),
-        wake_bus=FakeItemProcessWakeBus(),
+        wake_emitter=FakeItemProcessWakeBus(),
         clock_ms=lambda: failure_time_ms,
     )
 
@@ -821,17 +1131,11 @@ def test_news_item_process_worker_marks_terminal_failure_on_last_allowed_attempt
     db = FakeItemProcessDB(FakeItemProcessRepository([item]))
     worker = NewsItemProcessWorker(
         name="news_item_process",
-        settings=SimpleNamespace(
-            batch_size=10,
-            statement_timeout_seconds=30,
-            retry_delay_ms=45_000,
-            max_attempts=3,
-            lease_ms=120_000,
-        ),
+        settings=_news_item_process_settings(retry_delay_ms=45_000),
         db=db,
         telemetry=object(),
         identity_lookup=ExplodingIdentityLookup(RuntimeError("final failure")),
-        wake_bus=FakeItemProcessWakeBus(),
+        wake_emitter=FakeItemProcessWakeBus(),
         clock_ms=lambda: NOW_MS,
     )
 
@@ -855,17 +1159,11 @@ def test_news_item_process_worker_releases_expired_processing_before_skipping_em
     db = FakeItemProcessDB(FakeItemProcessRepository([]))
     worker = NewsItemProcessWorker(
         name="news_item_process",
-        settings=SimpleNamespace(
-            batch_size=10,
-            statement_timeout_seconds=30,
-            retry_delay_ms=45_000,
-            max_attempts=3,
-            lease_ms=120_000,
-        ),
+        settings=_news_item_process_settings(retry_delay_ms=45_000),
         db=db,
         telemetry=object(),
         identity_lookup=FakeItemProcessLookup(db),
-        wake_bus=FakeItemProcessWakeBus(),
+        wake_emitter=FakeItemProcessWakeBus(),
     )
 
     result = worker.run_once_sync(now_ms=NOW_MS)
@@ -907,11 +1205,11 @@ def test_news_item_process_worker_treats_stale_processed_claim_as_no_op() -> Non
     wake_bus = FakeItemProcessWakeBus()
     worker = NewsItemProcessWorker(
         name="news_item_process",
-        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30),
+        settings=_news_item_process_settings(),
         db=db,
         telemetry=object(),
         identity_lookup=FakeItemProcessLookup(db),
-        wake_bus=wake_bus,
+        wake_emitter=wake_bus,
     )
 
     result = worker.run_once_sync(now_ms=NOW_MS)
@@ -946,11 +1244,11 @@ def test_news_item_process_worker_treats_stale_retryable_claim_as_no_op() -> Non
     db = FakeItemProcessDB(FakeItemProcessRepository([item], retryable_rowcount=0))
     worker = NewsItemProcessWorker(
         name="news_item_process",
-        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30),
+        settings=_news_item_process_settings(),
         db=db,
         telemetry=object(),
         identity_lookup=ExplodingIdentityLookup(RuntimeError("late retry")),
-        wake_bus=FakeItemProcessWakeBus(),
+        wake_emitter=FakeItemProcessWakeBus(),
         clock_ms=lambda: NOW_MS,
     )
 
@@ -987,11 +1285,11 @@ def test_news_item_process_worker_treats_stale_terminal_claim_as_no_op() -> None
     db = FakeItemProcessDB(FakeItemProcessRepository([item], terminal_rowcount=0))
     worker = NewsItemProcessWorker(
         name="news_item_process",
-        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30, max_attempts=3),
+        settings=_news_item_process_settings(),
         db=db,
         telemetry=object(),
         identity_lookup=ExplodingIdentityLookup(RuntimeError("late terminal")),
-        wake_bus=FakeItemProcessWakeBus(),
+        wake_emitter=FakeItemProcessWakeBus(),
         clock_ms=lambda: NOW_MS,
     )
 
@@ -1020,11 +1318,11 @@ def test_news_item_process_rejects_unsupported_market_scope_shape_before_persist
     db = FakeItemProcessDB(FakeItemProcessRepository([item]))
     worker = NewsItemProcessWorker(
         name="news_item_process",
-        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30),
+        settings=_news_item_process_settings(),
         db=db,
         telemetry=object(),
         identity_lookup=FakeItemProcessLookup(db),
-        wake_bus=FakeItemProcessWakeBus(),
+        wake_emitter=FakeItemProcessWakeBus(),
         clock_ms=lambda: NOW_MS,
     )
 
@@ -1050,11 +1348,11 @@ def test_news_item_process_rejects_unsupported_story_identity_shape_before_persi
     db = FakeItemProcessDB(FakeItemProcessRepository([item]))
     worker = NewsItemProcessWorker(
         name="news_item_process",
-        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30),
+        settings=_news_item_process_settings(),
         db=db,
         telemetry=object(),
         identity_lookup=FakeItemProcessLookup(db),
-        wake_bus=FakeItemProcessWakeBus(),
+        wake_emitter=FakeItemProcessWakeBus(),
         clock_ms=lambda: NOW_MS,
     )
 
@@ -1071,16 +1369,19 @@ def test_news_item_process_rejects_unsupported_story_identity_shape_before_persi
     assert "story identity payload" in str(db.repo.retryable_items[0]["error"])
 
 
+def test_news_item_process_payload_helper_rejects_reflective_objects() -> None:
+    with pytest.raises(ValueError, match="news item process payload"):
+        _process_worker_object_payload(SimpleNamespace(news_item_id="news-1"))
+
+
 def test_news_page_projection_worker_replaces_rows_without_emitting_wake() -> None:
     repo = FakePageProjectionRepository()
     db = FakeProjectionDB("news_page_projection", repo)
-    wake_bus = FakeWakeBus()
     worker = NewsPageProjectionWorker(
         name="news_page_projection",
-        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30),
+        settings=_news_page_projection_settings(),
         db=db,
         telemetry=object(),
-        wake_bus=wake_bus,
         clock_ms=lambda: NOW_MS,
     )
 
@@ -1095,7 +1396,6 @@ def test_news_page_projection_worker_replaces_rows_without_emitting_wake() -> No
     assert repo.replaced_story_rows[0]["lifecycle_status"] == "attention"
     assert repo.replaced_story_rows[0]["agent_status"] == "ready"
     assert "agent_run_id" not in repo.replaced_story_rows[0]["agent_brief"]
-    assert wake_bus.notifications == []
 
 
 def test_news_page_projection_worker_projects_same_story_once() -> None:
@@ -1133,7 +1433,7 @@ def test_news_page_projection_worker_projects_same_story_once() -> None:
     )
     worker = NewsPageProjectionWorker(
         name="news_page_projection",
-        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30),
+        settings=_news_page_projection_settings(),
         db=db,
         telemetry=object(),
         clock_ms=lambda: NOW_MS,
@@ -1183,7 +1483,7 @@ def test_news_page_projection_worker_reports_deleted_story_member_rows() -> None
     db = FakeProjectionDB("news_page_projection", repo, claimed=[_claimed_page_target("news-1")])
     worker = NewsPageProjectionWorker(
         name="news_page_projection",
-        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30),
+        settings=_news_page_projection_settings(),
         db=db,
         telemetry=object(),
         clock_ms=lambda: NOW_MS,
@@ -1225,7 +1525,7 @@ def test_news_page_projection_worker_reports_unchanged_story_projection() -> Non
     db = FakeProjectionDB("news_page_projection", repo, claimed=[_claimed_page_target("news-1")])
     worker = NewsPageProjectionWorker(
         name="news_page_projection",
-        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30),
+        settings=_news_page_projection_settings(),
         db=db,
         telemetry=object(),
         clock_ms=lambda: NOW_MS,
@@ -1245,7 +1545,7 @@ def test_news_page_projection_worker_replaces_story_targets_when_payloads_empty(
     db = FakeProjectionDB("news_page_projection", repo, claimed=[_claimed_page_target("news-non-representative")])
     worker = NewsPageProjectionWorker(
         name="news_page_projection",
-        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30),
+        settings=_news_page_projection_settings(),
         db=db,
         telemetry=object(),
         clock_ms=lambda: NOW_MS,
@@ -1268,15 +1568,16 @@ def _worker(
     feed_client: FakeNewsSourceProvider,
     wake_bus: FakeWakeBus,
     sources: list[dict[str, object]],
+    settings: NewsFetchWorkerSettings | None = None,
 ) -> NewsFetchWorker:
     return NewsFetchWorker(
         name="news_fetch",
-        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30),
+        settings=settings or _news_fetch_settings(),
         db=db,
         telemetry=object(),
         feed_client=feed_client,
         news_settings=SimpleNamespace(sources=tuple(sources)),
-        wake_bus=wake_bus,
+        wake_emitter=wake_bus,
     )
 
 
@@ -1389,44 +1690,66 @@ def _page_projection_payload(
 
 
 class FakeDB:
-    def __init__(self, repo: FakeNewsRepository) -> None:
+    def __init__(
+        self,
+        repo: FakeNewsRepository,
+        *,
+        expose_transaction: bool = True,
+        expected_statement_timeout: float = 30,
+    ) -> None:
         self.repo = repo
         self.conn = FakeConn()
         self.dirty = FakeProjectionDirtyTargetRepository()
         self.open_sessions = 0
         self.max_open_sessions = 0
+        self.expose_transaction = expose_transaction
+        self.expected_statement_timeout = expected_statement_timeout
 
     @contextmanager
     def worker_session(self, name: str, statement_timeout_seconds: float | None = None):
         assert name == "news_fetch"
-        assert statement_timeout_seconds == 30
+        assert statement_timeout_seconds == self.expected_statement_timeout
         assert self.open_sessions == 0
         self.open_sessions += 1
         self.max_open_sessions = max(self.max_open_sessions, self.open_sessions)
         try:
-            yield SimpleNamespace(news=self.repo, news_projection_dirty_targets=self.dirty, conn=self.conn)
+            session = SimpleNamespace(news=self.repo, news_projection_dirty_targets=self.dirty, conn=self.conn)
+            if self.expose_transaction:
+                session.transaction = self.conn.transaction
+            yield session
         finally:
             self.open_sessions -= 1
 
 
 class FakeItemProcessDB:
-    def __init__(self, repo: FakeItemProcessRepository) -> None:
+    def __init__(
+        self,
+        repo: FakeItemProcessRepository,
+        *,
+        expose_transaction: bool = True,
+        expected_statement_timeout: float = 30,
+    ) -> None:
         self.repo = repo
         self.conn = FakeConn()
         self.repo.conn = self.conn
         self.dirty = FakeProjectionDirtyTargetRepository()
         self.open_sessions = 0
         self.max_open_sessions = 0
+        self.expose_transaction = expose_transaction
+        self.expected_statement_timeout = expected_statement_timeout
 
     @contextmanager
     def worker_session(self, name: str, statement_timeout_seconds: float | None = None):
         assert name == "news_item_process"
-        assert statement_timeout_seconds == 30
+        assert statement_timeout_seconds == self.expected_statement_timeout
         assert self.open_sessions == 0
         self.open_sessions += 1
         self.max_open_sessions = max(self.max_open_sessions, self.open_sessions)
         try:
-            yield SimpleNamespace(news=self.repo, news_projection_dirty_targets=self.dirty, conn=self.conn)
+            session = SimpleNamespace(news=self.repo, news_projection_dirty_targets=self.dirty, conn=self.conn)
+            if self.expose_transaction:
+                session.transaction = self.conn.transaction
+            yield session
         finally:
             self.open_sessions -= 1
 
@@ -1457,7 +1780,12 @@ class FakeProjectionDB:
         assert name == self.expected_name
         assert statement_timeout_seconds == 30
         self.sessions.append(name)
-        yield SimpleNamespace(news=self.repo, news_projection_dirty_targets=self.dirty, conn=self.conn)
+        yield SimpleNamespace(
+            news=self.repo,
+            news_projection_dirty_targets=self.dirty,
+            conn=self.conn,
+            transaction=self.conn.transaction,
+        )
 
 
 class FakeConn:
@@ -1547,6 +1875,30 @@ class FakeNewsSourceProvider:
         )
         return self.result
 
+    def close(self) -> None:
+        return None
+
+
+class AwaitableCloseResult:
+    def __init__(self) -> None:
+        self.awaited = False
+
+    def __await__(self):
+        self.awaited = True
+        if False:
+            yield None
+
+
+class AwaitableCloseNewsSourceProvider(FakeNewsSourceProvider):
+    def __init__(self, db: FakeDB, result: NewsProviderFetchResult) -> None:
+        super().__init__(db, result)
+        self.close_calls = 0
+        self.close_result = AwaitableCloseResult()
+
+    def close(self) -> AwaitableCloseResult:
+        self.close_calls += 1
+        return self.close_result
+
 
 class FakeWakeBus:
     def __init__(self) -> None:
@@ -1587,6 +1939,7 @@ class FakeItemProcessLookup:
 class FakeNewsRepository:
     def __init__(self, due_sources: list[dict[str, object]]) -> None:
         self.due_sources = due_sources
+        self.claim_due_calls: list[dict[str, object]] = []
         self.reconciled_sources: list[dict[str, object]] = []
         self.fetch_runs: list[dict[str, object]] = []
         self.provider_items: list[dict[str, object]] = []
@@ -1603,11 +1956,20 @@ class FakeNewsRepository:
         self.reconciled_sources = list(sources)
         return []
 
-    def claim_due_sources(self, *, now_ms: int, limit: int, commit: bool = True):
+    def news_source_provider_constraint_values(self):
+        return NEWS_SOURCE_PROVIDER_SCHEMA_TYPES
+
+    def claim_due_sources(self, *, now_ms: int, limit: int, claim_lease_ms: int, commit: bool = True):
+        self.claim_due_calls.append(
+            {"now_ms": now_ms, "limit": limit, "claim_lease_ms": claim_lease_ms, "commit": commit}
+        )
         return self.due_sources[:limit]
 
     def list_news_item_ids_for_sources(self, *, source_ids):
         return []
+
+    def servable_news_item_ids(self, news_item_ids):
+        return [str(news_item_id) for news_item_id in news_item_ids if str(news_item_id)]
 
     def start_fetch_run(self, *, source_id: str, started_at_ms: int, commit: bool = True):
         fetch_run_id = f"run-{source_id}"
@@ -1652,7 +2014,8 @@ class FakeNewsRepository:
         self.news_items.append(payload)
         if self.news_results:
             return dict(self.news_results.pop(0))
-        return {"news_item_id": f"news-{len(self.news_items)}", "status": "inserted"}
+        news_item_id = f"news-{len(self.news_items)}"
+        return {"news_item_id": news_item_id, "status": "inserted", "affected_news_item_ids": [news_item_id]}
 
     def finish_fetch_run(self, **payload):
         self.events.append("finish_fetch_run")
@@ -1668,8 +2031,10 @@ class FakeItemProcessRepository:
         processed_rowcount: int = 1,
         retryable_rowcount: int = 1,
         terminal_rowcount: int = 1,
+        agent_context_rows: list[dict[str, object]] | None = None,
     ) -> None:
         self.items = items
+        self.agent_context_rows = agent_context_rows
         self.conn: FakeConn | None = None
         self.claim_calls: list[dict[str, int | str]] = []
         self.release_calls: list[int] = []
@@ -1761,6 +2126,9 @@ class FakeItemProcessRepository:
             }
         )
 
+    def servable_news_item_ids(self, news_item_ids):
+        return [str(news_item_id) for news_item_id in news_item_ids if str(news_item_id)]
+
     def mark_item_processed(
         self,
         news_item_id: str,
@@ -1783,6 +2151,8 @@ class FakeItemProcessRepository:
         return self.processed_rowcount
 
     def load_agent_admission_contexts(self, *, news_item_ids: list[str], now_ms: int) -> list[dict[str, object]]:
+        if self.agent_context_rows is not None:
+            return [dict(row) for row in self.agent_context_rows]
         contexts: list[dict[str, object]] = []
         for news_item_id in news_item_ids:
             item = next((dict(row) for row in self.items if row.get("news_item_id") == news_item_id), None)

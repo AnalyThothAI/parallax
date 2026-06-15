@@ -12,7 +12,6 @@ from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
 from parallax.app.runtime.bootstrap import Runtime, bootstrap
-from parallax.app.runtime.provider_wiring.news import supported_news_provider_types
 from parallax.app.runtime.telemetry import PROMETHEUS_CONTENT_TYPE
 from parallax.app.runtime.worker_status import workers_status_payload
 from parallax.app.surfaces.api.exceptions import (
@@ -27,6 +26,7 @@ from parallax.domains.news_intel.services.news_provider_contract import (
     NewsProviderContractError,
     validate_news_provider_contract,
 )
+from parallax.platform.config.news_provider_types import RUNTIME_SUPPORTED_NEWS_PROVIDER_TYPES
 from parallax.platform.config.settings import Settings, load_settings
 from parallax.platform.db.postgres_client import postgres_health_check
 from parallax.platform.db.postgres_migrations import latest_migration_version
@@ -183,7 +183,7 @@ def _readiness_payload(runtime: Runtime, *, now_ms: int | None = None) -> tuple[
         "store": "postgresql",
         "db": db_status,
         "provider_states": {
-            "gmgn_direct_ws": _provider_state_payload(getattr(runtime.collector, "upstream_client", None)),
+            "gmgn_direct_ws": _provider_state_payload(runtime.collector.upstream_client),
             "okx_dex_ws": _provider_state_payload(stream_dex_market),
         },
         "agent_execution": _agent_execution_status(runtime),
@@ -198,25 +198,23 @@ def _workers_status_payload(runtime: Runtime) -> dict[str, Any]:
     return workers_status_payload(runtime)
 
 
-def _stream_dex_market(runtime: Any) -> Any | None:
-    providers = getattr(runtime, "providers", None)
-    asset_market = getattr(providers, "asset_market", None)
-    return getattr(asset_market, "stream_dex_market", None)
+def _stream_dex_market(runtime: Runtime) -> Any | None:
+    return runtime.providers.asset_market.stream_dex_market
 
 
-def _agent_execution_status(runtime: Any) -> dict[str, Any] | None:
-    gateway = getattr(runtime, "agent_execution_gateway", None)
+def _agent_execution_status(runtime: Runtime) -> dict[str, Any] | None:
+    gateway = runtime.agent_execution_gateway
     if gateway is None:
-        providers = getattr(runtime, "providers", None)
-        gateway = getattr(providers, "agent_execution_gateway", None)
-    snapshot = getattr(gateway, "status_snapshot", None)
-    if not callable(snapshot):
         return None
     try:
-        payload = snapshot()
+        payload = gateway.status_snapshot()
+    except AttributeError:
+        return {"status": "unavailable", "error": "agent_execution_status_contract_missing"}
     except Exception as exc:
         return {"status": "unavailable", "error": type(exc).__name__}
-    return payload if isinstance(payload, dict) else {"status": "unavailable"}
+    if not isinstance(payload, dict):
+        return {"status": "unavailable", "error": "agent_execution_status_payload_not_dict"}
+    return payload
 
 
 def _unhealthy_reasons(
@@ -238,14 +236,13 @@ def _unhealthy_reasons(
 
 
 def _news_provider_contract_payload(runtime: Runtime) -> dict[str, Any]:
-    configured_sources = tuple(getattr(getattr(runtime.settings, "news_intel", None), "sources", ()) or ())
-    supported_provider_types = _news_supported_provider_types(runtime)
+    configured_sources = tuple(runtime.settings.news_intel.sources or ())
     try:
         with runtime.repositories() as repos:
             schema_provider_types = repos.news.news_source_provider_constraint_values()
         return validate_news_provider_contract(
             configured_sources=configured_sources,
-            supported_provider_types=supported_provider_types,
+            supported_provider_types=RUNTIME_SUPPORTED_NEWS_PROVIDER_TYPES,
             schema_provider_types=schema_provider_types,
         )
     except NewsProviderContractError as exc:
@@ -256,22 +253,9 @@ def _news_provider_contract_payload(runtime: Runtime) -> dict[str, Any]:
             "reason": "news_provider_contract_unavailable",
             "error": type(exc).__name__,
             "configured_provider_types": _configured_news_provider_types(configured_sources),
-            "supported_provider_types": list(supported_provider_types),
+            "supported_provider_types": list(RUNTIME_SUPPORTED_NEWS_PROVIDER_TYPES),
             "schema_provider_types": [],
         }
-
-
-def _news_supported_provider_types(runtime: Runtime) -> tuple[str, ...]:
-    news_intel = getattr(getattr(runtime, "providers", None), "news_intel", None)
-    feed_client = getattr(news_intel, "feed_client", None)
-    supported = getattr(feed_client, "supported_provider_types", None)
-    if callable(supported):
-        return tuple(str(value) for value in supported())
-    registry = getattr(feed_client, "_registry", None)
-    registry_supported = getattr(registry, "supported_provider_types", None)
-    if callable(registry_supported):
-        return tuple(str(value) for value in registry_supported())
-    return supported_news_provider_types()
 
 
 def _configured_news_provider_types(configured_sources: tuple[Any, ...]) -> list[str]:
@@ -289,7 +273,6 @@ def _queue_health_contract_reasons(worker_status: dict[str, Any]) -> list[str]:
         "adapter_query_failure": "queue_health_adapter_query_failure",
         "connection_context_enter_failure": "queue_health_adapter_query_failure",
         "manifest_mismatch": "queue_health_manifest_mismatch",
-        "missing_connection": "queue_health_table_unavailable",
         "queue_table_unavailable": "queue_health_table_unavailable",
     }
     reasons: set[str] = set()
@@ -322,25 +305,26 @@ def _db_status(runtime: Runtime) -> dict[str, object]:
         return {"ok": False, "error": type(exc).__name__, "detail": str(exc)}
 
 
-def _provider_state_payload(provider: object | None) -> dict[str, object | None]:
+def _provider_state_payload(provider: Any | None) -> dict[str, object | None]:
     if provider is None:
         return {"state": "disconnected", "last_state_change_at_ms": None}
-    payload = getattr(provider, "connection_state_payload", None)
-    if payload is None:
-        return {"state": "disconnected", "last_state_change_at_ms": None}
     try:
-        value = payload()
+        value = provider.connection_state_payload()
+    except AttributeError:
+        return {
+            "state": "failed",
+            "last_state_change_at_ms": None,
+            "error": "provider_connection_state_contract_missing",
+        }
     except Exception as exc:
         return {"state": "failed", "last_state_change_at_ms": None, "error": str(exc)}
-    return value if isinstance(value, dict) else {"state": "failed", "last_state_change_at_ms": None}
-
-
-def _notification_summary(runtime: Runtime) -> dict[str, object]:
-    try:
-        with runtime.repositories() as repos:
-            return repos.notifications.summary(subscriber_key="local")
-    except Exception:
-        return {}
+    if not isinstance(value, dict):
+        return {
+            "state": "failed",
+            "last_state_change_at_ms": None,
+            "error": "provider_connection_state_payload_not_dict",
+        }
+    return value
 
 
 def _now_ms() -> int:

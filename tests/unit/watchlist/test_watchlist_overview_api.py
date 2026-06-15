@@ -72,8 +72,10 @@ class FakeWatchlistIntelRepository:
         }
         return [rows[handle] for handle in handles if handle in rows]
 
-    def handle_overview(self, *, handle, scope, since_ms, limit=500):
-        del since_ms, limit
+    def handle_overview(self, *, handle, scope, since_ms, source_limit, cluster_limit):
+        del since_ms
+        assert source_limit == 500
+        assert cluster_limit == 500
         return {
             "query": {"handle": handle, "scope": scope},
             "metrics": {

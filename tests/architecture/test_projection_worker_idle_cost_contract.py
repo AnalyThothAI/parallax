@@ -24,6 +24,7 @@ ALLOWED_PROJECTION_REPOSITORY_CALLS = {
     "replace_page_rows_for_items",
     "replace_page_rows_for_story_targets",
     "replace_source_quality_rows",
+    "transaction",
 }
 
 BANNED_PROJECTION_DISCOVERY_CALLS = {

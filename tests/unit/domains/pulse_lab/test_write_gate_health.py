@@ -3,7 +3,13 @@ from __future__ import annotations
 import inspect
 from types import SimpleNamespace
 
+import pytest
+
+from parallax.domains.pulse_lab.services.claim_evidence_verifier import ClaimEvidenceVerificationResult
+from parallax.domains.pulse_lab.services.evidence_completeness_gate import EvidenceCompletenessGateResult
+from parallax.domains.pulse_lab.services.pulse_candidate_gate import PulseGateResult
 from parallax.domains.pulse_lab.services.pulse_freshness_health import PulseFreshnessHealthService
+from parallax.domains.pulse_lab.services.pulse_source_quality import PulseSourceQualityDecision
 from parallax.domains.pulse_lab.services.write_gate import PulseWriteGate
 from parallax.domains.pulse_lab.types.agent_decision import BullBearView, FinalDecision, TradePlaybook
 
@@ -18,14 +24,50 @@ def test_write_gate_allows_current_valid_candidate_without_aggregate_health() ->
     result = PulseWriteGate().evaluate(
         final_decision=decision,
         eval_result={"status": "pass"},
-        gate=SimpleNamespace(pulse_status="trade_candidate"),
-        evidence_gate=SimpleNamespace(evidence_status="complete", public_allowed=True),
-        claim_verification=SimpleNamespace(valid=True, decision_status="trade_candidate"),
+        gate=_pulse_gate(),
+        evidence_gate=_evidence_gate(),
+        claim_verification=_claim_verification(),
+        source_quality=_source_quality(),
     )
 
     assert result.public_write_allowed is True
     assert result.display_status == "display_trade_candidate"
     assert result.reason is None
+
+
+@pytest.mark.parametrize(
+    ("field", "match"),
+    [
+        ("gate", "pulse_write_gate_gate_contract_required"),
+        ("evidence_gate", "pulse_write_gate_evidence_gate_contract_required"),
+        ("claim_verification", "pulse_write_gate_claim_verification_contract_required"),
+        ("source_quality", "pulse_write_gate_source_quality_contract_required"),
+    ],
+)
+def test_write_gate_requires_formal_gate_inputs_without_reflection(field: str, match: str) -> None:
+    inputs = {
+        "final_decision": _trade_candidate_decision(),
+        "eval_result": {"status": "pass"},
+        "gate": _pulse_gate(),
+        "evidence_gate": _evidence_gate(),
+        "claim_verification": _claim_verification(),
+        "source_quality": _source_quality(),
+    }
+    inputs[field] = SimpleNamespace(
+        pulse_status="trade_candidate",
+        evidence_status="complete",
+        public_allowed=True,
+        valid=True,
+        decision_status="trade_candidate",
+    )
+
+    with pytest.raises(TypeError, match=match):
+        PulseWriteGate().evaluate(**inputs)
+
+
+def test_pulse_freshness_health_service_requires_explicit_since_hours_without_default() -> None:
+    with pytest.raises(TypeError, match="since_hours"):
+        PulseFreshnessHealthService(conn=object()).health(window="1h", scope="matched", now_ms=10_000)
 
 
 def test_freshness_health_degrades_instead_of_hold_when_some_recent_runs_succeeded() -> None:
@@ -103,3 +145,47 @@ def _trade_candidate_decision() -> FinalDecision:
         invalidation_conditions=[],
         residual_risks=[],
     )
+
+
+def _pulse_gate() -> PulseGateResult:
+    return PulseGateResult(
+        pulse_status="trade_candidate",
+        verdict="trade_candidate",
+        candidate_score=80.0,
+        score_band="high_conviction",
+        gate_reasons=["positive_signal"],
+        risk_reasons=[],
+        hard_risks=[],
+        max_recommendation="trade_candidate",
+        eligible_for_high_alert=True,
+        blocked_reasons=[],
+    )
+
+
+def _evidence_gate() -> EvidenceCompletenessGateResult:
+    return EvidenceCompletenessGateResult(
+        evidence_status="complete",
+        hard_blocked=False,
+        blocked_reason=None,
+        max_decision_status="trade_candidate",
+        required_ref_ids=("event:event-1",),
+        missing_ref_types=(),
+        data_gaps=(),
+        public_allowed=True,
+        display_status="display_trade_candidate",
+    )
+
+
+def _claim_verification() -> ClaimEvidenceVerificationResult:
+    return ClaimEvidenceVerificationResult(
+        valid=True,
+        unknown_ref_ids=(),
+        unsupported_claims=(),
+        missing_required_ref_claims=(),
+        decision_status="trade_candidate",
+        display_status_if_failed=None,
+    )
+
+
+def _source_quality() -> PulseSourceQualityDecision:
+    return PulseSourceQualityDecision(public_allowed=True, reasons=(), metrics={})

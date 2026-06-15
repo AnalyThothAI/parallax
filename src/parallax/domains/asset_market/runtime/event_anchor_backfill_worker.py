@@ -16,7 +16,6 @@ from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from decimal import Decimal
-from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
 from parallax.app.runtime.worker_base import WorkerBase
@@ -30,13 +29,6 @@ from parallax.domains.asset_market.types import EnrichedEventCapture, MarketTick
 if TYPE_CHECKING:
     from parallax.app.runtime.providers_wiring import AssetMarketProviders
 
-DEFAULT_BATCH_SIZE = 50
-DEFAULT_CONCURRENCY = 8
-DEFAULT_MIN_AGE_MS = 250
-DEFAULT_ACTIVE_WINDOW_MS = 300_000
-DEFAULT_MAX_ANCHOR_LAG_MS = 60_000
-DEFAULT_INTERVAL_SECONDS = 1.0
-DEFAULT_LEASE_MS = 60_000
 TEMPORARY_RETRY_BACKOFF_MS = 10_000
 TEMPORARY_REASONS = frozenset({"provider_error", "provider_timeout", "rate_limited"})
 
@@ -83,58 +75,41 @@ class EventAnchorBackfillWorker(WorkerBase):
         self,
         *,
         pool_bundle: Any | None = None,
-        capture_service: EventMarketCaptureService | None = None,
+        capture_service: Any | None = None,
         providers: Any | None = None,
-        dex_quote_market: Any | None = None,
-        cex_market: Any | None = None,
         wake_emitter: Any | None = None,
-        wake_bus: Any | None = None,
-        batch_size: int = DEFAULT_BATCH_SIZE,
-        concurrency: int = DEFAULT_CONCURRENCY,
-        min_age_ms: int = DEFAULT_MIN_AGE_MS,
-        active_window_ms: int = DEFAULT_ACTIVE_WINDOW_MS,
-        max_anchor_lag_ms: int = DEFAULT_MAX_ANCHOR_LAG_MS,
-        interval_seconds: float | None = None,
         clock: Any | None = None,
         name: str = "event_anchor_backfill",
         settings: Any | None = None,
-        db: Any | None = None,
         telemetry: Any | None = None,
     ) -> None:
-        resolved_settings = _settings(
-            settings,
-            interval_seconds=interval_seconds,
-            batch_size=batch_size,
-            concurrency=concurrency,
-            min_age_ms=min_age_ms,
-            active_window_ms=active_window_ms,
-            max_anchor_lag_ms=max_anchor_lag_ms,
-        )
+        if settings is None:
+            raise RuntimeError("event_anchor_backfill_settings_required")
+        if pool_bundle is None:
+            raise RuntimeError("event_anchor_backfill_db_required")
         super().__init__(
             name=name,
-            settings=resolved_settings,
-            db=pool_bundle or db,
+            settings=settings,
+            db=pool_bundle,
             telemetry=telemetry or object(),
         )
         self.clock = clock or _now_ms
         if capture_service is None:
-            resolved_providers = providers or SimpleNamespace(
-                dex_quote_market=dex_quote_market,
-                cex_market=cex_market,
-            )
+            if providers is None:
+                raise RuntimeError("event_anchor_backfill_providers_required")
             capture_service = EventMarketCaptureService(
-                providers=cast("AssetMarketProviders", resolved_providers),
+                providers=cast("AssetMarketProviders", providers),
                 now_ms=lambda: int(self.clock()),
             )
         self._capture_service = capture_service
-        self.wake_emitter = wake_emitter or wake_bus
-        self.batch_size = max(1, int(getattr(resolved_settings, "batch_size", batch_size)))
-        self.concurrency = max(1, int(getattr(resolved_settings, "concurrency", concurrency)))
-        self.max_attempts = max(1, int(getattr(resolved_settings, "max_attempts", 3)))
-        self.min_age_ms = max(0, int(getattr(resolved_settings, "min_age_ms", min_age_ms)))
-        self.lease_ms = max(1, int(getattr(resolved_settings, "lease_ms", DEFAULT_LEASE_MS)))
-        self.active_window_ms = max(1, int(getattr(resolved_settings, "active_window_ms", active_window_ms)))
-        self.max_anchor_lag_ms = max(1, int(getattr(resolved_settings, "max_anchor_lag_ms", max_anchor_lag_ms)))
+        self.wake_emitter = wake_emitter
+        self.batch_size = max(1, int(settings.batch_size))
+        self.concurrency = max(1, int(settings.concurrency))
+        self.max_attempts = max(1, int(settings.max_attempts))
+        self.min_age_ms = max(0, int(settings.min_age_ms))
+        self.lease_ms = max(1, int(settings.lease_ms))
+        self.active_window_ms = max(1, int(settings.active_window_ms))
+        self.max_anchor_lag_ms = max(1, int(settings.max_anchor_lag_ms))
 
     async def run_once(self) -> WorkerResult:
         now_ms = int(self.clock())
@@ -295,14 +270,14 @@ class EventAnchorBackfillWorker(WorkerBase):
     def _should_reschedule(self, *, row: Mapping[str, Any], reason: str, now_ms: int) -> bool:
         if reason not in TEMPORARY_REASONS:
             return False
-        if int(row.get("attempt_count") or 0) >= self.max_attempts:
+        if _attempt_count(row) >= self.max_attempts:
             return False
         if int(row["active_until_ms"]) <= now_ms:
             return False
         return abs(now_ms - int(row["t_event_ms"])) <= self.max_anchor_lag_ms
 
     def _expire_stale_jobs(self, *, now_ms: int) -> dict[str, int]:
-        with self._worker_session() as repos:
+        with self._transaction_session() as repos:
             summary = repos.event_anchor_jobs.expire_stale(
                 limit=self.batch_size,
                 now_ms=now_ms,
@@ -319,8 +294,6 @@ class EventAnchorBackfillWorker(WorkerBase):
             expired = int(summary.get("expired") or 0)
             failed = int(summary.get("failed") or 0)
             rescheduled = int(summary.get("rescheduled") or 0)
-            if terminal_rows or rescheduled:
-                _commit_if_supported(repos)
             return {"expired": expired, "failed": failed, "rescheduled": rescheduled}
 
     def _claim_due_jobs(self, *, now_ms: int) -> list[dict[str, Any]]:
@@ -414,7 +387,7 @@ class EventAnchorBackfillWorker(WorkerBase):
     def _worker_session(self) -> Iterator[Any]:
         with self.db.worker_session(
             self.name,
-            statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
+            statement_timeout_seconds=self.settings.statement_timeout_seconds,
         ) as repos:
             yield repos
 
@@ -444,10 +417,7 @@ def _resolution_from_row(row: Mapping[str, Any]) -> dict[str, Any]:
 def _emit_wake(wake_emitter: Any, *, target_type: str, target_id: str) -> None:
     if wake_emitter is None:
         return
-    notify = getattr(wake_emitter, "notify_market_tick_written", None)
-    if notify is None:
-        return
-    notify(target_type=target_type, target_id=target_id)
+    wake_emitter.notify_market_tick_written(target_type=target_type, target_id=target_id)
 
 
 def _market_tick_from_row(row: Mapping[str, Any]) -> MarketTick:
@@ -485,14 +455,26 @@ def _terminal_reason(row: Mapping[str, Any]) -> str:
 
 
 def _lease_owner(row: Mapping[str, Any]) -> str:
-    lease_owner = str(row.get("lease_owner") or "").strip()
+    try:
+        value = row["lease_owner"]
+    except KeyError as exc:
+        raise ValueError("event_anchor_backfill_claim_lease_owner_required") from exc
+    if value is None:
+        raise ValueError("event_anchor_backfill_claim_lease_owner_required")
+    lease_owner = str(value).strip()
     if not lease_owner:
         raise ValueError("event_anchor_backfill_claim_lease_owner_required")
     return lease_owner
 
 
 def _attempt_count(row: Mapping[str, Any]) -> int:
-    return int(row.get("attempt_count") or 0)
+    try:
+        attempt_count = int(row["attempt_count"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("event_anchor_backfill_claim_attempt_count_required") from exc
+    if attempt_count <= 0:
+        raise ValueError("event_anchor_backfill_claim_attempt_count_required")
+    return attempt_count
 
 
 def _str_or_none(value: Any) -> str | None:
@@ -516,51 +498,6 @@ def _int_or_none(value: Any) -> int | None:
     if value is None:
         return None
     return int(value)
-
-
-def _commit_if_supported(repos: Any) -> None:
-    conn = getattr(repos, "conn", None)
-    commit = getattr(conn, "commit", None)
-    if callable(commit):
-        commit()
-        return
-    commit = getattr(repos, "commit", None)
-    if callable(commit):
-        commit()
-
-
-def _settings(
-    settings: Any | None,
-    *,
-    interval_seconds: float | None,
-    batch_size: int,
-    concurrency: int,
-    min_age_ms: int,
-    active_window_ms: int,
-    max_anchor_lag_ms: int,
-) -> Any:
-    if settings is None:
-        return SimpleNamespace(
-            enabled=True,
-            interval_seconds=interval_seconds if interval_seconds is not None else DEFAULT_INTERVAL_SECONDS,
-            soft_timeout_seconds=120.0,
-            hard_timeout_seconds=180.0,
-            batch_size=batch_size,
-            concurrency=concurrency,
-            lease_ms=DEFAULT_LEASE_MS,
-            min_age_ms=min_age_ms,
-            active_window_ms=active_window_ms,
-            max_anchor_lag_ms=max_anchor_lag_ms,
-        )
-    if interval_seconds is None:
-        return settings
-    try:
-        settings.interval_seconds = interval_seconds
-        return settings
-    except Exception:
-        values = dict(getattr(settings, "__dict__", {}))
-        values["interval_seconds"] = interval_seconds
-        return SimpleNamespace(**values)
 
 
 def _now_ms() -> int:

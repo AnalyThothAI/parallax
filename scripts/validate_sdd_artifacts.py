@@ -58,9 +58,7 @@ PLAN_PREFLIGHT_WORKTREE_RE = re.compile(
     r"`git branch --show-current` matches `(?P<branch>[^`]+)`\.?\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
-LEGACY_SDD_LIFECYCLE_CHECK_RE = re.compile(
-    r"scripts/(?:validate_sdd_artifacts|check_sdd_gate)\.py[^\n`|;&]*--check"
-)
+LEGACY_SDD_LIFECYCLE_CHECK_RE = re.compile(r"scripts/(?:validate_sdd_artifacts|check_sdd_gate)\.py[^\n`|;&]*--check")
 TASK_NUMBER_RE = re.compile(r"^Task\s+(?P<number>[1-9]\d*)\b", re.IGNORECASE)
 TASK_SELECTOR_RE = re.compile(r"^[1-9]\d*$")
 TASK_SELECTOR_ERROR = "task selector must be a numeric task number without leading zeroes"
@@ -440,9 +438,7 @@ def task_unresolved_dependencies(feature: SddFeature, task: TaskRecord) -> tuple
     current_number = task_number(task)
     tasks_by_number = _tasks_by_number(feature)
     return tuple(
-        dependency
-        for dependency in dependencies
-        if dependency not in tasks_by_number or dependency == current_number
+        dependency for dependency in dependencies if dependency not in tasks_by_number or dependency == current_number
     )
 
 
@@ -690,8 +686,7 @@ def _worktree_metadata_issues(feature: SddFeature) -> list[SddIssue]:
     if len(unique_pairs) <= 1:
         return []
     summary = ", ".join(
-        f"{artifact_name}={branch}/{worktree}"
-        for artifact_name, (branch, worktree) in sorted(canonical_pairs.items())
+        f"{artifact_name}={branch}/{worktree}" for artifact_name, (branch, worktree) in sorted(canonical_pairs.items())
     )
     return [
         _issue(
@@ -1677,11 +1672,7 @@ def _plan_acceptance_commands(text: str) -> list[tuple[int, str]]:
 
 def _invalid_plan_acceptance_command_lines(text: str) -> list[str]:
     section = _text_without_fenced_blocks(_section_text(text, "## Acceptance test commands"))
-    return [
-        line.strip()
-        for line in PLAN_ACCEPTANCE_BULLET_RE.findall(section)
-        if not PLAN_AC_COMMAND_RE.match(line)
-    ]
+    return [line.strip() for line in PLAN_ACCEPTANCE_BULLET_RE.findall(section) if not PLAN_AC_COMMAND_RE.match(line)]
 
 
 def _contiguous_numbering_error(label: str, numbers: list[int]) -> str:
@@ -1789,9 +1780,7 @@ def _verified_e2e_issues(artifact: ArtifactRecord) -> list[SddIssue]:
             ]
 
     missing_or_unchecked = [
-        check
-        for check in E2E_GOLDEN_PATH_CHECKS
-        if f"- [x] {check}" not in section and f"- [X] {check}" not in section
+        check for check in E2E_GOLDEN_PATH_CHECKS if f"- [x] {check}" not in section and f"- [X] {check}" not in section
     ]
     unchecked = [line.strip() for line in section.splitlines() if line.strip().startswith("- [ ]")]
     if not missing_or_unchecked and not unchecked:
@@ -1834,9 +1823,7 @@ def _verified_coverage_issues(artifact: ArtifactRecord) -> list[SddIssue]:
             if is_placeholder_table_cell(cell)
         ]
         if placeholder_columns:
-            incomplete_rows.append(
-                f"{metric or '<unnamed metric>'} => placeholder {', '.join(placeholder_columns)}"
-            )
+            incomplete_rows.append(f"{metric or '<unnamed metric>'} => placeholder {', '.join(placeholder_columns)}")
             continue
         if not _is_complete_compliance_status(cells[3]):
             incomplete_rows.append(f"{metric or '<unnamed metric>'} => {_clean_value(cells[3]) or '<missing status>'}")
@@ -2218,10 +2205,7 @@ def _verification_commands(text: str) -> list[str]:
 
 def _format_command_list(commands: list[str]) -> str:
     counts = Counter(commands)
-    return ", ".join(
-        f"{command} x{count}" if count > 1 else command
-        for command, count in counts.items()
-    )
+    return ", ".join(f"{command} x{count}" if count > 1 else command for command, count in counts.items())
 
 
 def _command_segments(block: str, command: str) -> list[str]:

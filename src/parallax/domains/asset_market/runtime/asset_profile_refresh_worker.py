@@ -11,20 +11,12 @@ from parallax.domains.asset_market.providers import (
     DexProviderTemporarilyUnavailable,
     DexTokenProfile,
 )
-from parallax.domains.asset_market.repositories.asset_profile_repository import (
-    ERROR_REFRESH_MS,
-    MISSING_REFRESH_MS,
-    READY_REFRESH_MS,
-)
 from parallax.domains.asset_market.services.asset_profile_refresh import (
     fetch_asset_profile,
     write_error_asset_profile,
     write_missing_asset_profile,
     write_ready_asset_profile,
 )
-
-DEFAULT_LEASE_MS = 2 * 60 * 1000
-DEFAULT_PROVIDER_RETRY_MS = 5 * 60 * 1000
 
 
 class AssetProfileRefreshWorker(WorkerBase):
@@ -116,14 +108,14 @@ class AssetProfileRefreshWorker(WorkerBase):
         }
         with self.db.worker_session(
             self.name,
-            statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
+            statement_timeout_seconds=self.settings.statement_timeout_seconds,
         ) as repos:
             rows = repos.asset_profile_refresh_targets.claim_due(
                 provider=profile_source.provider,
                 now_ms=now_ms,
-                limit=max(1, int(getattr(self.settings, "batch_size", 50))),
+                limit=max(1, int(self.settings.batch_size)),
                 lease_owner=self.name,
-                lease_ms=max(1, int(getattr(self.settings, "lease_ms", DEFAULT_LEASE_MS) or DEFAULT_LEASE_MS)),
+                lease_ms=max(1, int(self.settings.lease_ms)),
                 commit=True,
             )
             source_result["queue_depth"] = repos.asset_profile_refresh_targets.queue_depth(
@@ -137,6 +129,9 @@ class AssetProfileRefreshWorker(WorkerBase):
             source_result["skipped"] = 1
             source_result["reason"] = "no_due_asset_profile_refresh_targets"
             return source_result
+        ready_refresh_ms = max(1, int(self.settings.ready_refresh_ms))
+        missing_refresh_ms = max(1, int(self.settings.missing_refresh_ms))
+        error_refresh_ms = max(1, int(self.settings.error_refresh_ms))
         for row in rows:
             try:
                 profile = fetch_asset_profile(profile_source=profile_source, row=row)
@@ -151,10 +146,11 @@ class AssetProfileRefreshWorker(WorkerBase):
                 )
                 break
             except Exception as exc:
+                next_refresh_at_ms = now_ms + error_refresh_ms
                 with (
                     self.db.worker_session(
                         self.name,
-                        statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
+                        statement_timeout_seconds=self.settings.statement_timeout_seconds,
                     ) as repos,
                     repos.transaction(),
                 ):
@@ -164,10 +160,11 @@ class AssetProfileRefreshWorker(WorkerBase):
                         row=row,
                         exc=exc,
                         now_ms=now_ms,
+                        next_refresh_at_ms=next_refresh_at_ms,
                     )
                     repos.asset_profile_refresh_targets.reschedule(
                         [row],
-                        due_at_ms=now_ms + ERROR_REFRESH_MS,
+                        due_at_ms=next_refresh_at_ms,
                         now_ms=now_ms,
                         reason="profile_error_written",
                         commit=False,
@@ -179,36 +176,40 @@ class AssetProfileRefreshWorker(WorkerBase):
             with (
                 self.db.worker_session(
                     self.name,
-                    statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
+                    statement_timeout_seconds=self.settings.statement_timeout_seconds,
                 ) as repos,
                 repos.transaction(),
             ):
                 if isinstance(profile, DexTokenProfile):
+                    next_refresh_at_ms = now_ms + ready_refresh_ms
                     write_ready_asset_profile(
                         repos=repos,
                         provider=profile_source.provider,
                         row=row,
                         profile=profile,
                         now_ms=now_ms,
+                        next_refresh_at_ms=next_refresh_at_ms,
                     )
                     repos.asset_profile_refresh_targets.reschedule(
                         [row],
-                        due_at_ms=now_ms + READY_REFRESH_MS,
+                        due_at_ms=next_refresh_at_ms,
                         now_ms=now_ms,
                         reason="profile_ready_written",
                         commit=False,
                     )
                     source_result["ready"] += 1
                 else:
+                    next_refresh_at_ms = now_ms + missing_refresh_ms
                     write_missing_asset_profile(
                         repos=repos,
                         provider=profile_source.provider,
                         row=row,
                         now_ms=now_ms,
+                        next_refresh_at_ms=next_refresh_at_ms,
                     )
                     repos.asset_profile_refresh_targets.reschedule(
                         [row],
-                        due_at_ms=now_ms + MISSING_REFRESH_MS,
+                        due_at_ms=next_refresh_at_ms,
                         now_ms=now_ms,
                         reason="profile_missing_written",
                         commit=False,
@@ -224,7 +225,7 @@ class AssetProfileRefreshWorker(WorkerBase):
         with (
             self.db.worker_session(
                 self.name,
-                statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
+                statement_timeout_seconds=self.settings.statement_timeout_seconds,
             ) as repos,
             repos.transaction(),
         ):
@@ -237,8 +238,7 @@ class AssetProfileRefreshWorker(WorkerBase):
             )
 
     def _provider_retry_ms(self) -> int:
-        configured = getattr(self.settings, "provider_retry_ms", DEFAULT_PROVIDER_RETRY_MS)
-        return max(1, int(configured or DEFAULT_PROVIDER_RETRY_MS))
+        return max(1, int(self.settings.provider_retry_ms))
 
 
 def _enqueue_profile_current(*, repos: Any, row: dict[str, Any], now_ms: int) -> None:

@@ -12,6 +12,10 @@ from parallax.integrations.gmgn.direct_ws import (
 )
 
 
+async def _ignore_frame(_: str) -> None:
+    return None
+
+
 class DirectWebSocketProtocolTests(unittest.TestCase):
     def test_build_ws_url_matches_gmgn_web_client_shape(self):
         url = build_gmgn_ws_url(
@@ -71,7 +75,7 @@ class DirectWebSocketProtocolTests(unittest.TestCase):
             app_version="20260429-12894-ccec416",
             channels=["twitter_monitor_basic"],
             chains=["sol", "eth", "base", "bsc"],
-            on_frame=lambda _: None,
+            on_frame=_ignore_frame,
         )
 
         import asyncio
@@ -123,7 +127,7 @@ class DirectWebSocketProtocolTests(unittest.TestCase):
         websocket = FakeWebSocket()
         session = FakeSession(websocket)
 
-        def on_frame(frame):
+        async def on_frame(frame):
             self.assertEqual(frame, '{"channel":"ack"}')
             raise StopAfterFirstFrame
 
@@ -157,7 +161,7 @@ class DirectWebSocketProtocolTests(unittest.TestCase):
             app_version="20260429-12894-ccec416",
             channels=["twitter_monitor_basic"],
             chains=["sol"],
-            on_frame=lambda _: None,
+            on_frame=_ignore_frame,
             idle_timeout=0.01,
         )
 
@@ -184,7 +188,7 @@ class DirectWebSocketProtocolTests(unittest.TestCase):
             async def mark_yielded():
                 yielded.set()
 
-            def on_frame(_):
+            async def on_frame(_):
                 nonlocal processed
                 processed += 1
                 if processed == 1:
@@ -204,6 +208,39 @@ class DirectWebSocketProtocolTests(unittest.TestCase):
 
         with self.assertRaises(StopAfterYield):
             asyncio.run(run_probe())
+
+    def test_direct_client_requires_async_frame_handler_without_isawaitable_fallback(self):
+        import asyncio
+
+        class SyncFallbackAccepted(RuntimeError):
+            pass
+
+        class SingleFrameWebSocket:
+            def __init__(self):
+                self.recv_calls = 0
+
+            async def recv_str(self):
+                self.recv_calls += 1
+                if self.recv_calls == 1:
+                    return "{}"
+                raise SyncFallbackAccepted
+
+        frames = []
+
+        def sync_on_frame(frame):
+            frames.append(frame)
+
+        client = DirectGmgnWebSocketClient(
+            app_version="20260429-12894-ccec416",
+            channels=["twitter_monitor_basic"],
+            chains=["sol"],
+            on_frame=sync_on_frame,
+        )
+
+        with self.assertRaises(TypeError):
+            asyncio.run(client._receive_frames(SingleFrameWebSocket()))
+
+        self.assertEqual(frames, ["{}"])
 
 
 if __name__ == "__main__":

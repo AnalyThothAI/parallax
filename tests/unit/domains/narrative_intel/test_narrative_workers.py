@@ -3,6 +3,8 @@ import inspect
 from contextlib import contextmanager
 from types import SimpleNamespace
 
+import pytest
+
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.domains.narrative_intel._constants import NARRATIVE_SCHEMA_VERSION
 from parallax.domains.narrative_intel.repositories.narrative_repository import NarrativeRepository
@@ -49,7 +51,36 @@ def test_narrative_admission_worker_skips_empty_dirty_queue_without_broad_scan()
     assert repo.admissions_for_window_scope_calls == []
     assert repo.deleted_frontiers == []
     assert repo.load_target_calls == []
+    assert db.worker_sessions == [{"name": "narrative_admission", "statement_timeout_seconds": 9.0}]
     assert db.transaction_entries == 1
+
+
+def test_narrative_admission_worker_requires_formal_settings_and_db_contract():
+    repo = FakeNarrativeRepository()
+
+    try:
+        NarrativeAdmissionWorker(
+            name="narrative_admission",
+            settings=None,
+            db=FakeDB(repo),
+            telemetry=SimpleNamespace(),
+        )
+    except RuntimeError as exc:
+        assert "narrative_admission_settings_required" in str(exc)
+    else:
+        raise AssertionError("expected settings contract failure")
+
+    try:
+        NarrativeAdmissionWorker(
+            name="narrative_admission",
+            settings=fake_admission_settings(),
+            db=None,
+            telemetry=SimpleNamespace(),
+        )
+    except RuntimeError as exc:
+        assert "narrative_admission_db_required" in str(exc)
+    else:
+        raise AssertionError("expected db contract failure")
 
 
 def test_narrative_admission_worker_claims_target_and_recomputes_exact_source_set():
@@ -229,7 +260,15 @@ def test_narrative_admission_worker_marks_claim_error_with_completion_token():
     db = FakeDB(repo, narrative_admission_dirty_targets=dirty_targets)
     worker = NarrativeAdmissionWorker(
         name="narrative_admission",
-        settings=fake_admission_settings(error_retry_seconds=7),
+        settings=fake_admission_settings(
+            admission_limit=3,
+            source_limit=11,
+            lease_ms=5_000,
+            retry_ms=7_000,
+            statement_timeout_seconds=13.0,
+            hot_rank_limit=7,
+            min_rank_score=41,
+        ),
         db=db,
         telemetry=SimpleNamespace(),
     )
@@ -238,6 +277,12 @@ def test_narrative_admission_worker_marks_claim_error_with_completion_token():
 
     assert result.failed == 1
     assert result.processed == 0
+    assert worker.admission.hot_rank_limit == 7
+    assert worker.admission.min_rank_score == 41
+    assert db.worker_sessions == [{"name": "narrative_admission", "statement_timeout_seconds": 13.0}]
+    assert dirty_targets.claim_due_calls == [
+        {"now_ms": 10_000, "limit": 3, "lease_owner": "narrative_admission", "lease_ms": 5_000, "commit": False}
+    ]
     assert dirty_targets.mark_done_calls == []
     assert dirty_targets.mark_error_calls == [
         {
@@ -250,16 +295,66 @@ def test_narrative_admission_worker_marks_claim_error_with_completion_token():
     ]
 
 
+@pytest.mark.parametrize(
+    ("claim_overrides", "error_token"),
+    (
+        ({"scope": "typo"}, "narrative_admission_dirty_target_invalid_scope:typo"),
+        ({"window": "24h"}, "narrative_admission_dirty_target_invalid_window:24h"),
+    ),
+)
+def test_narrative_admission_worker_rejects_dirty_claim_dimensions_before_payload_reads(
+    claim_overrides,
+    error_token,
+):
+    repo = FakeNarrativeRepository()
+    claim = {
+        "target_type": "chain_token",
+        "target_id": "solana:BadDimension",
+        "window": "1h",
+        "scope": "matched",
+        "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+        "schema_version": NARRATIVE_SCHEMA_VERSION,
+        "payload_hash": "payload-bad-dimension",
+        "lease_owner": "narrative_admission",
+        "attempt_count": 1,
+    }
+    claim.update(claim_overrides)
+    dirty_targets = FakeDirtyTargetRepository(claims=[claim])
+    db = FakeDB(repo, narrative_admission_dirty_targets=dirty_targets)
+    worker = NarrativeAdmissionWorker(
+        name="narrative_admission",
+        settings=fake_admission_settings(retry_ms=7_000),
+        db=db,
+        telemetry=SimpleNamespace(),
+    )
+
+    result = worker.run_once_sync(now_ms=10_000)
+
+    assert result.failed == 1
+    assert result.processed == 0
+    assert result.notes["failed"] == 1
+    assert repo.load_target_calls == []
+    assert repo.source_set_calls == []
+    assert repo.upserted_admissions == []
+    assert dirty_targets.mark_done_calls == []
+    assert dirty_targets.mark_error_calls[0]["error"].startswith("ValueError: ")
+    assert error_token in dirty_targets.mark_error_calls[0]["error"]
+    assert dirty_targets.mark_error_calls[0]["retry_ms"] == 7_000
+
+
 def fake_admission_settings(**overrides):
     values = dict(
         enabled=True,
         interval_seconds=1.0,
         timeout_seconds=0.0,
         statement_timeout_seconds=9.0,
+        backoff=SimpleNamespace(base_ms=1, max_ms=5),
         windows=("1h",),
         scopes=("matched",),
         admission_limit=10,
         source_limit=100,
+        lease_ms=60_000,
+        retry_ms=60_000,
         hot_rank_limit=50,
         min_rank_score=30,
     )
@@ -273,9 +368,11 @@ class FakeDB:
         self.narrative_admission_dirty_targets = narrative_admission_dirty_targets or FakeDirtyTargetRepository()
         self.active_sessions = 0
         self.transaction_entries = 0
+        self.worker_sessions = []
 
     @contextmanager
     def worker_session(self, name, statement_timeout_seconds=None):
+        self.worker_sessions.append({"name": name, "statement_timeout_seconds": statement_timeout_seconds})
         self.active_sessions += 1
         try:
             yield FakeRepositorySession(

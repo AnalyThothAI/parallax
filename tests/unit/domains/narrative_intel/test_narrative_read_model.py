@@ -63,6 +63,37 @@ def test_hydrate_token_radar_projects_digest_storage_fields_to_public_contract()
     assert digest["currentness"]["display_status"] == "updating"
 
 
+def test_hydrate_token_radar_reads_formal_public_target_object_without_route_synthesis():
+    repo = FakeNarrativeRepository(
+        {
+            ("Asset", "asset:solana:token:So111"): {
+                "target_type": "Asset",
+                "target_id": "asset:solana:token:So111",
+                "status": "ready",
+                "headline_zh": "SOL 讨论升温",
+                "semantic_coverage": 1.0,
+                "source_event_count": 1,
+                "labeled_event_count": 1,
+                "independent_author_count": 1,
+                "evidence_refs_json": [],
+                "currentness": {"display_status": "current", "reason": "fingerprint_match"},
+            }
+        }
+    )
+
+    result = NarrativeReadModel(repo).hydrate_token_radar(
+        {"targets": [{"target": {"target_type": "Asset", "target_id": "asset:solana:token:So111"}}]},
+        window="1h",
+        scope="all",
+        now_ms=1_000,
+    )
+
+    assert repo.calls == [
+        {"targets": [{"target_type": "Asset", "target_id": "asset:solana:token:So111"}], "window": "1h"}
+    ]
+    assert result["targets"][0]["discussion_digest"]["status"] == "ready"
+
+
 def test_hydrate_token_radar_does_not_expose_digest_runtime_or_storage_fields():
     repo = FakeNarrativeRepository(
         {
@@ -140,7 +171,7 @@ def test_hydrate_token_radar_does_not_expose_digest_runtime_or_storage_fields():
     )
 
 
-def test_hydrate_token_radar_adds_compact_processing_backlog_without_rewriting_status_truth():
+def test_hydrate_token_radar_does_not_expose_retired_semantic_processing_backlog():
     repo = FakeNarrativeRepository(
         {
             ("Asset", "asset:solana:token:So111"): {
@@ -173,14 +204,7 @@ def test_hydrate_token_radar_adds_compact_processing_backlog_without_rewriting_s
 
     assert digest["status"] == "pending"
     assert digest["data_gaps"] == [{"reason": "semantic_labeling_pending"}]
-    assert digest["processing"] == {
-        "backlog": {
-            "semantic": 6,
-            "retryable": 2,
-            "unavailable": 1,
-            "oldest_due_age_ms": 3_000,
-        }
-    }
+    assert "processing" not in digest
     assert digest["currentness"]["display_status"] == "not_ready"
 
 
@@ -228,6 +252,42 @@ def test_hydrate_token_radar_missing_repository_row_uses_current_missing_digest_
 
     digest = result["targets"][0]["discussion_digest"]
 
+    assert digest["status"] == "pending"
+    assert digest["data_gaps"] == [{"reason": "no_ready_digest"}]
+    assert digest["currentness"]["display_status"] == "not_ready"
+    assert digest["currentness"]["reason"] == "no_ready_digest"
+
+
+def test_hydrate_token_radar_requires_formal_target_identity_without_legacy_type_id_aliases():
+    repo = FakeNarrativeRepository(
+        {
+            ("Asset", "asset:solana:token:So111"): {
+                "target_type": "Asset",
+                "target_id": "asset:solana:token:So111",
+                "status": "ready",
+                "headline_zh": "SOL 讨论升温",
+                "semantic_coverage": 1.0,
+                "source_event_count": 1,
+                "labeled_event_count": 1,
+                "independent_author_count": 1,
+                "evidence_refs_json": [],
+                "currentness": {"display_status": "current", "reason": "fingerprint_match"},
+            }
+        }
+    )
+
+    result = NarrativeReadModel(repo).hydrate_token_radar(
+        {"targets": [{"type": "Asset", "id": "asset:solana:token:So111"}]},
+        window="1h",
+        scope="all",
+        now_ms=1_000,
+    )
+
+    digest = result["targets"][0]["discussion_digest"]
+
+    assert repo.calls == [{"targets": [], "window": "1h"}]
+    assert digest["target_type"] is None
+    assert digest["target_id"] is None
     assert digest["status"] == "pending"
     assert digest["data_gaps"] == [{"reason": "no_ready_digest"}]
     assert digest["currentness"]["display_status"] == "not_ready"

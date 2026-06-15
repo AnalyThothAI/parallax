@@ -6,6 +6,8 @@ import time
 from contextlib import contextmanager
 from typing import Any
 
+import pytest
+
 from parallax.app.runtime.wake_waiter import WakeWaiter
 
 
@@ -50,6 +52,31 @@ class FakePool:
         yield conn
 
 
+class ConnWithoutCommit:
+    def __init__(self) -> None:
+        self.executed: list[tuple[str, tuple[Any, ...] | None]] = []
+
+    def execute(self, sql: str, params: tuple[Any, ...] | None = None):
+        self.executed.append((sql, params))
+        return self
+
+    def notifies(self, *, timeout: float, stop_after: int):
+        yield from ()
+
+
+class ConnWithoutNotifies:
+    def __init__(self) -> None:
+        self.executed: list[tuple[str, tuple[Any, ...] | None]] = []
+        self.commits = 0
+
+    def execute(self, sql: str, params: tuple[Any, ...] | None = None):
+        self.executed.append((sql, params))
+        return self
+
+    def commit(self) -> None:
+        self.commits += 1
+
+
 def test_wait_listens_on_configured_channels_and_returns_true_on_notify() -> None:
     conn = FakeConn(notifications=[object()])
     waiter = WakeWaiter(FakePool(conn), channels=("market_tick_written", "resolution_updated"))
@@ -60,6 +87,27 @@ def test_wait_listens_on_configured_channels_and_returns_true_on_notify() -> Non
         ("LISTEN market_tick_written", None),
         ("LISTEN resolution_updated", None),
     ]
+    assert conn.commits == 1
+
+
+def test_wait_requires_callable_commit_after_listen() -> None:
+    conn = ConnWithoutCommit()
+    waiter = WakeWaiter(FakePool(conn), channels=("token_radar_updated",))
+
+    with pytest.raises(RuntimeError, match="wake_waiter_commit_required"):
+        waiter.wait(timeout=0.01)
+
+    assert conn.executed == [("LISTEN token_radar_updated", None)]
+
+
+def test_wait_requires_callable_notifies_source() -> None:
+    conn = ConnWithoutNotifies()
+    waiter = WakeWaiter(FakePool(conn), channels=("token_radar_updated",))
+
+    with pytest.raises(RuntimeError, match="wake_waiter_notifies_required"):
+        waiter.wait(timeout=0.01)
+
+    assert conn.executed == [("LISTEN token_radar_updated", None)]
     assert conn.commits == 1
 
 

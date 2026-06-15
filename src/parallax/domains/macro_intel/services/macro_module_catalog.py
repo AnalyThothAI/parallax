@@ -204,9 +204,7 @@ _MODULE_CONFIGS = {
         chart_specs=(
             MacroChartSpec("commodity_proxy_performance", ("commodity:wti_futures", "asset:gld", "asset:uso")),
         ),
-        table_specs=(
-            MacroTableSpec("commodity_proxy_snapshot", ("commodity:wti_futures", "asset:gld", "asset:uso")),
-        ),
+        table_specs=(MacroTableSpec("commodity_proxy_snapshot", ("commodity:wti_futures", "asset:gld", "asset:uso")),),
         gap_codes=(),
         related_routes=("/macro/assets/equities", "/macro/assets/fx"),
     ),

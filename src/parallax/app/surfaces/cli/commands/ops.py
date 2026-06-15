@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-from types import SimpleNamespace
-from typing import Any
+from contextlib import AbstractContextManager
+from typing import Any, cast
 
 from parallax.app.runtime.bootstrap import bootstrap
 from parallax.app.runtime.db_pool_bundle import DBPoolBundle
@@ -20,15 +20,12 @@ from parallax.app.runtime.telemetry import TelemetryRegistry
 from parallax.app.runtime.worker_status import workers_status_payload
 from parallax.app.surfaces.cli.commands import queue_ops
 from parallax.app.surfaces.cli.dependencies import repositories
-from parallax.domains.account_quality.read_models.account_quality_service import AccountQualityService
 from parallax.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
+from parallax.domains.account_quality.services.account_quality_backfill_service import AccountQualityBackfillService
 from parallax.domains.asset_market.repositories.token_capture_tier_dirty_target_repository import (
     token_capture_tier_rank_set_payload_hash,
 )
 from parallax.domains.asset_market.runtime.asset_profile_refresh_worker import AssetProfileRefreshWorker
-from parallax.domains.asset_market.runtime.market_tick_current_projection_worker import (
-    MarketTickCurrentProjectionWorker,
-)
 from parallax.domains.asset_market.runtime.resolution_refresh_worker import ResolutionRefreshWorker
 from parallax.domains.asset_market.runtime.token_image_mirror_worker import TokenImageMirrorWorker
 from parallax.domains.asset_market.runtime.token_profile_current_worker import TokenProfileCurrentWorker
@@ -240,8 +237,7 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
         signals = repos.signals
 
         if args.ops_command == "backfill-account-quality":
-            data = AccountQualityService(
-                signals=signals,
+            data = AccountQualityBackfillService(
                 repository=AccountQualityRepository(signals.conn),
             ).backfill_account_token_call_stats(limit=args.limit)
             return 0, {"ok": True, "data": data}
@@ -381,10 +377,10 @@ def _run_market_tick_current_rebuild(
                         "lock_key": lock_key,
                     },
                 }
-        worker_settings = getattr(getattr(settings, "workers", SimpleNamespace()), worker_name, SimpleNamespace())
+        worker_settings = settings.workers.market_tick_current_projection
         with db.worker_session(
             worker_name,
-            statement_timeout_seconds=getattr(worker_settings, "statement_timeout_seconds", None),
+            statement_timeout_seconds=worker_settings.statement_timeout_seconds,
         ) as repos:
             estimate = market_tick_current_rebuild_estimate(repos.conn)
             if dry_run:
@@ -415,20 +411,7 @@ def _run_market_tick_current_rebuild(
 
 
 def _market_tick_current_projection_lock_key(settings: object) -> int:
-    worker_settings = getattr(getattr(settings, "workers", SimpleNamespace()), "market_tick_current_projection", None)
-
-    class _LockProbe:
-        SINGLE_WRITER_KEY = MarketTickCurrentProjectionWorker.SINGLE_WRITER_KEY
-
-        def __init__(self, config: object) -> None:
-            self.name = "market_tick_current_projection"
-            self.settings = config
-
-        def _advisory_lock_key(self) -> int:
-            settings_key = getattr(self.settings, "advisory_lock_key", None)
-            return int(settings_key) if settings_key is not None else int(self.SINGLE_WRITER_KEY)
-
-    return _effective_worker_advisory_lock_key(_LockProbe(worker_settings or SimpleNamespace()))
+    return int(settings.workers.market_tick_current_projection.advisory_lock_key)
 
 
 def _enqueue_token_radar_dirty_targets(
@@ -461,12 +444,15 @@ def _enqueue_token_radar_dirty_targets(
         if dry_run:
             data["would_enqueue"] = int(candidates)
             return data
-        rows = repository.list_recent_resolved_events(
-            since_ms=parsed_since_ms,
-            now_ms=now_ms,
-            limit=parsed_limit,
-        )
-        data["enqueued"] = int(repository.enqueue_events(rows, reason="ops_events_repair", now_ms=now_ms, commit=True))
+        with _transaction(repos.conn):
+            rows = repository.list_recent_resolved_events(
+                since_ms=parsed_since_ms,
+                now_ms=now_ms,
+                limit=parsed_limit,
+            )
+            data["enqueued"] = int(
+                repository.enqueue_events(rows, reason="ops_events_repair", now_ms=now_ms, commit=False)
+            )
         return data
     if source == "market-current":
         repository = repos.token_radar_dirty_targets
@@ -485,15 +471,16 @@ def _enqueue_token_radar_dirty_targets(
                 )
             )
             return data
-        data["enqueued"] = int(
-            repository.enqueue_market_current_targets(
-                since_ms=parsed_since_ms,
-                now_ms=now_ms,
-                limit=parsed_limit,
-                reason="ops_market_current_repair",
-                commit=True,
+        with _transaction(repos.conn):
+            data["enqueued"] = int(
+                repository.enqueue_market_current_targets(
+                    since_ms=parsed_since_ms,
+                    now_ms=now_ms,
+                    limit=parsed_limit,
+                    reason="ops_market_current_repair",
+                    commit=False,
+                )
             )
-        )
         return data
     raise ValueError(f"unknown token radar dirty target source: {source}")
 
@@ -509,47 +496,63 @@ def _enqueue_token_capture_tier_rank_set(
 ) -> dict[str, Any]:
     parsed_window = str(window)
     parsed_limit = max(0, int(limit))
-    since_ms = max(0, int(now_ms) - WINDOW_MS.get(parsed_window, WINDOW_MS["24h"]))
-    rows = repos.registry.ranked_live_market_targets(
-        projection_version=TOKEN_RADAR_PROJECTION_VERSION,
-        since_ms=since_ms,
-        limit=parsed_limit,
-    )
+    since_ms = max(0, int(now_ms) - _ops_window_ms(parsed_window))
     reason = f"ops_capture_tier_repair:{parsed_window}"
-    payload_hash = token_capture_tier_rank_set_payload_hash(reason=reason, rows=rows)
-    source_watermark_ms = max((int(row.get("source_max_received_at_ms") or 0) for row in rows), default=0)
     data: dict[str, Any] = {
         "window": parsed_window,
         "since_ms": since_ms,
         "limit": parsed_limit,
-        "target_count": len(rows),
         "reason": reason,
-        "payload_hash": payload_hash,
-        "source_watermark_ms": source_watermark_ms,
         "dry_run": bool(dry_run),
         "execute": bool(execute),
     }
     if dry_run:
+        rows = repos.registry.ranked_live_market_targets(
+            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+            since_ms=since_ms,
+            limit=parsed_limit,
+        )
+        source_watermark_ms = max((int(row.get("source_max_received_at_ms") or 0) for row in rows), default=0)
+        data["target_count"] = len(rows)
+        data["payload_hash"] = token_capture_tier_rank_set_payload_hash(reason=reason, rows=rows)
+        data["source_watermark_ms"] = source_watermark_ms
         data["would_enqueue"] = 1 if rows else 0
         data["enqueued"] = 0
         data["skipped"] = 0
         return data
-    if not rows:
-        data["enqueued"] = 0
-        data["skipped"] = 1
-        return data
-    result = repos.token_capture_tier_dirty_targets.enqueue_rank_set(
-        reason=reason,
-        rows=rows,
-        exited_rows=[],
-        source_watermark_ms=source_watermark_ms,
-        now_ms=now_ms,
-        commit=True,
-    )
+    with _transaction(repos.conn):
+        rows = repos.registry.ranked_live_market_targets(
+            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+            since_ms=since_ms,
+            limit=parsed_limit,
+        )
+        source_watermark_ms = max((int(row.get("source_max_received_at_ms") or 0) for row in rows), default=0)
+        data["target_count"] = len(rows)
+        data["payload_hash"] = token_capture_tier_rank_set_payload_hash(reason=reason, rows=rows)
+        data["source_watermark_ms"] = source_watermark_ms
+        if not rows:
+            data["enqueued"] = 0
+            data["skipped"] = 1
+            return data
+        result = repos.token_capture_tier_dirty_targets.enqueue_rank_set(
+            reason=reason,
+            rows=rows,
+            exited_rows=[],
+            source_watermark_ms=source_watermark_ms,
+            now_ms=now_ms,
+            commit=False,
+        )
     enqueued = int(result.get("targets") or 0)
     data["enqueued"] = enqueued
     data["skipped"] = 0 if enqueued else 1
     return data
+
+
+def _ops_window_ms(window: str) -> int:
+    try:
+        return WINDOW_MS[window]
+    except KeyError as exc:
+        raise ValueError(f"invalid ops window: {window}") from exc
 
 
 def _rebuild_news_canonical_items(
@@ -560,31 +563,39 @@ def _rebuild_news_canonical_items(
     execute: bool,
     now_ms: int,
 ) -> dict[str, Any]:
-    news_item_ids = repos.news.list_news_item_ids_for_canonical_rebuild(limit=max(0, int(limit)))
-    targets = [
-        {"projection_name": projection_name, "target_kind": "news_item", "target_id": news_item_id}
-        for news_item_id in news_item_ids
-        for projection_name in ("page", "brief_input")
-    ]
     data: dict[str, Any] = {
         "mode": "execute" if execute else "dry_run",
         "dry_run": bool(dry_run),
         "execute": bool(execute),
-        "matched_canonical_items": len(news_item_ids),
-        "would_enqueue": len(targets),
     }
     if dry_run:
+        news_item_ids = repos.news.list_news_item_ids_for_canonical_rebuild(limit=max(0, int(limit)))
+        targets = [
+            {"projection_name": projection_name, "target_kind": "news_item", "target_id": news_item_id}
+            for news_item_id in news_item_ids
+            for projection_name in ("page", "brief_input")
+        ]
+        data["matched_canonical_items"] = len(news_item_ids)
+        data["would_enqueue"] = len(targets)
         data["enqueued"] = 0
         data["deleted_disabled_rows"] = 0
         return data
-    deleted = repos.news.delete_page_rows_without_enabled_observation_edges(commit=False)
-    enqueued = repos.news_projection_dirty_targets.enqueue_targets(
-        targets,
-        reason="ops_news_canonical_rebuild",
-        now_ms=now_ms,
-        commit=False,
-    )
-    repos.conn.commit()
+    with _transaction(repos.conn):
+        news_item_ids = repos.news.list_news_item_ids_for_canonical_rebuild(limit=max(0, int(limit)))
+        targets = [
+            {"projection_name": projection_name, "target_kind": "news_item", "target_id": news_item_id}
+            for news_item_id in news_item_ids
+            for projection_name in ("page", "brief_input")
+        ]
+        data["matched_canonical_items"] = len(news_item_ids)
+        data["would_enqueue"] = len(targets)
+        deleted = repos.news.delete_page_rows_without_enabled_observation_edges(commit=False)
+        enqueued = repos.news_projection_dirty_targets.enqueue_targets(
+            targets,
+            reason="ops_news_canonical_rebuild",
+            now_ms=now_ms,
+            commit=False,
+        )
     data["enqueued"] = int(enqueued)
     data["deleted_disabled_rows"] = int(deleted)
     return data
@@ -626,19 +637,19 @@ def _run_sync_gmgn_directory(
 ) -> dict:
     upserted = 0
     handles: list[str] = []
-    for entry in client.iter_entries(max_pages=max_pages):
-        repository.upsert_directory_entry(
-            handle=entry.handle,
-            gmgn_user_id=entry.gmgn_user_id,
-            user_tags=entry.user_tags,
-            platform_followers=entry.platform_followers,
-            observed_at_ms=now_ms,
-            commit=False,
-        )
-        upserted += 1
-        handles.append(entry.handle)
-    # single transaction: all-or-nothing for the full directory sync
-    repository.conn.commit()
+    entries = list(client.iter_entries(max_pages=max_pages))
+    with _transaction(repository.conn):
+        for entry in entries:
+            repository.upsert_directory_entry(
+                handle=entry.handle,
+                gmgn_user_id=entry.gmgn_user_id,
+                user_tags=entry.user_tags,
+                platform_followers=entry.platform_followers,
+                observed_at_ms=now_ms,
+                commit=False,
+            )
+            upserted += 1
+            handles.append(entry.handle)
     return {
         "upserted": upserted,
         "first_handles": handles[:5],
@@ -655,6 +666,16 @@ def _worker_status_payload(settings: object) -> dict[str, Any]:
     finally:
         if runtime is not None:
             asyncio.run(runtime.aclose())
+
+
+def _transaction(conn: Any) -> AbstractContextManager[Any]:
+    try:
+        transaction = conn.transaction
+    except AttributeError as exc:
+        raise RuntimeError("ops_command_transaction_required") from exc
+    if not callable(transaction):
+        raise RuntimeError("ops_command_transaction_required")
+    return cast(AbstractContextManager[Any], transaction())
 
 
 def _run_asset_profile_refresh_worker_once(settings: object, *, limit: int, now_ms: int) -> dict:
@@ -792,8 +813,7 @@ def _run_resolution_refresh_worker_once(
             db=db,
             telemetry=telemetry,
             dex_discovery_market=asset_market.dex_discovery_market,
-            dex_quote_market=asset_market.dex_quote_market,
-            chain_ids=asset_market.discovery_chain_ids or settings.workers.resolution_refresh.chain_ids,
+            wake_emitter=db.wake_emitter(),
         )
         result = asyncio.run(worker.run_once(now_ms=now_ms))
         return dict(result.notes.get("result") or {})
@@ -826,7 +846,7 @@ def _run_token_radar_projection_worker_once(
             settings=_worker_settings_with_overrides(settings.workers.token_radar_projection, batch_size=limit),
             db=db,
             telemetry=telemetry,
-            wake_bus=db.wake_emitter(),
+            wake_emitter=db.wake_emitter(),
             wake_waiter=db.wake_listener(worker_name, settings.workers.token_radar_projection.wakes_on),
             enqueue_narrative_admission=bool(settings.workers.narrative_admission.enabled),
         )
@@ -865,70 +885,57 @@ def _run_token_radar_projection_worker_once(
             _close_db_bundle(db)
 
 
-def _worker_settings_with_overrides(config: object, **overrides: object) -> SimpleNamespace:
-    dump = getattr(config, "model_dump", None)
-    values = dict(dump()) if dump is not None else dict(vars(config))
-    values.update(overrides)
-    return SimpleNamespace(**values)
+def _worker_settings_with_overrides(config: object, **overrides: object) -> object:
+    try:
+        model_copy = config.model_copy
+    except AttributeError as exc:
+        raise RuntimeError("ops_worker_settings_model_copy_required") from exc
+    if not callable(model_copy):
+        raise RuntimeError("ops_worker_settings_model_copy_required")
+    return model_copy(update=overrides)
 
 
 def _close_db_bundle(db: object) -> None:
-    for name in ("api_pool", "worker_pool", "lock_pool", "tool_pool", "wake_pool"):
-        pool = getattr(db, name, None)
-        close = getattr(pool, "close", None)
-        if close:
-            close()
+    try:
+        aclose = db.aclose
+    except AttributeError as exc:
+        raise RuntimeError("ops_db_bundle_aclose_required") from exc
+    if not callable(aclose):
+        raise RuntimeError("ops_db_bundle_aclose_required")
+    asyncio.run(aclose())
 
 
 def _release_advisory_lock_connection(connection: object) -> None:
-    release = getattr(connection, "release", None)
-    close = getattr(connection, "close", None)
-    releaser = release or close
-    if releaser is not None:
-        releaser()
-
-
-def _close_runtime_resource(resource: object) -> None:
-    close = getattr(resource, "close", None)
-    aclose = getattr(resource, "aclose", None)
-    if close is not None:
-        close()
-    elif aclose is not None:
-        asyncio.run(aclose())
+    try:
+        release = connection.release
+    except AttributeError as exc:
+        raise RuntimeError("ops_advisory_lock_release_required") from exc
+    if not callable(release):
+        raise RuntimeError("ops_advisory_lock_release_required")
+    release()
 
 
 def _effective_worker_advisory_lock_key(worker: object) -> int:
-    resolve = getattr(worker, "_advisory_lock_key", None)
-    key = resolve() if callable(resolve) else getattr(worker, "SINGLE_WRITER_KEY", None)
+    try:
+        resolve = worker._advisory_lock_key
+    except AttributeError as exc:
+        raise RuntimeError("ops_worker_advisory_lock_key_required") from exc
+    if not callable(resolve):
+        raise RuntimeError("ops_worker_advisory_lock_key_required")
+    key = resolve()
     if key is None:
-        raise RuntimeError(f"{getattr(worker, 'name', worker.__class__.__name__)} advisory lock key is required")
+        raise RuntimeError("ops_worker_advisory_lock_key_required")
     return int(key)
 
 
 def _close_asset_market_providers(asset_market: object) -> None:
-    seen: set[int] = set()
-    for name in (
-        "cex_market",
-        "dex_discovery_market",
-        "dex_quote_market",
-        "dex_candle_market",
-        "stream_dex_market",
-    ):
-        provider = getattr(asset_market, name, None)
-        if provider is None or id(provider) in seen:
-            continue
-        seen.add(id(provider))
-        close = getattr(provider, "close", None)
-        if close:
-            close()
-    for source in tuple(getattr(asset_market, "dex_profile_sources", ()) or ()):
-        provider = getattr(source, "market", None)
-        if provider is None or id(provider) in seen:
-            continue
-        seen.add(id(provider))
-        close = getattr(provider, "close", None)
-        if close:
-            close()
+    try:
+        aclose = asset_market.aclose
+    except AttributeError as exc:
+        raise RuntimeError("ops_asset_market_providers_aclose_required") from exc
+    if not callable(aclose):
+        raise RuntimeError("ops_asset_market_providers_aclose_required")
+    asyncio.run(aclose())
 
 
 def _audit_token_intent(repos: object, *, event_id: str | None, intent_id: str | None) -> dict:

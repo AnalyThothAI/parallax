@@ -1036,6 +1036,7 @@
 | `agent_representative_news_item_id` | `TEXT` | False | `''::text` |
 | `search_text` | `TEXT` | False | `''::text` |
 | `market_scope_json` | `JSONB` | False | `'{}'::jsonb` |
+| `provider_rating_json` | `JSONB` | False | `'{}'::jsonb` |
 
 ## `news_projection_dirty_targets`
 

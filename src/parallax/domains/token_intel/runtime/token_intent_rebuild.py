@@ -12,32 +12,29 @@ from parallax.domains.token_intel.queries.event_rebuild_query import EventRebuil
 from parallax.domains.token_intel.services.token_evidence_builder import build_token_evidence
 from parallax.domains.token_intel.services.token_intent_builder import build_token_intents
 from parallax.domains.token_intel.services.token_intent_resolver import TokenIntentResolver
-from parallax.domains.token_intel.services.token_resolution_refresh import (
-    DEFAULT_REPROCESS_WINDOW,
-    deferred_token_radar_projection,
-)
+from parallax.domains.token_intel.services.token_resolution_refresh import deferred_token_radar_projection
 
 
 def rebuild_recent_token_intents(
     *,
     repos: Any,
     now_ms: int,
-    window: str = DEFAULT_REPROCESS_WINDOW,
-    limit: int = 500,
-    projection_limit: int = 100,
+    window: str,
+    limit: int,
+    projection_limit: int,
 ) -> dict[str, Any]:
-    since_ms = int(now_ms) - WINDOW_MS.get(window, WINDOW_MS[DEFAULT_REPROCESS_WINDOW])
+    since_ms = int(now_ms) - WINDOW_MS[window]
     rows = EventRebuildQuery(repos.conn).recent_events(since_ms=since_ms, limit=limit)
 
     rebuilt_events = 0
     intents_written = 0
     resolved_intents = 0
-    for row in rows:
-        result = rebuild_event_token_intents(repos=repos, event_row=row, commit=False)
-        rebuilt_events += 1
-        intents_written += result["intents_written"]
-        resolved_intents += result["resolved_intents"]
-    repos.conn.commit()
+    with repos.transaction():
+        for row in rows:
+            result = _rebuild_event_token_intents(repos=repos, event_row=row)
+            rebuilt_events += 1
+            intents_written += result["intents_written"]
+            resolved_intents += result["resolved_intents"]
     return {
         "window": window,
         "since_ms": since_ms,
@@ -50,7 +47,13 @@ def rebuild_recent_token_intents(
     }
 
 
-def rebuild_event_token_intents(*, repos: Any, event_row: dict[str, Any], commit: bool = True) -> dict[str, int]:
+def rebuild_event_token_intents(*, repos: Any, event_row: dict[str, Any]) -> dict[str, int]:
+    with repos.transaction():
+        return _rebuild_event_token_intents(repos=repos, event_row=event_row)
+
+
+def _rebuild_event_token_intents(*, repos: Any, event_row: dict[str, Any]) -> dict[str, int]:
+    repos.require_transaction(operation="token_intent_rebuild")
     event_id = str(event_row["event_id"])
     received_at_ms = int(event_row["received_at_ms"])
     repos.token_intents.delete_by_event_id(event_id)
@@ -79,7 +82,6 @@ def rebuild_event_token_intents(*, repos: Any, event_row: dict[str, Any], commit
             evidence_inputs,
             decision_time_ms=received_at_ms,
             persist=True,
-            commit=False,
         )
         repos.token_intent_lookup.replace_lookup_keys(
             intent_id=decision.intent_id,
@@ -91,8 +93,6 @@ def rebuild_event_token_intents(*, repos: Any, event_row: dict[str, Any], commit
         )
         if decision.target_type and decision.target_id:
             resolved += 1
-    if commit:
-        repos.conn.commit()
     return {"intents_written": len(intent_inputs), "resolved_intents": resolved}
 
 

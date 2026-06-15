@@ -141,7 +141,12 @@ class _DB:
 
     @contextmanager
     def worker_session(self, name: str, **_: Any):
-        yield repositories_for_connection(self.conn)
+        yield repositories_for_connection(
+            self.conn,
+            pulse_job_running_timeout_ms=300_000,
+            notification_delivery_running_timeout_ms=300_000,
+            notification_delivery_stale_running_terminalization_batch_size=100,
+        )
 
 
 class _FakeDecisionClient:
@@ -153,7 +158,12 @@ class _FakeDecisionClient:
 
 
 def _enqueue_token_radar_repair(conn: Any) -> int:
-    repos = repositories_for_connection(conn)
+    repos = repositories_for_connection(
+        conn,
+        pulse_job_running_timeout_ms=300_000,
+        notification_delivery_running_timeout_ms=300_000,
+        notification_delivery_stale_running_terminalization_batch_size=100,
+    )
     return int(
         repos.token_radar_dirty_targets.enqueue_recent_resolved_targets(
             since_ms=FIXED_NOW_MS - 60 * 60 * 1000,
@@ -173,6 +183,7 @@ def _radar_settings(*, cold_interval_seconds: float = 0) -> SimpleNamespace:
         hard_timeout_seconds=2,
         windows=("1h",),
         scopes=("all",),
+        venues=TOKEN_RADAR_VENUES,
         hot_windows=(),
         cold_interval_seconds=cold_interval_seconds,
         batch_size=10,
@@ -361,7 +372,12 @@ def _insert_market_tick(conn: Any, *, tick_id: str, observed_at_ms: int, receive
 
 def _refresh_market_tick_current(conn: Any, *, now_ms: int) -> None:
     target_id = f"eip155:1:{ASSET_ADDRESS.lower()}"
-    repos = repositories_for_connection(conn)
+    repos = repositories_for_connection(
+        conn,
+        pulse_job_running_timeout_ms=300_000,
+        notification_delivery_running_timeout_ms=300_000,
+        notification_delivery_stale_running_terminalization_batch_size=100,
+    )
     tick_row = repos.market_tick_current.latest_tick_for_target(target_type="chain_token", target_id=target_id)
     assert tick_row is not None
     repos.market_tick_current.upsert_current_from_tick(tick_row, now_ms=now_ms)

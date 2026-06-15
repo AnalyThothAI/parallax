@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from parallax.domains.news_intel.services.news_item_brief_entity_support import _entity_lane_domains
 from parallax.domains.news_intel.types.news_item_brief import (
     AffectedEntity,
     NewsItemBriefEntityLane,
@@ -129,3 +130,27 @@ def test_news_item_brief_entity_type_is_hard_cut_to_market_wide_enum() -> None:
             entity_type="equity_symbol",
             market_domain="us_equity",
         )
+
+
+def test_news_item_brief_entity_support_requires_formal_entity_lane_contract() -> None:
+    lane = NewsItemBriefEntityLane(
+        entity_id="entity-btc",
+        observed_label="Bitcoin",
+        display_symbol="BTC",
+        entity_type="crypto_asset",
+        market_domain="crypto",
+        target_type="asset",
+        target_id="asset:btc",
+        candidate_targets=[
+            {
+                "target_type": "asset",
+                "target_id": "asset:btc",
+                "market_domain": "crypto",
+                "symbol": "BTC",
+            }
+        ],
+    )
+
+    assert _entity_lane_domains(lane) == {"crypto"}
+    with pytest.raises(AttributeError):
+        _entity_lane_domains({"market_domain": "crypto"})  # type: ignore[arg-type]

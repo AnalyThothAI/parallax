@@ -16,12 +16,14 @@ class SearchInspectService:
         targets: Any,
         profiles: Any,
         market_candles: Any | None = None,
+        cex_detail_snapshots: Any | None = None,
     ) -> None:
         self.search_query = search_query
         self.token_radar = token_radar
         self.targets = targets
         self.profiles = profiles
         self.market_candles = market_candles
+        self.cex_detail_snapshots = cex_detail_snapshots
 
     def inspect(
         self,
@@ -101,6 +103,7 @@ class SearchInspectService:
             targets=self.targets,
             profiles=self.profiles,
             market_candles=self.market_candles,
+            cex_detail_snapshots=self.cex_detail_snapshots,
         ).dossier(
             target_type=target_type,
             target_id=target_id,

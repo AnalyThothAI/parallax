@@ -3,9 +3,10 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from collections.abc import Callable
 from contextlib import AbstractContextManager
 from dataclasses import asdict
-from typing import Any
+from typing import Any, cast
 
 from psycopg.types.json import Jsonb
 
@@ -33,22 +34,25 @@ class EvidenceRepository:
         channel: str,
         received_at_ms: int,
         raw_payload_json: str,
+        commit: bool = True,
     ) -> bool:
-        raw_payload_json = _sanitize_postgres_value(raw_payload_json)
-        payload_hash = hashlib.sha256(raw_payload_json.encode("utf-8")).hexdigest()
-        frame_id = f"{source}:{channel}:{payload_hash}"
-        cursor = self.conn.execute(
-            """
-            INSERT INTO raw_frames(
-              frame_id, source, channel, received_at_ms, payload_hash, raw_payload_json, created_at_ms
+        def _write() -> bool:
+            sanitized_payload = _sanitize_postgres_value(raw_payload_json)
+            payload_hash = hashlib.sha256(sanitized_payload.encode("utf-8")).hexdigest()
+            frame_id = f"{source}:{channel}:{payload_hash}"
+            cursor = self.conn.execute(
+                """
+                INSERT INTO raw_frames(
+                  frame_id, source, channel, received_at_ms, payload_hash, raw_payload_json, created_at_ms
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT(frame_id) DO NOTHING
+                """,
+                (frame_id, source, channel, received_at_ms, payload_hash, sanitized_payload, _now_ms()),
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT(frame_id) DO NOTHING
-            """,
-            (frame_id, source, channel, received_at_ms, payload_hash, raw_payload_json, _now_ms()),
-        )
-        self.conn.commit()
-        return bool(cursor.rowcount == 1)
+            return _single_rowcount(cursor) == 1
+
+        return _run_repository_write(self.conn, commit, _write)
 
     def insert_event(self, event: TwitterEvent, *, is_watched: bool) -> bool:
         now_ms = _now_ms()
@@ -81,7 +85,7 @@ class EvidenceRepository:
             """,
             row,
         )
-        return bool(cursor.rowcount != 0)
+        return _single_rowcount(cursor) == 1
 
     def event_exists(self, *, event_id: str, logical_dedup_key: str) -> bool:
         row = self.conn.execute(
@@ -103,6 +107,7 @@ class EvidenceRepository:
         ca: str | None = None,
         chain: str | None = None,
         symbol: str | None = None,
+        since_ms: int | None = None,
         watched_only: bool = True,
     ) -> list[dict[str, Any]]:
         if limit <= 0:
@@ -111,6 +116,9 @@ class EvidenceRepository:
         params: list[Any] = []
         if watched_only:
             clauses.append("e.is_watched = true")
+        if since_ms is not None:
+            clauses.append("e.received_at_ms >= %s")
+            params.append(int(since_ms))
         normalized_handles = {item.strip().lstrip("@").lower() for item in handles or set() if item.strip()}
         if normalized_handles:
             placeholders = ",".join("%s" for _ in normalized_handles)
@@ -137,6 +145,90 @@ class EvidenceRepository:
         rows = self.conn.execute(
             f"SELECT e.* FROM events e {join} {where} ORDER BY e.received_at_ms DESC LIMIT %s",
             (*params, max(0, int(limit))),
+        ).fetchall()
+        return [decode_event_row(row) for row in rows]
+
+    def recent_events_for_token_filters(
+        self,
+        *,
+        limit: int,
+        per_filter_limit: int,
+        cas: set[tuple[str, str]] | None = None,
+        symbols: set[str] | None = None,
+        since_ms: int | None = None,
+        watched_only: bool = True,
+    ) -> list[dict[str, Any]]:
+        parsed_limit = max(0, int(limit))
+        parsed_per_filter_limit = max(0, int(per_filter_limit))
+        if parsed_limit <= 0 or parsed_per_filter_limit <= 0:
+            return []
+
+        filter_kinds, filter_chains, filter_values = _token_filter_keysets(cas=cas, symbols=symbols)
+        if not filter_kinds:
+            return []
+
+        clauses: list[str] = []
+        params: list[Any] = [filter_kinds, filter_chains, filter_values, sorted(EVM_QUERY_CHAINS)]
+        if watched_only:
+            clauses.append("e.is_watched = true")
+        if since_ms is not None:
+            clauses.append("e.received_at_ms >= %s")
+            params.append(int(since_ms))
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        rows = self.conn.execute(
+            f"""
+            WITH input_filters AS (
+              SELECT filter_kind, filter_chain, filter_value, ordinality
+              FROM unnest(%s::text[], %s::text[], %s::text[]) WITH ORDINALITY
+                AS filters(filter_kind, filter_chain, filter_value, ordinality)
+            ),
+            distinct_filters AS (
+              SELECT DISTINCT ON (filter_kind, filter_chain, filter_value)
+                     filter_kind, filter_chain, filter_value, ordinality
+              FROM input_filters
+              ORDER BY filter_kind, filter_chain, filter_value, ordinality
+            ),
+            ranked_events AS (
+              SELECT e.*,
+                     ROW_NUMBER() OVER (
+                       PARTITION BY filters.filter_kind, filters.filter_chain, filters.filter_value
+                       ORDER BY e.received_at_ms DESC, e.event_id DESC
+                     ) AS event_rank
+              FROM distinct_filters filters
+              JOIN event_entities ee
+                ON (
+                  filters.filter_kind = 'symbol'
+                  AND ee.entity_type = 'symbol'
+                  AND ee.normalized_value = filters.filter_value
+                )
+                OR (
+                  filters.filter_kind = 'ca'
+                  AND ee.entity_type = 'ca'
+                  AND ee.normalized_value = filters.filter_value
+                  AND (
+                    (filters.filter_chain = 'evm_unknown' AND ee.chain = ANY(%s::text[]))
+                    OR ee.chain = filters.filter_chain
+                  )
+                )
+              JOIN events e ON e.event_id = ee.event_id
+              {where}
+            ),
+            bounded_events AS (
+              SELECT *
+              FROM ranked_events
+              WHERE event_rank <= %s
+            ),
+            deduped_events AS (
+              SELECT DISTINCT ON (event_id) *
+              FROM bounded_events
+              ORDER BY event_id, received_at_ms DESC
+            )
+            SELECT *
+            FROM deduped_events
+            ORDER BY received_at_ms DESC, event_id DESC
+            LIMIT %s
+            """,
+            (*params, parsed_per_filter_limit, parsed_limit),
         ).fetchall()
         return [decode_event_row(row) for row in rows]
 
@@ -167,6 +259,25 @@ class EvidenceRepository:
 
     def close(self) -> None:
         self.conn.close()
+
+
+def _token_filter_keysets(
+    *,
+    cas: set[tuple[str, str]] | None,
+    symbols: set[str] | None,
+) -> tuple[list[str], list[str], list[str]]:
+    filters: list[tuple[str, str, str]] = []
+    for chain, ca in sorted(cas or set()):
+        normalized_chain, normalized_ca = normalize_ca(ca, chain=chain)
+        filters.append(("ca", normalized_chain, normalized_ca))
+    for symbol in sorted(symbols or set()):
+        normalized_symbol = str(symbol).strip().lstrip("$").upper()
+        if normalized_symbol:
+            filters.append(("symbol", "", normalized_symbol))
+
+    if not filters:
+        return [], [], []
+    return [item[0] for item in filters], [item[1] for item in filters], [item[2] for item in filters]
 
 
 def event_to_row(event: TwitterEvent, *, is_watched: bool, now_ms: int) -> dict[str, Any]:
@@ -275,3 +386,32 @@ def _json_loads(value: Any, default: Any) -> Any:
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _single_rowcount(cursor: Any) -> int:
+    try:
+        rowcount: object = cursor.rowcount
+    except AttributeError as exc:
+        raise TypeError("evidence_repository_rowcount_required") from exc
+    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
+        raise TypeError("evidence_repository_rowcount_invalid")
+    if rowcount not in (0, 1):
+        raise TypeError("evidence_repository_rowcount_invalid")
+    return rowcount
+
+
+def _transaction(conn: Any) -> AbstractContextManager[Any]:
+    try:
+        transaction_context = conn.transaction
+    except AttributeError as exc:
+        raise RuntimeError("evidence_repository_transaction_required") from exc
+    if not callable(transaction_context):
+        raise RuntimeError("evidence_repository_transaction_required")
+    return cast(AbstractContextManager[Any], transaction_context())
+
+
+def _run_repository_write[T](conn: Any, commit: bool, write: Callable[[], T]) -> T:
+    if commit:
+        with _transaction(conn):
+            return write()
+    return write()

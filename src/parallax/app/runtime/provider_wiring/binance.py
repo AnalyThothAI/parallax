@@ -109,8 +109,8 @@ class BinanceUsdmFuturesOiProvider:
         return [
             CexOpenInterestPoint(
                 symbol=_row_symbol(row),
-                open_interest_value=getattr(row, "open_interest_value", None),
-                observed_at_ms=getattr(row, "time_ms", None),
+                open_interest_value=_required_row_field(row, "open_interest_value"),
+                observed_at_ms=_required_row_field(row, "time_ms"),
             )
             for row in self._client.open_interest_hist(symbol=symbol, period=period, limit=limit)
         ]
@@ -174,22 +174,32 @@ def _cex_ticker(ticker: BinanceUsdmTicker24hr) -> CexTicker:
 def _cex_oi_ticker(row: Any) -> CexOiTicker24h:
     return CexOiTicker24h(
         symbol=_row_symbol(row),
-        quote_volume_24h=getattr(row, "quote_volume_24h", None),
-        price_change_pct_24h=getattr(row, "price_change_percent", None),
-        last_price=getattr(row, "last_price", None),
+        quote_volume_24h=_required_row_field(row, "quote_volume_24h"),
+        price_change_pct_24h=_required_row_field(row, "price_change_percent"),
+        last_price=_required_row_field(row, "last_price"),
     )
 
 
 def _cex_funding_premium(row: Any) -> CexFundingPremium:
     return CexFundingPremium(
         symbol=_row_symbol(row),
-        mark_price=getattr(row, "mark_price", None),
-        last_funding_rate=getattr(row, "last_funding_rate", None),
+        mark_price=_required_row_field(row, "mark_price"),
+        last_funding_rate=_required_row_field(row, "last_funding_rate"),
     )
 
 
 def _row_symbol(row: Any) -> str:
-    return str(getattr(row, "symbol", "") or "").strip().upper()
+    text = str(_required_row_field(row, "symbol") or "").strip().upper()
+    if not text:
+        raise ValueError("binance_oi_provider_contract_required:symbol")
+    return text
+
+
+def _required_row_field(row: Any, field: str) -> Any:
+    try:
+        return getattr(row, field)
+    except AttributeError as exc:
+        raise ValueError(f"binance_oi_provider_contract_required:{field}") from exc
 
 
 __all__ = [

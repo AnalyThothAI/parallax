@@ -98,6 +98,7 @@ def search_inspect(
             targets=repos.token_targets,
             profiles=profiles,
             market_candles=_market_candles_service(),
+            cex_detail_snapshots=repos.cex_detail_snapshots,
         ).inspect(
             q,
             window=parsed_window,

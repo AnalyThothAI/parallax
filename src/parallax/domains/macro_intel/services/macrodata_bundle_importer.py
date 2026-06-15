@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import math
 from collections.abc import Mapping, Sequence
-from contextlib import AbstractContextManager
 from datetime import date
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, cast
@@ -73,7 +72,7 @@ def write_macrodata_bundle_import(
     *,
     repos: RepositorySession,
 ) -> dict[str, Any]:
-    _require_transaction(repos, operation="macrodata_bundle_import")
+    repos.require_transaction(operation="macrodata_bundle_import")
     observation_outcomes = [
         dict(repos.macro_intel.upsert_observation(observation)) for observation in parsed.observations
     ]
@@ -144,7 +143,7 @@ def write_macrodata_bundle_import(
 
 def import_macrodata_bundle(envelope: Mapping[str, Any], *, repos: RepositorySession, now_ms: int) -> dict[str, Any]:
     parsed = parse_macrodata_bundle(envelope, now_ms=now_ms)
-    with _unit_of_work(repos):
+    with repos.unit_of_work():
         return write_macrodata_bundle_import(parsed, repos=repos)
 
 
@@ -240,24 +239,6 @@ def _min_observed_at(observations: Sequence[Mapping[str, Any]]) -> object | None
 
 def _count_outcomes(outcomes: Sequence[Mapping[str, Any]], status: str) -> int:
     return sum(1 for outcome in outcomes if outcome.get("status") == status)
-
-
-def _unit_of_work(repos: RepositorySession) -> AbstractContextManager[Any]:
-    unit_of_work = getattr(repos, "unit_of_work", None)
-    if callable(unit_of_work):
-        return cast("AbstractContextManager[Any]", unit_of_work())
-    transaction = getattr(getattr(repos, "conn", None), "transaction", None)
-    if callable(transaction):
-        return cast("AbstractContextManager[Any]", transaction())
-    raise RuntimeError("repository session does not expose a transaction")
-
-
-def _require_transaction(repos: RepositorySession, *, operation: str) -> None:
-    session_require_transaction = getattr(repos, "require_transaction", None)
-    if callable(session_require_transaction):
-        session_require_transaction(operation=operation)
-        return
-    raise RuntimeError(f"{operation}:transaction_required")
 
 
 __all__ = ["import_macrodata_bundle", "parse_macrodata_bundle", "write_macrodata_bundle_import"]

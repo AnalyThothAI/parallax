@@ -25,12 +25,21 @@ class CexOiRadarBoardWorker(WorkerBase):
     def __init__(
         self,
         *,
-        oi_market: CexOiMarketProvider | None,
+        settings: Any,
+        db: Any,
+        telemetry: Any,
+        oi_market: CexOiMarketProvider,
         coinglass_derivatives: CoinglassDerivativesProvider | None = None,
         clock_ms: Callable[[], int] | None = None,
-        **kwargs: Any,
+        name: str = "cex_oi_radar_board",
     ) -> None:
-        super().__init__(**kwargs)
+        if settings is None:
+            raise RuntimeError("cex_oi_radar_board_settings_required")
+        if db is None:
+            raise RuntimeError("cex_oi_radar_board_db_required")
+        if oi_market is None:
+            raise RuntimeError("cex_oi_radar_board_oi_market_required")
+        super().__init__(name=name, settings=settings, db=db, telemetry=telemetry)
         self.oi_market = oi_market
         self.coinglass_derivatives = coinglass_derivatives
         self.clock_ms = clock_ms or _now_ms
@@ -58,33 +67,22 @@ class CexOiRadarBoardWorker(WorkerBase):
             self._local_run_lock.release()
 
     def _run_once_sync_locked(self, *, now_ms: int | None = None) -> WorkerResult:
-        if self.oi_market is None:
-            return WorkerResult(
-                skipped=1,
-                notes={
-                    "reason": "cex_market_unavailable",
-                    "claimed": 0,
-                    "queue_depth": 0,
-                    "source_rows_scanned": 0,
-                    "targets_loaded": 0,
-                    "rows_written": 0,
-                },
-            )
-
         now = int(now_ms if now_ms is not None else self.clock_ms())
-        period = str(getattr(self.settings, "period", "5m"))
-        limit = max(1, min(int(getattr(self.settings, "universe_limit", self._batch_size())), self._batch_size()))
+        period = str(self.settings.period)
+        batch_size = self._batch_size()
+        limit = max(1, min(int(self.settings.universe_limit), batch_size))
         with self._repository_session() as repos:
             universe = repos.cex_oi_radar.binance_usdt_perp_universe(limit=limit)
 
         if not universe:
-            with self._repository_session() as repos:
+            with self._repository_session() as repos, repos.transaction():
                 repos.cex_oi_radar.publish_board(
                     rows=[],
                     computed_at_ms=now,
                     period=period,
                     status="skipped",
                     notes={"reason": "empty_binance_universe"},
+                    commit=False,
                 )
             return WorkerResult(
                 skipped=1,
@@ -110,15 +108,16 @@ class CexOiRadarBoardWorker(WorkerBase):
                 list(built["rows"]),
                 client=self.coinglass_derivatives,
                 now_ms=now,
-                limit=int(getattr(self.settings, "coinglass_enrichment_limit", 0)),
-                level_limit=int(getattr(self.settings, "coinglass_level_limit", 6)),
+                limit=int(self.settings.coinglass_enrichment_limit),
+                level_limit=int(self.settings.coinglass_level_limit),
             )
             if not rows and int(built["failed"]) > 0:
-                with self._repository_session() as repos:
+                with self._repository_session() as repos, repos.transaction():
                     repos.cex_oi_radar.record_attempt_failure(
                         computed_at_ms=now,
                         period=period,
                         notes={"reason": "all_symbols_failed", "failed_symbols": built["failed_symbols"][:20]},
+                        commit=False,
                     )
                 return WorkerResult(
                     failed=int(built["failed"]),
@@ -135,9 +134,8 @@ class CexOiRadarBoardWorker(WorkerBase):
                 )
             status = "success" if int(built["failed"]) == 0 else "partial"
             snapshots = [
-                build_cex_detail_snapshot(row=row, computed_at_ms=now, period=period)
+                build_cex_detail_snapshot(row=row, computed_at_ms=now, period=period, exchange="binance")
                 for row in rows
-                if row.get("native_market_id")
             ]
             with self._repository_session() as repos:
                 publication = self._publish_board_and_detail(
@@ -164,11 +162,12 @@ class CexOiRadarBoardWorker(WorkerBase):
                 },
             )
         except Exception as exc:
-            with self._repository_session() as repos:
+            with self._repository_session() as repos, repos.transaction():
                 repos.cex_oi_radar.record_attempt_failure(
                     computed_at_ms=now,
                     period=period,
                     notes={"reason": type(exc).__name__},
+                    commit=False,
                 )
             raise
 
@@ -177,12 +176,12 @@ class CexOiRadarBoardWorker(WorkerBase):
             AbstractContextManager[Any],
             self.db.worker_session(
                 self.name,
-                statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
+                statement_timeout_seconds=self.settings.statement_timeout_seconds,
             ),
         )
 
     def _batch_size(self) -> int:
-        return max(1, int(getattr(self.settings, "batch_size", 100)))
+        return max(1, int(self.settings.batch_size))
 
     def _publish_board_and_detail(
         self,

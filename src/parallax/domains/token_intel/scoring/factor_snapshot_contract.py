@@ -4,6 +4,7 @@ from typing import Any
 
 from parallax.domains.token_intel._constants import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
+    TOKEN_RADAR_DECISIONS,
     TOKEN_RADAR_FACTOR_FAMILIES,
 )
 
@@ -39,6 +40,8 @@ TOKEN_FACTOR_SNAPSHOT_FAMILY_KEYS = frozenset(
         "factors",
     }
 )
+TOKEN_FACTOR_SNAPSHOT_GATES_REQUIRED_KEYS = frozenset({"max_decision"})
+TOKEN_FACTOR_SNAPSHOT_COMPOSITE_REQUIRED_KEYS = frozenset({"rank_score", "recommended_decision"})
 LEGACY_GATE_KEY = "_".join(("hard", "gates"))
 
 
@@ -60,6 +63,27 @@ def require_token_factor_snapshot(value: Any, *, field_name: str = "factor_snaps
 
     for key in ("subject", "market", "gates", "data_health", "normalization", "composite", "provenance"):
         _required_dict(value.get(key), field_name=f"{field_name}.{key}")
+
+    gates = _required_dict(value.get("gates"), field_name=f"{field_name}.gates")
+    _require_required_keys(
+        gates,
+        required=TOKEN_FACTOR_SNAPSHOT_GATES_REQUIRED_KEYS,
+        field_name=f"{field_name}.gates",
+    )
+    _require_decision(gates.get("max_decision"), field_name=f"{field_name}.gates.max_decision")
+
+    composite = _required_dict(value.get("composite"), field_name=f"{field_name}.composite")
+    _require_required_keys(
+        composite,
+        required=TOKEN_FACTOR_SNAPSHOT_COMPOSITE_REQUIRED_KEYS,
+        field_name=f"{field_name}.composite",
+    )
+    if not _is_json_number(composite.get("rank_score")):
+        raise ValueError(f"{field_name}.composite.rank_score is required")
+    _require_decision(
+        composite.get("recommended_decision"),
+        field_name=f"{field_name}.composite.recommended_decision",
+    )
 
     market = _required_dict(value.get("market"), field_name=f"{field_name}.market")
     _require_allowed_keys(
@@ -164,6 +188,18 @@ def _require_allowed_keys(
     extra = sorted(keys - allowed)
     if extra:
         raise ValueError(f"{field_name}.{extra[0]} is not allowed")
+
+
+def _require_required_keys(value: dict[str, Any], *, required: frozenset[str], field_name: str) -> None:
+    keys = set(value)
+    missing = sorted(required - keys)
+    if missing:
+        raise ValueError(f"{field_name}.{missing[0]} is required")
+
+
+def _require_decision(value: Any, *, field_name: str) -> None:
+    if not isinstance(value, str) or value not in TOKEN_RADAR_DECISIONS:
+        raise ValueError(f"{field_name} is required")
 
 
 def _is_json_number(value: Any) -> bool:

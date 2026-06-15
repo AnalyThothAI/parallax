@@ -5,12 +5,15 @@ from types import SimpleNamespace
 
 import pytest
 
+from parallax.app.runtime.app import _news_provider_contract_payload
 from parallax.domains.news_intel.repositories.news_repository import NewsRepository
 from parallax.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
 from parallax.domains.news_intel.services.news_provider_contract import (
     NewsProviderContractError,
     validate_news_provider_contract,
 )
+from parallax.platform.config.news_provider_types import RUNTIME_SUPPORTED_NEWS_PROVIDER_TYPES
+from parallax.platform.config.settings import NewsFetchWorkerSettings
 
 NOW_MS = 1_779_000_000_000
 
@@ -87,18 +90,18 @@ def test_repository_constraint_parser_reads_0105_provider_values_from_news_sourc
     )
 
 
-def test_news_fetch_worker_returns_contract_error_without_reconcile() -> None:
+def test_news_fetch_worker_returns_contract_error_without_provider_capability_probe() -> None:
     source = _source(provider_type="opennews")
     repo = FakeNewsRepository(schema_provider_types=("rss",))
     db = FakeDB(repo)
     worker = NewsFetchWorker(
         name="news_fetch",
-        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30),
+        settings=NewsFetchWorkerSettings(batch_size=10, lease_ms=60_000, statement_timeout_seconds=30),
         db=db,
         telemetry=object(),
-        feed_client=FakeRegistryProvider(supported_provider_types=("rss", "opennews")),
+        feed_client=FakeCapabilityProbeProvider(),
         news_settings=SimpleNamespace(sources=(source,)),
-        wake_bus=None,
+        wake_emitter=None,
     )
 
     result = worker.run_once_sync(now_ms=NOW_MS)
@@ -106,6 +109,52 @@ def test_news_fetch_worker_returns_contract_error_without_reconcile() -> None:
     assert result.failed == 1
     assert result.notes["reason"] == "news_provider_type_missing_from_db_constraint"
     assert result.notes["provider_types"] == ["opennews"]
+    assert repo.reconcile_calls == 0
+    assert repo.claim_due_calls == 0
+
+
+def test_runtime_status_news_provider_contract_uses_static_provider_types_without_provider_probe() -> None:
+    source = _source(provider_type="opennews")
+    runtime = SimpleNamespace(
+        settings=SimpleNamespace(news_intel=SimpleNamespace(sources=(source,))),
+        providers=SimpleNamespace(news_intel=SimpleNamespace(feed_client=FakeCapabilityProbeProvider())),
+        repositories=lambda: FakeRuntimeRepositoryContext(FakeNewsRepository(schema_provider_types=PROVIDER_SCHEMA)),
+    )
+
+    payload = _news_provider_contract_payload(runtime)
+
+    assert payload["ok"] is True
+    assert payload["configured_provider_types"] == ["opennews"]
+    assert payload["supported_provider_types"] == list(RUNTIME_SUPPORTED_NEWS_PROVIDER_TYPES)
+
+
+def test_runtime_status_news_provider_contract_requires_news_intel_settings_contract() -> None:
+    runtime = SimpleNamespace(
+        settings=SimpleNamespace(),
+        repositories=lambda: FakeRuntimeRepositoryContext(FakeNewsRepository(schema_provider_types=PROVIDER_SCHEMA)),
+    )
+
+    with pytest.raises(AttributeError, match="news_intel"):
+        _news_provider_contract_payload(runtime)
+
+
+def test_news_fetch_worker_fails_fast_when_schema_introspection_missing() -> None:
+    source = _source(provider_type="opennews")
+    repo = FakeNewsRepositoryWithoutSchemaIntrospection()
+    db = FakeDB(repo)
+    worker = NewsFetchWorker(
+        name="news_fetch",
+        settings=NewsFetchWorkerSettings(batch_size=10, lease_ms=60_000, statement_timeout_seconds=30),
+        db=db,
+        telemetry=object(),
+        feed_client=FakeCapabilityProbeProvider(),
+        news_settings=SimpleNamespace(sources=(source,)),
+        wake_emitter=None,
+    )
+
+    with pytest.raises(AttributeError, match="news_source_provider_constraint_values"):
+        worker.run_once_sync(now_ms=NOW_MS)
+
     assert repo.reconcile_calls == 0
     assert repo.claim_due_calls == 0
 
@@ -118,6 +167,15 @@ def _source(*, provider_type: str) -> dict[str, object]:
         "source_domain": "example.test",
         "source_name": "Example",
     }
+
+
+PROVIDER_SCHEMA = (
+    "rss",
+    "atom",
+    "json_feed",
+    "cryptopanic",
+    "opennews",
+)
 
 
 class FakeConstraintConn:
@@ -141,6 +199,19 @@ class FakeRegistryProvider:
         return self._supported_provider_types
 
 
+class FakeCapabilityProbeProvider:
+    provider_type = "fake"
+
+    def fetch(self, *args, **kwargs):  # pragma: no cover - contract failure exits before fetch
+        raise AssertionError("provider fetch should not run when contract validation fails")
+
+    def close(self) -> None:
+        return None
+
+    def supported_provider_types(self) -> tuple[str, ...]:
+        raise AssertionError("NewsFetchWorker must use the static provider-type contract")
+
+
 class FakeNewsRepository:
     def __init__(self, *, schema_provider_types: tuple[str, ...]) -> None:
         self.schema_provider_types = schema_provider_types
@@ -154,7 +225,23 @@ class FakeNewsRepository:
         self.reconcile_calls += 1
         return []
 
-    def claim_due_sources(self, *, now_ms: int, limit: int, commit: bool = True):
+    def claim_due_sources(self, *, now_ms: int, limit: int, claim_lease_ms: int, commit: bool = True):
+        del claim_lease_ms
+        self.claim_due_calls += 1
+        return []
+
+
+class FakeNewsRepositoryWithoutSchemaIntrospection:
+    def __init__(self) -> None:
+        self.reconcile_calls = 0
+        self.claim_due_calls = 0
+
+    def reconcile_configured_sources(self, sources, *, now_ms: int, commit: bool = True):
+        self.reconcile_calls += 1
+        return []
+
+    def claim_due_sources(self, *, now_ms: int, limit: int, claim_lease_ms: int, commit: bool = True):
+        del claim_lease_ms
         self.claim_due_calls += 1
         return []
 
@@ -168,7 +255,18 @@ class FakeDB:
     def worker_session(self, name: str, statement_timeout_seconds: float | None = None):
         assert name == "news_fetch"
         assert statement_timeout_seconds == 30
-        yield SimpleNamespace(news=self.repo, conn=self.conn)
+        yield SimpleNamespace(news=self.repo, conn=self.conn, transaction=self.conn.transaction)
+
+
+class FakeRuntimeRepositoryContext:
+    def __init__(self, repo: FakeNewsRepository) -> None:
+        self.repo = repo
+
+    def __enter__(self):
+        return SimpleNamespace(news=self.repo)
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
 
 
 class FakeConn:

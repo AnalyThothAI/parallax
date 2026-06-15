@@ -9,9 +9,6 @@ from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.asset_market.services.token_image_mirror import TokenImageMirrorService
 
-DEFAULT_LEASE_MS = 10 * 60 * 1000
-DEFAULT_RETRY_MS = 5 * 60 * 1000
-
 
 class TokenImageMirrorWorker(WorkerBase):
     def __init__(
@@ -47,13 +44,13 @@ class TokenImageMirrorWorker(WorkerBase):
         result = _empty_result(now_ms=now_ms)
         with self.db.worker_session(
             self.name,
-            statement_timeout_seconds=float(getattr(self.settings, "statement_timeout_seconds", 120.0)),
+            statement_timeout_seconds=float(self.settings.statement_timeout_seconds),
         ) as repos:
             claimed = repos.token_image_source_dirty_targets.claim_due(
                 now_ms=now_ms,
-                limit=max(1, int(getattr(self.settings, "batch_size", 100))),
+                limit=max(1, int(self.settings.batch_size)),
                 lease_owner=self.name,
-                lease_ms=max(1, int(getattr(self.settings, "lease_ms", DEFAULT_LEASE_MS) or DEFAULT_LEASE_MS)),
+                lease_ms=max(1, int(self.settings.lease_ms)),
                 commit=True,
             )
             result["claimed"] = len(claimed)
@@ -89,6 +86,7 @@ class TokenImageMirrorWorker(WorkerBase):
         mirror_service = TokenImageMirrorService(
             repository=_TokenImageAssetSessionRepository(self.db, self.name, self.settings),
             app_home=self.app_home,
+            retry_ms=max(1, int(self.settings.retry_ms)),
         )
         for source_url, source_claims in _claims_by_source_url(pending_claims).items():
             source_row = _source_row_from_claim(source_claims[0])
@@ -113,7 +111,7 @@ class TokenImageMirrorWorker(WorkerBase):
         with (
             self.db.worker_session(
                 self.name,
-                statement_timeout_seconds=float(getattr(self.settings, "statement_timeout_seconds", 120.0)),
+                statement_timeout_seconds=float(self.settings.statement_timeout_seconds),
             ) as repos,
             repos.transaction(),
         ):
@@ -124,14 +122,14 @@ class TokenImageMirrorWorker(WorkerBase):
         with (
             self.db.worker_session(
                 self.name,
-                statement_timeout_seconds=float(getattr(self.settings, "statement_timeout_seconds", 120.0)),
+                statement_timeout_seconds=float(self.settings.statement_timeout_seconds),
             ) as repos,
             repos.transaction(),
         ):
             repos.token_image_source_dirty_targets.mark_error(
                 claims,
                 error=error,
-                retry_ms=max(1, int(getattr(self.settings, "retry_ms", DEFAULT_RETRY_MS) or DEFAULT_RETRY_MS)),
+                retry_ms=max(1, int(self.settings.retry_ms)),
                 now_ms=now_ms,
                 commit=False,
             )
@@ -152,12 +150,14 @@ class _TokenImageAssetSessionRepository:
         byte_size: int,
         storage_path: str,
         now_ms: int,
-        commit: bool = True,
     ) -> dict[str, Any]:
-        with self.db.worker_session(
-            self.worker_name,
-            statement_timeout_seconds=float(getattr(self.settings, "statement_timeout_seconds", 120.0)),
-        ) as repos:
+        with (
+            self.db.worker_session(
+                self.worker_name,
+                statement_timeout_seconds=float(self.settings.statement_timeout_seconds),
+            ) as repos,
+            repos.transaction(),
+        ):
             return cast(
                 dict[str, Any],
                 repos.token_image_assets.mark_ready(
@@ -168,7 +168,7 @@ class _TokenImageAssetSessionRepository:
                     byte_size=byte_size,
                     storage_path=storage_path,
                     now_ms=now_ms,
-                    commit=commit,
+                    commit=False,
                 ),
             )
 
@@ -178,18 +178,20 @@ class _TokenImageAssetSessionRepository:
         error: str,
         now_ms: int,
         retry_ms: int,
-        commit: bool = True,
     ) -> None:
-        with self.db.worker_session(
-            self.worker_name,
-            statement_timeout_seconds=float(getattr(self.settings, "statement_timeout_seconds", 120.0)),
-        ) as repos:
+        with (
+            self.db.worker_session(
+                self.worker_name,
+                statement_timeout_seconds=float(self.settings.statement_timeout_seconds),
+            ) as repos,
+            repos.transaction(),
+        ):
             repos.token_image_assets.mark_error(
                 source_url=source_url,
                 error=error,
                 now_ms=now_ms,
                 retry_ms=retry_ms,
-                commit=commit,
+                commit=False,
             )
 
     def mark_unsupported(
@@ -197,17 +199,19 @@ class _TokenImageAssetSessionRepository:
         source_url: str,
         error: str,
         now_ms: int,
-        commit: bool = True,
     ) -> None:
-        with self.db.worker_session(
-            self.worker_name,
-            statement_timeout_seconds=float(getattr(self.settings, "statement_timeout_seconds", 120.0)),
-        ) as repos:
+        with (
+            self.db.worker_session(
+                self.worker_name,
+                statement_timeout_seconds=float(self.settings.statement_timeout_seconds),
+            ) as repos,
+            repos.transaction(),
+        ):
             repos.token_image_assets.mark_unsupported(
                 source_url=source_url,
                 error=error,
                 now_ms=now_ms,
-                commit=commit,
+                commit=False,
             )
 
 

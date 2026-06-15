@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from parallax.domains.asset_market.services.asset_market_sync import sync_binance_usdt_perp_routes
 
 
@@ -44,7 +46,8 @@ def test_sync_binance_usdt_perp_routes_writes_instruments_and_feeds_without_mark
             "commit": False,
         }
     ]
-    assert registry.conn.commits == 1
+    assert registry.conn.events == ["enter", "exit"]
+    assert registry.conn.commits == 0
 
 
 def test_sync_binance_usdt_perp_routes_dry_run_does_not_write_or_commit():
@@ -63,6 +66,38 @@ def test_sync_binance_usdt_perp_routes_dry_run_does_not_write_or_commit():
     assert result["pricefeeds_written"] == 0
     assert registry.pricefeeds == []
     assert registry.conn.commits == 0
+    assert registry.conn.events == []
+
+
+def test_sync_binance_usdt_perp_routes_requires_formal_plan_count_repository_contract():
+    registry = _RegistryWithoutPlanCounts()
+
+    with pytest.raises(AttributeError, match="binance_usdt_perp_sync_plan_counts"):
+        sync_binance_usdt_perp_routes(
+            registry=registry,
+            client=_BinanceClient(),
+            observed_at_ms=1_778_000_000_000,
+            dry_run=True,
+            execute=False,
+        )
+
+    assert registry.conn.commits == 0
+    assert registry.conn.events == []
+
+
+def test_sync_binance_usdt_perp_routes_requires_transaction_before_writes():
+    registry = _Registry(conn=object())
+
+    with pytest.raises(RuntimeError, match="asset_market_sync_transaction_required"):
+        sync_binance_usdt_perp_routes(
+            registry=registry,
+            client=_BinanceClient(),
+            observed_at_ms=1_778_000_000_000,
+            dry_run=False,
+            execute=True,
+        )
+
+    assert registry.pricefeeds == []
 
 
 class _BinanceClient:
@@ -78,11 +113,12 @@ class _BinanceClient:
 
 
 class _Registry:
-    def __init__(self) -> None:
-        self.conn = _Conn()
+    def __init__(self, *, conn=None) -> None:
+        self.conn = conn or _Conn()
         self.pricefeeds = []
 
     def upsert_cex_token(self, **kwargs):
+        assert self.conn.transaction_depth == 1
         assert kwargs == {
             "base_symbol": "BTC",
             "project_id": None,
@@ -93,6 +129,7 @@ class _Registry:
         return {"cex_token_id": "cex_token:BTC"}
 
     def upsert_pricefeed(self, **kwargs):
+        assert self.conn.transaction_depth == 1
         self.pricefeeds.append(kwargs)
         return {"pricefeed_id": "pricefeed:cex:binance:swap:BTCUSDT"}
 
@@ -107,9 +144,35 @@ class _Registry:
         }
 
 
+class _RegistryWithoutPlanCounts:
+    def __init__(self) -> None:
+        self.conn = _Conn()
+
+
 class _Conn:
     def __init__(self) -> None:
         self.commits = 0
+        self.transaction_depth = 0
+        self.events: list[str] = []
+
+    def transaction(self):
+        return _Transaction(self)
 
     def commit(self) -> None:
         self.commits += 1
+        raise AssertionError("sync_binance_usdt_perp_routes must use conn.transaction(), not conn.commit()")
+
+
+class _Transaction:
+    def __init__(self, conn: _Conn) -> None:
+        self.conn = conn
+
+    def __enter__(self):
+        self.conn.transaction_depth += 1
+        self.conn.events.append("enter")
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.conn.events.append("rollback" if exc_type is not None else "exit")
+        self.conn.transaction_depth -= 1
+        return False

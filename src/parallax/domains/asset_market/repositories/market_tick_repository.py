@@ -11,6 +11,27 @@ from parallax.domains.asset_market.types import MarketTick, market_tick_id
 from parallax.platform.db.json_safety import postgres_safe_json
 
 
+def _cursor_rowcount(cursor: Any) -> int:
+    try:
+        rowcount: object = cursor.rowcount
+    except AttributeError as exc:
+        raise TypeError("market_tick_repository_rowcount_required") from exc
+    if isinstance(rowcount, bool) or not isinstance(rowcount, int) or rowcount < 0:
+        raise TypeError("market_tick_repository_rowcount_invalid")
+    return rowcount
+
+
+def _optional_returning_id(cursor: Any, row: Any | None) -> str | None:
+    count = _cursor_rowcount(cursor)
+    if count not in (0, 1):
+        raise TypeError("market_tick_repository_rowcount_invalid")
+    if count != (1 if row is not None else 0):
+        raise TypeError("market_tick_repository_rowcount_invalid")
+    if row is None:
+        return None
+    return str(row["tick_id"])
+
+
 class MarketTickRepository:
     def __init__(self, conn: Any) -> None:
         self._conn = conn
@@ -44,7 +65,7 @@ class MarketTickRepository:
 
         safe_payload = postgres_safe_json(tick.raw_payload_json)
         payload_hash = _payload_hash(safe_payload)
-        row = self._conn.execute(
+        cursor = self._conn.execute(
             """
             INSERT INTO market_ticks(
                 tick_id,
@@ -118,10 +139,9 @@ class MarketTickRepository:
                 "payload_hash": payload_hash,
                 "created_at_ms": tick.created_at_ms,
             },
-        ).fetchone()
-        if row is None:
-            return None
-        return str(row["tick_id"])
+        )
+        row = cursor.fetchone()
+        return _optional_returning_id(cursor, row)
 
     def latest_at_or_before(
         self,

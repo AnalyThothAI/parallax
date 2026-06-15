@@ -38,12 +38,11 @@ from parallax.domains.token_intel.interfaces import (
     TokenIntentRepository,
     TokenIntentResolutionDecision,
     TokenIntentResolver,
+    TokenRadarSourceDirtyEventRepository,
     build_token_evidence,
     build_token_intents,
     token_intent_resolution_id,
 )
-
-DEFAULT_EVENT_ANCHOR_ACTIVE_WINDOW_MS = 300_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,39 +64,35 @@ class IngestService:
         evidence: EvidenceRepository,
         entities: EntityRepository,
         signals: SignalRepository,
-        registry: RegistryRepository | None = None,
-        identity_evidence: IdentityEvidenceRepository | None = None,
-        token_intent_lookup: TokenIntentLookupRepository | None = None,
-        token_evidence: TokenEvidenceRepository | None = None,
-        token_intents: TokenIntentRepository | None = None,
-        intent_resolutions: IntentResolutionRepository | None = None,
-        discovery: DiscoveryRepository | None = None,
-        market_ticks: MarketTickRepository | None = None,
-        market_tick_current_dirty_targets: MarketTickCurrentDirtyTargetRepository | None = None,
-        enriched_events: EnrichedEventRepository | None = None,
-        event_anchor_jobs: EventAnchorBackfillJobRepository | None = None,
-        token_radar_dirty_targets: Any | None = None,
-        token_radar_source_dirty_events: Any | None = None,
-        event_anchor_active_window_ms: int = DEFAULT_EVENT_ANCHOR_ACTIVE_WINDOW_MS,
+        registry: RegistryRepository,
+        identity_evidence: IdentityEvidenceRepository,
+        token_intent_lookup: TokenIntentLookupRepository,
+        token_evidence: TokenEvidenceRepository,
+        token_intents: TokenIntentRepository,
+        intent_resolutions: IntentResolutionRepository,
+        discovery: DiscoveryRepository,
+        market_ticks: MarketTickRepository,
+        market_tick_current_dirty_targets: MarketTickCurrentDirtyTargetRepository,
+        enriched_events: EnrichedEventRepository,
+        event_anchor_jobs: EventAnchorBackfillJobRepository,
+        token_radar_source_dirty_events: TokenRadarSourceDirtyEventRepository,
+        event_anchor_active_window_ms: int,
     ) -> None:
         self.conn = evidence.conn
         self.evidence = evidence
         self.entities = entities
         self.signals = signals
-        self.registry = registry or RegistryRepository(evidence.conn)
-        self.identity_evidence = identity_evidence or IdentityEvidenceRepository(evidence.conn)
-        self.token_intent_lookup = token_intent_lookup or TokenIntentLookupRepository(evidence.conn)
-        self.token_evidence = token_evidence or TokenEvidenceRepository(evidence.conn)
-        self.token_intents = token_intents or TokenIntentRepository(evidence.conn)
-        self.intent_resolutions = intent_resolutions or IntentResolutionRepository(evidence.conn)
-        self.discovery = discovery or DiscoveryRepository(evidence.conn)
-        self.market_ticks = market_ticks or MarketTickRepository(evidence.conn)
-        self.market_tick_current_dirty_targets = (
-            market_tick_current_dirty_targets or MarketTickCurrentDirtyTargetRepository(evidence.conn)
-        )
-        self.enriched_events = enriched_events or EnrichedEventRepository(evidence.conn)
-        self.event_anchor_jobs = event_anchor_jobs or EventAnchorBackfillJobRepository(evidence.conn)
-        self.token_radar_dirty_targets = token_radar_dirty_targets
+        self.registry = registry
+        self.identity_evidence = identity_evidence
+        self.token_intent_lookup = token_intent_lookup
+        self.token_evidence = token_evidence
+        self.token_intents = token_intents
+        self.intent_resolutions = intent_resolutions
+        self.discovery = discovery
+        self.market_ticks = market_ticks
+        self.market_tick_current_dirty_targets = market_tick_current_dirty_targets
+        self.enriched_events = enriched_events
+        self.event_anchor_jobs = event_anchor_jobs
         self.token_radar_source_dirty_events = token_radar_source_dirty_events
         self.event_anchor_active_window_ms = max(1, int(event_anchor_active_window_ms))
 
@@ -182,7 +177,6 @@ class IngestService:
                 prepared.evidence_inputs,
                 decision_time_ms=prepared.event_ms,
                 persist=persist,
-                commit=False,
             )
             for intent in prepared.intents
         ]
@@ -191,7 +185,7 @@ class IngestService:
         self,
         prepared: PreparedIngest,
         *,
-        resolutions: list[Any],
+        resolutions: list[TokenIntentResolutionDecision],
         captures: list[Any],
     ) -> IngestedEvent:
         with self.evidence.unit_of_work():
@@ -209,13 +203,14 @@ class IngestService:
             self._upsert_gmgn_payload_registry(prepared.raw_event)
             self._upsert_chain_intent_registry(prepared.raw_event, prepared.intents)
             for decision in resolutions:
+                _require_resolution_decision(decision)
                 self.intent_resolutions.insert_resolution(decision, commit=False)
-                decision_intent_id = _decision_value(decision, "intent_id")
+                decision_intent_id = decision.intent_id
                 intent = next((item for item in prepared.intents if item.intent_id == decision_intent_id), None)
                 self.token_intent_lookup.replace_lookup_keys(
                     intent_id=decision_intent_id,
-                    event_id=_decision_value(decision, "event_id"),
-                    keys=_decision_value(decision, "lookup_keys") or [],
+                    event_id=decision.event_id,
+                    keys=decision.lookup_keys,
                     source_evidence_id=getattr(intent, "primary_evidence_id", None),
                     created_at_ms=prepared.event_ms,
                     commit=False,
@@ -229,7 +224,7 @@ class IngestService:
                     commit=False,
                 )
             source_dirty_events = _source_dirty_events_for_resolutions(resolutions)
-            if source_dirty_events and self.token_radar_source_dirty_events is not None:
+            if source_dirty_events:
                 self.token_radar_source_dirty_events.enqueue_events(
                     source_dirty_events,
                     reason="ingest_resolution",
@@ -267,9 +262,10 @@ class IngestService:
             inserted=True,
         )
 
-    def market_resolution_for_decision(self, decision: Any) -> dict[str, Any] | None:
-        target_type = _decision_value(decision, "target_type")
-        target_id = _decision_value(decision, "target_id")
+    def market_resolution_for_decision(self, decision: TokenIntentResolutionDecision) -> dict[str, Any] | None:
+        _require_resolution_decision(decision)
+        target_type = decision.target_type
+        target_id = decision.target_id
         if not target_type or not target_id:
             return None
         resolution_id = token_intent_resolution_id(decision)
@@ -278,8 +274,8 @@ class IngestService:
             if target is None:
                 return None
             return {
-                "event_id": _decision_value(decision, "event_id"),
-                "intent_id": _decision_value(decision, "intent_id"),
+                "event_id": decision.event_id,
+                "intent_id": decision.intent_id,
                 "resolution_id": resolution_id,
                 **target,
             }
@@ -292,8 +288,8 @@ class IngestService:
             if not provider or not native_market_id:
                 return None
             return {
-                "event_id": _decision_value(decision, "event_id"),
-                "intent_id": _decision_value(decision, "intent_id"),
+                "event_id": decision.event_id,
+                "intent_id": decision.intent_id,
                 "resolution_id": resolution_id,
                 "target_type": "cex_symbol",
                 "target_id": f"{provider}:{native_market_id}",
@@ -305,9 +301,10 @@ class IngestService:
             }
         return None
 
-    def _cex_pricefeed_for_decision(self, decision: Any) -> dict[str, Any] | None:
-        target_id = _decision_value(decision, "target_id")
-        pricefeed_id = _decision_value(decision, "pricefeed_id")
+    def _cex_pricefeed_for_decision(self, decision: TokenIntentResolutionDecision) -> dict[str, Any] | None:
+        _require_resolution_decision(decision)
+        target_id = decision.target_id
+        pricefeed_id = decision.pricefeed_id
         return self.registry.cex_pricefeed_for_token(
             cex_token_id=str(target_id),
             pricefeed_id=str(pricefeed_id) if pricefeed_id else None,
@@ -509,7 +506,8 @@ def _now_ms() -> int:
 
 def _alert_value(intent: Any, decision: TokenIntentResolutionDecision) -> str:
     value = getattr(intent, "display_symbol", None) or getattr(intent, "address_hint", None)
-    return str(value or _decision_value(decision, "target_id"))
+    _require_resolution_decision(decision)
+    return str(value or decision.target_id)
 
 
 def _payload_hash(payload: dict[str, Any]) -> str:
@@ -517,18 +515,21 @@ def _payload_hash(payload: dict[str, Any]) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def _decision_value(decision: Any, key: str) -> Any:
-    if isinstance(decision, dict):
-        return decision.get(key)
-    return getattr(decision, key)
+def _require_resolution_decision(decision: Any) -> TokenIntentResolutionDecision:
+    if not isinstance(decision, TokenIntentResolutionDecision):
+        raise RuntimeError("ingest_resolution_decision_contract_required")
+    return decision
 
 
-def _source_dirty_events_for_resolutions(resolutions: list[Any]) -> list[dict[str, Any]]:
+def _source_dirty_events_for_resolutions(
+    resolutions: list[TokenIntentResolutionDecision],
+) -> list[dict[str, Any]]:
     dirty_events: list[dict[str, Any]] = []
     for decision in resolutions:
-        event_id = str(_decision_value(decision, "event_id") or "")
-        target_type = _decision_value(decision, "target_type")
-        target_id = _decision_value(decision, "target_id")
+        formal_decision = _require_resolution_decision(decision)
+        event_id = str(formal_decision.event_id or "")
+        target_type = formal_decision.target_type
+        target_id = formal_decision.target_id
         if event_id and target_type in {"Asset", "CexToken"} and target_id:
             dirty_events.append(
                 {
@@ -540,15 +541,18 @@ def _source_dirty_events_for_resolutions(resolutions: list[Any]) -> list[dict[st
     return dirty_events
 
 
-def _discovery_lookup_keys_for_resolutions(resolutions: list[Any]) -> list[str]:
+def _discovery_lookup_keys_for_resolutions(
+    resolutions: list[TokenIntentResolutionDecision],
+) -> list[str]:
     lookup_keys: set[str] = set()
     for decision in resolutions:
-        status = str(_decision_value(decision, "resolution_status") or "")
-        target_type = _decision_value(decision, "target_type")
-        target_id = _decision_value(decision, "target_id")
+        formal_decision = _require_resolution_decision(decision)
+        status = str(formal_decision.resolution_status or "")
+        target_type = formal_decision.target_type
+        target_id = formal_decision.target_id
         if status not in {"NIL", "AMBIGUOUS"} and target_type and target_id:
             continue
-        for key in _decision_value(decision, "lookup_keys") or []:
+        for key in formal_decision.lookup_keys:
             text = str(key or "").strip()
             if text.startswith(("symbol:", "address:")):
                 lookup_keys.add(text)

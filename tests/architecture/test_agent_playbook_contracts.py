@@ -22,8 +22,7 @@ from scripts.validate_sdd_artifacts import (
 ROOT = Path(__file__).resolve().parents[2]
 PLAYBOOK = ROOT / "docs" / "agent-playbook"
 NON_FINAL_SKIPPED_ACCOUNTING = (
-    "Not final completion evidence. Skipped-test accounting will be recorded with\n"
-    "the final `make check-all` run."
+    "Not final completion evidence. Skipped-test accounting will be recorded with\nthe final `make check-all` run."
 )
 
 
@@ -756,8 +755,7 @@ def test_sdd_gate_check_cli_verify_rejects_non_verification_artifact_drift(tmp_p
         "| AC1 | Pass | `make check-all` exited 0. |",
     )
     verification_text = verification_text.replace(
-        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\n"
-        "Pending.",
+        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\nPending.",
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
@@ -808,13 +806,7 @@ def test_sdd_gate_check_cli_verify_rejects_incomplete_tasks_with_final_evidence(
     _write_context_packet_fixture(tmp_path)
     _create_context_packet_fixture_paths(tmp_path)
     verification_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "verification.md"
+        tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "verification.md"
     )
     verification_text = verification_path.read_text(encoding="utf-8")
     verification_text = verification_text.replace(
@@ -822,8 +814,7 @@ def test_sdd_gate_check_cli_verify_rejects_incomplete_tasks_with_final_evidence(
         "| AC1 | Pass | `make check-all` exited 0. |",
     )
     verification_text = verification_text.replace(
-        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\n"
-        "Pending.",
+        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\nPending.",
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
@@ -870,13 +861,7 @@ def test_sdd_gate_check_cli_verify_rejects_failed_check_all_before_helper_succes
     _create_context_packet_fixture_paths(tmp_path)
     helper_command = "python -c 'print(\"helper\")'"
     verification_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "verification.md"
+        tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "verification.md"
     )
     verification_text = verification_path.read_text(encoding="utf-8")
     verification_text = verification_text.replace(
@@ -884,8 +869,7 @@ def test_sdd_gate_check_cli_verify_rejects_failed_check_all_before_helper_succes
         f"| AC1 | Pass | `{helper_command}` exited 0. |",
     )
     verification_text = verification_text.replace(
-        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\n"
-        "Pending.",
+        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\nPending.",
         "\n".join(
             [
                 "$ make check-all",
@@ -914,15 +898,7 @@ def test_sdd_gate_check_cli_verify_rejects_failed_check_all_before_helper_succes
         ),
     )
     verification_path.write_text(verification_text, encoding="utf-8")
-    tasks_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "tasks.md"
-    )
+    tasks_path = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "tasks.md"
     tasks_path.write_text(
         tasks_path.read_text(encoding="utf-8").replace("- **Status**: [~]", "- **Status**: [x]"),
         encoding="utf-8",
@@ -957,13 +933,7 @@ def test_sdd_gate_check_cli_verify_rejects_multiple_check_all_exit_codes(tmp_pat
     _create_context_packet_fixture_paths(tmp_path)
     helper_command = "uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q"
     verification_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "verification.md"
+        tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "verification.md"
     )
     verification_text = verification_path.read_text(encoding="utf-8")
     verification_text = verification_text.replace(
@@ -971,8 +941,7 @@ def test_sdd_gate_check_cli_verify_rejects_multiple_check_all_exit_codes(tmp_pat
         f"| AC1 | Pass | `{helper_command}` exited 0. |",
     )
     verification_text = verification_text.replace(
-        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\n"
-        "Pending.",
+        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\nPending.",
         "\n".join(
             [
                 "$ make check-all",
@@ -988,9 +957,7 @@ def test_sdd_gate_check_cli_verify_rejects_multiple_check_all_exit_codes(tmp_pat
         "| line | 91% | >= 80% | Pass |",
     )
     verification_text = verification_text.replace(
-        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py -q\n"
-        "1 passed in 0.01s\n"
-        "exit code: 0",
+        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py -q\n1 passed in 0.01s\nexit code: 0",
         f"$ {helper_command}\n1 passed in 0.01s\nexit code: 0",
     )
     verification_text = verification_text.replace(
@@ -1037,19 +1004,12 @@ def test_sdd_gate_check_cli_verify_rejects_incomplete_spec_compliance(tmp_path: 
     _write_context_packet_fixture(tmp_path)
     _create_context_packet_fixture_paths(tmp_path)
     verification_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "verification.md"
+        tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "verification.md"
     )
     verification_text = verification_path.read_text(encoding="utf-8")
     verification_path.write_text(
         verification_text.replace(
-            "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\n"
-            "Pending.",
+            "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\nPending.",
             "$ make check-all\nall checks passed\nexit code: 0",
         ),
         encoding="utf-8",
@@ -1084,13 +1044,7 @@ def test_sdd_gate_check_cli_verify_rejects_placeholder_spec_compliance_evidence(
     _write_context_packet_fixture(tmp_path)
     _create_context_packet_fixture_paths(tmp_path)
     verification_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "verification.md"
+        tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "verification.md"
     )
     verification_text = verification_path.read_text(encoding="utf-8")
     verification_text = verification_text.replace(
@@ -1098,8 +1052,7 @@ def test_sdd_gate_check_cli_verify_rejects_placeholder_spec_compliance_evidence(
         "| AC1 | Pass | Pending. |",
     )
     verification_text = verification_text.replace(
-        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\n"
-        "Pending.",
+        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\nPending.",
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
@@ -1145,13 +1098,7 @@ def test_sdd_gate_check_cli_verify_rejects_prose_only_spec_compliance_evidence(t
     _write_context_packet_fixture(tmp_path)
     _create_context_packet_fixture_paths(tmp_path)
     verification_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "verification.md"
+        tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "verification.md"
     )
     verification_text = verification_path.read_text(encoding="utf-8")
     verification_text = verification_text.replace(
@@ -1159,8 +1106,7 @@ def test_sdd_gate_check_cli_verify_rejects_prose_only_spec_compliance_evidence(t
         "| AC1 | Pass | Manual review completed. |",
     )
     verification_text = verification_text.replace(
-        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\n"
-        "Pending.",
+        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\nPending.",
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
@@ -1206,13 +1152,7 @@ def test_sdd_gate_check_cli_verify_rejects_empty_spec_compliance(tmp_path: Path)
     _write_context_packet_fixture(tmp_path)
     _create_context_packet_fixture_paths(tmp_path)
     verification_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "verification.md"
+        tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "verification.md"
     )
     verification_text = verification_path.read_text(encoding="utf-8")
     before, spec_and_rest = verification_text.split("## Spec compliance", 1)
@@ -1226,8 +1166,7 @@ def test_sdd_gate_check_cli_verify_rejects_empty_spec_compliance(tmp_path: Path)
         + rest
     )
     verification_text = verification_text.replace(
-        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\n"
-        "Pending.",
+        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\nPending.",
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
@@ -1284,8 +1223,7 @@ def test_sdd_gate_check_cli_verify_rejects_partial_spec_compliance(tmp_path: Pat
         "| AC1 | Pass | `make check-all` exited 0. |",
     )
     verification_text = verification_text.replace(
-        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\n"
-        "Pending.",
+        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\nPending.",
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
@@ -1323,13 +1261,7 @@ def test_sdd_gate_check_cli_verify_rejects_pending_coverage(tmp_path: Path) -> N
     _write_context_packet_fixture(tmp_path)
     _create_context_packet_fixture_paths(tmp_path)
     verification_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "verification.md"
+        tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "verification.md"
     )
     verification_text = verification_path.read_text(encoding="utf-8")
     verification_text = verification_text.replace(
@@ -1337,8 +1269,7 @@ def test_sdd_gate_check_cli_verify_rejects_pending_coverage(tmp_path: Path) -> N
         "| AC1 | Pass | `make check-all` exited 0. |",
     )
     verification_text = verification_text.replace(
-        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\n"
-        "Pending.",
+        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\nPending.",
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_path.write_text(verification_text, encoding="utf-8")
@@ -1372,13 +1303,7 @@ def test_sdd_gate_check_cli_verify_rejects_placeholder_coverage_value(tmp_path: 
     _write_context_packet_fixture(tmp_path)
     _create_context_packet_fixture_paths(tmp_path)
     verification_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "verification.md"
+        tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "verification.md"
     )
     verification_text = verification_path.read_text(encoding="utf-8")
     verification_text = verification_text.replace(
@@ -1386,8 +1311,7 @@ def test_sdd_gate_check_cli_verify_rejects_placeholder_coverage_value(tmp_path: 
         "| AC1 | Pass | `make check-all` exited 0. |",
     )
     verification_text = verification_text.replace(
-        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\n"
-        "Pending.",
+        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\nPending.",
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
@@ -1433,13 +1357,7 @@ def test_sdd_gate_check_cli_verify_rejects_incomplete_e2e_golden_path(tmp_path: 
     _write_context_packet_fixture(tmp_path)
     _create_context_packet_fixture_paths(tmp_path)
     verification_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "verification.md"
+        tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "verification.md"
     )
     verification_text = verification_path.read_text(encoding="utf-8")
     verification_text = verification_text.replace(
@@ -1447,8 +1365,7 @@ def test_sdd_gate_check_cli_verify_rejects_incomplete_e2e_golden_path(tmp_path: 
         "| AC1 | Pass | `make check-all` exited 0. |",
     )
     verification_text = verification_text.replace(
-        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\n"
-        "Pending.",
+        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\nPending.",
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
@@ -1486,13 +1403,7 @@ def test_sdd_gate_check_cli_verify_rejects_fenced_e2e_golden_path(tmp_path: Path
     _write_context_packet_fixture(tmp_path)
     _create_context_packet_fixture_paths(tmp_path)
     verification_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "verification.md"
+        tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "verification.md"
     )
     verification_text = verification_path.read_text(encoding="utf-8")
     verification_text = verification_text.replace(
@@ -1500,8 +1411,7 @@ def test_sdd_gate_check_cli_verify_rejects_fenced_e2e_golden_path(tmp_path: Path
         "| AC1 | Pass | `make check-all` exited 0. |",
     )
     verification_text = verification_text.replace(
-        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\n"
-        "Pending.",
+        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\nPending.",
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
@@ -1552,13 +1462,7 @@ def test_sdd_gate_check_cli_verify_rejects_golden_skip_switch(tmp_path: Path) ->
     _write_context_packet_fixture(tmp_path)
     _create_context_packet_fixture_paths(tmp_path)
     verification_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "verification.md"
+        tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "verification.md"
     )
     verification_text = verification_path.read_text(encoding="utf-8")
     verification_text = verification_text.replace(
@@ -1566,8 +1470,7 @@ def test_sdd_gate_check_cli_verify_rejects_golden_skip_switch(tmp_path: Path) ->
         "| AC1 | Pass | `make check-all` exited 0. |",
     )
     verification_text = verification_text.replace(
-        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\n"
-        "Pending.",
+        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\nPending.",
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
@@ -1618,13 +1521,7 @@ def test_sdd_gate_check_cli_verify_rejects_extra_verification_command(tmp_path: 
     _write_context_packet_fixture(tmp_path)
     _create_context_packet_fixture_paths(tmp_path)
     verification_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "verification.md"
+        tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "verification.md"
     )
     verification_text = verification_path.read_text(encoding="utf-8")
     verification_text = verification_text.replace(
@@ -1632,8 +1529,7 @@ def test_sdd_gate_check_cli_verify_rejects_extra_verification_command(tmp_path: 
         "| AC1 | Pass | `make check-all` exited 0. |",
     )
     verification_text = verification_text.replace(
-        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\n"
-        "Pending.",
+        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\nPending.",
         "$ make check-all\nall checks passed\nexit code: 0\n"
         "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py -q\n"
         "1 passed in 0.01s\nexit code: 0",
@@ -1685,13 +1581,7 @@ def test_sdd_gate_check_cli_verify_rejects_unfenced_extra_verification_command(t
     _write_context_packet_fixture(tmp_path)
     _create_context_packet_fixture_paths(tmp_path)
     verification_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "verification.md"
+        tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "verification.md"
     )
     verification_text = verification_path.read_text(encoding="utf-8")
     verification_text = verification_text.replace(
@@ -1699,8 +1589,7 @@ def test_sdd_gate_check_cli_verify_rejects_unfenced_extra_verification_command(t
         "| AC1 | Pass | `make check-all` exited 0. |",
     )
     verification_text = verification_text.replace(
-        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\n"
-        "Pending.",
+        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\nPending.",
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
@@ -1754,13 +1643,7 @@ def test_sdd_gate_check_cli_verify_rejects_duplicate_unfenced_make_check_all(tmp
     _write_context_packet_fixture(tmp_path)
     _create_context_packet_fixture_paths(tmp_path)
     verification_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "verification.md"
+        tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "verification.md"
     )
     verification_text = verification_path.read_text(encoding="utf-8")
     verification_text = verification_text.replace(
@@ -1768,8 +1651,7 @@ def test_sdd_gate_check_cli_verify_rejects_duplicate_unfenced_make_check_all(tmp
         "| AC1 | Pass | `make check-all` exited 0. |",
     )
     verification_text = verification_text.replace(
-        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\n"
-        "Pending.",
+        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\nPending.",
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
@@ -1823,13 +1705,7 @@ def test_sdd_gate_check_cli_verify_rejects_extra_verification_output_block(tmp_p
     _write_context_packet_fixture(tmp_path)
     _create_context_packet_fixture_paths(tmp_path)
     verification_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "verification.md"
+        tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "verification.md"
     )
     verification_text = verification_path.read_text(encoding="utf-8")
     verification_text = verification_text.replace(
@@ -1837,17 +1713,12 @@ def test_sdd_gate_check_cli_verify_rejects_extra_verification_output_block(tmp_p
         "| AC1 | Pass | `make check-all` exited 0. |",
     )
     verification_text = verification_text.replace(
-        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\n"
-        "Pending.",
+        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\nPending.",
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
         "## Other commands run",
-        "```text\n"
-        "diagnostic output from a separate run\n"
-        "exit code: 1\n"
-        "```\n\n"
-        "## Other commands run",
+        "```text\ndiagnostic output from a separate run\nexit code: 1\n```\n\n## Other commands run",
     )
     verification_text = verification_text.replace(
         "| line | Pending | >= 80% | Fail |",
@@ -1896,13 +1767,7 @@ def test_sdd_gate_check_cli_verify_rejects_duplicate_verification_commands_secti
     _write_context_packet_fixture(tmp_path)
     _create_context_packet_fixture_paths(tmp_path)
     verification_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "verification.md"
+        tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "verification.md"
     )
     verification_text = verification_path.read_text(encoding="utf-8")
     verification_text = verification_text.replace(
@@ -1910,8 +1775,7 @@ def test_sdd_gate_check_cli_verify_rejects_duplicate_verification_commands_secti
         "| AC1 | Pass | `make check-all` exited 0. |",
     )
     verification_text = verification_text.replace(
-        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\n"
-        "Pending.",
+        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\nPending.",
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
@@ -1971,13 +1835,7 @@ def test_sdd_gate_check_cli_verify_rejects_pending_skipped_count(tmp_path: Path)
     _write_context_packet_fixture(tmp_path)
     _create_context_packet_fixture_paths(tmp_path)
     verification_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "verification.md"
+        tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "verification.md"
     )
     verification_text = verification_path.read_text(encoding="utf-8")
     verification_text = verification_text.replace(
@@ -1985,8 +1843,7 @@ def test_sdd_gate_check_cli_verify_rejects_pending_skipped_count(tmp_path: Path)
         "| AC1 | Pass | `make check-all` exited 0. |",
     )
     verification_text = verification_text.replace(
-        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\n"
-        "Pending.",
+        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\nPending.",
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
@@ -2036,13 +1893,7 @@ def test_sdd_gate_check_cli_verify_rejects_positive_skipped_count_with_freeform_
     _write_context_packet_fixture(tmp_path)
     _create_context_packet_fixture_paths(tmp_path)
     verification_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "verification.md"
+        tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "verification.md"
     )
     verification_text = verification_path.read_text(encoding="utf-8")
     verification_text = verification_text.replace(
@@ -2050,8 +1901,7 @@ def test_sdd_gate_check_cli_verify_rejects_positive_skipped_count_with_freeform_
         "| AC1 | Pass | `make check-all` exited 0. |",
     )
     verification_text = verification_text.replace(
-        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\n"
-        "Pending.",
+        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\nPending.",
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
@@ -2059,9 +1909,7 @@ def test_sdd_gate_check_cli_verify_rejects_positive_skipped_count_with_freeform_
         "| line | 91% | >= 80% | Pass |",
     )
     verification_text = verification_text.replace(
-        "## Skipped tests\n\n"
-        f"{NON_FINAL_SKIPPED_ACCOUNTING}\n\n"
-        "## E2E golden path",
+        f"## Skipped tests\n\n{NON_FINAL_SKIPPED_ACCOUNTING}\n\n## E2E golden path",
         "## Skipped tests\n\n"
         "Number of skipped tests in the run above: 1\n\n"
         "| qty | note | ok |\n"
@@ -2109,13 +1957,7 @@ def test_sdd_gate_check_cli_verify_rejects_positive_skipped_count_with_placehold
     _write_context_packet_fixture(tmp_path)
     _create_context_packet_fixture_paths(tmp_path)
     verification_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "verification.md"
+        tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "verification.md"
     )
     verification_text = verification_path.read_text(encoding="utf-8")
     verification_text = verification_text.replace(
@@ -2123,8 +1965,7 @@ def test_sdd_gate_check_cli_verify_rejects_positive_skipped_count_with_placehold
         "| AC1 | Pass | `make check-all` exited 0. |",
     )
     verification_text = verification_text.replace(
-        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\n"
-        "Pending.",
+        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\nPending.",
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
@@ -2132,9 +1973,7 @@ def test_sdd_gate_check_cli_verify_rejects_positive_skipped_count_with_placehold
         "| line | 91% | >= 80% | Pass |",
     )
     verification_text = verification_text.replace(
-        "## Skipped tests\n\n"
-        f"{NON_FINAL_SKIPPED_ACCOUNTING}\n\n"
-        "## E2E golden path",
+        f"## Skipped tests\n\n{NON_FINAL_SKIPPED_ACCOUNTING}\n\n## E2E golden path",
         "## Skipped tests\n\n"
         "Number of skipped tests in the run above: 1\n\n"
         "| count | reason | acceptable? |\n"
@@ -2181,13 +2020,7 @@ def test_sdd_gate_check_cli_verify_rejects_skipped_count_outside_skipped_section
     _write_context_packet_fixture(tmp_path)
     _create_context_packet_fixture_paths(tmp_path)
     verification_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "verification.md"
+        tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "verification.md"
     )
     verification_text = verification_path.read_text(encoding="utf-8")
     verification_text = verification_text.replace(
@@ -2195,13 +2028,11 @@ def test_sdd_gate_check_cli_verify_rejects_skipped_count_outside_skipped_section
         "| AC1 | Pass | `make check-all` exited 0. |",
     )
     verification_text = verification_text.replace(
-        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\n"
-        "Pending.",
+        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\nPending.",
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
-        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py -q\n"
-        "1 passed in 0.01s",
+        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py -q\n1 passed in 0.01s",
         "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py -q\n"
         "Number of skipped tests in the run above: 0\n"
         "1 passed in 0.01s",
@@ -2211,12 +2042,8 @@ def test_sdd_gate_check_cli_verify_rejects_skipped_count_outside_skipped_section
         "| line | 91% | >= 80% | Pass |",
     )
     verification_text = verification_text.replace(
-        "## Skipped tests\n\n"
-        f"{NON_FINAL_SKIPPED_ACCOUNTING}\n\n"
-        "## E2E golden path",
-        "## Skipped tests\n\n"
-        "Number of skipped tests in the run above: Pending\n\n"
-        "## E2E golden path",
+        f"## Skipped tests\n\n{NON_FINAL_SKIPPED_ACCOUNTING}\n\n## E2E golden path",
+        "## Skipped tests\n\nNumber of skipped tests in the run above: Pending\n\n## E2E golden path",
     )
     verification_text = verification_text.replace(
         "- [ ] Not applicable.",
@@ -2257,13 +2084,7 @@ def test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence(tmp_path: Pa
     _write_context_packet_fixture(tmp_path)
     _create_context_packet_fixture_paths(tmp_path)
     verification_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "verification.md"
+        tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "verification.md"
     )
     verification_text = verification_path.read_text(encoding="utf-8")
     verification_text = verification_text.replace(
@@ -2271,8 +2092,7 @@ def test_sdd_gate_check_cli_accepts_verify_gate_with_final_evidence(tmp_path: Pa
         "| AC1 | Pass | `make check-all` exited 0. |",
     )
     verification_text = verification_text.replace(
-        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\n"
-        "Pending.",
+        "$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q\nPending.",
         "$ make check-all\nall checks passed\nexit code: 0",
     )
     verification_text = verification_text.replace(
@@ -2325,15 +2145,7 @@ def test_sdd_gate_check_cli_rejects_failed_analyze_gate(tmp_path: Path) -> None:
     assert script.exists()
     _write_context_packet_fixture(tmp_path)
     _create_context_packet_fixture_paths(tmp_path)
-    plan_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "plan.md"
-    )
+    plan_path = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "plan.md"
     plan_text = plan_path.read_text(encoding="utf-8")
     plan_path.write_text(plan_text.replace("Pass: fixture", "Fail: fixture"), encoding="utf-8")
 
@@ -2364,15 +2176,7 @@ def test_sdd_gate_check_cli_rejects_unbounded_analyze_status(tmp_path: Path) -> 
     assert script.exists()
     _write_context_packet_fixture(tmp_path)
     _create_context_packet_fixture_paths(tmp_path)
-    plan_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "plan.md"
-    )
+    plan_path = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "plan.md"
     plan_text = plan_path.read_text(encoding="utf-8")
     plan_path.write_text(plan_text.replace("Pass: fixture", "Warn: fixture"), encoding="utf-8")
 
@@ -2403,15 +2207,7 @@ def test_sdd_gate_check_cli_rejects_analyze_status_without_evidence(tmp_path: Pa
     assert script.exists()
     _write_context_packet_fixture(tmp_path)
     _create_context_packet_fixture_paths(tmp_path)
-    plan_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "plan.md"
-    )
+    plan_path = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "plan.md"
     plan_text = plan_path.read_text(encoding="utf-8")
     plan_path.write_text(
         plan_text.replace("Pass: fixture only exercises development-agent harness.", "Pass:"),
@@ -2445,15 +2241,7 @@ def test_sdd_gate_check_cli_ignores_non_canonical_analyze_tables(tmp_path: Path)
     assert script.exists()
     _write_context_packet_fixture(tmp_path)
     _create_context_packet_fixture_paths(tmp_path)
-    plan_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "plan.md"
-    )
+    plan_path = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "plan.md"
     plan_text = plan_path.read_text(encoding="utf-8")
     plan_path.write_text(
         plan_text.replace(
@@ -2493,15 +2281,7 @@ def test_sdd_gate_check_cli_rejects_invalid_analyze_result_with_placeholder_chec
     assert script.exists()
     _write_context_packet_fixture(tmp_path)
     _create_context_packet_fixture_paths(tmp_path)
-    plan_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "plan.md"
-    )
+    plan_path = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "plan.md"
     plan_text = plan_path.read_text(encoding="utf-8")
     plan_path.write_text(
         plan_text.replace(
@@ -2538,15 +2318,7 @@ def test_sdd_gate_check_cli_rejects_header_only_gate_tables(tmp_path: Path) -> N
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()
     _write_context_packet_fixture(tmp_path)
-    spec_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "spec.md"
-    )
+    spec_path = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "spec.md"
     spec_text = spec_path.read_text(encoding="utf-8")
     before, clarifications_and_rest = spec_text.split("## Clarifications", 1)
     _old_clarifications, after_clarifications = clarifications_and_rest.split("## Requirement Checklist", 1)
@@ -2586,15 +2358,7 @@ def test_sdd_gate_check_cli_rejects_single_cell_gate_rows(tmp_path: Path) -> Non
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()
     _write_context_packet_fixture(tmp_path)
-    spec_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "spec.md"
-    )
+    spec_path = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "spec.md"
     spec_text = spec_path.read_text(encoding="utf-8")
     before, clarifications_and_rest = spec_text.split("## Clarifications", 1)
     _old_clarifications, after_clarifications = clarifications_and_rest.split("## Requirement Checklist", 1)
@@ -2635,15 +2399,7 @@ def test_sdd_gate_check_cli_rejects_gate_tables_without_separator_rows(tmp_path:
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()
     _write_context_packet_fixture(tmp_path)
-    spec_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "spec.md"
-    )
+    spec_path = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "spec.md"
     spec_text = spec_path.read_text(encoding="utf-8")
     before, clarifications_and_rest = spec_text.split("## Clarifications", 1)
     _old_clarifications, after_clarifications = clarifications_and_rest.split("## Requirement Checklist", 1)
@@ -2683,15 +2439,7 @@ def test_sdd_gate_check_cli_rejects_body_rows_before_separator(tmp_path: Path) -
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()
     _write_context_packet_fixture(tmp_path)
-    spec_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "spec.md"
-    )
+    spec_path = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "spec.md"
     spec_text = spec_path.read_text(encoding="utf-8")
     before, clarifications_and_rest = spec_text.split("## Clarifications", 1)
     _old_clarifications, after_clarifications = clarifications_and_rest.split("## Requirement Checklist", 1)
@@ -2732,15 +2480,7 @@ def test_sdd_gate_check_cli_rejects_empty_separator_rows(tmp_path: Path) -> None
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()
     _write_context_packet_fixture(tmp_path)
-    spec_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "spec.md"
-    )
+    spec_path = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "spec.md"
     spec_text = spec_path.read_text(encoding="utf-8")
     before, clarifications_and_rest = spec_text.split("## Clarifications", 1)
     _old_clarifications, after_clarifications = clarifications_and_rest.split("## Requirement Checklist", 1)
@@ -2781,15 +2521,7 @@ def test_sdd_gate_check_cli_rejects_repeated_separator_rows(tmp_path: Path) -> N
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()
     _write_context_packet_fixture(tmp_path)
-    spec_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "spec.md"
-    )
+    spec_path = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "spec.md"
     spec_text = spec_path.read_text(encoding="utf-8")
     before, clarifications_and_rest = spec_text.split("## Clarifications", 1)
     _old_clarifications, after_clarifications = clarifications_and_rest.split("## Requirement Checklist", 1)
@@ -2831,15 +2563,7 @@ def test_sdd_gate_check_cli_rejects_repeated_header_rows(tmp_path: Path) -> None
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()
     _write_context_packet_fixture(tmp_path)
-    spec_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "spec.md"
-    )
+    spec_path = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "spec.md"
     spec_text = spec_path.read_text(encoding="utf-8")
     before, clarifications_and_rest = spec_text.split("## Clarifications", 1)
     _old_clarifications, after_clarifications = clarifications_and_rest.split("## Requirement Checklist", 1)
@@ -2880,15 +2604,7 @@ def test_sdd_gate_check_cli_rejects_unclosed_table_rows(tmp_path: Path) -> None:
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()
     _write_context_packet_fixture(tmp_path)
-    spec_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "spec.md"
-    )
+    spec_path = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "spec.md"
     spec_text = spec_path.read_text(encoding="utf-8")
     before, clarifications_and_rest = spec_text.split("## Clarifications", 1)
     _old_clarifications, after_clarifications = clarifications_and_rest.split("## Requirement Checklist", 1)
@@ -2929,15 +2645,7 @@ def test_sdd_gate_check_cli_rejects_doubled_boundary_pipes(tmp_path: Path) -> No
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()
     _write_context_packet_fixture(tmp_path)
-    spec_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "spec.md"
-    )
+    spec_path = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "spec.md"
     spec_text = spec_path.read_text(encoding="utf-8")
     before, clarifications_and_rest = spec_text.split("## Clarifications", 1)
     _old_clarifications, after_clarifications = clarifications_and_rest.split("## Requirement Checklist", 1)
@@ -2978,15 +2686,7 @@ def test_sdd_gate_check_cli_rejects_indented_table_rows(tmp_path: Path) -> None:
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()
     _write_context_packet_fixture(tmp_path)
-    spec_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "spec.md"
-    )
+    spec_path = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "spec.md"
     spec_text = spec_path.read_text(encoding="utf-8")
     before, clarifications_and_rest = spec_text.split("## Clarifications", 1)
     _old_clarifications, after_clarifications = clarifications_and_rest.split("## Requirement Checklist", 1)
@@ -3027,15 +2727,7 @@ def test_sdd_gate_check_cli_rejects_separator_arity_mismatch(tmp_path: Path) -> 
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()
     _write_context_packet_fixture(tmp_path)
-    spec_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "spec.md"
-    )
+    spec_path = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "spec.md"
     spec_text = spec_path.read_text(encoding="utf-8")
     before, clarifications_and_rest = spec_text.split("## Clarifications", 1)
     _old_clarifications, after_clarifications = clarifications_and_rest.split("## Requirement Checklist", 1)
@@ -3076,15 +2768,7 @@ def test_sdd_gate_check_cli_rejects_body_row_arity_mismatch(tmp_path: Path) -> N
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()
     _write_context_packet_fixture(tmp_path)
-    spec_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "spec.md"
-    )
+    spec_path = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "spec.md"
     spec_text = spec_path.read_text(encoding="utf-8")
     before, clarifications_and_rest = spec_text.split("## Clarifications", 1)
     _old_clarifications, after_clarifications = clarifications_and_rest.split("## Requirement Checklist", 1)
@@ -3125,15 +2809,7 @@ def test_sdd_gate_check_cli_rejects_non_contiguous_body_rows(tmp_path: Path) -> 
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()
     _write_context_packet_fixture(tmp_path)
-    spec_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "spec.md"
-    )
+    spec_path = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "spec.md"
     spec_text = spec_path.read_text(encoding="utf-8")
     before, clarifications_and_rest = spec_text.split("## Clarifications", 1)
     _old_clarifications, after_clarifications = clarifications_and_rest.split("## Requirement Checklist", 1)
@@ -3175,15 +2851,7 @@ def test_sdd_gate_check_cli_rejects_wrong_clarification_header(tmp_path: Path) -
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()
     _write_context_packet_fixture(tmp_path)
-    spec_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "spec.md"
-    )
+    spec_path = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "spec.md"
     spec_text = spec_path.read_text(encoding="utf-8")
     before, clarifications_and_rest = spec_text.split("## Clarifications", 1)
     _old_clarifications, after_clarifications = clarifications_and_rest.split("## Requirement Checklist", 1)
@@ -3224,15 +2892,7 @@ def test_sdd_gate_check_cli_requires_markdown_heading_lines(tmp_path: Path) -> N
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()
     _write_context_packet_fixture(tmp_path)
-    spec_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "spec.md"
-    )
+    spec_path = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "spec.md"
     spec_text = spec_path.read_text(encoding="utf-8")
     spec_text = spec_text.replace(
         "The fixture spec is grounded by its own source record",
@@ -3268,15 +2928,7 @@ def test_sdd_gate_check_cli_ignores_fenced_heading_tokens(tmp_path: Path) -> Non
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()
     _write_context_packet_fixture(tmp_path)
-    spec_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "spec.md"
-    )
+    spec_path = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "spec.md"
     spec_text = spec_path.read_text(encoding="utf-8")
     spec_text = spec_text.replace(
         "The fixture spec is grounded by its own source record",
@@ -3321,15 +2973,7 @@ def test_sdd_gate_check_cli_ignores_tilde_fenced_heading_tokens(tmp_path: Path) 
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()
     _write_context_packet_fixture(tmp_path)
-    spec_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "spec.md"
-    )
+    spec_path = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "spec.md"
     spec_text = spec_path.read_text(encoding="utf-8")
     spec_text = spec_text.replace(
         "The fixture spec is grounded by its own source record",
@@ -3374,15 +3018,7 @@ def test_sdd_gate_check_cli_rejects_placeholder_gate_rows(tmp_path: Path) -> Non
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()
     _write_context_packet_fixture(tmp_path)
-    spec_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "spec.md"
-    )
+    spec_path = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "spec.md"
     spec_text = spec_path.read_text(encoding="utf-8")
     before, clarifications_and_rest = spec_text.split("## Clarifications", 1)
     _old_clarifications, after_clarifications = clarifications_and_rest.split("## Requirement Checklist", 1)
@@ -3423,15 +3059,7 @@ def test_sdd_gate_check_cli_rejects_non_canonical_clarification_approval_dates(t
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()
     _write_context_packet_fixture(tmp_path)
-    spec_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "spec.md"
-    )
+    spec_path = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "spec.md"
     spec_text = spec_path.read_text(encoding="utf-8")
     before, clarifications_and_rest = spec_text.split("## Clarifications", 1)
     _old_clarifications, after_clarifications = clarifications_and_rest.split("## Requirement Checklist", 1)
@@ -3474,24 +3102,8 @@ def test_sdd_gate_check_cli_accepts_all_active_features(tmp_path: Path) -> None:
     _write_context_packet_fixture(tmp_path)
     _clone_context_packet_fixture(tmp_path, "2026-06-09-second-context-fixture")
     _create_context_packet_fixture_paths(tmp_path)
-    first_tasks = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "tasks.md"
-    )
-    second_tasks = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-second-context-fixture"
-        / "tasks.md"
-    )
+    first_tasks = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "tasks.md"
+    second_tasks = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-second-context-fixture" / "tasks.md"
     first_tasks.write_text(
         first_tasks.read_text(encoding="utf-8").replace(
             "coordinate with 2026-06-09-other-feature",
@@ -3563,15 +3175,7 @@ def test_sdd_gate_check_cli_implement_rejects_delegated_artifact_drift(tmp_path:
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()
     _write_context_packet_fixture(tmp_path)
-    tasks_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "tasks.md"
-    )
+    tasks_path = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "tasks.md"
     tasks_text = tasks_path.read_text(encoding="utf-8")
     tasks_text = tasks_text.replace(
         "- **Subagent handoff**: not delegated",
@@ -3613,15 +3217,7 @@ def test_sdd_gate_check_cli_implement_rejects_acceptance_command_drift(tmp_path:
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()
     _write_context_packet_fixture(tmp_path)
-    plan_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "plan.md"
-    )
+    plan_path = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "plan.md"
     plan_text = plan_path.read_text(encoding="utf-8")
     plan_path.write_text(
         plan_text.replace(
@@ -3662,15 +3258,7 @@ def test_sdd_gate_check_cli_implement_rejects_missing_task_gate_compliance(tmp_p
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()
     _write_context_packet_fixture(tmp_path)
-    tasks_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "tasks.md"
-    )
+    tasks_path = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "tasks.md"
     tasks_text = tasks_path.read_text(encoding="utf-8")
     before, gate_and_rest = tasks_text.split("## Gate Compliance", 1)
     _old_gate, rest = gate_and_rest.split("## Tasks", 1)
@@ -3703,15 +3291,7 @@ def test_sdd_gate_check_cli_implement_rejects_incomplete_task_gate_compliance(tm
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()
     _write_context_packet_fixture(tmp_path)
-    tasks_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "tasks.md"
-    )
+    tasks_path = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "tasks.md"
     tasks_text = tasks_path.read_text(encoding="utf-8")
     before, gate_and_rest = tasks_text.split("## Gate Compliance", 1)
     _old_gate, rest = gate_and_rest.split("## Tasks", 1)
@@ -3755,15 +3335,7 @@ def test_sdd_gate_check_cli_implement_rejects_duplicate_task_gate_compliance(tmp
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()
     _write_context_packet_fixture(tmp_path)
-    tasks_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "tasks.md"
-    )
+    tasks_path = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "tasks.md"
     tasks_text = tasks_path.read_text(encoding="utf-8")
     before, gate_and_rest = tasks_text.split("## Gate Compliance", 1)
     _old_gate, rest = gate_and_rest.split("## Tasks", 1)
@@ -3810,15 +3382,7 @@ def test_sdd_gate_check_cli_implement_rejects_split_task_gate_compliance(tmp_pat
     script = ROOT / "scripts" / "check_sdd_gate.py"
     assert script.exists()
     _write_context_packet_fixture(tmp_path)
-    tasks_path = (
-        tmp_path
-        / "docs"
-        / "sdd"
-        / "features"
-        / "active"
-        / "2026-06-09-context-packet-fixture"
-        / "tasks.md"
-    )
+    tasks_path = tmp_path / "docs" / "sdd" / "features" / "active" / "2026-06-09-context-packet-fixture" / "tasks.md"
     tasks_text = tasks_path.read_text(encoding="utf-8")
     before, gate_and_rest = tasks_text.split("## Gate Compliance", 1)
     _old_gate, rest = gate_and_rest.split("## Tasks", 1)

@@ -3,11 +3,15 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any
 
+import pytest
+
 from parallax.domains.asset_market.repositories.market_tick_repository import (
     MarketTickRepository,
     market_tick_id,
 )
 from parallax.domains.asset_market.types import MarketTick
+
+_ROWCOUNT_MISSING = object()
 
 
 def test_market_tick_id_is_deterministic_from_dedupe_key() -> None:
@@ -125,6 +129,44 @@ def test_insert_ticks_returning_ids_returns_only_inserted_ids() -> None:
     assert inserted_ids == [first_tick.tick_id, second_tick.tick_id]
 
 
+def test_insert_market_tick_returning_write_requires_cursor_rowcount() -> None:
+    tick = _tick()
+    conn = _ScriptedConnection([{"tick_id": tick.tick_id}], rowcounts=[_ROWCOUNT_MISSING])
+
+    with pytest.raises(TypeError, match="market_tick_repository_rowcount_required"):
+        MarketTickRepository(conn).insert_ticks_returning_ids([tick])
+
+
+@pytest.mark.parametrize(
+    ("rowcount", "row"),
+    [
+        pytest.param(True, {"tick_id": "tick-1"}, id="bool-true"),
+        pytest.param(False, None, id="bool-false"),
+        pytest.param("1", {"tick_id": "tick-1"}, id="numeric-string"),
+        pytest.param(-1, None, id="negative"),
+        pytest.param(2, {"tick_id": "tick-1"}, id="multi-row"),
+        pytest.param(0, {"tick_id": "tick-1"}, id="zero-with-row"),
+        pytest.param(1, None, id="one-without-row"),
+    ],
+)
+def test_insert_market_tick_returning_write_rejects_invalid_or_mismatched_rowcount(
+    rowcount: object,
+    row: dict[str, Any] | None,
+) -> None:
+    tick = _tick()
+    conn = _ScriptedConnection([row], rowcounts=[rowcount])
+
+    with pytest.raises(TypeError, match="market_tick_repository_rowcount_invalid"):
+        MarketTickRepository(conn).insert_ticks_returning_ids([tick])
+
+
+def test_insert_market_tick_returning_write_accepts_zero_rowcount_conflict() -> None:
+    tick = _tick()
+    conn = _ScriptedConnection([None], rowcounts=[0])
+
+    assert MarketTickRepository(conn).insert_ticks_returning_ids([tick]) == []
+
+
 def test_latest_at_or_before_uses_observed_window_and_order() -> None:
     conn = _ScriptedConnection([{"tick_id": "tick-1"}])
 
@@ -189,24 +231,53 @@ def test_first_between_uses_inclusive_observed_range_and_ascending_order() -> No
 
 
 class _ScriptedConnection:
-    def __init__(self, rows: list[dict[str, Any] | None]) -> None:
-        self.rows = list(rows)
+    def __init__(
+        self,
+        rows: list[dict[str, Any] | None] | None = None,
+        *,
+        rowcounts: list[object] | None = None,
+    ) -> None:
+        self.rows = list(rows or [])
+        self.rowcounts = list(rowcounts or [])
         self.sql: list[str] = []
         self.params: list[dict[str, Any]] = []
         self.commits = 0
 
-    def execute(self, sql: str, params: dict[str, Any] | None = None) -> _ScriptedConnection:
+    def execute(self, sql: str, params: dict[str, Any] | None = None) -> _Cursor:
         self.sql.append(str(sql))
         self.params.append(params or {})
-        return self
+        if self.rows:
+            row = self.rows.pop(0)
+        elif "INSERT INTO market_ticks" in sql and "RETURNING tick_id" in sql and params is not None:
+            row = {"tick_id": params["tick_id"]}
+        else:
+            row = None
 
-    def fetchone(self) -> dict[str, Any] | None:
-        if not self.rows:
-            return None
-        return self.rows.pop(0)
+        if self.rowcounts:
+            rowcount = self.rowcounts.pop(0)
+        elif row is None:
+            rowcount = 0
+        else:
+            rowcount = 1
+        return _Cursor(row, rowcount=rowcount)
 
     def commit(self) -> None:
         self.commits += 1
+
+
+class _Cursor:
+    def __init__(self, row: dict[str, Any] | None, *, rowcount: object) -> None:
+        self.row = row
+        if rowcount is not _ROWCOUNT_MISSING:
+            self.rowcount = rowcount
+
+    def fetchone(self) -> dict[str, Any] | None:
+        return self.row
+
+    def fetchall(self) -> list[dict[str, Any]]:
+        if self.row is None:
+            return []
+        return [self.row]
 
 
 def _tick(

@@ -6,7 +6,6 @@ from typing import Any
 
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_result import WorkerResult
-from parallax.domains.asset_market.queries.token_profile_source_query import TokenProfileSourceQuery
 from parallax.domains.asset_market.services.token_image_source_admission import (
     admit_token_image_sources,
     image_source_candidates_for_target,
@@ -15,8 +14,6 @@ from parallax.domains.asset_market.services.token_profile_current_projection imp
     project_token_profile_current,
 )
 
-DEFAULT_LEASE_MS = 60_000
-DEFAULT_RETRY_MS = 30_000
 SINGLE_WRITER_KEY = 2026051702
 
 
@@ -45,15 +42,15 @@ class TokenProfileCurrentWorker(WorkerBase):
     def _rebuild_once(self, now_ms: int) -> dict[str, Any]:
         with self.db.worker_session(
             self.name,
-            statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
+            statement_timeout_seconds=self.settings.statement_timeout_seconds,
         ) as repos:
             return rebuild_token_profile_current_once(
                 repos=repos,
                 now_ms=now_ms,
-                limit=max(1, int(getattr(self.settings, "batch_size", 500))),
+                limit=max(1, int(self.settings.batch_size)),
                 lease_owner=self.name,
-                lease_ms=max(1, int(getattr(self.settings, "lease_ms", DEFAULT_LEASE_MS) or DEFAULT_LEASE_MS)),
-                retry_ms=max(1, int(getattr(self.settings, "retry_ms", DEFAULT_RETRY_MS) or DEFAULT_RETRY_MS)),
+                lease_ms=max(1, int(self.settings.lease_ms)),
+                retry_ms=max(1, int(self.settings.retry_ms)),
             )
 
 
@@ -61,10 +58,10 @@ def rebuild_token_profile_current_once(
     *,
     repos: Any,
     now_ms: int,
-    limit: int = 500,
-    lease_owner: str = "token_profile_current",
-    lease_ms: int = DEFAULT_LEASE_MS,
-    retry_ms: int = DEFAULT_RETRY_MS,
+    limit: int,
+    lease_owner: str,
+    lease_ms: int,
+    retry_ms: int,
 ) -> dict[str, Any]:
     result = _empty_result(now_ms=now_ms)
     claims = repos.token_profile_current_dirty_targets.claim_due(
@@ -107,7 +104,7 @@ def _project_claimed_token_profiles(
     now_ms: int,
     result: dict[str, Any],
 ) -> None:
-    query = getattr(repos, "source_query", None) or TokenProfileSourceQuery(repos.conn)
+    query = repos.source_query
     targets = _dedupe_targets(claims)
     result["targets_loaded"] = len(targets)
     asset_ids = [str(row["target_id"]) for row in targets if str(row.get("target_type") or "") == "Asset"]

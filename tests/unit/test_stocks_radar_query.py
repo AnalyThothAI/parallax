@@ -16,7 +16,18 @@ def test_stock_rows_materializes_recent_intents_before_resolution_lookup() -> No
     assert sql.index("WITH recent_intents AS MATERIALIZED") < sql.index("JOIN token_intent_resolutions tir")
     assert "ranked AS MATERIALIZED" in sql
     assert sql.index("ranked AS MATERIALIZED") < sql.index("COALESCE(e.text_clean, e.text) AS latest_text")
-    assert conn.params == (1000, 2000, TOKEN_RADAR_RESOLVER_POLICY_VERSION, 25)
+    assert conn.params == (1000, 2000, TOKEN_RADAR_RESOLVER_POLICY_VERSION, 25, 25)
+
+
+def test_stock_rows_bounds_source_event_id_aggregation_per_symbol() -> None:
+    conn = RecordingConn()
+
+    StocksRadarQuery(conn).stock_rows(since_ms=1000, now_ms=2000, scope="all", limit=25)
+
+    assert "ranked_mentions AS MATERIALIZED" in conn.sql
+    assert "row_number() OVER (" in conn.sql
+    assert "FILTER (WHERE event_rank <= %s)" in conn.sql
+    assert "ARRAY_AGG(event_id ORDER BY received_at_ms DESC, event_id DESC) AS source_event_ids" not in conn.sql
 
 
 class RecordingConn:

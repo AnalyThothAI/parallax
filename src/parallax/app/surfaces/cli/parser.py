@@ -74,6 +74,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     search = subcommands.add_parser("search", help="search stored tweets by query text")
     search.add_argument("query", nargs="?", default="")
+    search.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="24h")
     search.add_argument("--limit", type=int, default=20)
     search.add_argument("--scope", choices=("all", "matched"), default="all")
     search.add_argument("--cursor", default="", help="opaque cursor returned by a prior search page")

@@ -5,8 +5,7 @@ import hashlib
 import json
 import time
 from collections.abc import Callable, Mapping
-from inspect import isawaitable
-from typing import Any
+from typing import Any, cast
 
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_result import WorkerResult
@@ -15,57 +14,73 @@ from parallax.domains.news_intel.runtime.news_projection_work import (
     enqueue_page_reprojection,
     enqueue_source_quality_refresh,
 )
-from parallax.domains.news_intel.services.news_canonical_identity import canonical_identity_for_observation
 from parallax.domains.news_intel.services.news_provider_contract import (
     NewsProviderContractError,
     validate_news_provider_contract,
 )
-from parallax.domains.news_intel.types.source_classification import PROVIDER_TYPES
+from parallax.domains.news_intel.types.news_canonical_identity import canonical_identity_for_observation
 from parallax.domains.news_intel.types.source_provider import (
     NewsProviderObservation,
     NewsSourceHttpCache,
     NewsSourceSnapshot,
 )
 from parallax.domains.news_intel.types.text_normalization import content_hash, title_fingerprint
+from parallax.platform.config.news_provider_types import RUNTIME_SUPPORTED_NEWS_PROVIDER_TYPES
 
 
 class NewsFetchWorker(WorkerBase):
     def __init__(
         self,
         *,
+        settings: Any,
+        db: Any,
+        telemetry: Any,
         news_settings: Any,
-        wake_bus: Any | None,
         feed_client: NewsSourceProvider,
+        wake_waiter: Any | None = None,
+        wake_emitter: Any | None = None,
         clock_ms: Callable[[], int] | None = None,
-        **kwargs: Any,
+        name: str = "news_fetch",
     ) -> None:
-        super().__init__(**kwargs)
+        if settings is None:
+            raise RuntimeError("news_fetch_settings_required")
+        if db is None:
+            raise RuntimeError("news_fetch_db_required")
+        if news_settings is None:
+            raise RuntimeError("news_fetch_news_settings_required")
+        if feed_client is None:
+            raise RuntimeError("news_fetch_feed_client_required")
+        super().__init__(
+            name=name,
+            settings=settings,
+            db=db,
+            telemetry=telemetry,
+            wake_waiter=wake_waiter,
+        )
         self.news_settings = news_settings
-        self.wake_bus = wake_bus
+        self.wake_emitter = wake_emitter
         self.feed_client = feed_client
         self.clock_ms = clock_ms or _now_ms
 
     async def on_close(self) -> None:
-        close = getattr(self.feed_client, "close", None)
-        if close is None:
-            return
+        close = cast(Callable[[], object | None], self.feed_client.close)
         result = close()
-        if isawaitable(result):
-            await result
+        if result is not None:
+            raise RuntimeError("news_fetch_feed_client_close_must_be_sync")
 
     async def run_once(self) -> WorkerResult:
         return await asyncio.to_thread(self.run_once_sync)
 
     def run_once_sync(self, *, now_ms: int | None = None) -> WorkerResult:
         now = int(now_ms if now_ms is not None else self.clock_ms())
-        configured_sources = tuple(getattr(self.news_settings, "sources", ()) or ())
+        configured_sources = tuple(self.news_settings.sources or ())
         metadata_dirty_count = 0
-        with self._repository_session() as repos, repos.conn.transaction():
+        with self._repository_session() as repos, repos.transaction():
             try:
                 contract = validate_news_provider_contract(
                     configured_sources=configured_sources,
-                    supported_provider_types=_supported_provider_types(self.feed_client),
-                    schema_provider_types=_schema_provider_types(repos.news),
+                    supported_provider_types=RUNTIME_SUPPORTED_NEWS_PROVIDER_TYPES,
+                    schema_provider_types=repos.news.news_source_provider_constraint_values(),
                 )
             except NewsProviderContractError as exc:
                 return WorkerResult(failed=1, notes=exc.to_payload())
@@ -96,9 +111,14 @@ class NewsFetchWorker(WorkerBase):
                 now_ms=now,
                 commit=False,
             )
-            due_sources = repos.news.claim_due_sources(now_ms=now, limit=self._batch_size(), commit=False)
+            due_sources = repos.news.claim_due_sources(
+                now_ms=now,
+                limit=self._batch_size(),
+                claim_lease_ms=max(1, int(self.settings.lease_ms)),
+                commit=False,
+            )
         _notify_news_page_dirty(
-            self.wake_bus,
+            self.wake_emitter,
             count=metadata_dirty_count,
             reason="source_metadata_changed",
         )
@@ -123,7 +143,7 @@ class NewsFetchWorker(WorkerBase):
         source_id = str(source["source_id"])
         fetch_run_id = ""
         try:
-            with self._repository_session() as repos, repos.conn.transaction():
+            with self._repository_session() as repos, repos.transaction():
                 fetch_run_id = repos.news.start_fetch_run(
                     source_id=source_id,
                     started_at_ms=now_ms,
@@ -150,7 +170,7 @@ class NewsFetchWorker(WorkerBase):
 
             with self._repository_session() as repos:
                 if feed_result.not_modified:
-                    with repos.conn.transaction():
+                    with repos.transaction():
                         repos.news.update_source_http_cache(
                             source_id=source_id,
                             etag=feed_result.etag,
@@ -186,7 +206,7 @@ class NewsFetchWorker(WorkerBase):
                         )
                     return WorkerResult(processed=0)
 
-                with repos.conn.transaction():
+                with repos.transaction():
                     counts = self._persist_entries(
                         repos,
                         source=source,
@@ -228,8 +248,8 @@ class NewsFetchWorker(WorkerBase):
                         commit=False,
                     )
             written = counts["inserted"] + counts["updated"]
-            if written > 0 and self.wake_bus is not None:
-                self.wake_bus.notify_news_item_written(source_id=source_id, count=written)
+            if written > 0 and self.wake_emitter is not None:
+                self.wake_emitter.notify_news_item_written(source_id=source_id, count=written)
             return WorkerResult(processed=written)
         except Exception as exc:  # pragma: no cover - failure path covered by integration/ops.
             self._mark_source_failed(source_id=source_id, fetch_run_id=fetch_run_id, now_ms=now_ms, error=exc)
@@ -309,16 +329,14 @@ class NewsFetchWorker(WorkerBase):
             if status in counts:
                 counts[status] += 1
             if news_item_id and status in {"inserted", "updated"}:
-                affected_item_ids = _affected_news_item_ids(news, fallback_news_item_id=news_item_id)
+                affected_item_ids = _affected_news_item_ids(news)
                 dirty_news_item_ids.extend(affected_item_ids)
         enqueue_page_reprojection(
             repos,
             news_item_ids=dirty_news_item_ids,
             reason="news_item_written",
             now_ms=fetched_at_ms,
-            source_watermark_ms_by_news_item_id={
-                news_item_id: fetched_at_ms for news_item_id in dirty_news_item_ids
-            },
+            source_watermark_ms_by_news_item_id={news_item_id: fetched_at_ms for news_item_id in dirty_news_item_ids},
             commit=False,
         )
         return counts
@@ -327,7 +345,7 @@ class NewsFetchWorker(WorkerBase):
         if not fetch_run_id:
             return
         try:
-            with self._repository_session() as repos, repos.conn.transaction():
+            with self._repository_session() as repos, repos.transaction():
                 repos.news.finish_fetch_run(
                     fetch_run_id=fetch_run_id,
                     source_id=source_id,
@@ -342,11 +360,11 @@ class NewsFetchWorker(WorkerBase):
     def _repository_session(self) -> Any:
         return self.db.worker_session(
             self.name,
-            statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
+            statement_timeout_seconds=self.settings.statement_timeout_seconds,
         )
 
     def _batch_size(self) -> int:
-        return max(1, int(getattr(self.settings, "batch_size", 10)))
+        return max(1, int(self.settings.batch_size))
 
 
 def _payload_hash(payload: Mapping[str, Any]) -> str:
@@ -354,13 +372,10 @@ def _payload_hash(payload: Mapping[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _notify_news_page_dirty(wake_bus: Any | None, *, count: int, reason: str) -> None:
-    if count <= 0 or wake_bus is None:
+def _notify_news_page_dirty(wake_emitter: Any | None, *, count: int, reason: str) -> None:
+    if count <= 0 or wake_emitter is None:
         return
-    notify = getattr(wake_bus, "notify_news_page_dirty", None)
-    if notify is None:
-        return
-    notify(count=int(count), reason=str(reason))
+    wake_emitter.notify_news_page_dirty(count=int(count), reason=str(reason))
 
 
 def _cursor_high_watermark_ms(cursor: Mapping[str, Any]) -> int | None:
@@ -393,8 +408,6 @@ def _source_fetch_since_ms(
 def _fetch_policy_overlap_ms(source: Mapping[str, Any], source_cursor: Mapping[str, Any]) -> int:
     value = _fetch_policy_int(source, "rest_overlap_ms")
     if value is None:
-        value = _fetch_policy_int(source, "overlap_ms")
-    if value is None:
         try:
             value = int(source_cursor.get("overlap_ms") or 0)
         except (TypeError, ValueError):
@@ -417,35 +430,17 @@ def _fetch_policy_int(source: Mapping[str, Any], key: str) -> int | None:
     return parsed if parsed > 0 else None
 
 
-def _affected_news_item_ids(news: Mapping[str, Any], *, fallback_news_item_id: str) -> list[str]:
+def _affected_news_item_ids(news: Mapping[str, Any]) -> list[str]:
     raw_ids = news.get("affected_news_item_ids")
     item_ids = [str(item) for item in raw_ids if str(item or "")] if isinstance(raw_ids, list | tuple) else []
     if not item_ids:
-        item_ids = [str(fallback_news_item_id)]
+        raise ValueError("canonical news upsert returned no affected_news_item_ids")
     return list(dict.fromkeys(item_ids))
 
 
 def _optional_str(value: Any) -> str | None:
     normalized = str(value or "").strip()
     return normalized or None
-
-
-def _supported_provider_types(feed_client: NewsSourceProvider) -> tuple[str, ...]:
-    supported = getattr(feed_client, "supported_provider_types", None)
-    if callable(supported):
-        return tuple(str(value) for value in supported())
-    registry = getattr(feed_client, "_registry", None)
-    registry_supported = getattr(registry, "supported_provider_types", None)
-    if callable(registry_supported):
-        return tuple(str(value) for value in registry_supported())
-    return tuple(PROVIDER_TYPES)
-
-
-def _schema_provider_types(repository: Any) -> tuple[str, ...]:
-    constraint_values = getattr(repository, "news_source_provider_constraint_values", None)
-    if callable(constraint_values):
-        return tuple(str(value) for value in constraint_values())
-    return tuple(PROVIDER_TYPES)
 
 
 def _mapping(value: Any) -> dict[str, Any]:

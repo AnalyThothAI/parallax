@@ -361,7 +361,7 @@ class _RealWorkerRepos:
         token_target_rows: list[dict[str, Any]],
     ) -> None:
         self.conn = conn
-        self.pulse_jobs = PulseJobsRepository(conn)
+        self.pulse_jobs = PulseJobsRepository(conn, running_timeout_ms=300_000)
         self.pulse_admission = PulseAdmissionRepository(conn)
         self.pulse_candidates = PulseCandidatesRepository(conn)
         self.pulse_runs = PulseRunsRepository(conn)

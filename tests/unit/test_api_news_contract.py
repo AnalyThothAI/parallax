@@ -514,19 +514,11 @@ def test_news_openapi_schema_exposes_market_scope_not_legacy_admission() -> None
     token_lane_props = schemas["NewsTokenLane"]["properties"]
     agent_brief_props = schemas["NewsAgentBrief"]["properties"]
     agent_run_props = schemas["NewsAgentRunSummary"]["properties"]
-    news_query_params = {
-        param["name"] for param in schema["paths"]["/api/news"]["get"]["parameters"]
-    }
+    news_query_params = {param["name"] for param in schema["paths"]["/api/news"]["get"]["parameters"]}
 
-    assert {"market_scope", "agent_admission", "agent_admission_status", "provider_rating"} <= set(
-        row_props
-    )
-    assert {"market_scope", "agent_admission", "agent_admission_status", "provider_rating"} <= set(
-        detail_props
-    )
-    assert {"provider", "status", "direction", "signal", "score", "grade", "method"} <= set(
-        provider_rating_props
-    )
+    assert {"market_scope", "agent_admission", "agent_admission_status", "provider_rating"} <= set(row_props)
+    assert {"market_scope", "agent_admission", "agent_admission_status", "provider_rating"} <= set(detail_props)
+    assert {"provider", "status", "direction", "signal", "score", "grade", "method"} <= set(provider_rating_props)
     assert {"market_scope", "agent_admission_status", "agent_admission_reason"} <= set(eligibility_props)
     assert schemas["NewsSignalEnvelope"]["additionalProperties"] is False
     assert "provider_signal" not in detail_props
@@ -632,25 +624,9 @@ class FakeRuntime:
     def __init__(self, news: FakeNewsRepository) -> None:
         self.settings = type("FakeSettings", (), {"ws_token": "secret"})()
         self.news = news
-        self.providers = type(
-            "FakeProviders",
-            (),
-            {
-                "news_intel": type(
-                    "FakeNewsProviders",
-                    (),
-                    {"feed_client": FakeNewsFeedClient()},
-                )()
-            },
-        )()
 
     def repositories(self):
         return FakeRepositoryContext(self.news)
-
-
-class FakeNewsFeedClient:
-    def supported_provider_types(self) -> tuple[str, ...]:
-        return ("atom", "cryptopanic", "json_feed", "opennews", "rss")
 
 
 def _news_row(*, row_id: str, latest_at_ms: int) -> dict[str, object]:

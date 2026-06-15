@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from parallax.domains.pulse_lab.services.evidence_completeness_gate import EvidenceCompletenessGate
 from parallax.domains.pulse_lab.services.evidence_packet_builder import PulseEvidenceBuilder
+from parallax.domains.pulse_lab.types.pulse_candidate_context import PulseCandidateContext
 
 NOW_MS = 1_800_000_000_000
+EVIDENCE_MARKET_FRESHNESS_MS = 3_600_000
 
 
 class FakeEvidenceSourceRepository:
@@ -70,7 +74,7 @@ def test_builds_partial_cex_packet_with_pricefeed_id_and_no_venue_id() -> None:
         identity_facts=[{"source_id": "identity:btc", "symbol": "BTC", "observed_at_ms": NOW_MS - 60_000}],
     )
 
-    packet = PulseEvidenceBuilder(repo).build(context, run_id="run-1", now_ms=NOW_MS)
+    packet = _builder(repo).build(context, run_id="run-1", now_ms=NOW_MS)
 
     market = _model_dump(packet.market_evidence)
     assert market["instrument_ref"] == "pricefeed:cex:binance:swap:BTCUSDT"
@@ -115,7 +119,7 @@ def test_builds_cex_snapshot_packet_with_derivatives_and_level_refs() -> None:
         identity_facts=[{"source_id": "identity:btc", "symbol": "BTC", "observed_at_ms": NOW_MS - 60_000}],
     )
 
-    packet = PulseEvidenceBuilder(repo).build(context, run_id="run-1", now_ms=NOW_MS)
+    packet = _builder(repo).build(context, run_id="run-1", now_ms=NOW_MS)
     gate = EvidenceCompletenessGate().evaluate(packet)
 
     market = _model_dump(packet.market_evidence)
@@ -146,7 +150,7 @@ def test_builds_dex_packet_with_pair_and_liquidity_evidence() -> None:
         identity_facts=[{"source_id": "identity:abc", "symbol": "ABC", "observed_at_ms": NOW_MS - 60_000}],
     )
 
-    packet = PulseEvidenceBuilder(repo).build(context, run_id="run-1", now_ms=NOW_MS)
+    packet = _builder(repo).build(context, run_id="run-1", now_ms=NOW_MS)
 
     market = _model_dump(packet.market_evidence)
     assert market["instrument_ref"] == "pair:solana:abc-usdc"
@@ -175,7 +179,7 @@ def test_marks_market_evidence_stale_without_using_factor_snapshot_as_truth() ->
         identity_facts=[{"source_id": "identity:eth", "symbol": "ETH", "observed_at_ms": NOW_MS - 60_000}],
     )
 
-    packet = PulseEvidenceBuilder(repo, market_freshness_ms=3_600_000).build(
+    packet = _builder(repo).build(
         context,
         run_id="run-1",
         now_ms=NOW_MS,
@@ -214,7 +218,7 @@ def test_packet_hash_is_stable_across_input_dict_key_order() -> None:
         identity_facts=[{"source_id": "identity:btc", "symbol": "BTC", "observed_at_ms": NOW_MS - 60_000}],
     )
 
-    builder = PulseEvidenceBuilder(repo)
+    builder = _builder(repo)
     packet_a = builder.build(context_a, run_id="run-1", now_ms=NOW_MS)
     packet_b = builder.build(context_b, run_id="run-1", now_ms=NOW_MS)
 
@@ -235,7 +239,7 @@ def test_includes_updating_digest_as_context_with_currentness_and_data_gap_only(
         )
     )
 
-    packet = PulseEvidenceBuilder(repo).build(context, run_id="run-digest", now_ms=NOW_MS)
+    packet = _builder(repo).build(context, run_id="run-digest", now_ms=NOW_MS)
 
     compact = packet.admission_context["discussion_digest"]
     assert compact["currentness"]["display_status"] == "updating"
@@ -255,7 +259,7 @@ def test_stale_digest_prose_without_current_sources_blocks_non_abstain_packet() 
         )
     )
 
-    packet = PulseEvidenceBuilder(repo).build(context, run_id="run-stale", now_ms=NOW_MS)
+    packet = _builder(repo).build(context, run_id="run-stale", now_ms=NOW_MS)
     gate = EvidenceCompletenessGate().evaluate(packet)
 
     assert gate.max_decision_status == "abstain"
@@ -287,12 +291,60 @@ def test_current_source_refs_remain_primary_when_digest_is_stale_context() -> No
         ),
     )
 
-    packet = PulseEvidenceBuilder(repo).build(context, run_id="run-current", now_ms=NOW_MS)
+    packet = _builder(repo).build(context, run_id="run-current", now_ms=NOW_MS)
     gate = EvidenceCompletenessGate().evaluate(packet)
 
     assert gate.max_decision_status == "token_watch"
     assert {"event:event-current", "metric:market:price_usd", "identity:btc"}.issubset(_ref_ids(packet))
     assert "event:old-digest" not in _ref_ids(packet)
+
+
+@pytest.mark.parametrize(
+    "missing_method",
+    [
+        "list_source_events",
+        "list_enriched_events",
+        "list_market_facts",
+        "list_identity_facts",
+        "get_current_discussion_digest",
+    ],
+)
+def test_builder_requires_formal_evidence_source_repository_contracts(missing_method: str) -> None:
+    repo_type = type(
+        "Repo",
+        (),
+        {
+            "list_source_events": lambda self, event_ids: [],
+            "list_enriched_events": lambda self, event_ids: [],
+            "list_market_facts": lambda self, context, *, max_age_ms, now_ms: [],
+            "list_identity_facts": lambda self, context: [],
+            "get_current_discussion_digest": lambda self, **kwargs: None,
+        },
+    )
+    delattr(repo_type, missing_method)
+
+    with pytest.raises(AttributeError, match=missing_method):
+        _builder(repo_type()).build(
+            _context(target_type="chain_token", target_id="solana:abc", source_event_ids=["event-1"]),
+            run_id="run-contract",
+            now_ms=NOW_MS,
+        )
+
+
+def test_builder_requires_formal_candidate_context_without_shape_fallback() -> None:
+    malformed_context = SimpleNamespace(
+        target_type="chain_token",
+        target_id="solana:abc",
+        source_event_ids=[],
+        evidence_event_ids=[],
+    )
+
+    with pytest.raises(AttributeError, match="factor_snapshot"):
+        _builder(FakeEvidenceSourceRepository()).build(
+            malformed_context,  # type: ignore[arg-type]
+            run_id="run-context-contract",
+            now_ms=NOW_MS,
+        )
 
 
 def _context(
@@ -301,9 +353,14 @@ def _context(
     target_id: str,
     source_event_ids: list[str],
     factor_snapshot: dict[str, object] | None = None,
-) -> SimpleNamespace:
-    return SimpleNamespace(
+) -> PulseCandidateContext:
+    return PulseCandidateContext(
         candidate_id="candidate-1",
+        candidate_type="token_target",
+        subject_key=target_id,
+        trigger_signature="trigger-a",
+        timeline_signature="timeline-a",
+        priority=80,
         target_type=target_type,
         target_id=target_id,
         symbol="BTC",
@@ -313,8 +370,19 @@ def _context(
         evidence_event_ids=[],
         factor_snapshot=factor_snapshot or {},
         selected_posts=[],
+        post_clusters=[],
         gate_result={"pulse_status": "trade_candidate"},
+        edge_state=None,
+        edge_events=(),
     )
+
+
+def _builder(
+    repo: object,
+    *,
+    market_freshness_ms: int = EVIDENCE_MARKET_FRESHNESS_MS,
+) -> PulseEvidenceBuilder:
+    return PulseEvidenceBuilder(repo, market_freshness_ms=market_freshness_ms)
 
 
 def _event(event_id: str) -> dict[str, object]:

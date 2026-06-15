@@ -138,8 +138,7 @@ class CurrentReadModelPublisher:
         )
         if malformed_hash_values:
             raise ValueError(
-                "current read model existing hash values must be sha256 payload hashes: "
-                f"{malformed_hash_values}"
+                f"current read model existing hash values must be sha256 payload hashes: {malformed_hash_values}"
             )
         changed: list[dict[str, Any]] = []
         seen_identities: set[tuple[Any, ...]] = set()

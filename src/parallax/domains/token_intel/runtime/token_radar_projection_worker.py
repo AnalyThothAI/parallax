@@ -13,12 +13,8 @@ from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.token_intel._constants import (
     TOKEN_RADAR_DEFAULT_VENUE,
     TOKEN_RADAR_PROJECTION_VERSION,
-    TOKEN_RADAR_VENUES,
 )
 
-DEFAULT_WINDOWS = ("5m", "1h", "4h", "24h")
-DEFAULT_SCOPES = ("all", "matched")
-DEFAULT_HOT_WINDOWS = ("5m",)
 ADVISORY_LOCK_KEY = 2026051501
 
 if TYPE_CHECKING:
@@ -35,10 +31,14 @@ class TokenRadarProjectionWorker(WorkerBase):
         settings: Any,
         db: Any,
         telemetry: Any,
-        wake_bus: Any | None = None,
+        wake_emitter: Any | None = None,
         wake_waiter: Any | None = None,
         enqueue_narrative_admission: bool = True,
     ) -> None:
+        if settings is None:
+            raise RuntimeError("token_radar_projection_settings_required")
+        if db is None:
+            raise RuntimeError("token_radar_projection_db_required")
         super().__init__(
             name=name,
             settings=settings,
@@ -46,15 +46,19 @@ class TokenRadarProjectionWorker(WorkerBase):
             telemetry=telemetry,
             wake_waiter=wake_waiter,
         )
-        self.windows = tuple(getattr(settings, "windows", DEFAULT_WINDOWS) or DEFAULT_WINDOWS)
-        self.scopes = tuple(getattr(settings, "scopes", DEFAULT_SCOPES) or DEFAULT_SCOPES)
-        self.venues = tuple(getattr(settings, "venues", TOKEN_RADAR_VENUES) or TOKEN_RADAR_VENUES)
-        hot_windows = tuple(getattr(settings, "hot_windows", DEFAULT_HOT_WINDOWS) or DEFAULT_HOT_WINDOWS)
+        self.windows = tuple(str(window).strip().lower() for window in settings.windows)
+        self.scopes = tuple(str(scope).strip().lower() for scope in settings.scopes)
+        self.venues = tuple(str(venue).strip().lower() for venue in settings.venues)
+        hot_windows = tuple(str(window).strip().lower() for window in settings.hot_windows)
         self.hot_windows = tuple(window for window in hot_windows if window in self.windows)
-        self.limit = max(1, int(getattr(settings, "batch_size", 100) or 100))
+        self.limit = max(1, int(settings.batch_size))
+        self.lease_ms = max(1, int(settings.lease_ms))
+        self.retry_ms = max(1, int(settings.retry_ms))
+        self.private_cache_retention_enabled = bool(settings.private_cache_retention_enabled)
+        self.private_cache_retention_ms = max(1, int(settings.private_cache_retention_ms))
         self.hot_interval_ms = int(self.interval_seconds * 1000)
-        self.cold_interval_ms = int(float(getattr(settings, "cold_interval_seconds", 60.0) or 0) * 1000)
-        self.wake_bus = wake_bus
+        self.cold_interval_ms = int(float(settings.cold_interval_seconds) * 1000)
+        self.wake_emitter = wake_emitter
         self.enqueue_narrative_admission = bool(enqueue_narrative_admission)
         self._cursor = 0
 
@@ -77,6 +81,7 @@ class TokenRadarProjectionWorker(WorkerBase):
                 "reason": result.get("reason"),
                 "claimed": result.get("claimed"),
                 "catch_up_enqueued": result.get("catch_up_enqueued"),
+                "private_cache_retention": result.get("private_cache_retention"),
                 "windows": result["windows"],
             },
         )
@@ -126,22 +131,17 @@ class TokenRadarProjectionWorker(WorkerBase):
                 )[0]
                 target_claims = repos.token_radar_dirty_targets.claim_due(
                     limit=self.limit,
-                    lease_ms=_dirty_target_lease_ms(),
+                    lease_ms=self.lease_ms,
                     now_ms=computed_at_ms,
                     lease_owner=self.name,
                     commit=True,
                 )
-                source_dirty_repo = getattr(repos, "token_radar_source_dirty_events", None)
-                source_claims = (
-                    source_dirty_repo.claim_due(
-                        limit=self.limit,
-                        lease_ms=_dirty_target_lease_ms(),
-                        now_ms=computed_at_ms,
-                        lease_owner=self.name,
-                        commit=True,
-                    )
-                    if source_dirty_repo is not None
-                    else []
+                source_claims = repos.token_radar_source_dirty_events.claim_due(
+                    limit=self.limit,
+                    lease_ms=self.lease_ms,
+                    now_ms=computed_at_ms,
+                    lease_owner=self.name,
+                    commit=True,
                 )
             has_claims = bool(target_claims or source_claims)
             if publication_work_items or has_claims:
@@ -164,6 +164,8 @@ class TokenRadarProjectionWorker(WorkerBase):
                         "now_ms": computed_at_ms,
                         "limit": self.limit,
                         "rank_limit": self.limit,
+                        "lease_ms": self.lease_ms,
+                        "retry_ms": self.retry_ms,
                         "lease_owner": self.name,
                         "claimed_targets": tuple(dict(claim) for claim in target_claims),
                         "claimed_source_events": tuple(dict(claim) for claim in source_claims),
@@ -191,16 +193,17 @@ class TokenRadarProjectionWorker(WorkerBase):
             }
 
         result = self._finalize_result(result=result, computed_at_ms=computed_at_ms)
+        self._attach_private_cache_retention(result=result, computed_at_ms=computed_at_ms)
 
         if str(result.get("status") or "") == "failed":
             self.last_error = self.last_error or str(result.get("error") or "token radar projection failed")
 
         for key, window_result in result["windows"].items():
-            if str(window_result.get("status") or "") != "ready" or self.wake_bus is None:
+            if str(window_result.get("status") or "") != "ready" or self.wake_emitter is None:
                 continue
             parts = str(key).split(":", 2)
             window, scope = parts[0], parts[1]
-            self.wake_bus.notify_token_radar_updated(window=window, scope=scope)
+            self.wake_emitter.notify_token_radar_updated(window=window, scope=scope)
         return result
 
     def _finalize_result(self, *, result: dict[str, Any], computed_at_ms: int) -> dict[str, Any]:
@@ -214,6 +217,41 @@ class TokenRadarProjectionWorker(WorkerBase):
         result["scope"] = self.scopes[0] if self.scopes else None
         result["venue"] = self.venues[0] if self.venues else None
         return result
+
+    def _attach_private_cache_retention(self, *, result: dict[str, Any], computed_at_ms: int) -> None:
+        if not self.private_cache_retention_enabled:
+            result["private_cache_retention"] = {"status": "disabled"}
+            return
+        try:
+            result["private_cache_retention"] = self._prune_private_cache(computed_at_ms=computed_at_ms)
+            if (
+                str(result["private_cache_retention"].get("status") or "") == "ready"
+                and str(result.get("status") or "") == "idle"
+            ):
+                result["status"] = "ready"
+                result["reason"] = "private_cache_retention"
+        except Exception as exc:
+            self.last_error = str(exc)
+            logger.exception(f"token radar private cache retention failed: error={exc}")
+            result["private_cache_retention"] = {"status": "failed", "error": str(exc)}
+            if str(result.get("status") or "") == "idle":
+                result["status"] = "failed"
+                result["error"] = str(exc)
+
+    def _prune_private_cache(self, *, computed_at_ms: int) -> dict[str, Any]:
+        with self._worker_session() as repos:
+            projection = _projection_class()(
+                repos=repos,
+                enqueue_narrative_admission=self.enqueue_narrative_admission,
+            )
+            retention_kwargs: dict[str, Any] = {
+                "windows": self.windows,
+                "scopes": self.scopes,
+                "now_ms": computed_at_ms,
+                "retention_ms": self.private_cache_retention_ms,
+                "limit": self.limit,
+            }
+            return projection.prune_private_cache(**retention_kwargs)
 
     def _next_work_items(
         self,
@@ -323,36 +361,11 @@ class TokenRadarProjectionWorker(WorkerBase):
                     missing.append(item)
         return missing
 
-    def _mark_publication_failed(
-        self,
-        *,
-        window: str,
-        scope: str,
-        venue: str = TOKEN_RADAR_DEFAULT_VENUE,
-        computed_at_ms: int,
-        error: str,
-    ) -> None:
-        try:
-            with self._worker_session() as repos:
-                repos.token_radar.mark_publication_failed(
-                    projection_version=TOKEN_RADAR_PROJECTION_VERSION,
-                    window=window,
-                    scope=scope,
-                    venue=venue,
-                    generation_id=f"worker-failed:{window}:{scope}:{venue}:{computed_at_ms}",
-                    started_at_ms=computed_at_ms,
-                    finished_at_ms=_now_ms(),
-                    error=error,
-                    commit=True,
-                )
-        except Exception as exc:  # pragma: no cover - diagnostic side path
-            logger.exception(f"failed to mark token radar publication failure: {exc}")
-
     @contextmanager
     def _worker_session(self) -> Iterator[Any]:
         with self.db.worker_session(
             self.name,
-            statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
+            statement_timeout_seconds=self.settings.statement_timeout_seconds,
         ) as repos:
             yield repos
 
@@ -495,9 +508,3 @@ def _projection_class() -> type[TokenRadarProjection]:
     from parallax.domains.token_intel.services.token_radar_projection import TokenRadarProjection
 
     return TokenRadarProjection
-
-
-def _dirty_target_lease_ms() -> int:
-    from parallax.domains.token_intel.services.token_radar_projection import DIRTY_TARGET_LEASE_MS
-
-    return DIRTY_TARGET_LEASE_MS

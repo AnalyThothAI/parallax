@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import time
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,46 +39,48 @@ class SignalRepository:
         received_at_ms: int,
         commit: bool = True,
     ) -> SignalAlert | None:
-        now_ms = _now_ms()
-        alert_id = _id("account_token", event_id, entity_key)
-        cursor = self.conn.execute(
-            """
-            INSERT INTO account_token_alerts(
-              alert_id, event_id, author_handle, entity_key, entity_type, normalized_value, chain,
-              token_resolution_status, is_first_seen_global, is_first_seen_by_author, received_at_ms, created_at_ms
+        def _write() -> SignalAlert | None:
+            now_ms = _now_ms()
+            alert_id = _id("account_token", event_id, entity_key)
+            cursor = self.conn.execute(
+                """
+                INSERT INTO account_token_alerts(
+                  alert_id, event_id, author_handle, entity_key, entity_type, normalized_value, chain,
+                  token_resolution_status, is_first_seen_global, is_first_seen_by_author, received_at_ms, created_at_ms
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT(alert_id) DO NOTHING
+                """,
+                (
+                    alert_id,
+                    event_id,
+                    author_handle,
+                    entity_key,
+                    entity_type,
+                    normalized_value,
+                    chain,
+                    token_resolution_status,
+                    is_first_seen_global,
+                    is_first_seen_by_author,
+                    received_at_ms,
+                    now_ms,
+                ),
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT(alert_id) DO NOTHING
-            """,
-            (
-                alert_id,
-                event_id,
-                author_handle,
-                entity_key,
-                entity_type,
-                normalized_value,
-                chain,
-                token_resolution_status,
-                is_first_seen_global,
-                is_first_seen_by_author,
-                received_at_ms,
-                now_ms,
-            ),
-        )
-        if commit:
-            self.conn.commit()
-        if cursor.rowcount == 0:
-            return None
-        return SignalAlert(
-            alert_type="account_token",
-            event_id=event_id,
-            author_handle=author_handle,
-            entity_key=entity_key,
-            normalized_value=normalized_value,
-            received_at_ms=received_at_ms,
-            is_first_seen_global=is_first_seen_global,
-            is_first_seen_by_author=is_first_seen_by_author,
-        )
+            inserted = _single_row_write_count(cursor)
+            if inserted == 0:
+                return None
+            return SignalAlert(
+                alert_type="account_token",
+                event_id=event_id,
+                author_handle=author_handle,
+                entity_key=entity_key,
+                normalized_value=normalized_value,
+                received_at_ms=received_at_ms,
+                is_first_seen_global=is_first_seen_global,
+                is_first_seen_by_author=is_first_seen_by_author,
+            )
+
+        return _run_repository_write(self.conn, commit, _write)
 
     def account_alerts(
         self,
@@ -154,3 +158,32 @@ def _now_ms() -> int:
 
 def _event_ids(event_ids: tuple[str, ...]) -> list[str]:
     return [event_id for event_id in dict.fromkeys(str(item).strip() for item in event_ids) if event_id]
+
+
+def _transaction(conn: Any) -> AbstractContextManager[Any]:
+    try:
+        transaction = conn.transaction
+    except AttributeError as exc:
+        raise RuntimeError("signal_repository_transaction_required") from exc
+    if not callable(transaction):
+        raise RuntimeError("signal_repository_transaction_required")
+    return cast(AbstractContextManager[Any], transaction())
+
+
+def _run_repository_write[T](conn: Any, commit: bool, write: Callable[[], T]) -> T:
+    if commit:
+        with _transaction(conn):
+            return write()
+    return write()
+
+
+def _single_row_write_count(cursor: Any) -> int:
+    try:
+        rowcount = cursor.rowcount
+    except AttributeError as exc:
+        raise TypeError("signal_repository_rowcount_required") from exc
+    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
+        raise TypeError("signal_repository_rowcount_invalid")
+    if rowcount not in (0, 1):
+        raise TypeError("signal_repository_rowcount_invalid")
+    return int(rowcount)

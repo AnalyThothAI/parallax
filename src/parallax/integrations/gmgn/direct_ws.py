@@ -1,5 +1,4 @@
 import asyncio
-import inspect
 import json
 import time
 import uuid
@@ -93,7 +92,7 @@ class DirectGmgnWebSocketClient:
         app_version: str,
         channels: list[str],
         chains: list[str],
-        on_frame: Callable[[str], Any | Awaitable[Any]],
+        on_frame: Callable[[str], Awaitable[None]],
         proxy: str | None = None,
         reconnect_delay: float = 3,
         heartbeat_interval: float = 25,
@@ -120,6 +119,9 @@ class DirectGmgnWebSocketClient:
             "state": self.connection_state,
             "last_state_change_at_ms": self.last_state_change_at_ms,
         }
+
+    async def aclose(self) -> None:
+        self._set_connection_state("disconnected")
 
     async def run(self) -> None:
         reconnect_count = 0
@@ -180,9 +182,7 @@ class DirectGmgnWebSocketClient:
             except TimeoutError as exc:
                 raise UpstreamIdleTimeoutError(f"no upstream frame received for {self.idle_timeout:g}s") from exc
             self._set_connection_state("streaming")
-            result = self.on_frame(frame)
-            if inspect.isawaitable(result):
-                await result
+            await self.on_frame(frame)
             await asyncio.sleep(0)
 
     async def _subscribe_all(self, websocket) -> None:

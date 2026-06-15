@@ -104,6 +104,108 @@ def test_publish_current_generation_upserts_current_rows_and_marks_ready_publica
     assert conn.publication_state_params["latest_attempt_status"] == "ready"
 
 
+def test_token_radar_repository_mutations_require_connection_transaction_before_sql_when_committing():
+    write_cases = (
+        (
+            "publish_current_generation",
+            lambda repo: repo.publish_current_generation(
+                projection_version="token-radar-v13-social-attention",
+                window="1h",
+                scope="all",
+                venue=TOKEN_RADAR_DEFAULT_VENUE,
+                generation_id="gen-1h-1778",
+                published_at_ms=1_778_000_000_000,
+                source_frontier_ms=1_778_000_030_000,
+                rows=[_valid_factor_row()],
+                commit=True,
+            ),
+        ),
+        (
+            "upsert_target_feature",
+            lambda repo: repo.upsert_target_feature(
+                projection_version="token-radar-v13-social-attention",
+                window="1h",
+                scope="all",
+                row=_valid_factor_row(),
+                computed_at_ms=1_778_000_000_000,
+                commit=True,
+            ),
+        ),
+        (
+            "delete_target_feature",
+            lambda repo: repo.delete_target_feature(
+                projection_version="token-radar-v13-social-attention",
+                window="1h",
+                scope="all",
+                lane="resolved",
+                target_type_key="Asset",
+                identity_id="asset-1",
+                commit=True,
+            ),
+        ),
+        (
+            "prune_target_features",
+            lambda repo: repo.prune_target_features(
+                projection_version="token-radar-v13-social-attention",
+                window="1h",
+                scope="all",
+                latest_event_before_ms=1_778_000_000_000,
+                limit=100,
+                commit=True,
+            ),
+        ),
+        (
+            "upsert_first_seen_batch",
+            lambda repo: repo.upsert_first_seen_batch(
+                projection_version="token-radar-v13-social-attention",
+                window="1h",
+                scope="all",
+                venue=TOKEN_RADAR_DEFAULT_VENUE,
+                rows=[_valid_factor_row()],
+                computed_at_ms=1_778_000_000_000,
+                commit=True,
+            ),
+        ),
+        (
+            "mark_publication_failed",
+            lambda repo: repo.mark_publication_failed(
+                projection_version="token-radar-v13-social-attention",
+                window="1h",
+                scope="all",
+                venue=TOKEN_RADAR_DEFAULT_VENUE,
+                generation_id="gen-failed",
+                commit=True,
+            ),
+        ),
+    )
+
+    for name, write in write_cases:
+        conn = NoTransactionConn()
+        with pytest.raises(RuntimeError, match="token_radar_repository_transaction_required"):
+            write(TokenRadarRepository(conn))
+        assert conn.sqls == [], name
+
+
+def test_token_radar_repository_commit_owned_publication_uses_connection_transaction_without_manual_commit():
+    conn = TransactionalFakePublishConn()
+
+    result = TokenRadarRepository(conn).publish_current_generation(
+        projection_version="token-radar-v13-social-attention",
+        window="1h",
+        scope="all",
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
+        generation_id="gen-1h-1778",
+        published_at_ms=1_778_000_000_000,
+        source_frontier_ms=1_778_000_030_000,
+        rows=[_valid_factor_row()],
+        commit=True,
+    )
+
+    assert result["status"] == "published"
+    assert conn.transaction_entries == 1
+    assert "SELECT pg_advisory_xact_lock" in conn.sqls[0]
+
+
 def test_stable_generation_id_is_content_addressed_not_time_addressed():
     first = _valid_factor_row()
     second = _valid_factor_row()
@@ -233,6 +335,51 @@ def test_stable_generation_id_changes_when_row_quality_changes_even_with_same_pa
     )
 
     assert ready_generation_id != degraded_generation_id
+
+
+def test_token_radar_serving_identity_requires_formal_current_key_without_target_or_intent_fallback():
+    row = {
+        **_valid_factor_row(),
+        "target_type_key": "",
+        "identity_id": "",
+        "target_type": "Asset",
+        "target_id": "asset-legacy",
+        "intent_id": "intent-legacy",
+    }
+
+    with pytest.raises(ValueError, match="token_radar_current_identity_required"):
+        stable_generation_id(
+            projection_version="token-radar-v13-social-attention",
+            window="5m",
+            scope="all",
+            venue=TOKEN_RADAR_DEFAULT_VENUE,
+            rows=[row],
+        )
+
+    with pytest.raises(ValueError, match="token_radar_current_identity_required"):
+        _runtime_row_payload(
+            row,
+            projection_version="token-radar-v13-social-attention",
+            window="1h",
+            scope="all",
+            venue=TOKEN_RADAR_DEFAULT_VENUE,
+            generation_id="gen-invalid",
+            published_at_ms=1_778_000_000_000,
+            source_frontier_ms=1_778_000_030_000,
+            listed_at_ms=1_778_000_000_000,
+        )
+
+    conn = FakeConn()
+    with pytest.raises(ValueError, match="token_radar_current_identity_required"):
+        TokenRadarRepository(conn).upsert_target_feature(
+            projection_version="token-radar-v13-social-attention",
+            window="1h",
+            scope="all",
+            row=row,
+            computed_at_ms=1_778_000_000_000,
+            commit=False,
+        )
+    assert conn.calls == 0
 
 
 def test_publish_current_generation_rewrites_when_only_row_quality_changes():
@@ -387,6 +534,41 @@ def test_publish_current_generation_upserts_rows_without_payload_hash_retry_path
     assert existing_payload
 
 
+def test_publish_current_generation_requires_real_cursor_rowcount_for_current_row_upsert():
+    conn = FakePublishConn(omit_current_rowcount=True)
+
+    with pytest.raises(TypeError, match="token_radar_repository_rowcount_required"):
+        TokenRadarRepository(conn).publish_current_generation(
+            projection_version="token-radar-v13-social-attention",
+            window="1h",
+            scope="all",
+            venue=TOKEN_RADAR_DEFAULT_VENUE,
+            generation_id="gen-rowcount-required",
+            published_at_ms=1_778_000_060_000,
+            source_frontier_ms=1_778_000_060_000,
+            rows=[_valid_factor_row()],
+            commit=False,
+        )
+
+
+@pytest.mark.parametrize("rowcount", ("not-an-int", "1"))
+def test_publish_current_generation_rejects_invalid_current_row_upsert_rowcount(rowcount: Any):
+    conn = FakePublishConn(current_rowcount=rowcount)
+
+    with pytest.raises(TypeError, match="token_radar_repository_rowcount_invalid"):
+        TokenRadarRepository(conn).publish_current_generation(
+            projection_version="token-radar-v13-social-attention",
+            window="1h",
+            scope="all",
+            venue=TOKEN_RADAR_DEFAULT_VENUE,
+            generation_id="gen-rowcount-invalid",
+            published_at_ms=1_778_000_060_000,
+            source_frontier_ms=1_778_000_060_000,
+            rows=[_valid_factor_row()],
+            commit=False,
+        )
+
+
 def test_publish_rows_requires_factor_snapshot_json_before_insert():
     conn = FakePublishConn()
     row = _valid_factor_row()
@@ -490,6 +672,36 @@ def test_publish_rows_rejects_missing_v3_factor_family_before_insert():
         )
 
     assert conn.current_insert_params == {}
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "error"),
+    (
+        ("composite", "rank_score", r"factor_snapshot_json\.composite\.rank_score is required"),
+        ("composite", "recommended_decision", r"factor_snapshot_json\.composite\.recommended_decision is required"),
+        ("gates", "max_decision", r"factor_snapshot_json\.gates\.max_decision is required"),
+    ),
+)
+def test_upsert_target_feature_requires_factor_snapshot_core_score_decision_fields_before_sql(
+    section: str,
+    field: str,
+    error: str,
+):
+    conn = FakeConn()
+    row = _valid_factor_row()
+    del row["factor_snapshot_json"][section][field]
+
+    with pytest.raises(ValueError, match=error):
+        TokenRadarRepository(conn).upsert_target_feature(
+            projection_version="token-radar-v13-social-attention",
+            window="1h",
+            scope="all",
+            row=row,
+            computed_at_ms=1_778_000_000_000,
+            commit=False,
+        )
+
+    assert conn.calls == 0
 
 
 def test_publish_rows_rejects_factor_snapshot_version_mismatch_before_insert():
@@ -601,6 +813,64 @@ def test_upsert_target_feature_writes_compact_projection_row():
     assert "last_scored_at_ms < excluded.last_scored_at_ms" not in conn.sql
 
 
+_MISSING = object()
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "error"),
+    (
+        ("lane", _MISSING, "token_radar_target_feature_payload_required:lane"),
+        ("lane", "", "token_radar_target_feature_payload_invalid:lane"),
+        ("lane", "legacy", "token_radar_target_feature_payload_invalid:lane"),
+        (
+            "source_max_received_at_ms",
+            _MISSING,
+            "token_radar_target_feature_payload_required:source_max_received_at_ms",
+        ),
+        (
+            "source_max_received_at_ms",
+            "bad",
+            "token_radar_target_feature_payload_invalid:source_max_received_at_ms",
+        ),
+        (
+            "source_event_ids_json",
+            _MISSING,
+            "token_radar_target_feature_payload_required:source_event_ids_json",
+        ),
+        (
+            "source_event_ids_json",
+            "event-1",
+            "token_radar_target_feature_payload_invalid:source_event_ids_json",
+        ),
+        ("created_at_ms", _MISSING, "token_radar_target_feature_payload_required:created_at_ms"),
+        ("created_at_ms", "bad", "token_radar_target_feature_payload_invalid:created_at_ms"),
+    ),
+)
+def test_upsert_target_feature_requires_formal_projection_payload_fields_without_defaults(
+    field: str,
+    value: object,
+    error: str,
+):
+    conn = FakeConn()
+    row = _valid_factor_row()
+    if value is _MISSING:
+        row.pop(field)
+    else:
+        row[field] = value
+
+    with pytest.raises(ValueError, match=error):
+        TokenRadarRepository(conn).upsert_target_feature(
+            projection_version="token-radar-v13-social-attention",
+            window="1h",
+            scope="all",
+            row=row,
+            computed_at_ms=1_778_000_000_000,
+            commit=False,
+        )
+
+    assert conn.calls == 0
+
+
 def test_upsert_target_feature_returns_actual_rowcount_for_unchanged_payload():
     conn = FakeConn(rowcount=0)
     row = _valid_factor_row()
@@ -615,6 +885,28 @@ def test_upsert_target_feature_returns_actual_rowcount_for_unchanged_payload():
     )
 
     assert count == 0
+
+
+@pytest.mark.parametrize(
+    ("rowcount", "omit_rowcount", "error"),
+    (
+        (1, True, "token_radar_repository_rowcount_required"),
+        ("bad", False, "token_radar_repository_rowcount_invalid"),
+        ("1", False, "token_radar_repository_rowcount_invalid"),
+    ),
+)
+def test_upsert_target_feature_requires_real_cursor_rowcount(rowcount: Any, omit_rowcount: bool, error: str):
+    conn = FakeConn(rowcount=rowcount, omit_rowcount=omit_rowcount)
+
+    with pytest.raises(TypeError, match=error):
+        TokenRadarRepository(conn).upsert_target_feature(
+            projection_version="token-radar-v13-social-attention",
+            window="1h",
+            scope="all",
+            row=_valid_factor_row(),
+            computed_at_ms=1_778_000_060_000,
+            commit=False,
+        )
 
 
 def test_delete_target_feature_uses_projection_identity_key():
@@ -643,6 +935,7 @@ def test_prune_target_features_deletes_only_projection_window_scope_before_cutof
         window="5m",
         scope="matched",
         latest_event_before_ms=1_777_800_000_000,
+        limit=25,
         commit=False,
     )
 
@@ -652,12 +945,14 @@ def test_prune_target_features_deletes_only_projection_window_scope_before_cutof
     assert '"window" = %s' in conn.sql
     assert "scope = %s" in conn.sql
     assert "latest_event_received_at_ms < %s" in conn.sql
+    assert "LIMIT %s" in conn.sql
     assert "token_radar_current_rows" not in conn.sql
     assert conn.params == (
         "token-radar-v13-social-attention",
         "5m",
         "matched",
         1_777_800_000_000,
+        25,
     )
 
 
@@ -849,12 +1144,19 @@ def test_latest_publication_state_reads_state_for_requested_sets():
 
 
 class FakeConn:
-    def __init__(self, rows: list[dict[str, Any]] | None = None, *, rowcount: int = 1) -> None:
+    def __init__(
+        self,
+        rows: list[dict[str, Any]] | None = None,
+        *,
+        rowcount: Any = 1,
+        omit_rowcount: bool = False,
+    ) -> None:
         self.sql = ""
         self.params = ()
         self.calls = 0
         self.rows = rows or []
-        self.rowcount = rowcount
+        if not omit_rowcount:
+            self.rowcount = rowcount
 
     def execute(self, sql, params=None):
         self.calls += 1
@@ -877,6 +1179,8 @@ class FakePublishConn:
         *,
         existing_current: dict[str, Any] | None = None,
         publication_state: dict[str, Any] | None = None,
+        current_rowcount: Any = 1,
+        omit_current_rowcount: bool = False,
     ) -> None:
         self.sqls: list[str] = []
         self.existing_current = existing_current
@@ -887,6 +1191,10 @@ class FakePublishConn:
         self.current_insert_params: dict[str, Any] = {}
         self.publication_state_params: dict[str, Any] = {}
         self._last_rows: list[dict[str, Any]] = []
+        self._current_rowcount = current_rowcount
+        self._omit_current_rowcount = omit_current_rowcount
+        if not self._omit_current_rowcount:
+            self.rowcount = self._current_rowcount
 
     def execute(self, sql, params=None):
         text = str(sql)
@@ -898,8 +1206,15 @@ class FakePublishConn:
             self._last_rows = [self.existing_current] if self.existing_current is not None else []
         if "INSERT INTO token_radar_current_rows" in text:
             self.current_insert_params = dict(params or {})
+            if self._omit_current_rowcount:
+                if hasattr(self, "rowcount"):
+                    delattr(self, "rowcount")
+            else:
+                self.rowcount = self._current_rowcount
         if "INSERT INTO token_radar_publication_state" in text:
             self.publication_state_params = dict(params or {})
+            if not self._omit_current_rowcount:
+                self.rowcount = 1
         return self
 
     def fetchone(self):
@@ -909,6 +1224,39 @@ class FakePublishConn:
 
     def fetchall(self):
         return self._last_rows
+
+
+class NoTransactionConn:
+    def __init__(self) -> None:
+        self.sqls: list[str] = []
+
+    def execute(self, sql, params=None):
+        self.sqls.append(str(sql))
+        raise AssertionError("repository-owned writes must require conn.transaction() before SQL")
+
+
+class FakeTransaction:
+    def __init__(self, conn: TransactionalFakePublishConn) -> None:
+        self.conn = conn
+
+    def __enter__(self):
+        self.conn.transaction_entries += 1
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+
+class TransactionalFakePublishConn(FakePublishConn):
+    def __init__(self) -> None:
+        super().__init__()
+        self.transaction_entries = 0
+
+    def transaction(self):
+        return FakeTransaction(self)
+
+    def commit(self):
+        raise AssertionError("repository-owned writes must use conn.transaction(), not conn.commit()")
 
 
 class FakeStalePublishConn:
@@ -935,6 +1283,8 @@ def _valid_factor_row() -> dict[str, object]:
         "rank": 1,
         "intent_id": "intent-1",
         "event_id": "event-1",
+        "target_type_key": "Asset",
+        "identity_id": "asset-1",
         "target_type": "Asset",
         "target_id": "asset-1",
         "pricefeed_id": "feed-1",
@@ -1045,6 +1395,7 @@ def _valid_factor_snapshot(*, rank_score: object = 12) -> dict[str, object]:
         "gates": {
             "eligible_for_high_alert": False,
             "eligible_for_watch": True,
+            "max_decision": "discard",
             "suppression_reasons": [],
         },
         "data_health": {"identity": "ready", "market": "ready", "social": "ready", "alpha": "ready"},

@@ -11,6 +11,7 @@ from parallax.app.surfaces.api.exceptions import (
     api_unauthorized_response,
 )
 from parallax.app.surfaces.api.http import create_api_router
+from parallax.app.surfaces.api.routes_macro import _public_macro
 from parallax.domains.macro_intel._constants import MACRO_CORE_CONCEPTS
 from parallax.domains.macro_intel.services.macro_gap_payloads import build_macro_data_gaps
 
@@ -221,6 +222,52 @@ def test_macro_api_returns_data_gap_when_snapshot_missing() -> None:
     }
 
 
+@pytest.mark.parametrize(
+    "field_name",
+    (
+        "panels_json",
+        "indicators_json",
+        "triggers_json",
+        "data_gaps_json",
+        "source_coverage_json",
+        "features_json",
+        "chain_json",
+        "scenario_json",
+        "scorecard_json",
+    ),
+)
+def test_macro_public_payload_requires_snapshot_json_sections(field_name: str) -> None:
+    snapshot = _macro_snapshot()
+    del snapshot[field_name]
+
+    with pytest.raises(ValueError, match=f"macro_view_snapshot_section_required:{field_name}"):
+        _public_macro(snapshot, currentness=_macro_currentness())
+
+
+@pytest.mark.parametrize(
+    ("field_name", "invalid_value"),
+    (
+        ("panels_json", []),
+        ("indicators_json", []),
+        ("source_coverage_json", []),
+        ("features_json", []),
+        ("chain_json", []),
+        ("scenario_json", []),
+        ("scorecard_json", []),
+        ("triggers_json", {}),
+        ("data_gaps_json", {}),
+    ),
+)
+def test_macro_public_payload_rejects_misshaped_snapshot_json_sections(
+    field_name: str, invalid_value: object
+) -> None:
+    snapshot = _macro_snapshot()
+    snapshot[field_name] = invalid_value
+
+    with pytest.raises(ValueError, match=f"macro_view_snapshot_section_invalid:{field_name}"):
+        _public_macro(snapshot, currentness=_macro_currentness())
+
+
 def test_macro_api_rejects_timestamp_text_for_currentness_dates() -> None:
     repo = FakeMacroIntelRepository(
         snapshot={
@@ -230,10 +277,18 @@ def test_macro_api_rejects_timestamp_text_for_currentness_dates() -> None:
             "status": "ready",
             "regime": "risk_on",
             "overall_score": 6.8,
-            "computed_at_ms": 1_779_000_000_000,
+            "panels_json": {},
+            "indicators_json": {},
+            "triggers_json": [],
+            "data_gaps_json": [],
             "source_coverage_json": {
                 "latest_observed_at": "2026-05-28 00:00:00+00:00",
             },
+            "features_json": {},
+            "chain_json": {},
+            "scenario_json": {},
+            "scorecard_json": {},
+            "computed_at_ms": 1_779_000_000_000,
         }
     )
     app = _app(repo)
@@ -309,6 +364,9 @@ def test_macro_module_api_returns_backend_module_view() -> None:
             "status": "partial",
             "regime": "tightening",
             "computed_at_ms": 1_779_000_000_000,
+            "panels_json": {"rates": {"regime": "tightening"}},
+            "indicators_json": {"rates:dgs2": {"value": 3.9}, "rates:dgs10": {"value": 4.7}},
+            "triggers_json": [{"code": "higher_real_rates"}],
             "features_json": {
                 "rates:dgs2": {
                     "label": "2年期美债收益率",
@@ -333,6 +391,7 @@ def test_macro_module_api_returns_backend_module_view() -> None:
             "scenario_json": {"current_regime": "tightening", "watch_triggers": [{"code": "higher_real_rates"}]},
             "source_coverage_json": {"latest_coverage_ratio": 1.0, "history_coverage_ratio": 0.0},
             "data_gaps_json": build_macro_data_gaps(["insufficient_history:20d"]),
+            "scorecard_json": {"projection_version": "macro_regime_v4", "chain_average": 7.1},
         },
         observations=[_macro_observation("rates:dgs10", "2026-05-20", 4.7)],
     )
@@ -418,6 +477,13 @@ def test_macro_module_api_serves_assets_landing_module() -> None:
     assert response.json()["data"]["snapshot"]["route_path"] == "/macro/assets"
 
 
+def test_macro_assets_module_requires_daily_brief_repository_contract() -> None:
+    app = _app(MissingDailyBriefMacroIntelRepository(snapshot=None))
+
+    with pytest.raises(AttributeError, match="latest_macro_daily_brief"), TestClient(app) as client:
+        client.get("/api/macro/modules/assets", headers={"Authorization": "Bearer secret"})
+
+
 @pytest.mark.parametrize("module_id", ("rates", "fed", "liquidity", "economy", "volatility", "credit"))
 def test_macro_module_api_rejects_parent_categories(module_id: str) -> None:
     app = _app(FakeMacroIntelRepository(snapshot=None))
@@ -438,6 +504,9 @@ def test_macro_module_api_compacts_crypto_derivatives_cex_rows() -> None:
             "status": "partial",
             "regime": "tightening",
             "computed_at_ms": 1_779_000_000_000,
+            "panels_json": {"assets": {"regime": "risk_on"}},
+            "indicators_json": {"crypto:btc": {"value": 110_000}},
+            "triggers_json": [],
             "features_json": {
                 "crypto:btc": {
                     "latest": {"value": 110_000, "observed_at": "2026-05-20", "unit": "usd"},
@@ -449,6 +518,7 @@ def test_macro_module_api_compacts_crypto_derivatives_cex_rows() -> None:
             "scenario_json": {"current_regime": "risk_on", "watch_triggers": []},
             "source_coverage_json": {"latest_coverage_ratio": 0.5, "history_coverage_ratio": 0.0},
             "data_gaps_json": [],
+            "scorecard_json": {"projection_version": "macro_regime_v4", "chain_average": 6.8},
         },
         observations=[],
     )
@@ -510,6 +580,16 @@ def test_macro_module_api_compacts_crypto_derivatives_cex_rows() -> None:
     assert "rank" not in row
     assert "native_market_id" not in row
     assert "mark_price" not in row
+
+
+def test_macro_crypto_derivatives_requires_cex_board_repository_contract() -> None:
+    app = _app(FakeMacroIntelRepository(snapshot=None))
+
+    with pytest.raises(AttributeError, match="latest_board"), TestClient(app) as client:
+        client.get(
+            "/api/macro/modules/assets/crypto-derivatives",
+            headers={"Authorization": "Bearer secret"},
+        )
 
 
 def test_macro_series_api_returns_bounded_concept_series() -> None:
@@ -594,13 +674,16 @@ class FakeMacroIntelRepository:
         snapshot: dict[str, object] | None,
         observations: list[dict[str, object]] | None = None,
         publication_state: dict[str, object] | None = None,
+        daily_brief: dict[str, object] | None = None,
     ) -> None:
         self.snapshot = snapshot
         self.observations = observations or []
         self.publication_state = publication_state
+        self.daily_brief = daily_brief
         self.calls: list[tuple[str, str | None]] = []
         self.observations_for_concepts_call: dict[str, object] | None = None
         self.latest_observations_call: dict[str, object] | None = None
+        self.latest_macro_daily_brief_call: dict[str, object] | None = None
 
     def latest_snapshot(self, *, projection_version: str | None = None):
         self.calls.append(("latest_snapshot", projection_version))
@@ -630,6 +713,17 @@ class FakeMacroIntelRepository:
     def macro_series_publication_state(self, projection_version: str):
         self.calls.append(("macro_series_publication_state", projection_version))
         return self.publication_state
+
+    def latest_macro_daily_brief(self, *, brief_key: str = "assets_today"):
+        self.latest_macro_daily_brief_call = {"brief_key": brief_key}
+        return self.daily_brief
+
+
+class MissingDailyBriefMacroIntelRepository(FakeMacroIntelRepository):
+    def __getattribute__(self, name: str):
+        if name == "latest_macro_daily_brief":
+            raise AttributeError(name)
+        return super().__getattribute__(name)
 
 
 class FakeCexOiRadarRepository:
@@ -695,4 +789,36 @@ def _macro_observation(concept_key: str, observed_at: str, value: float) -> dict
         "value_numeric": value,
         "unit": "price",
         "ingested_at_ms": 1_779_000_000_000,
+    }
+
+
+def _macro_snapshot() -> dict[str, object]:
+    return {
+        "snapshot_id": "macro-view:macro_regime_v4:current",
+        "projection_version": "macro_regime_v4",
+        "asof_date": "2026-05-20",
+        "status": "ready",
+        "regime": "risk_on",
+        "overall_score": 7.2,
+        "panels_json": {"liquidity": {"score": 8.0}},
+        "indicators_json": {"sofr_iorb_spread_bps": {"value": 15.0}},
+        "triggers_json": [{"code": "sofr_above_iorb"}],
+        "data_gaps_json": [],
+        "source_coverage_json": {"latest_coverage_ratio": 1.0},
+        "features_json": {"rates:dgs10": {"history_points": 252}},
+        "chain_json": {"liquidity": {"regime": "supportive"}},
+        "scenario_json": {"current_regime": "risk_on"},
+        "scorecard_json": {"projection_version": "macro_regime_v4"},
+        "computed_at_ms": 1_779_000_000_000,
+    }
+
+
+def _macro_currentness() -> dict[str, object]:
+    return {
+        "publication_status": "published",
+        "publication_row_count": 1,
+        "publication_finished_at_ms": 1_779_000_000_000,
+        "facts_max_observed_at": "2026-05-20",
+        "projection_lag_days": 0,
+        "projection_behind_facts": False,
     }

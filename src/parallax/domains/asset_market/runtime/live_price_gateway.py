@@ -1,19 +1,14 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
-from types import SimpleNamespace
 from typing import Any
 
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_result import WorkerResult
-
-DEFAULT_LIVE_TARGET_LIMIT = 100
-DEFAULT_LIVE_TARGET_TTL_SECONDS = 300.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,30 +64,22 @@ class LivePriceGateway(WorkerBase):
     def __init__(
         self,
         *,
+        settings: Any,
         pool_bundle: Any,
-        providers: Any,
-        interval_seconds: float,
         projection_version: str,
-        on_live_market_update: Callable[[dict[str, Any]], Any] | None = None,
+        on_live_market_update: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
         clock: Callable[[], int] | None = None,
         name: str = "live_price_gateway",
         telemetry: Any | None = None,
     ) -> None:
-        interval = max(0.001, float(interval_seconds))
-        settings = SimpleNamespace(
-            enabled=True,
-            interval_seconds=interval,
-            soft_timeout_seconds=120.0,
-            hard_timeout_seconds=180.0,
-        )
+        if settings is None:
+            raise RuntimeError("live_price_gateway_settings_required")
+        if pool_bundle is None:
+            raise RuntimeError("live_price_gateway_db_required")
         super().__init__(name=name, settings=settings, db=pool_bundle, telemetry=telemetry or object())
-        # NOTE: LivePriceGateway no longer owns any upstream price provider.
-        # OKX DEX WS is owned exclusively by MarketTickStreamWorker; CEX/REST quotes are
-        # owned by MarketTickPollWorker. This worker fans out latest `market_ticks`.
-        del providers
         self.projection_version = projection_version
-        self.target_limit = DEFAULT_LIVE_TARGET_LIMIT
-        self.target_ttl_seconds = DEFAULT_LIVE_TARGET_TTL_SECONDS
+        self.target_limit = max(0, int(settings.target_limit))
+        self.target_ttl_seconds = max(0.0, float(settings.target_ttl_seconds))
         self.live_stale_after_ms = int(self.target_ttl_seconds * 1000)
         self.on_live_market_update = on_live_market_update
         self.clock = clock or _now_ms
@@ -256,9 +243,7 @@ class LivePriceGateway(WorkerBase):
     async def _publish(self, payload: dict[str, Any]) -> None:
         if self.on_live_market_update is None:
             return
-        result = self.on_live_market_update(payload)
-        if inspect.isawaitable(result):
-            await result
+        await self.on_live_market_update(payload)
 
 
 def _market_target_from_row(row: Mapping[str, Any]) -> dict[str, Any] | None:

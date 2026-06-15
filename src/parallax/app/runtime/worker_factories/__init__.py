@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from types import SimpleNamespace
 from typing import Any
 
 from parallax.app.runtime.db_pool_bundle import DBPoolBundle
@@ -172,8 +171,8 @@ def unavailable_worker(ctx: WorkerFactoryContext, name: str, reason: str) -> Wor
 
 
 def _worker_config_enabled(settings: Settings, name: str) -> bool:
-    config = getattr(settings.workers, name, None)
-    return bool(getattr(config, "enabled", True))
+    config = getattr(settings.workers, name)
+    return bool(config.enabled)
 
 
 def _redacted_reason(reason: str) -> str:
@@ -189,23 +188,16 @@ def _redacted_reason(reason: str) -> str:
 
 
 def _worker_settings(settings: Settings, name: str, *, enabled: bool) -> Any:
-    config = getattr(settings.workers, name, None)
-    if config is None:
-        return SimpleNamespace(enabled=enabled)
-    if getattr(config, "enabled", True) == enabled:
+    config = getattr(settings.workers, name)
+    if config.enabled == enabled:
         return config
-    values = _object_values(config)
-    values["enabled"] = enabled
-    return SimpleNamespace(**values)
-
-
-def _object_values(value: Any) -> dict[str, Any]:
-    dump = getattr(value, "model_dump", None)
-    if dump is not None:
-        return dict(dump())
-    if hasattr(value, "__dict__"):
-        return dict(vars(value))
-    return {"enabled": bool(getattr(value, "enabled", True))}
+    try:
+        model_copy = config.model_copy
+    except AttributeError as exc:
+        raise RuntimeError(f"worker_settings_model_copy_required:{name}") from exc
+    if not callable(model_copy):
+        raise RuntimeError(f"worker_settings_model_copy_required:{name}")
+    return model_copy(update={"enabled": enabled})
 
 
 def worker_factory_specs() -> tuple[WorkerFactorySpec, ...]:

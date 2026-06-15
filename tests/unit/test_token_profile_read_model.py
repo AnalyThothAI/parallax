@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from parallax.domains.asset_market.read_models.token_profile_read_model import TokenProfileReadModel
 from parallax.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
@@ -180,6 +182,42 @@ def test_profile_read_model_returns_pending_missing_error_and_cex_unsupported_bl
         },
     }
     assert model.profile_for_target(target_type="Asset", target_id=" ") is None
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "expected_reason"),
+    [
+        ("status", None, "required:status"),
+        ("status", " ", "invalid:status"),
+        ("source_kind", None, "required:source_kind"),
+        ("source_kind", " ", "invalid:source_kind"),
+        ("quality_flags_json", None, "required:quality_flags_json"),
+        ("quality_flags_json", {"flag": "not-list"}, "invalid:quality_flags_json"),
+        ("source_payload_json", None, "required:source_payload_json"),
+        ("source_payload_json", ["not-mapping"], "invalid:source_payload_json"),
+    ],
+)
+def test_present_token_profile_current_row_requires_formal_public_fields_without_pending_fallback(
+    field: str,
+    value: Any,
+    expected_reason: str,
+) -> None:
+    row = profile_row(
+        target_type="Asset",
+        target_id="asset:eip155:1:erc20:0xabc",
+        status="missing",
+        profile_provider=None,
+        source_kind="projection",
+        quality_flags_json=[],
+        source_payload_json={},
+        observed_at_ms=1_000,
+    )
+    row[field] = value
+    token_profiles = FakeTokenProfiles(rows={("Asset", "asset:eip155:1:erc20:0xabc"): row})
+    model = TokenProfileReadModel(token_profiles=token_profiles)
+
+    with pytest.raises(ValueError, match=f"token_profile_current_public_{expected_reason}"):
+        model.profile_for_target(target_type="Asset", target_id="asset:eip155:1:erc20:0xabc")
 
 
 def test_profile_read_model_batches_all_targets_without_provider_argument():

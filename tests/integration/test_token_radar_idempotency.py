@@ -29,9 +29,18 @@ def test_token_radar_rebuild_is_idempotent_from_explicit_repair_dirty_targets(tm
         _seed_resolved_radar_source(conn)
         conn.commit()
 
-        projection = TokenRadarProjection(repos=repositories_for_connection(conn))
+        projection = TokenRadarProjection(
+            repos=repositories_for_connection(
+                conn,
+                pulse_job_running_timeout_ms=300_000,
+                notification_delivery_running_timeout_ms=300_000,
+                notification_delivery_stale_running_terminalization_batch_size=100,
+            )
+        )
         first_enqueued = _enqueue_radar_repair_targets(conn, now_ms=FIXED_NOW_MS)
         first_result = projection.rebuild_dirty_targets(
+            lease_ms=120_000,
+            retry_ms=30_000,
             windows=("1h",),
             scopes=("all",),
             now_ms=FIXED_NOW_MS,
@@ -42,6 +51,8 @@ def test_token_radar_rebuild_is_idempotent_from_explicit_repair_dirty_targets(tm
 
         second_enqueued = _enqueue_radar_repair_targets(conn, now_ms=FIXED_NOW_MS)
         second_result = projection.rebuild_dirty_targets(
+            lease_ms=120_000,
+            retry_ms=30_000,
             windows=("1h",),
             scopes=("all",),
             now_ms=FIXED_NOW_MS,
@@ -63,7 +74,12 @@ def test_token_radar_rebuild_is_idempotent_from_explicit_repair_dirty_targets(tm
 
 
 def _enqueue_radar_repair_targets(conn: Any, *, now_ms: int) -> int:
-    repos = repositories_for_connection(conn)
+    repos = repositories_for_connection(
+        conn,
+        pulse_job_running_timeout_ms=300_000,
+        notification_delivery_running_timeout_ms=300_000,
+        notification_delivery_stale_running_terminalization_batch_size=100,
+    )
     return int(
         repos.token_radar_dirty_targets.enqueue_recent_resolved_targets(
             since_ms=now_ms - 60 * 60 * 1000,

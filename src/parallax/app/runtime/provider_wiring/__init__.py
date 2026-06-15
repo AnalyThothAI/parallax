@@ -6,7 +6,6 @@ from parallax.app.runtime.provider_wiring.types import (
     AssetMarketProviders,
     CexMarketIntelProviders,
     IngestionProviders,
-    MacrodataProviders,
     NewsIntelProviders,
     PulseLabProviders,
     WiredProviders,
@@ -25,7 +24,6 @@ def wire_providers(
         asset_market,
         cex_market_intel,
         gmgn,
-        macrodata,
         model_execution,
         news,
     )
@@ -59,7 +57,6 @@ def wire_providers(
             if settings.workers.pulse_candidate.enabled and settings.pulse_agent_configured
             else None,
         ),
-        macrodata=macrodata.wire_macrodata(settings),
         agent_execution_gateway=agent_execution_gateway,
     )
 
@@ -80,7 +77,6 @@ __all__ = [
     "AssetMarketProviders",
     "CexMarketIntelProviders",
     "IngestionProviders",
-    "MacrodataProviders",
     "NewsIntelProviders",
     "PulseLabProviders",
     "WiredProviders",

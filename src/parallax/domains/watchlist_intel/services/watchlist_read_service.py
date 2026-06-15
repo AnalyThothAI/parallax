@@ -10,13 +10,15 @@ from parallax.domains.watchlist_intel.types import normalize_watchlist_handle
 
 @dataclass(frozen=True, slots=True)
 class WatchlistReadWindowConfig:
-    window_days: int = 3
+    window_days: int
+    overview_source_limit: int
+    overview_cluster_limit: int
 
 
 class WatchlistHandleReadService:
-    def __init__(self, *, repository: Any, config: WatchlistReadWindowConfig | None = None):
+    def __init__(self, *, repository: Any, config: WatchlistReadWindowConfig):
         self.repository = repository
-        self.config = config or WatchlistReadWindowConfig()
+        self.config = config
 
     def handles_overview(
         self,
@@ -52,6 +54,8 @@ class WatchlistHandleReadService:
                 handle=normalized,
                 scope=scope,
                 since_ms=_window_since_ms(now_ms=resolved_now_ms, window_days=window_days),
+                source_limit=max(1, int(self.config.overview_source_limit)),
+                cluster_limit=max(1, int(self.config.overview_cluster_limit)),
             ),
         )
         query = dict(overview.get("query") or {})

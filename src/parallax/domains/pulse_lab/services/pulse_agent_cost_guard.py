@@ -67,7 +67,7 @@ def decide_pulse_agent_cost(
         gate=gate,
         source_quality=source_quality,
     )
-    if bool(getattr(evidence_gate, "hard_blocked", False)):
+    if evidence_gate.hard_blocked:
         return _decision(
             action="deterministic_finalize",
             reason="deterministic_evidence_block",

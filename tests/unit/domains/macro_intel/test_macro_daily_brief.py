@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import importlib
 
+from parallax.domains.macro_intel.runtime.macro_daily_brief_projection_worker import MacroDailyBriefProjectionWorker
+from parallax.platform.config.settings import MacroDailyBriefProjectionWorkerSettings
+
 NOW_MS = 1_779_000_000_000
 
 
@@ -56,6 +59,68 @@ def test_build_macro_daily_brief_projects_timsun_style_asset_judgment_from_snaps
     rendered = str(brief)
     assert "macro-view:macro_regime_v4:current" not in rendered
     assert "snapshot_id" not in rendered
+
+
+def test_macro_daily_brief_worker_reads_formal_settings_for_session_timeout_and_zero_write() -> None:
+    repo = FakeMacroIntelRepository(changed=False)
+    db = FakeDB(repo, expected_statement_timeout=17.0)
+    worker = MacroDailyBriefProjectionWorker(
+        name="macro_daily_brief_projection",
+        settings=MacroDailyBriefProjectionWorkerSettings(statement_timeout_seconds=17.0),
+        db=db,
+        telemetry=object(),
+        clock_ms=lambda: NOW_MS,
+    )
+
+    result = worker.run_once_sync()
+
+    assert db.worker_sessions == [{"name": "macro_daily_brief_projection", "statement_timeout_seconds": 17.0}]
+    assert repo.latest_snapshot_calls == [{"projection_version": "macro_regime_v4"}]
+    assert repo.upsert_calls[0]["brief"]["status"] == "missing"
+    assert result.processed == 1
+    assert result.notes["rows_written"] == 0
+
+
+class FakeDB:
+    def __init__(self, repo: FakeMacroIntelRepository, *, expected_statement_timeout: float) -> None:
+        self.repo = repo
+        self.expected_statement_timeout = expected_statement_timeout
+        self.worker_sessions: list[dict[str, object]] = []
+
+    def worker_session(self, name: str, statement_timeout_seconds: float | None = None):
+        assert statement_timeout_seconds == self.expected_statement_timeout
+        self.worker_sessions.append(
+            {
+                "name": name,
+                "statement_timeout_seconds": statement_timeout_seconds,
+            }
+        )
+        return FakeRepositorySession(self.repo)
+
+
+class FakeRepositorySession:
+    def __init__(self, repo: FakeMacroIntelRepository) -> None:
+        self.macro_intel = repo
+
+    def __enter__(self) -> FakeRepositorySession:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+
+class FakeMacroIntelRepository:
+    def __init__(self, *, changed: bool) -> None:
+        self.changed = changed
+        self.latest_snapshot_calls: list[dict[str, object]] = []
+        self.upsert_calls: list[dict[str, object]] = []
+
+    def latest_snapshot(self, *, projection_version: str):
+        self.latest_snapshot_calls.append({"projection_version": projection_version})
+
+    def upsert_macro_daily_brief(self, brief: dict[str, object], *, now_ms: int) -> bool:
+        self.upsert_calls.append({"brief": brief, "now_ms": now_ms})
+        return self.changed
 
 
 def _feature(value: float, *, delta_20d: float, source_name: str) -> dict[str, object]:

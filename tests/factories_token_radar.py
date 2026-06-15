@@ -92,7 +92,12 @@ def make_gmgn_payload_event(
 def open_token_radar_runtime(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     migrate(conn)
-    repos = repositories_for_connection(conn)
+    repos = repositories_for_connection(
+        conn,
+        pulse_job_running_timeout_ms=300_000,
+        notification_delivery_running_timeout_ms=300_000,
+        notification_delivery_stale_running_terminalization_batch_size=100,
+    )
     ingest = IngestService(
         evidence=repos.evidence,
         entities=repos.entities,
@@ -108,8 +113,8 @@ def open_token_radar_runtime(tmp_path):
         enriched_events=repos.enriched_events,
         event_anchor_jobs=repos.event_anchor_jobs,
         token_intent_lookup=repos.token_intent_lookup,
-        token_radar_dirty_targets=repos.token_radar_dirty_targets,
         token_radar_source_dirty_events=repos.token_radar_source_dirty_events,
+        event_anchor_active_window_ms=300_000,
     )
     return conn, repos, ingest
 

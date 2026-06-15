@@ -20,7 +20,6 @@ TOKEN_IMAGE_MIRROR_HEADERS = {
     "User-Agent": "Mozilla/5.0 AppleWebKit/537.36 Chrome/121 Safari/537.36",
 }
 TOKEN_IMAGE_MIRROR_MAX_BYTES = 3 * 1024 * 1024
-TOKEN_IMAGE_MIRROR_RETRY_MS = 15 * 60 * 1000
 TOKEN_IMAGE_MIRROR_TIMEOUT_SECONDS = 8.0
 
 _MEDIA_EXTENSIONS = {
@@ -38,7 +37,7 @@ class TokenImageMirrorService:
         repository: Any,
         app_home: str | Path,
         http_client: Any | None = None,
-        retry_ms: int = TOKEN_IMAGE_MIRROR_RETRY_MS,
+        retry_ms: int,
     ) -> None:
         self.repository = repository
         self.app_home = Path(app_home)

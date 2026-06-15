@@ -6,6 +6,8 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from parallax.cli import main
 
 
@@ -139,6 +141,166 @@ def test_rebuild_market_tick_current_execute_skips_when_projection_lock_is_held(
     assert db.lock_events == [("acquire", "market_tick_current_projection", 2026052401)]
 
 
+def test_rebuild_market_tick_current_requires_worker_settings_contract_before_db_create(monkeypatch) -> None:
+    from parallax.app.surfaces.cli.commands import ops as ops_module
+
+    created: list[object] = []
+
+    def fail_create(settings: object, telemetry: object) -> object:
+        _ = (settings, telemetry)
+        created.append(settings)
+        raise AssertionError("DBPoolBundle.create must not run before worker settings contract is verified")
+
+    monkeypatch.setattr(ops_module.DBPoolBundle, "create", staticmethod(fail_create))
+
+    with pytest.raises(AttributeError, match="workers"):
+        ops_module._run_market_tick_current_rebuild(
+            SimpleNamespace(),
+            dry_run=True,
+            execute=False,
+            now_ms=1_700_000_000_000,
+        )
+
+    with pytest.raises(AttributeError, match="market_tick_current_projection"):
+        ops_module._run_market_tick_current_rebuild(
+            SimpleNamespace(workers=SimpleNamespace()),
+            dry_run=True,
+            execute=False,
+            now_ms=1_700_000_000_000,
+        )
+
+    assert created == []
+
+
+def test_ops_worker_settings_overrides_require_formal_model_copy_contract() -> None:
+    from parallax.app.surfaces.cli.commands.ops import _worker_settings_with_overrides
+
+    class FormalSettings:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+
+        def model_copy(self, *, update: dict[str, object]) -> object:
+            self.calls.append(dict(update))
+            return SimpleNamespace(enabled=True, batch_size=update["batch_size"], marker="formal")
+
+    settings = FormalSettings()
+
+    result = _worker_settings_with_overrides(settings, batch_size=25)
+
+    assert result == SimpleNamespace(enabled=True, batch_size=25, marker="formal")
+    assert settings.calls == [{"batch_size": 25}]
+    with pytest.raises(RuntimeError, match="ops_worker_settings_model_copy_required"):
+        _worker_settings_with_overrides(SimpleNamespace(enabled=True, batch_size=10), batch_size=25)
+    with pytest.raises(RuntimeError, match="ops_worker_settings_model_copy_required"):
+        _worker_settings_with_overrides(
+            SimpleNamespace(enabled=True, batch_size=10, model_copy=None),
+            batch_size=25,
+        )
+
+
+def test_ops_one_shot_worker_close_requires_db_bundle_aclose_contract() -> None:
+    from parallax.app.surfaces.cli.commands.ops import _close_db_bundle
+
+    class PoolOnlyDB:
+        def __init__(self) -> None:
+            self.api_pool = _FakePool()
+            self.worker_pool = _FakePool()
+            self.lock_pool = _FakePool()
+            self.tool_pool = _FakePool()
+            self.wake_pool = _FakePool()
+
+    try:
+        _close_db_bundle(PoolOnlyDB())
+    except RuntimeError as exc:
+        assert "ops_db_bundle_aclose_required" in str(exc)
+    else:
+        raise AssertionError("expected ops DB bundle cleanup to require db.aclose()")
+
+
+def test_ops_advisory_lock_release_requires_release_contract_without_close_fallback() -> None:
+    from parallax.app.surfaces.cli.commands.ops import _release_advisory_lock_connection
+
+    class CloseOnlyLock:
+        def __init__(self) -> None:
+            self.close_calls = 0
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    lock = CloseOnlyLock()
+
+    try:
+        _release_advisory_lock_connection(lock)
+    except RuntimeError as exc:
+        assert "ops_advisory_lock_release_required" in str(exc)
+    else:
+        raise AssertionError("expected ops advisory lock cleanup to require release()")
+
+    assert lock.close_calls == 0
+
+
+def test_ops_advisory_lock_key_requires_worker_method_without_single_writer_attr_fallback() -> None:
+    from parallax.app.surfaces.cli.commands.ops import _effective_worker_advisory_lock_key
+
+    class SingleWriterAttrOnlyWorker:
+        name = "token_radar_projection"
+        SINGLE_WRITER_KEY = 2026051501
+
+    try:
+        _effective_worker_advisory_lock_key(SingleWriterAttrOnlyWorker())
+    except RuntimeError as exc:
+        assert "ops_worker_advisory_lock_key_required" in str(exc)
+    else:
+        raise AssertionError("expected ops advisory lock helper to require _advisory_lock_key()")
+
+
+def test_ops_asset_market_provider_cleanup_requires_bundle_aclose_without_provider_close_probe() -> None:
+    from parallax.app.surfaces.cli.commands.ops import _close_asset_market_providers
+
+    class CloseOnlyProvider:
+        def __init__(self) -> None:
+            self.close_calls = 0
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    provider = CloseOnlyProvider()
+    asset_market = SimpleNamespace(
+        cex_market=provider,
+        dex_discovery_market=None,
+        dex_quote_market=None,
+        dex_candle_market=None,
+        stream_dex_market=None,
+        dex_profile_sources=(),
+    )
+
+    try:
+        _close_asset_market_providers(asset_market)
+    except RuntimeError as exc:
+        assert "ops_asset_market_providers_aclose_required" in str(exc)
+    else:
+        raise AssertionError("expected ops asset-market cleanup to require bundle aclose()")
+
+    assert provider.close_calls == 0
+
+
+def test_ops_asset_market_provider_cleanup_calls_bundle_aclose_once() -> None:
+    from parallax.app.surfaces.cli.commands.ops import _close_asset_market_providers
+
+    class AssetMarketBundle:
+        def __init__(self) -> None:
+            self.aclose_calls = 0
+
+        async def aclose(self) -> None:
+            self.aclose_calls += 1
+
+    asset_market = AssetMarketBundle()
+
+    _close_asset_market_providers(asset_market)
+
+    assert asset_market.aclose_calls == 1
+
+
 def test_enqueue_token_radar_dirty_targets_dry_run_counts_without_writing(monkeypatch) -> None:
     from parallax.app.surfaces.cli.commands import ops as ops_module
 
@@ -186,14 +348,66 @@ def test_enqueue_token_radar_dirty_targets_dry_run_counts_without_writing(monkey
     ]
 
 
-def test_enqueue_token_radar_dirty_targets_execute_dispatches_to_market_current_repo(monkeypatch) -> None:
+def test_enqueue_token_radar_dirty_targets_execute_reads_and_writes_events_inside_transaction(monkeypatch) -> None:
     from parallax.app.surfaces.cli.commands import ops as ops_module
 
-    dirty_targets = _FakeDirtyTargetsRepository()
+    conn = _FakeOpsConn()
+    source_dirty_events = _FakeSourceDirtyEventsRepository(conn)
 
     @contextmanager
     def fake_repositories(_settings: object):
-        yield SimpleNamespace(token_radar_dirty_targets=dirty_targets)
+        yield SimpleNamespace(conn=conn, token_radar_source_dirty_events=source_dirty_events)
+
+    monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: SimpleNamespace())
+    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
+    monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_700_000_100_000)
+    stdout = io.StringIO()
+
+    code = main(
+        [
+            "ops",
+            "enqueue-token-radar-dirty-targets",
+            "--source",
+            "events",
+            "--since-ms",
+            "123",
+            "--limit",
+            "25",
+            "--execute",
+        ],
+        stdout=stdout,
+    )
+
+    payload = json.loads(stdout.getvalue())
+    assert code == 0
+    assert payload["data"] == {
+        "source": "events",
+        "since_ms": 123,
+        "limit": 25,
+        "dry_run": False,
+        "execute": True,
+        "candidates": 8,
+        "enqueued": 2,
+    }
+    assert source_dirty_events.calls == [
+        ("count_recent_resolved_event_candidates", 123, 1_700_000_100_000, 25),
+        ("list_recent_resolved_events", 123, 1_700_000_100_000, 25),
+        ("enqueue_events", ("event-1", "event-2"), "ops_events_repair", 1_700_000_100_000, False),
+    ]
+    assert source_dirty_events.list_depths == [1]
+    assert source_dirty_events.enqueue_depths == [1]
+    assert conn.events == ["enter", "exit"]
+
+
+def test_enqueue_token_radar_dirty_targets_execute_dispatches_to_market_current_repo(monkeypatch) -> None:
+    from parallax.app.surfaces.cli.commands import ops as ops_module
+
+    conn = _FakeOpsConn()
+    dirty_targets = _FakeDirtyTargetsRepository(conn)
+
+    @contextmanager
+    def fake_repositories(_settings: object):
+        yield SimpleNamespace(conn=conn, token_radar_dirty_targets=dirty_targets)
 
     monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: SimpleNamespace())
     monkeypatch.setattr(ops_module, "repositories", fake_repositories)
@@ -228,8 +442,10 @@ def test_enqueue_token_radar_dirty_targets_execute_dispatches_to_market_current_
     }
     assert dirty_targets.calls == [
         ("count_market_current_target_candidates", 123, 1_700_000_100_000, 25),
-        ("enqueue_market_current_targets", 123, 1_700_000_100_000, 25, "ops_market_current_repair", True),
+        ("enqueue_market_current_targets", 123, 1_700_000_100_000, 25, "ops_market_current_repair", False),
     ]
+    assert dirty_targets.enqueue_depths == [1]
+    assert conn.events == ["enter", "exit"]
 
 
 def test_enqueue_token_capture_tier_rank_set_dry_run_reads_bounded_current_rows(monkeypatch) -> None:
@@ -261,17 +477,33 @@ def test_enqueue_token_capture_tier_rank_set_dry_run_reads_bounded_current_rows(
     assert payload["data"]["enqueued"] == 0
     assert dirty_targets.calls == []
     assert registry.calls == [("token-radar-v13-social-attention", 1_700_000_100_000 - 24 * 60 * 60 * 1000, 25)]
+    assert registry.read_depths == [0]
+
+
+def test_enqueue_token_capture_tier_rank_set_rejects_invalid_window_without_24h_fallback() -> None:
+    from parallax.app.surfaces.cli.commands.ops import _enqueue_token_capture_tier_rank_set
+
+    with pytest.raises(ValueError, match="invalid ops window"):
+        _enqueue_token_capture_tier_rank_set(
+            object(),
+            window="bad",
+            limit=25,
+            dry_run=True,
+            execute=False,
+            now_ms=1_700_000_100_000,
+        )
 
 
 def test_enqueue_token_capture_tier_rank_set_execute_writes_rank_set_dirty_target(monkeypatch) -> None:
     from parallax.app.surfaces.cli.commands import ops as ops_module
 
-    registry = _FakeCaptureTierRegistry()
-    dirty_targets = _FakeCaptureTierDirtyTargets()
+    conn = _FakeOpsConn()
+    registry = _FakeCaptureTierRegistry(conn)
+    dirty_targets = _FakeCaptureTierDirtyTargets(conn)
 
     @contextmanager
     def fake_repositories(_settings: object):
-        yield SimpleNamespace(registry=registry, token_capture_tier_dirty_targets=dirty_targets)
+        yield SimpleNamespace(conn=conn, registry=registry, token_capture_tier_dirty_targets=dirty_targets)
 
     monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: SimpleNamespace())
     monkeypatch.setattr(ops_module, "repositories", fake_repositories)
@@ -297,9 +529,73 @@ def test_enqueue_token_capture_tier_rank_set_execute_writes_rank_set_dirty_targe
             "exited_rows": [],
             "source_watermark_ms": 1_700_000_099_000,
             "now_ms": 1_700_000_100_000,
-            "commit": True,
+            "commit": False,
         }
     ]
+    assert registry.read_depths == [1]
+    assert dirty_targets.enqueue_depths == [1]
+    assert conn.events == ["enter", "exit"]
+
+
+def test_rebuild_news_canonical_items_execute_reads_and_writes_inside_transaction() -> None:
+    from parallax.app.surfaces.cli.commands.ops import _rebuild_news_canonical_items
+
+    conn = _FakeOpsConn()
+    news = _FakeNewsRepository(conn)
+    dirty_targets = _FakeNewsProjectionDirtyTargets(conn)
+    repos = SimpleNamespace(conn=conn, news=news, news_projection_dirty_targets=dirty_targets)
+
+    result = _rebuild_news_canonical_items(repos, limit=25, dry_run=False, execute=True, now_ms=1_700_000_100_000)
+
+    assert result == {
+        "mode": "execute",
+        "dry_run": False,
+        "execute": True,
+        "matched_canonical_items": 2,
+        "would_enqueue": 4,
+        "enqueued": 4,
+        "deleted_disabled_rows": 3,
+    }
+    assert news.list_depths == [1]
+    assert news.delete_depths == [1]
+    assert dirty_targets.enqueue_depths == [1]
+    assert conn.events == ["enter", "exit"]
+
+
+def test_sync_gmgn_directory_reads_provider_outside_transaction_and_writes_inside_transaction():
+    from parallax.app.surfaces.cli.commands.ops import _run_sync_gmgn_directory
+
+    conn = _FakeOpsConn()
+    client = _FakeGmgnDirectoryClient(conn)
+    repository = _FakeGmgnDirectoryRepository(conn)
+
+    result = _run_sync_gmgn_directory(client=client, repository=repository, now_ms=1_700_000_100_000, max_pages=2)
+
+    assert result == {
+        "upserted": 2,
+        "first_handles": ["alpha", "beta"],
+        "last_handles": ["alpha", "beta"],
+        "observed_at_ms": 1_700_000_100_000,
+    }
+    assert client.iter_depths == [0]
+    assert repository.upsert_depths == [1, 1]
+    assert conn.events == ["enter", "exit"]
+
+
+def test_sync_gmgn_directory_requires_transaction_before_writes():
+    from parallax.app.surfaces.cli.commands.ops import _run_sync_gmgn_directory
+
+    client = _FakeGmgnDirectoryClient(_FakeOpsConn())
+    repository = _FakeGmgnDirectoryRepository(object())
+
+    try:
+        _run_sync_gmgn_directory(client=client, repository=repository, now_ms=1_700_000_100_000, max_pages=2)
+    except RuntimeError as exc:
+        assert "ops_command_transaction_required" in str(exc)
+    else:
+        raise AssertionError("expected missing transaction to fail before directory writes")
+
+    assert repository.upsert_depths == []
 
 
 def test_rebuild_token_radar_rank_inputs_command_is_not_registered() -> None:
@@ -342,6 +638,7 @@ class _FakeMarketTickCurrentDB:
 
     def __init__(self, *, lock_available: bool = True) -> None:
         self.lock_available = lock_available
+        self.aclose_calls = 0
         self.lock_events: list[tuple[str, str, int] | tuple[str, str]] = []
         self.repos = SimpleNamespace(
             conn=_FakeMarketTickCurrentConn(),
@@ -363,6 +660,9 @@ class _FakeMarketTickCurrentDB:
     def worker_session(self, _name: str, statement_timeout_seconds: int | None = None):
         self.repos.statement_timeout_seconds = statement_timeout_seconds
         yield self.repos
+
+    async def aclose(self) -> None:
+        self.aclose_calls += 1
 
 
 class _FakeMarketLock:
@@ -418,8 +718,10 @@ class _FakeMarketTickCurrentRepository:
 
 
 class _FakeDirtyTargetsRepository:
-    def __init__(self) -> None:
+    def __init__(self, conn: _FakeOpsConn | None = None) -> None:
+        self.conn = conn
         self.calls: list[tuple[Any, ...]] = []
+        self.enqueue_depths: list[int] = []
 
     def count_recent_resolved_target_candidates(self, *, since_ms: int, now_ms: int, limit: int) -> int:
         self.calls.append(("count_recent_resolved_target_candidates", since_ms, now_ms, limit))
@@ -443,11 +745,13 @@ class _FakeDirtyTargetsRepository:
         commit: bool = True,
     ) -> int:
         self.calls.append(("enqueue_market_current_targets", since_ms, now_ms, limit, reason, commit))
+        self.enqueue_depths.append(self.conn.transaction_depth if self.conn is not None else 0)
         return 4
 
 
 class _FakeCaptureTierRegistry:
-    def __init__(self) -> None:
+    def __init__(self, conn: _FakeOpsConn | None = None) -> None:
+        self.conn = conn
         self.rows = [
             {
                 "target_type": "Asset",
@@ -465,15 +769,19 @@ class _FakeCaptureTierRegistry:
             },
         ]
         self.calls: list[tuple[Any, ...]] = []
+        self.read_depths: list[int] = []
 
     def ranked_live_market_targets(self, *, projection_version: str, since_ms: int, limit: int) -> list[dict[str, Any]]:
         self.calls.append((projection_version, since_ms, limit))
+        self.read_depths.append(self.conn.transaction_depth if self.conn is not None else 0)
         return self.rows[:limit]
 
 
 class _FakeCaptureTierDirtyTargets:
-    def __init__(self) -> None:
+    def __init__(self, conn: _FakeOpsConn | None = None) -> None:
+        self.conn = conn
         self.calls: list[dict[str, Any]] = []
+        self.enqueue_depths: list[int] = []
 
     def enqueue_rank_set(
         self,
@@ -485,6 +793,7 @@ class _FakeCaptureTierDirtyTargets:
         now_ms: int,
         commit: bool,
     ) -> dict[str, Any]:
+        self.enqueue_depths.append(self.conn.transaction_depth if self.conn is not None else 0)
         self.calls.append(
             {
                 "reason": reason,
@@ -499,9 +808,112 @@ class _FakeCaptureTierDirtyTargets:
 
 
 class _FakeSourceDirtyEventsRepository:
-    def __init__(self) -> None:
+    def __init__(self, conn: _FakeOpsConn | None = None) -> None:
+        self.conn = conn
         self.calls: list[tuple[Any, ...]] = []
+        self.list_depths: list[int] = []
+        self.enqueue_depths: list[int] = []
 
     def count_recent_resolved_event_candidates(self, *, since_ms: int, now_ms: int, limit: int) -> int:
         self.calls.append(("count_recent_resolved_event_candidates", since_ms, now_ms, limit))
         return 8
+
+    def list_recent_resolved_events(self, *, since_ms: int, now_ms: int, limit: int) -> list[str]:
+        self.calls.append(("list_recent_resolved_events", since_ms, now_ms, limit))
+        self.list_depths.append(self.conn.transaction_depth if self.conn is not None else 0)
+        return ["event-1", "event-2"]
+
+    def enqueue_events(self, rows: list[str], *, reason: str, now_ms: int, commit: bool) -> int:
+        self.calls.append(("enqueue_events", tuple(rows), reason, now_ms, commit))
+        self.enqueue_depths.append(self.conn.transaction_depth if self.conn is not None else 0)
+        return len(rows)
+
+
+class _FakeNewsRepository:
+    def __init__(self, conn: _FakeOpsConn) -> None:
+        self.conn = conn
+        self.list_depths: list[int] = []
+        self.delete_depths: list[int] = []
+
+    def list_news_item_ids_for_canonical_rebuild(self, *, limit: int) -> list[str]:
+        assert limit == 25
+        self.list_depths.append(self.conn.transaction_depth)
+        return ["news-1", "news-2"]
+
+    def delete_page_rows_without_enabled_observation_edges(self, *, commit: bool) -> int:
+        assert commit is False
+        self.delete_depths.append(self.conn.transaction_depth)
+        return 3
+
+
+class _FakeNewsProjectionDirtyTargets:
+    def __init__(self, conn: _FakeOpsConn) -> None:
+        self.conn = conn
+        self.enqueue_depths: list[int] = []
+
+    def enqueue_targets(self, targets: list[dict[str, str]], *, reason: str, now_ms: int, commit: bool) -> int:
+        self.enqueue_depths.append(self.conn.transaction_depth)
+        assert [target["target_id"] for target in targets] == ["news-1", "news-1", "news-2", "news-2"]
+        assert reason == "ops_news_canonical_rebuild"
+        assert now_ms == 1_700_000_100_000
+        assert commit is False
+        return len(targets)
+
+
+class _FakeOpsConn:
+    def __init__(self) -> None:
+        self.transaction_depth = 0
+        self.events: list[str] = []
+
+    def transaction(self):
+        return _FakeOpsTransaction(self)
+
+
+class _FakeOpsTransaction:
+    def __init__(self, conn: _FakeOpsConn) -> None:
+        self.conn = conn
+
+    def __enter__(self):
+        self.conn.transaction_depth += 1
+        self.conn.events.append("enter")
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.conn.events.append("rollback" if exc_type is not None else "exit")
+        self.conn.transaction_depth -= 1
+        return False
+
+
+class _FakeGmgnDirectoryClient:
+    def __init__(self, conn: _FakeOpsConn) -> None:
+        self.conn = conn
+        self.iter_depths: list[int] = []
+
+    def iter_entries(self, *, max_pages: int):
+        assert max_pages == 2
+        self.iter_depths.append(self.conn.transaction_depth)
+        return [
+            SimpleNamespace(
+                handle="alpha",
+                gmgn_user_id="gmgn-alpha",
+                user_tags=("kol",),
+                platform_followers=123,
+            ),
+            SimpleNamespace(
+                handle="beta",
+                gmgn_user_id="gmgn-beta",
+                user_tags=(),
+                platform_followers=None,
+            ),
+        ]
+
+
+class _FakeGmgnDirectoryRepository:
+    def __init__(self, conn: object) -> None:
+        self.conn = conn
+        self.upsert_depths: list[int] = []
+
+    def upsert_directory_entry(self, **kwargs) -> None:
+        self.upsert_depths.append(self.conn.transaction_depth)
+        assert kwargs["observed_at_ms"] == 1_700_000_100_000
+        assert kwargs["commit"] is False

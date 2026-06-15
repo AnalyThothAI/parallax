@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 from parallax.app.runtime.provider_wiring import binance, gmgn, okx
 from parallax.app.runtime.provider_wiring.binance import (
@@ -11,6 +11,7 @@ from parallax.app.runtime.provider_wiring.binance import (
 from parallax.app.runtime.provider_wiring.types import AssetMarketProviders, OkxProviderBundle
 from parallax.domains.asset_market.providers import (
     DexProfileSource,
+    DexTokenProfileProvider,
     DexTokenQuote,
     DexTokenQuoteProvider,
     DexTokenQuoteRequest,
@@ -18,6 +19,10 @@ from parallax.domains.asset_market.providers import (
 from parallax.platform.config.settings import Settings
 
 EVM_ADDRESS_RE = re.compile(r"^0x[a-fA-F0-9]{40}$")
+
+
+class _SyncCloseProvider(Protocol):
+    def close(self) -> None: ...
 
 
 class FallbackDexQuoteProvider:
@@ -57,9 +62,7 @@ class FallbackDexQuoteProvider:
             if provider is None or id(provider) in seen:
                 continue
             seen.add(id(provider))
-            close = getattr(provider, "close", None)
-            if close:
-                close()
+            provider.close()
 
 
 def wire_asset_market(settings: Settings) -> AssetMarketProviders:
@@ -94,12 +97,11 @@ def wire_asset_market(settings: Settings) -> AssetMarketProviders:
             ),
         )
     except Exception as exc:
+        okx_cleanup_providers = _okx_bundle_cleanup_providers(exc, okx_bundle)
         _close_partial_providers(
             exc,
             binance_cex_market,
-            getattr(okx_bundle, "dex_discovery_market", None),
-            getattr(okx_bundle, "dex_quote_market", None),
-            getattr(okx_bundle, "stream_dex_market", None),
+            *okx_cleanup_providers,
             gmgn_dex_market,
             binance_profile_market,
         )
@@ -116,9 +118,9 @@ def _dex_quote_market(
     primary: object | None,
     fallback: DexTokenQuoteProvider | None,
 ) -> DexTokenQuoteProvider | None:
-    if not _has_token_quotes(primary):
+    if primary is None:
         return fallback
-    primary_quote = cast(DexTokenQuoteProvider, primary)
+    primary_quote = _require_token_quote_provider(primary)
     if fallback is not None:
         return FallbackDexQuoteProvider(primary=primary_quote, fallback=fallback)
     return primary_quote
@@ -130,19 +132,61 @@ def _dex_profile_sources(
     binance_profile_market: BinanceWeb3DexProfileProvider | None,
 ) -> tuple[DexProfileSource, ...]:
     sources: list[DexProfileSource] = []
-    if _has_token_profile(gmgn_dex_market):
-        sources.append(DexProfileSource(provider="gmgn_dex_profile", market=cast(Any, gmgn_dex_market)))
+    if gmgn_dex_market is not None:
+        sources.append(
+            DexProfileSource(provider="gmgn_dex_profile", market=_require_token_profile_source(gmgn_dex_market))
+        )
     if binance_profile_market is not None:
         sources.append(DexProfileSource(provider="binance_web3_profile", market=binance_profile_market))
     return tuple(sources)
 
 
-def _has_token_quotes(value: object | None) -> bool:
-    return callable(getattr(value, "token_quotes", None))
+def _require_token_quote_provider(value: object) -> DexTokenQuoteProvider:
+    try:
+        token_quotes = cast(Any, value).token_quotes
+    except AttributeError as exc:
+        raise RuntimeError("asset_market_token_quotes_required") from exc
+    if not callable(token_quotes):
+        raise RuntimeError("asset_market_token_quotes_required")
+    return cast(DexTokenQuoteProvider, value)
 
 
-def _has_token_profile(value: object | None) -> bool:
-    return callable(getattr(value, "token_profile", None))
+def _require_token_profile_source(value: object) -> DexTokenProfileProvider:
+    try:
+        token_profile = cast(Any, value).token_profile
+    except AttributeError as exc:
+        raise RuntimeError("asset_market_token_profile_required") from exc
+    if not callable(token_profile):
+        raise RuntimeError("asset_market_token_profile_required")
+    return cast(DexTokenProfileProvider, value)
+
+
+def _okx_bundle_cleanup_providers(
+    error: BaseException,
+    okx_bundle: OkxProviderBundle | None,
+) -> tuple[object | None, object | None, object | None]:
+    if okx_bundle is None:
+        return (None, None, None)
+    try:
+        dex_discovery_market = okx_bundle.dex_discovery_market
+    except AttributeError as exc:
+        _record_okx_bundle_cleanup_field_error(error, "okx_bundle.dex_discovery_market", exc)
+        dex_discovery_market = None
+    try:
+        dex_quote_market = okx_bundle.dex_quote_market
+    except AttributeError as exc:
+        _record_okx_bundle_cleanup_field_error(error, "okx_bundle.dex_quote_market", exc)
+        dex_quote_market = None
+    try:
+        stream_dex_market = okx_bundle.stream_dex_market
+    except AttributeError as exc:
+        _record_okx_bundle_cleanup_field_error(error, "okx_bundle.stream_dex_market", exc)
+        stream_dex_market = None
+    return (dex_discovery_market, dex_quote_market, stream_dex_market)
+
+
+def _record_okx_bundle_cleanup_field_error(error: BaseException, field: str, exc: AttributeError) -> None:
+    error.add_note(f"partial provider cleanup failed: AttributeError: {field}: {exc}")
 
 
 def _quote_key(chain_id: Any, address: Any) -> tuple[str, str]:
@@ -164,11 +208,8 @@ def _close_partial_providers(error: BaseException, *providers: object | None) ->
         if provider is None or id(provider) in seen:
             continue
         seen.add(id(provider))
-        close = getattr(provider, "close", None)
-        if close is None:
-            continue
         try:
-            close()
+            cast(_SyncCloseProvider, provider).close()
         except Exception as exc:
             error.add_note(f"partial provider cleanup failed: {type(exc).__name__}: {exc}")
 

@@ -6,10 +6,14 @@ from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from parallax.app.runtime.providers_wiring import AssetMarketProviders
 from parallax.domains.asset_market.providers import DexTokenQuote
 from parallax.domains.asset_market.runtime.event_anchor_backfill_worker import (
     EventAnchorBackfillWorker,
+    _attempt_count,
+    _emit_wake,
 )
 from parallax.domains.asset_market.services.event_market_capture import (
     EventMarketCaptureService,
@@ -27,9 +31,6 @@ def test_event_anchor_provider_not_called_without_claim() -> None:
         pool_bundle=db,
         capture_service=_StubCaptureService(),
         wake_emitter=wake,
-        batch_size=10,
-        concurrency=2,
-        min_age_ms=100,
         clock=lambda: NOW_MS,
         settings=_settings(),
     )
@@ -57,6 +58,35 @@ def test_event_anchor_provider_not_called_without_claim() -> None:
     assert wake.emitted == []
 
 
+def test_event_anchor_wake_emitter_contract_is_required_when_emitter_is_injected() -> None:
+    with pytest.raises(AttributeError, match="notify_market_tick_written"):
+        _emit_wake(object(), target_type="chain_token", target_id="solana:abc")
+
+
+def test_event_anchor_worker_requires_formal_settings_contract() -> None:
+    with pytest.raises(RuntimeError, match="event_anchor_backfill_settings_required"):
+        EventAnchorBackfillWorker(
+            pool_bundle=_FakeDB(pending_rows=[]),
+            capture_service=_StubCaptureService(),
+        )
+
+
+def test_event_anchor_worker_requires_formal_db_bundle_contract() -> None:
+    with pytest.raises(RuntimeError, match="event_anchor_backfill_db_required"):
+        EventAnchorBackfillWorker(
+            settings=_settings(),
+            capture_service=_StubCaptureService(),
+        )
+
+
+def test_event_anchor_worker_requires_provider_bundle_without_injected_capture_service() -> None:
+    with pytest.raises(RuntimeError, match="event_anchor_backfill_providers_required"):
+        EventAnchorBackfillWorker(
+            settings=_settings(),
+            pool_bundle=_FakeDB(pending_rows=[]),
+        )
+
+
 def test_run_once_expires_stale_jobs_before_provider_calls() -> None:
     row = _pending_row(event_id="evt-expired", target_type="chain_token", target_id="solana:OLD")
     row["active_until_ms"] = NOW_MS - 1
@@ -66,9 +96,6 @@ def test_run_once_expires_stale_jobs_before_provider_calls() -> None:
         pool_bundle=db,
         capture_service=_StubCaptureService(),
         wake_emitter=wake,
-        batch_size=10,
-        concurrency=2,
-        min_age_ms=100,
         clock=lambda: NOW_MS,
         settings=_settings(),
     )
@@ -85,6 +112,27 @@ def test_run_once_expires_stale_jobs_before_provider_calls() -> None:
     assert wake.emitted == []
 
 
+def test_run_once_requires_worker_session_unit_of_work_before_expiring_stale_jobs() -> None:
+    row = _pending_row(event_id="evt-expired", target_type="chain_token", target_id="solana:OLD")
+    row["active_until_ms"] = NOW_MS - 1
+    db = _FakeDB(pending_rows=[], expired_rows=[row], expose_unit_of_work=False)
+    worker = EventAnchorBackfillWorker(
+        pool_bundle=db,
+        capture_service=_StubCaptureService(),
+        wake_emitter=_RecordingWakeEmitter(),
+        clock=lambda: NOW_MS,
+        settings=_settings(),
+    )
+
+    with pytest.raises(AttributeError, match="unit_of_work"):
+        asyncio.run(worker.run_once())
+
+    assert db.expire_stale_calls == []
+    assert db.terminal_jobs == []
+    assert db.terminal_captures == []
+    assert db.claim_calls == []
+
+
 def test_run_once_with_no_due_rows_does_not_scan_ready_anchor_facts() -> None:
     db = _FakeDB(pending_rows=[], ready_jobs=6)
     wake = _RecordingWakeEmitter()
@@ -92,9 +140,6 @@ def test_run_once_with_no_due_rows_does_not_scan_ready_anchor_facts() -> None:
         pool_bundle=db,
         capture_service=_StubCaptureService(),
         wake_emitter=wake,
-        batch_size=10,
-        concurrency=2,
-        min_age_ms=100,
         clock=lambda: NOW_MS,
         settings=_settings(),
     )
@@ -117,9 +162,6 @@ def test_run_once_reads_due_jobs_not_enriched_event_pending_rows() -> None:
         pool_bundle=db,
         capture_service=_UnavailableService("provider_no_quote"),
         wake_emitter=wake,
-        batch_size=10,
-        concurrency=2,
-        min_age_ms=100,
         clock=lambda: NOW_MS,
         settings=_settings(),
     )
@@ -160,11 +202,8 @@ def test_concurrent_captures_use_isolated_workerspace_session_depth() -> None:
         pool_bundle=db,
         capture_service=_ReleasingUnavailableService("provider_no_quote", release_hold),
         wake_emitter=_RecordingWakeEmitter(),
-        batch_size=10,
-        concurrency=2,
-        min_age_ms=100,
         clock=lambda: NOW_MS,
-        settings=_settings(),
+        settings=_settings(concurrency=2),
     )
 
     result = asyncio.run(worker.run_once())
@@ -190,9 +229,6 @@ def test_run_once_reschedules_rate_limited_jobs_inside_active_window() -> None:
         pool_bundle=db,
         capture_service=_UnavailableService("rate_limited"),
         wake_emitter=wake,
-        batch_size=10,
-        concurrency=2,
-        min_age_ms=100,
         clock=lambda: NOW_MS,
         settings=_settings(max_attempts=3),
     )
@@ -225,9 +261,6 @@ def test_run_once_stale_reschedule_lease_has_no_other_side_effects() -> None:
         pool_bundle=db,
         capture_service=_UnavailableService("rate_limited"),
         wake_emitter=wake,
-        batch_size=10,
-        concurrency=2,
-        min_age_ms=100,
         clock=lambda: NOW_MS,
         settings=_settings(max_attempts=3),
     )
@@ -252,6 +285,33 @@ def test_run_once_stale_reschedule_lease_has_no_other_side_effects() -> None:
     assert wake.emitted == []
 
 
+def test_event_anchor_claim_attempt_helpers_require_claim_attempt_field_without_default() -> None:
+    row = _pending_row(event_id="evt-missing-attempt", target_type="chain_token", target_id="solana:MISS")
+    row.pop("attempt_count")
+
+    with pytest.raises(ValueError, match="event_anchor_backfill_claim_attempt_count_required") as exc_info:
+        _attempt_count(row)
+
+    assert isinstance(exc_info.value.__cause__, KeyError)
+
+
+def test_temporary_reschedule_requires_claim_attempt_field_without_default() -> None:
+    row = _pending_row(event_id="evt-rate-missing-attempt", target_type="chain_token", target_id="solana:RATE")
+    row.pop("attempt_count")
+    worker = EventAnchorBackfillWorker(
+        pool_bundle=_FakeDB(pending_rows=[]),
+        capture_service=_StubCaptureService(),
+        wake_emitter=_RecordingWakeEmitter(),
+        clock=lambda: NOW_MS,
+        settings=_settings(max_attempts=3),
+    )
+
+    with pytest.raises(ValueError, match="event_anchor_backfill_claim_attempt_count_required") as exc_info:
+        worker._should_reschedule(row=row, reason="rate_limited", now_ms=NOW_MS)
+
+    assert isinstance(exc_info.value.__cause__, KeyError)
+
+
 def test_run_once_dispatches_to_capture_service_under_semaphore_then_persists_and_wakes() -> None:
     rows = [_pending_row(event_id="event-1", target_type="chain_token", target_id="solana:AAA")]
     quote = DexTokenQuote(
@@ -272,9 +332,6 @@ def test_run_once_dispatches_to_capture_service_under_semaphore_then_persists_an
         pool_bundle=db,
         capture_service=service,
         wake_emitter=wake,
-        batch_size=10,
-        concurrency=4,
-        min_age_ms=100,
         clock=lambda: NOW_MS,
         settings=_settings(),
     )
@@ -378,11 +435,8 @@ def test_run_once_cex_target_dispatches_to_message_cex_provider() -> None:
         pool_bundle=db,
         capture_service=_Service(),
         wake_emitter=wake,
-        batch_size=5,
-        concurrency=2,
-        min_age_ms=0,
         clock=lambda: NOW_MS,
-        settings=_settings(),
+        settings=_settings(batch_size=5, concurrency=2, min_age_ms=0),
     )
 
     result = asyncio.run(worker.run_once())
@@ -428,11 +482,8 @@ def test_run_once_provider_no_quote_terminalizes_job_and_does_not_wake() -> None
         pool_bundle=db,
         capture_service=_Service(),
         wake_emitter=wake,
-        batch_size=5,
-        concurrency=2,
-        min_age_ms=0,
         clock=lambda: NOW_MS,
-        settings=_settings(),
+        settings=_settings(batch_size=5, concurrency=2, min_age_ms=0),
     )
 
     result = asyncio.run(worker.run_once())
@@ -467,11 +518,8 @@ def test_run_once_stale_terminal_lease_does_not_mark_enriched_event_terminal() -
         pool_bundle=db,
         capture_service=_UnavailableService("provider_no_quote"),
         wake_emitter=wake,
-        batch_size=5,
-        concurrency=2,
-        min_age_ms=0,
         clock=lambda: NOW_MS,
-        settings=_settings(),
+        settings=_settings(batch_size=5, concurrency=2, min_age_ms=0),
     )
 
     result = asyncio.run(worker.run_once())
@@ -545,11 +593,8 @@ def test_run_once_wakes_only_targets_that_were_attached() -> None:
         pool_bundle=db,
         capture_service=_Service(),
         wake_emitter=wake,
-        batch_size=5,
-        concurrency=2,
-        min_age_ms=0,
         clock=lambda: NOW_MS,
-        settings=_settings(),
+        settings=_settings(batch_size=5, concurrency=2, min_age_ms=0),
     )
 
     result = asyncio.run(worker.run_once())
@@ -569,17 +614,26 @@ def test_run_once_wakes_only_targets_that_were_attached() -> None:
     ]
 
 
-def _settings(*, max_attempts: int = 3) -> Any:
+def _settings(
+    *,
+    batch_size: int = 10,
+    concurrency: int = 4,
+    max_attempts: int = 3,
+    min_age_ms: int = 100,
+    lease_ms: int = 60_000,
+) -> Any:
     return SimpleNamespace(
         enabled=True,
         interval_seconds=1.0,
         timeout_seconds=120.0,
-        batch_size=10,
-        concurrency=4,
+        batch_size=batch_size,
+        concurrency=concurrency,
         max_attempts=max_attempts,
-        min_age_ms=100,
+        lease_ms=lease_ms,
+        min_age_ms=min_age_ms,
         active_window_ms=300_000,
         max_anchor_lag_ms=60_000,
+        statement_timeout_seconds=30.0,
     )
 
 
@@ -678,6 +732,7 @@ class _FakeDB:
         nearest_hold_target_id: str | None = None,
         nearest_hold_started: threading.Event | None = None,
         nearest_hold_release: threading.Event | None = None,
+        expose_unit_of_work: bool = True,
     ) -> None:
         self._pending_rows = pending_rows
         self._expired_rows = list(expired_rows or [])
@@ -706,6 +761,7 @@ class _FakeDB:
         self.nearest_hold_target_id = nearest_hold_target_id
         self.nearest_hold_started = nearest_hold_started
         self.nearest_hold_release = nearest_hold_release
+        self.expose_unit_of_work = expose_unit_of_work
 
     def worker_session(self, name: str, statement_timeout_seconds: float | None = None):
         return _FakeWorkerSession(self)
@@ -733,7 +789,9 @@ class _FakeWorkerSession:
             "reschedule_job_guards": len(self._db.reschedule_job_guards),
             "done_job_guards": len(self._db.done_job_guards),
         }
-        return _FakeRepos(self._db)
+        if self._db.expose_unit_of_work:
+            return _FakeRepos(self._db)
+        return _FakeReposWithoutUnitOfWork(self._db)
 
     def __exit__(self, exc_type, exc, tb) -> None:
         self._db.open_sessions -= 1
@@ -755,6 +813,22 @@ class _FakeRepos:
         return _FakeWorkerSession(self._db)
 
     def unit_of_work(self):
+        return _FakeWorkerSession(self._db)
+
+    def require_transaction(self, *, operation: str) -> None:
+        return None
+
+
+class _FakeReposWithoutUnitOfWork:
+    def __init__(self, db: _FakeDB) -> None:
+        self._db = db
+        self.enriched_events = _FakeEnrichedEventRepo(db)
+        self.event_anchor_jobs = _FakeEventAnchorJobRepo(db)
+        self.market_ticks = _FakeMarketTickRepo(db)
+        self.market_tick_current_dirty_targets = _FakeDirtyTargets(db)
+        self.conn = SimpleNamespace(commit=lambda: None)
+
+    def transaction(self):
         return _FakeWorkerSession(self._db)
 
     def require_transaction(self, *, operation: str) -> None:

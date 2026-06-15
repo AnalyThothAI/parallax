@@ -25,13 +25,11 @@ class NarrativeAdmissionService:
     def __init__(
         self,
         *,
-        hot_rank_limit: int = 50,
-        min_rank_score: int = 30,
-        carry_ttl_ms: int = 3_600_000,
+        hot_rank_limit: int,
+        min_rank_score: int,
     ) -> None:
         self.hot_rank_limit = max(1, int(hot_rank_limit))
         self.min_rank_score = max(0, int(min_rank_score))
-        self.carry_ttl_ms = max(1, int(carry_ttl_ms))
 
     def reconcile_from_radar_rows(
         self,

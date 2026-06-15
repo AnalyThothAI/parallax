@@ -147,7 +147,6 @@ export function signalPulseFixture(overrides: Partial<SignalPulseData> = {}): Si
     query: { window: "1h", scope: "all" },
     health: {
       pulse_ready: true,
-      agent_worker_running: true,
       candidate_count: 0,
       blocked_low_information_count: 0,
       dead_job_count: 0,

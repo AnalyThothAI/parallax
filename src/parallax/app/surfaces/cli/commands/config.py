@@ -92,8 +92,6 @@ def handle_config(_args: object) -> tuple[int, dict[str, Any]]:
                     },
                     "macrodata": {
                         "enabled": settings.macrodata_enabled,
-                        "quote_timeout_seconds": settings.macrodata_quote_timeout_seconds,
-                        "quote_cache_ttl_seconds": settings.macrodata_quote_cache_ttl_seconds,
                         "fred_api_key_env": settings.macrodata_fred_api_key_env,
                         "fred_api_key_configured": settings.macrodata_fred_api_key_configured,
                     },

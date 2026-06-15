@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import asdict, dataclass, field, replace
-from typing import Any
+from typing import Any, cast
 
 from parallax.domains.token_intel.services.query_parser import SearchIntent, parse_search_query
 from parallax.domains.token_intel.services.search_aliases import (
@@ -39,6 +39,14 @@ class SearchCursorError(Exception):
     pass
 
 
+class SearchScopeError(ValueError):
+    pass
+
+
+class SearchWindowError(ValueError):
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class _CursorState:
     phase: str
@@ -54,13 +62,14 @@ class SearchService:
         self,
         query: str,
         *,
-        limit: int = 20,
-        scope: str = "all",
+        limit: int,
+        scope: str,
+        window: str,
         cursor: str | None = None,
-        window: str = "24h",
         now_ms: int | None = None,
     ) -> SearchPage:
         requested_limit = max(0, int(limit))
+        watched_only = _watched_only(scope)
         since_ms = _since_ms(window=window, now_ms=now_ms)
         intent = parse_search_query(query, scope=scope)
         query_payload = _query_payload(intent) | {"window": window, "since_ms": since_ms}
@@ -80,7 +89,7 @@ class SearchService:
             return self._target_page(
                 query_payload=query_payload | {"lexical_query": lexical_query},
                 target_candidates=target_candidates,
-                watched_only=scope == "matched",
+                watched_only=watched_only,
                 limit=requested_limit,
                 cursor_state=cursor_state,
                 since_ms=since_ms,
@@ -88,7 +97,7 @@ class SearchService:
         route_hits = self.search_query.route_hits(
             intent=route_intent,
             target_candidates=target_candidates,
-            watched_only=scope == "matched",
+            watched_only=watched_only,
             route_limit=_route_limit(lexical_query=lexical_query, requested_limit=requested_limit),
             since_ms=since_ms,
         )
@@ -141,19 +150,16 @@ class SearchService:
     def _resolve_target_candidates(self, *, intent: SearchIntent, target_intent: SearchIntent) -> list[dict[str, Any]]:
         or_symbols = target_symbols_for_or_query(intent.normalized_text)
         if or_symbols:
-            candidates: list[dict[str, Any]] = []
-            for symbol in or_symbols:
-                symbol_intent = replace(target_intent, kind="symbol", symbol=symbol)
-                candidates.extend(self.search_query.resolve_targets(symbol_intent))
+            candidates = cast(list[dict[str, Any]], self.search_query.resolve_symbols(or_symbols))
             resolved = _resolved_targets(candidates)
             if resolved:
                 return _dedupe_candidates(candidates)
-        candidates = self.search_query.resolve_targets(target_intent)
+        candidates = cast(list[dict[str, Any]], self.search_query.resolve_targets(target_intent))
         if not _resolved_targets(candidates) and intent.kind in {"symbol", "text"}:
             fuzzy_symbol = fuzzy_canonical_symbol_for_query(intent.normalized_text or intent.text)
             if fuzzy_symbol and fuzzy_symbol != target_intent.symbol:
                 target_intent = replace(target_intent, kind="symbol", symbol=fuzzy_symbol)
-                candidates = self.search_query.resolve_targets(target_intent)
+                candidates = cast(list[dict[str, Any]], self.search_query.resolve_targets(target_intent))
         return candidates
 
 
@@ -166,8 +172,19 @@ def _target_intent(intent: SearchIntent) -> SearchIntent:
 
 def _since_ms(*, window: str, now_ms: int | None) -> int:
     resolved_now_ms = int(now_ms or time.time() * 1000)
-    window_ms = WINDOW_MS.get(window, WINDOW_MS["24h"])
+    try:
+        window_ms = WINDOW_MS[window]
+    except KeyError as exc:
+        raise SearchWindowError(window) from exc
     return resolved_now_ms - window_ms
+
+
+def _watched_only(scope: str) -> bool:
+    if scope == "matched":
+        return True
+    if scope == "all":
+        return False
+    raise SearchScopeError(scope)
 
 
 def _resolved_targets(target_candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:

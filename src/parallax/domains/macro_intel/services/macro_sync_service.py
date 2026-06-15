@@ -28,7 +28,6 @@ class MacrodataBundleRunnerProtocol(Protocol):
 _CONFIG_ERROR_CODES = {
     "macrodata_executable_missing",
 }
-_DEFAULT_FRED_API_KEY_ENV = "FINANCE_FRED_API_KEY"
 _URI_CREDENTIAL_RE = re.compile(r"([a-z][a-z0-9+.-]*://[^:/@\s]+):([^@\s]+)@", re.IGNORECASE)
 _SECRET_ASSIGNMENT_RE = re.compile(
     r"\b(api[_-]?key|token|secret|password|pwd)\s*[:=]\s*([^,\s;]+)",
@@ -44,47 +43,50 @@ class MacroSyncService:
     def __init__(
         self,
         *,
-        settings: object,
+        settings: Any,
         db: Any | None = None,
         repository_factory: Callable[[], AbstractContextManager[RepositorySession]] | None = None,
         runner: MacrodataBundleRunnerProtocol | None = None,
-        wake_bus: Any | None = None,
+        wake_emitter: Any | None = None,
         clock_ms: Callable[[], int] | None = None,
     ) -> None:
+        if settings is None:
+            raise RuntimeError("macro_sync_settings_root_required")
+        if db is None and repository_factory is None:
+            raise RuntimeError("macro_sync_repository_session_required")
         self.settings = settings
+        self.sync_settings = _require_macro_sync_worker_settings(settings)
         self.db = db
         self.repository_factory = repository_factory
         self.runner = runner
-        self.wake_bus = wake_bus
+        self.wake_emitter = wake_emitter
         self.clock_ms = clock_ms or _now_ms
 
     def enqueue_due_windows(self, *, now_ms: int | None = None) -> dict[str, Any]:
         now = int(now_ms if now_ms is not None else self.clock_ms())
-        sync_settings = _sync_settings(self.settings)
         with self._repository_session() as repos:
             summary = ensure_due_macro_sync_windows(
                 repos=repos,
-                source_name=str(getattr(sync_settings, "source_name", "macrodata-cli")),
-                bundle_name=str(getattr(sync_settings, "bundle_name", "macro-core")),
+                source_name=str(self.sync_settings.source_name),
+                bundle_name=str(self.sync_settings.bundle_name),
                 now=_date_from_ms(now),
                 now_ms=now,
-                bootstrap_lookback_days=int(getattr(sync_settings, "bootstrap_lookback_days", 1095)),
-                max_window_days=int(getattr(sync_settings, "max_window_days", 31)),
-                steady_overlap_days=int(getattr(sync_settings, "steady_overlap_days", 7)),
-                steady_interval_seconds=float(getattr(sync_settings, "interval_seconds", 900.0)),
-                max_bootstrap_windows_per_cycle=int(getattr(sync_settings, "max_bootstrap_windows_per_cycle", 1)),
-                max_attempts=int(getattr(sync_settings, "max_attempts", 8)),
+                bootstrap_lookback_days=int(self.sync_settings.bootstrap_lookback_days),
+                max_window_days=int(self.sync_settings.max_window_days),
+                steady_overlap_days=int(self.sync_settings.steady_overlap_days),
+                steady_interval_seconds=float(self.sync_settings.interval_seconds),
+                max_bootstrap_windows_per_cycle=int(self.sync_settings.max_bootstrap_windows_per_cycle),
+                max_attempts=int(self.sync_settings.max_attempts),
             )
-            queue_summary = _call_queue_summary(repos, now_ms=now)
+            queue_summary = repos.macro_intel.macro_sync_queue_summary(now_ms=now)
         return {**summary, **queue_summary}
 
     def run_claimed_window_once(self, *, lease_owner: str, now_ms: int | None = None) -> MacroSyncRunSummary | None:
         now = int(now_ms if now_ms is not None else self.clock_ms())
-        sync_settings = _sync_settings(self.settings)
         with self._repository_session() as repos:
             window = repos.macro_intel.claim_macro_sync_window(
                 lease_owner=lease_owner,
-                lease_ms=int(getattr(sync_settings, "lease_ms", 300_000)),
+                lease_ms=int(self.sync_settings.lease_ms),
                 now_ms=now,
             )
         if window is None:
@@ -102,23 +104,22 @@ class MacroSyncService:
         now_ms: int | None = None,
     ) -> MacroSyncRunSummary:
         now = int(now_ms if now_ms is not None else self.clock_ms())
-        sync_settings = _sync_settings(self.settings)
         with self._repository_session() as repos, _unit_of_work(repos):
             sync_window_id = repos.macro_intel.enqueue_macro_sync_window(
-                source_name=str(getattr(sync_settings, "source_name", "macrodata-cli")),
+                source_name=str(self.sync_settings.source_name),
                 bundle_name=bundle_name,
                 window_start=window_start,
                 window_end=window_end,
                 trigger_reason=_explicit_trigger_reason(trigger_reason, now_ms=now),
                 priority=0,
                 due_at_ms=now,
-                max_attempts=int(getattr(sync_settings, "max_attempts", 8)),
+                max_attempts=int(self.sync_settings.max_attempts),
                 now_ms=now,
             )
             window = repos.macro_intel.claim_macro_sync_window_by_id(
                 sync_window_id=sync_window_id,
                 lease_owner=lease_owner,
-                lease_ms=int(getattr(sync_settings, "lease_ms", 300_000)),
+                lease_ms=int(self.sync_settings.lease_ms),
                 now_ms=now,
             )
             if window is None:
@@ -187,8 +188,8 @@ class MacroSyncService:
                 if not completed:
                     raise _StaleMacroSyncClaimError("macro sync claim is no longer current")
             summary = _summary_from_payload(run_payload)
-            if summary.imported_observation_count > 0 and self.wake_bus is not None:
-                _notify_macro_observations_imported(self.wake_bus, summary)
+            if summary.imported_observation_count > 0 and self.wake_emitter is not None:
+                _notify_macro_observations_imported(self.wake_emitter, summary)
             return summary
         except _StaleMacroSyncClaimError:
             return _stale_claim_summary(sync_run_id=sync_run_id)
@@ -244,7 +245,6 @@ class MacroSyncService:
         now_ms: int,
         retry: bool,
     ) -> MacroSyncRunSummary:
-        sync_settings = _sync_settings(self.settings)
         completed_at_ms = int(self.clock_ms())
         payload = _sync_run_payload(
             sync_run_id=sync_run_id,
@@ -280,7 +280,7 @@ class MacroSyncService:
                         sync_run_id=sync_run_id,
                         error_code=error_code,
                         error_message=_safe_error_message(error_message),
-                        retry_delay_ms=int(getattr(sync_settings, "retry_delay_ms", 900_000)),
+                        retry_delay_ms=int(self.sync_settings.retry_delay_ms),
                         now_ms=now_ms,
                     )
                 else:
@@ -304,20 +304,20 @@ class MacroSyncService:
             return self.repository_factory()
         if self.db is None:
             raise RuntimeError("MacroSyncService requires db or repository_factory")
-        sync_settings = _sync_settings(self.settings)
         return cast(
             "AbstractContextManager[RepositorySession]",
             self.db.worker_session(
                 "macro_sync",
-                statement_timeout_seconds=getattr(sync_settings, "statement_timeout_seconds", None),
+                statement_timeout_seconds=self.sync_settings.statement_timeout_seconds,
             ),
         )
 
 
-def _sync_settings(settings: object) -> object:
-    workers = getattr(settings, "workers", None)
-    macro_sync = getattr(workers, "macro_sync", None)
-    return macro_sync or settings
+def _require_macro_sync_worker_settings(settings: Any) -> Any:
+    try:
+        return settings.workers.macro_sync
+    except AttributeError as exc:
+        raise RuntimeError("macro_sync_worker_settings_required") from exc
 
 
 def _run_result_envelope(run_result: object) -> Mapping[str, Any]:
@@ -341,20 +341,20 @@ def _fred_api_key_state(settings: object) -> dict[str, Any]:
     env_name = _configured_fred_env_name(settings)
     return {
         "fred_api_key_env": env_name,
-        "fred_api_key_configured": bool(process_environ.get(env_name, "").strip()),
+        "fred_api_key_configured": bool(process_environ.get(env_name, "").strip()) if env_name else False,
     }
 
 
-def _configured_fred_env_name(settings: object) -> str:
-    env_name = getattr(settings, "macrodata_fred_api_key_env", None)
+def _configured_fred_env_name(settings: Any) -> str | None:
+    try:
+        env_name = settings.macrodata_fred_api_key_env
+    except AttributeError as exc:
+        raise RuntimeError("macrodata_fred_api_key_env_settings_required") from exc
+    if env_name is None:
+        return None
     if isinstance(env_name, str) and env_name.strip():
         return env_name.strip()
-    providers = getattr(settings, "providers", None)
-    macrodata = getattr(providers, "macrodata", None)
-    nested_env_name = getattr(macrodata, "fred_api_key_env", None)
-    if isinstance(nested_env_name, str) and nested_env_name.strip():
-        return nested_env_name.strip()
-    return _DEFAULT_FRED_API_KEY_ENV
+    return None
 
 
 def _sync_run_payload(
@@ -460,7 +460,27 @@ def _stale_claim_summary(*, sync_run_id: str) -> MacroSyncRunSummary:
 
 
 def _attempt_budget_exhausted(window: Mapping[str, Any]) -> bool:
-    return int(window.get("attempt_count") or 0) >= int(window.get("max_attempts") or 1)
+    return _macro_sync_window_attempt_count(window) >= _macro_sync_window_max_attempts(window)
+
+
+def _macro_sync_window_attempt_count(window: Mapping[str, Any]) -> int:
+    try:
+        attempt_count = int(window["attempt_count"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("macro_sync_window_attempt_count_required") from exc
+    if attempt_count <= 0:
+        raise ValueError("macro_sync_window_attempt_count_required")
+    return attempt_count
+
+
+def _macro_sync_window_max_attempts(window: Mapping[str, Any]) -> int:
+    try:
+        max_attempts = int(window["max_attempts"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("macro_sync_window_max_attempts_required") from exc
+    if max_attempts <= 0:
+        raise ValueError("macro_sync_window_max_attempts_required")
+    return max_attempts
 
 
 def _explicit_trigger_reason(trigger_reason: str, *, now_ms: int) -> str:
@@ -468,9 +488,9 @@ def _explicit_trigger_reason(trigger_reason: str, *, now_ms: int) -> str:
     return str(trigger_reason).strip() or "operator_sync"
 
 
-def _notify_macro_observations_imported(wake_bus: Any, summary: MacroSyncRunSummary) -> None:
+def _notify_macro_observations_imported(wake_emitter: Any, summary: MacroSyncRunSummary) -> None:
     try:
-        wake_bus.notify_macro_observations_imported(
+        wake_emitter.notify_macro_observations_imported(
             count=summary.imported_observation_count,
             max_observed_at=str(summary.max_observed_at) if summary.max_observed_at else None,
             asof_date=str(summary.asof_date) if summary.asof_date else None,
@@ -501,13 +521,6 @@ def _safe_error_message(message: str) -> str:
     redacted = _URI_CREDENTIAL_RE.sub(r"\1:***@", str(message))
     redacted = _SECRET_ASSIGNMENT_RE.sub(lambda match: f"{match.group(1)}=***", redacted)
     return redacted[:240]
-
-
-def _call_queue_summary(repos: RepositorySession, *, now_ms: int) -> dict[str, Any]:
-    queue_summary = getattr(repos.macro_intel, "macro_sync_queue_summary", None)
-    if not callable(queue_summary):
-        return {}
-    return dict(queue_summary(now_ms=now_ms))
 
 
 def _unit_of_work(repos: RepositorySession) -> AbstractContextManager[Any]:

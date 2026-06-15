@@ -176,6 +176,12 @@ class _NarrativeReadModel:
 
     def hydrate_token_radar(self, data: dict[str, Any], *, window: str, scope: str, now_ms: int) -> dict[str, Any]:
         self.calls.append({"method": "radar", "window": window, "scope": scope, "now_ms": now_ms})
+        for item in [*data["targets"], *data["attention"]]:
+            assert isinstance(item.get("target"), dict)
+            assert "target_type" not in item
+            assert "target_id" not in item
+            assert "_synthetic_target_type" not in item
+            assert "_synthetic_target_id" not in item
         return {
             **data,
             "targets": [{**item, "discussion_digest": _digest()} for item in data["targets"]],

@@ -21,11 +21,18 @@ def test_cli_repository_dependencies_are_neutral():
 
 
 def test_search_accepts_positional_query_and_cursor():
-    args = build_parser().parse_args(["search", "btc", "--cursor", "0.1:100:event-1"])
+    args = build_parser().parse_args(["search", "btc", "--window", "4h", "--cursor", "0.1:100:event-1"])
 
     assert args.command == "search"
     assert args.query == "btc"
+    assert args.window == "4h"
     assert args.cursor == "0.1:100:event-1"
+
+
+def test_search_parser_owns_default_window():
+    args = build_parser().parse_args(["search", "btc"])
+
+    assert args.window == "24h"
 
 
 @pytest.mark.parametrize("removed", ["--symbol", "--ca", "--chain", "--handle"])
@@ -44,6 +51,7 @@ def test_search_help_documents_cursor_and_not_removed_filters(capsys):
     output = capsys.readouterr().out
 
     assert "--cursor" in output
+    assert "--window" in output
     assert "--symbol" not in output
     assert "--ca" not in output
     assert "--chain" not in output

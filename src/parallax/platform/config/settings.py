@@ -25,6 +25,10 @@ NOTIFICATION_RULE_IDS = (
 PULSE_CANDIDATE_WINDOWS = ("1h", "4h")
 PULSE_CANDIDATE_WINDOW_SET = frozenset(PULSE_CANDIDATE_WINDOWS)
 PULSE_CANDIDATE_STALE_JOB_TTL_SECONDS = {"1h": 3600, "4h": 14400}
+SIGNAL_PULSE_NOTIFICATION_SCOPES = ("all", "matched")
+SIGNAL_PULSE_NOTIFICATION_SCOPE_SET = frozenset(SIGNAL_PULSE_NOTIFICATION_SCOPES)
+SIGNAL_PULSE_NOTIFICATION_STATUSES = ("trade_candidate", "token_watch", "risk_rejected_high_info")
+SIGNAL_PULSE_NOTIFICATION_STATUS_SET = frozenset(SIGNAL_PULSE_NOTIFICATION_STATUSES)
 NARRATIVE_REALTIME_WINDOWS = ("1h",)
 NARRATIVE_REALTIME_WINDOW_SET = frozenset(NARRATIVE_REALTIME_WINDOWS)
 NARRATIVE_REALTIME_SCOPES = ("all",)
@@ -486,7 +490,12 @@ class NotificationsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = True
-    candidate_limit: int = 50
+    candidate_limit: int = Field(default=50, ge=1)
+    watched_activity_window_ms: int = Field(default=3_600_000, ge=1)
+    news_high_signal_recency_window_ms: int = Field(default=7_200_000, ge=1)
+    news_high_signal_query_min_limit: int = Field(default=500, ge=1)
+    news_high_signal_query_multiplier: int = Field(default=20, ge=1)
+    signal_pulse_max_pages: int = Field(default=5, ge=1)
     retention_days: int = 30
     rules: dict[str, NotificationRuleConfig] = Field(
         default_factory=lambda: {
@@ -522,29 +531,40 @@ class NotificationsConfig(BaseModel):
                 if present:
                     joined = ", ".join(present)
                     raise ValueError(f"notifications.rules.{key} does not accept news thresholds: {joined}")
-                allowed_statuses = {"trade_candidate", "token_watch", "risk_rejected_high_info"}
-                raw_statuses = payload.get("statuses")
-                if raw_statuses is not None:
-                    parsed_statuses = set(_split_values(raw_statuses))
-                    unsupported = sorted(parsed_statuses - allowed_statuses)
-                    if unsupported:
-                        raise ValueError(f"unsupported Signal Pulse statuses: {unsupported}")
-                raw_window = payload.get("window")
-                if raw_window is not None:
-                    parsed_window = str(raw_window).strip()
-                    if parsed_window not in PULSE_CANDIDATE_WINDOW_SET:
-                        allowed = ", ".join(PULSE_CANDIDATE_WINDOWS)
-                        raise ValueError(
-                            f"unsupported Signal Pulse notification window: {parsed_window}; allowed: {allowed}"
-                        )
+            if key in {"watched_account_activity", "watched_account_token_alert"}:
+                forbidden = {"scopes", "statuses", "window"}
+                present = sorted(forbidden.intersection(payload))
+                if present:
+                    joined = ", ".join(present)
+                    raise ValueError(f"notifications.rules.{key} only accepts delivery settings: {joined}")
             if key == "news_high_signal":
-                forbidden = {"combined_score_min", "external_score_min", "statuses"}
+                forbidden = {"combined_score_min", "external_score_min", "scopes", "statuses", "window"}
                 present = sorted(forbidden.intersection(payload))
                 if present:
                     joined = ", ".join(present)
                     raise ValueError(f"notifications.rules.{key} only accepts delivery settings: {joined}")
             merged[key] = {**merged[key], **dict(payload)}
         return merged
+
+    @model_validator(mode="after")
+    def validate_signal_pulse_rule_query_dimensions(self) -> NotificationsConfig:
+        rule = self.rules["signal_pulse_candidate"]
+        if not rule.window:
+            raise ValueError("notifications.rules.signal_pulse_candidate.window is required")
+        if rule.window not in PULSE_CANDIDATE_WINDOW_SET:
+            allowed = ", ".join(PULSE_CANDIDATE_WINDOWS)
+            raise ValueError(f"unsupported Signal Pulse notification window: {rule.window}; allowed: {allowed}")
+        if not rule.scopes:
+            raise ValueError("notifications.rules.signal_pulse_candidate.scopes are required")
+        unsupported_scopes = sorted(set(rule.scopes) - SIGNAL_PULSE_NOTIFICATION_SCOPE_SET)
+        if unsupported_scopes:
+            raise ValueError(f"unsupported Signal Pulse scopes: {unsupported_scopes}")
+        if not rule.statuses:
+            raise ValueError("notifications.rules.signal_pulse_candidate.statuses are required")
+        unsupported_statuses = sorted(set(rule.statuses) - SIGNAL_PULSE_NOTIFICATION_STATUS_SET)
+        if unsupported_statuses:
+            raise ValueError(f"unsupported Signal Pulse statuses: {unsupported_statuses}")
+        return self
 
 
 class OkxProviderConfig(BaseModel):
@@ -609,8 +629,6 @@ class MacrodataProviderConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = True
-    quote_timeout_seconds: float = Field(default=5.0, gt=0)
-    quote_cache_ttl_seconds: float = Field(default=30.0, ge=0)
     fred_api_key_env: str | None = "FINANCE_FRED_API_KEY"
     fred_api_key: SecretStr | None = None
 
@@ -911,6 +929,7 @@ class CollectorWorkerSettings(PerWorkerSettings):
 class MarketTickStreamWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=5.0, ge=0)
     subscription_limit: int = Field(default=100, ge=1)
+    stream_cycle_seconds: float = Field(default=30.0, ge=0.001)
 
 
 class MarketTickPollWorkerSettings(PerWorkerSettings):
@@ -943,11 +962,15 @@ class EventAnchorBackfillWorkerSettings(PerWorkerSettings):
 
 class LivePriceGatewayWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=2.0, ge=0)
+    target_limit: int = Field(default=100, ge=0)
+    target_ttl_seconds: float = Field(default=300.0, ge=0)
 
 
 class ResolutionRefreshWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=30.0, ge=0)
     batch_size: int = Field(default=50, ge=1)
+    lease_ms: int = Field(default=300_000, ge=1)
+    hot_not_found_retry_ms: int = Field(default=60_000, ge=1)
     reprocess_limit: int = Field(default=500, ge=1)
     chain_ids: tuple[str, ...] = ("solana", "eip155:1", "eip155:56", "eip155:8453", "ton")
 
@@ -960,6 +983,10 @@ class ResolutionRefreshWorkerSettings(PerWorkerSettings):
 class AssetProfileRefreshWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=60.0, ge=0)
     batch_size: int = Field(default=50, ge=1)
+    provider_retry_ms: int = Field(default=300_000, ge=1)
+    ready_refresh_ms: int = Field(default=21_600_000, ge=1)
+    missing_refresh_ms: int = Field(default=900_000, ge=1)
+    error_refresh_ms: int = Field(default=900_000, ge=1)
     statement_timeout_seconds: float = Field(default=120.0, ge=0)
 
 
@@ -967,6 +994,7 @@ class TokenImageMirrorWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=60.0, ge=0)
     batch_size: int = Field(default=100, ge=1)
     source_limit: int = Field(default=5000, ge=0)
+    retry_ms: int = Field(default=300_000, ge=1)
     statement_timeout_seconds: float = Field(default=120.0, ge=0)
     advisory_lock_key: int = 2026052111
 
@@ -974,6 +1002,7 @@ class TokenImageMirrorWorkerSettings(PerWorkerSettings):
 class TokenProfileCurrentWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=60.0, ge=0)
     batch_size: int = Field(default=500, ge=1)
+    retry_ms: int = Field(default=30_000, ge=1)
     advisory_lock_key: int = 2026051702
 
 
@@ -989,6 +1018,9 @@ class TokenCaptureTierWorkerSettings(PerWorkerSettings):
 class TokenRadarProjectionWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=10.0, ge=0)
     batch_size: int = Field(default=100, ge=1)
+    retry_ms: int = Field(default=30_000, ge=1)
+    private_cache_retention_enabled: bool = True
+    private_cache_retention_ms: int = Field(default=172_800_000, ge=1)
     statement_timeout_seconds: float = Field(default=120.0, ge=0)
     advisory_lock_key: int = 2026051501
     wakes_on: tuple[str, ...] = ("market_tick_current_updated", "resolution_updated")
@@ -1025,9 +1057,11 @@ class MacroViewProjectionWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=300.0, ge=0)
     batch_size: int = Field(default=250, ge=1)
     statement_timeout_seconds: float = Field(default=30.0, ge=0)
+    lease_ms: int = Field(default=300_000, ge=1)
+    retry_ms: int = Field(default=300_000, ge=1)
     advisory_lock_key: int = 2026052109
-    lookback_days: int = Field(default=1095, ge=1)
-    limit_per_series: int = Field(default=800, ge=1)
+    lookback_days: int = Field(default=1095, ge=1095)
+    limit_per_series: int = Field(default=800, ge=800)
     wakes_on: tuple[str, ...] = ("macro_observations_imported",)
 
     @field_validator("wakes_on", mode="before")
@@ -1052,6 +1086,7 @@ class MacroSyncWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=900.0, ge=0)
     soft_timeout_seconds: float = Field(default=180.0, ge=0)
     hard_timeout_seconds: float = Field(default=300.0, ge=0)
+    batch_size: int = Field(default=1, ge=1)
     statement_timeout_seconds: float = Field(default=30.0, ge=0)
     advisory_lock_key: int = 2026052711
     bundle_name: str = "macro-core"
@@ -1091,6 +1126,18 @@ class PulseCandidateWorkerSettings(PerWorkerSettings):
     max_enqueues_per_cycle: int = Field(default=25, ge=1)
     max_pending_jobs_global: int = Field(default=100, ge=1)
     max_pending_jobs_per_window_scope: int = Field(default=25, ge=1)
+    job_running_timeout_ms: int = Field(default=300_000, ge=1)
+    stale_running_terminalization_batch_size: int = Field(default=100, ge=1)
+    trigger_lease_ms: int = Field(default=60_000, ge=1)
+    trigger_capacity_retry_ms: int = Field(default=30_000, ge=1)
+    trigger_error_retry_ms: int = Field(default=60_000, ge=1)
+    target_edge_budget_per_hour: int = Field(default=3, ge=1)
+    candidate_edge_budget_per_hour: int = Field(default=3, ge=1)
+    failure_circuit_per_hour: int = Field(default=3, ge=1)
+    failure_circuit_reasons: tuple[str, ...] = ("schema_validation_failed", "unknown_evidence_id")
+    timeline_debounce_seconds: int = Field(default=600, ge=0)
+    evidence_market_freshness_ms: int = Field(default=3_600_000, ge=1)
+    statement_timeout_seconds: float = Field(default=30.0, ge=0)
     stale_job_ttl_by_window_seconds: dict[str, int] = Field(
         default_factory=lambda: dict(PULSE_CANDIDATE_STALE_JOB_TTL_SECONDS)
     )
@@ -1101,7 +1148,7 @@ class PulseCandidateWorkerSettings(PerWorkerSettings):
     trigger_thresholds: PulseCandidateTriggerThresholds = Field(default_factory=PulseCandidateTriggerThresholds)
     gate_thresholds: PulseCandidateGateThresholds = Field(default_factory=PulseCandidateGateThresholds)
 
-    @field_validator("wakes_on", "windows", "scopes", mode="before")
+    @field_validator("wakes_on", "windows", "scopes", "failure_circuit_reasons", mode="before")
     @classmethod
     def parse_tuple(cls, value: Any) -> tuple[str, ...]:
         return tuple(_split_values(value))
@@ -1116,6 +1163,13 @@ class PulseCandidateWorkerSettings(PerWorkerSettings):
             allowed = ", ".join(PULSE_CANDIDATE_WINDOWS)
             rejected = ", ".join(invalid)
             raise ValueError(f"pulse_candidate.windows must contain only {allowed}; got: {rejected}")
+        return value
+
+    @field_validator("failure_circuit_reasons", mode="after")
+    @classmethod
+    def validate_failure_circuit_reasons(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if not value:
+            raise ValueError("pulse_candidate.failure_circuit_reasons must not be empty")
         return value
 
     @field_validator("stale_job_ttl_by_window_seconds", mode="after")
@@ -1141,6 +1195,9 @@ class NarrativeAdmissionWorkerSettings(PerWorkerSettings):
     scopes: tuple[str, ...] = ("all",)
     admission_limit: int = Field(default=200, ge=1)
     source_limit: int = Field(default=2000, ge=1)
+    lease_ms: int = Field(default=60_000, ge=1)
+    retry_ms: int = Field(default=60_000, ge=1)
+    statement_timeout_seconds: float = Field(default=30.0, ge=0)
     min_rank_score: int = Field(default=30, ge=0)
     hot_rank_limit: int = Field(default=50, ge=1)
 
@@ -1163,21 +1220,31 @@ class NarrativeAdmissionWorkerSettings(PerWorkerSettings):
 class NotificationRuleWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=5.0, ge=0)
     batch_size: int = Field(default=50, ge=1)
+    statement_timeout_seconds: float = Field(default=30.0, ge=0)
 
 
 class NotificationDeliveryWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=5.0, ge=0)
     batch_size: int = Field(default=1, ge=1)
     max_attempts: int = Field(default=5, ge=1)
+    running_timeout_ms: int = Field(default=300_000, ge=1)
+    stale_running_terminalization_batch_size: int = Field(default=100, ge=1)
+    statement_timeout_seconds: float = Field(default=30.0, ge=0)
 
 
 class NewsFetchWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=60.0, ge=0)
     batch_size: int = Field(default=5, ge=1)
+    lease_ms: int = Field(default=60_000, ge=1)
+    statement_timeout_seconds: float = Field(default=30.0, ge=0)
     advisory_lock_key: int = 2026051905
 
 
 class NewsItemProcessWorkerSettings(PerWorkerSettings):
+    batch_size: int = Field(default=10, ge=1)
+    lease_ms: int = Field(default=120_000, ge=1)
+    max_attempts: int = Field(default=3, ge=1)
+    statement_timeout_seconds: float = Field(default=30.0, ge=0)
     advisory_lock_key: int = 2026051902
     retry_delay_ms: int = Field(default=60_000, ge=1)
     wakes_on: tuple[str, ...] = ("news_item_written",)
@@ -1193,6 +1260,9 @@ class NewsItemBriefWorkerSettings(PerWorkerSettings):
     soft_timeout_seconds: float = Field(default=180.0, ge=0)
     hard_timeout_seconds: float = Field(default=240.0, ge=0)
     batch_size: int = Field(default=5, ge=1)
+    lease_ms: int = Field(default=120_000, ge=1)
+    retry_ms: int = Field(default=60_000, ge=1)
+    statement_timeout_seconds: float = Field(default=30.0, ge=0)
     advisory_lock_key: int = 2026052001
     backpressure_cooldown_ms: int = Field(default=60_000, ge=1)
     wakes_on: tuple[str, ...] = ("news_item_processed",)
@@ -1204,6 +1274,10 @@ class NewsItemBriefWorkerSettings(PerWorkerSettings):
 
 
 class NewsPageProjectionWorkerSettings(PerWorkerSettings):
+    batch_size: int = Field(default=100, ge=1)
+    lease_ms: int = Field(default=120_000, ge=1)
+    retry_ms: int = Field(default=30_000, ge=1)
+    statement_timeout_seconds: float = Field(default=30.0, ge=0)
     advisory_lock_key: int = 2026051904
     wakes_on: tuple[str, ...] = (
         "news_item_written",
@@ -1221,6 +1295,9 @@ class NewsPageProjectionWorkerSettings(PerWorkerSettings):
 class NewsSourceQualityProjectionWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=60.0, ge=0)
     batch_size: int = Field(default=100, ge=1)
+    lease_ms: int = Field(default=120_000, ge=1)
+    retry_ms: int = Field(default=30_000, ge=1)
+    statement_timeout_seconds: float = Field(default=30.0, ge=0)
     advisory_lock_key: int = 2026052201
     wakes_on: tuple[str, ...] = ("news_item_written",)
     windows: tuple[str, ...] = ("24h", "7d")
@@ -1515,14 +1592,6 @@ class Settings(BaseModel):
         return bool(self.providers.macrodata.enabled)
 
     @property
-    def macrodata_quote_timeout_seconds(self) -> float:
-        return self.providers.macrodata.quote_timeout_seconds
-
-    @property
-    def macrodata_quote_cache_ttl_seconds(self) -> float:
-        return self.providers.macrodata.quote_cache_ttl_seconds
-
-    @property
     def macrodata_fred_api_key_env(self) -> str | None:
         return self.providers.macrodata.fred_api_key_env
 
@@ -1690,8 +1759,6 @@ providers:
     timeout_seconds: 15
   macrodata:
     enabled: true
-    quote_timeout_seconds: 5
-    quote_cache_ttl_seconds: 30
     fred_api_key_env: "FINANCE_FRED_API_KEY"
     fred_api_key:
 
@@ -1709,6 +1776,11 @@ upstream:
 notifications:
   enabled: true
   candidate_limit: 50
+  watched_activity_window_ms: 3600000
+  news_high_signal_recency_window_ms: 7200000
+  news_high_signal_query_min_limit: 500
+  news_high_signal_query_multiplier: 20
+  signal_pulse_max_pages: 5
   retention_days: 30
   rules:
     watched_account_activity:
@@ -1792,6 +1864,7 @@ market_tick_stream:
   enabled: true
   interval_seconds: 5.0
   subscription_limit: 100
+  stream_cycle_seconds: 30.0
 market_tick_poll:
   enabled: true
   interval_seconds: 15.0
@@ -1823,28 +1896,40 @@ token_capture_tier:
 live_price_gateway:
   enabled: true
   interval_seconds: 2.0
+  target_limit: 100
+  target_ttl_seconds: 300.0
 resolution_refresh:
   enabled: true
   interval_seconds: 30.0
   batch_size: 50
+  lease_ms: 300000
+  hot_not_found_retry_ms: 60000
   reprocess_limit: 500
   chain_ids: ["solana", "eip155:1", "eip155:56", "eip155:8453", "ton"]
 asset_profile_refresh:
   enabled: true
   interval_seconds: 60.0
   batch_size: 50
+  provider_retry_ms: 300000
+  ready_refresh_ms: 21600000
+  missing_refresh_ms: 900000
+  error_refresh_ms: 900000
   statement_timeout_seconds: 120.0
 token_image_mirror:
   enabled: true
   interval_seconds: 60.0
   batch_size: 100
   source_limit: 5000
+  retry_ms: 300000
   statement_timeout_seconds: 120.0
   advisory_lock_key: 2026052111
 token_radar_projection:
   enabled: true
   interval_seconds: 10.0
   batch_size: 100
+  retry_ms: 30000
+  private_cache_retention_enabled: true
+  private_cache_retention_ms: 172800000
   statement_timeout_seconds: 120.0
   advisory_lock_key: 2026051501
   wakes_on: ["market_tick_current_updated", "resolution_updated"]
@@ -1857,6 +1942,7 @@ token_profile_current:
   enabled: true
   interval_seconds: 60.0
   batch_size: 500
+  retry_ms: 30000
   advisory_lock_key: 2026051702
 cex_oi_radar_board:
   enabled: true
@@ -1873,6 +1959,7 @@ macro_sync:
   interval_seconds: 900.0
   soft_timeout_seconds: 180.0
   hard_timeout_seconds: 300.0
+  batch_size: 1
   statement_timeout_seconds: 30.0
   advisory_lock_key: 2026052711
   bundle_name: "macro-core"
@@ -1890,6 +1977,8 @@ macro_view_projection:
   interval_seconds: 300.0
   batch_size: 250
   statement_timeout_seconds: 30.0
+  lease_ms: 300000
+  retry_ms: 300000
   advisory_lock_key: 2026052109
   lookback_days: 1095
   limit_per_series: 800
@@ -1911,15 +2000,24 @@ narrative_admission:
   scopes: ["all"]
   admission_limit: 200
   source_limit: 2000
+  lease_ms: 60000
+  retry_ms: 60000
+  statement_timeout_seconds: 30.0
   min_rank_score: 30
   hot_rank_limit: 50
 news_fetch:
   enabled: true
   interval_seconds: 60.0
   batch_size: 5
+  lease_ms: 60000
+  statement_timeout_seconds: 30.0
   advisory_lock_key: 2026051905
 news_item_process:
   enabled: true
+  batch_size: 10
+  lease_ms: 120000
+  max_attempts: 3
+  statement_timeout_seconds: 30.0
   advisory_lock_key: 2026051902
   retry_delay_ms: 60000
   wakes_on: ["news_item_written"]
@@ -1929,11 +2027,18 @@ news_item_brief:
   soft_timeout_seconds: 180.0
   hard_timeout_seconds: 240.0
   batch_size: 5
+  lease_ms: 120000
+  retry_ms: 60000
+  statement_timeout_seconds: 30.0
   advisory_lock_key: 2026052001
   backpressure_cooldown_ms: 60000
   wakes_on: ["news_item_processed"]
 news_page_projection:
   enabled: true
+  batch_size: 100
+  lease_ms: 120000
+  retry_ms: 30000
+  statement_timeout_seconds: 30.0
   advisory_lock_key: 2026051904
   wakes_on:
     ["news_item_written", "news_item_processed", "news_item_brief_updated", "news_page_dirty"]
@@ -1941,6 +2046,9 @@ news_source_quality_projection:
   enabled: true
   interval_seconds: 60.0
   batch_size: 100
+  lease_ms: 120000
+  retry_ms: 30000
+  statement_timeout_seconds: 30.0
   advisory_lock_key: 2026052201
   wakes_on: ["news_item_written"]
   windows: ["24h", "7d"]
@@ -1955,6 +2063,18 @@ pulse_candidate:
   max_enqueues_per_cycle: 25
   max_pending_jobs_global: 100
   max_pending_jobs_per_window_scope: 25
+  job_running_timeout_ms: 300000
+  stale_running_terminalization_batch_size: 100
+  trigger_lease_ms: 60000
+  trigger_capacity_retry_ms: 30000
+  trigger_error_retry_ms: 60000
+  target_edge_budget_per_hour: 3
+  candidate_edge_budget_per_hour: 3
+  failure_circuit_per_hour: 3
+  failure_circuit_reasons: ["schema_validation_failed", "unknown_evidence_id"]
+  timeline_debounce_seconds: 600
+  evidence_market_freshness_ms: 3600000
+  statement_timeout_seconds: 30.0
   stale_job_ttl_by_window_seconds:
     1h: 3600
     4h: 14400
@@ -1973,11 +2093,15 @@ notification_rule:
   enabled: true
   interval_seconds: 5.0
   batch_size: 50
+  statement_timeout_seconds: 30.0
 notification_delivery:
   enabled: true
   interval_seconds: 5.0
   batch_size: 1
   max_attempts: 5
+  running_timeout_ms: 300000
+  stale_running_terminalization_batch_size: 100
+  statement_timeout_seconds: 30.0
 """
 
 
@@ -2079,8 +2203,8 @@ def _default_notification_rule_payloads() -> dict[str, dict[str, Any]]:
             "enabled": True,
             "channels": ("in_app",),
             "window": "1h",
-            "scopes": ("all", "matched"),
-            "statuses": ("trade_candidate", "token_watch", "risk_rejected_high_info"),
+            "scopes": SIGNAL_PULSE_NOTIFICATION_SCOPES,
+            "statuses": SIGNAL_PULSE_NOTIFICATION_STATUSES,
             "cooldown_seconds": 0,
         },
         "news_high_signal": {

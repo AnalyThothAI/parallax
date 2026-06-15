@@ -24,6 +24,25 @@ There is no central durable `agent_tasks` queue. Domain workers own admission, c
 - trace metadata, usage, input/output hashes, and request/result audit envelopes
 
 Domains submit typed `AgentStageSpec` packets with Pydantic output types. Domains must not branch on provider-specific response formats or call LiteLLM/OpenAI directly.
+Capacity reservations release lane/global/RPM resources through a synchronous
+callback owned by `AgentExecutionGateway`. `AgentCapacityReservation.release()`
+is async only because callers already await the public method; its internal
+`_release()` callback must return `None`. Awaitable release results are
+malformed execution-plane wiring, not an alternate lifecycle shape.
+Provider wiring for known product lanes reads the formal
+`workers.agent_runtime.lanes` settings directly. For example, the Pulse
+decision provider uses `workers.agent_runtime.lanes["pulse.decision"].timeout_seconds`;
+missing lane settings are malformed runtime configuration, not a provider-local
+120-second fallback.
+Domain adapters that build `AgentStageSpec` must carry validated request-audit
+trace identity into the gateway. Missing or mismatched `run_id` trace metadata,
+or a missing product group id from the stage input packet, is malformed
+domain-runtime output and must fail before gateway request-audit or model
+execution; adapters must not replace those fields with empty strings or
+pipeline-local run-id fallbacks.
+Workflow identity follows the same rule. A domain adapter may use its canonical
+workflow name when the constructor argument is omitted, but an explicit blank or
+`None` workflow name is malformed wiring and must not be restored to a default.
 
 ## Domain-Local Harnesses
 

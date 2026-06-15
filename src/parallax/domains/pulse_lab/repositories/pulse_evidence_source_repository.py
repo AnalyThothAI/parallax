@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from parallax.domains.pulse_lab.repositories._pulse_repository_shared import (
-    _now_ms,
     _optional_row,
     _row,
 )
+
+if TYPE_CHECKING:
+    from parallax.domains.pulse_lab.types.pulse_candidate_context import PulseCandidateContext
 
 
 class PulseEvidenceSourceRepository:
@@ -178,12 +180,12 @@ class PulseEvidenceSourceRepository:
 
     def list_market_facts(
         self,
-        context: Any,
+        context: PulseCandidateContext,
         *,
-        max_age_ms: int = 3_600_000,
-        now_ms: int | None = None,
+        max_age_ms: int,
+        now_ms: int,
     ) -> list[dict[str, Any]]:
-        effective_now_ms = _now_ms() if now_ms is None else int(now_ms)
+        effective_now_ms = int(now_ms)
         rows: list[dict[str, Any]] = []
         seen_ticks: set[str] = set()
         seen_snapshots: set[str] = set()
@@ -208,9 +210,9 @@ class PulseEvidenceSourceRepository:
                 rows.append(_market_fact_from_tick(tick))
         return rows
 
-    def list_identity_facts(self, context: Any) -> list[dict[str, Any]]:
-        target_type = _context_value(context, "target_type")
-        target_id = _context_value(context, "target_id")
+    def list_identity_facts(self, context: PulseCandidateContext) -> list[dict[str, Any]]:
+        target_type = str(context.target_type or "").strip()
+        target_id = str(context.target_id or "").strip()
         if not target_type or not target_id:
             return []
         rows: list[dict[str, Any]] = []
@@ -390,15 +392,10 @@ def _int_value(value: Any) -> int:
         return 0
 
 
-def _context_value(context: Any, key: str) -> str:
-    value = context.get(key) if isinstance(context, dict) else getattr(context, key, None)
-    return str(value or "").strip()
-
-
-def _market_lookup_keys(context: Any) -> list[tuple[str, str]]:
+def _market_lookup_keys(context: PulseCandidateContext) -> list[tuple[str, str]]:
     keys: list[tuple[str, str]] = []
-    _append_market_key(keys, _context_value(context, "target_type"), _context_value(context, "target_id"))
-    factor_snapshot = _mapping(_context_raw(context, "factor_snapshot"))
+    _append_market_key(keys, context.target_type, context.target_id)
+    factor_snapshot = _mapping(context.factor_snapshot)
     _append_market_key_from_mapping(keys, _mapping(factor_snapshot.get("subject")))
     market = _mapping(factor_snapshot.get("market"))
     _append_market_key_from_mapping(keys, _mapping(market.get("decision_latest")))
@@ -406,8 +403,8 @@ def _market_lookup_keys(context: Any) -> list[tuple[str, str]]:
     return _dedupe_pairs(keys)
 
 
-def _market_pricefeed_ids(context: Any) -> list[str]:
-    factor_snapshot = _mapping(_context_raw(context, "factor_snapshot"))
+def _market_pricefeed_ids(context: PulseCandidateContext) -> list[str]:
+    factor_snapshot = _mapping(context.factor_snapshot)
     market = _mapping(factor_snapshot.get("market"))
     ids = [
         _clean(_mapping(market.get("decision_latest")).get("pricefeed_id")),
@@ -464,10 +461,6 @@ def _dedupe_pairs(values: list[tuple[str, str]]) -> list[tuple[str, str]]:
         seen.add(pair)
         result.append(pair)
     return result
-
-
-def _context_raw(context: Any, key: str) -> Any:
-    return context.get(key) if isinstance(context, dict) else getattr(context, key, None)
 
 
 def _mapping(value: Any) -> dict[str, Any]:

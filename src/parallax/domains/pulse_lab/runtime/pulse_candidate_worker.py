@@ -5,7 +5,7 @@ import hashlib
 import json
 import time
 from collections.abc import Callable, Iterator
-from contextlib import AbstractContextManager, contextmanager
+from contextlib import contextmanager
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, cast
@@ -38,7 +38,6 @@ from parallax.domains.pulse_lab.services.pulse_edge_events import (
     build_pulse_edge_state,
     diff_pulse_edge_events,
 )
-from parallax.domains.pulse_lab.services.pulse_horizon_policy import SIGNAL_PULSE_WINDOWS
 from parallax.domains.pulse_lab.services.pulse_timeline_context import build_pulse_timeline_context
 from parallax.domains.pulse_lab.types.pulse_candidate_context import PulseCandidateContext
 from parallax.domains.token_intel.interfaces import (
@@ -48,22 +47,17 @@ from parallax.domains.token_intel.interfaces import (
     safe_int,
 )
 
-DEFAULT_WINDOWS = SIGNAL_PULSE_WINDOWS
-DEFAULT_SCOPES = ("all",)
 PULSE_TRIGGER_METRICS_KEY = "pulse_trigger_metrics"
-PULSE_EDGE_BUDGET_PER_HOUR = 3
-PULSE_TARGET_EDGE_BUDGET_PER_HOUR = 3
-PULSE_FAILURE_CIRCUIT_PER_HOUR = 3
-PULSE_FAILURE_CIRCUIT_REASONS = ("schema_validation_failed", "unknown_evidence_id")
-PULSE_TRIGGER_LEASE_MS = 60_000
-PULSE_TRIGGER_CAPACITY_RETRY_MS = 30_000
-PULSE_TRIGGER_ERROR_RETRY_MS = 60_000
 ADVISORY_LOCK_KEY = 2026051502
+PULSE_SCOPE_WATCHED_ONLY = {
+    "all": False,
+    "matched": True,
+}
 
 
 @dataclass(frozen=True)
 class PulseTriggerThresholds:
-    min_rank_score: int = 45
+    min_rank_score: int
 
 
 class PulseCandidateWorker(WorkerBase):
@@ -82,19 +76,38 @@ class PulseCandidateWorker(WorkerBase):
         gate_thresholds: PulseGateThresholds | None = None,
         wake_waiter: Any | None = None,
     ) -> None:
+        if settings is None:
+            raise RuntimeError("pulse_candidate_settings_required")
+        if db is None:
+            raise RuntimeError("pulse_candidate_db_required")
+        if decision_client is None:
+            raise RuntimeError("pulse_candidate_decision_client_required")
         super().__init__(name=name, settings=settings, db=db, telemetry=telemetry, wake_waiter=wake_waiter)
         self.decision_client = decision_client
         self.gate_func = gate_func
-        self.windows = tuple(getattr(settings, "windows", DEFAULT_WINDOWS) or DEFAULT_WINDOWS)
-        self.scopes = tuple(getattr(settings, "scopes", DEFAULT_SCOPES) or DEFAULT_SCOPES)
-        self.batch_size = max(1, int(getattr(settings, "batch_size", 10) or 10))
-        self.max_agent_jobs_per_cycle = max(1, int(getattr(settings, "max_agent_jobs_per_cycle", 2) or 2))
-        self.max_attempts = max(1, int(getattr(settings, "max_attempts", 3) or 3))
-        self.max_enqueues_per_cycle = max(1, int(getattr(settings, "max_enqueues_per_cycle", 25) or 25))
-        self.max_pending_jobs_global = max(1, int(getattr(settings, "max_pending_jobs_global", 100) or 100))
-        self.max_pending_jobs_per_window_scope = max(
+        self.windows = tuple(str(window).strip().lower() for window in settings.windows)
+        self.scopes = tuple(str(scope).strip().lower() for scope in settings.scopes)
+        self.batch_size = max(1, int(settings.batch_size))
+        self.max_agent_jobs_per_cycle = max(1, int(settings.max_agent_jobs_per_cycle))
+        self.max_attempts = max(1, int(settings.max_attempts))
+        self.max_enqueues_per_cycle = max(1, int(settings.max_enqueues_per_cycle))
+        self.max_pending_jobs_global = max(1, int(settings.max_pending_jobs_global))
+        self.max_pending_jobs_per_window_scope = max(1, int(settings.max_pending_jobs_per_window_scope))
+        self.job_running_timeout_ms = max(1, int(settings.job_running_timeout_ms))
+        self.stale_running_terminalization_batch_size = max(
             1,
-            int(getattr(settings, "max_pending_jobs_per_window_scope", 25) or 25),
+            int(settings.stale_running_terminalization_batch_size),
+        )
+        self.trigger_lease_ms = max(1, int(settings.trigger_lease_ms))
+        self.trigger_capacity_retry_ms = max(1, int(settings.trigger_capacity_retry_ms))
+        self.trigger_error_retry_ms = max(1, int(settings.trigger_error_retry_ms))
+        self.target_edge_budget_per_hour = max(1, int(settings.target_edge_budget_per_hour))
+        self.candidate_edge_budget_per_hour = max(1, int(settings.candidate_edge_budget_per_hour))
+        self.failure_circuit_per_hour = max(1, int(settings.failure_circuit_per_hour))
+        self.timeline_debounce_seconds = max(0, int(settings.timeline_debounce_seconds))
+        self.failure_circuit_reasons = _required_string_tuple(
+            settings.failure_circuit_reasons,
+            error="pulse_candidate_failure_circuit_reasons_required",
         )
         self.trigger_thresholds = trigger_thresholds or _trigger_thresholds_from_settings(settings)
         self.gate_thresholds = gate_thresholds or _gate_thresholds_from_settings(settings)
@@ -108,13 +121,13 @@ class PulseCandidateWorker(WorkerBase):
         )
 
     async def on_close(self) -> None:
-        close = getattr(self.decision_client, "aclose", None)
-        if close is not None:
-            await close()
-            return
-        close_sync = getattr(self.decision_client, "close", None)
-        if close_sync is not None:
-            close_sync()
+        try:
+            aclose = self.decision_client.aclose
+        except AttributeError as exc:
+            raise RuntimeError("pulse_candidate_decision_client_aclose_required") from exc
+        if not callable(aclose):
+            raise RuntimeError("pulse_candidate_decision_client_aclose_required")
+        await aclose()
 
     async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
         result = await self.run_once_async(now_ms=now_ms)
@@ -159,14 +172,14 @@ class PulseCandidateWorker(WorkerBase):
             "asset_suppressed_pending_global": 0,
             "asset_suppressed_pending_window_scope": 0,
         }
-        with self._repository_session() as repos, _transaction(repos.conn):
+        with self._repository_session() as repos, repos.transaction():
             queue_depth = _queue_depth(repos, now_ms=resolved_now_ms)
             result["queue_depth"] = queue_depth
             claims = repos.pulse_trigger_dirty_targets.claim_due(
                 now_ms=resolved_now_ms,
                 limit=self.batch_size,
                 lease_owner=self.name,
-                lease_ms=PULSE_TRIGGER_LEASE_MS,
+                lease_ms=self.trigger_lease_ms,
                 commit=False,
             )
             result["claimed"] = len(claims)
@@ -182,11 +195,23 @@ class PulseCandidateWorker(WorkerBase):
                 target_type = _clean(claim.get("target_type"))
                 target_id = _clean(claim.get("target_id"))
                 try:
-                    with _transaction(repos.conn):
+                    with repos.transaction():
                         if not window or not scope or not target_type or not target_id:
                             result["asset_skipped"] += 1
                             result["dirty_triggers_done"] += _mark_trigger_done(repos, claim, now_ms=resolved_now_ms)
                             continue
+                        window = _required_configured_claim_dimension(
+                            window,
+                            allowed=self.windows,
+                            field="window",
+                            error_prefix="pulse_trigger_dirty_target",
+                        )
+                        scope = _required_configured_claim_dimension(
+                            scope,
+                            allowed=self.scopes,
+                            field="scope",
+                            error_prefix="pulse_trigger_dirty_target",
+                        )
                         scope_key = (window, scope)
                         if scope_key not in pending_jobs_by_window_scope:
                             pending_jobs_by_window_scope[scope_key] = _pending_agent_job_count_for_window_scope(
@@ -201,6 +226,7 @@ class PulseCandidateWorker(WorkerBase):
                                 repos,
                                 claim,
                                 now_ms=resolved_now_ms,
+                                retry_ms=self.trigger_capacity_retry_ms,
                             )
                             continue
                         if pending_jobs_global >= self.max_pending_jobs_global:
@@ -210,6 +236,7 @@ class PulseCandidateWorker(WorkerBase):
                                 repos,
                                 claim,
                                 now_ms=resolved_now_ms,
+                                retry_ms=self.trigger_capacity_retry_ms,
                             )
                             continue
                         if pending_jobs_by_window_scope[scope_key] >= self.max_pending_jobs_per_window_scope:
@@ -219,6 +246,7 @@ class PulseCandidateWorker(WorkerBase):
                                 repos,
                                 claim,
                                 now_ms=resolved_now_ms,
+                                retry_ms=self.trigger_capacity_retry_ms,
                             )
                             continue
                         row = repos.token_radar.current_row_for_target(
@@ -237,6 +265,8 @@ class PulseCandidateWorker(WorkerBase):
                                     repos,
                                     claim,
                                     now_ms=resolved_now_ms,
+                                    target_edge_budget_per_hour=self.target_edge_budget_per_hour,
+                                    candidate_edge_budget_per_hour=self.candidate_edge_budget_per_hour,
                                 )
                             result["dirty_triggers_done"] += _mark_trigger_done(repos, claim, now_ms=resolved_now_ms)
                             continue
@@ -266,12 +296,12 @@ class PulseCandidateWorker(WorkerBase):
                         _compact_error(exc),
                     )
                     result["asset_skipped"] += 1
-                    with _transaction(repos.conn):
+                    with repos.transaction():
                         result["dirty_triggers_failed"] += repos.pulse_trigger_dirty_targets.mark_error(
                             [claim],
                             error=str(exc),
                             now_ms=resolved_now_ms,
-                            retry_ms=PULSE_TRIGGER_ERROR_RETRY_MS,
+                            retry_ms=self.trigger_error_retry_ms,
                             commit=False,
                         )
         return result
@@ -293,6 +323,8 @@ class PulseCandidateWorker(WorkerBase):
                 result["terminalized_stale_running"] += _terminalize_exhausted_stale_running_jobs(
                     repos.pulse_jobs,
                     now_ms=resolved_now_ms,
+                    running_timeout_ms=self.job_running_timeout_ms,
+                    limit=self.stale_running_terminalization_batch_size,
                 )
             reservation = self.decision_client.try_reserve_execution(
                 PULSE_DECISION_LANE,
@@ -378,6 +410,8 @@ class PulseCandidateWorker(WorkerBase):
                 gate=early_gate,
                 trigger_thresholds=self.trigger_thresholds,
                 gate_thresholds=self.gate_thresholds,
+                target_edge_budget_per_hour=self.target_edge_budget_per_hour,
+                candidate_edge_budget_per_hour=self.candidate_edge_budget_per_hour,
                 now_ms=now_ms,
             )
             return None
@@ -388,7 +422,7 @@ class PulseCandidateWorker(WorkerBase):
             target_type=target_type,
             target_id=target_id,
             event_ids=source_event_ids,
-            watched_only=scope == "matched",
+            watched_only=_watched_only_for_scope(scope, error_prefix="pulse_trigger_dirty_target"),
             limit=200,
         )
         timeline_payload = build_pulse_timeline_context(
@@ -436,7 +470,7 @@ class PulseCandidateWorker(WorkerBase):
         )
 
     def _enqueue_if_due(self, repos: Any, context: PulseCandidateContext, *, now_ms: int) -> bool:
-        existing_job = _call_optional(repos.pulse_jobs, "job_for_candidate", context.candidate_id)
+        existing_job = repos.pulse_jobs.job_for_candidate(context.candidate_id)
         gate = self.gate_func(
             factor_snapshot=context.factor_snapshot,
             thresholds=self.gate_thresholds,
@@ -455,7 +489,7 @@ class PulseCandidateWorker(WorkerBase):
             pulse_version=PULSE_VERSION,
             gate_version=PULSE_GATE_VERSION,
         )
-        existing_edge = _call_optional(repos.pulse_admission, "edge_state_by_candidate", context.candidate_id) or {}
+        existing_edge = repos.pulse_admission.edge_state_by_candidate(context.candidate_id) or {}
         previous_state = _mapping(existing_edge.get("last_processed_state_json"))
         edge_events = diff_pulse_edge_events(previous_state, edge_state)
         hour_bucket_ms = now_ms // 3_600_000 * 3_600_000
@@ -465,6 +499,7 @@ class PulseCandidateWorker(WorkerBase):
             target_id=context.target_id,
             since_ms=hour_bucket_ms,
             edge_events=edge_events,
+            failure_circuit_reasons=self.failure_circuit_reasons,
         )
         decision = PulseAdmissionPolicy().classify(
             previous_state=previous_state,
@@ -474,19 +509,21 @@ class PulseCandidateWorker(WorkerBase):
             pending_score_band=_clean(existing_edge.get("pending_score_band")),
             pending_score_band_count=safe_int(existing_edge.get("pending_score_band_count")),
             recent_failure_count=recent_failure_count,
+            failure_circuit_per_hour=self.failure_circuit_per_hour,
             last_processed_at_ms=safe_int(existing_edge.get("last_processed_at_ms")) or None,
             now_ms=now_ms,
+            timeline_debounce_seconds=self.timeline_debounce_seconds,
         )
         context = _context_with_gate(context, gate, edge_state=edge_state, edge_events=decision.edge_events)
-        with _transaction(repos.conn):
+        with repos.transaction():
             claim = repos.pulse_admission.claim_pulse_admission(
                 candidate_id=context.candidate_id,
                 target_type=context.target_type,
                 target_id=context.target_id,
                 hour_bucket_ms=hour_bucket_ms,
                 now_ms=now_ms,
-                target_limit=PULSE_TARGET_EDGE_BUDGET_PER_HOUR,
-                candidate_limit=PULSE_EDGE_BUDGET_PER_HOUR,
+                target_limit=self.target_edge_budget_per_hour,
+                candidate_limit=self.candidate_edge_budget_per_hour,
                 edge_state=edge_state,
                 edge_events=decision.edge_events,
                 admission_action=decision.action,
@@ -526,36 +563,40 @@ class PulseCandidateWorker(WorkerBase):
     def _repository_session(self) -> Iterator[Any]:
         with self.db.worker_session(
             self.name,
-            statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
+            statement_timeout_seconds=self.settings.statement_timeout_seconds,
         ) as repos:
             yield repos
 
 
-def _is_asset_trigger(row: dict[str, Any], *, thresholds: PulseTriggerThresholds | None = None) -> bool:
+def _is_asset_trigger(row: dict[str, Any], *, thresholds: PulseTriggerThresholds) -> bool:
     factor_snapshot = _factor_snapshot(row)
     if factor_snapshot is None:
         return False
     if not _clean(row.get("target_type")) or not _clean(row.get("target_id")):
         return False
-    resolved_thresholds = thresholds or PulseTriggerThresholds()
     score = safe_int(_nested(factor_snapshot, "composite", "rank_score"))
     decision = str(_nested(factor_snapshot, "composite", "recommended_decision") or "")
-    return decision in {"high_alert", "watch"} or score >= resolved_thresholds.min_rank_score
+    return decision in {"high_alert", "watch"} or score >= thresholds.min_rank_score
 
 
 def _trigger_thresholds_from_settings(settings: Any) -> PulseTriggerThresholds:
-    config = getattr(settings, "trigger_thresholds", None)
-    return PulseTriggerThresholds(min_rank_score=int(getattr(config, "min_rank_score", 45) or 45))
+    return PulseTriggerThresholds(min_rank_score=int(settings.trigger_thresholds.min_rank_score))
 
 
 def _gate_thresholds_from_settings(settings: Any) -> PulseGateThresholds:
-    config = getattr(settings, "gate_thresholds", None)
     return PulseGateThresholds(
-        trade_candidate_min=int(getattr(config, "trade_candidate_min", 72) or 72),
-        token_watch_min=int(getattr(config, "token_watch_min", 45) or 45),
-        high_info_rejection_min=int(getattr(config, "high_info_rejection_min", 30) or 30),
-        high_conviction_min=int(getattr(config, "high_conviction_min", 78) or 78),
+        trade_candidate_min=int(settings.gate_thresholds.trade_candidate_min),
+        token_watch_min=int(settings.gate_thresholds.token_watch_min),
+        high_info_rejection_min=int(settings.gate_thresholds.high_info_rejection_min),
+        high_conviction_min=int(settings.gate_thresholds.high_conviction_min),
     )
+
+
+def _required_string_tuple(values: Any, *, error: str) -> tuple[str, ...]:
+    result = tuple(str(value).strip() for value in values if str(value).strip())
+    if not result:
+        raise RuntimeError(error)
+    return result
 
 
 def _context_from_job(job: dict[str, Any]) -> PulseCandidateContext | None:
@@ -628,10 +669,9 @@ def _asset_trigger_signature(
     candidate_type: str,
     window: str,
     scope: str,
-    trigger_thresholds: PulseTriggerThresholds | None = None,
+    trigger_thresholds: PulseTriggerThresholds,
     gate_thresholds: PulseGateThresholds | None = None,
 ) -> str:
-    resolved_trigger_thresholds = trigger_thresholds or PulseTriggerThresholds()
     factor_snapshot = _factor_snapshot(row) or {}
     metrics = _asset_trigger_metrics(row)
     payload = {
@@ -645,7 +685,7 @@ def _asset_trigger_signature(
         "recommended_decision": _nested(factor_snapshot, "composite", "recommended_decision"),
         "blocked_reasons": _stable_strings(_nested(factor_snapshot, "gates", "blocked_reasons")),
         "watched_confirmation": metrics["watched_confirmation"],
-        "trigger_thresholds": {"min_rank_score": resolved_trigger_thresholds.min_rank_score},
+        "trigger_thresholds": {"min_rank_score": trigger_thresholds.min_rank_score},
     }
     return _stable_hash(payload)
 
@@ -688,18 +728,16 @@ def _recent_target_failure_count(
     target_id: str | None,
     since_ms: int,
     edge_events: list[str] | tuple[str, ...],
+    failure_circuit_reasons: tuple[str, ...],
 ) -> int:
     if set(edge_events) & ESCALATION_EDGE_EVENTS:
         return 0
-    count_func = getattr(repos.pulse_admission, "recent_target_failure_count", None)
-    if count_func is None:
-        return 0
     return safe_int(
-        count_func(
+        repos.pulse_admission.recent_target_failure_count(
             target_type=target_type,
             target_id=target_id,
             since_ms=since_ms,
-            reasons=PULSE_FAILURE_CIRCUIT_REASONS,
+            reasons=failure_circuit_reasons,
         )
     )
 
@@ -716,11 +754,10 @@ def _hide_existing_public_candidate_for_low_information(
     gate: PulseGateResult,
     trigger_thresholds: PulseTriggerThresholds,
     gate_thresholds: PulseGateThresholds,
+    target_edge_budget_per_hour: int,
+    candidate_edge_budget_per_hour: int,
     now_ms: int,
 ) -> dict[str, Any] | None:
-    hide_func = getattr(repos.pulse_candidates, "hide_public_candidate_for_low_information", None)
-    if hide_func is None:
-        return None
     candidate_id = _asset_candidate_id(
         candidate_type="token_target",
         window=window,
@@ -736,7 +773,7 @@ def _hide_existing_public_candidate_for_low_information(
         trigger_thresholds=trigger_thresholds,
         gate_thresholds=gate_thresholds,
     )
-    hidden_row = hide_func(
+    hidden_row = repos.pulse_candidates.hide_public_candidate_for_low_information(
         candidate_id=candidate_id,
         candidate_score=gate.candidate_score,
         trigger_signature=trigger_signature,
@@ -772,8 +809,8 @@ def _hide_existing_public_candidate_for_low_information(
         target_id=target_id,
         hour_bucket_ms=int(now_ms) // 3_600_000 * 3_600_000,
         now_ms=now_ms,
-        target_limit=PULSE_TARGET_EDGE_BUDGET_PER_HOUR,
-        candidate_limit=PULSE_EDGE_BUDGET_PER_HOUR,
+        target_limit=target_edge_budget_per_hour,
+        candidate_limit=candidate_edge_budget_per_hour,
         edge_state=edge_state,
         edge_events=("pulse_status_changed",),
         admission_action="suppress",
@@ -784,31 +821,22 @@ def _hide_existing_public_candidate_for_low_information(
 
 
 def _pending_agent_job_count(repos: Any) -> int:
-    count_func = getattr(repos.pulse_jobs, "pending_agent_job_count", None)
-    if count_func is None:
-        return 0
-    return safe_int(count_func())
+    return safe_int(repos.pulse_jobs.pending_agent_job_count())
 
 
 def _pending_agent_job_count_for_window_scope(repos: Any, *, window: str, scope: str) -> int:
-    count_func = getattr(repos.pulse_jobs, "pending_agent_job_count_for_window_scope", None)
-    if count_func is None:
-        return 0
-    return safe_int(count_func(window=window, scope=scope))
+    return safe_int(repos.pulse_jobs.pending_agent_job_count_for_window_scope(window=window, scope=scope))
 
 
 def _queue_depth(repos: Any, *, now_ms: int) -> int:
-    queue_depth_func = getattr(repos.pulse_trigger_dirty_targets, "queue_depth", None)
-    if queue_depth_func is None:
-        return 0
-    return safe_int(queue_depth_func(now_ms=now_ms))
+    return safe_int(repos.pulse_trigger_dirty_targets.queue_depth(now_ms=now_ms))
 
 
-def _reschedule_trigger(repos: Any, claim: dict[str, Any], *, now_ms: int) -> int:
+def _reschedule_trigger(repos: Any, claim: dict[str, Any], *, now_ms: int, retry_ms: int) -> int:
     return safe_int(
         repos.pulse_trigger_dirty_targets.reschedule(
             [claim],
-            due_at_ms=int(now_ms) + PULSE_TRIGGER_CAPACITY_RETRY_MS,
+            due_at_ms=int(now_ms) + int(retry_ms),
             now_ms=int(now_ms),
             commit=False,
         )
@@ -819,7 +847,27 @@ def _is_exit_trigger(claim: dict[str, Any]) -> bool:
     return str(claim.get("dirty_reason") or "") == "token_radar_exited"
 
 
-def _suppress_exited_trigger_target(repos: Any, claim: dict[str, Any], *, now_ms: int) -> int:
+def _claim_payload_hash(claim: dict[str, Any]) -> str:
+    try:
+        value = claim["payload_hash"]
+    except KeyError as exc:
+        raise ValueError("pulse_trigger_dirty_claim_payload_hash_required") from exc
+    if value is None:
+        raise ValueError("pulse_trigger_dirty_claim_payload_hash_required")
+    payload_hash = str(value).strip()
+    if not payload_hash:
+        raise ValueError("pulse_trigger_dirty_claim_payload_hash_required")
+    return payload_hash
+
+
+def _suppress_exited_trigger_target(
+    repos: Any,
+    claim: dict[str, Any],
+    *,
+    now_ms: int,
+    target_edge_budget_per_hour: int,
+    candidate_edge_budget_per_hour: int,
+) -> int:
     target_type = _clean(claim.get("target_type"))
     target_id = _clean(claim.get("target_id"))
     window = _clean(claim.get("window"))
@@ -845,7 +893,7 @@ def _suppress_exited_trigger_target(repos: Any, claim: dict[str, Any], *, now_ms
         "pulse_status": "not_active",
         "verdict": "not_active",
         "score_band": "exited",
-        "trigger_signature": str(claim.get("payload_hash") or ""),
+        "trigger_signature": _claim_payload_hash(claim),
         "timeline_signature": "token_radar_exited",
         "exit_reason": "token_radar_exited",
     }
@@ -855,8 +903,8 @@ def _suppress_exited_trigger_target(repos: Any, claim: dict[str, Any], *, now_ms
         target_id=target_id,
         hour_bucket_ms=int(now_ms) // 3_600_000 * 3_600_000,
         now_ms=int(now_ms),
-        target_limit=PULSE_TARGET_EDGE_BUDGET_PER_HOUR,
-        candidate_limit=PULSE_EDGE_BUDGET_PER_HOUR,
+        target_limit=target_edge_budget_per_hour,
+        candidate_limit=candidate_edge_budget_per_hour,
         edge_state=edge_state,
         edge_events=("token_radar_exited",),
         admission_action="suppress",
@@ -938,29 +986,21 @@ def _nested(data: dict[str, Any], *keys: str) -> Any:
     return value
 
 
-def _call_optional(target: Any, method: str, *args: Any) -> Any:
-    func = getattr(target, method, None)
-    if func is None:
-        return None
-    return func(*args)
-
-
-def _terminalize_exhausted_stale_running_jobs(pulse_jobs: Any, *, now_ms: int) -> int:
-    running_timeout_ms = int(getattr(pulse_jobs, "running_timeout_ms", 300_000) or 300_000)
+def _terminalize_exhausted_stale_running_jobs(
+    pulse_jobs: Any,
+    *,
+    now_ms: int,
+    running_timeout_ms: int,
+    limit: int,
+) -> int:
     return int(
         pulse_jobs.terminalize_exhausted_stale_running_jobs(
             now_ms=int(now_ms),
-            stale_after_ms=running_timeout_ms,
-            limit=100,
+            stale_after_ms=int(running_timeout_ms),
+            limit=max(1, int(limit)),
         )
         or 0
     )
-
-
-def _transaction(conn: Any) -> AbstractContextManager[Any]:
-    if hasattr(conn, "transaction"):
-        return cast(AbstractContextManager[Any], conn.transaction())
-    raise RuntimeError("pulse_candidate_requires_transactional_connection")
 
 
 def _mapping(value: Any) -> dict[str, Any]:
@@ -993,6 +1033,26 @@ def _clean(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _required_configured_claim_dimension(
+    value: str,
+    *,
+    allowed: tuple[str, ...],
+    field: str,
+    error_prefix: str,
+) -> str:
+    if value not in allowed:
+        allowed_values = ",".join(allowed)
+        raise ValueError(f"{error_prefix}_invalid_{field}:{value}:allowed={allowed_values}")
+    return value
+
+
+def _watched_only_for_scope(scope: str, *, error_prefix: str) -> bool:
+    try:
+        return PULSE_SCOPE_WATCHED_ONLY[scope]
+    except KeyError as exc:
+        raise ValueError(f"{error_prefix}_invalid_scope:{scope}") from exc
 
 
 def _stable_id(*parts: str) -> str:

@@ -92,7 +92,9 @@ class FakeWatchlistIntelRepository:
             for handle in handles
         ]
 
-    def handle_overview(self, *, handle, scope, since_ms):
+    def handle_overview(self, *, handle, scope, since_ms, source_limit, cluster_limit):
+        assert source_limit == 500
+        assert cluster_limit == 500
         return {
             "query": {"handle": handle, "scope": scope},
             "metrics": {

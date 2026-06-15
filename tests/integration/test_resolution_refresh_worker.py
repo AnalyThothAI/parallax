@@ -7,12 +7,10 @@ from parallax.app.runtime.repository_session import repositories_for_connection
 from parallax.domains.asset_market.providers import DexTokenCandidate, DexTokenQuote
 from parallax.domains.asset_market.runtime.resolution_refresh_worker import (
     ResolutionRefreshWorker,
-    _process_address_lookup,
+    _fetch_lookup_provider_result,
+    _persist_lookup_provider_result,
 )
-from parallax.domains.evidence.repositories.entity_repository import EntityRepository
-from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from parallax.domains.evidence.services.ingest_service import IngestService
-from parallax.domains.token_intel.interfaces import SignalRepository
 from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test, repository_session_for_connection
 from tests.postgres_test_utils import reset_postgres_schema as migrate
@@ -46,6 +44,33 @@ def _dex_candidate(
     )
 
 
+def _ingest_service_for_connection(conn) -> IngestService:
+    repos = repositories_for_connection(
+        conn,
+        pulse_job_running_timeout_ms=300_000,
+        notification_delivery_running_timeout_ms=300_000,
+        notification_delivery_stale_running_terminalization_batch_size=100,
+    )
+    return IngestService(
+        evidence=repos.evidence,
+        entities=repos.entities,
+        signals=repos.signals,
+        registry=repos.registry,
+        identity_evidence=repos.identity_evidence,
+        token_intent_lookup=repos.token_intent_lookup,
+        token_evidence=repos.token_evidence,
+        token_intents=repos.token_intents,
+        intent_resolutions=repos.intent_resolutions,
+        discovery=repos.discovery,
+        market_ticks=repos.market_ticks,
+        market_tick_current_dirty_targets=repos.market_tick_current_dirty_targets,
+        enriched_events=repos.enriched_events,
+        event_anchor_jobs=repos.event_anchor_jobs,
+        token_radar_source_dirty_events=repos.token_radar_source_dirty_events,
+        event_anchor_active_window_ms=300_000,
+    )
+
+
 def test_resolution_refresh_worker_resolves_recent_symbol_and_emits_resolution_wake(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     now_ms = 1_778_145_100_000
@@ -53,11 +78,7 @@ def test_resolution_refresh_worker_resolves_recent_symbol_and_emits_resolution_w
     wake_bus = RecordingWakeBus()
     try:
         migrate(conn)
-        ingest = IngestService(
-            evidence=EvidenceRepository(conn),
-            entities=EntityRepository(conn),
-            signals=SignalRepository(conn),
-        )
+        ingest = _ingest_service_for_connection(conn)
         event = make_event(
             "event-upeg",
             text="$UPEG is getting attention",
@@ -65,7 +86,12 @@ def test_resolution_refresh_worker_resolves_recent_symbol_and_emits_resolution_w
             is_watched=True,
         )
         ingested = ingest.ingest_event(event, is_watched=True)
-        repos = repositories_for_connection(conn)
+        repos = repositories_for_connection(
+            conn,
+            pulse_job_running_timeout_ms=300_000,
+            notification_delivery_running_timeout_ms=300_000,
+            notification_delivery_stale_running_terminalization_batch_size=100,
+        )
         before = repos.intent_resolutions.active_resolution_for_intent(ingested.token_intents[0]["intent_id"])
 
         worker = ResolutionRefreshWorker(
@@ -160,11 +186,7 @@ def test_resolution_refresh_worker_skips_symbol_lookup_after_retained_candidate_
     address = "0x44b28991b167582f18ba0259e0173176ca125505"
     try:
         migrate(conn)
-        ingest = IngestService(
-            evidence=EvidenceRepository(conn),
-            entities=EntityRepository(conn),
-            signals=SignalRepository(conn),
-        )
+        ingest = _ingest_service_for_connection(conn)
         worker = ResolutionRefreshWorker(
             name="resolution_refresh",
             settings=resolution_worker_settings(interval_seconds=60),
@@ -205,7 +227,12 @@ def test_resolution_refresh_worker_skips_symbol_lookup_after_retained_candidate_
             is_watched=True,
         )
         second_ingested = ingest.ingest_event(second_event, is_watched=True)
-        repos = repositories_for_connection(conn)
+        repos = repositories_for_connection(
+            conn,
+            pulse_job_running_timeout_ms=300_000,
+            notification_delivery_running_timeout_ms=300_000,
+            notification_delivery_stale_running_terminalization_batch_size=100,
+        )
         before = repos.intent_resolutions.active_resolution_for_intent(second_ingested.token_intents[0]["intent_id"])
 
         result = asyncio.run(worker.run_once(now_ms=second_event.received_at_ms + 1_000)).notes["result"]
@@ -228,11 +255,7 @@ def test_resolution_refresh_worker_retries_hot_not_found_before_default_ttl(tmp_
     dex_market = FakeDexMarket(candidates=[])
     try:
         migrate(conn)
-        ingest = IngestService(
-            evidence=EvidenceRepository(conn),
-            entities=EntityRepository(conn),
-            signals=SignalRepository(conn),
-        )
+        ingest = _ingest_service_for_connection(conn)
         worker = ResolutionRefreshWorker(
             name="resolution_refresh",
             settings=resolution_worker_settings(interval_seconds=60),
@@ -253,9 +276,12 @@ def test_resolution_refresh_worker_retries_hot_not_found_before_default_ttl(tmp_
         )
 
         first = asyncio.run(worker.run_once(now_ms=now_ms + 60_000)).notes["result"]
-        before = repositories_for_connection(conn).intent_resolutions.active_resolution_for_intent(
-            ingested.token_intents[0]["intent_id"]
-        )
+        before = repositories_for_connection(
+            conn,
+            pulse_job_running_timeout_ms=300_000,
+            notification_delivery_running_timeout_ms=300_000,
+            notification_delivery_stale_running_terminalization_batch_size=100,
+        ).intent_resolutions.active_resolution_for_intent(ingested.token_intents[0]["intent_id"])
         dex_market.candidates = [
             DexTokenCandidate(
                 chain_id="eip155:1",
@@ -272,7 +298,12 @@ def test_resolution_refresh_worker_retries_hot_not_found_before_default_ttl(tmp_
         ]
 
         second = asyncio.run(worker.run_once(now_ms=now_ms + 120_000)).notes["result"]
-        repos = repositories_for_connection(conn)
+        repos = repositories_for_connection(
+            conn,
+            pulse_job_running_timeout_ms=300_000,
+            notification_delivery_running_timeout_ms=300_000,
+            notification_delivery_stale_running_terminalization_batch_size=100,
+        )
         after = repos.intent_resolutions.active_resolution_for_intent(ingested.token_intents[0]["intent_id"])
     finally:
         conn.close()
@@ -295,7 +326,12 @@ def test_discovery_terminalize_empty_payload_hash_deletes_active_row(tmp_path):
     now_ms = 1_778_145_100_000
     try:
         migrate(conn)
-        repos = repositories_for_connection(conn)
+        repos = repositories_for_connection(
+            conn,
+            pulse_job_running_timeout_ms=300_000,
+            notification_delivery_running_timeout_ms=300_000,
+            notification_delivery_stale_running_terminalization_batch_size=100,
+        )
         conn.execute(
             """
             INSERT INTO token_discovery_dirty_lookup_keys(
@@ -315,6 +351,7 @@ def test_discovery_terminalize_empty_payload_hash_deletes_active_row(tmp_path):
             now_ms=now_ms,
             limit=1,
             lease_ms=60_000,
+            running_timeout_ms=60_000,
             lease_owner="resolution_refresh",
             hot_since_ms=None,
             hot_not_found_retry_ms=None,
@@ -351,11 +388,7 @@ def test_dex_symbol_discovery_retains_top_three_per_chain(tmp_path):
     now_ms = 1_778_145_100_000
     try:
         migrate(conn)
-        ingest = IngestService(
-            evidence=EvidenceRepository(conn),
-            entities=EntityRepository(conn),
-            signals=SignalRepository(conn),
-        )
+        ingest = _ingest_service_for_connection(conn)
         ingest.ingest_event(
             make_event("event-hanta-top3", text="$HANTA is moving", received_at_ms=now_ms, is_watched=True),
             is_watched=True,
@@ -502,12 +535,13 @@ def test_dex_symbol_discovery_excludes_stale_unretained_search_assets_from_resul
     now_ms = 1_778_145_100_000
     try:
         migrate(conn)
-        repos = repositories_for_connection(conn)
-        ingest = IngestService(
-            evidence=EvidenceRepository(conn),
-            entities=EntityRepository(conn),
-            signals=SignalRepository(conn),
+        repos = repositories_for_connection(
+            conn,
+            pulse_job_running_timeout_ms=300_000,
+            notification_delivery_running_timeout_ms=300_000,
+            notification_delivery_stale_running_terminalization_batch_size=100,
         )
+        ingest = _ingest_service_for_connection(conn)
         ingest.ingest_event(
             make_event("event-hanta-demote", text="$HANTA", received_at_ms=now_ms + 1_000, is_watched=True),
             is_watched=True,
@@ -604,9 +638,9 @@ def test_address_discovery_remains_uncapped(tmp_path):
     address = _evm_address(77)
     try:
         migrate(conn)
-        result = _process_address_lookup(
-            repos=repositories_for_connection(conn),
+        result = _fetch_lookup_provider_result(
             lookup_key=f"address:eip155:56:{address}",
+            lookup_type="address_lookup",
             dex_discovery_market=FakeDexMarket(
                 candidates=[
                     _dex_candidate(chain_id="eip155:56", address=_evm_address(1), market_cap_usd=1, liquidity_usd=1),
@@ -615,6 +649,15 @@ def test_address_discovery_remains_uncapped(tmp_path):
                 ]
             ),
             chain_ids=("eip155:56",),
+        )
+        _persist_lookup_provider_result(
+            repos=repositories_for_connection(
+                conn,
+                pulse_job_running_timeout_ms=300_000,
+                notification_delivery_running_timeout_ms=300_000,
+                notification_delivery_stale_running_terminalization_batch_size=100,
+            ),
+            lookup_result=result,
             now_ms=1_000,
         )
         row = conn.execute(

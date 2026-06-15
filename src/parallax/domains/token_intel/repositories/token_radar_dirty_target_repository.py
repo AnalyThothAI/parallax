@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
-from typing import Any
+from collections.abc import Callable, Iterable, Mapping
+from contextlib import AbstractContextManager
+from typing import Any, cast
 
 from parallax.domains.token_intel._constants import TOKEN_RADAR_PROJECTION_VERSION
 from parallax.platform.current_read_model_payload_hash import stable_dirty_target_payload_hash
@@ -17,6 +18,8 @@ MARKET_DIRTY_REASONS = frozenset(
     }
 )
 REPAIR_DIRTY_REASONS = frozenset({"ops_repair", "ops_events_repair", "projection_catch_up"})
+
+
 def dirty_kind_flags(reason: str) -> dict[str, bool]:
     normalized = str(reason or "").strip()
     repair_dirty = normalized in REPAIR_DIRTY_REASONS or (
@@ -49,10 +52,15 @@ class TokenRadarDirtyTargetRepository:
         records = _dirty_records(rows, reason=reason, now_ms=int(now_ms), due_at_ms=due_at_ms)
         if not records:
             return 0
-        self.conn.execute(_TARGET_DIRTY_INSERT_SQL, _target_dirty_params(records, reason=reason, now_ms=now_ms))
-        if commit:
-            self.conn.commit()
-        return len(records)
+
+        def _enqueue_targets() -> int:
+            cursor = self.conn.execute(
+                _TARGET_DIRTY_INSERT_SQL,
+                _target_dirty_params(records, reason=reason, now_ms=now_ms),
+            )
+            return _cursor_rowcount(cursor)
+
+        return _run_repository_write(self.conn, commit, _enqueue_targets)
 
     def enqueue_market_targets(
         self,
@@ -66,22 +74,24 @@ class TokenRadarDirtyTargetRepository:
         records = _market_target_records(rows)
         if not records:
             return 0
-        cursor = self.conn.execute(
-            _MARKET_TARGET_INSERT_SQL,
-            {
-                "target_types": [record["target_type"] for record in records],
-                "target_ids": [record["target_id"] for record in records],
-                "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
-                "dirty_reason": str(reason),
-                **dirty_kind_flags(reason),
-                "due_at_ms": int(due_at_ms if due_at_ms is not None else now_ms),
-                "now_ms": int(now_ms),
-                "market_dirty_min_interval_ms": MARKET_DIRTY_MIN_INTERVAL_MS,
-            },
-        )
-        if commit:
-            self.conn.commit()
-        return int(getattr(cursor, "rowcount", 0) or 0)
+
+        def _enqueue_market_targets() -> int:
+            cursor = self.conn.execute(
+                _MARKET_TARGET_INSERT_SQL,
+                {
+                    "target_types": [record["target_type"] for record in records],
+                    "target_ids": [record["target_id"] for record in records],
+                    "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+                    "dirty_reason": str(reason),
+                    **dirty_kind_flags(reason),
+                    "due_at_ms": int(due_at_ms if due_at_ms is not None else now_ms),
+                    "now_ms": int(now_ms),
+                    "market_dirty_min_interval_ms": MARKET_DIRTY_MIN_INTERVAL_MS,
+                },
+            )
+            return _cursor_rowcount(cursor)
+
+        return _run_repository_write(self.conn, commit, _enqueue_market_targets)
 
     def claim_due(
         self,
@@ -92,38 +102,39 @@ class TokenRadarDirtyTargetRepository:
         lease_owner: str,
         commit: bool = True,
     ) -> list[dict[str, Any]]:
-        rows = self.conn.execute(
-            """
-            WITH due AS (
-              SELECT target_type_key, identity_id
-              FROM token_radar_dirty_targets
-              WHERE due_at_ms <= %(now_ms)s
-                AND (leased_until_ms IS NULL OR leased_until_ms <= %(now_ms)s)
-              ORDER BY due_at_ms ASC, updated_at_ms ASC, target_type_key ASC, identity_id ASC
-              LIMIT %(limit)s
-              FOR UPDATE SKIP LOCKED
-            )
-            UPDATE token_radar_dirty_targets queue
-            SET leased_until_ms = %(leased_until_ms)s,
-                lease_owner = %(lease_owner)s,
-                attempt_count = queue.attempt_count + 1,
-                last_error = NULL,
-                updated_at_ms = %(now_ms)s
-            FROM due
-            WHERE queue.target_type_key = due.target_type_key
-              AND queue.identity_id = due.identity_id
-            RETURNING queue.*
-            """,
-            {
-                "now_ms": int(now_ms),
-                "leased_until_ms": int(now_ms) + max(1, int(lease_ms)),
-                "lease_owner": str(lease_owner),
-                "limit": max(0, int(limit)),
-            },
-        ).fetchall()
-        if commit:
-            self.conn.commit()
-        return [dict(row) for row in rows]
+        def _claim_due() -> list[dict[str, Any]]:
+            rows = self.conn.execute(
+                """
+                WITH due AS (
+                  SELECT target_type_key, identity_id
+                  FROM token_radar_dirty_targets
+                  WHERE due_at_ms <= %(now_ms)s
+                    AND (leased_until_ms IS NULL OR leased_until_ms <= %(now_ms)s)
+                  ORDER BY due_at_ms ASC, updated_at_ms ASC, target_type_key ASC, identity_id ASC
+                  LIMIT %(limit)s
+                  FOR UPDATE SKIP LOCKED
+                )
+                UPDATE token_radar_dirty_targets queue
+                SET leased_until_ms = %(leased_until_ms)s,
+                    lease_owner = %(lease_owner)s,
+                    attempt_count = queue.attempt_count + 1,
+                    last_error = NULL,
+                    updated_at_ms = %(now_ms)s
+                FROM due
+                WHERE queue.target_type_key = due.target_type_key
+                  AND queue.identity_id = due.identity_id
+                RETURNING queue.*
+                """,
+                {
+                    "now_ms": int(now_ms),
+                    "leased_until_ms": int(now_ms) + max(1, int(lease_ms)),
+                    "lease_owner": str(lease_owner),
+                    "limit": max(0, int(limit)),
+                },
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+        return _run_repository_write(self.conn, commit, _claim_due)
 
     def enqueue_recent_resolved_targets(
         self,
@@ -134,20 +145,21 @@ class TokenRadarDirtyTargetRepository:
         reason: str,
         commit: bool = True,
     ) -> int:
-        cursor = self.conn.execute(
-            _RECENT_RESOLVED_TARGET_ENQUEUE_SQL,
-            {
-                "since_ms": int(since_ms),
-                "now_ms": int(now_ms),
-                "limit": max(0, int(limit)),
-                "dirty_reason": str(reason),
-                **dirty_kind_flags(reason),
-                "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
-            },
-        )
-        if commit:
-            self.conn.commit()
-        return int(getattr(cursor, "rowcount", 0) or 0)
+        def _enqueue_recent_resolved_targets() -> int:
+            cursor = self.conn.execute(
+                _RECENT_RESOLVED_TARGET_ENQUEUE_SQL,
+                {
+                    "since_ms": int(since_ms),
+                    "now_ms": int(now_ms),
+                    "limit": max(0, int(limit)),
+                    "dirty_reason": str(reason),
+                    **dirty_kind_flags(reason),
+                    "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+                },
+            )
+            return _cursor_rowcount(cursor)
+
+        return _run_repository_write(self.conn, commit, _enqueue_recent_resolved_targets)
 
     def count_recent_resolved_target_candidates(self, *, since_ms: int, now_ms: int, limit: int) -> int:
         row = self.conn.execute(
@@ -227,13 +239,14 @@ class TokenRadarDirtyTargetRepository:
         reason: str,
         commit: bool = True,
     ) -> int:
-        cursor = self.conn.execute(
-            _MARKET_CURRENT_ENQUEUE_SQL,
-            _market_current_params(since_ms=since_ms, now_ms=now_ms, limit=limit, reason=reason),
-        )
-        if commit:
-            self.conn.commit()
-        return int(getattr(cursor, "rowcount", 0) or 0)
+        def _enqueue_market_current_targets() -> int:
+            cursor = self.conn.execute(
+                _MARKET_CURRENT_ENQUEUE_SQL,
+                _market_current_params(since_ms=since_ms, now_ms=now_ms, limit=limit, reason=reason),
+            )
+            return _cursor_rowcount(cursor)
+
+        return _run_repository_write(self.conn, commit, _enqueue_market_current_targets)
 
     def mark_done(
         self,
@@ -245,31 +258,33 @@ class TokenRadarDirtyTargetRepository:
         records = _key_records(keys)
         if not records:
             return 0
-        cursor = self.conn.execute(
-            """
-            WITH done AS (
-              SELECT *
-              FROM unnest(
-                %(target_type_keys)s::text[],
-                %(identity_ids)s::text[],
-                %(payload_hashes)s::text[],
-                %(lease_owners)s::text[],
-                %(attempt_counts)s::bigint[]
-              ) AS done(target_type_key, identity_id, payload_hash, lease_owner, attempt_count)
+
+        def _mark_done() -> int:
+            cursor = self.conn.execute(
+                """
+                WITH done AS (
+                  SELECT *
+                  FROM unnest(
+                    %(target_type_keys)s::text[],
+                    %(identity_ids)s::text[],
+                    %(payload_hashes)s::text[],
+                    %(lease_owners)s::text[],
+                    %(attempt_counts)s::bigint[]
+                  ) AS done(target_type_key, identity_id, payload_hash, lease_owner, attempt_count)
+                )
+                DELETE FROM token_radar_dirty_targets queue
+                USING done
+                WHERE queue.target_type_key = done.target_type_key
+                  AND queue.identity_id = done.identity_id
+                  AND queue.payload_hash = done.payload_hash
+                  AND queue.lease_owner = done.lease_owner
+                  AND queue.attempt_count = done.attempt_count
+                """,
+                _key_params(records),
             )
-            DELETE FROM token_radar_dirty_targets queue
-            USING done
-            WHERE queue.target_type_key = done.target_type_key
-              AND queue.identity_id = done.identity_id
-              AND queue.payload_hash = done.payload_hash
-              AND queue.lease_owner = done.lease_owner
-              AND queue.attempt_count = done.attempt_count
-            """,
-            _key_params(records),
-        )
-        if commit:
-            self.conn.commit()
-        return int(getattr(cursor, "rowcount", 0) or 0)
+            return _cursor_rowcount(cursor)
+
+        return _run_repository_write(self.conn, commit, _mark_done)
 
     def mark_error(
         self,
@@ -291,36 +306,67 @@ class TokenRadarDirtyTargetRepository:
                 "last_error": str(error)[:2048],
             }
         )
-        cursor = self.conn.execute(
-            """
-            WITH failed AS (
-              SELECT *
-              FROM unnest(
-                %(target_type_keys)s::text[],
-                %(identity_ids)s::text[],
-                %(payload_hashes)s::text[],
-                %(lease_owners)s::text[],
-                %(attempt_counts)s::bigint[]
-              ) AS failed(target_type_key, identity_id, payload_hash, lease_owner, attempt_count)
+
+        def _mark_error() -> int:
+            cursor = self.conn.execute(
+                """
+                WITH failed AS (
+                  SELECT *
+                  FROM unnest(
+                    %(target_type_keys)s::text[],
+                    %(identity_ids)s::text[],
+                    %(payload_hashes)s::text[],
+                    %(lease_owners)s::text[],
+                    %(attempt_counts)s::bigint[]
+                  ) AS failed(target_type_key, identity_id, payload_hash, lease_owner, attempt_count)
+                )
+                UPDATE token_radar_dirty_targets queue
+                SET due_at_ms = %(due_at_ms)s,
+                    leased_until_ms = NULL,
+                    lease_owner = NULL,
+                    last_error = %(last_error)s,
+                    updated_at_ms = %(now_ms)s
+                FROM failed
+                WHERE queue.target_type_key = failed.target_type_key
+                  AND queue.identity_id = failed.identity_id
+                  AND queue.payload_hash = failed.payload_hash
+                  AND queue.lease_owner = failed.lease_owner
+                  AND queue.attempt_count = failed.attempt_count
+                """,
+                params,
             )
-            UPDATE token_radar_dirty_targets queue
-            SET due_at_ms = %(due_at_ms)s,
-                leased_until_ms = NULL,
-                lease_owner = NULL,
-                last_error = %(last_error)s,
-                updated_at_ms = %(now_ms)s
-            FROM failed
-            WHERE queue.target_type_key = failed.target_type_key
-              AND queue.identity_id = failed.identity_id
-              AND queue.payload_hash = failed.payload_hash
-              AND queue.lease_owner = failed.lease_owner
-              AND queue.attempt_count = failed.attempt_count
-            """,
-            params,
-        )
-        if commit:
-            self.conn.commit()
-        return int(getattr(cursor, "rowcount", 0) or 0)
+            return _cursor_rowcount(cursor)
+
+        return _run_repository_write(self.conn, commit, _mark_error)
+
+
+def _transaction(conn: Any) -> AbstractContextManager[Any]:
+    try:
+        transaction = conn.transaction
+    except AttributeError as exc:
+        raise RuntimeError("token_radar_dirty_target_transaction_required") from exc
+    if not callable(transaction):
+        raise RuntimeError("token_radar_dirty_target_transaction_required")
+    return cast(AbstractContextManager[Any], transaction())
+
+
+def _run_repository_write[T](conn: Any, commit: bool, write: Callable[[], T]) -> T:
+    if commit:
+        with _transaction(conn):
+            return write()
+    return write()
+
+
+def _cursor_rowcount(cursor: Any) -> int:
+    try:
+        rowcount: object = cursor.rowcount
+    except AttributeError as exc:
+        raise TypeError("token_radar_dirty_target_rowcount_required") from exc
+    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
+        raise TypeError("token_radar_dirty_target_rowcount_invalid")
+    if rowcount < 0:
+        raise TypeError("token_radar_dirty_target_rowcount_invalid")
+    return rowcount
 
 
 _TARGET_DIRTY_INSERT_SQL = """
@@ -764,8 +810,6 @@ def _dirty_records(
     records: dict[tuple[str, str], dict[str, Any]] = {}
     for row in rows:
         target_type_key, identity_id = _target_key(row)
-        if not identity_id:
-            continue
         payload_hash = dirty_payload_hash(
             {
                 "target_type_key": target_type_key,
@@ -786,14 +830,12 @@ def _dirty_records(
 def _key_records(keys: Iterable[Mapping[str, Any]]) -> list[dict[str, str | int]]:
     records: list[dict[str, str | int]] = []
     for key in keys:
-        target_type_key, identity_id = _target_key(key)
-        payload_hash = str(key.get("payload_hash") or "")
-        lease_owner = str(key.get("lease_owner") or "")
-        attempt_count = int(key.get("attempt_count") or 0)
-        if not identity_id:
-            continue
+        target_type_key, identity_id = _completion_target_key(key)
+        payload_hash = _completion_payload_hash(key)
         if not payload_hash:
             raise ValueError("token radar dirty target completion requires payload_hash from claim_due")
+        lease_owner = _completion_lease_owner(key)
+        attempt_count = _completion_attempt_count(key)
         if not lease_owner:
             raise ValueError("token radar dirty target completion requires lease_owner from claim_due")
         if attempt_count <= 0:
@@ -808,6 +850,62 @@ def _key_records(keys: Iterable[Mapping[str, Any]]) -> list[dict[str, str | int]
             }
         )
     return records
+
+
+def _completion_target_key(key: Mapping[str, Any]) -> tuple[str, str]:
+    return (
+        _completion_text(key, "target_type_key"),
+        _completion_text(key, "identity_id"),
+    )
+
+
+def _completion_text(key: Mapping[str, Any], field: str) -> str:
+    try:
+        value = key[field]
+    except KeyError as exc:
+        raise ValueError(f"token radar dirty target completion requires {field} from claim_due") from exc
+    if value is None:
+        raise ValueError(f"token radar dirty target completion requires {field} from claim_due")
+    text = str(value).strip()
+    if not text:
+        raise ValueError(f"token radar dirty target completion requires {field} from claim_due")
+    return text
+
+
+def _completion_attempt_count(key: Mapping[str, Any]) -> int:
+    try:
+        attempt_count = int(key["attempt_count"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("token radar dirty target completion requires attempt_count from claim_due") from exc
+    if attempt_count <= 0:
+        raise ValueError("token radar dirty target completion requires attempt_count from claim_due")
+    return attempt_count
+
+
+def _completion_lease_owner(key: Mapping[str, Any]) -> str:
+    try:
+        value = key["lease_owner"]
+    except KeyError as exc:
+        raise ValueError("token radar dirty target completion requires lease_owner from claim_due") from exc
+    if value is None:
+        raise ValueError("token radar dirty target completion requires lease_owner from claim_due")
+    lease_owner = str(value).strip()
+    if not lease_owner:
+        raise ValueError("token radar dirty target completion requires lease_owner from claim_due")
+    return lease_owner
+
+
+def _completion_payload_hash(key: Mapping[str, Any]) -> str:
+    try:
+        value = key["payload_hash"]
+    except KeyError as exc:
+        raise ValueError("token radar dirty target completion requires payload_hash from claim_due") from exc
+    if value is None:
+        raise ValueError("token radar dirty target completion requires payload_hash from claim_due")
+    payload_hash = str(value).strip()
+    if not payload_hash:
+        raise ValueError("token radar dirty target completion requires payload_hash from claim_due")
+    return payload_hash
 
 
 def _key_params(records: list[dict[str, str | int]]) -> dict[str, Any]:
@@ -838,9 +936,20 @@ def _market_target_records(rows: Iterable[Mapping[str, Any] | tuple[str, str]]) 
 
 
 def _target_key(row: Mapping[str, Any]) -> tuple[str, str]:
-    target_type_key = str(row.get("target_type_key") or row.get("target_type") or "")
-    identity_id = str(row.get("identity_id") or row.get("target_id") or row.get("intent_id") or "")
-    return target_type_key, identity_id
+    return _required_enqueue_text(row, "target_type_key"), _required_enqueue_text(row, "identity_id")
+
+
+def _required_enqueue_text(row: Mapping[str, Any], field_name: str) -> str:
+    try:
+        value = row[field_name]
+    except KeyError as exc:
+        raise ValueError("token_radar_dirty_target_enqueue_identity_required") from exc
+    if value is None:
+        raise ValueError("token_radar_dirty_target_enqueue_identity_required")
+    text = str(value).strip()
+    if not text:
+        raise ValueError("token_radar_dirty_target_enqueue_identity_required")
+    return text
 
 
 def _market_current_params(*, since_ms: int, now_ms: int, limit: int, reason: str) -> dict[str, Any]:

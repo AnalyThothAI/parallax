@@ -72,14 +72,21 @@ class WakeBus:
         )
 
     def _notify(self, channel: str, payload: dict[str, Any]) -> None:
-        conn_or_context = self._conn_factory()
-        if hasattr(conn_or_context, "__enter__"):
-            with conn_or_context as conn:
-                _execute_notify(conn, channel=channel, payload=payload)
-                _commit(conn)
-            return
-        _execute_notify(conn_or_context, channel=channel, payload=payload)
-        _commit(conn_or_context)
+        context = self._conn_factory()
+        _require_connection_context(context)
+        with context as conn:
+            _execute_notify(conn, channel=channel, payload=payload)
+            _commit(conn)
+
+
+def _require_connection_context(context: Any) -> None:
+    try:
+        enter = context.__enter__
+        exit_ = context.__exit__
+    except AttributeError as exc:
+        raise RuntimeError("wake_bus_connection_context_required") from exc
+    if not callable(enter) or not callable(exit_):
+        raise RuntimeError("wake_bus_connection_context_required")
 
 
 def _execute_notify(conn: Any, *, channel: str, payload: dict[str, Any]) -> None:
@@ -90,6 +97,10 @@ def _execute_notify(conn: Any, *, channel: str, payload: dict[str, Any]) -> None
 
 
 def _commit(conn: Any) -> None:
-    commit = getattr(conn, "commit", None)
-    if commit:
-        commit()
+    try:
+        commit = conn.commit
+    except AttributeError as exc:
+        raise RuntimeError("wake_bus_commit_required") from exc
+    if not callable(commit):
+        raise RuntimeError("wake_bus_commit_required")
+    commit()

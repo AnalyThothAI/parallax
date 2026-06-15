@@ -5,7 +5,8 @@ import binascii
 import hashlib
 import json
 import time
-from contextlib import AbstractContextManager, nullcontext
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, cast
@@ -117,9 +118,20 @@ def _clean(value: Any) -> str | None:
 
 
 def _transaction(conn: Any) -> AbstractContextManager[Any]:
-    if hasattr(conn, "transaction"):
-        return cast("AbstractContextManager[Any]", conn.transaction())
-    return nullcontext()
+    try:
+        transaction = conn.transaction
+    except AttributeError as exc:
+        raise RuntimeError("pulse_repository_transaction_required") from exc
+    if not callable(transaction):
+        raise RuntimeError("pulse_repository_transaction_required")
+    return cast(AbstractContextManager[Any], transaction())
+
+
+def _run_repository_write[T](conn: Any, commit: bool, write: Callable[[], T]) -> T:
+    if commit:
+        with _transaction(conn):
+            return write()
+    return write()
 
 
 def _normalize_subject(value: str | None) -> str | None:

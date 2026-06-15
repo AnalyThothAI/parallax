@@ -4,12 +4,13 @@ import hashlib
 import json
 import time
 from collections.abc import Sequence
-from typing import Any
+from contextlib import AbstractContextManager
+from typing import Any, cast
 
 from psycopg.types.json import Jsonb
 
 from parallax.domains.narrative_intel._constants import NARRATIVE_SCHEMA_VERSION
-from parallax.domains.narrative_intel.services.fingerprints import (
+from parallax.domains.narrative_intel.types.fingerprints import (
     source_fingerprint as build_source_fingerprint,
 )
 from parallax.domains.narrative_intel.types.narrative_currentness import (
@@ -18,16 +19,6 @@ from parallax.domains.narrative_intel.types.narrative_currentness import (
 )
 from parallax.domains.narrative_intel.types.narrative_epoch_policy import DIGEST_WINDOWS
 from parallax.platform.current_read_model_payload_hash import stable_current_payload_hash
-
-_SEMANTIC_COVERAGE_KEYS = (
-    "source_event_count",
-    "semantic_row_count",
-    "missing_semantic_count",
-    "pending_semantic_count",
-    "retryable_semantic_count",
-    "labeled_event_count",
-    "terminal_unavailable_count",
-)
 
 
 class NarrativeRepository:
@@ -42,8 +33,13 @@ class NarrativeRepository:
         limit: int | None = None,
         commit: bool = True,
     ) -> dict[str, int]:
-        upserted = 0
         selected = list(rows)[: max(1, int(limit))] if limit is not None else list(rows)
+        if not selected:
+            return {"upserted": 0, "seen": 0}
+        if commit:
+            with _transaction(self.conn):
+                return self.upsert_admissions(selected, now_ms=now_ms, commit=False)
+        upserted = 0
         for row in selected:
             target_type = _clean(row.get("target_type"))
             target_id = _clean(row.get("target_id"))
@@ -130,9 +126,7 @@ class NarrativeRepository:
                 """,
                 payload,
             )
-            upserted += int(getattr(cursor, "rowcount", 0) or 0)
-        if commit:
-            _commit_if_available(self.conn)
+            upserted += _cursor_rowcount(cursor)
         return {"upserted": upserted, "seen": len(selected)}
 
     def source_set_for_admission(
@@ -267,6 +261,17 @@ class NarrativeRepository:
         now_ms: int,
         commit: bool = True,
     ) -> dict[str, int]:
+        if commit:
+            with _transaction(self.conn):
+                return self.stale_admission_target(
+                    target_type=target_type,
+                    target_id=target_id,
+                    window=window,
+                    scope=scope,
+                    schema_version=schema_version,
+                    now_ms=now_ms,
+                    commit=False,
+                )
         admissions = self.conn.execute(
             """
             DELETE FROM narrative_admissions AS admissions
@@ -278,160 +283,11 @@ class NarrativeRepository:
             """,
             (target_type, target_id, window, scope, schema_version),
         )
-        if commit:
-            _commit_if_available(self.conn)
         return {
-            "staled_admissions": int(getattr(admissions, "rowcount", 0) or 0),
+            "staled_admissions": _cursor_rowcount(admissions),
             "staled_digests": 0,
             "staled_semantics": 0,
         }
-
-    def semantic_coverage_for_admission(self, admission: dict[str, Any]) -> dict[str, int]:
-        source_event_ids = _json_list(admission.get("source_event_ids") or admission.get("source_event_ids_json"))
-        if not source_event_ids:
-            return _empty_semantic_coverage()
-        target_type = _required(admission, "target_type")
-        target_id = _required(admission, "target_id")
-        schema_version = str(admission.get("schema_version") or NARRATIVE_SCHEMA_VERSION)
-        return self._semantic_coverage_for_source_ids(
-            source_event_ids=source_event_ids,
-            target_type=target_type,
-            target_id=target_id,
-            schema_version=schema_version,
-        )
-
-    def missing_semantic_count_for_admission(self, admission: dict[str, Any], *, schema_version: str) -> int:
-        source_event_ids = _json_list(admission.get("source_event_ids") or admission.get("source_event_ids_json"))
-        if not source_event_ids:
-            return 0
-        target_type = _required(admission, "target_type")
-        target_id = _required(admission, "target_id")
-        row = self.conn.execute(
-            """
-            WITH source_ids AS (
-              SELECT jsonb_array_elements_text(%s::jsonb) AS event_id
-            )
-            SELECT COUNT(*) AS missing_count
-            FROM source_ids
-            WHERE NOT EXISTS (
-              SELECT 1
-              FROM token_mention_semantics AS semantics
-              WHERE semantics.event_id = source_ids.event_id
-                AND semantics.target_type = %s
-                AND semantics.target_id = %s
-                AND semantics.schema_version = %s
-            )
-            """,
-            (_json(source_event_ids), target_type, target_id, schema_version),
-        ).fetchone()
-        return int(row["missing_count"] if row else 0)
-
-    def _semantic_coverage_for_source_ids(
-        self,
-        *,
-        source_event_ids: Sequence[str],
-        target_type: str,
-        target_id: str,
-        schema_version: str,
-    ) -> dict[str, int]:
-        row = self.conn.execute(
-            """
-            WITH source_ids AS (
-              SELECT jsonb_array_elements_text(%s::jsonb) AS event_id
-            )
-            SELECT
-              COUNT(*) AS source_event_count,
-              COUNT(*) FILTER (
-                WHERE EXISTS (
-                  SELECT 1
-                  FROM token_mention_semantics AS semantics
-                  WHERE semantics.event_id = source_ids.event_id
-                    AND semantics.target_type = %s
-                    AND semantics.target_id = %s
-                    AND semantics.schema_version = %s
-                )
-              ) AS semantic_row_count,
-              COUNT(*) FILTER (
-                WHERE NOT EXISTS (
-                  SELECT 1
-                  FROM token_mention_semantics AS semantics
-                  WHERE semantics.event_id = source_ids.event_id
-                    AND semantics.target_type = %s
-                    AND semantics.target_id = %s
-                    AND semantics.schema_version = %s
-                )
-              ) AS missing_semantic_count,
-              COUNT(*) FILTER (
-                WHERE EXISTS (
-                  SELECT 1
-                  FROM token_mention_semantics AS semantics
-                  WHERE semantics.event_id = source_ids.event_id
-                    AND semantics.target_type = %s
-                    AND semantics.target_id = %s
-                    AND semantics.schema_version = %s
-                    AND semantics.status IN ('queued', 'stale')
-                )
-              ) AS pending_semantic_count,
-              COUNT(*) FILTER (
-                WHERE EXISTS (
-                  SELECT 1
-                  FROM token_mention_semantics AS semantics
-                  WHERE semantics.event_id = source_ids.event_id
-                    AND semantics.target_type = %s
-                    AND semantics.target_id = %s
-                    AND semantics.schema_version = %s
-                    AND semantics.status = 'retryable_error'
-                )
-              ) AS retryable_semantic_count,
-              COUNT(*) FILTER (
-                WHERE EXISTS (
-                  SELECT 1
-                  FROM token_mention_semantics AS semantics
-                  WHERE semantics.event_id = source_ids.event_id
-                    AND semantics.target_type = %s
-                    AND semantics.target_id = %s
-                    AND semantics.schema_version = %s
-                    AND semantics.status = 'labeled'
-                )
-              ) AS labeled_event_count,
-              COUNT(*) FILTER (
-                WHERE EXISTS (
-                  SELECT 1
-                  FROM token_mention_semantics AS semantics
-                  WHERE semantics.event_id = source_ids.event_id
-                    AND semantics.target_type = %s
-                    AND semantics.target_id = %s
-                    AND semantics.schema_version = %s
-                    AND semantics.status = 'semantic_unavailable'
-                )
-              ) AS terminal_unavailable_count
-            FROM source_ids
-            """,
-            (
-                _json(source_event_ids),
-                target_type,
-                target_id,
-                schema_version,
-                target_type,
-                target_id,
-                schema_version,
-                target_type,
-                target_id,
-                schema_version,
-                target_type,
-                target_id,
-                schema_version,
-                target_type,
-                target_id,
-                schema_version,
-                target_type,
-                target_id,
-                schema_version,
-            ),
-        ).fetchone()
-        if not row:
-            return _empty_semantic_coverage()
-        return {key: int(row[key] or 0) for key in _SEMANTIC_COVERAGE_KEYS}
 
     def current_ready_digest_for_target(
         self,
@@ -444,27 +300,8 @@ class NarrativeRepository:
     ) -> dict[str, Any] | None:
         row = self.conn.execute(
             """
-            SELECT digest.*,
-                   COALESCE(backlog.pending, 0) AS semantic_backlog_pending,
-                   COALESCE(backlog.retryable, 0) AS semantic_backlog_retryable,
-                   COALESCE(backlog.unavailable, 0) AS semantic_backlog_unavailable,
-                   backlog.oldest_due_at_ms AS semantic_backlog_oldest_due_at_ms
+            SELECT digest.*
             FROM token_discussion_digests AS digest
-            LEFT JOIN LATERAL (
-              SELECT
-                COUNT(*) FILTER (
-                  WHERE semantics.status IN ('queued', 'retryable_error', 'stale')
-                ) AS pending,
-                COUNT(*) FILTER (WHERE semantics.status = 'retryable_error') AS retryable,
-                COUNT(*) FILTER (WHERE semantics.status = 'semantic_unavailable') AS unavailable,
-                MIN(semantics.next_retry_at_ms) FILTER (
-                  WHERE semantics.status IN ('queued', 'retryable_error', 'stale')
-                ) AS oldest_due_at_ms
-              FROM token_mention_semantics AS semantics
-              WHERE semantics.target_type = digest.target_type
-                AND semantics.target_id = digest.target_id
-                AND semantics.schema_version = digest.schema_version
-            ) AS backlog ON true
             WHERE digest.target_type = %s
               AND digest.target_id = %s
               AND digest."window" = %s
@@ -578,10 +415,6 @@ class NarrativeRepository:
             scope=scope,
             schema_version=schema_version,
         )
-        coverage_by_admission = self._semantic_coverage_for_admissions(
-            [admission for key, admission in admissions.items() if key not in ready_digests and _is_admitted(admission)]
-        )
-
         for target in query_targets:
             target_type = str(target.get("target_type") or "")
             target_id = str(target.get("target_id") or "")
@@ -600,8 +433,7 @@ class NarrativeRepository:
                 result[key] = {**current_ready, "_current_admission": current_admission, "currentness": currentness}
                 continue
 
-            coverage = coverage_by_admission.get(str((admission or {}).get("admission_id") or ""))
-            reason = self._not_ready_reason_from_coverage(admission, coverage)
+            reason = self._not_ready_reason_for_admission(admission)
             missing = _missing_digest_row(
                 target_type=target_type,
                 target_id=target_id,
@@ -611,17 +443,11 @@ class NarrativeRepository:
                 reason=reason,
             )
             if current_admission is not None:
-                coverage = coverage or _empty_semantic_coverage()
                 missing.update(
                     {
-                        "source_event_count": coverage["source_event_count"],
-                        "labeled_event_count": coverage["labeled_event_count"],
+                        "source_event_count": _int(current_admission.get("source_event_count")),
+                        "labeled_event_count": 0,
                         "independent_author_count": int(current_admission.get("independent_author_count") or 0),
-                        "semantic_backlog_pending": (
-                            coverage["missing_semantic_count"] + coverage["pending_semantic_count"]
-                        ),
-                        "semantic_backlog_retryable": coverage["retryable_semantic_count"],
-                        "semantic_backlog_unavailable": coverage["terminal_unavailable_count"],
                     }
                 )
             missing["currentness"] = public_currentness(
@@ -696,117 +522,12 @@ class NarrativeRepository:
                 AND digest.is_current = true
               ORDER BY digest.target_type, digest.target_id, digest.computed_at_ms DESC, digest.digest_id DESC
             )
-            SELECT latest_ready.*,
-                   COALESCE(backlog.pending, 0) AS semantic_backlog_pending,
-                   COALESCE(backlog.retryable, 0) AS semantic_backlog_retryable,
-                   COALESCE(backlog.unavailable, 0) AS semantic_backlog_unavailable,
-                   backlog.oldest_due_at_ms AS semantic_backlog_oldest_due_at_ms
+            SELECT latest_ready.*
             FROM latest_ready
-            LEFT JOIN LATERAL (
-              SELECT
-                COUNT(*) FILTER (
-                  WHERE semantics.status IN ('queued', 'retryable_error', 'stale')
-                ) AS pending,
-                COUNT(*) FILTER (WHERE semantics.status = 'retryable_error') AS retryable,
-                COUNT(*) FILTER (WHERE semantics.status = 'semantic_unavailable') AS unavailable,
-                MIN(semantics.next_retry_at_ms) FILTER (
-                  WHERE semantics.status IN ('queued', 'retryable_error', 'stale')
-                ) AS oldest_due_at_ms
-              FROM token_mention_semantics AS semantics
-              WHERE semantics.target_type = latest_ready.target_type
-                AND semantics.target_id = latest_ready.target_id
-                AND semantics.schema_version = latest_ready.schema_version
-            ) AS backlog ON true
             """,
             (_json([dict(target) for target in targets]), window, scope, schema_version),
         ).fetchall()
         return {(str(row["target_type"]), str(row["target_id"])): _row(row) for row in rows}
-
-    def _semantic_coverage_for_admissions(
-        self,
-        admissions: Sequence[dict[str, Any]],
-    ) -> dict[str, dict[str, int]]:
-        result = {
-            str(admission.get("admission_id") or ""): _empty_semantic_coverage()
-            for admission in admissions
-            if str(admission.get("admission_id") or "")
-        }
-        payload = [
-            {
-                "admission_id": str(admission.get("admission_id") or ""),
-                "target_type": str(admission.get("target_type") or ""),
-                "target_id": str(admission.get("target_id") or ""),
-                "schema_version": str(admission.get("schema_version") or NARRATIVE_SCHEMA_VERSION),
-                "source_event_ids_json": _json_list(
-                    admission.get("source_event_ids") or admission.get("source_event_ids_json")
-                ),
-            }
-            for admission in admissions
-            if str(admission.get("admission_id") or "")
-            and _json_list(admission.get("source_event_ids") or admission.get("source_event_ids_json"))
-        ]
-        if not payload:
-            return result
-        rows = self.conn.execute(
-            """
-            WITH input_admissions AS (
-              SELECT admission_id,
-                     target_type,
-                     target_id,
-                     schema_version,
-                     source_event_ids_json
-              FROM jsonb_to_recordset(%s::jsonb) AS admission(
-                admission_id text,
-                target_type text,
-                target_id text,
-                schema_version text,
-                source_event_ids_json jsonb
-              )
-            ),
-            source_ids AS (
-              SELECT admission.admission_id,
-                     admission.target_type,
-                     admission.target_id,
-                     admission.schema_version,
-                     source_id.source_ordinal,
-                     source_id.event_id
-              FROM input_admissions AS admission
-              CROSS JOIN LATERAL jsonb_array_elements_text(admission.source_event_ids_json)
-                WITH ORDINALITY AS source_id(event_id, source_ordinal)
-            ),
-            source_status AS (
-              SELECT source_ids.admission_id,
-                     source_ids.source_ordinal,
-                     source_ids.event_id,
-                     BOOL_OR(semantics.semantic_id IS NOT NULL) AS has_semantic,
-                     BOOL_OR(semantics.status IN ('queued', 'stale')) AS has_pending,
-                     BOOL_OR(semantics.status = 'retryable_error') AS has_retryable,
-                     BOOL_OR(semantics.status = 'labeled') AS has_labeled,
-                     BOOL_OR(semantics.status = 'semantic_unavailable') AS has_terminal_unavailable
-              FROM source_ids
-              LEFT JOIN token_mention_semantics AS semantics
-                ON semantics.event_id = source_ids.event_id
-               AND semantics.target_type = source_ids.target_type
-               AND semantics.target_id = source_ids.target_id
-               AND semantics.schema_version = source_ids.schema_version
-              GROUP BY source_ids.admission_id, source_ids.source_ordinal, source_ids.event_id
-            )
-            SELECT admission_id,
-                   COUNT(*) AS source_event_count,
-                   COUNT(*) FILTER (WHERE has_semantic) AS semantic_row_count,
-                   COUNT(*) FILTER (WHERE NOT has_semantic) AS missing_semantic_count,
-                   COUNT(*) FILTER (WHERE has_pending) AS pending_semantic_count,
-                   COUNT(*) FILTER (WHERE has_retryable) AS retryable_semantic_count,
-                   COUNT(*) FILTER (WHERE has_labeled) AS labeled_event_count,
-                   COUNT(*) FILTER (WHERE has_terminal_unavailable) AS terminal_unavailable_count
-            FROM source_status
-            GROUP BY admission_id
-            """,
-            (_json(payload),),
-        ).fetchall()
-        for row in rows:
-            result[str(row["admission_id"])] = {key: int(row[key] or 0) for key in _SEMANTIC_COVERAGE_KEYS}
-        return result
 
     def current_digests_for_targets(
         self,
@@ -825,18 +546,6 @@ class NarrativeRepository:
         )
 
     def _not_ready_reason_for_admission(self, admission: dict[str, Any] | None) -> str:
-        coverage = (
-            self.semantic_coverage_for_admission(admission)
-            if admission is not None and _is_admitted(admission)
-            else None
-        )
-        return self._not_ready_reason_from_coverage(admission, coverage)
-
-    @staticmethod
-    def _not_ready_reason_from_coverage(
-        admission: dict[str, Any] | None,
-        coverage: dict[str, int] | None,
-    ) -> str:
         if admission is None:
             return "no_ready_digest"
         if not _is_admitted(admission):
@@ -845,16 +554,6 @@ class NarrativeRepository:
             return "low_source_volume"
         if (_int(admission.get("independent_author_count")) or 0) == 0:
             return "low_independent_author_count"
-        coverage = coverage or _empty_semantic_coverage()
-        pending = (
-            coverage["missing_semantic_count"]
-            + coverage["pending_semantic_count"]
-            + coverage["retryable_semantic_count"]
-        )
-        if pending > 0:
-            return "semantic_labeling_pending"
-        if coverage["source_event_count"] > 0 and coverage["labeled_event_count"] == 0:
-            return "low_semantic_coverage"
         return "no_ready_digest"
 
     def semantics_for_posts(
@@ -863,48 +562,62 @@ class NarrativeRepository:
         *,
         schema_version: str,
     ) -> dict[tuple[str, str, str], dict[str, Any]]:
+        event_ids = [str(post.get("event_id") or "") for post in posts if str(post.get("event_id") or "")]
+        target_types = [str(post.get("target_type") or "") for post in posts if str(post.get("event_id") or "")]
+        target_ids = [str(post.get("target_id") or "") for post in posts if str(post.get("event_id") or "")]
+        if not event_ids:
+            return {}
+        rows = self.conn.execute(
+            """
+            WITH input_posts AS (
+              SELECT event_id, target_type, target_id, ordinality
+              FROM unnest(%s::text[], %s::text[], %s::text[]) WITH ORDINALITY
+                AS input(event_id, target_type, target_id, ordinality)
+              WHERE event_id <> ''
+                AND target_type <> ''
+                AND target_id <> ''
+            ),
+            distinct_posts AS (
+              SELECT event_id, target_type, target_id, MIN(ordinality) AS ordinality
+              FROM input_posts
+              GROUP BY event_id, target_type, target_id
+            )
+            SELECT semantics.*
+            FROM distinct_posts
+            LEFT JOIN LATERAL (
+              SELECT
+                event_id,
+                target_type,
+                target_id,
+                schema_version,
+                language,
+                status,
+                trade_stance,
+                attention_valence,
+                narrative_cluster_key,
+                claim_type,
+                evidence_type,
+                semantic_confidence,
+                co_mentioned_targets_json,
+                evidence_refs_json
+              FROM token_mention_semantics
+              WHERE token_mention_semantics.event_id = distinct_posts.event_id
+                AND token_mention_semantics.target_type = distinct_posts.target_type
+                AND token_mention_semantics.target_id = distinct_posts.target_id
+                AND token_mention_semantics.schema_version = %s
+              ORDER BY computed_at_ms DESC NULLS LAST, queued_at_ms DESC NULLS LAST
+              LIMIT 1
+            ) semantics ON true
+            WHERE semantics.event_id IS NOT NULL
+            ORDER BY distinct_posts.ordinality
+            """,
+            (event_ids, target_types, target_ids, schema_version),
+        ).fetchall()
         result: dict[tuple[str, str, str], dict[str, Any]] = {}
-        for post in posts:
-            row = self.conn.execute(
-                """
-                SELECT
-                  event_id,
-                  target_type,
-                  target_id,
-                  schema_version,
-                  language,
-                  status,
-                  trade_stance,
-                  attention_valence,
-                  narrative_cluster_key,
-                  claim_type,
-                  evidence_type,
-                  semantic_confidence,
-                  co_mentioned_targets_json,
-                  evidence_refs_json
-                FROM token_mention_semantics
-                WHERE event_id = %s
-                  AND target_type = %s
-                  AND target_id = %s
-                  AND schema_version = %s
-                ORDER BY computed_at_ms DESC NULLS LAST, queued_at_ms DESC NULLS LAST
-                LIMIT 1
-                """,
-                (
-                    post["event_id"],
-                    post["target_type"],
-                    post["target_id"],
-                    schema_version,
-                ),
-            ).fetchone()
-            if row:
-                decoded = _row(row)
-                result[(decoded["event_id"], decoded["target_type"], decoded["target_id"])] = decoded
+        for row in rows:
+            decoded = _row(row)
+            result[(decoded["event_id"], decoded["target_type"], decoded["target_id"])] = decoded
         return result
-
-
-def _empty_semantic_coverage() -> dict[str, int]:
-    return {key: 0 for key in _SEMANTIC_COVERAGE_KEYS}
 
 
 def _missing_digest_row(
@@ -1040,7 +753,23 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
-def _commit_if_available(conn: Any) -> None:
-    commit = getattr(conn, "commit", None)
-    if commit is not None:
-        commit()
+def _cursor_rowcount(cursor: Any) -> int:
+    try:
+        rowcount: object = cursor.rowcount
+    except AttributeError as exc:
+        raise TypeError("narrative_repository_rowcount_required") from exc
+    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
+        raise TypeError("narrative_repository_rowcount_invalid")
+    if rowcount < 0:
+        raise TypeError("narrative_repository_rowcount_invalid")
+    return rowcount
+
+
+def _transaction(conn: Any) -> AbstractContextManager[Any]:
+    try:
+        transaction = conn.transaction
+    except AttributeError as exc:
+        raise RuntimeError("narrative_admission_transaction_required") from exc
+    if not callable(transaction):
+        raise RuntimeError("narrative_admission_transaction_required")
+    return cast(AbstractContextManager[Any], transaction())

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import hashlib
-from typing import Any
+from contextlib import AbstractContextManager
+from typing import Any, cast
 
 from psycopg.types.json import Jsonb
 
@@ -21,7 +22,16 @@ class RegistryRepository:
     ) -> dict[str, Any]:
         symbol = _symbol(base_symbol)
         cex_token_id = f"cex_token:{symbol}"
-        self.conn.execute(
+        if commit:
+            with _transaction(self.conn):
+                return self.upsert_cex_token(
+                    base_symbol=symbol,
+                    project_id=project_id,
+                    source=source,
+                    observed_at_ms=observed_at_ms,
+                    commit=False,
+                )
+        cursor = self.conn.execute(
             """
             INSERT INTO cex_tokens(
               cex_token_id, project_id, base_symbol, status, evidence_level,
@@ -34,12 +44,12 @@ class RegistryRepository:
               status = 'canonical',
               evidence_level = excluded.evidence_level,
               updated_at_ms = excluded.updated_at_ms
+            RETURNING *
             """,
             (cex_token_id, project_id, symbol, source, int(observed_at_ms), int(observed_at_ms)),
         )
-        if commit:
-            self.conn.commit()
-        return self._row_by_id("cex_tokens", "cex_token_id", cex_token_id) or {}
+        row = cursor.fetchone()
+        return _required_returning_row(cursor, row)
 
     def upsert_chain_asset(
         self,
@@ -56,7 +66,18 @@ class RegistryRepository:
         normalized_address = _address(address)
         standard = token_standard or ("erc20" if normalized_chain.startswith("eip155:") else "token")
         asset_id = f"asset:{normalized_chain}:{standard}:{normalized_address}"
-        row = self.conn.execute(
+        if commit:
+            with _transaction(self.conn):
+                return self.upsert_chain_asset(
+                    chain_id=normalized_chain,
+                    address=normalized_address,
+                    observed_at_ms=observed_at_ms,
+                    project_id=project_id,
+                    token_standard=standard,
+                    status=status,
+                    commit=False,
+                )
+        cursor = self.conn.execute(
             """
             WITH existing AS (
               SELECT registry_assets.asset_id
@@ -127,10 +148,9 @@ class RegistryRepository:
                 int(observed_at_ms),
                 int(observed_at_ms),
             ),
-        ).fetchone()
-        if commit:
-            self.conn.commit()
-        return dict(row) if row else {}
+        )
+        row = cursor.fetchone()
+        return _required_returning_row(cursor, row)
 
     def upsert_pricefeed(
         self,
@@ -163,7 +183,26 @@ class RegistryRepository:
             chain_id=normalized_chain,
             address=normalized_address,
         )
-        self.conn.execute(
+        if commit:
+            with _transaction(self.conn):
+                return self.upsert_pricefeed(
+                    feed_type=normalized_feed_type,
+                    provider=normalized_provider,
+                    subject_type=subject_type,
+                    subject_id=subject_id,
+                    observed_at_ms=observed_at_ms,
+                    native_market_id=normalized_market,
+                    chain_id=normalized_chain,
+                    address=normalized_address,
+                    base_asset_id=base_asset_id,
+                    base_cex_token_id=base_cex_token_id,
+                    base_project_id=base_project_id,
+                    base_symbol=_symbol(base_symbol) if base_symbol else None,
+                    quote_symbol=quote_symbol.upper() if quote_symbol else None,
+                    multiplier=multiplier,
+                    commit=False,
+                )
+        cursor = self.conn.execute(
             """
             INSERT INTO price_feeds(
               pricefeed_id, feed_type, provider, subject_type, subject_id, chain_id, address,
@@ -184,6 +223,7 @@ class RegistryRepository:
               quote_symbol = COALESCE(excluded.quote_symbol, price_feeds.quote_symbol),
               multiplier = COALESCE(excluded.multiplier, price_feeds.multiplier),
               updated_at_ms = excluded.updated_at_ms
+            RETURNING *
             """,
             (
                 pricefeed_id,
@@ -204,9 +244,8 @@ class RegistryRepository:
                 int(observed_at_ms),
             ),
         )
-        if commit:
-            self.conn.commit()
-        return self._row_by_id("price_feeds", "pricefeed_id", pricefeed_id) or {}
+        row = cursor.fetchone()
+        return _required_returning_row(cursor, row)
 
     def upsert_us_equity_symbol(
         self,
@@ -223,7 +262,20 @@ class RegistryRepository:
     ) -> dict[str, Any]:
         normalized_symbol = _symbol(symbol)
         market_instrument_id = f"market_instrument:us_equity:{normalized_symbol}"
-        self.conn.execute(
+        if commit:
+            with _transaction(self.conn):
+                return self.upsert_us_equity_symbol(
+                    symbol=normalized_symbol,
+                    exchange=exchange,
+                    security_name=security_name,
+                    instrument_type=instrument_type,
+                    source=source,
+                    source_updated_at_ms=source_updated_at_ms,
+                    raw_payload=raw_payload,
+                    observed_at_ms=observed_at_ms,
+                    commit=False,
+                )
+        cursor = self.conn.execute(
             """
             INSERT INTO us_equity_symbols(
               symbol, market_instrument_id, exchange, security_name, instrument_type, status, source,
@@ -240,6 +292,7 @@ class RegistryRepository:
               source_updated_at_ms = excluded.source_updated_at_ms,
               raw_payload_json = excluded.raw_payload_json,
               updated_at_ms = excluded.updated_at_ms
+            RETURNING *
             """,
             (
                 normalized_symbol,
@@ -254,9 +307,8 @@ class RegistryRepository:
                 int(observed_at_ms),
             ),
         )
-        if commit:
-            self.conn.commit()
-        return self._row_by_id("us_equity_symbols", "symbol", normalized_symbol) or {}
+        row = cursor.fetchone()
+        return _required_returning_row(cursor, row)
 
     def find_us_equity_symbol(self, symbol: str) -> dict[str, Any] | None:
         row = self.conn.execute(
@@ -341,8 +393,16 @@ class RegistryRepository:
         commit: bool = True,
     ) -> int:
         normalized_symbols = sorted({_symbol(symbol) for symbol in active_symbols if _symbol(symbol)})
+        if commit:
+            with _transaction(self.conn):
+                return self.deactivate_missing_us_equity_symbols(
+                    source=source,
+                    active_symbols=set(normalized_symbols),
+                    observed_at_ms=observed_at_ms,
+                    commit=False,
+                )
         if normalized_symbols:
-            row = self.conn.execute(
+            cursor = self.conn.execute(
                 """
                 UPDATE us_equity_symbols
                 SET status = 'inactive', updated_at_ms = %s
@@ -352,9 +412,9 @@ class RegistryRepository:
                 RETURNING symbol
                 """,
                 (int(observed_at_ms), source, normalized_symbols),
-            ).fetchall()
+            )
         else:
-            row = self.conn.execute(
+            cursor = self.conn.execute(
                 """
                 UPDATE us_equity_symbols
                 SET status = 'inactive', updated_at_ms = %s
@@ -363,10 +423,9 @@ class RegistryRepository:
                 RETURNING symbol
                 """,
                 (int(observed_at_ms), source),
-            ).fetchall()
-        if commit:
-            self.conn.commit()
-        return len(row)
+            )
+        rows = cursor.fetchall()
+        return _returned_rowcount(cursor, rows)
 
     def find_cex_token(self, base_symbol: str) -> dict[str, Any] | None:
         row = self.conn.execute(
@@ -707,9 +766,42 @@ class RegistryRepository:
         ).fetchone()
         return dict(row) if row else None
 
-    def _row_by_id(self, table: str, key: str, value: str) -> dict[str, Any] | None:
-        row = self.conn.execute(f"SELECT * FROM {table} WHERE {key} = %s", (value,)).fetchone()
-        return dict(row) if row else None
+def _transaction(conn: Any) -> AbstractContextManager[Any]:
+    try:
+        transaction = conn.transaction
+    except AttributeError as exc:
+        raise RuntimeError("registry_repository_transaction_required") from exc
+    if not callable(transaction):
+        raise RuntimeError("registry_repository_transaction_required")
+    return cast(AbstractContextManager[Any], transaction())
+
+
+def _cursor_rowcount(cursor: Any) -> int:
+    try:
+        rowcount: object = cursor.rowcount
+    except AttributeError as exc:
+        raise TypeError("registry_repository_rowcount_required") from exc
+    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
+        raise TypeError("registry_repository_rowcount_invalid")
+    if rowcount < 0:
+        raise TypeError("registry_repository_rowcount_invalid")
+    return rowcount
+
+
+def _returned_rowcount(cursor: Any, rows: list[Any]) -> int:
+    count = _cursor_rowcount(cursor)
+    if count != len(rows):
+        raise TypeError("registry_repository_rowcount_invalid")
+    return count
+
+
+def _required_returning_row(cursor: Any, row: Any) -> dict[str, Any]:
+    count = _cursor_rowcount(cursor)
+    if count != 1:
+        raise TypeError("registry_repository_rowcount_invalid")
+    if row is None:
+        raise TypeError("registry_repository_rowcount_invalid")
+    return dict(row)
 
 
 def _pricefeed_id(

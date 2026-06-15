@@ -2865,6 +2865,16 @@
             "title": "Provider Observations",
             "type": "array"
           },
+          "provider_rating": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NewsProviderRating"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "provider_type": {
             "anyOf": [
               {
@@ -3044,6 +3054,90 @@
           }
         },
         "title": "NewsObjectData",
+        "type": "object"
+      },
+      "NewsProviderRating": {
+        "additionalProperties": true,
+        "properties": {
+          "direction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction"
+          },
+          "grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grade"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "signal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signal"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "title": "NewsProviderRating",
         "type": "object"
       },
       "NewsRow": {
@@ -3313,6 +3407,16 @@
               }
             ],
             "title": "Projection Version"
+          },
+          "provider_rating": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NewsProviderRating"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "provider_type": {
             "anyOf": [
@@ -4335,17 +4439,6 @@
       "SignalPulseData": {
         "additionalProperties": true,
         "properties": {
-          "agent_worker_running": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Agent Worker Running"
-          },
           "has_more": {
             "anyOf": [
               {
@@ -4649,17 +4742,6 @@
               }
             ],
             "title": "Agent Runs 4H"
-          },
-          "agent_worker_running": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Agent Worker Running"
           },
           "blocked_low_information_count": {
             "anyOf": [

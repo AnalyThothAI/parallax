@@ -1,26 +1,10 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
 
 from parallax.domains.evidence.interfaces import TextSurface, extract_entities_from_surfaces
 from parallax.domains.news_intel._constants import NEWS_ENTITY_POLICY_VERSION
-
-
-@dataclass(frozen=True, slots=True)
-class NewsEntity:
-    entity_id: str
-    news_item_id: str
-    entity_type: str
-    raw_value: str
-    normalized_value: str
-    chain: str | None
-    span_start: int
-    span_end: int
-    text_surface: str
-    confidence: float
-    extraction_policy_version: str
-    created_at_ms: int
+from parallax.domains.news_intel.types.news_extraction import NewsEntity
 
 
 def extract_news_entities(

@@ -8,12 +8,11 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 
 from parallax.app.surfaces.api import schemas as api_schemas
-from parallax.app.surfaces.api.dependencies import _authenticated_runtime
+from parallax.app.surfaces.api.dependencies import _authenticated_runtime, _now_ms
 from parallax.app.surfaces.api.responses import _json
 from parallax.app.surfaces.api.validators import _alert_type, _delivery_status, _handle_set, _limit, _window
 from parallax.domains.account_quality.read_models.account_alert_service import AccountAlertService
 from parallax.domains.account_quality.read_models.account_quality_service import AccountQualityService
-from parallax.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
 
 router = APIRouter()
 
@@ -89,6 +88,7 @@ def account_alerts(
         items = AccountAlertService(repos.signals).account_alerts(
             window=parsed_window,
             limit=_limit(limit, maximum=500),
+            now_ms=_now_ms(),
             handles=_handle_set(handles),
             alert_type=parsed_alert_type,
         )
@@ -114,10 +114,7 @@ def account_quality(
 ) -> JSONResponse:
     runtime = _authenticated_runtime(request)
     with runtime.repositories() as repos:
-        data = AccountQualityService(
-            signals=repos.signals,
-            repository=AccountQualityRepository(repos.conn),
-        ).account_quality_for_handles(sorted(_handle_set(handles)))
+        data = AccountQualityService.from_conn(repos.conn).account_quality_for_handles(sorted(_handle_set(handles)))
     return _json({"ok": True, "data": data})
 
 

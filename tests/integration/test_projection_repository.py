@@ -53,7 +53,7 @@ def test_projection_offsets_runs_and_dirty_ranges_round_trip(tmp_path):
             limit=5,
         )
         offset = repo.get_offset("token-radar")
-        runs = repo.list_runs(projection_name="token-radar")
+        runs = repo.list_runs(projection_name="token-radar", limit=20)
     finally:
         conn.close()
 

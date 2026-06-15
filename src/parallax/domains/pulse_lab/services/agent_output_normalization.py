@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from parallax.domains.pulse_lab.types.agent_decision import FinalDecision
+from parallax.domains.pulse_lab.types.evidence_packet import PulseEvidencePacket
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,8 +19,13 @@ def normalize_pulse_stage_output(
     *,
     output_type: type[Any],
     raw_output: Any,
-    evidence_packet: Any,
+    evidence_packet: PulseEvidencePacket,
 ) -> PulseStageOutputNormalization:
+    if not isinstance(evidence_packet, PulseEvidencePacket):
+        raise TypeError(
+            "pulse_stage_output_normalization_packet_contract_required: "
+            f"expected PulseEvidencePacket, got {type(evidence_packet).__name__}"
+        )
     if not isinstance(raw_output, dict):
         return PulseStageOutputNormalization(payload=raw_output, trace_metadata={})
 
@@ -142,7 +148,11 @@ def _neutralize_execution_language(value: str) -> str:
     return result
 
 
-def _normalize_final_event_ids(payload: dict[str, Any], *, evidence_packet: Any) -> list[dict[str, Any]]:
+def _normalize_final_event_ids(
+    payload: dict[str, Any],
+    *,
+    evidence_packet: PulseEvidencePacket,
+) -> list[dict[str, Any]]:
     values = payload.get("evidence_event_ids")
     if not isinstance(values, list):
         return []
@@ -185,32 +195,17 @@ def _normalize_final_event_ids(payload: dict[str, Any], *, evidence_packet: Any)
     return repairs
 
 
-def _allowed_event_ids(evidence_packet: Any) -> set[str]:
+def _allowed_event_ids(evidence_packet: PulseEvidencePacket) -> set[str]:
     result: set[str] = set()
-    packet = evidence_packet if isinstance(evidence_packet, dict) else {}
-    source_ids = packet.get("source_event_ids") if isinstance(packet, dict) else None
-    if isinstance(source_ids, list | tuple):
-        result.update(_string_value(value) for value in source_ids if _string_value(value))
-    for ref in _allowed_refs(evidence_packet):
-        ref_id = _ref_value(ref, "ref_id")
-        source_id = _ref_value(ref, "source_id")
-        if source_id and _ref_value(ref, "ref_type") == "event":
+    result.update(_string_value(value) for value in evidence_packet.source_event_ids if _string_value(value))
+    for ref in evidence_packet.allowed_evidence_refs:
+        ref_id = _string_value(ref.ref_id)
+        source_id = _string_value(ref.source_id)
+        if source_id and ref.ref_type == "event":
             result.add(source_id)
         if ref_id.startswith("event:"):
             result.add(ref_id.removeprefix("event:"))
     return result
-
-
-def _allowed_refs(evidence_packet: Any) -> tuple[Any, ...]:
-    refs = evidence_packet.get("allowed_evidence_refs") if isinstance(evidence_packet, dict) else None
-    if refs is None:
-        refs = getattr(evidence_packet, "allowed_evidence_refs", ())
-    return tuple(refs) if isinstance(refs, list | tuple) else ()
-
-
-def _ref_value(ref: Any, key: str) -> str:
-    value = ref.get(key) if isinstance(ref, dict) else getattr(ref, key, None)
-    return _string_value(value)
 
 
 def _string_value(value: Any) -> str:

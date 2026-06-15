@@ -47,20 +47,6 @@ DOMAIN_CROSS_CUTTING_PREFIXES = (
     "parallax.platform.paths.",
 )
 SERVICE_RUNTIME_PARTS = {"services", "scoring", "runtime"}
-REPOSITORY_UPWARD_IMPORT_ALLOWLIST = {
-    (
-        SRC_ROOT / "domains/narrative_intel/repositories/narrative_repository.py",
-        "parallax.domains.narrative_intel.services.fingerprints",
-    ),
-    (
-        SRC_ROOT / "domains/news_intel/repositories/news_repository.py",
-        "parallax.domains.news_intel.services.news_canonical_identity",
-    ),
-    (
-        SRC_ROOT / "domains/token_intel/repositories/token_radar_repository.py",
-        "parallax.domains.token_intel.services.token_radar_payload_hash",
-    ),
-}
 PROVIDER_WIRING_DIR = SRC_ROOT / "app" / "runtime" / "provider_wiring"
 PROVIDER_WIRING_FACADE = SRC_ROOT / "app" / "runtime" / "providers_wiring.py"
 MODEL_EXECUTION_DIR = SRC_ROOT / "integrations" / "model_execution"
@@ -72,7 +58,6 @@ PROVIDER_WIRING_FACADE_PUBLIC_EXPORTS = {
     "AssetMarketProviders",
     "CexMarketIntelProviders",
     "IngestionProviders",
-    "MacrodataProviders",
     "NewsIntelProviders",
     "PulseLabProviders",
     "UpstreamClientFactory",
@@ -340,9 +325,7 @@ def test_repositories_and_queries_do_not_import_services_or_runtime() -> None:
             continue
         for imported in _imports(path):
             if ".services." in imported or ".runtime." in imported or ".read_models." in imported:
-                if (path, imported) in REPOSITORY_UPWARD_IMPORT_ALLOWLIST:
-                    continue
-                offenders.append((path.relative_to(ROOT).as_posix(), imported))
+                offenders.append((path.relative_to(ROOT).as_posix(), imported))  # noqa: PERF401 -- nested-loop append keeps failure construction readable
     _assert_no_offenders(
         offenders,
         invariant="repositories and queries do not import upward layers",
@@ -384,8 +367,7 @@ def test_domain_interfaces_do_not_import_runtime_modules() -> None:
         offenders,
         invariant="domain interfaces do not import runtime modules",
         reason=(
-            "Domain interfaces are cross-domain contracts; importing runtime modules leaks orchestration "
-            "into callers."
+            "Domain interfaces are cross-domain contracts; importing runtime modules leaks orchestration into callers."
         ),
         fix=(
             "Move shared use cases into services or types, then import runtime modules only from "

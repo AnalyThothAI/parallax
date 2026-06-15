@@ -5,6 +5,8 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.asset_market.runtime.market_tick_current_projection_worker import (
@@ -111,6 +113,23 @@ def test_worker_coalesces_token_radar_wake_for_multiple_changed_claims() -> None
     assert wake.market_tick_current_notifications == [{"target_type": "batch", "target_id": "market_tick_current"}]
 
 
+def test_worker_requires_wake_emitter_contract_after_token_radar_dirty_enqueue() -> None:
+    claim = _claim("chain_token", "solana:abc")
+    tick = _tick_row("chain_token", "solana:abc", "tick-1")
+    db = _FakeDB(claims=[claim], latest_by_target={("chain_token", "solana:abc"): tick})
+
+    try:
+        asyncio.run(_worker(db=db, wake_emitter=object()).run_once(now_ms=1_700_000_010_000))
+    except AttributeError as exc:
+        assert "notify_market_tick_current_updated" in str(exc)
+    else:
+        raise AssertionError("expected missing wake emitter contract to fail after dirty enqueue")
+
+    tx = db.transactions[0].repos
+    assert tx.token_radar_dirty_targets.market_enqueues
+    assert db.transactions[0].committed is True
+
+
 def test_worker_marks_done_without_radar_enqueue_when_latest_tick_missing() -> None:
     claim = _claim("cex_symbol", "binance:BTCUSDT")
     db = _FakeDB(claims=[claim], latest_by_target={})
@@ -178,6 +197,53 @@ def test_worker_marks_error_on_processing_failure() -> None:
     ]
 
 
+def test_worker_reads_formal_settings_fields_directly_for_claim_sessions_and_retry() -> None:
+    claim = _claim("chain_token", "solana:abc")
+    db = _FakeDB(claims=[claim], latest_by_target={}, latest_error=RuntimeError("boom"))
+
+    result = asyncio.run(
+        _worker(
+            db=db,
+            settings_overrides={
+                "batch_size": 7,
+                "lease_ms": 9_000,
+                "retry_ms": 11_000,
+                "statement_timeout_seconds": 42.0,
+            },
+        ).run_once(now_ms=1_700_000_010_000)
+    )
+
+    assert result.failed == 1
+    assert db.worker_sessions == [{"name": "market_tick_current_projection", "statement_timeout_seconds": 42.0}]
+    assert db.worker_transactions == [
+        {"name": "market_tick_current_projection", "statement_timeout_seconds": 42.0},
+        {"name": "market_tick_current_projection", "statement_timeout_seconds": 42.0},
+    ]
+    assert db.claim_calls == [
+        {
+            "limit": 7,
+            "now_ms": 1_700_000_010_000,
+            "lease_ms": 9_000,
+            "lease_owner": "market_tick_current_projection",
+            "commit": True,
+        }
+    ]
+    assert db.transactions[1].repos.market_tick_current_dirty_targets.errors[0]["retry_ms"] == 11_000
+
+
+def test_worker_requires_formal_statement_timeout_settings_contract() -> None:
+    settings = _worker_settings()
+    delattr(settings, "statement_timeout_seconds")
+    db = _FakeDB(claims=[])
+    worker = _worker(db=db, settings=settings)
+
+    with pytest.raises(AttributeError, match="statement_timeout_seconds"):
+        asyncio.run(worker.run_once(now_ms=1_700_000_010_000))
+
+    assert db.worker_sessions == []
+    assert db.worker_transactions == []
+
+
 def test_worker_passes_wake_waiter_and_statement_timeout_from_settings() -> None:
     db = _FakeDB(claims=[])
     wake_waiter = object()
@@ -202,23 +268,32 @@ def _worker(
     db: _FakeDB,
     wake_emitter: _FakeWakeEmitter | None = None,
     wake_waiter: object | None = None,
+    settings: SimpleNamespace | None = None,
+    settings_overrides: dict[str, Any] | None = None,
 ) -> MarketTickCurrentProjectionWorker:
+    resolved_settings = settings or _worker_settings(**(settings_overrides or {}))
     return MarketTickCurrentProjectionWorker(
         name="market_tick_current_projection",
-        settings=SimpleNamespace(
-            enabled=True,
-            batch_size=100,
-            lease_ms=120_000,
-            retry_ms=30_000,
-            statement_timeout_seconds=30.0,
-            soft_timeout_seconds=120.0,
-            hard_timeout_seconds=180.0,
-        ),
+        settings=resolved_settings,
         db=db,
         telemetry=object(),
         wake_emitter=wake_emitter or _FakeWakeEmitter(),
         wake_waiter=wake_waiter,
     )
+
+
+def _worker_settings(**overrides: Any) -> SimpleNamespace:
+    values: dict[str, Any] = {
+        "enabled": True,
+        "batch_size": 100,
+        "lease_ms": 120_000,
+        "retry_ms": 30_000,
+        "statement_timeout_seconds": 30.0,
+        "soft_timeout_seconds": 120.0,
+        "hard_timeout_seconds": 180.0,
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
 
 
 def _claim(target_type: str, target_id: str) -> dict[str, Any]:
@@ -251,6 +326,7 @@ class _FakeDB:
         self.latest_error = latest_error
         self.token_radar_enqueue_counts = list(token_radar_enqueue_counts or [])
         self.worker_sessions: list[dict[str, Any]] = []
+        self.worker_transactions: list[dict[str, Any]] = []
         self.claim_calls: list[dict[str, Any]] = []
         self.transactions: list[_FakeTransaction] = []
 
@@ -267,6 +343,7 @@ class _FakeDB:
 
     @contextmanager
     def worker_transaction(self, name: str, statement_timeout_seconds: float | None = None):
+        self.worker_transactions.append({"name": name, "statement_timeout_seconds": statement_timeout_seconds})
         transaction = _FakeTransaction(_FakeRepos(self))
         self.transactions.append(transaction)
         try:

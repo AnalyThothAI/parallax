@@ -95,8 +95,7 @@ class NarrativeReadModel:
         *,
         now_ms: int,
     ) -> dict[str, Any]:
-        target_type = str(row.get("target_type") or row.get("type") or "")
-        target_id = str(row.get("target_id") or row.get("id") or "")
+        target_type, target_id = _target_identity(row)
         digest = digests.get((target_type, target_id), _missing_digest(MISSING_DIGEST_REASON))
         return {
             **row,
@@ -113,11 +112,17 @@ def _extract_targets(data: dict[str, Any]) -> list[dict[str, str]]:
     targets: list[dict[str, str]] = []
     for key in ("targets", "attention", "items"):
         for row in data.get(key) or []:
-            target_type = row.get("target_type") or row.get("type")
-            target_id = row.get("target_id") or row.get("id")
+            target_type, target_id = _target_identity(row)
             if target_type and target_id:
-                targets.append({"target_type": str(target_type), "target_id": str(target_id)})
+                targets.append({"target_type": target_type, "target_id": target_id})
     return targets
+
+
+def _target_identity(row: dict[str, Any]) -> tuple[str, str]:
+    target = _dict(row.get("target"))
+    target_type = target.get("target_type") or row.get("target_type")
+    target_id = target.get("target_id") or row.get("target_id")
+    return str(target_type or ""), str(target_id or "")
 
 
 def _normalize_scope(scope: str) -> str:
@@ -189,9 +194,6 @@ def _public_digest(
         "data_gaps": data_gaps,
         "evidence_refs": _list(row.get("evidence_refs_json")),
     }
-    processing = _processing(row, now_ms=now_ms)
-    if processing:
-        payload["processing"] = processing
     return payload
 
 
@@ -213,23 +215,6 @@ def _first_data_gap_reason(row: dict[str, Any]) -> str | None:
         if isinstance(gap, dict) and gap.get("reason"):
             return str(gap["reason"])
     return None
-
-
-def _processing(row: dict[str, Any], *, now_ms: int | None) -> dict[str, Any] | None:
-    semantic = _int(row.get("semantic_backlog_pending"))
-    retryable = _int(row.get("semantic_backlog_retryable"))
-    unavailable = _int(row.get("semantic_backlog_unavailable"))
-    oldest_due_age_ms = _oldest_due_age(row.get("semantic_backlog_oldest_due_at_ms"), now_ms=now_ms)
-    if semantic <= 0 and retryable <= 0 and unavailable <= 0 and oldest_due_age_ms is None:
-        return None
-    backlog: dict[str, Any] = {
-        "semantic": semantic,
-        "retryable": retryable,
-        "unavailable": unavailable,
-    }
-    if oldest_due_age_ms is not None:
-        backlog["oldest_due_age_ms"] = oldest_due_age_ms
-    return {"backlog": backlog}
 
 
 def _dominant_narrative(row: dict[str, Any], dominant: dict[str, Any]) -> dict[str, Any] | None:
@@ -318,15 +303,6 @@ def _float(value: Any) -> float:
         return float(value or 0.0)
     except (TypeError, ValueError):
         return 0.0
-
-
-def _oldest_due_age(value: Any, *, now_ms: int | None) -> int | None:
-    if value is None or now_ms is None:
-        return None
-    try:
-        return max(0, int(now_ms) - int(value))
-    except (TypeError, ValueError):
-        return None
 
 
 def _missing_semantic() -> dict[str, Any]:

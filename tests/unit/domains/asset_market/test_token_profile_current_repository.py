@@ -25,6 +25,9 @@ def test_token_profile_current_upsert_returns_false_when_payload_unchanged() -> 
     assert first_payload_hash == second_payload_hash
     assert "payload_hash IS DISTINCT FROM excluded.payload_hash" in sql
     assert "RETURNING true AS changed" in sql
+    assert conn.transaction_commits == 2
+    assert conn.manual_commits == 0
+    assert conn.sql_depths == [1, 1]
 
 
 def test_token_profile_current_payload_hash_rejects_legacy_source_payload_keys() -> None:
@@ -38,7 +41,8 @@ def test_token_profile_current_payload_hash_rejects_legacy_source_payload_keys()
 
     assert conn.sql == []
     assert conn.params == []
-    assert conn.commits == 0
+    assert conn.manual_commits == 0
+    assert conn.transaction_rollbacks == 1
 
 
 def _profile_row(*, target_id: str, computed_at_ms: int) -> dict[str, Any]:
@@ -74,19 +78,48 @@ def _profile_row(*, target_id: str, computed_at_ms: int) -> dict[str, Any]:
 class _ScriptedConnection:
     def __init__(self, results: list[dict[str, Any] | None]) -> None:
         self.results = list(results)
+        self.rowcount = 0
         self.sql: list[str] = []
         self.params: list[tuple[Any, ...]] = []
-        self.commits = 0
+        self.sql_depths: list[int] = []
+        self.manual_commits = 0
+        self.transaction_commits = 0
+        self.transaction_rollbacks = 0
+        self.transaction_depth = 0
 
     def execute(self, sql: str, params: tuple[Any, ...] | None = None) -> _ScriptedConnection:
         self.sql.append(str(sql))
         self.params.append(tuple(params or ()))
+        self.sql_depths.append(self.transaction_depth)
         return self
 
     def fetchone(self) -> dict[str, Any] | None:
         if not self.results:
+            self.rowcount = 0
             return None
-        return self.results.pop(0)
+        result = self.results.pop(0)
+        self.rowcount = 1 if result is not None else 0
+        return result
 
     def commit(self) -> None:
-        self.commits += 1
+        self.manual_commits += 1
+
+    def transaction(self) -> _Transaction:
+        return _Transaction(self)
+
+
+class _Transaction:
+    def __init__(self, conn: _ScriptedConnection) -> None:
+        self.conn = conn
+
+    def __enter__(self) -> _ScriptedConnection:
+        self.conn.transaction_depth += 1
+        return self.conn
+
+    def __exit__(self, exc_type, *_args) -> bool:
+        self.conn.transaction_depth -= 1
+        if exc_type is None:
+            self.conn.transaction_commits += 1
+        else:
+            self.conn.transaction_rollbacks += 1
+        return False

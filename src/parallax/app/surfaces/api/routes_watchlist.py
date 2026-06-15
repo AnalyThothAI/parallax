@@ -86,7 +86,10 @@ def watchlist_handle_timeline(
     parsed_scope = _watchlist_timeline_scope(scope)
     try:
         with runtime.repositories() as repos:
-            data = WatchlistHandleReadService(repository=repos.watchlist_intel).timeline(
+            data = WatchlistHandleReadService(
+                repository=repos.watchlist_intel,
+                config=_watchlist_read_config(runtime),
+            ).timeline(
                 handle=normalized_handle,
                 configured_handles=tuple(runtime.settings.handles),
                 scope=parsed_scope,
@@ -103,4 +106,6 @@ def watchlist_handle_timeline(
 def _watchlist_read_config(_runtime: object) -> WatchlistReadWindowConfig:
     return WatchlistReadWindowConfig(
         window_days=3,
+        overview_source_limit=500,
+        overview_cluster_limit=500,
     )

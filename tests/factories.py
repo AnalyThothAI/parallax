@@ -3,13 +3,10 @@ from __future__ import annotations
 import time
 from dataclasses import replace
 
-from parallax.domains.asset_market.repositories.registry_repository import RegistryRepository
+from parallax.app.runtime.repository_session import repositories_for_connection
 from parallax.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
-from parallax.domains.evidence.repositories.entity_repository import EntityRepository
-from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from parallax.domains.evidence.services.ingest_service import IngestService
 from parallax.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
-from parallax.domains.token_intel.interfaces import SignalRepository
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 
@@ -96,16 +93,31 @@ def make_token_event(
 def open_runtime(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     migrate(conn)
-    evidence = EvidenceRepository(conn)
-    entities = EntityRepository(conn)
-    signals = SignalRepository(conn)
-    registry = RegistryRepository(conn)
-    ingest = IngestService(
-        evidence=evidence,
-        entities=entities,
-        signals=signals,
+    repos = repositories_for_connection(
+        conn,
+        pulse_job_running_timeout_ms=300_000,
+        notification_delivery_running_timeout_ms=300_000,
+        notification_delivery_stale_running_terminalization_batch_size=100,
     )
-    return conn, ingest, signals, registry
+    ingest = IngestService(
+        evidence=repos.evidence,
+        entities=repos.entities,
+        signals=repos.signals,
+        registry=repos.registry,
+        identity_evidence=repos.identity_evidence,
+        token_intent_lookup=repos.token_intent_lookup,
+        token_evidence=repos.token_evidence,
+        token_intents=repos.token_intents,
+        intent_resolutions=repos.intent_resolutions,
+        discovery=repos.discovery,
+        market_ticks=repos.market_ticks,
+        market_tick_current_dirty_targets=repos.market_tick_current_dirty_targets,
+        enriched_events=repos.enriched_events,
+        event_anchor_jobs=repos.event_anchor_jobs,
+        token_radar_source_dirty_events=repos.token_radar_source_dirty_events,
+        event_anchor_active_window_ms=300_000,
+    )
+    return conn, ingest, repos.signals, repos.registry
 
 
 def token_event(

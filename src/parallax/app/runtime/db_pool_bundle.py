@@ -4,12 +4,13 @@ import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any, Literal, Protocol, cast
 
 from parallax.app.runtime.repository_session import RepositorySession, repositories_for_connection
 from parallax.app.runtime.telemetry import TelemetryRegistry
 from parallax.app.runtime.wake_bus import WakeBus
 from parallax.app.runtime.wake_waiter import WakeWaiter
+from parallax.app.runtime.worker_manifest import all_worker_manifests
 from parallax.platform.db.postgres_client import create_pool, with_password_from_file
 
 _API_STATEMENT_TIMEOUT_SECONDS = 5.0
@@ -20,11 +21,18 @@ _WAKE_KEEPALIVES_INTERVAL_SECONDS = 10
 _WAKE_KEEPALIVES_COUNT = 3
 
 
+class _SyncClosePool(Protocol):
+    def close(self) -> None: ...
+
+
 @dataclass(slots=True)
 class DBPoolBundle:
     api_pool: Any
     worker_pool: Any
     wake_pool: Any
+    pulse_job_running_timeout_ms: int
+    notification_delivery_running_timeout_ms: int
+    notification_delivery_stale_running_terminalization_batch_size: int
     tool_pool: Any | None = None
     lock_pool: Any | None = None
     wake_pool_max_size: int = 0
@@ -89,22 +97,25 @@ class DBPoolBundle:
                 keepalives_interval=_WAKE_KEEPALIVES_INTERVAL_SECONDS,
                 keepalives_count=_WAKE_KEEPALIVES_COUNT,
             )
-        except Exception:
-            for pool in (
+        except Exception as exc:
+            _close_partial_pools(
+                exc,
                 locals().get("api_pool"),
                 locals().get("worker_pool"),
                 locals().get("lock_pool"),
                 locals().get("tool_pool"),
                 locals().get("wake_pool"),
-            ):
-                close = getattr(pool, "close", None)
-                if close:
-                    close()
+            )
             raise
         return cls(
             api_pool=api_pool,
             worker_pool=worker_pool,
             wake_pool=wake_pool,
+            pulse_job_running_timeout_ms=int(settings.workers.pulse_candidate.job_running_timeout_ms),
+            notification_delivery_running_timeout_ms=int(settings.workers.notification_delivery.running_timeout_ms),
+            notification_delivery_stale_running_terminalization_batch_size=int(
+                settings.workers.notification_delivery.stale_running_terminalization_batch_size
+            ),
             tool_pool=tool_pool,
             lock_pool=lock_pool,
             wake_pool_max_size=computed_wake_pool_max_size,
@@ -115,7 +126,14 @@ class DBPoolBundle:
     @contextmanager
     def api_session(self) -> Iterator[RepositorySession]:
         with self._checkout(self.api_pool, pool_name="api") as conn:
-            yield repositories_for_connection(conn)
+            yield repositories_for_connection(
+                conn,
+                pulse_job_running_timeout_ms=self.pulse_job_running_timeout_ms,
+                notification_delivery_running_timeout_ms=self.notification_delivery_running_timeout_ms,
+                notification_delivery_stale_running_terminalization_batch_size=(
+                    self.notification_delivery_stale_running_terminalization_batch_size
+                ),
+            )
 
     @contextmanager
     def worker_session(
@@ -132,7 +150,14 @@ class DBPoolBundle:
             if statement_timeout_seconds is not None:
                 _set_config(conn, "statement_timeout", _statement_timeout_value(statement_timeout_seconds))
             try:
-                yield repositories_for_connection(conn)
+                yield repositories_for_connection(
+                    conn,
+                    pulse_job_running_timeout_ms=self.pulse_job_running_timeout_ms,
+                    notification_delivery_running_timeout_ms=self.notification_delivery_running_timeout_ms,
+                    notification_delivery_stale_running_terminalization_batch_size=(
+                        self.notification_delivery_stale_running_terminalization_batch_size
+                    ),
+                )
             except BaseException:
                 try:
                     _reset_worker_connection(conn, statement_timeout_seconds=statement_timeout_seconds)
@@ -169,6 +194,18 @@ class DBPoolBundle:
     def wake_listener(self, name: str, channels: tuple[str, ...]) -> WakeWaiter:
         _normalize_worker_name(name)
         return WakeWaiter(self.wake_pool, channels=channels)
+
+    async def aclose(self) -> None:
+        errors: list[Exception] = []
+        for pool in (self.api_pool, self.worker_pool, self.lock_pool, self.tool_pool, self.wake_pool):
+            if pool is None:
+                continue
+            try:
+                await _close_pool(pool)
+            except Exception as exc:
+                errors.append(exc)
+        if errors:
+            raise ExceptionGroup("db_pool_bundle_close_failed", errors)
 
     def acquire_advisory_lock_connection(self, worker_name: str, key: int) -> AdvisoryLockConnection:
         pool = self.lock_pool if self.lock_pool is not None else self.worker_pool
@@ -275,29 +312,19 @@ def wake_pool_max_size(settings: Any) -> int:
 
 
 def enabled_wake_listener_concurrency(settings: Any) -> int:
-    workers = getattr(settings, "workers", None)
-    if workers is None:
-        return 0
+    workers = settings.workers
     wake_slots = 0
-    for worker_settings in _iter_worker_settings(workers):
-        if not bool(getattr(worker_settings, "enabled", True)):
+    for manifest in all_worker_manifests():
+        if not manifest.wakes_on:
             continue
-        wakes_on = tuple(getattr(worker_settings, "wakes_on", ()) or ())
+        worker_settings = getattr(workers, manifest.name)
+        if not bool(worker_settings.enabled):
+            continue
+        wakes_on = tuple(worker_settings.wakes_on or ())
         if not wakes_on:
             continue
-        wake_slots += max(1, int(getattr(worker_settings, "concurrency", 1) or 1))
+        wake_slots += max(1, int(worker_settings.concurrency or 1))
     return wake_slots
-
-
-def _iter_worker_settings(workers: Any) -> Iterator[Any]:
-    fields = getattr(type(workers), "model_fields", None)
-    if isinstance(fields, dict):
-        for name in fields:
-            yield getattr(workers, name)
-        return
-    for name, value in vars(workers).items():
-        if not str(name).startswith("_"):
-            yield value
 
 
 def _set_config(conn: Any, name: str, value: str) -> None:
@@ -320,11 +347,23 @@ def _return_or_discard(pool: Any, conn: Any, *, application_name: str = "gmgn_wo
 
 
 def _discard_connection(pool: Any, conn: Any) -> None:
-    discard = getattr(pool, "close_returns", None)
-    if discard:
-        discard(conn)
-        return
-    close = getattr(conn, "close", None)
-    if close:
-        close()
+    conn.close()
     pool.putconn(conn)
+
+
+def _close_partial_pools(error: BaseException, *pools: object | None) -> None:
+    seen: set[int] = set()
+    for pool in pools:
+        if pool is None or id(pool) in seen:
+            continue
+        seen.add(id(pool))
+        try:
+            cast(_SyncClosePool, pool).close()
+        except Exception as exc:
+            error.add_note(f"partial db pool cleanup failed: {type(exc).__name__}: {exc}")
+
+
+async def _close_pool(pool: Any) -> None:
+    result = pool.close()
+    if result is not None:
+        raise RuntimeError("db_pool_close_must_be_sync")

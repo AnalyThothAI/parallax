@@ -97,6 +97,170 @@ def test_settle_token_factor_scores_writes_deterministic_bucket_summaries():
     ]
 
 
+def test_settle_token_factor_scores_requires_formal_rank_score_without_zero_bucket():
+    base_ms = 1_700_000_000_000
+    row = radar_row("bad", score=10, computed_at_ms=base_ms)
+    del row["factor_snapshot_json"]["composite"]["rank_score"]
+    repos = FakeRepos(rows=[row], prices={market_key("bad"): (100.0, 120.0)})
+
+    with pytest.raises(ValueError, match=r"factor_snapshot_json\.composite\.rank_score is required"):
+        settle_token_factor_scores(
+            repos=repos,
+            horizon="1h",
+            window="1h",
+            scope="all",
+            generated_at_ms=base_ms + 60 * 60 * 1000 + 1,
+            limit=100,
+        )
+
+    assert repos.token_factor_evaluations.upserts == []
+    assert repos.market_ticks.latest_calls == []
+    assert repos.market_ticks.bounded_exit_calls == []
+
+
+def test_settle_token_factor_scores_requires_formal_subject_identity_without_row_fallback():
+    base_ms = 1_700_000_000_000
+    row = {
+        **radar_row("bad-subject", score=10, computed_at_ms=base_ms),
+        "target_type": "Asset",
+        "target_id": "asset:bad-subject",
+    }
+    del row["factor_snapshot_json"]["subject"]["target_id"]
+    repos = FakeRepos(rows=[row], prices={market_key("bad-subject"): (100.0, 120.0)})
+
+    with pytest.raises(ValueError, match=r"factor_snapshot_json\.subject\.target_id is required"):
+        settle_token_factor_scores(
+            repos=repos,
+            horizon="1h",
+            window="1h",
+            scope="all",
+            generated_at_ms=base_ms + 60 * 60 * 1000 + 1,
+            limit=100,
+        )
+
+    assert repos.token_factor_evaluations.upserts == []
+    assert repos.market_ticks.latest_calls == []
+    assert repos.market_ticks.bounded_exit_calls == []
+
+
+@pytest.mark.parametrize(
+    ("subject_type", "subject_id", "prices"),
+    (
+        pytest.param(
+            "chain_token",
+            "eip155:1:0xlegacy-chain",
+            {("chain_token", "eip155:1:0xlegacy-chain"): (100.0, 120.0)},
+            id="chain-token",
+        ),
+        pytest.param(
+            "cex_symbol",
+            "binance:BTCUSDT",
+            {("cex_symbol", "binance:BTCUSDT"): (100.0, 120.0)},
+            id="cex-symbol",
+        ),
+    ),
+)
+def test_settle_token_factor_scores_rejects_direct_market_tick_subject_types_without_legacy_passthrough(
+    subject_type,
+    subject_id,
+    prices,
+):
+    base_ms = 1_700_000_000_000
+    row = radar_row("legacy-subject", score=70, computed_at_ms=base_ms)
+    row["factor_snapshot_json"]["subject"] = {
+        "target_type": subject_type,
+        "target_id": subject_id,
+    }
+    repos = FakeRepos(rows=[row], prices=prices)
+
+    with pytest.raises(ValueError, match=r"factor_snapshot_json\.subject\.target_type is invalid"):
+        settle_token_factor_scores(
+            repos=repos,
+            horizon="1h",
+            window="1h",
+            scope="all",
+            generated_at_ms=base_ms + 60 * 60 * 1000 + 1,
+            limit=100,
+        )
+
+    assert repos.token_factor_evaluations.upserts == []
+    assert repos.market_ticks.latest_calls == []
+    assert repos.market_ticks.bounded_exit_calls == []
+
+
+@pytest.mark.parametrize(
+    ("remove_field", "alias_field", "alias_value"),
+    (
+        pytest.param("chain", "chain_id", "eip155:1", id="chain-id-alias"),
+        pytest.param("address", "asset_address", "0xlegacyasset", id="asset-address-alias"),
+    ),
+)
+def test_settle_token_factor_scores_requires_asset_chain_and_address_without_legacy_aliases(
+    remove_field,
+    alias_field,
+    alias_value,
+):
+    base_ms = 1_700_000_000_000
+    row = radar_row("legacyasset", score=70, computed_at_ms=base_ms)
+    subject = row["factor_snapshot_json"]["subject"]
+    subject[alias_field] = alias_value
+    del subject[remove_field]
+    repos = FakeRepos(rows=[row], prices={market_key("legacyasset"): (100.0, 120.0)})
+
+    result = settle_token_factor_scores(
+        repos=repos,
+        horizon="1h",
+        window="1h",
+        scope="all",
+        generated_at_ms=base_ms + 60 * 60 * 1000 + 1,
+        limit=100,
+    )
+
+    diagnostics = repos.token_factor_evaluations.upserts[0]["diagnostics_json"]
+    assert result["settled_count"] == 0
+    assert diagnostics["unsettled_reasons"] == {"missing_market_target": 1}
+    assert repos.market_ticks.latest_calls == []
+    assert repos.market_ticks.bounded_exit_calls == []
+
+
+def test_settle_token_factor_scores_uses_snapshot_provenance_time_without_row_timestamp_fallback():
+    base_ms = 1_700_000_000_000
+    horizon_ms = 60 * 60 * 1000
+    row = radar_row("time", score=45, computed_at_ms=base_ms)
+    del row["computed_at_ms"]
+    repos = FakeRepos(rows=[row], prices={market_key("time"): (100.0, 125.0)})
+
+    result = settle_token_factor_scores(
+        repos=repos,
+        horizon="1h",
+        window="1h",
+        scope="all",
+        generated_at_ms=base_ms + horizon_ms + 1,
+        limit=100,
+    )
+
+    assert result["settled_count"] == 1
+    assert repos.market_ticks.latest_calls == [
+        {
+            "target_type": "chain_token",
+            "target_id": market_target_id("time"),
+            "at_ms": base_ms,
+            "max_lag_ms": 24 * 60 * 60 * 1000,
+        }
+    ]
+    assert repos.market_ticks.bounded_exit_calls == [
+        {
+            "target_type": "chain_token",
+            "target_id": market_target_id("time"),
+            "start_ms": base_ms + horizon_ms,
+            "end_ms": base_ms + horizon_ms + 1,
+        }
+    ]
+    by_label = {summary["bucket_label"]: summary for summary in repos.token_factor_evaluations.upserts}
+    assert by_label["40-59"]["sample_start_ms"] == base_ms
+    assert by_label["40-59"]["sample_end_ms"] == base_ms
+
+
 def test_settle_token_factor_scores_computes_daily_icir_when_daily_ics_vary():
     base_ms = 1_700_000_000_000
     day_ms = 24 * 60 * 60 * 1000
@@ -202,6 +366,71 @@ def test_settle_token_factor_scores_records_family_rank_ic_diagnostics():
     assert diagnostics["family_coverage"]["timing_risk"] == 1.0
 
 
+def test_settle_token_factor_scores_reads_family_scores_from_formal_families_without_composite_alias():
+    base_ms = 1_700_000_000_000
+    horizon_ms = 60 * 60 * 1000
+    rows = [
+        radar_row(
+            "a",
+            score=20,
+            computed_at_ms=base_ms,
+            family_scores={
+                "social_heat": 10,
+                "social_propagation": 90,
+                "semantic_catalyst": 40,
+                "timing_risk": 0,
+            },
+        ),
+        radar_row(
+            "b",
+            score=40,
+            computed_at_ms=base_ms,
+            family_scores={
+                "social_heat": 50,
+                "social_propagation": 50,
+                "semantic_catalyst": 60,
+                "timing_risk": 0,
+            },
+        ),
+        radar_row(
+            "c",
+            score=60,
+            computed_at_ms=base_ms,
+            family_scores={
+                "social_heat": 90,
+                "social_propagation": 10,
+                "semantic_catalyst": 80,
+                "timing_risk": 0,
+            },
+        ),
+    ]
+    for row in rows:
+        del row["factor_snapshot_json"]["composite"]["family_scores"]
+    repos = FakeRepos(
+        rows=rows,
+        prices={
+            market_key("a"): (100.0, 90.0),
+            market_key("b"): (100.0, 100.0),
+            market_key("c"): (100.0, 110.0),
+        },
+    )
+
+    settle_token_factor_scores(
+        repos=repos,
+        horizon="1h",
+        window="1h",
+        scope="all",
+        generated_at_ms=base_ms + horizon_ms + 1,
+        limit=100,
+    )
+
+    diagnostics = repos.token_factor_evaluations.upserts[0]["diagnostics_json"]
+    assert diagnostics["family_rank_ic"]["social_heat"] == pytest.approx(1.0)
+    assert diagnostics["family_rank_ic"]["social_propagation"] == pytest.approx(-1.0)
+    assert diagnostics["family_coverage"]["social_heat"] == 1.0
+    assert diagnostics["family_coverage"]["social_propagation"] == 1.0
+
+
 def test_settle_token_factor_scores_does_not_fallback_to_dropped_target_json_for_cex_market_target():
     base_ms = 1_700_000_000_000
     horizon_ms = 60 * 60 * 1000
@@ -226,19 +455,73 @@ def test_settle_token_factor_scores_does_not_fallback_to_dropped_target_json_for
                 "target_market_type": "cex",
             },
             "market": {
+                "event_anchor": None,
                 "decision_latest": {
                     "provider": "binance",
                     "price_usd": 70_000.0,
-                }
+                },
+                "readiness": _market_readiness(),
             },
-            "families": {},
-            "gates": {},
-            "data_health": {},
+            "families": _factor_families(),
+            "gates": {
+                "eligible_for_high_alert": False,
+                "blocked_reasons": [],
+                "risk_reasons": [],
+                "max_decision": "high_alert",
+            },
+            "data_health": {"identity": "ready", "market": "ready", "social": "ready", "alpha": "ready"},
             "normalization": {},
-            "composite": {"rank_score": 80, "family_scores": {}},
-            "provenance": {"computed_at_ms": base_ms},
+            "composite": {"rank_score": 80, "family_scores": {}, "recommended_decision": "high_alert"},
+            "provenance": {"source_event_ids": ["event-btc"], "computed_at_ms": base_ms},
         },
     }
+    repos = FakeRepos(rows=[row], prices={("cex_symbol", "binance:BTCUSDT"): (100.0, 120.0)})
+
+    result = settle_token_factor_scores(
+        repos=repos,
+        horizon="1h",
+        window="1h",
+        scope="all",
+        generated_at_ms=base_ms + horizon_ms + 1,
+        limit=100,
+    )
+
+    diagnostics = repos.token_factor_evaluations.upserts[0]["diagnostics_json"]
+    assert result["settled_count"] == 0
+    assert diagnostics["unsettled_reasons"] == {"missing_market_target": 1}
+    assert repos.market_ticks.latest_calls == []
+    assert repos.market_ticks.bounded_exit_calls == []
+
+
+def test_settle_token_factor_scores_requires_cex_provider_in_snapshot_subject_without_market_context_fallback():
+    base_ms = 1_700_000_000_000
+    horizon_ms = 60 * 60 * 1000
+    row = cex_radar_row("btc", computed_at_ms=base_ms)
+    del row["factor_snapshot_json"]["subject"]["provider"]
+    repos = FakeRepos(rows=[row], prices={("cex_symbol", "binance:BTCUSDT"): (100.0, 120.0)})
+
+    result = settle_token_factor_scores(
+        repos=repos,
+        horizon="1h",
+        window="1h",
+        scope="all",
+        generated_at_ms=base_ms + horizon_ms + 1,
+        limit=100,
+    )
+
+    diagnostics = repos.token_factor_evaluations.upserts[0]["diagnostics_json"]
+    assert result["settled_count"] == 0
+    assert diagnostics["unsettled_reasons"] == {"missing_market_target": 1}
+    assert repos.market_ticks.latest_calls == []
+    assert repos.market_ticks.bounded_exit_calls == []
+
+
+def test_settle_token_factor_scores_requires_cex_native_market_id_without_instrument_alias():
+    base_ms = 1_700_000_000_000
+    horizon_ms = 60 * 60 * 1000
+    row = cex_radar_row("btc", computed_at_ms=base_ms)
+    row["factor_snapshot_json"]["subject"]["instrument"] = "BTCUSDT"
+    del row["factor_snapshot_json"]["subject"]["native_market_id"]
     repos = FakeRepos(rows=[row], prices={("cex_symbol", "binance:BTCUSDT"): (100.0, 120.0)})
 
     result = settle_token_factor_scores(
@@ -321,6 +604,31 @@ def test_evaluation_repository_batch_upsert_uses_transaction_once():
     assert conn.commit_count == 0
 
 
+def test_evaluation_repository_upsert_requires_connection_transaction_before_sql_when_committing():
+    conn = NoTransactionConn(row=None)
+
+    with pytest.raises(RuntimeError, match="token_factor_evaluation_repository_transaction_required"):
+        TokenFactorEvaluationRepository(conn).upsert_score_evaluation(
+            _summary(bucket_label="0-19", bucket_min=0, bucket_max=19)
+        )
+
+    assert conn.sqls == []
+
+
+def test_evaluation_repository_commit_owned_upsert_uses_connection_transaction_without_manual_commit():
+    conn = FakeConn(row=None)
+
+    TokenFactorEvaluationRepository(conn).upsert_score_evaluation(
+        _summary(bucket_label="0-19", bucket_min=0, bucket_max=19)
+    )
+
+    assert "INSERT INTO token_score_evaluations" in conn.sql
+    assert conn.sql_transaction_depths == [1]
+    assert conn.transaction_enter_count == 1
+    assert conn.transaction_exit_count == 1
+    assert conn.commit_count == 0
+
+
 def _summary(*, bucket_label: str, bucket_min: int, bucket_max: int) -> dict:
     return {
         "horizon": "1h",
@@ -356,16 +664,106 @@ def radar_row(suffix: str, *, score: int, computed_at_ms: int, family_scores: di
                 "target_type": "Asset",
                 "target_id": f"asset:{suffix}",
                 "symbol": suffix.upper(),
+                "target_market_type": "dex",
                 "chain": "eip155:1",
                 "address": f"0x{suffix}",
             },
-            "families": {},
-            "gates": {},
-            "data_health": {},
+            "market": {
+                "event_anchor": None,
+                "decision_latest": None,
+                "readiness": _market_readiness(),
+            },
+            "families": _factor_families(family_scores=family_scores),
+            "gates": {
+                "eligible_for_high_alert": score >= 70,
+                "blocked_reasons": [],
+                "risk_reasons": [],
+                "max_decision": "high_alert",
+            },
+            "data_health": {"identity": "ready", "market": "ready", "social": "ready", "alpha": "ready"},
             "normalization": {},
-            "composite": {"rank_score": score, "family_scores": family_scores or {}},
-            "provenance": {"computed_at_ms": computed_at_ms},
+            "composite": {
+                "rank_score": score,
+                "family_scores": family_scores or {},
+                "recommended_decision": "high_alert" if score >= 70 else "watch" if score >= 35 else "discard",
+            },
+            "provenance": {"source_event_ids": [f"event:{suffix}"], "computed_at_ms": computed_at_ms},
         },
+    }
+
+
+def cex_radar_row(suffix: str, *, computed_at_ms: int, score: int = 80) -> dict:
+    symbol = suffix.upper()
+    native_market_id = f"{symbol}USDT"
+    return {
+        "row_id": f"row:{suffix}",
+        "window": "1h",
+        "scope": "all",
+        "computed_at_ms": computed_at_ms,
+        "factor_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
+        "factor_snapshot_json": {
+            "schema_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
+            "subject": {
+                "target_type": "CexToken",
+                "target_id": f"cex_token:{symbol}",
+                "symbol": symbol,
+                "target_market_type": "cex",
+                "provider": "binance",
+                "native_market_id": native_market_id,
+            },
+            "market": {
+                "event_anchor": None,
+                "decision_latest": {
+                    "provider": "binance",
+                    "price_usd": 70_000.0,
+                },
+                "readiness": _market_readiness(),
+            },
+            "families": _factor_families(),
+            "gates": {
+                "eligible_for_high_alert": True,
+                "blocked_reasons": [],
+                "risk_reasons": [],
+                "max_decision": "high_alert",
+            },
+            "data_health": {"identity": "ready", "market": "ready", "social": "ready", "alpha": "ready"},
+            "normalization": {},
+            "composite": {
+                "rank_score": score,
+                "family_scores": {},
+                "recommended_decision": "high_alert",
+            },
+            "provenance": {"source_event_ids": [f"event:{suffix}"], "computed_at_ms": computed_at_ms},
+        },
+    }
+
+
+def _market_readiness() -> dict:
+    return {
+        "anchor_status": "ready",
+        "latest_status": "live",
+        "dex_floor_status": "ready",
+        "missing_fields": [],
+        "stale_fields": [],
+    }
+
+
+def _factor_families(*, family_scores: dict | None = None) -> dict:
+    scores = family_scores or {}
+    return {
+        family: _factor_family(scores.get(family, 0.0))
+        for family in TOKEN_RADAR_FACTOR_FAMILIES
+    }
+
+
+def _factor_family(score: object) -> dict:
+    return {
+        "raw_score": score,
+        "score": score,
+        "weight": 1.0,
+        "data_health": "ready",
+        "facts": {},
+        "factors": {},
     }
 
 
@@ -445,9 +843,11 @@ class FakeTransaction:
 
     def __enter__(self):
         self.conn.transaction_enter_count += 1
+        self.conn.transaction_depth += 1
         return self
 
     def __exit__(self, exc_type, exc, tb):
+        self.conn.transaction_depth -= 1
         self.conn.transaction_exit_count += 1
         return False
 
@@ -462,10 +862,13 @@ class FakeConn:
         self.commit_count = 0
         self.transaction_enter_count = 0
         self.transaction_exit_count = 0
+        self.transaction_depth = 0
+        self.sql_transaction_depths = []
 
     def execute(self, sql, params=None):
         self.sql = str(sql)
         self.sqls.append(self.sql)
+        self.sql_transaction_depths.append(self.transaction_depth)
         self.params = params or ()
         return self
 
@@ -477,6 +880,11 @@ class FakeConn:
 
     def commit(self):
         self.commit_count += 1
+        raise AssertionError("manual commit is not allowed in repository tests")
 
     def transaction(self):
         return FakeTransaction(self)
+
+
+class NoTransactionConn(FakeConn):
+    transaction = None

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from parallax.domains.asset_market.interfaces import message_price_payload
@@ -161,16 +160,16 @@ def _project_token_resolution(row: dict[str, Any]) -> dict[str, Any] | None:
     if target_type not in {"Asset", "CexToken"} or not target_id:
         return None
     return {
-        "resolution_id": str(row.get("resolution_id") or ""),
-        "intent_id": str(row.get("intent_id") or ""),
-        "event_id": str(row.get("event_id") or ""),
+        "resolution_id": _required_resolution_text(row, "resolution_id"),
+        "intent_id": _required_resolution_text(row, "intent_id"),
+        "event_id": _required_resolution_text(row, "event_id"),
         "target_type": target_type,
         "target_id": target_id,
         "pricefeed_id": _clean_text(row.get("pricefeed_id")),
-        "resolution_status": str(row.get("resolution_status") or ""),
-        "reason_codes_json": _loads(row.get("reason_codes_json"), []),
-        "candidate_ids_json": _loads(row.get("candidate_ids_json"), []),
-        "lookup_keys_json": _loads(row.get("lookup_keys_json"), []),
+        "resolution_status": _required_resolution_text(row, "resolution_status"),
+        "reason_codes_json": _required_resolution_list(row, "reason_codes_json"),
+        "candidate_ids_json": _required_resolution_list(row, "candidate_ids_json"),
+        "lookup_keys_json": _required_resolution_list(row, "lookup_keys_json"),
         "symbol": _resolution_symbol(row, target_type=target_type, target_id=target_id),
         "price": message_price_payload(row),
     }
@@ -190,17 +189,22 @@ def _clean_text(value: Any) -> str | None:
     return text or None
 
 
-def _loads(value: Any, default: Any) -> Any:
+def _required_resolution_text(row: dict[str, Any], field: str) -> str:
+    if field not in row or row[field] is None:
+        raise ValueError(f"event_token_projection_required:{field}")
+    value = _clean_text(row[field])
     if value is None:
-        return default
-    if not isinstance(value, str):
-        return value
-    if not value.strip():
-        return default
-    try:
-        return json.loads(value)
-    except json.JSONDecodeError:
-        return default
+        raise ValueError(f"event_token_projection_invalid:{field}")
+    return value
+
+
+def _required_resolution_list(row: dict[str, Any], field: str) -> list[Any]:
+    if field not in row or row[field] is None:
+        raise ValueError(f"event_token_projection_required:{field}")
+    value = row[field]
+    if not isinstance(value, list):
+        raise ValueError(f"event_token_projection_invalid:{field}")
+    return value
 
 
 __all__ = ["EventTokenProjectionQuery"]

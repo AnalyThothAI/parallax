@@ -4,20 +4,18 @@ import asyncio
 import hashlib
 import json
 import time
-from collections.abc import Callable, Iterator
-from contextlib import AbstractContextManager, contextmanager, nullcontext
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, cast
 
 from parallax.domains.pulse_lab.interfaces import (
-    AGENT_NAME,
-    BACKEND,
     PULSE_DECISION_PROMPT_VERSION,
     PULSE_DECISION_SCHEMA_VERSION,
     PULSE_GATE_VERSION,
     PULSE_PLAYBOOK_VERSION,
     PULSE_VERSION,
-    WORKFLOW_NAME,
 )
 from parallax.domains.pulse_lab.providers import (
     PULSE_DECISION_LANE,
@@ -35,7 +33,10 @@ from parallax.domains.pulse_lab.services.agent_runtime import (
     build_pulse_runtime_manifest,
     pulse_runtime_hash,
 )
-from parallax.domains.pulse_lab.services.claim_evidence_verifier import ClaimEvidenceVerifier
+from parallax.domains.pulse_lab.services.claim_evidence_verifier import (
+    ClaimEvidenceVerificationResult,
+    ClaimEvidenceVerifier,
+)
 from parallax.domains.pulse_lab.services.decision_mapping import candidate_fields_from_decision
 from parallax.domains.pulse_lab.services.evidence_completeness_gate import (
     EvidenceCompletenessGate,
@@ -63,6 +64,8 @@ from parallax.domains.pulse_lab.types.pulse_candidate_context import PulseCandid
 from parallax.domains.pulse_lab.types.pulse_state import run_outcome_from_failure
 from parallax.platform.agent_execution import (
     AgentCapacityReservation,
+    AgentExecutionCancelled,
+    AgentExecutionError,
     AgentExecutionErrorClass,
 )
 from parallax.platform.cancellation import is_worker_hard_timeout_cancelled
@@ -84,6 +87,45 @@ class PulseAgentBackpressureReleased(Exception):
         self.reason = reason
 
 
+@dataclass(frozen=True, slots=True)
+class _AgentRunRequestAudit:
+    backend: str
+    execution_trace_id: str
+    workflow_name: str
+    agent_name: str
+    artifact_version_hash: str
+    prompt_version: str
+    schema_version: str
+    runtime_version: str
+    runtime_hash: str
+    input_hash: str
+    trace_metadata_json: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class _PulseJobRunIdentity:
+    job_id: str
+    trigger_signature: str
+    timeline_signature: str
+    attempt_count: int
+
+
+_AGENT_RUN_AUDIT_REQUIRED_ERRORS = {
+    "backend": "pulse_agent_run_audit_backend_required",
+    "execution_trace_id": "pulse_agent_run_audit_execution_trace_id_required",
+    "workflow_name": "pulse_agent_run_audit_workflow_name_required",
+    "agent_name": "pulse_agent_run_audit_agent_name_required",
+    "artifact_version_hash": "pulse_agent_run_audit_artifact_version_hash_required",
+    "prompt_version": "pulse_agent_run_audit_prompt_version_required",
+    "schema_version": "pulse_agent_run_audit_schema_version_required",
+    "runtime_version": "pulse_agent_run_audit_runtime_version_required",
+    "runtime_hash": "pulse_agent_run_audit_runtime_hash_required",
+    "input_hash": "pulse_agent_run_audit_input_hash_required",
+    "trace_metadata": "pulse_agent_run_audit_trace_metadata_required",
+    "output_hash": "pulse_agent_run_audit_output_hash_required",
+}
+
+
 class PulseCandidateJobService:
     def __init__(
         self,
@@ -95,6 +137,12 @@ class PulseCandidateJobService:
         gate_func: Callable[..., PulseGateResult],
         gate_thresholds: PulseGateThresholds,
     ) -> None:
+        if settings is None:
+            raise RuntimeError("pulse_candidate_job_settings_required")
+        if db is None:
+            raise RuntimeError("pulse_candidate_job_db_required")
+        if decision_client is None:
+            raise RuntimeError("pulse_candidate_job_decision_client_required")
         self.name = name
         self.settings = settings
         self.db = db
@@ -112,21 +160,24 @@ class PulseCandidateJobService:
     ) -> None:
         run_id = ""
         audit: dict[str, Any] | None = None
+        request_audit: _AgentRunRequestAudit | None = None
         agent_context: dict[str, Any] = {}
         route: DecisionRoute = "research_only"
         completeness_json: dict[str, Any] = {}
         runtime_hash = ""
+        runtime_version = ""
         run_started = False
         evidence_packet: PulseEvidencePacket | None = None
         evidence_gate: EvidenceCompletenessGateResult | None = None
         cost_guard: PulseCostGuardDecision | None = None
+        job_identity = _pulse_job_run_identity(job)
         try:
             run_id = _prefixed_id(
                 "pulse-run",
-                str(job.get("job_id") or ""),
-                str(job.get("trigger_signature") or ""),
-                str(job.get("timeline_signature") or ""),
-                str(job.get("attempt_count") or 0),
+                job_identity.job_id,
+                job_identity.trigger_signature,
+                job_identity.timeline_signature,
+                str(job_identity.attempt_count),
                 str(now_ms),
             )
             gate = self.gate_func(
@@ -146,10 +197,14 @@ class PulseCandidateJobService:
                 timeout_seconds=float(self.decision_client.timeout_seconds),
                 **_runtime_contract_from_client(self.decision_client),
             )
+            runtime_version = str(runtime_manifest["runtime_version"])
             runtime_hash = pulse_runtime_hash(runtime_manifest)
             pre_stage_audits: tuple[StageRunAudit, ...]
-            with self._repository_session() as repos, _transaction(repos.conn):
-                evidence_packet = PulseEvidenceBuilder(repos.pulse_evidence_sources).build(
+            with self._repository_session() as repos, repos.transaction():
+                evidence_packet = PulseEvidenceBuilder(
+                    repos.pulse_evidence_sources,
+                    market_freshness_ms=max(1, int(self.settings.evidence_market_freshness_ms)),
+                ).build(
                     context,
                     run_id=run_id,
                     now_ms=now_ms,
@@ -188,8 +243,14 @@ class PulseCandidateJobService:
                     completeness=completeness_json,
                     runtime_manifest=runtime_manifest,
                 )
+                request_audit = _agent_run_request_audit(
+                    audit,
+                    artifact_version_hash=artifact_version_hash,
+                    runtime_version=runtime_version,
+                    runtime_hash=runtime_hash,
+                )
                 repos.pulse_agent_eval.upsert_agent_runtime_version(
-                    runtime_version=str(runtime_manifest["runtime_version"]),
+                    runtime_version=runtime_version,
                     runtime_hash=runtime_hash,
                     strategy=PULSE_AGENT_STRATEGY,
                     provider=provider,
@@ -202,24 +263,22 @@ class PulseCandidateJobService:
                 )
                 repos.pulse_runs.insert_agent_run(
                     run_id=run_id,
-                    job_id=str(job["job_id"]),
+                    job_id=job_identity.job_id,
                     candidate_id=context.candidate_id,
                     provider=provider,
                     model=model,
-                    backend=str(audit.get("backend") or BACKEND),
-                    execution_trace_id=audit.get("execution_trace_id"),
-                    workflow_name=str(audit.get("workflow_name") or WORKFLOW_NAME),
-                    agent_name=str(audit.get("agent_name") or AGENT_NAME),
-                    artifact_version_hash=str(
-                        audit.get("artifact_version_hash") or _artifact_hash(self.decision_client)
-                    ),
-                    prompt_version=str(audit.get("prompt_version") or PULSE_DECISION_PROMPT_VERSION),
-                    schema_version=str(audit.get("schema_version") or PULSE_DECISION_SCHEMA_VERSION),
-                    runtime_version=str(runtime_manifest["runtime_version"]),
+                    backend=request_audit.backend,
+                    execution_trace_id=request_audit.execution_trace_id,
+                    workflow_name=request_audit.workflow_name,
+                    agent_name=request_audit.agent_name,
+                    artifact_version_hash=request_audit.artifact_version_hash,
+                    prompt_version=request_audit.prompt_version,
+                    schema_version=request_audit.schema_version,
+                    runtime_version=request_audit.runtime_version,
                     runtime_hash=runtime_hash,
-                    input_hash=str(audit.get("input_hash") or _stable_hash(agent_context)),
-                    trace_metadata_json=audit.get("trace_metadata") or {},
-                    usage_json=audit.get("usage") or {},
+                    input_hash=request_audit.input_hash,
+                    trace_metadata_json=request_audit.trace_metadata_json,
+                    usage_json={},
                     status="running",
                     outcome="running",
                     decision_route=route,
@@ -235,7 +294,7 @@ class PulseCandidateJobService:
                         route=route,
                         input_json={"candidate_id": context.candidate_id, "source_event_ids": context.source_event_ids},
                         response_json=evidence_packet.model_dump(mode="json"),
-                        trace_metadata_json=audit.get("trace_metadata") or {},
+                        trace_metadata_json=request_audit.trace_metadata_json,
                         started_at_ms=now_ms,
                         finished_at_ms=now_ms,
                     ),
@@ -244,7 +303,7 @@ class PulseCandidateJobService:
                         route=route,
                         input_json={"evidence_packet_hash": evidence_packet.evidence_packet_hash},
                         response_json=completeness_json,
-                        trace_metadata_json=audit.get("trace_metadata") or {},
+                        trace_metadata_json=request_audit.trace_metadata_json,
                         started_at_ms=now_ms,
                         finished_at_ms=now_ms,
                     ),
@@ -258,8 +317,8 @@ class PulseCandidateJobService:
                         attempt_index=stage_audit.attempt_index,
                         provider=provider,
                         model=model,
-                        prompt_version=str(audit.get("prompt_version") or PULSE_DECISION_PROMPT_VERSION),
-                        schema_version=str(audit.get("schema_version") or PULSE_DECISION_SCHEMA_VERSION),
+                        prompt_version=request_audit.prompt_version,
+                        schema_version=request_audit.schema_version,
                         input_json=stage_audit.input_json,
                         prompt_text=stage_audit.prompt_text,
                         response_json=stage_audit.response_json,
@@ -274,6 +333,8 @@ class PulseCandidateJobService:
                         commit=False,
                     )
             run_started = True
+            if request_audit is None:
+                raise RuntimeError("pulse_agent_run_audit_required")
             stage_audits: tuple[StageRunAudit, ...]
             if cost_guard is not None and cost_guard.action == "deterministic_finalize":
                 final_decision = _abstain_decision(
@@ -284,7 +345,7 @@ class PulseCandidateJobService:
                     data_gap_refs=_packet_gate_refs(evidence_packet),
                 )
                 stage_audits = pre_stage_audits
-                result_audit = audit
+                result_audit: dict[str, Any] | None = None
             else:
                 result = await self.decision_client.run_decision_pipeline(
                     context=agent_context,
@@ -297,7 +358,7 @@ class PulseCandidateJobService:
                 )
                 final_decision = result.final_decision
                 stage_audits = (*pre_stage_audits, *result.stage_audits)
-                result_audit = result.agent_run_audit or audit
+                result_audit = result.agent_run_audit
             final_decision = _preserve_gate_ceiling_decision(
                 final_decision,
                 gate=gate,
@@ -312,7 +373,7 @@ class PulseCandidateJobService:
                 route=route,
                 input_json={"evidence_packet_hash": evidence_packet.evidence_packet_hash},
                 response_json=claim_verification.to_json(),
-                trace_metadata_json=audit.get("trace_metadata") or {},
+                trace_metadata_json=request_audit.trace_metadata_json,
                 started_at_ms=finished_at_ms,
                 finished_at_ms=finished_at_ms,
             )
@@ -321,7 +382,7 @@ class PulseCandidateJobService:
                 route=route,
                 input_json={"evidence_status": evidence_gate.evidence_status},
                 response_json=final_decision.model_dump(mode="json"),
-                trace_metadata_json=audit.get("trace_metadata") or {},
+                trace_metadata_json=request_audit.trace_metadata_json,
                 started_at_ms=finished_at_ms,
                 finished_at_ms=finished_at_ms,
             )
@@ -331,11 +392,15 @@ class PulseCandidateJobService:
             outcome = _run_outcome(
                 final_decision,
                 evidence_gate=evidence_gate,
-                claim_verification_valid=claim_verification.valid,
                 claim_verification=claim_verification,
             )
-            run_usage_json = dict(result_audit.get("usage") or _aggregate_stage_usage(stage_audits))
-            with self._repository_session() as repos, _transaction(repos.conn):
+            result_output_hash = (
+                _stable_hash(final_decision.model_dump(mode="json"))
+                if result_audit is None
+                else _agent_run_result_output_hash(result_audit)
+            )
+            run_usage_json = _aggregate_stage_usage(stage_audits)
+            with self._repository_session() as repos, repos.transaction():
                 for stage_audit in stage_audits[len(pre_stage_audits) :]:
                     repos.pulse_runs.insert_agent_run_step(
                         step_id=_stable_id(run_id, stage_audit.stage, str(stage_audit.attempt_index)),
@@ -345,8 +410,8 @@ class PulseCandidateJobService:
                         attempt_index=stage_audit.attempt_index,
                         provider=self.decision_client.provider,
                         model=_model_for_stage(stage_audit.stage, lane_models),
-                        prompt_version=str(audit.get("prompt_version") or PULSE_DECISION_PROMPT_VERSION),
-                        schema_version=str(audit.get("schema_version") or PULSE_DECISION_SCHEMA_VERSION),
+                        prompt_version=request_audit.prompt_version,
+                        schema_version=request_audit.schema_version,
                         input_json=stage_audit.input_json,
                         prompt_text=stage_audit.prompt_text,
                         response_json=stage_audit.response_json,
@@ -399,7 +464,7 @@ class PulseCandidateJobService:
                         route=route,
                         input_json={"eval_case_id": stored_eval_case.get("eval_case_id")},
                         response_json=eval_result,
-                        trace_metadata_json=audit.get("trace_metadata") or {},
+                        trace_metadata_json=request_audit.trace_metadata_json,
                         started_at_ms=finished_at_ms,
                         finished_at_ms=finished_at_ms,
                     ),
@@ -408,7 +473,7 @@ class PulseCandidateJobService:
                         route=route,
                         input_json={"eval_result_id": eval_result.get("eval_result_id")},
                         response_json=write_gate_decision.to_json(),
-                        trace_metadata_json=audit.get("trace_metadata") or {},
+                        trace_metadata_json=request_audit.trace_metadata_json,
                         started_at_ms=finished_at_ms,
                         finished_at_ms=finished_at_ms,
                     ),
@@ -421,8 +486,8 @@ class PulseCandidateJobService:
                         attempt_index=stage_audit.attempt_index,
                         provider=self.decision_client.provider,
                         model=_model_for_stage(stage_audit.stage, lane_models),
-                        prompt_version=str(audit.get("prompt_version") or PULSE_DECISION_PROMPT_VERSION),
-                        schema_version=str(audit.get("schema_version") or PULSE_DECISION_SCHEMA_VERSION),
+                        prompt_version=request_audit.prompt_version,
+                        schema_version=request_audit.schema_version,
                         input_json=stage_audit.input_json,
                         prompt_text=stage_audit.prompt_text,
                         response_json=stage_audit.response_json,
@@ -441,7 +506,7 @@ class PulseCandidateJobService:
                     run_id,
                     "done",
                     response_json=final_decision.model_dump(mode="json"),
-                    output_hash=result_audit.get("output_hash") or _stable_hash(final_decision.model_dump(mode="json")),
+                    output_hash=result_output_hash,
                     usage_json=run_usage_json,
                     outcome=outcome,
                     decision_route=route,
@@ -513,13 +578,13 @@ class PulseCandidateJobService:
                     finished_at_ms=finished_at_ms,
                     commit=False,
                 )
-                repos.pulse_jobs.mark_job_succeeded(str(job["job_id"]), now_ms=finished_at_ms, commit=False)
+                repos.pulse_jobs.mark_job_succeeded(job_identity.job_id, now_ms=finished_at_ms, commit=False)
         except asyncio.CancelledError as exc:
             if not is_worker_hard_timeout_cancelled(exc):
                 raise
             failed_at_ms = _now_ms()
             execution_started = _cancelled_execution_started(exc, run_started=run_started)
-            with self._repository_session() as repos, _transaction(repos.conn):
+            with self._repository_session() as repos, repos.transaction():
                 if run_started:
                     repos.pulse_runs.finish_agent_run(
                         run_id,
@@ -545,7 +610,7 @@ class PulseCandidateJobService:
             failed_audits: tuple[StageRunAudit, ...] = ()
             if isinstance(exc, PulseStageFailure):
                 failed_audits = exc.audits
-            with self._repository_session() as repos, _transaction(repos.conn):
+            with self._repository_session() as repos, repos.transaction():
                 if backpressure_reason:
                     if audit is not None and run_started:
                         repos.pulse_runs.finish_agent_run(
@@ -570,6 +635,8 @@ class PulseCandidateJobService:
                     )
                 else:
                     for stage_audit in failed_audits:
+                        if request_audit is None:
+                            raise RuntimeError("pulse_agent_run_audit_required_for_failed_stage") from exc
                         repos.pulse_runs.insert_agent_run_step(
                             step_id=_stable_id(run_id, stage_audit.stage, str(stage_audit.attempt_index)),
                             run_id=run_id,
@@ -578,8 +645,8 @@ class PulseCandidateJobService:
                             attempt_index=stage_audit.attempt_index,
                             provider=self.decision_client.provider,
                             model=_model_for_stage(stage_audit.stage, lane_models),
-                            prompt_version=str(audit.get("prompt_version") if audit else PULSE_DECISION_PROMPT_VERSION),
-                            schema_version=str(audit.get("schema_version") if audit else PULSE_DECISION_SCHEMA_VERSION),
+                            prompt_version=request_audit.prompt_version,
+                            schema_version=request_audit.schema_version,
                             input_json=stage_audit.input_json,
                             prompt_text=stage_audit.prompt_text,
                             response_json=stage_audit.response_json,
@@ -642,9 +709,46 @@ class PulseCandidateJobService:
     def _repository_session(self) -> Iterator[Any]:
         with self.db.worker_session(
             self.name,
-            statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
+            statement_timeout_seconds=self.settings.statement_timeout_seconds,
         ) as repos:
             yield repos
+
+
+def _pulse_job_claim_attempt_count(job: Mapping[str, Any]) -> int:
+    try:
+        attempt_count = int(job["attempt_count"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("pulse_agent_job_claim_attempt_count_required") from exc
+    if attempt_count <= 0:
+        raise ValueError("pulse_agent_job_claim_attempt_count_required")
+    return attempt_count
+
+
+def _pulse_job_run_identity(job: Mapping[str, Any]) -> _PulseJobRunIdentity:
+    return _PulseJobRunIdentity(
+        job_id=_pulse_claimed_job_text(job, "job_id", "pulse_agent_job_claim_job_id_required"),
+        trigger_signature=_pulse_claimed_job_text(
+            job,
+            "trigger_signature",
+            "pulse_agent_job_claim_trigger_signature_required",
+        ),
+        timeline_signature=_pulse_claimed_job_text(
+            job,
+            "timeline_signature",
+            "pulse_agent_job_claim_timeline_signature_required",
+        ),
+        attempt_count=_pulse_job_claim_attempt_count(job),
+    )
+
+
+def _pulse_claimed_job_text(job: Mapping[str, Any], field: str, error: str) -> str:
+    try:
+        value = job[field]
+    except KeyError as exc:
+        raise ValueError(error) from exc
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(error)
+    return value
 
 
 def _runtime_contract_from_client(client: Any) -> dict[str, Any]:
@@ -657,6 +761,76 @@ def _runtime_contract_from_client(client: Any) -> dict[str, Any]:
     if not kwargs.get("failure_taxonomy_version"):
         raise RuntimeError("pulse_agent_failure_taxonomy_missing")
     return kwargs
+
+
+def _agent_run_request_audit(
+    audit: Mapping[str, Any],
+    *,
+    artifact_version_hash: str,
+    runtime_version: str,
+    runtime_hash: str,
+) -> _AgentRunRequestAudit:
+    payload = _agent_run_audit_payload(audit)
+    parsed = _AgentRunRequestAudit(
+        backend=_agent_run_audit_required_text(payload, "backend"),
+        execution_trace_id=_agent_run_audit_required_text(payload, "execution_trace_id"),
+        workflow_name=_agent_run_audit_required_text(payload, "workflow_name"),
+        agent_name=_agent_run_audit_required_text(payload, "agent_name"),
+        artifact_version_hash=_agent_run_audit_required_text(payload, "artifact_version_hash"),
+        prompt_version=_agent_run_audit_required_text(payload, "prompt_version"),
+        schema_version=_agent_run_audit_required_text(payload, "schema_version"),
+        runtime_version=_agent_run_audit_required_text(payload, "runtime_version"),
+        runtime_hash=_agent_run_audit_required_text(payload, "runtime_hash"),
+        input_hash=_agent_run_audit_required_text(payload, "input_hash"),
+        trace_metadata_json=_agent_run_audit_required_mapping(payload, "trace_metadata"),
+    )
+    if parsed.artifact_version_hash != artifact_version_hash:
+        raise ValueError("pulse_agent_run_audit_artifact_version_hash_mismatch")
+    if parsed.runtime_version != runtime_version:
+        raise ValueError("pulse_agent_run_audit_runtime_version_mismatch")
+    if parsed.runtime_hash != runtime_hash:
+        raise ValueError("pulse_agent_run_audit_runtime_hash_mismatch")
+    return parsed
+
+
+def _agent_run_result_output_hash(audit: Mapping[str, Any]) -> str:
+    return _agent_run_audit_required_text(_agent_run_audit_payload(audit), "output_hash")
+
+
+def _agent_run_audit_payload(audit: Mapping[str, Any]) -> Mapping[str, Any]:
+    if not isinstance(audit, Mapping):
+        raise TypeError("pulse_agent_run_audit_contract_required")
+    return audit
+
+
+def _agent_run_audit_required_text(audit: Mapping[str, Any], key: str) -> str:
+    error_name = _agent_run_audit_required_error(key)
+    try:
+        value = audit[key]
+    except KeyError as exc:
+        raise ValueError(error_name) from exc
+    text = str(value).strip() if value is not None else ""
+    if not text:
+        raise ValueError(error_name)
+    return text
+
+
+def _agent_run_audit_required_mapping(audit: Mapping[str, Any], key: str) -> dict[str, Any]:
+    error_name = _agent_run_audit_required_error(key)
+    try:
+        value = audit[key]
+    except KeyError as exc:
+        raise ValueError(error_name) from exc
+    if not isinstance(value, Mapping) or not value:
+        raise ValueError(error_name)
+    return dict(value)
+
+
+def _agent_run_audit_required_error(key: str) -> str:
+    try:
+        return _AGENT_RUN_AUDIT_REQUIRED_ERRORS[key]
+    except KeyError as exc:
+        raise RuntimeError("pulse_agent_run_audit_unknown_field") from exc
 
 
 def _pulse_lane_models(client: Any) -> dict[str, str]:
@@ -793,21 +967,14 @@ def _stage_failure_error_class(exc: Exception) -> str | None:
 
 
 def _agent_no_start_backpressure_reason(exc: Exception) -> str | None:
-    error_class = _agent_error_class(exc)
+    if not isinstance(exc, AgentExecutionError):
+        return None
+    error_class = exc.error_class
     if error_class not in _NO_START_BACKPRESSURE_CLASSES:
         return None
-    execution_started = getattr(exc, "execution_started", None)
-    if execution_started is None and isinstance(exc, PulseStageFailure):
-        execution_started = getattr(exc, "agent_execution_started", None)
-    if execution_started is None:
-        audit = getattr(exc, "audit", None) or getattr(exc, "agent_audit", None)
-        if isinstance(audit, dict):
-            execution_started = audit.get("execution_started")
-        else:
-            execution_started = getattr(audit, "execution_started", None)
-    if execution_started is not False:
+    if exc.execution_started is not False:
         return None
-    return str(error_class.value if isinstance(error_class, AgentExecutionErrorClass) else error_class)
+    return str(error_class.value)
 
 
 def _provider_cooldown_delay_ms(reason: str) -> int:
@@ -820,31 +987,9 @@ def _provider_cooldown_delay_ms(reason: str) -> int:
 
 
 def _cancelled_execution_started(exc: asyncio.CancelledError, *, run_started: bool) -> bool:
-    execution_started = getattr(exc, "execution_started", None)
-    if execution_started is None:
-        audit = getattr(exc, "audit", None) or getattr(exc, "agent_audit", None)
-        if isinstance(audit, dict):
-            execution_started = audit.get("execution_started")
-        else:
-            execution_started = getattr(audit, "execution_started", None)
-    if execution_started is None:
-        return bool(run_started)
-    return bool(execution_started)
-
-
-def _agent_error_class(exc: Exception) -> AgentExecutionErrorClass | None:
-    raw = getattr(exc, "error_class", None)
-    if raw is None and isinstance(exc, PulseStageFailure):
-        raw = getattr(exc, "agent_error_class", None)
-    if raw is None:
-        audit = getattr(exc, "audit", None) or getattr(exc, "agent_audit", None)
-        raw = audit.get("error_class") if isinstance(audit, dict) else getattr(audit, "error_class", None)
-    if isinstance(raw, AgentExecutionErrorClass):
-        return raw
-    try:
-        return AgentExecutionErrorClass(str(raw))
-    except (TypeError, ValueError):
-        return None
+    if isinstance(exc, AgentExecutionCancelled):
+        return exc.execution_started
+    return bool(run_started)
 
 
 def _playbook_snapshot_payload(
@@ -975,12 +1120,15 @@ def _run_outcome(
     final_decision: FinalDecision,
     *,
     evidence_gate: EvidenceCompletenessGateResult,
-    claim_verification_valid: bool,
-    claim_verification: Any | None = None,
+    claim_verification: ClaimEvidenceVerificationResult,
 ) -> str:
-    if not claim_verification_valid:
-        unknown_refs = tuple(getattr(claim_verification, "unknown_ref_ids", ()) or ())
-        if unknown_refs:
+    if not isinstance(claim_verification, ClaimEvidenceVerificationResult):
+        raise TypeError(
+            "pulse_run_outcome_claim_verification_contract_required: "
+            f"expected ClaimEvidenceVerificationResult, got {type(claim_verification).__name__}"
+        )
+    if not claim_verification.valid:
+        if claim_verification.unknown_ref_ids:
             return "invalid_unknown_evidence_ref"
         return "invalid_unsupported_claim"
     if evidence_gate.hard_blocked:
@@ -1060,12 +1208,6 @@ def _nested(data: dict[str, Any], *keys: str) -> Any:
             return None
         value = value.get(key)
     return value
-
-
-def _transaction(conn: Any) -> AbstractContextManager[Any]:
-    if hasattr(conn, "transaction"):
-        return cast(AbstractContextManager[Any], conn.transaction())
-    return nullcontext()
 
 
 def _artifact_hash(client: Any) -> str:

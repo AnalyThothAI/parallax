@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from psycopg import conninfo
+import pytest
+from psycopg import conninfo, pq
 
 from parallax.platform.db import postgres_client
 from parallax.platform.db.postgres_client import (
     create_pool,
     local_docker_host_dsn,
     postgres_health_check,
+    require_transaction,
     with_password_from_file,
 )
 
@@ -26,8 +28,44 @@ class FakeCursor:
 
 
 class FakeConn:
+    def __init__(self) -> None:
+        self.commits = 0
+        self.rollbacks = 0
+
     def execute(self, sql, params=None):
         return FakeCursor().execute(sql, params)
+
+    def commit(self) -> None:
+        self.commits += 1
+
+    def rollback(self) -> None:
+        self.rollbacks += 1
+
+
+class FakeConnWithoutCommit:
+    def __init__(self) -> None:
+        self.rollbacks = 0
+
+    def execute(self, sql, params=None):
+        return FakeCursor().execute(sql, params)
+
+    def rollback(self) -> None:
+        self.rollbacks += 1
+
+
+class FakeFailingConnWithoutRollback:
+    def execute(self, sql, params=None):
+        raise RuntimeError("probe failed")
+
+
+class FakeTransactionInfo:
+    def __init__(self, status: pq.TransactionStatus) -> None:
+        self.transaction_status = status
+
+
+class FakeTransactionStatusConn:
+    def __init__(self, status: pq.TransactionStatus) -> None:
+        self.info = FakeTransactionInfo(status)
 
 
 def test_with_password_from_file_replaces_password(tmp_path):
@@ -152,13 +190,16 @@ def test_create_pool_passes_application_timeouts_and_keepalives(monkeypatch):
 
 
 def test_postgres_health_check_reports_liveness_and_migration_version():
-    payload = postgres_health_check(FakeConn())
+    conn = FakeConn()
+    payload = postgres_health_check(conn)
 
     assert payload == {
         "ok": True,
         "probe": "postgres_liveness",
         "migration_version": "20260506_0003",
     }
+    assert conn.commits == 1
+    assert conn.rollbacks == 0
 
 
 def test_postgres_health_check_rejects_stale_migration_when_expected_version_is_set():
@@ -168,3 +209,43 @@ def test_postgres_health_check_rejects_stale_migration_when_expected_version_is_
     assert payload["migration_version"] == "20260506_0003"
     assert payload["expected_migration_version"] == "20260508_0011"
     assert payload["migration_status"] == "stale"
+
+
+def test_postgres_health_check_requires_commit_contract_without_optional_probe():
+    conn = FakeConnWithoutCommit()
+
+    payload = postgres_health_check(conn)
+
+    assert payload["ok"] is False
+    assert payload["probe"] == "postgres_liveness"
+    assert payload["error"] == "AttributeError"
+    assert "commit" in str(payload["detail"])
+    assert conn.rollbacks == 1
+
+
+def test_postgres_health_check_reports_missing_rollback_contract_without_optional_probe():
+    payload = postgres_health_check(FakeFailingConnWithoutRollback())
+
+    assert payload["ok"] is False
+    assert payload["probe"] == "postgres_liveness"
+    assert payload["error"] == "AttributeError"
+    assert "rollback" in str(payload["detail"])
+    assert payload["original_error"] == "RuntimeError"
+
+
+def test_require_transaction_rejects_fake_connection_without_transaction_status_contract():
+    with pytest.raises(RuntimeError, match="fake_write_requires_transaction_status_contract"):
+        require_transaction(object(), operation="fake_write")
+
+
+def test_require_transaction_rejects_idle_transaction_status():
+    conn = FakeTransactionStatusConn(pq.TransactionStatus.IDLE)
+
+    with pytest.raises(RuntimeError, match="projection_write_requires_explicit_transaction"):
+        require_transaction(conn, operation="projection_write")
+
+
+def test_require_transaction_accepts_active_transaction_status():
+    conn = FakeTransactionStatusConn(pq.TransactionStatus.INTRANS)
+
+    require_transaction(conn, operation="projection_write")

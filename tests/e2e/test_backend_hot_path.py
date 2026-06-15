@@ -3,13 +3,13 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
 from parallax.app.runtime.app import create_app
+from parallax.app.runtime.providers_wiring import AssetMarketProviders
 from parallax.app.runtime.worker_factories.notifications import _notification_rule_engine
 from parallax.domains.asset_market.repositories.token_profile_current_repository import (
     TokenProfileCurrentRepository,
@@ -84,18 +84,23 @@ def test_complete_backend_hot_path_without_notify_dependency(
             30 * 24 * 60 * 60 * 1000,
             abs(backfill_now_ms - FIXED_NOW_MS) + 60_000,
         )
+        backfill_settings = settings.workers.event_anchor_backfill.model_copy(
+            update={
+                "batch_size": 10,
+                "concurrency": 2,
+                "min_age_ms": 0,
+                "max_anchor_lag_ms": backfill_window_ms,
+            }
+        )
         backfill_result = asyncio.run(
             EventAnchorBackfillWorker(
                 pool_bundle=runtime.db,
-                providers=SimpleNamespace(
+                providers=AssetMarketProviders(
                     dex_quote_market=FakeDexQuoteProvider(observed_at_ms=FIXED_NOW_MS + 500),
                     cex_market=None,
                 ),
                 wake_emitter=wake,
-                batch_size=10,
-                concurrency=2,
-                min_age_ms=0,
-                max_anchor_lag_ms=backfill_window_ms,
+                settings=backfill_settings,
                 clock=lambda: backfill_now_ms,
             ).run_once()
         )
@@ -109,7 +114,7 @@ def test_complete_backend_hot_path_without_notify_dependency(
                 settings=runtime.settings.workers.token_radar_projection,
                 db=runtime.db,
                 telemetry=runtime.telemetry,
-                wake_bus=None,
+                wake_emitter=None,
             ).run_once(now_ms=FIXED_NOW_MS + 2_000)
         )
         assert radar_result.notes["rows_written"] >= 1

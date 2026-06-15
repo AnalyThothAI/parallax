@@ -21,6 +21,10 @@ class EventPublisherProtocol(Protocol):
 class UpstreamClientProtocol(Protocol):
     async def run(self) -> None: ...
 
+    async def aclose(self) -> None: ...
+
+    def connection_state_payload(self) -> dict[str, Any]: ...
+
 
 __all__ = [
     "EventPublisherProtocol",

@@ -11,6 +11,14 @@ from .token_target_post_serializer import token_target_post_payload
 from .token_target_stage_builder import build_token_target_stages
 
 
+class TokenTargetSocialTimelineScopeError(ValueError):
+    pass
+
+
+class TokenTargetSocialTimelineWindowError(ValueError):
+    pass
+
+
 class TokenTargetSocialTimelineService:
     def __init__(self, *, targets: Any, market_candles: Any | None = None) -> None:
         self.targets = targets
@@ -28,13 +36,14 @@ class TokenTargetSocialTimelineService:
         now_ms: int | None = None,
     ) -> dict[str, Any]:
         resolved_now_ms = int(now_ms or time.time() * 1000)
-        window_ms = WINDOW_MS.get(window, WINDOW_MS["1h"])
+        window_ms = _window_ms(window)
+        watched_only = _watched_only(scope)
         fetch_limit = max(0, int(limit)) + 1
         rows = self.targets.timeline_rows(
             target_type=target_type,
             target_id=target_id,
             since_ms=resolved_now_ms - window_ms,
-            watched_only=scope == "matched",
+            watched_only=watched_only,
             limit=fetch_limit,
             cursor=decode_target_cursor(cursor),
         )
@@ -78,6 +87,21 @@ class TokenTargetSocialTimelineService:
             "has_more": has_more,
             "next_cursor": next_cursor,
         }
+
+
+def _window_ms(window: str) -> int:
+    try:
+        return WINDOW_MS[window]
+    except KeyError as exc:
+        raise TokenTargetSocialTimelineWindowError(window) from exc
+
+
+def _watched_only(scope: str) -> bool:
+    if scope == "matched":
+        return True
+    if scope == "all":
+        return False
+    raise TokenTargetSocialTimelineScopeError(scope)
 
 
 def _summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -128,11 +152,13 @@ def _market_candles(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
 def _bucket(window: str) -> tuple[int, str]:
     if window == "5m":
         return 30 * 1000, "30s"
+    if window == "1h":
+        return 5 * 60 * 1000, "5m"
     if window == "4h":
         return 15 * 60 * 1000, "15m"
     if window == "24h":
         return 60 * 60 * 1000, "1h"
-    return 5 * 60 * 1000, "5m"
+    raise TokenTargetSocialTimelineWindowError(window)
 
 
 def _buckets(rows: list[dict[str, Any]], *, bucket_ms: int, since_ms: int, now_ms: int) -> list[dict[str, Any]]:

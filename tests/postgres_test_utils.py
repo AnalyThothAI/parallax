@@ -56,7 +56,12 @@ def reset_postgres_schema(conn) -> None:
 
 @contextmanager
 def repository_session_for_connection(conn: Any) -> Iterator[RepositorySession]:
-    yield repositories_for_connection(conn)
+    yield repositories_for_connection(
+        conn,
+        pulse_job_running_timeout_ms=300_000,
+        notification_delivery_running_timeout_ms=300_000,
+        notification_delivery_stale_running_terminalization_batch_size=100,
+    )
 
 
 def _read_only(conn) -> bool:

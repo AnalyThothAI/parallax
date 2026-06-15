@@ -75,11 +75,15 @@ class NotificationDeliveryWorker(WorkerBase):
         pushdeer_adapter: Any | None = None,
         wake_waiter: Any | None = None,
     ):
+        if settings is None:
+            raise RuntimeError("notification_delivery_settings_required")
+        if db is None:
+            raise RuntimeError("notification_delivery_db_required")
         super().__init__(name=name, settings=settings, db=db, telemetry=telemetry, wake_waiter=wake_waiter)
         self.channels = channels
         self.adapter = adapter or AppriseNotificationAdapter()
         self.pushdeer_adapter = pushdeer_adapter or PushDeerNotificationAdapter()
-        self.batch_limit = max(1, int(getattr(settings, "batch_size", 1) or 1))
+        self.batch_limit = max(1, int(settings.batch_size))
 
     async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
         processed = 0
@@ -140,25 +144,29 @@ class NotificationDeliveryWorker(WorkerBase):
         return await asyncio.to_thread(self._complete_delivery_sync, claim.delivery, now_ms=now)
 
     def _claim_delivery_sync(self, *, now_ms: int) -> DeliveryClaim | DeliveryOutcome:
-        with self._repository_session() as repos:
-            delivery = repos.notifications.claim_next_delivery(now_ms=now_ms)
+        with self._repository_session() as repos, repos.transaction():
+            delivery = repos.notifications.claim_next_delivery(now_ms=now_ms, commit=False)
             if delivery is None:
-                repos.notifications.conn.commit()
                 return DeliveryOutcome(processed=False, reason="no_delivery")
             notification = repos.notifications.notification_by_id(
                 str(delivery["notification_id"]),
                 subscriber_key=None,
             )
             if notification is None:
-                repos.notifications.fail_delivery(delivery, error="notification_not_found", now_ms=now_ms)
+                repos.notifications.fail_delivery(delivery, error="notification_not_found", now_ms=now_ms, commit=False)
                 return _failure_outcome(delivery, reason="notification_not_found")
             channel_id = str(delivery["channel_id"])
             channel = self.channels.get(channel_id)
             if channel is None or not channel.enabled:
-                repos.notifications.fail_delivery(delivery, error="channel_not_configured", now_ms=now_ms)
+                repos.notifications.fail_delivery(delivery, error="channel_not_configured", now_ms=now_ms, commit=False)
                 return _failure_outcome(delivery, reason="channel_not_configured")
             if channel.provider != str(delivery["provider"]):
-                repos.notifications.fail_delivery(delivery, error="channel_provider_mismatch", now_ms=now_ms)
+                repos.notifications.fail_delivery(
+                    delivery,
+                    error="channel_provider_mismatch",
+                    now_ms=now_ms,
+                    commit=False,
+                )
                 return _failure_outcome(delivery, reason="channel_provider_mismatch")
             if channel.provider == "log":
                 logger.info(
@@ -166,22 +174,21 @@ class NotificationDeliveryWorker(WorkerBase):
                     f"channel={channel_id} notification_id={notification['notification_id']} "
                     f"title={notification['title']}"
                 )
-                repos.notifications.complete_delivery(delivery, delivered_at_ms=now_ms)
+                repos.notifications.complete_delivery(delivery, delivered_at_ms=now_ms, commit=False)
                 return DeliveryOutcome(processed=True, reason="log")
             if not channel.url:
-                repos.notifications.fail_delivery(delivery, error="channel_url_missing", now_ms=now_ms)
+                repos.notifications.fail_delivery(delivery, error="channel_url_missing", now_ms=now_ms, commit=False)
                 return _failure_outcome(delivery, reason="channel_url_missing")
-            repos.notifications.conn.commit()
             return DeliveryClaim(delivery=delivery, notification=notification, channel=channel)
 
     def _complete_delivery_sync(self, delivery: dict[str, Any], *, now_ms: int) -> DeliveryOutcome:
-        with self._repository_session() as repos:
-            repos.notifications.complete_delivery(delivery, delivered_at_ms=now_ms)
+        with self._repository_session() as repos, repos.transaction():
+            repos.notifications.complete_delivery(delivery, delivered_at_ms=now_ms, commit=False)
         return DeliveryOutcome(processed=True, reason="delivered")
 
     def _fail_delivery_sync(self, delivery: dict[str, Any], *, error: str, now_ms: int) -> DeliveryOutcome:
-        with self._repository_session() as repos:
-            repos.notifications.fail_delivery(delivery, error=error, now_ms=now_ms)
+        with self._repository_session() as repos, repos.transaction():
+            repos.notifications.fail_delivery(delivery, error=error, now_ms=now_ms, commit=False)
         return _failure_outcome(delivery, reason=error)
 
     def _repository_session(self) -> AbstractContextManager[RepositorySession]:
@@ -189,7 +196,7 @@ class NotificationDeliveryWorker(WorkerBase):
             "AbstractContextManager[RepositorySession]",
             self.db.worker_session(
                 self.name,
-                statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
+                statement_timeout_seconds=self.settings.statement_timeout_seconds,
             ),
         )
 
@@ -218,10 +225,20 @@ def _parse_pushdeer_url(url: str) -> tuple[str, str]:
 
 
 def _failure_outcome(delivery: dict[str, Any], *, reason: str) -> DeliveryOutcome:
-    attempts = int(delivery.get("attempt_count") or 0)
-    max_attempts = int(delivery.get("max_attempts") or 1)
+    attempts, max_attempts = _delivery_attempt_contract(delivery)
     is_dead = attempts >= max_attempts
     return DeliveryOutcome(processed=True, failed=not is_dead, dead=is_dead, reason=reason)
+
+
+def _delivery_attempt_contract(delivery: dict[str, Any]) -> tuple[int, int]:
+    try:
+        attempts = int(delivery["attempt_count"])
+        max_attempts = int(delivery["max_attempts"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError("notification_delivery_attempt_contract_required") from exc
+    if attempts < 0 or max_attempts < 1:
+        raise RuntimeError("notification_delivery_attempt_contract_required")
+    return attempts, max_attempts
 
 
 def _now_ms() -> int:

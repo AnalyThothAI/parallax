@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import hashlib
-from typing import Any
+from collections.abc import Mapping
+from contextlib import AbstractContextManager
+from typing import Any, cast
 
 from psycopg.types.json import Jsonb
 
@@ -22,11 +24,34 @@ class CexDerivativeSeriesRepository:
         points: list[dict[str, Any]],
         commit: bool = True,
     ) -> int:
+        if commit:
+            with _transaction(self.conn):
+                return self.upsert_open_interest_points(
+                    provider=provider,
+                    exchange=exchange,
+                    native_market_id=native_market_id,
+                    base_symbol=base_symbol,
+                    quote_symbol=quote_symbol,
+                    period=period,
+                    points=points,
+                    commit=False,
+                )
+
+        series_provider = _required_series_text(provider, "provider").lower()
+        series_exchange = _required_series_text(exchange, "exchange").lower()
+        series_native_market_id = _required_series_text(native_market_id, "native_market_id").upper()
+        series_period = _required_series_text(period, "period").lower()
         written = 0
         for point in points:
             observed_at_ms = int(point["observed_at_ms"])
-            series_id = _series_id(provider, native_market_id, "open_interest", period, observed_at_ms)
-            self.conn.execute(
+            series_id = _series_id(
+                series_provider,
+                series_native_market_id,
+                "open_interest",
+                series_period,
+                observed_at_ms,
+            )
+            cursor = self.conn.execute(
                 """
                 INSERT INTO cex_derivative_series(
                   series_id, provider, exchange, native_market_id, base_symbol, quote_symbol,
@@ -37,37 +62,80 @@ class CexDerivativeSeriesRepository:
                   value_numeric = excluded.value_numeric,
                   value_usd = excluded.value_usd,
                   raw_payload_json = excluded.raw_payload_json
+                WHERE cex_derivative_series.value_numeric IS DISTINCT FROM excluded.value_numeric
+                   OR cex_derivative_series.value_usd IS DISTINCT FROM excluded.value_usd
+                   OR cex_derivative_series.raw_payload_json IS DISTINCT FROM excluded.raw_payload_json
                 """,
                 (
                     series_id,
-                    provider,
-                    exchange,
-                    native_market_id,
+                    series_provider,
+                    series_exchange,
+                    series_native_market_id,
                     base_symbol,
                     quote_symbol,
-                    period,
+                    series_period,
                     observed_at_ms,
                     point.get("value_numeric"),
                     point.get("value_usd"),
-                    Jsonb(point.get("raw_payload") or {}),
+                    Jsonb(_required_raw_payload(point)),
                 ),
             )
-            written += 1
-        if commit:
-            self.conn.commit()
+            written += _cursor_rowcount(cursor)
         return written
 
 
 def _series_id(provider: str, native_market_id: str, metric: str, period: str, observed_at_ms: int) -> str:
+    series_provider = _required_series_text(provider, "provider").lower()
+    series_native_market_id = _required_series_text(native_market_id, "native_market_id").upper()
+    series_metric = _required_series_text(metric, "metric").lower()
+    series_period = _required_series_text(period, "period").lower()
     digest = hashlib.sha256(
         "|".join(
             [
-                provider.strip().lower(),
-                native_market_id.strip().upper(),
-                metric.strip().lower(),
-                period.strip().lower(),
+                series_provider,
+                series_native_market_id,
+                series_metric,
+                series_period,
                 str(observed_at_ms),
             ]
         ).encode("utf-8")
     ).hexdigest()[:32]
     return f"cex-derivative-series:{digest}"
+
+
+def _required_series_text(value: Any, field: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError(f"cex_derivative_series_identity_required:{field}")
+    return text
+
+
+def _required_raw_payload(point: dict[str, Any]) -> dict[Any, Any]:
+    value = point.get("raw_payload")
+    if value is None:
+        raise ValueError("cex_derivative_series_raw_payload_required")
+    if not isinstance(value, Mapping):
+        raise ValueError("cex_derivative_series_raw_payload_invalid")
+    return dict(value)
+
+
+def _transaction(conn: Any) -> AbstractContextManager[Any]:
+    try:
+        transaction = conn.transaction
+    except AttributeError as exc:
+        raise TypeError("cex_derivative_series_transaction_required") from exc
+    if not callable(transaction):
+        raise TypeError("cex_derivative_series_transaction_required")
+    return cast(AbstractContextManager[Any], transaction())
+
+
+def _cursor_rowcount(cursor: Any) -> int:
+    try:
+        rowcount: object = cursor.rowcount
+    except AttributeError as exc:
+        raise TypeError("cex_derivative_series_rowcount_required") from exc
+    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
+        raise TypeError("cex_derivative_series_rowcount_invalid")
+    if rowcount < 0:
+        raise TypeError("cex_derivative_series_rowcount_invalid")
+    return rowcount

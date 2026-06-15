@@ -15,7 +15,7 @@ def row(target_id: str | None, *, rank: int, score: int, computed_at_ms: int = 1
 
 
 def test_admission_selects_current_frontier_only():
-    service = NarrativeAdmissionService(hot_rank_limit=2, min_rank_score=50, carry_ttl_ms=5_000)
+    service = NarrativeAdmissionService(hot_rank_limit=2, min_rank_score=50)
     decisions = service.reconcile_from_radar_rows(
         [
             row("hot-1", rank=1, score=10),
@@ -41,7 +41,7 @@ def test_admission_selects_current_frontier_only():
 
 
 def test_raw_rows_without_targets_do_not_create_admissions():
-    service = NarrativeAdmissionService(hot_rank_limit=10, min_rank_score=0, carry_ttl_ms=1)
+    service = NarrativeAdmissionService(hot_rank_limit=10, min_rank_score=0)
     decisions = service.reconcile_from_radar_rows(
         [row(None, rank=1, score=99)],
         existing_admissions=[],
@@ -55,7 +55,7 @@ def test_raw_rows_without_targets_do_not_create_admissions():
 
 
 def test_admission_preserves_zero_source_watermark():
-    service = NarrativeAdmissionService(hot_rank_limit=10, min_rank_score=0, carry_ttl_ms=1)
+    service = NarrativeAdmissionService(hot_rank_limit=10, min_rank_score=0)
     candidate = row("zero-watermark", rank=1, score=99, computed_at_ms=10_000)
     candidate["source_max_received_at_ms"] = 0
 

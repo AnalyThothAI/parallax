@@ -40,6 +40,7 @@ def test_ingest_chain_event_writes_pending_backfill_without_inline_provider_call
     store = _PooledIngestStore(
         _SingleConnectionDB(conn),
         providers=AssetMarketProviders(dex_quote_market=provider),
+        event_anchor_active_window_ms=300_000,
         now_ms=lambda: event.received_at_ms + 500,
     )
     try:
@@ -94,6 +95,7 @@ def test_ingest_chain_event_with_provider_no_quote_still_writes_pending_backfill
     store = _PooledIngestStore(
         _SingleConnectionDB(conn),
         providers=AssetMarketProviders(dex_quote_market=provider),
+        event_anchor_active_window_ms=300_000,
         now_ms=lambda: event.received_at_ms + 500,
     )
     try:
@@ -154,6 +156,7 @@ def test_ingest_chain_event_with_existing_tick_writes_composite_tick_capture(tmp
     store = _PooledIngestStore(
         _SingleConnectionDB(conn),
         providers=AssetMarketProviders(dex_quote_market=_DexQuoteProvider([])),
+        event_anchor_active_window_ms=300_000,
         now_ms=lambda: event.received_at_ms + 500,
     )
     try:
@@ -191,4 +194,9 @@ class _SingleConnectionDB:
 
     @contextmanager
     def worker_session(self, name: str) -> Iterator:
-        yield repositories_for_connection(self.conn)
+        yield repositories_for_connection(
+            self.conn,
+            pulse_job_running_timeout_ms=300_000,
+            notification_delivery_running_timeout_ms=300_000,
+            notification_delivery_stale_running_terminalization_batch_size=100,
+        )

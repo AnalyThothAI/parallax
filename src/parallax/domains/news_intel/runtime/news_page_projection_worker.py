@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Callable, Mapping
-from contextlib import nullcontext
 from typing import Any
 
 from parallax.app.runtime.worker_base import WorkerBase
@@ -22,12 +21,24 @@ class NewsPageProjectionWorker(WorkerBase):
     def __init__(
         self,
         *,
-        wake_bus: Any | None = None,
+        settings: Any,
+        db: Any,
+        telemetry: Any,
+        wake_waiter: Any | None = None,
         clock_ms: Callable[[], int] | None = None,
-        **kwargs: Any,
+        name: str = "news_page_projection",
     ) -> None:
-        super().__init__(**kwargs)
-        self.wake_bus = wake_bus
+        if settings is None:
+            raise RuntimeError("news_page_projection_settings_required")
+        if db is None:
+            raise RuntimeError("news_page_projection_db_required")
+        super().__init__(
+            name=name,
+            settings=settings,
+            db=db,
+            telemetry=telemetry,
+            wake_waiter=wake_waiter,
+        )
         self.clock_ms = clock_ms or _now_ms
 
     async def run_once(self) -> WorkerResult:
@@ -43,7 +54,7 @@ class NewsPageProjectionWorker(WorkerBase):
         story_groups_projected = 0
         story_member_items = 0
 
-        with self._repository_session() as repos, _transaction(repos.conn):
+        with self._repository_session() as repos, repos.transaction():
             claimed = claim_page_projection_work(
                 repos,
                 limit=self._batch_size(),
@@ -68,7 +79,7 @@ class NewsPageProjectionWorker(WorkerBase):
 
             claimed_ids = page_news_item_ids(claimed)
             try:
-                with _transaction(repos.conn):
+                with repos.transaction():
                     payloads = repos.news.load_story_projection_payloads_for_items(news_item_ids=claimed_ids)
                     story_keys: list[str] = []
                     member_item_ids: list[str] = []
@@ -115,13 +126,15 @@ class NewsPageProjectionWorker(WorkerBase):
                 )
 
             try:
-                with _transaction(repos.conn):
+                with repos.transaction():
                     projected_member_ids = set(member_item_ids)
                     orphaned_claim_ids = [
                         news_item_id for news_item_id in claimed_ids if news_item_id not in projected_member_ids
                     ]
                     replacement = repos.news.replace_page_rows_for_story_targets(
-                        news_item_ids=[news_item_id for news_item_id in claimed_ids if news_item_id in projected_member_ids],
+                        news_item_ids=[
+                            news_item_id for news_item_id in claimed_ids if news_item_id in projected_member_ids
+                        ],
                         story_keys=story_keys,
                         rows=rows,
                         commit=False,
@@ -177,17 +190,17 @@ class NewsPageProjectionWorker(WorkerBase):
     def _repository_session(self) -> Any:
         return self.db.worker_session(
             self.name,
-            statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
+            statement_timeout_seconds=self.settings.statement_timeout_seconds,
         )
 
     def _batch_size(self) -> int:
-        return max(1, int(getattr(self.settings, "batch_size", 100)))
+        return max(1, int(self.settings.batch_size))
 
     def _lease_ms(self) -> int:
-        return max(1, int(getattr(self.settings, "lease_ms", 120_000)))
+        return max(1, int(self.settings.lease_ms))
 
     def _retry_ms(self) -> int:
-        return max(1, int(getattr(self.settings, "retry_ms", 30_000)))
+        return max(1, int(self.settings.retry_ms))
 
 
 def _projection_parts(
@@ -247,13 +260,6 @@ def _notes(
         "unchanged": int(unchanged),
         "marked_error": int(marked_error),
     }
-
-
-def _transaction(conn: Any) -> Any:
-    transaction = getattr(conn, "transaction", None)
-    if transaction is None:
-        return nullcontext()
-    return transaction()
 
 
 def _now_ms() -> int:

@@ -142,9 +142,7 @@ def _verify_gate_issues(root: Path, feature: SddFeature) -> list[str]:
 
 
 def _completion_task_issues(feature: SddFeature) -> list[str]:
-    incomplete_tasks = [
-        task.title for task in feature.tasks if task.fields.get("status", "").strip().lower() != "[x]"
-    ]
+    incomplete_tasks = [task.title for task in feature.tasks if task.fields.get("status", "").strip().lower() != "[x]"]
     if not incomplete_tasks:
         return []
     return [
@@ -169,6 +167,7 @@ def _format_issue(issue: SddIssue) -> str:
 
 def _section_text(text: str, heading: str) -> str:
     return validated_section_text(text, heading)
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

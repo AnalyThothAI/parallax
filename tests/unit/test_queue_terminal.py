@@ -3,6 +3,8 @@ from __future__ import annotations
 import copy
 from typing import Any
 
+import pytest
+
 from parallax.platform.db.queue_terminal import (
     inspect_terminal_events,
     resolve_terminal_event,
@@ -41,6 +43,137 @@ def test_terminalize_source_row_stores_final_reason_bucket() -> None:
 
     assert row["final_reason_bucket"] == "retry_budget_exhausted"
     assert conn.rows[0]["final_reason_bucket"] == "retry_budget_exhausted"
+
+
+def test_terminalize_source_row_requires_connection_transaction_when_committing() -> None:
+    conn = _ConnectionWithoutTransaction()
+
+    try:
+        terminalize_source_row(
+            conn,
+            worker_name="resolution_refresh",
+            source_table="token_discovery_dirty_lookup_keys",
+            target_key="okx_dex_search:bonk",
+            source_row={
+                "provider": "okx_dex_search",
+                "lookup_key": "bonk",
+                "attempt_count": 4,
+            },
+            final_status="dead",
+            final_reason="provider_error_retry_budget_exhausted",
+            now_ms=1_700_000_000_000,
+            commit=True,
+        )
+    except RuntimeError as exc:
+        assert str(exc) == "queue_terminal_transaction_required"
+    else:
+        raise AssertionError("expected missing transaction contract failure")
+
+    assert conn.sql == []
+    assert conn.rows == []
+    assert conn.commits == 0
+
+
+def test_terminalize_source_row_requires_attempt_contract_before_sql() -> None:
+    conn = _ConnectionWithoutTransaction()
+
+    try:
+        terminalize_source_row(
+            conn,
+            worker_name="resolution_refresh",
+            source_table="token_discovery_dirty_lookup_keys",
+            target_key="okx_dex_search:bonk",
+            source_row={
+                "provider": "okx_dex_search",
+                "lookup_key": "bonk",
+            },
+            final_status="dead",
+            final_reason="provider_error_retry_budget_exhausted",
+            now_ms=1_700_000_000_000,
+        )
+    except RuntimeError as exc:
+        assert str(exc) == "queue_terminal_attempt_contract_required"
+    else:
+        raise AssertionError("expected missing attempt contract failure")
+
+    assert conn.sql == []
+    assert conn.rows == []
+
+
+def test_terminalize_source_row_requires_existing_terminal_generation_contract() -> None:
+    conn = _ConnectionWithoutTransaction()
+    existing = _terminal_row(
+        "terminal-1",
+        worker_name="resolution_refresh",
+        source_table="token_discovery_dirty_lookup_keys",
+        target_key="okx_dex_search:bonk",
+    )
+    del existing["terminal_generation"]
+    conn.rows = [existing]
+
+    try:
+        terminalize_source_row(
+            conn,
+            worker_name="resolution_refresh",
+            source_table="token_discovery_dirty_lookup_keys",
+            target_key="okx_dex_search:bonk",
+            source_row={
+                "provider": "okx_dex_search",
+                "lookup_key": "bonk",
+                "attempt_count": 4,
+            },
+            final_status="dead",
+            final_reason="provider_error_retry_budget_exhausted",
+            now_ms=1_700_000_000_000,
+        )
+    except RuntimeError as exc:
+        assert str(exc) == "queue_terminal_generation_contract_required"
+    else:
+        raise AssertionError("expected malformed terminal generation failure")
+
+    assert len(conn.sql) == 1
+    assert conn.rows == [existing]
+
+
+def test_terminalize_source_row_returning_requires_cursor_rowcount() -> None:
+    conn = _FakeTerminalConnection(omit_returning_rowcount=True)
+
+    with pytest.raises(TypeError, match="queue_terminal_rowcount_required"):
+        terminalize_source_row(
+            conn,
+            worker_name="resolution_refresh",
+            source_table="token_discovery_dirty_lookup_keys",
+            target_key="okx_dex_search:bonk",
+            source_row={
+                "provider": "okx_dex_search",
+                "lookup_key": "bonk",
+                "attempt_count": 4,
+            },
+            final_status="dead",
+            final_reason="provider_error_retry_budget_exhausted",
+            now_ms=1_700_000_000_000,
+        )
+
+
+@pytest.mark.parametrize("rowcount", [True, False, "1", None, -1, 0, 2])
+def test_terminalize_source_row_returning_rejects_invalid_or_mismatched_rowcount(rowcount: object) -> None:
+    conn = _FakeTerminalConnection(returning_rowcount=rowcount)
+
+    with pytest.raises(TypeError, match="queue_terminal_rowcount_invalid"):
+        terminalize_source_row(
+            conn,
+            worker_name="resolution_refresh",
+            source_table="token_discovery_dirty_lookup_keys",
+            target_key="okx_dex_search:bonk",
+            source_row={
+                "provider": "okx_dex_search",
+                "lookup_key": "bonk",
+                "attempt_count": 4,
+            },
+            final_status="dead",
+            final_reason="provider_error_retry_budget_exhausted",
+            now_ms=1_700_000_000_000,
+        )
 
 
 def test_terminalize_source_row_is_idempotent_when_payload_hash_is_missing_or_empty() -> None:
@@ -353,6 +486,42 @@ def test_resolve_terminal_event_retry_rolls_back_operator_action_when_transition
     assert conn.rollbacks == 1
 
 
+def test_resolve_terminal_event_returning_rowcount_is_checked_before_retry_transition() -> None:
+    conn = _FakeTerminalConnection(omit_returning_rowcount=True)
+    conn.rows = [
+        _terminal_row(
+            "terminal-1",
+            worker_name="resolution_refresh",
+            source_table="token_discovery_dirty_lookup_keys",
+            target_key="okx_dex_search:bonk",
+            source_row_json={"provider": "okx_dex_search", "lookup_key": "bonk", "payload_hash": ""},
+        )
+    ]
+    calls: list[str] = []
+
+    def retry_transition(_event: dict[str, Any], *, now_ms: int, reason: str) -> dict[str, Any]:
+        calls.append("called")
+        return {"requeued": 1}
+
+    with pytest.raises(TypeError, match="queue_terminal_rowcount_required"):
+        resolve_terminal_event(
+            conn,
+            terminal_id="terminal-1",
+            action="retry",
+            reason="operator checked source row",
+            now_ms=1_700_000_100_000,
+            retry_transitions={
+                ("resolution_refresh", "token_discovery_dirty_lookup_keys"): retry_transition,
+            },
+        )
+
+    assert calls == []
+    assert conn.rows[0]["operator_action"] is None
+    assert conn.rows[0]["operator_reason"] is None
+    assert conn.commits == 0
+    assert conn.rollbacks == 1
+
+
 def test_resolve_terminal_event_archive_does_not_call_retry_transition() -> None:
     conn = _FakeTerminalConnection()
     conn.rows = [_terminal_row("terminal-1", worker_name="pulse", source_table="pulse_agent_jobs", target_key="job-1")]
@@ -371,6 +540,36 @@ def test_resolve_terminal_event_archive_does_not_call_retry_transition() -> None
     assert payload["operator_action"] == "archive"
     assert "transition" not in payload
     assert conn.rows[0]["operator_reason"] == "obsolete terminal row"
+
+
+def test_resolve_terminal_event_requires_connection_transaction_before_operator_action() -> None:
+    conn = _ConnectionWithoutTransaction()
+    conn.rows = [
+        _terminal_row(
+            "terminal-1",
+            worker_name="resolution_refresh",
+            source_table="token_discovery_dirty_lookup_keys",
+            target_key="okx_dex_search:bonk",
+            source_row_json={"provider": "okx_dex_search", "lookup_key": "bonk", "payload_hash": ""},
+        )
+    ]
+
+    try:
+        resolve_terminal_event(
+            conn,
+            terminal_id="terminal-1",
+            action="archive",
+            reason="operator checked source row",
+            now_ms=1_700_000_100_000,
+        )
+    except RuntimeError as exc:
+        assert str(exc) == "queue_terminal_transaction_required"
+    else:
+        raise AssertionError("expected missing transaction contract failure")
+
+    assert conn.sql == []
+    assert conn.rows[0]["operator_action"] is None
+    assert conn.commits == 0
 
 
 def _terminal_row(
@@ -406,9 +605,10 @@ def _terminal_row(
 
 
 class _FakeCursor:
-    def __init__(self, rows: list[dict[str, Any]], rowcount: int = 0) -> None:
+    def __init__(self, rows: list[dict[str, Any]], rowcount: object = 0, omit_rowcount: bool = False) -> None:
         self._rows = rows
-        self.rowcount = rowcount
+        if not omit_rowcount:
+            self.rowcount = rowcount
 
     def fetchall(self) -> list[dict[str, Any]]:
         return self._rows
@@ -418,10 +618,12 @@ class _FakeCursor:
 
 
 class _FakeTerminalConnection:
-    def __init__(self) -> None:
+    def __init__(self, *, returning_rowcount: object = 1, omit_returning_rowcount: bool = False) -> None:
         self.rows: list[dict[str, Any]] = []
         self.commits = 0
         self.rollbacks = 0
+        self.returning_rowcount = returning_rowcount
+        self.omit_returning_rowcount = omit_returning_rowcount
 
     def transaction(self) -> _FakeTransaction:
         return _FakeTransaction(self)
@@ -502,7 +704,11 @@ class _FakeTerminalConnection:
                         "terminalized_at_ms": params["terminalized_at_ms"],
                     }
                 )
-            return _FakeCursor([existing], rowcount=1)
+            return _FakeCursor(
+                [existing],
+                rowcount=self.returning_rowcount,
+                omit_rowcount=self.omit_returning_rowcount,
+            )
         if "select" in normalized and "from worker_queue_terminal_events" in normalized:
             rows = list(self.rows)
             if "terminal_id = %(terminal_id)s" in normalized:
@@ -528,11 +734,27 @@ class _FakeTerminalConnection:
                     "operator_action_at_ms": params["operator_action_at_ms"],
                 }
             )
-            return _FakeCursor([row], rowcount=1)
+            return _FakeCursor(
+                [row],
+                rowcount=self.returning_rowcount,
+                omit_rowcount=self.omit_returning_rowcount,
+            )
         raise AssertionError(f"unexpected SQL: {sql}")
 
     def commit(self) -> None:
         self.commits += 1
+
+
+class _ConnectionWithoutTransaction(_FakeTerminalConnection):
+    transaction = None
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.sql: list[str] = []
+
+    def execute(self, sql: str, params: dict[str, Any] | None = None) -> _FakeCursor:
+        self.sql.append(sql)
+        return super().execute(sql, params)
 
 
 class _FakeTransaction:

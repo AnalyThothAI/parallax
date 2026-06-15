@@ -58,10 +58,18 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.token_capture_tier.ws_limit == 100
     assert settings.token_capture_tier.poll_limit == 500
     assert settings.live_price_gateway.interval_seconds == 2
+    assert settings.live_price_gateway.target_limit == 100
+    assert settings.live_price_gateway.target_ttl_seconds == 300
     assert not hasattr(settings.live_price_gateway, "subscription_limit")
     assert not hasattr(settings.live_price_gateway, "live_observation_heartbeat_seconds")
     assert settings.resolution_refresh.chain_ids == ("solana", "eip155:1", "eip155:56", "eip155:8453", "ton")
+    assert settings.resolution_refresh.lease_ms == 300_000
+    assert settings.resolution_refresh.hot_not_found_retry_ms == 60_000
     assert settings.asset_profile_refresh.statement_timeout_seconds == 120
+    assert settings.asset_profile_refresh.provider_retry_ms == 300_000
+    assert settings.asset_profile_refresh.ready_refresh_ms == 21_600_000
+    assert settings.asset_profile_refresh.missing_refresh_ms == 900_000
+    assert settings.asset_profile_refresh.error_refresh_ms == 900_000
     assert settings.token_image_mirror.interval_seconds == 60
     assert settings.token_image_mirror.source_limit == 5000
     assert settings.token_image_mirror.batch_size == 100
@@ -72,6 +80,13 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.token_capture_tier.advisory_lock_key == 2026051503
     assert settings.token_radar_projection.advisory_lock_key == 2026051501
     assert settings.token_radar_projection.wakes_on == ("market_tick_current_updated", "resolution_updated")
+    assert settings.token_radar_projection.batch_size == 100
+    assert settings.token_radar_projection.retry_ms == 30_000
+    assert settings.token_radar_projection.private_cache_retention_enabled is True
+    assert settings.token_radar_projection.private_cache_retention_ms == 172_800_000
+    assert settings.token_radar_projection.statement_timeout_seconds == 120
+    assert settings.token_radar_projection.venues == ("all", "sol", "eth", "base", "bsc", "cex")
+    assert settings.token_radar_projection.cold_interval_seconds == 60
     assert settings.narrative_admission.interval_seconds == 60
     assert settings.narrative_admission.soft_timeout_seconds == 180
     assert settings.narrative_admission.hard_timeout_seconds == 300
@@ -79,6 +94,11 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.narrative_admission.wakes_on == ("token_radar_updated", "resolution_updated")
     assert settings.narrative_admission.windows == ("1h",)
     assert settings.narrative_admission.scopes == ("all",)
+    assert settings.narrative_admission.admission_limit == 200
+    assert settings.narrative_admission.source_limit == 2000
+    assert settings.narrative_admission.lease_ms == 60_000
+    assert settings.narrative_admission.retry_ms == 60_000
+    assert settings.narrative_admission.statement_timeout_seconds == 30
     assert settings.narrative_admission.hot_rank_limit == 50
     assert settings.narrative_admission.min_rank_score == 30
     assert "mention_semantics" not in payload
@@ -90,12 +110,23 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.pulse_candidate.max_enqueues_per_cycle == 25
     assert settings.pulse_candidate.max_pending_jobs_global == 100
     assert settings.pulse_candidate.max_pending_jobs_per_window_scope == 25
+    assert settings.pulse_candidate.trigger_lease_ms == 60_000
+    assert settings.pulse_candidate.trigger_capacity_retry_ms == 30_000
+    assert settings.pulse_candidate.trigger_error_retry_ms == 60_000
+    assert settings.pulse_candidate.target_edge_budget_per_hour == 3
+    assert settings.pulse_candidate.candidate_edge_budget_per_hour == 3
+    assert settings.pulse_candidate.failure_circuit_per_hour == 3
+    assert settings.pulse_candidate.failure_circuit_reasons == ("schema_validation_failed", "unknown_evidence_id")
+    assert settings.pulse_candidate.timeline_debounce_seconds == 600
+    assert settings.pulse_candidate.evidence_market_freshness_ms == 3_600_000
+    assert settings.pulse_candidate.statement_timeout_seconds == 30
     assert settings.pulse_candidate.windows == ("1h", "4h")
     assert settings.pulse_candidate.stale_job_ttl_by_window_seconds == {"1h": 3600, "4h": 14400}
     assert settings.pulse_candidate.trigger_thresholds.min_rank_score == 45
     assert settings.pulse_candidate.gate_thresholds.high_conviction_min == 78
     assert settings.macro_sync.enabled is True
     assert settings.macro_sync.interval_seconds == 900.0
+    assert settings.macro_sync.batch_size == 1
     assert settings.macro_sync.bundle_name == "macro-core"
     assert settings.macro_sync.source_name == "macrodata-cli"
     assert settings.macro_sync.bootstrap_lookback_days == 1095
@@ -108,9 +139,16 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.macro_sync.macrodata_timeout_seconds == 240.0
     assert settings.macro_view_projection.lookback_days == 1095
     assert settings.macro_view_projection.limit_per_series == 800
+    assert settings.macro_view_projection.lease_ms == 300_000
+    assert settings.macro_view_projection.retry_ms == 300_000
     assert settings.macro_view_projection.wakes_on == ("macro_observations_imported",)
     assert settings.macro_daily_brief_projection.wakes_on == ("macro_view_snapshot_updated",)
+    assert settings.macro_daily_brief_projection.statement_timeout_seconds == 30
+    assert settings.notification_rule.batch_size == 50
+    assert settings.notification_rule.statement_timeout_seconds == 30
+    assert settings.notification_delivery.batch_size == 1
     assert settings.notification_delivery.max_attempts == 5
+    assert settings.notification_delivery.statement_timeout_seconds == 30
 
 
 def test_worker_settings_schema_matches_manifest_worker_names() -> None:
@@ -327,6 +365,70 @@ def test_worker_settings_reject_zero_pulse_candidate_budgets():
         WorkersSettings(**payload)
 
 
+def test_worker_settings_reject_zero_pulse_candidate_trigger_policies():
+    for field_name in (
+        "trigger_lease_ms",
+        "trigger_capacity_retry_ms",
+        "trigger_error_retry_ms",
+        "target_edge_budget_per_hour",
+        "candidate_edge_budget_per_hour",
+        "failure_circuit_per_hour",
+        "evidence_market_freshness_ms",
+    ):
+        payload = yaml.safe_load(default_workers_yaml())
+        payload["pulse_candidate"][field_name] = 0
+
+        with pytest.raises(ValidationError):
+            WorkersSettings(**payload)
+
+
+def test_worker_settings_reject_zero_asset_profile_refresh_policies():
+    for field_name in ("provider_retry_ms", "ready_refresh_ms", "missing_refresh_ms", "error_refresh_ms"):
+        payload = yaml.safe_load(default_workers_yaml())
+        payload["asset_profile_refresh"][field_name] = 0
+
+        with pytest.raises(ValidationError):
+            WorkersSettings(**payload)
+
+
+def test_worker_settings_reject_empty_pulse_failure_circuit_reasons():
+    payload = yaml.safe_load(default_workers_yaml())
+    payload["pulse_candidate"]["failure_circuit_reasons"] = []
+
+    with pytest.raises(ValidationError, match="failure_circuit_reasons"):
+        WorkersSettings(**payload)
+
+
+def test_worker_settings_reject_zero_pulse_job_running_timeout_ms():
+    payload = yaml.safe_load(default_workers_yaml())
+    payload["pulse_candidate"]["job_running_timeout_ms"] = 0
+
+    with pytest.raises(ValidationError):
+        WorkersSettings(**payload)
+
+
+def test_worker_settings_reject_zero_pulse_stale_running_terminalization_batch_size():
+    payload = yaml.safe_load(default_workers_yaml())
+    payload["pulse_candidate"]["stale_running_terminalization_batch_size"] = 0
+
+    with pytest.raises(ValidationError):
+        WorkersSettings(**payload)
+
+
+def test_worker_settings_reject_zero_notification_delivery_running_policies():
+    payload = yaml.safe_load(default_workers_yaml())
+    payload["notification_delivery"]["running_timeout_ms"] = 0
+
+    with pytest.raises(ValidationError):
+        WorkersSettings(**payload)
+
+    payload = yaml.safe_load(default_workers_yaml())
+    payload["notification_delivery"]["stale_running_terminalization_batch_size"] = 0
+
+    with pytest.raises(ValidationError):
+        WorkersSettings(**payload)
+
+
 def test_worker_settings_reject_zero_hard_timeout_for_non_continuous_workers() -> None:
     payload = yaml.safe_load(default_workers_yaml())
     payload["pulse_candidate"]["hard_timeout_seconds"] = 0
@@ -359,17 +461,31 @@ def test_news_workers_have_defaults():
     assert settings.news_fetch.soft_timeout_seconds == 120
     assert settings.news_fetch.hard_timeout_seconds == 180
     assert settings.news_fetch.batch_size == 5
+    assert settings.news_fetch.lease_ms == 60_000
+    assert settings.news_fetch.statement_timeout_seconds == 30
     assert settings.news_fetch.advisory_lock_key == 2026051905
     assert settings.news_item_process.advisory_lock_key == 2026051902
+    assert settings.news_item_process.batch_size == 10
+    assert settings.news_item_process.lease_ms == 120_000
+    assert settings.news_item_process.max_attempts == 3
+    assert settings.news_item_process.retry_delay_ms == 60_000
+    assert settings.news_item_process.statement_timeout_seconds == 30
     assert settings.news_item_process.wakes_on == ("news_item_written",)
     assert not hasattr(settings, "news_story_projection")
     assert settings.news_item_brief.interval_seconds == 10
     assert settings.news_item_brief.soft_timeout_seconds == 180
     assert settings.news_item_brief.hard_timeout_seconds == 240
     assert settings.news_item_brief.batch_size == 5
+    assert settings.news_item_brief.lease_ms == 120_000
+    assert settings.news_item_brief.retry_ms == 60_000
+    assert settings.news_item_brief.statement_timeout_seconds == 30
     assert settings.news_item_brief.advisory_lock_key == 2026052001
     assert settings.news_item_brief.backpressure_cooldown_ms == 60_000
     assert settings.news_item_brief.wakes_on == ("news_item_processed",)
+    assert settings.news_page_projection.batch_size == 100
+    assert settings.news_page_projection.lease_ms == 120_000
+    assert settings.news_page_projection.retry_ms == 30_000
+    assert settings.news_page_projection.statement_timeout_seconds == 30
     assert settings.news_page_projection.advisory_lock_key == 2026051904
     assert settings.news_page_projection.wakes_on == (
         "news_item_written",
@@ -379,6 +495,9 @@ def test_news_workers_have_defaults():
     )
     assert settings.news_source_quality_projection.interval_seconds == 60
     assert settings.news_source_quality_projection.batch_size == 100
+    assert settings.news_source_quality_projection.lease_ms == 120_000
+    assert settings.news_source_quality_projection.retry_ms == 30_000
+    assert settings.news_source_quality_projection.statement_timeout_seconds == 30
     assert settings.news_source_quality_projection.advisory_lock_key == 2026052201
     assert settings.news_source_quality_projection.wakes_on == ("news_item_written",)
     assert settings.news_source_quality_projection.windows == ("24h", "7d")

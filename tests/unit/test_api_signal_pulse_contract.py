@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -45,7 +43,6 @@ def test_signal_pulse_api_uses_fake_runtime_without_postgres():
         }
     ]
     assert pulse.summary_calls == [{"window": "1h", "scope": "matched", "q": "PEPE", "handle": "toly"}]
-    assert data["health"]["agent_worker_running"] is True
     assert data["summary"]["token_watch"] == 1
     assert data["items"][0]["candidate_id"] == "candidate-fake"
     assert "pulse_status" not in data["items"][0]
@@ -123,6 +120,22 @@ def test_signal_pulse_api_rejects_removed_5m_window():
 
     assert response.status_code == 400
     assert response.json() == {"ok": False, "error": "invalid_window", "field": "window"}
+    assert pulse.list_calls == []
+
+
+def test_signal_pulse_api_rejects_invalid_scope_without_matched_fallback():
+    pulse = FakeSignalPulseReadRepository()
+    app = _app(pulse)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/signal-lab/pulse",
+            params={"scope": "bad"},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {"ok": False, "error": "invalid_scope", "field": "scope"}
     assert pulse.list_calls == []
 
 
@@ -214,6 +227,15 @@ class FakeSignalPulseReadRepository:
             "market_ready_rate": 1.0,
         }
 
+    def freshness_health(self, *, window, scope, now_ms, since_hours):
+        return {
+            "window": window,
+            "scope": scope,
+            "since_hours": since_hours,
+            "publish_status": "healthy",
+            "reasons": [],
+        }
+
 
 class FakeRepositoryContext:
     def __init__(self, pulse_read):
@@ -231,23 +253,6 @@ class FakeRuntime:
     def __init__(self, pulse_read):
         self.settings = type("FakeSettings", (), {"ws_token": "secret"})()
         self.pulse_read = pulse_read
-        self.workers = {
-            "pulse_candidate": SimpleNamespace(
-                status_payload=lambda: {
-                    "enabled": True,
-                    "running": True,
-                    "last_started_at_ms": None,
-                    "last_finished_at_ms": None,
-                    "last_result": None,
-                    "last_error": None,
-                }
-            )
-        }
-        self.scheduler = SimpleNamespace(
-            tasks={},
-            status_payload=lambda: {"pulse_candidate": self.workers["pulse_candidate"].status_payload()},
-            unhealthy_reasons=lambda: [],
-        )
 
     def repositories(self):
         return FakeRepositoryContext(self.pulse_read)

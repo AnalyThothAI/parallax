@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 from typing import Any
 
@@ -7,6 +8,7 @@ import pytest
 
 from parallax.integrations.news_feeds.opennews_client import (
     OpenNewsFeedClient,
+    _run_rest_fetch,
     _source_fetch_policy,
 )
 
@@ -68,6 +70,7 @@ def test_opennews_client_rest_fetch_posts_to_news_search_and_reports_rest() -> N
                 "hasCoin": True,
                 "rest_limit": 5,
                 "max_rest_pages": 1,
+                "rest_overlap_ms": 900_000,
             },
         },
     )
@@ -90,6 +93,51 @@ def test_opennews_client_rest_fetch_posts_to_news_search_and_reports_rest() -> N
             "body": {"limit": 5, "page": 1, "engineTypes": {"news": ["6551News"]}, "hasCoin": True},
         }
     ]
+
+
+def test_opennews_client_requires_async_rest_poster_without_isawaitable_fallback() -> None:
+    requests: list[dict[str, Any]] = []
+
+    def sync_post_json(url: str, *, token: str, body: dict[str, Any]) -> dict[str, Any]:
+        requests.append({"url": url, "token": token, "body": body})
+        return {"data": []}
+
+    client = OpenNewsFeedClient(token="test-token", post_json=sync_post_json)
+
+    with pytest.raises(TypeError):
+        client.fetch(
+            "opennews://subscribe",
+            source={
+                "fetch_policy_json": {
+                    "engineTypes": {"news": ["6551News"]},
+                    "rest_limit": 100,
+                    "max_rest_pages": 1,
+                    "rest_overlap_ms": 900_000,
+                }
+            },
+        )
+
+    assert requests == [
+        {
+            "url": "https://ai.6551.io/open/news_search",
+            "token": "test-token",
+            "body": {"limit": 100, "page": 1, "engineTypes": {"news": ["6551News"]}},
+        }
+    ]
+
+
+def test_opennews_run_rest_fetch_requires_formal_coroutine_close_contract_without_optional_probe() -> None:
+    class AwaitableWithoutClose:
+        def __await__(self):
+            if False:
+                yield None
+            return {"data": []}
+
+    async def run_in_active_loop() -> None:
+        with pytest.raises(AttributeError):
+            _run_rest_fetch(AwaitableWithoutClose())  # type: ignore[arg-type]
+
+    asyncio.run(run_in_active_loop())
 
 
 @pytest.mark.parametrize(
@@ -117,6 +165,23 @@ def test_opennews_client_requires_configured_token_without_echoing_value() -> No
 
     with pytest.raises(ValueError, match="OpenNews token is not configured"):
         client.fetch("opennews://subscribe")
+
+
+@pytest.mark.parametrize(
+    ("policy", "missing_key"),
+    [
+        ({"engineTypes": {"news": ["6551News"]}, "max_rest_pages": 1, "rest_overlap_ms": 900_000}, "rest_limit"),
+        ({"engineTypes": {"news": ["6551News"]}, "rest_limit": 100, "rest_overlap_ms": 900_000}, "max_rest_pages"),
+        ({"engineTypes": {"news": ["6551News"]}, "rest_limit": 100, "max_rest_pages": 1}, "rest_overlap_ms"),
+    ],
+)
+def test_opennews_client_requires_formal_rest_fetch_policy_without_defaults(
+    policy: dict[str, Any], missing_key: str
+) -> None:
+    client = OpenNewsFeedClient(token="test-token", post_json=_empty_post_json)
+
+    with pytest.raises(ValueError, match=f"OpenNews REST fetch policy missing {missing_key}"):
+        client.fetch("opennews://subscribe", source={"fetch_policy_json": policy})
 
 
 def test_opennews_client_rest_scan_uses_cursor_overlap_and_returns_next_cursor() -> None:
@@ -204,7 +269,14 @@ def test_opennews_client_rest_fetch_sends_since_ms_and_filters_older_entries() -
     result = client.fetch(
         "opennews://subscribe",
         since_ms=since_ms,
-        source={"fetch_policy_json": {"engineTypes": {"news": ["6551News"]}, "max_rest_pages": 1}},
+        source={
+            "fetch_policy_json": {
+                "engineTypes": {"news": ["6551News"]},
+                "rest_limit": 100,
+                "max_rest_pages": 1,
+                "rest_overlap_ms": 900_000,
+            }
+        },
     )
 
     assert rest_requests[0]["body"]["publishedAfterMs"] == since_ms
@@ -252,7 +324,14 @@ def test_opennews_client_rest_scan_merges_article_fragments_and_counts_visible_e
 
     result = client.fetch(
         "opennews://subscribe",
-        source={"fetch_policy_json": {"engineTypes": {"news": ["6551News"]}, "max_rest_pages": 1}},
+        source={
+            "fetch_policy_json": {
+                "engineTypes": {"news": ["6551News"]},
+                "rest_limit": 100,
+                "max_rest_pages": 1,
+                "rest_overlap_ms": 900_000,
+            }
+        },
     )
 
     assert [entry["id"] for entry in result.entries] == ["2378101"]
@@ -266,3 +345,7 @@ def test_opennews_client_rest_scan_merges_article_fragments_and_counts_visible_e
 
 async def _unused_post_json(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
     raise AssertionError("removed OpenNews websocket policy keys must be rejected before REST fetch")
+
+
+async def _empty_post_json(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+    return {"data": []}

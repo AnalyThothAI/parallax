@@ -3,10 +3,9 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Coroutine, Mapping
 from datetime import UTC, datetime
-from inspect import isawaitable
-from typing import Any
+from typing import Any, Protocol
 from urllib.parse import parse_qsl, quote, urlsplit
 
 from parallax.domains.news_intel.services.opennews_provider_signal import (
@@ -16,12 +15,7 @@ from parallax.domains.news_intel.services.opennews_provider_signal import (
 from parallax.integrations.news_feeds.feed_client import FeedFetchResult
 
 DEFAULT_OPENNEWS_API_BASE_URL = "https://ai.6551.io"
-DEFAULT_REST_PAGE = 1
-DEFAULT_MAX_REST_PAGES = 5
-DEFAULT_REST_OVERLAP_MS = 900_000
-MIN_REST_OVERLAP_MS = 600_000
 MAX_REST_LIMIT = 100
-DEFAULT_REST_LIMIT = 100
 _REMOVED_WEBSOCKET_POLICY_KEYS = {
     "fetch_mode",
     "wss_url",
@@ -34,13 +28,17 @@ _REMOVED_WEBSOCKET_POLICY_KEYS = {
 }
 
 
+class _OpenNewsPostJson(Protocol):
+    def __call__(self, url: str, *, token: str, body: Mapping[str, Any]) -> Awaitable[Mapping[str, Any]]: ...
+
+
 class OpenNewsFeedClient:
     def __init__(
         self,
         *,
         token: str | None = None,
         api_base_url: str = DEFAULT_OPENNEWS_API_BASE_URL,
-        post_json: Callable[..., Any] | None = None,
+        post_json: _OpenNewsPostJson | None = None,
         now_ms: Callable[[], int] | None = None,
     ) -> None:
         self._token = _optional_text(token)
@@ -119,13 +117,11 @@ class OpenNewsFeedClient:
                 page=page,
                 since_ms=published_after_ms,
             )
-            payload_result = self._post_json(
+            payload_result = await self._post_json(
                 f"{self._api_base_url}/open/news_search",
                 token=self._token or "",
                 body=body,
             )
-            if isawaitable(payload_result):
-                payload_result = await payload_result
             if not isinstance(payload_result, Mapping):
                 raise ValueError("OpenNews REST search returned a non-object response")
             data = payload_result.get("data")
@@ -184,14 +180,12 @@ async def _default_post_json(url: str, *, token: str, body: Mapping[str, Any]) -
     return payload
 
 
-def _run_rest_fetch(coro: Any) -> Any:
+def _run_rest_fetch[ResultT](coro: Coroutine[Any, Any, ResultT]) -> ResultT:
     try:
         asyncio.get_running_loop()
     except RuntimeError:
         return asyncio.run(coro)
-    close = getattr(coro, "close", None)
-    if callable(close):
-        close()
+    coro.close()
     raise RuntimeError("OpenNewsFeedClient.fetch must be called from a synchronous worker thread")
 
 
@@ -265,14 +259,12 @@ def _rest_search_body(
     subscription: Mapping[str, Any],
     policy: Mapping[str, Any],
     limit: int | None,
-    page: int | None = None,
+    page: int,
     since_ms: int | None = None,
 ) -> dict[str, Any]:
     body: dict[str, Any] = {
         "limit": _rest_limit(policy=policy, limit=limit),
-        "page": (
-            max(1, int(page)) if page is not None else _positive_int_or_default(policy.get("page"), DEFAULT_REST_PAGE)
-        ),
+        "page": max(1, int(page)),
     }
     for key in ("engineTypes", "coins", "hasCoin"):
         if key in subscription:
@@ -293,21 +285,19 @@ def _rest_limit(*, policy: Mapping[str, Any], limit: int | None) -> int:
     value = policy.get("rest_limit")
     if value is None:
         value = limit
-    return max(1, min(MAX_REST_LIMIT, _positive_int_or_default(value, DEFAULT_REST_LIMIT)))
+    return min(MAX_REST_LIMIT, _required_positive_int(value, "rest_limit"))
 
 
 def _max_rest_pages(policy: Mapping[str, Any]) -> int:
     value = policy.get("max_rest_pages")
-    return max(1, _positive_int_or_default(value, DEFAULT_MAX_REST_PAGES))
+    return _required_positive_int(value, "max_rest_pages")
 
 
 def _rest_overlap_ms(*, policy: Mapping[str, Any], cursor: Mapping[str, Any]) -> int:
-    value = policy.get("rest_overlap_ms", policy.get("overlap_ms"))
+    value = policy.get("rest_overlap_ms")
     if value is None:
         value = cursor.get("overlap_ms")
-    if value is None:
-        value = DEFAULT_REST_OVERLAP_MS
-    return max(MIN_REST_OVERLAP_MS, _positive_int_or_default(value, DEFAULT_REST_OVERLAP_MS))
+    return _required_positive_int(value, "rest_overlap_ms")
 
 
 def _cursor_int(cursor: Mapping[str, Any], key: str) -> int:
@@ -318,12 +308,16 @@ def _cursor_int(cursor: Mapping[str, Any], key: str) -> int:
     return max(0, value)
 
 
-def _positive_int_or_default(value: Any, default: int) -> int:
+def _required_positive_int(value: Any, field_name: str) -> int:
+    if value is None:
+        raise ValueError(f"OpenNews REST fetch policy missing {field_name}")
     try:
         parsed = int(value)
-    except (TypeError, ValueError):
-        return int(default)
-    return parsed if parsed > 0 else int(default)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"OpenNews REST fetch policy invalid {field_name}") from exc
+    if parsed <= 0:
+        raise ValueError(f"OpenNews REST fetch policy invalid {field_name}")
+    return parsed
 
 
 def _positive_int_or_none(value: Any) -> int | None:

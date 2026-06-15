@@ -295,14 +295,11 @@ def test_no_legacy_files_at_docs_root() -> None:
 def test_repo_root_has_no_loose_visual_artifacts() -> None:
     visual_suffixes = {".gif", ".jpeg", ".jpg", ".png", ".webp"}
     loose_visuals = sorted(
-        path.name
-        for path in REPO_ROOT.iterdir()
-        if path.is_file() and path.suffix.lower() in visual_suffixes
+        path.name for path in REPO_ROOT.iterdir() if path.is_file() and path.suffix.lower() in visual_suffixes
     )
 
     assert loose_visuals == [], (
-        "visual verification artifacts must live under an owned artifact directory, "
-        f"not repo root: {loose_visuals}"
+        f"visual verification artifacts must live under an owned artifact directory, not repo root: {loose_visuals}"
     )
 
 
@@ -313,22 +310,14 @@ def test_rule_ownership() -> None:
         anchors = contract["anchors"]
         # Missing docs should fail loudly here instead of being hidden by a
         # path.exists() guard; docs-root inventory has its own focused failure.
-        hits = [
-            name
-            for name, path in governance_paths.items()
-            if _has_rule_anchors(_read(path), anchors)
-        ]
+        hits = [name for name, path in governance_paths.items() if _has_rule_anchors(_read(path), anchors)]
         assert hits == [owner], f"rule {rule_name!r} expected only in {owner}, found in {hits}"
 
 
 def test_routers_have_no_governance_phrases() -> None:
     for rule_name, contract in GOVERNANCE_RULE_ANCHORS.items():
         anchors = contract["anchors"]
-        leaked = [
-            router
-            for router in ROUTER_FILES
-            if _has_rule_anchors(_read(REPO_ROOT / router), anchors)
-        ]
+        leaked = [router for router in ROUTER_FILES if _has_rule_anchors(_read(REPO_ROOT / router), anchors)]
         assert leaked == [], f"rule {rule_name!r} leaked into router files: {leaked}"
 
 
@@ -486,8 +475,7 @@ def test_architecture_doc_test_references_are_path_qualified_and_existing() -> N
 
     for reference in references:
         assert reference.startswith("tests/architecture/"), (
-            "docs/ARCHITECTURE.md test references must be path-qualified: "
-            f"{reference}"
+            f"docs/ARCHITECTURE.md test references must be path-qualified: {reference}"
         )
         test_path_text, _, test_name = reference.partition("::")
         test_path = REPO_ROOT / test_path_text
@@ -495,8 +483,7 @@ def test_architecture_doc_test_references_are_path_qualified_and_existing() -> N
         if test_name:
             test_source = _read(test_path)
             assert f"def {test_name}(" in test_source, (
-                "docs/ARCHITECTURE.md references missing test function: "
-                f"{reference}"
+                f"docs/ARCHITECTURE.md references missing test function: {reference}"
             )
 
 
@@ -517,11 +504,7 @@ def test_architecture_module_map_links_every_domain_architecture_doc() -> None:
 def test_open_tech_debt_references_current_source_and_test_paths() -> None:
     open_debt = _tech_debt_open_section()
     backticked_references = re.findall(r"`([^`]+)`", open_debt)
-    references = [
-        token
-        for token in backticked_references
-        if token.startswith(TECH_DEBT_ROOTED_PREFIXES)
-    ]
+    references = [token for token in backticked_references if token.startswith(TECH_DEBT_ROOTED_PREFIXES)]
     bare_test_references = [token for token in backticked_references if token.startswith("::test")]
     unrooted_source_references = [
         token for token in backticked_references if _looks_like_unrooted_source_reference(token)
@@ -529,12 +512,10 @@ def test_open_tech_debt_references_current_source_and_test_paths() -> None:
 
     assert references, "docs/TECH_DEBT.md open debt must keep source-backed references"
     assert bare_test_references == [], (
-        "open TECH_DEBT test references must include their source file: "
-        f"{bare_test_references}"
+        f"open TECH_DEBT test references must include their source file: {bare_test_references}"
     )
     assert unrooted_source_references == [], (
-        "open TECH_DEBT source/test/doc references must be repo-root paths: "
-        f"{unrooted_source_references}"
+        f"open TECH_DEBT source/test/doc references must be repo-root paths: {unrooted_source_references}"
     )
 
     missing_paths: list[str] = []
@@ -578,6 +559,43 @@ def test_open_tech_debt_duplicate_symbol_claims_match_current_sources() -> None:
                 stale_claims.append(f"{symbol} is absent from {reference}")
 
     assert stale_claims == [], f"open TECH_DEBT duplicate-symbol claims are stale: {stale_claims}"
+
+
+def test_open_tech_debt_does_not_keep_resolved_legacy_asset_schema_debt() -> None:
+    open_debt = _tech_debt_open_section()
+    drop_migration = _read(
+        REPO_ROOT
+        / "src/parallax/platform/db/alembic/versions/20260516_0050_drop_legacy_asset_stack.py"
+    )
+    reconcile_migration = _read(
+        REPO_ROOT
+        / "src/parallax/platform/db/alembic/versions/20260517_0053_reconcile_legacy_asset_stack_drop.py"
+    )
+
+    dropped_contracts = (
+        "assets",
+        "asset_aliases",
+        "asset_venues",
+        "asset_market_snapshots",
+        "token_intent_resolution_candidates",
+        "asset_signal_snapshots",
+        "current_market_field_facts",
+        "token_market_price_baselines",
+    )
+    for table in dropped_contracts:
+        assert f'"{table}"' in drop_migration
+        assert f'"{table}"' in reconcile_migration
+
+    stale_open_claims = (
+        "Legacy `assets`, `asset_aliases`, `asset_venues`, `asset_market_snapshots` tables",
+        "6 FK columns lack leading indexes",
+        "`idx_tir_*`",
+        "`idx_tirc_*`",
+        "`idx_asssnap_*`",
+    )
+    violations = [claim for claim in stale_open_claims if claim in open_debt]
+
+    assert violations == [], f"open TECH_DEBT keeps resolved legacy asset schema debt: {violations}"
 
 
 def test_references_papers_present() -> None:

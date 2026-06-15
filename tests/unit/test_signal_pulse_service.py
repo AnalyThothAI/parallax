@@ -13,6 +13,7 @@ class FakePulseReadRepository:
         *,
         pages: dict[str | None, dict[str, Any]] | None = None,
         health: dict[str, Any] | None = None,
+        freshness_health: dict[str, Any] | None = None,
     ):
         self.pages = pages or {}
         self.health = health or {
@@ -29,6 +30,8 @@ class FakePulseReadRepository:
         }
         self.calls: list[dict[str, Any]] = []
         self.summary_calls: list[dict[str, Any]] = []
+        self.freshness_health_payload = freshness_health or {}
+        self.freshness_health_calls: list[dict[str, Any]] = []
         self.candidate_rows: dict[str, dict[str, Any]] = {}
         self.agent_run_steps: dict[str, list[dict[str, Any]]] = {}
 
@@ -66,6 +69,12 @@ class FakePulseReadRepository:
     def get_health(self, window: str, scope: str) -> dict[str, Any]:
         return {"window": window, "scope": scope, **self.health}
 
+    def freshness_health(self, *, window: str, scope: str, now_ms: int, since_hours: int) -> dict[str, Any]:
+        self.freshness_health_calls.append(
+            {"window": window, "scope": scope, "now_ms": now_ms, "since_hours": since_hours}
+        )
+        return dict(self.freshness_health_payload)
+
     def candidate_by_id(self, candidate_id: str) -> dict[str, Any] | None:
         return self.candidate_rows.get(candidate_id)
 
@@ -88,7 +97,6 @@ def test_signal_pulse_empty_state_uses_pulse_candidates_only() -> None:
         q=None,
         limit=20,
         cursor=None,
-        agent_worker_running=False,
     )
 
     assert result["query"] == {
@@ -102,7 +110,6 @@ def test_signal_pulse_empty_state_uses_pulse_candidates_only() -> None:
     assert result["health"] == {
         "pulse_ready": False,
         "public_ready": False,
-        "agent_worker_running": False,
         "candidate_count": 0,
         "public_candidate_count": 0,
         "hidden_candidate_count": 0,
@@ -136,6 +143,78 @@ def test_signal_pulse_empty_state_uses_pulse_candidates_only() -> None:
         }
     ]
     assert pulse.summary_calls == [{"window": "1h", "scope": "matched", "q": None, "handle": None}]
+    assert len(pulse.freshness_health_calls) == 1
+    assert pulse.freshness_health_calls[0]["window"] == "1h"
+    assert pulse.freshness_health_calls[0]["scope"] == "matched"
+    assert pulse.freshness_health_calls[0]["since_hours"] == 4
+    assert isinstance(pulse.freshness_health_calls[0]["now_ms"], int)
+
+
+def test_signal_pulse_uses_formal_freshness_health_repository_contract() -> None:
+    pulse = FakePulseReadRepository(
+        freshness_health={
+            "window": "1h",
+            "scope": "matched",
+            "since_hours": 4,
+            "publish_status": "degraded",
+            "reasons": ["dead_jobs_present"],
+            "public_candidates_4h": 7,
+            "dead_jobs": 2,
+        }
+    )
+
+    result = _service(pulse).pulse(
+        window="1h",
+        scope="matched",
+        status=None,
+        handle=None,
+        q=None,
+        limit=20,
+        cursor=None,
+    )
+
+    assert len(pulse.freshness_health_calls) == 1
+    assert pulse.freshness_health_calls[0]["window"] == "1h"
+    assert pulse.freshness_health_calls[0]["scope"] == "matched"
+    assert pulse.freshness_health_calls[0]["since_hours"] == 4
+    assert result["health"]["publish_status"] == "degraded"
+    assert result["health"]["reasons"] == ["dead_jobs_present"]
+    assert result["health"]["public_candidates_4h"] == 7
+    assert result["health"]["dead_jobs"] == 2
+
+
+def test_signal_pulse_requires_formal_freshness_health_repository_contract() -> None:
+    class MissingFreshnessHealthRepository:
+        def list_candidates(self, **_kwargs: Any) -> dict[str, Any]:
+            return {"items": [], "next_cursor": None}
+
+        def pulse_summary(self, **_kwargs: Any) -> dict[str, Any]:
+            return {
+                "candidate_count": 0,
+                "public_candidate_count": 0,
+                "blocked_low_information_count": 0,
+                "dead_job_count": 0,
+                "market_ready_rate": 0.0,
+                "summary": {
+                    "trade_candidate": 0,
+                    "token_watch": 0,
+                    "risk_rejected_high_info": 0,
+                },
+            }
+
+        def candidate_by_id(self, _candidate_id: str) -> dict[str, Any] | None:
+            return None
+
+    with pytest.raises(AttributeError, match="freshness_health"):
+        _service(MissingFreshnessHealthRepository()).pulse(
+            window="1h",
+            scope="matched",
+            status=None,
+            handle=None,
+            q=None,
+            limit=20,
+            cursor=None,
+        )
 
 
 def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() -> None:
@@ -184,7 +263,6 @@ def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() ->
         q="pepe",
         limit=50,
         cursor="cursor-1",
-        agent_worker_running=True,
     )
 
     assert pulse.calls == [
@@ -212,7 +290,6 @@ def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() ->
     assert result["health"] == {
         "pulse_ready": True,
         "public_ready": True,
-        "agent_worker_running": True,
         "candidate_count": 3,
         "public_candidate_count": 2,
         "hidden_candidate_count": 1,
@@ -275,6 +352,7 @@ def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() ->
                 "eligible_for_high_alert": True,
                 "blocked_reasons": [],
                 "risk_reasons": [],
+                "max_decision": "high_alert",
             },
             "fact_card": {
                 "rank_score": 82,
@@ -346,7 +424,6 @@ def test_signal_pulse_uses_aggregate_for_summary_and_market_rate_independent_of_
         q="PEPE",
         limit=1,
         cursor=None,
-        agent_worker_running=False,
     )
 
     assert missing_market["factor_snapshot_json"]["data_health"]["market"] == "missing"
@@ -386,7 +463,6 @@ def test_signal_pulse_health_distinguishes_hidden_candidates_from_public_readine
         q=None,
         limit=20,
         cursor=None,
-        agent_worker_running=True,
     )
 
     assert result["health"]["candidate_count"] == 5
@@ -531,6 +607,40 @@ def test_candidate_decision_does_not_fallback_to_legacy_json_scalars() -> None:
     assert result["decision"]["summary_zh"] == "富文本仍来自 decision_json。"
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "expected_reason"),
+    [
+        ("decision_json", None, "required:decision_json"),
+        ("decision_json", ["not-mapping"], "invalid:decision_json"),
+        ("gate_reasons_json", None, "required:gate_reasons_json"),
+        ("gate_reasons_json", {"not": "list"}, "invalid:gate_reasons_json"),
+        ("risk_reasons_json", None, "required:risk_reasons_json"),
+        ("risk_reasons_json", {"not": "list"}, "invalid:risk_reasons_json"),
+        ("evidence_event_ids_json", None, "required:evidence_event_ids_json"),
+        ("evidence_event_ids_json", {"not": "list"}, "invalid:evidence_event_ids_json"),
+        ("source_event_ids_json", None, "required:source_event_ids_json"),
+        ("source_event_ids_json", {"not": "list"}, "invalid:source_event_ids_json"),
+    ],
+)
+def test_signal_pulse_present_candidate_row_requires_formal_public_json_fields_without_empty_defaults(
+    field: str,
+    value: Any,
+    expected_reason: str,
+) -> None:
+    row = _candidate_row(
+        "cand-malformed-public-json",
+        pulse_status="token_watch",
+        verdict="token_watch",
+        market_status="fresh",
+    )
+    row[field] = value
+    pulse = FakePulseReadRepository()
+    pulse.candidate_rows = {"cand-malformed-public-json": row}
+
+    with pytest.raises(ValueError, match=f"signal_pulse_public_candidate_{expected_reason}"):
+        _service(pulse).candidate(candidate_id="cand-malformed-public-json")
+
+
 def test_candidate_detail_does_not_expose_agent_run_step_audit() -> None:
     pulse = FakePulseReadRepository()
     pulse.candidate_rows["pulse-1"] = _candidate_row(
@@ -605,7 +715,6 @@ def test_default_listing_hides_abstain_decisions() -> None:
         q=None,
         limit=20,
         cursor=None,
-        agent_worker_running=True,
     )
 
     assert result["items"] == []
@@ -649,7 +758,6 @@ def test_hidden_visibility_lists_hidden_candidates_without_public_display_gate()
         q=None,
         limit=20,
         cursor=None,
-        agent_worker_running=True,
         visibility="hidden",
     )
 
@@ -720,7 +828,6 @@ def test_summary_counts_decision_routes_and_abstain_reasons() -> None:
         q=None,
         limit=20,
         cursor=None,
-        agent_worker_running=True,
     )
 
     assert result["summary"]["decision_route_counts"] == {"meme": 3, "research_only": 1}
@@ -770,7 +877,6 @@ def test_signal_pulse_missing_factor_snapshot_does_not_fallback_to_legacy_runtim
         q=None,
         limit=20,
         cursor=None,
-        agent_worker_running=True,
     )
 
     assert result["items"] == []
@@ -814,7 +920,6 @@ def test_signal_pulse_item_contains_factor_snapshot_contract_without_legacy_disp
         q=None,
         limit=20,
         cursor=None,
-        agent_worker_running=True,
     )["items"][0]
 
     assert "radar_score_json" not in item
@@ -845,7 +950,6 @@ def test_signal_pulse_fact_card_does_not_fallback_to_legacy_market_context() -> 
         q=None,
         limit=20,
         cursor=None,
-        agent_worker_running=True,
     )["items"][0]
 
     assert item["fact_card"]["market_status"] is None
@@ -881,7 +985,6 @@ def test_signal_pulse_fact_card_reads_market_facts_from_factor_snapshot_market()
         q=None,
         limit=20,
         cursor=None,
-        agent_worker_running=True,
     )["items"][0]
 
     assert item["fact_card"]["market_cap_usd"] == 12_500_000
@@ -930,7 +1033,6 @@ def test_signal_pulse_fact_card_prefers_decision_latest_and_ignores_top_level_ma
         q=None,
         limit=20,
         cursor=None,
-        agent_worker_running=True,
     )["items"][0]
 
     assert item["fact_card"]["price_usd"] == 0.84
@@ -964,7 +1066,6 @@ def test_signal_pulse_rejects_v1_factor_snapshot_with_hard_gates() -> None:
         q=None,
         limit=20,
         cursor=None,
-        agent_worker_running=True,
     )
 
     assert result["items"] == []
@@ -1000,7 +1101,6 @@ def test_signal_pulse_rejects_malformed_v3_snapshot_shape(mutate, match: str) ->
         q=None,
         limit=20,
         cursor=None,
-        agent_worker_running=True,
     )
 
     assert match
@@ -1019,7 +1119,12 @@ def _factor_snapshot(*, market_status: str | None) -> dict[str, Any]:
             "target_market_type": "dex",
         },
         "market": market,
-        "gates": {"eligible_for_high_alert": True, "blocked_reasons": [], "risk_reasons": []},
+        "gates": {
+            "eligible_for_high_alert": True,
+            "blocked_reasons": [],
+            "risk_reasons": [],
+            "max_decision": "high_alert",
+        },
         "data_health": {"identity": "ready", "market": market_health, "social": "ready", "alpha": "ready"},
         "families": {
             "social_heat": _family(80, 0.35, {"mentions_1h": 9, "unique_authors": 3, "watched_mentions": 1}),

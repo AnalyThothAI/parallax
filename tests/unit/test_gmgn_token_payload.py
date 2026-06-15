@@ -2,12 +2,16 @@ from parallax.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token
 from parallax.integrations.gmgn.direct_ws import DirectGmgnWebSocketClient
 
 
+async def _ignore_frame(_: str) -> None:
+    return None
+
+
 def test_direct_gmgn_ws_exposes_connection_state_payload():
     client = DirectGmgnWebSocketClient(
         app_version="1.0.0",
         channels=["twitter_monitor_basic"],
         chains=["solana"],
-        on_frame=lambda frame: None,
+        on_frame=_ignore_frame,
     )
 
     initial = client.connection_state_payload()

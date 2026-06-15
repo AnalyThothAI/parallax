@@ -121,7 +121,7 @@ class EnrichedEventRepository:
                 "capture_reason": capture.capture_reason,
             },
         )
-        return int(getattr(cursor, "rowcount", 0) or 0) == 1
+        return _single_row_mutation_applied(cursor)
 
     def mark_backfill_terminal(self, *, event_id: str, intent_id: str, reason: str) -> bool:
         cursor = self._conn.execute(
@@ -143,7 +143,7 @@ class EnrichedEventRepository:
                 "reason": reason,
             },
         )
-        return int(getattr(cursor, "rowcount", 0) or 0) == 1
+        return _single_row_mutation_applied(cursor)
 
     def _joined_select(self) -> str:
         return """
@@ -170,3 +170,15 @@ class EnrichedEventRepository:
               ON mt.observed_at_ms = ee.tick_observed_at_ms
              AND mt.tick_id = ee.tick_id
         """
+
+
+def _single_row_mutation_applied(cursor: Any) -> bool:
+    try:
+        rowcount: object = cursor.rowcount
+    except AttributeError as exc:
+        raise TypeError("enriched_event_repository_rowcount_required") from exc
+    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
+        raise TypeError("enriched_event_repository_rowcount_invalid")
+    if rowcount not in {0, 1}:
+        raise TypeError("enriched_event_repository_rowcount_invalid")
+    return rowcount == 1

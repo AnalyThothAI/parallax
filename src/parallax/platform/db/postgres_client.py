@@ -162,13 +162,10 @@ def transaction(conn: Connection) -> Iterator[None]:
 
 
 def require_transaction(conn: Any, *, operation: str) -> None:
-    info = getattr(conn, "info", None)
-    if info is None:
-        return
     try:
-        status = info.transaction_status
-    except Exception:
-        return
+        status = conn.info.transaction_status
+    except AttributeError as exc:
+        raise RuntimeError(f"{operation}_requires_transaction_status_contract") from exc
     if status == pq.TransactionStatus.IDLE:
         raise RuntimeError(f"{operation}_requires_explicit_transaction")
 
@@ -177,12 +174,12 @@ def postgres_health_check(conn: Any, *, expected_migration_version: str | None =
     try:
         row = conn.execute("SELECT 1 AS ok").fetchone()
         if row is None or int(row["ok"]) != 1:
+            conn.rollback()
             return {"ok": False, "probe": "postgres_liveness", "detail": "missing_select_result"}
         version_row = conn.execute("SELECT version_num FROM alembic_version LIMIT 1").fetchone()
         migration_version = version_row["version_num"] if version_row else None
         migration_ok = expected_migration_version is None or migration_version == expected_migration_version
-        if hasattr(conn, "commit"):
-            conn.commit()
+        conn.commit()
         return {
             "ok": migration_ok,
             "probe": "postgres_liveness",
@@ -197,6 +194,15 @@ def postgres_health_check(conn: Any, *, expected_migration_version: str | None =
             ),
         }
     except Exception as exc:
-        if hasattr(conn, "rollback"):
+        try:
             conn.rollback()
+        except Exception as rollback_exc:
+            return {
+                "ok": False,
+                "probe": "postgres_liveness",
+                "error": type(rollback_exc).__name__,
+                "detail": str(rollback_exc),
+                "original_error": type(exc).__name__,
+                "original_detail": str(exc),
+            }
         return {"ok": False, "probe": "postgres_liveness", "error": type(exc).__name__, "detail": str(exc)}

@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Mapping
 from typing import Any
 
 from fastapi import Request
 
 from parallax.app.runtime.worker_manifest import require_worker_manifest
+from parallax.app.runtime.worker_status import effective_worker_status
 from parallax.app.surfaces.api.exceptions import ApiUnauthorized
+
+_INACTIVE_WORKER_STATUSES = {"disabled", "intentionally_not_started", "unavailable"}
 
 
 def _runtime(request: Request) -> Any:
@@ -31,36 +35,38 @@ def _request_token(request: Request) -> str | None:
 
 def _worker_running(runtime: Any, worker_name: str) -> bool:
     require_worker_manifest(worker_name)
-    scheduler = getattr(runtime, "scheduler", None)
-    if scheduler is None:
-        return False
-    task = getattr(scheduler, "tasks", {}).get(worker_name)
+    scheduler = runtime.scheduler
+    task = scheduler.tasks.get(worker_name)
     if task is not None:
         return not task.done()
-    status_payload = getattr(scheduler, "status_payload", None)
-    if status_payload is None:
-        return False
-    try:
-        payload = status_payload()
-    except Exception:
-        return False
-    return bool(payload.get(worker_name, {}).get("running"))
+    return bool(_scheduler_worker_status_payload(scheduler, worker_name).get("running"))
 
 
 def _worker_object(runtime: Any, worker_name: str) -> Any | None:
     require_worker_manifest(worker_name)
-    workers = getattr(runtime, "workers", {})
-    worker = workers.get(worker_name)
-    if worker is None:
+    scheduler = runtime.scheduler
+    worker = scheduler.workers[worker_name]
+    payload = _worker_status_payload(worker)
+    if effective_worker_status(payload) in _INACTIVE_WORKER_STATUSES:
         return None
-    status_payload = getattr(worker, "status_payload", None)
-    if status_payload is not None:
-        try:
-            if not status_payload().get("enabled", False):
-                return None
-        except Exception:
-            return None
-    return getattr(worker, "worker", worker)
+    return worker
+
+
+def _scheduler_worker_status_payload(scheduler: Any, worker_name: str) -> dict[str, Any]:
+    payload = scheduler.status_payload()
+    if not isinstance(payload, Mapping):
+        raise TypeError("api_status_payload_must_be_dict")
+    worker_payload = payload[worker_name]
+    if not isinstance(worker_payload, Mapping):
+        raise TypeError("api_worker_status_payload_must_be_dict")
+    return dict(worker_payload)
+
+
+def _worker_status_payload(worker: Any) -> dict[str, Any]:
+    payload = worker.status_payload()
+    if not isinstance(payload, Mapping):
+        raise TypeError("api_worker_status_payload_must_be_dict")
+    return dict(payload)
 
 
 def _now_ms() -> int:
