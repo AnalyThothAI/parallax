@@ -1,3 +1,6 @@
+UV_CACHE_DIR ?= /tmp/parallax-uv-cache
+export UV_CACHE_DIR
+
 PARALLAX := uv run parallax
 
 .PHONY: help sync install uninstall tool-path test lint compile check init config db-migrate db-health serve status recent asset-flow account-alerts token-radar-cex-recover docker-up docker-status docker-logs docker-down docker-shell clean test-unit test-integration test-e2e test-golden test-architecture test-contract check-sdd-completion check-all coverage regen-contract install-hooks
