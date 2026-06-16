@@ -69,8 +69,8 @@ def test_project_token_profile_current_prefers_gmgn_openapi_ready_profile():
     assert row["logo_source_provider"] == "gmgn_dex_profile"
     assert row["logo_source_url_hash"] == "hash-gmgn"
     assert row["symbol"] == "GMGN"
-    assert row["quality_flags"] == []
-    assert row["source_payload"] == {"profile": True}
+    assert row["quality_flags_json"] == []
+    assert row["source_payload_json"] == {"profile": True}
     assert row["observed_at_ms"] == 1_000
     assert row["computed_at_ms"] == 10_000
 
@@ -125,7 +125,7 @@ def test_project_token_profile_current_keeps_gmgn_openapi_metadata_without_logo(
     assert row["logo_image_id"] == "image-okx"
     assert row["logo_source_provider"] == "okx_dex_evidence"
     assert row["logo_source_url_hash"] == "hash-okx"
-    assert row["quality_flags"] == []
+    assert row["quality_flags_json"] == []
 
 
 def test_project_token_profile_current_uses_lower_priority_ready_logo_when_metadata_logo_is_pending():
@@ -145,7 +145,7 @@ def test_project_token_profile_current_uses_lower_priority_ready_logo_when_metad
     assert row["profile_provider"] == "gmgn_dex_profile"
     assert row["logo_url"] == "/api/token-images/image-stream"
     assert row["logo_source_provider"] == "gmgn_stream_snapshot"
-    assert row["quality_flags"] == []
+    assert row["quality_flags_json"] == []
 
 
 def test_project_token_profile_current_uses_selected_candidate_provider_for_logo_provenance():
@@ -258,7 +258,7 @@ def test_project_token_profile_current_uses_okx_exact_metadata_without_logo():
     assert row["logo_image_id"] is None
     assert row["logo_source_provider"] is None
     assert row["logo_source_url_hash"] is None
-    assert row["quality_flags"] == ["source_without_logo"]
+    assert row["quality_flags_json"] == ["source_without_logo"]
 
 
 def test_project_token_profile_current_filters_okx_default_logo_and_marks_missing():
@@ -278,7 +278,7 @@ def test_project_token_profile_current_filters_okx_default_logo_and_marks_missin
     assert row["status"] == "missing"
     assert row["profile_provider"] == "okx_dex_evidence"
     assert row["logo_url"] is None
-    assert row["quality_flags"] == ["okx_placeholder_logo", "source_without_logo"]
+    assert row["quality_flags_json"] == ["okx_placeholder_logo", "source_without_logo"]
 
 
 def test_project_token_profile_current_returns_cex_unsupported_without_symbol_matching():
@@ -297,7 +297,7 @@ def test_project_token_profile_current_returns_cex_unsupported_without_symbol_ma
     assert row["target_id"] == "cex_token:BTC"
     assert row["profile_provider"] is None
     assert row["logo_url"] is None
-    assert row["quality_flags"] == ["cex_profile_unsupported"]
+    assert row["quality_flags_json"] == ["cex_profile_unsupported"]
 
 
 def test_project_token_profile_current_uses_binance_cex_profile_source_cache():
@@ -335,8 +335,8 @@ def test_project_token_profile_current_uses_binance_cex_profile_source_cache():
     assert row["logo_image_id"] == "image-cex"
     assert row["logo_source_provider"] == "binance_cex_profile"
     assert row["logo_source_url_hash"] == "hash-cex"
-    assert row["source_payload"] == {"rank": 1}
-    assert row["quality_flags"] == []
+    assert row["source_payload_json"] == {"rank": 1}
+    assert row["quality_flags_json"] == []
     assert row["observed_at_ms"] == 9_000
 
 
@@ -362,7 +362,7 @@ def test_project_token_profile_current_falls_back_to_specific_cex_source_ref():
     assert row["status"] == "ready"
     assert row["source_ref"] == "binance_cex_profile:cex_token:BTC"
     assert row["logo_url"] is None
-    assert row["quality_flags"] == ["source_not_admitted"]
+    assert row["quality_flags_json"] == ["source_not_admitted"]
 
 
 def test_project_token_profile_current_sets_pending_flag_without_remote_logo_fallback():
@@ -386,7 +386,7 @@ def test_project_token_profile_current_sets_pending_flag_without_remote_logo_fal
     assert row["logo_image_id"] is None
     assert row["logo_source_provider"] is None
     assert row["logo_source_url_hash"] is None
-    assert row["quality_flags"] == ["source_not_admitted"]
+    assert row["quality_flags_json"] == ["source_not_admitted"]
 
 
 def test_project_token_profile_current_marks_unsupported_lifecycle_without_pending_flag():
@@ -405,7 +405,7 @@ def test_project_token_profile_current_marks_unsupported_lifecycle_without_pendi
 
     assert row["status"] == "ready"
     assert row["logo_url"] is None
-    assert row["quality_flags"] == ["logo_mirror_unsupported"]
+    assert row["quality_flags_json"] == ["logo_mirror_unsupported"]
 
 
 def test_project_token_profile_current_marks_error_lifecycle_without_pending_flag():
@@ -424,7 +424,7 @@ def test_project_token_profile_current_marks_error_lifecycle_without_pending_fla
 
     assert row["status"] == "ready"
     assert row["logo_url"] is None
-    assert row["quality_flags"] == ["logo_mirror_failed"]
+    assert row["quality_flags_json"] == ["logo_mirror_failed"]
 
 
 def test_project_token_profile_current_marks_usable_source_without_state_as_not_admitted():
@@ -441,7 +441,7 @@ def test_project_token_profile_current_marks_usable_source_without_state_as_not_
 
     assert row["status"] == "ready"
     assert row["logo_url"] is None
-    assert row["quality_flags"] == ["source_not_admitted"]
+    assert row["quality_flags_json"] == ["source_not_admitted"]
 
 
 def test_project_token_profile_current_does_not_reuse_ready_image_state_from_other_target():
@@ -458,7 +458,7 @@ def test_project_token_profile_current_does_not_reuse_ready_image_state_from_oth
 
     assert row["status"] == "ready"
     assert row["logo_url"] is None
-    assert row["quality_flags"] == ["source_not_admitted"]
+    assert row["quality_flags_json"] == ["source_not_admitted"]
 
 
 def test_project_token_profile_current_lower_priority_ready_logo_wins_over_higher_priority_pending():
@@ -484,7 +484,7 @@ def test_project_token_profile_current_lower_priority_ready_logo_wins_over_highe
     assert row["status"] == "ready"
     assert row["logo_url"] == "/api/token-images/image-stream"
     assert row["logo_source_provider"] == "gmgn_stream_snapshot"
-    assert row["quality_flags"] == []
+    assert row["quality_flags_json"] == []
 
 
 def test_project_token_profile_current_marks_source_without_logo_when_no_provider_logo_candidates():
@@ -499,7 +499,7 @@ def test_project_token_profile_current_marks_source_without_logo_when_no_provide
 
     assert row["status"] == "ready"
     assert row["logo_url"] is None
-    assert row["quality_flags"] == ["source_without_logo"]
+    assert row["quality_flags_json"] == ["source_without_logo"]
 
 
 def test_project_token_profile_current_keeps_first_unusable_logo_fallback_flags():
@@ -518,7 +518,7 @@ def test_project_token_profile_current_keeps_first_unusable_logo_fallback_flags(
 
     assert row["status"] == "ready"
     assert row["profile_provider"] == "gmgn_dex_profile"
-    assert row["quality_flags"] == ["source_without_logo"]
+    assert row["quality_flags_json"] == ["source_without_logo"]
 
 
 def test_select_okx_dex_source_prefers_exact_address_over_symbol_candidates():

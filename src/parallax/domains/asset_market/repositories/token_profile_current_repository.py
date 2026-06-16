@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from contextlib import AbstractContextManager
 from typing import Any, cast
 
@@ -41,8 +42,8 @@ class TokenProfileCurrentRepository:
             "gmgn_url": _optional_text(row.get("gmgn_url")),
             "geckoterminal_url": _optional_text(row.get("geckoterminal_url")),
             "description": _optional_text(row.get("description")),
-            "quality_flags_json": _sanitize_json(row.get("quality_flags_json", row.get("quality_flags", [])) or []),
-            "source_payload_json": _sanitize_json(row.get("source_payload_json", row.get("source_payload", {})) or {}),
+            "quality_flags_json": _required_json_list(row, "quality_flags_json"),
+            "source_payload_json": _required_json_mapping(row, "source_payload_json"),
             "observed_at_ms": _int_or_none(row.get("observed_at_ms")),
             "computed_at_ms": computed_at_ms,
             "updated_at_ms": int(row.get("updated_at_ms") or computed_at_ms),
@@ -172,6 +173,24 @@ def _clean_text(value: Any) -> str:
 def _sanitize_json(value: Any) -> Any:
     stable_current_payload_hash({"json": value})
     return postgres_safe_json(value)
+
+
+def _required_json_list(row: dict[str, Any], field: str) -> Any:
+    if field not in row or row[field] is None:
+        raise ValueError(f"token_profile_current_repository_required:{field}")
+    value = row[field]
+    if not isinstance(value, list):
+        raise ValueError(f"token_profile_current_repository_invalid:{field}")
+    return _sanitize_json(list(value))
+
+
+def _required_json_mapping(row: dict[str, Any], field: str) -> Any:
+    if field not in row or row[field] is None:
+        raise ValueError(f"token_profile_current_repository_required:{field}")
+    value = row[field]
+    if not isinstance(value, Mapping):
+        raise ValueError(f"token_profile_current_repository_invalid:{field}")
+    return _sanitize_json(dict(value))
 
 
 def _int_or_none(value: Any) -> int | None:

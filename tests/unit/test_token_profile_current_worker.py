@@ -290,7 +290,7 @@ def test_rebuild_token_profile_current_once_admits_missing_image_sources_before_
     assert result["image_sources_admitted"] == 1
     assert [row["source_url"] for row in repos.token_image_source_dirty_targets.enqueued] == [logo_url]
     assert repos.token_profiles.rows[0]["logo_url"] is None
-    assert repos.token_profiles.rows[0]["quality_flags"] == ["logo_mirror_pending"]
+    assert repos.token_profiles.rows[0]["quality_flags_json"] == ["logo_mirror_pending"]
 
 
 def test_rebuild_token_profile_current_once_empty_queue_does_not_load_profile_sources():

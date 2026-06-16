@@ -1686,6 +1686,26 @@ def test_token_profile_current_upsert_changed_requires_cursor_rowcount_match() -
 
 
 @pytest.mark.architecture
+def test_token_profile_current_repository_requires_formal_json_payload_fields_without_aliases() -> None:
+    repository_text = TOKEN_PROFILE_CURRENT_REPOSITORY_PATH.read_text(encoding="utf-8")
+    upsert_source = _function_source_by_name(TOKEN_PROFILE_CURRENT_REPOSITORY_PATH, "upsert_current")
+    forbidden = (
+        'row.get("quality_flags_json", row.get("quality_flags", []))',
+        'row.get("source_payload_json", row.get("source_payload", {}))',
+        'row.get("quality_flags"',
+        'row.get("source_payload"',
+    )
+
+    assert "def _required_json_list(row: dict[str, Any], field: str) -> Any:" in repository_text
+    assert "def _required_json_mapping(row: dict[str, Any], field: str) -> Any:" in repository_text
+    assert "token_profile_current_repository_required:" in repository_text
+    assert "token_profile_current_repository_invalid:" in repository_text
+    assert '_required_json_list(row, "quality_flags_json")' in upsert_source
+    assert '_required_json_mapping(row, "source_payload_json")' in upsert_source
+    assert [token for token in forbidden if token in upsert_source] == []
+
+
+@pytest.mark.architecture
 def test_token_image_source_dirty_repository_uses_connection_transaction_without_manual_commit_fallback() -> None:
     repository_text = TOKEN_IMAGE_SOURCE_DIRTY_TARGET_REPOSITORY_PATH.read_text(encoding="utf-8")
 

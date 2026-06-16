@@ -706,8 +706,7 @@ start/fail result writes must be rowcount=1 with a returned row, and finish
 writes must be rowcount=1 before running/found/error state is reported. Tests
 and architecture guards cover missing/invalid/mismatched rowcount, valid
 rowcount=0/no-row claim no-op, rowcount=1/no-row failures, and removal of
-`return self.result(provider=provider, lookup_key=lookup_key) or {}` readback
-fallback
+result readback fallback from lookup result writes
 (`tests/unit/test_discovery_repository.py:330`,
 `tests/unit/test_discovery_repository.py:344`,
 `tests/unit/test_discovery_repository.py:359`,
@@ -4282,6 +4281,8 @@ come from PostgreSQL changed-row evidence rather than application-side
 - AC436. WHEN `NewsItemProcessWorker` enqueues page or item-brief dirty targets for processed news items THEN `source_watermark_ms` SHALL come only from positive persisted `news_items.fetched_at_ms` or `news_items.published_at_ms`, missing source time SHALL fail closed with `news_item_process_source_watermark_required`, and the worker SHALL NOT use runtime `now_ms`, `fallback_ms`, or processing time as a source-watermark fallback.
 - AC437. WHEN `build_news_page_row(...)` publishes `news_page_rows.latest_at_ms` THEN it SHALL use only positive canonical item `published_at_ms`, missing or invalid published time SHALL fail closed with `news_page_projection_published_at_required`, and page projection SHALL NOT use `computed_at_ms`, `fetched_at_ms`, or worker processing time as a `latest_at_ms` fallback.
 - AC438. WHEN `TokenImageMirrorWorker` handles failed `token_image_source_dirty_targets` THEN dirty-source retry budget SHALL come from formal `settings.workers.token_image_mirror.max_attempts`, retryable claims SHALL reschedule in `token_image_source_dirty_targets`, exhausted claims SHALL be deleted and terminalized in `worker_queue_terminal_events` with target key `source_url_hash:target_type:target_id`, and Token Profile image admission SHALL NOT re-enqueue unresolved terminal events before operator action.
+- AC439. WHEN Binance CEX profile sync writes `cex_token_profiles` source-cache rows THEN provider output SHALL be materialized as formal mapping records with required `base_symbol`, `provider`, `symbol`, `logo_url`, `source_ref`, and mapping-shaped `raw_payload` before opening the DB transaction; object-attribute profile compatibility, provider/symbol fallbacks, and empty raw-payload defaults SHALL fail before source-cache SQL.
+- AC440. WHEN Token Profile Current projection builds or repository writes `token_profile_current` rows THEN projection output and repository input SHALL use formal `quality_flags_json` and `source_payload_json` fields, missing or incorrectly shaped JSON fields SHALL fail before serving-row SQL, and repository code SHALL NOT restore old `quality_flags` / `source_payload` aliases or empty JSON defaults.
 
 ## Risks
 

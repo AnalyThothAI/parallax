@@ -388,9 +388,11 @@ are wrong too.
    local `token_image_assets` rows. Public `TokenProfileReadModel` treats a
    present `token_profile_current` row as a formal current-row contract:
    `status`, `source_kind`, `quality_flags_json`, and `source_payload_json`
-   must be present and well shaped. Missing current rows may become explicit
-   pending/unsupported public blocks, but malformed present rows are projection
-   damage, not pending state.
+   must be present and well shaped. The projection service emits those JSON
+   fields by their storage names, and repository upsert input must not accept
+   old `quality_flags` / `source_payload` aliases or empty JSON defaults.
+   Missing current rows may become explicit pending/unsupported public blocks,
+   but malformed present rows are projection damage, not pending state.
    `news_items.content_class`, `news_items.content_tags_json`,
    `news_items.content_classification_json`, `agent_admission_*`,
    `story_identity_json`, and `agent_requirement_*` are written by
@@ -1158,8 +1160,10 @@ and frontend components read persisted `token_profile_current` through
 unsupported blocks, but present rows must carry formal current-row fields:
 `status` is limited to ready/missing/unsupported/error and `source_kind`,
 `quality_flags_json`, and `source_payload_json` must be present with the
-expected JSON shapes. Public reads must not turn malformed current rows into
-pending state, empty flags, or empty source payloads. `asset_profile_refresh`
+expected JSON shapes; projection writes and repository upserts use these
+formal storage field names directly and do not accept `quality_flags` /
+`source_payload` aliases. Public reads must not turn malformed current rows
+into pending state, empty flags, or empty source payloads. `asset_profile_refresh`
 writes only `asset_profiles`
 and profile-current dirty targets when source facts change; ready/missing/error
 `asset_profiles.next_refresh_at_ms` and the matching

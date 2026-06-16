@@ -15838,6 +15838,36 @@ RepositorySession Unit of Work；失败时不能留下半个 snapshot 或半套 
 - Targeted mypy 通过：`cex_token_profile_sync.py` 与 `cex_token_profile_repository.py` 无问题。
 - 按当前用户指令，本轮不运行 integration-heavy gate。
 
+### Root444 - Token Profile Current 写侧仍接受旧 JSON 字段别名
+
+发现：
+
+- `project_token_profile_current(...)` 原来构造 current row 时输出 `quality_flags` 和 `source_payload`。
+- `TokenProfileCurrentRepository.upsert_current(...)` 又通过 `row.get("quality_flags_json", row.get("quality_flags", []))` 和 `row.get("source_payload_json", row.get("source_payload", {}))` 同时接受正式字段和旧别名。
+- 这导致 projection 服务、worker fake、仓储输入之间存在两套 row 语言：即使缺失正式 `quality_flags_json` / `source_payload_json`，仓储也会用旧别名或空 JSON 继续写 public `token_profile_current`。
+
+根因：
+
+- Root323 已经把 public `TokenProfileReadModel` 收紧为 formal current-row contract，但写侧仍保留旧别名兼容，形成“读侧严格、写侧宽松”的断层。
+- 对成熟 Kappa/CQRS 来说，`token_profile_current` 是 public current read model，字段名就是投影和存储的合同；兼容别名会让坏投影输入被仓储洗白，破坏单 writer 可审计性。
+- 空 flags/payload fallback 尤其危险：它把“投影没有提供 source payload / quality flags”的错误伪装成“来源干净且无审计载荷”，后续 payload hash 和 unchanged-row 判断都会建立在被修补后的假内容上。
+
+修复：
+
+- Token Profile Current projection ready/status rows 改为直接输出 `quality_flags_json` 和 `source_payload_json`。
+- `TokenProfileCurrentRepository.upsert_current(...)` SQL 前要求正式 JSON 字段存在，`quality_flags_json` 必须是 list，`source_payload_json` 必须是 Mapping；缺失或错类型分别抛 `token_profile_current_repository_required:*` / `token_profile_current_repository_invalid:*`。
+- 单测覆盖缺失字段、错类型字段和旧 `quality_flags` / `source_payload` 别名输入，确认失败发生在 SQL 前。
+- Architecture guard 禁止仓储恢复 `row.get("quality_flags_json", row.get("quality_flags"...))`、`row.get("source_payload_json", row.get("source_payload"...))` 或旧别名读取。
+
+验证：
+
+- 聚焦非集成命令通过：Token Profile Current projection/repository/worker 组合和新 architecture guard，`57 passed`。
+- Targeted ruff 通过：projection/repository、对应 unit、architecture guard clean。
+- Targeted mypy 通过：`token_profile_current_projection.py` 与 `token_profile_current_repository.py` 无问题。
+- SDD 校验、SDD index check、`git diff --check`、`docker compose config --quiet` 通过。
+- `make docker-up` 触发显式 `docker-check` 前置检查后失败，原因是当前 shell 不能访问 Docker daemon；这是环境权限阻塞，不是 Compose 或应用配置解析失败。
+- 按当前用户指令，本轮不运行 integration-heavy gate。
+
 ## 剩余风险和建议
 
 1. 如果 Stocks Radar 需要真实 quote，必须新建 persisted quote fact/current read model，而不是恢复 request-time provider。

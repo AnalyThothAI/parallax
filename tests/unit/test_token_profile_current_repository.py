@@ -54,8 +54,8 @@ def test_upsert_current_sanitizes_text_and_json_payloads():
             "logo_image_id": "image-okx",
             "logo_source_provider": "okx_dex_evidence",
             "logo_source_url_hash": "hash-okx",
-            "quality_flags": ["invalid\x00_logo"],
-            "source_payload": {"tokenLogoUrl\x00": "https://okx.example/logo.png"},
+            "quality_flags_json": ["invalid\x00_logo"],
+            "source_payload_json": {"tokenLogoUrl\x00": "https://okx.example/logo.png"},
             "observed_at_ms": 1_000,
             "computed_at_ms": 2_000,
         }
@@ -77,6 +77,60 @@ def test_upsert_current_sanitizes_text_and_json_payloads():
     assert conn.transaction_commits == 1
     assert conn.manual_commits == 0
     assert conn.sql_depths == [1]
+
+
+@pytest.mark.parametrize(
+    ("patch", "error"),
+    [
+        (
+            {"quality_flags_json": None},
+            "token_profile_current_repository_required:quality_flags_json",
+        ),
+        (
+            {"source_payload_json": None},
+            "token_profile_current_repository_required:source_payload_json",
+        ),
+        (
+            {"quality_flags_json": {"flag": "legacy"}},
+            "token_profile_current_repository_invalid:quality_flags_json",
+        ),
+        (
+            {"source_payload_json": ["legacy"]},
+            "token_profile_current_repository_invalid:source_payload_json",
+        ),
+        (
+            {
+                "quality_flags_json": None,
+                "source_payload_json": None,
+                "quality_flags": [],
+                "source_payload": {},
+            },
+            "token_profile_current_repository_required:quality_flags_json",
+        ),
+    ],
+)
+def test_upsert_current_requires_formal_json_payload_fields_before_sql(patch, error):
+    conn = _Conn(rows=[{"changed": True}])
+    row = {**_current_row(), **patch}
+
+    with pytest.raises(ValueError, match=error):
+        TokenProfileCurrentRepository(conn).upsert_current(row, commit=False)
+
+    assert conn.sqls == []
+
+
+def test_upsert_current_rejects_legacy_quality_and_source_payload_aliases_before_sql():
+    conn = _Conn(rows=[{"changed": True}])
+    row = _current_row()
+    row.pop("quality_flags_json")
+    row.pop("source_payload_json")
+    row["quality_flags"] = []
+    row["source_payload"] = {}
+
+    with pytest.raises(ValueError, match="token_profile_current_repository_required:quality_flags_json"):
+        TokenProfileCurrentRepository(conn).upsert_current(row, commit=False)
+
+    assert conn.sqls == []
 
 
 def test_upsert_current_requires_connection_transaction_before_sql_when_committing():
@@ -135,6 +189,8 @@ def _current_row() -> dict:
         "source_kind": "asset_identity_evidence",
         "source_ref": "okx-1",
         "symbol": "ABC",
+        "quality_flags_json": [],
+        "source_payload_json": {},
         "computed_at_ms": 2_000,
     }
 
