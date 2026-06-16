@@ -15971,6 +15971,48 @@ RepositorySession Unit of Work；失败时不能留下半个 snapshot 或半套 
   通过，`69 passed`。
 - 按当前用户指令，本轮不运行 integration-heavy gate。
 
+### Root448 - Asset Profile Refresh target enqueue 继续用 updated/now 修补 source watermark
+
+发现：
+
+- `AssetProfileRefreshTargetRepository._target_records(...)` 原来通过
+  `target.get("source_watermark_ms") or target.get("updated_at_ms") or now_ms`
+  计算 `asset_profile_refresh_targets.source_watermark_ms`。
+- `asset_profile_refresh_targets` 被 `AssetProfileRefreshWorker` claim 后，成功写入
+  `asset_profiles` source cache 时会把 claimed `source_watermark_ms` 继续传入
+  `token_profile_current_dirty_targets`。
+- 这意味着刷新目标入队阶段如果没有正式 source watermark，仍会用 source-cache
+  `updated_at_ms` 或运行时 `now_ms` 伪造一个看似有效的事实前沿，随后污染 Profile Current
+  dirty queue。
+
+根因：
+
+- `asset_profile_refresh_targets` 是 profile source refresh 的控制面输入，不是单纯的调度表。
+  它的 `source_watermark_ms` 表示触发刷新目标的上游事实前沿；`due_at_ms` 才是运行调度时间。
+- 旧实现把 source watermark 和 queue/source-cache 更新时间混在一起，延续了“缺字段也尽量跑下去”的
+  兼容性宽入口。成熟 Kappa/CQRS 中，控制面队列应暴露 malformed producer payload，而不是在
+  repository 层把坏输入洗成新事实。
+- Root446/447 已经收紧 profile-current 和 image-source dirty queue，但 Asset Profile Refresh
+  仍是上游相邻入口；只收紧下游会留下一个继续制造伪水位的源头。
+
+修复：
+
+- 新增 `AssetProfileRefreshTargetRepository._source_watermark_ms(...)`，只接受正整数
+  `source_watermark_ms`。
+- 缺失、`updated_at_ms` only、0、负数、bool、字符串等输入全部在 SQL 前抛
+  `asset_profile_refresh_target_source_watermark_required`。
+- `now_ms` 只保留为 `due_at_ms` / `updated_at_ms` 调度与写入元数据，不再作为 source watermark
+  兜底。
+- Asset Market 架构、全局架构、Worker Flow、Workers inventory、SDD 与 architecture guard
+  同步禁止 `updated_at_ms` 和 runtime `now_ms` 水位修补回归。
+
+验证：
+
+- RED：新增 Asset Profile Refresh target watermark 单测和 architecture guard 后，当前实现出现
+  `7 failed` 单测加 `1 failed` 架构测试，证明旧代码会接受缺失/非法水位并继续执行 enqueue SQL。
+- GREEN：同一聚焦命令转为 `8 passed`；Asset Profile Refresh 非集成组通过，`27 passed`。
+- 按当前用户指令，本轮不运行 integration-heavy gate。
+
 ## 剩余风险和建议
 
 1. 如果 Stocks Radar 需要真实 quote，必须新建 persisted quote fact/current read model，而不是恢复 request-time provider。

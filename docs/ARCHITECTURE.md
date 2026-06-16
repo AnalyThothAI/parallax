@@ -400,6 +400,10 @@ are wrong too.
    input to that writer: producers must pass positive source watermarks, and
    the dirty repository plus ops image repair must not synthesize them from
    `computed_at_ms`, `updated_at_ms`, tuple identity, or runtime `now_ms`.
+   `asset_profile_refresh_targets` enqueue is likewise a formal source-refresh
+   control-plane input: producers must pass positive source watermarks, and the
+   refresh target repository must not synthesize them from source-cache
+   `updated_at_ms` or runtime `now_ms`.
    `token_image_source_dirty_targets` is the image-mirror control plane:
    Token Profile Current image admission must carry positive source-row
    `observed_at_ms` as `source_watermark_ms`, and image-source dirty enqueue
@@ -1183,8 +1187,10 @@ and profile-current dirty targets when source facts change; ready/missing/error
 `asset_profiles.next_refresh_at_ms` and the matching
 `asset_profile_refresh_targets.due_at_ms` are computed from the formal
 `settings.workers.asset_profile_refresh` refresh cadences by the worker and
-passed explicitly into the service/repository boundary. It wakes
-`TokenProfileCurrentWorker` but does not own image source admission. The current
+passed explicitly into the service/repository boundary. Refresh target enqueue
+requires a positive producer-supplied `source_watermark_ms` and must not repair
+that source frontier from source-cache `updated_at_ms` or runtime `now_ms`. It
+wakes `TokenProfileCurrentWorker` but does not own image source admission. The current
 profile projection only marks rows
 `ready` when the selected source has a usable logo; it also promotes exact
 GMGN stream snapshot icons, exact OKX DEX evidence, and Binance CEX profile

@@ -133,6 +133,40 @@ def _target() -> dict[str, Any]:
     }
 
 
+@pytest.mark.parametrize(
+    "target",
+    [
+        pytest.param({key: value for key, value in _target().items() if key != "source_watermark_ms"}, id="missing"),
+        pytest.param(
+            {
+                **{key: value for key, value in _target().items() if key != "source_watermark_ms"},
+                "updated_at_ms": NOW_MS - 1,
+            },
+            id="updated-at-only",
+        ),
+        pytest.param({**_target(), "source_watermark_ms": None}, id="none"),
+        pytest.param({**_target(), "source_watermark_ms": 0}, id="zero"),
+        pytest.param({**_target(), "source_watermark_ms": -1}, id="negative"),
+        pytest.param({**_target(), "source_watermark_ms": True}, id="bool"),
+        pytest.param({**_target(), "source_watermark_ms": "1700000001000"}, id="string"),
+    ],
+)
+def test_asset_profile_refresh_target_enqueue_requires_formal_source_watermark_without_runtime_fallback(
+    target: dict[str, Any],
+) -> None:
+    conn = _ScriptedConnection()
+
+    with pytest.raises(ValueError, match="asset_profile_refresh_target_source_watermark_required"):
+        AssetProfileRefreshTargetRepository(conn).enqueue_targets(
+            [target],
+            reason="resolution_updated",
+            now_ms=NOW_MS,
+            commit=False,
+        )
+
+    assert conn.sql == ""
+
+
 def _claim() -> dict[str, Any]:
     return {
         "provider": "gmgn_dex_profile",
@@ -155,6 +189,17 @@ class _MissingTransactionConnection:
 
     def commit(self) -> None:
         self.commits += 1
+
+
+class _ScriptedConnection:
+    def __init__(self) -> None:
+        self.sql = ""
+        self.params: object | None = None
+
+    def execute(self, sql: str, params: object | None = None) -> object:
+        self.sql = sql
+        self.params = params
+        raise AssertionError("SQL must not run for malformed enqueue target")
 
 
 class _RowcountConnection:

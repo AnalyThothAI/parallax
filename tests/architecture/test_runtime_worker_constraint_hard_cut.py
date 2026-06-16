@@ -1932,6 +1932,20 @@ def test_asset_profile_refresh_completion_counts_require_real_cursor_rowcount() 
 
 
 @pytest.mark.architecture
+def test_asset_profile_refresh_target_source_watermark_has_no_runtime_fallback() -> None:
+    repository_text = ASSET_PROFILE_REFRESH_TARGET_REPOSITORY_PATH.read_text(encoding="utf-8")
+    target_source = _function_source_by_name(ASSET_PROFILE_REFRESH_TARGET_REPOSITORY_PATH, "_target_records")
+    forbidden = (
+        'target.get("source_watermark_ms") or target.get("updated_at_ms")',
+        'target.get("source_watermark_ms") or now_ms',
+        'target.get("updated_at_ms") or now_ms',
+    )
+
+    assert "asset_profile_refresh_target_source_watermark_required" in repository_text
+    assert [token for token in forbidden if token in target_source] == []
+
+
+@pytest.mark.architecture
 def test_asset_profile_repository_uses_connection_transaction_without_manual_commit_fallback() -> None:
     repository_text = ASSET_PROFILE_REPOSITORY_PATH.read_text(encoding="utf-8")
     service_tree = _parse(ASSET_PROFILE_REFRESH_SERVICE_PATH)

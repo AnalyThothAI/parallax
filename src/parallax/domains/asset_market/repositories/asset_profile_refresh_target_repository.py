@@ -342,7 +342,7 @@ def _target_records(
             "chain_id": chain_id,
             "address": address,
             "symbol": _optional_text(target.get("symbol")),
-            "source_watermark_ms": int(target.get("source_watermark_ms") or target.get("updated_at_ms") or now_ms),
+            "source_watermark_ms": _source_watermark_ms(target),
             "priority": int(target.get("priority") or 100),
             "due_at_ms": int(target.get("due_at_ms") or due_at_ms or now_ms),
         }
@@ -453,6 +453,18 @@ def _required_text(value: Any, *, field_name: str) -> str:
 def _optional_text(value: Any) -> str | None:
     text = postgres_safe_text(value).strip()
     return text or None
+
+
+def _source_watermark_ms(target: Mapping[str, Any]) -> int:
+    try:
+        value = target["source_watermark_ms"]
+    except KeyError as exc:
+        raise ValueError("asset_profile_refresh_target_source_watermark_required") from exc
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("asset_profile_refresh_target_source_watermark_required")
+    if value <= 0:
+        raise ValueError("asset_profile_refresh_target_source_watermark_required")
+    return int(value)
 
 
 def _payload_hash(payload: Mapping[str, Any]) -> str:
