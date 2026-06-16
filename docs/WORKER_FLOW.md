@@ -247,9 +247,12 @@ mistakes, not from PostgreSQL or asyncio being mysterious:
   Binance routes, Binance CEX profiles, and Nasdaq Trader symbol files happen
   outside DB transactions, while registry/profile writes enter one callable
   connection transaction. Repository-owned `cex_token_profiles` source-cache
-  writes also require a callable connection transaction before SQL. Missing
-  transaction support fails before writes, not through naked `conn.commit()`
-  compatibility.
+  writes also require a callable connection transaction before SQL. Binance CEX
+  profile sync consumes formal mapping-shaped provider rows with required
+  identity, provider, URL, source reference, and raw payload fields; object
+  attribute reflection, provider/symbol fallbacks, and `{}` raw-payload defaults
+  are malformed provider output, not compatibility. Missing transaction support
+  fails before writes, not through naked `conn.commit()` compatibility.
 - CLI ops execute commands follow the same rule. Dry-run commands remain
   read-only, but token-radar dirty repair, token-capture-tier rank-set repair,
   News canonical rebuild enqueue, and GMGN directory sync use a callable

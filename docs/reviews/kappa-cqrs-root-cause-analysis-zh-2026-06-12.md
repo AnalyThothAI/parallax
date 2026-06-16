@@ -15810,6 +15810,34 @@ RepositorySession Unit of Work；失败时不能留下半个 snapshot 或半套 
 - `make docker-up` 已越过 `parallax config` 初始化并确认使用 `/Users/qinghuan/.parallax/config.yaml` 与 `/Users/qinghuan/.parallax/workers.yaml`，但访问 `/Users/qinghuan/.docker/run/docker.sock` 被当前宿主环境拒绝，属于 Docker daemon 权限阻塞，不是 Compose 配置解析或应用配置失败。
 - 按当前用户指令，本轮不运行 integration-heavy gate。
 
+### Root443 - Binance CEX profile sync 接受 object/dict 双形态并把缺失 raw payload 写成空 JSON
+
+发现：
+
+- `sync_cex_token_profiles(...)` 原来通过 `_field(profile, key)` 同时支持 `dict.get(...)` 和 `getattr(...)`。
+- 同一服务还把缺失 `provider` 补成 `binance_cex_profile`，把缺失 `symbol` 补成 `base_symbol`，并把缺失或非 dict 的 `raw_payload` 写成 `{}`。
+- `CexTokenProfileRepository.upsert_ready_profile_if_token_exists(...)` 也接受 `raw_payload=None` 并通过 `raw_payload or {}` 写入 `cex_token_profiles.raw_payload_json`。
+
+根因：
+
+- CEX profile source cache 是后续 Token Profile 当前投影和 image-source admission 的 persisted source，不是临时 provider helper。进入 `cex_token_profiles` 之前，provider 输出必须已经是正式、可审计、可重放的记录。
+- object/dict 双形态反射让 provider adapter 的正式输出契约不可见：一个测试 fake 或旧对象只要有同名属性就能绕过 adapter 规范化，形成第二套输入语言。
+- 空 raw payload 更危险：它把“provider 输出缺失审计载荷”的事实伪装成一个合法但信息量为零的 source-cache row。成熟 Kappa/CQRS 里，raw provider payload 是审计输入，不是业务事实，但它必须能解释事实来源；缺失时应 fail closed，而不是写空 JSON。
+
+修复：
+
+- `sync_cex_token_profiles(...)` 先在事务外把 provider rows materialize 成正式 Mapping 记录，必填 `base_symbol`、`provider`、`symbol`、`logo_url`、`source_ref`、mapping-shaped `raw_payload`。
+- object-attribute profile、缺 provider、缺 symbol、无效 logo URL、缺 source ref、缺/非 Mapping raw payload 都在打开 DB transaction 前失败。
+- `CexTokenProfileRepository` 写 SQL 前要求 mapping-shaped raw payload；不再把 `None`、list、字符串等输入写成 `{}`。
+- Asset Market 架构、Worker Flow、Workers inventory 和 architecture guard 同步禁止 object-reflection、provider/symbol fallback、empty raw-payload fallback 回归。
+
+验证：
+
+- 聚焦非集成命令通过：CEX sync unit、CEX profile repository unit、runtime worker architecture contract，`149 passed`。
+- Targeted ruff 通过：CEX sync/repository、对应 unit、architecture guard clean。
+- Targeted mypy 通过：`cex_token_profile_sync.py` 与 `cex_token_profile_repository.py` 无问题。
+- 按当前用户指令，本轮不运行 integration-heavy gate。
+
 ## 剩余风险和建议
 
 1. 如果 Stocks Radar 需要真实 quote，必须新建 persisted quote fact/current read model，而不是恢复 request-time provider。

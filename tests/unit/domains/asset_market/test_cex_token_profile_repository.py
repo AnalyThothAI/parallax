@@ -44,6 +44,26 @@ def test_cex_token_profile_returning_write_requires_cursor_rowcount() -> None:
 
 
 @pytest.mark.parametrize(
+    ("raw_payload", "error"),
+    [
+        pytest.param(None, "cex_token_profile_repository_raw_payload_required", id="missing"),
+        pytest.param([], "cex_token_profile_repository_raw_payload_invalid", id="list"),
+        pytest.param("{}", "cex_token_profile_repository_raw_payload_invalid", id="string"),
+    ],
+)
+def test_cex_token_profile_returning_write_requires_formal_raw_payload_before_sql(
+    raw_payload: object,
+    error: str,
+) -> None:
+    conn = FakeCexTokenProfileConnection()
+
+    with pytest.raises(TypeError, match=error):
+        _upsert_ready(CexTokenProfileRepository(conn), commit=False, raw_payload=raw_payload)
+
+    assert conn.sql_depths == []
+
+
+@pytest.mark.parametrize(
     ("rowcount", "row"),
     [
         pytest.param(True, {"cex_token_id": "cex_token:BTC", "status": "ready"}, id="bool-true"),
@@ -80,7 +100,13 @@ def test_cex_token_profile_returning_write_accepts_valid_single_rowcount() -> No
     }
 
 
-def _upsert_ready(repo: CexTokenProfileRepository, *, commit: bool = True) -> dict[str, Any] | None:
+def _upsert_ready(
+    repo: CexTokenProfileRepository,
+    *,
+    commit: bool = True,
+    raw_payload: object = _ROW_MISSING,
+) -> dict[str, Any] | None:
+    payload = {"rank": 1} if raw_payload is _ROW_MISSING else raw_payload
     return repo.upsert_ready_profile_if_token_exists(
         base_symbol="BTC",
         provider=BINANCE_CEX_PROFILE_PROVIDER,
@@ -88,7 +114,7 @@ def _upsert_ready(repo: CexTokenProfileRepository, *, commit: bool = True) -> di
         name="Bitcoin",
         logo_url="https://bin.bnbstatic.com/btc.png",
         source_ref="binance_marketing_symbol_list:BTC",
-        raw_payload={"rank": 1},
+        raw_payload=payload,
         observed_at_ms=1_779_100_000_000,
         commit=commit,
     )

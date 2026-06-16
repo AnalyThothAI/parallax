@@ -1353,7 +1353,12 @@ symbol provider reads happen outside DB transactions; the resulting
 `cex_tokens`, `price_feeds`, `cex_token_profiles`, and equity symbol registry
 writes share a callable connection transaction. Missing transaction support
 fails before registry/profile writes rather than falling back to a naked
-`conn.commit()`. The underlying `RegistryRepository` route/feed/symbol mutation
+`conn.commit()`. Binance CEX profile provider output is a formal mapping record
+with required `base_symbol`, `provider`, `symbol`, `logo_url`, `source_ref`, and
+mapping-shaped `raw_payload`; object-attribute reflection, missing-provider
+defaults, symbol-from-base fallbacks, and empty raw-payload defaults are
+malformed provider output rather than a runtime compatibility lane. The
+underlying `RegistryRepository` route/feed/symbol mutation
 defaults and `CexTokenProfileRepository` source-cache mutation defaults enforce
 the same connection-transaction contract before SQL when the repository owns the
 commit. `RegistryRepository` route/feed/symbol upserts also require

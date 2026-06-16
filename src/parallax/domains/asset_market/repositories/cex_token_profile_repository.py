@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager
 from typing import Any, cast
 
@@ -44,7 +44,7 @@ class CexTokenProfileRepository:
         name: str | None,
         logo_url: str,
         source_ref: str | None,
-        raw_payload: dict[str, Any] | None,
+        raw_payload: Mapping[str, Any] | None,
         observed_at_ms: int,
         commit: bool = True,
     ) -> dict[str, Any] | None:
@@ -80,7 +80,7 @@ class CexTokenProfileRepository:
                     _optional_text(name),
                     _required_url(logo_url),
                     _optional_text(source_ref),
-                    Jsonb(_sanitize_json(raw_payload or {})),
+                    Jsonb(_required_raw_payload(raw_payload)),
                     int(observed_at_ms),
                     updated_at_ms,
                     updated_at_ms,
@@ -119,6 +119,14 @@ def _clean_text(value: Any) -> str:
 
 def _sanitize_json(value: Any) -> Any:
     return postgres_safe_json(value)
+
+
+def _required_raw_payload(value: Any) -> Any:
+    if value is None:
+        raise TypeError("cex_token_profile_repository_raw_payload_required")
+    if not isinstance(value, Mapping):
+        raise TypeError("cex_token_profile_repository_raw_payload_invalid")
+    return _sanitize_json(dict(value))
 
 
 def _now_ms() -> int:

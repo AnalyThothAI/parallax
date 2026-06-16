@@ -1173,9 +1173,14 @@ GMGN stream snapshot icons, exact OKX DEX evidence, and Binance CEX profile
 source-cache rows already stored in PostgreSQL; it does not use request-time
 fallback or symbol-only CEX matching. `cex_tokens` remains identity/routing
 only; CEX profile data lives in `cex_token_profiles`. CEX profile source-cache
-upserts use optional single-row `RETURNING` evidence: rowcount=0/no row means no
-routed CEX token existed, rowcount=1/row means the source-cache row changed or
-was refreshed, and malformed rowcount/row mismatches fail before the result is
+sync consumes formal mapping-shaped provider profile rows with required
+`base_symbol`, `provider`, `symbol`, `logo_url`, `source_ref`, and
+mapping-shaped `raw_payload`; object-attribute reflection, missing-provider
+defaults, symbol-from-base fallbacks, and empty raw-payload defaults are
+malformed provider output rather than compatibility. Source-cache upserts use
+optional single-row `RETURNING` evidence: rowcount=0/no row means no routed CEX
+token existed, rowcount=1/row means the source-cache row changed or was
+refreshed, and malformed rowcount/row mismatches fail before the result is
 reported.
 Official links and descriptions must be visible without running a narrative
 agent; future narrative jobs may consume profile facts, but they do not own

@@ -125,10 +125,10 @@ changed profile-current targets
 `src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:489`,
 `src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:491`,
 `src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:493`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1170`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1171`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1175`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1178`).
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1636`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1637`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1638`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1639`).
 
 Follow-up review found the same rowcount evidence gap in
 `market_tick_current_dirty_targets` completion accounting: done/error paths
@@ -723,10 +723,10 @@ fallback
 `tests/architecture/test_runtime_worker_constraint_hard_cut.py:2687`,
 `tests/architecture/test_runtime_worker_constraint_hard_cut.py:2688`,
 `tests/architecture/test_runtime_worker_constraint_hard_cut.py:2689`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2692`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2696`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2697`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2699`).
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2715`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2721`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2722`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2723`).
 
 Follow-up review found the same rowcount evidence gap in `enriched_events`
 event-anchor lifecycle accounting: `attach_backfill_capture` and
@@ -1261,17 +1261,26 @@ src/parallax/domains/asset_market/services/asset_profile_refresh.py:65).
 
 Follow-up review found the same repository-owned manual commit root in the CEX
 profile source-cache repository: `upsert_ready_profile_if_token_exists`
-executed `cex_token_profiles` SQL before direct connection commit when the
-repository owned the commit
-(src/parallax/domains/asset_market/repositories/cex_token_profile_repository.py:37,
-src/parallax/domains/asset_market/repositories/cex_token_profile_repository.py:73).
-Root63 already made `sync_cex_token_profiles` hold a callable connection
-transaction and pass `commit=False`; the repository default path now needs the
-same fail-before-SQL contract when it owns the commit
-(src/parallax/domains/asset_market/services/cex_token_profile_sync.py:11,
-src/parallax/domains/asset_market/services/cex_token_profile_sync.py:19,
-src/parallax/domains/asset_market/services/cex_token_profile_sync.py:28,
-src/parallax/domains/asset_market/services/cex_token_profile_sync.py:37).
+executes `cex_token_profiles` SQL and must enter the connection transaction
+before that write when the repository owns the commit
+(src/parallax/domains/asset_market/repositories/cex_token_profile_repository.py:38,
+src/parallax/domains/asset_market/repositories/cex_token_profile_repository.py:56,
+src/parallax/domains/asset_market/repositories/cex_token_profile_repository.py:75,
+src/parallax/domains/asset_market/repositories/cex_token_profile_repository.py:93).
+Root63 made `sync_cex_token_profiles` hold a callable connection transaction,
+call `upsert_ready_profile_if_token_exists`, and pass `commit=False`; the
+service now also materializes provider rows through `_formal_profile(profile)`
+before the transaction, while the repository requires
+`_required_raw_payload(raw_payload)` instead of an empty raw-payload default
+(src/parallax/domains/asset_market/services/cex_token_profile_sync.py:12,
+src/parallax/domains/asset_market/services/cex_token_profile_sync.py:13,
+src/parallax/domains/asset_market/services/cex_token_profile_sync.py:20,
+src/parallax/domains/asset_market/services/cex_token_profile_sync.py:27,
+src/parallax/domains/asset_market/services/cex_token_profile_sync.py:36,
+src/parallax/domains/asset_market/services/cex_token_profile_sync.py:52,
+src/parallax/domains/asset_market/services/cex_token_profile_sync.py:86,
+src/parallax/domains/asset_market/repositories/cex_token_profile_repository.py:83,
+src/parallax/domains/asset_market/repositories/cex_token_profile_repository.py:124).
 
 Follow-up review found the same repository-owned manual commit root in the
 Token Capture Tier dirty repository: rank-set dirty enqueue, due-claim, and
@@ -1760,25 +1769,23 @@ and `) or {}` from reappearing
 `src/parallax/domains/asset_market/repositories/registry_repository.py:801`,
 `src/parallax/domains/asset_market/repositories/registry_repository.py:802`,
 `src/parallax/domains/asset_market/repositories/registry_repository.py:803`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1119`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1120`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1121`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1122`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1123`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1124`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1125`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1128`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1129`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1130`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1131`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1134`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1139`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1140`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1141`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1143`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1155`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1156`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1157`).
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1164`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1165`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1166`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1167`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1168`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1169`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1170`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1172`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1173`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1174`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1175`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1176`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1179`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1180`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1181`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1182`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1183`).
 Unit tests cover missing rowcount, invalid or unexpected rowcount, and
 rowcount=1 with no returned row for all four registry upsert operations
 (`tests/unit/test_registry_repository.py:219`,
@@ -3830,9 +3837,10 @@ come from PostgreSQL changed-row evidence rather than application-side
 `tests/unit/test_market_tick_current_repository.py:226`,
 `tests/unit/test_market_tick_current_repository.py:239`,
 `tests/unit/test_market_tick_current_repository.py:253`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1160`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1171`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1176`).
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1488`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1489`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1490`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1491`).
 
 ## Acceptance criteria
 

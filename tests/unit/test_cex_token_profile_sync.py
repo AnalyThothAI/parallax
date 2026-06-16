@@ -50,9 +50,124 @@ def test_sync_cex_token_profiles_requires_transaction_before_writes():
     assert profiles.upserts == []
 
 
+def test_sync_cex_token_profiles_rejects_object_profile_compatibility_before_transaction():
+    profiles = _CexTokenProfiles(existing_symbols={"BTC"})
+
+    with pytest.raises(TypeError, match="cex_token_profile_sync_profile_mapping_required"):
+        sync_cex_token_profiles(
+            cex_token_profiles=profiles,
+            profile_source=_ObjectProfileSource(),
+            observed_at_ms=1_778_000_000_000,
+        )
+
+    assert profiles.upserts == []
+    assert profiles.conn.events == []
+
+
+@pytest.mark.parametrize(
+    ("profile", "error"),
+    [
+        pytest.param(
+            {
+                "provider": "binance_cex_profile",
+                "symbol": "BTC",
+                "logo_url": "https://bin.bnbstatic.com/btc.png",
+                "source_ref": "binance_marketing_symbol_list:BTC",
+                "raw_payload": {"rank": 1},
+            },
+            "cex_token_profile_sync_base_symbol_required",
+            id="missing-base-symbol",
+        ),
+        pytest.param(
+            {
+                "base_symbol": "BTC",
+                "symbol": "BTC",
+                "logo_url": "https://bin.bnbstatic.com/btc.png",
+                "source_ref": "binance_marketing_symbol_list:BTC",
+                "raw_payload": {"rank": 1},
+            },
+            "cex_token_profile_sync_provider_required",
+            id="missing-provider",
+        ),
+        pytest.param(
+            {
+                "base_symbol": "BTC",
+                "provider": "binance_cex_profile",
+                "logo_url": "https://bin.bnbstatic.com/btc.png",
+                "source_ref": "binance_marketing_symbol_list:BTC",
+                "raw_payload": {"rank": 1},
+            },
+            "cex_token_profile_sync_symbol_required",
+            id="missing-symbol",
+        ),
+        pytest.param(
+            {
+                "base_symbol": "BTC",
+                "provider": "binance_cex_profile",
+                "symbol": "BTC",
+                "logo_url": "not-a-url",
+                "source_ref": "binance_marketing_symbol_list:BTC",
+                "raw_payload": {"rank": 1},
+            },
+            "cex_token_profile_sync_logo_url_invalid",
+            id="bad-logo-url",
+        ),
+        pytest.param(
+            {
+                "base_symbol": "BTC",
+                "provider": "binance_cex_profile",
+                "symbol": "BTC",
+                "logo_url": "https://bin.bnbstatic.com/btc.png",
+                "raw_payload": {"rank": 1},
+            },
+            "cex_token_profile_sync_source_ref_required",
+            id="missing-source-ref",
+        ),
+        pytest.param(
+            {
+                "base_symbol": "BTC",
+                "provider": "binance_cex_profile",
+                "symbol": "BTC",
+                "logo_url": "https://bin.bnbstatic.com/btc.png",
+                "source_ref": "binance_marketing_symbol_list:BTC",
+            },
+            "cex_token_profile_sync_raw_payload_required",
+            id="missing-raw-payload",
+        ),
+        pytest.param(
+            {
+                "base_symbol": "BTC",
+                "provider": "binance_cex_profile",
+                "symbol": "BTC",
+                "logo_url": "https://bin.bnbstatic.com/btc.png",
+                "source_ref": "binance_marketing_symbol_list:BTC",
+                "raw_payload": [],
+            },
+            "cex_token_profile_sync_raw_payload_invalid",
+            id="bad-raw-payload",
+        ),
+    ],
+)
+def test_sync_cex_token_profiles_requires_formal_provider_profile_before_transaction(
+    profile,
+    error,
+):
+    profiles = _CexTokenProfiles(existing_symbols={"BTC"})
+
+    with pytest.raises((TypeError, ValueError), match=error):
+        sync_cex_token_profiles(
+            cex_token_profiles=profiles,
+            profile_source=_ProfileSource([profile]),
+            observed_at_ms=1_778_000_000_000,
+        )
+
+    assert profiles.upserts == []
+    assert profiles.conn.events == []
+
+
 class _ProfileSource:
-    def token_profiles(self):
-        return [
+    def __init__(self, profiles=None) -> None:
+        self.profiles = profiles or [
             {
                 "base_symbol": "BTC",
                 "provider": "binance_cex_profile",
@@ -72,6 +187,25 @@ class _ProfileSource:
                 "raw_payload": {"rank": 2},
             },
         ]
+
+    def token_profiles(self):
+        return list(self.profiles)
+
+
+class _ObjectProfile:
+    def __init__(self) -> None:
+        self.base_symbol = "BTC"
+        self.provider = "binance_cex_profile"
+        self.symbol = "BTC"
+        self.name = "Bitcoin"
+        self.logo_url = "https://bin.bnbstatic.com/btc.png"
+        self.source_ref = "binance_marketing_symbol_list:BTC"
+        self.raw_payload = {"rank": 1}
+
+
+class _ObjectProfileSource:
+    def token_profiles(self):
+        return [_ObjectProfile()]
 
 
 class _CexTokenProfiles:

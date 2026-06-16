@@ -441,8 +441,8 @@ def test_queue_terminal_returning_writes_require_cursor_rowcount_match() -> None
     rowcount_source = functions["_cursor_rowcount"]
     returning_source = functions["_single_returning_rowcount"]
     forbidden = (
-        "getattr(cursor, \"rowcount\", 0)",
-        "int(getattr(cursor, \"rowcount\", 0) or 0)",
+        'getattr(cursor, "rowcount", 0)',
+        'int(getattr(cursor, "rowcount", 0) or 0)',
         "cursor.rowcount or 0",
     )
 
@@ -742,8 +742,8 @@ def test_token_fact_repositories_require_real_cursor_rowcount_for_fact_writes() 
     forbidden = (
         'getattr(cursor, "rowcount"',
         "cursor.rowcount or 0",
-        "return self.get(payload[\"evidence_id\"]) or {}",
-        "return self.get(payload[\"intent_id\"]) or {}",
+        'return self.get(payload["evidence_id"]) or {}',
+        'return self.get(payload["intent_id"]) or {}',
         "return self.get(resolution_id) or {}",
     )
     required_by_source = (
@@ -1100,6 +1100,25 @@ def test_asset_market_sync_services_require_connection_transaction_without_manua
 
 
 @pytest.mark.architecture
+def test_cex_token_profile_sync_requires_formal_mapping_profiles_without_object_fallback() -> None:
+    service_text = (SRC / "domains/asset_market/services/cex_token_profile_sync.py").read_text(encoding="utf-8")
+
+    forbidden = (
+        "getattr(profile,",
+        'profile.get("provider") or BINANCE_CEX_PROFILE_PROVIDER',
+        'profile["symbol"] or base_symbol',
+        'raw_payload") if isinstance(profile, dict) else',
+        "return dict(raw) if isinstance(raw, dict) else {}",
+    )
+
+    assert "cex_token_profile_sync_profile_mapping_required" in service_text
+    assert "cex_token_profile_sync_raw_payload_required" in service_text
+    assert "cex_token_profile_sync_raw_payload_invalid" in service_text
+    assert "_formal_profile(profile)" in service_text
+    assert [token for token in forbidden if token in service_text] == []
+
+
+@pytest.mark.architecture
 def test_registry_us_equity_deactivate_returning_counts_require_cursor_rowcount_match() -> None:
     repository_text = REGISTRY_REPOSITORY_PATH.read_text(encoding="utf-8")
     repository_tree = _parse(REGISTRY_REPOSITORY_PATH)
@@ -1403,7 +1422,7 @@ def test_token_capture_tier_upsert_changed_requires_cursor_rowcount_match() -> N
     changed_source = functions["_single_returning_changed"]
     forbidden = (
         "return row is not None",
-        "return bool(row and row[\"changed\"])",
+        'return bool(row and row["changed"])',
         "return bool(row and row['changed'])",
         "dict(row or {})",
         'getattr(cursor, "rowcount", 0)',
@@ -1421,7 +1440,7 @@ def test_token_capture_tier_upsert_changed_requires_cursor_rowcount_match() -> N
     assert "def _single_returning_changed(cursor: Any, row: Any | None) -> bool:" in repository_text
     assert "if count not in (0, 1):" in changed_source
     assert "if count != (1 if row is not None else 0):" in changed_source
-    assert "return row is not None and bool(row.get(\"changed\", True))" in changed_source
+    assert 'return row is not None and bool(row.get("changed", True))' in changed_source
 
 
 @pytest.mark.architecture
@@ -1506,10 +1525,10 @@ def test_market_tick_current_upsert_changed_requires_cursor_rowcount_match() -> 
     rowcount_source = functions["_cursor_rowcount"]
     changed_source = functions["_single_returning_changed"]
     forbidden = (
-        "return bool(row and row[\"changed\"])",
+        'return bool(row and row["changed"])',
         "return bool(row and row['changed'])",
         "return row is not None",
-        "return bool(dict(row or {}).get(\"changed\", False))",
+        'return bool(dict(row or {}).get("changed", False))',
         "dict(row or {})",
         'getattr(cursor, "rowcount", 0)',
         'int(getattr(cursor, "rowcount", 0) or 0)',
@@ -1526,7 +1545,7 @@ def test_market_tick_current_upsert_changed_requires_cursor_rowcount_match() -> 
     assert "def _single_returning_changed(cursor: Any, row: Any | None) -> bool:" in repository_text
     assert "if count not in (0, 1):" in changed_source
     assert "if count != (1 if row is not None else 0):" in changed_source
-    assert "return row is not None and bool(row.get(\"changed\", True))" in changed_source
+    assert 'return row is not None and bool(row.get("changed", True))' in changed_source
 
 
 @pytest.mark.architecture
@@ -1694,8 +1713,7 @@ def test_token_image_source_dirty_completion_counts_require_real_cursor_rowcount
     functions = {
         node.name: _function_source(TOKEN_IMAGE_SOURCE_DIRTY_TARGET_REPOSITORY_PATH, node)
         for node in ast.walk(tree)
-        if isinstance(node, ast.FunctionDef)
-        and node.name in {"mark_done", "mark_error", "_delete_claims_returning"}
+        if isinstance(node, ast.FunctionDef) and node.name in {"mark_done", "mark_error", "_delete_claims_returning"}
     }
     forbidden = (
         'getattr(cursor, "rowcount", 0)',
@@ -1792,7 +1810,7 @@ def test_asset_identity_current_changed_requires_cursor_rowcount_match() -> None
         "fetchone = getattr",
         "row = fetchone() if",
         "return row is not None",
-        "return bool(row and row[\"changed\"])",
+        'return bool(row and row["changed"])',
         "return bool(row and row['changed'])",
         "dict(row or {})",
         'getattr(cursor, "rowcount", 0)',
@@ -1810,7 +1828,7 @@ def test_asset_identity_current_changed_requires_cursor_rowcount_match() -> None
     assert "def _single_returning_changed(cursor: Any, row: Any | None) -> bool:" in repository_text
     assert "if count not in (0, 1):" in changed_source
     assert "if count != (1 if row is not None else 0):" in changed_source
-    assert "return row is not None and bool(row.get(\"changed\", True))" in changed_source
+    assert 'return row is not None and bool(row.get("changed", True))' in changed_source
 
 
 @pytest.mark.architecture
@@ -1933,6 +1951,22 @@ def test_cex_token_profile_repository_returning_write_requires_cursor_rowcount_m
     assert "_optional_returning_row(cursor, row)" in source
     assert "if count not in (0, 1):" in functions["_optional_returning_row"]
     assert "if count != (1 if row is not None else 0):" in functions["_optional_returning_row"]
+
+
+@pytest.mark.architecture
+def test_cex_token_profile_repository_requires_formal_raw_payload_without_empty_default() -> None:
+    repository_text = CEX_TOKEN_PROFILE_REPOSITORY_PATH.read_text(encoding="utf-8")
+
+    forbidden = (
+        "raw_payload or {}",
+        "raw_payload_json = Jsonb({})",
+    )
+
+    assert "def _required_raw_payload(value: Any) -> Any:" in repository_text
+    assert "cex_token_profile_repository_raw_payload_required" in repository_text
+    assert "cex_token_profile_repository_raw_payload_invalid" in repository_text
+    assert "Jsonb(_required_raw_payload(raw_payload))" in repository_text
+    assert [token for token in forbidden if token in repository_text] == []
 
 
 @pytest.mark.architecture

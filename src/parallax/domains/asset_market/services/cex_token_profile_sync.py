@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from contextlib import AbstractContextManager
 from typing import Any, cast
 
@@ -9,7 +10,7 @@ from parallax.domains.asset_market.repositories.cex_token_profile_repository imp
 
 
 def sync_cex_token_profiles(*, cex_token_profiles: Any, profile_source: Any, observed_at_ms: int) -> dict[str, Any]:
-    profiles = list(profile_source.token_profiles())
+    profiles = [_formal_profile(profile) for profile in profile_source.token_profiles()]
     profiles_seen = 0
     profiles_updated = 0
     missing_cex_tokens = 0
@@ -18,21 +19,19 @@ def sync_cex_token_profiles(*, cex_token_profiles: Any, profile_source: Any, obs
 
     with _transaction(cex_token_profiles.conn):
         for profile in profiles:
-            base_symbol = _field(profile, "base_symbol")
-            logo_url = _field(profile, "logo_url")
-            provider = _field(profile, "provider") or BINANCE_CEX_PROFILE_PROVIDER
-            if not base_symbol or not logo_url:
-                continue
+            base_symbol = profile["base_symbol"]
+            logo_url = profile["logo_url"]
+            provider = profile["provider"]
             profiles_seen += 1
             provider_name = provider_name or provider
             row = cex_token_profiles.upsert_ready_profile_if_token_exists(
                 base_symbol=base_symbol,
                 provider=provider,
-                symbol=_field(profile, "symbol") or base_symbol,
-                name=_field(profile, "name"),
+                symbol=profile["symbol"],
+                name=profile["name"],
                 logo_url=logo_url,
-                source_ref=_field(profile, "source_ref"),
-                raw_payload=_raw_payload(profile),
+                source_ref=profile["source_ref"],
+                raw_payload=profile["raw_payload"],
                 observed_at_ms=int(observed_at_ms),
                 commit=False,
             )
@@ -50,15 +49,47 @@ def sync_cex_token_profiles(*, cex_token_profiles: Any, profile_source: Any, obs
     }
 
 
-def _field(profile: Any, key: str) -> str | None:
-    value = profile.get(key) if isinstance(profile, dict) else getattr(profile, key, None)
+def _formal_profile(profile: Any) -> dict[str, Any]:
+    if not isinstance(profile, Mapping):
+        raise TypeError("cex_token_profile_sync_profile_mapping_required")
+    return {
+        "base_symbol": _required_text(profile, "base_symbol"),
+        "provider": _required_text(profile, "provider"),
+        "symbol": _required_text(profile, "symbol"),
+        "name": _optional_text(profile, "name"),
+        "logo_url": _required_url(profile, "logo_url"),
+        "source_ref": _required_text(profile, "source_ref"),
+        "raw_payload": _required_raw_payload(profile),
+    }
+
+
+def _optional_text(profile: Mapping[str, Any], key: str) -> str | None:
+    value = profile.get(key)
     text = str(value or "").strip()
     return text or None
 
 
-def _raw_payload(profile: Any) -> dict[str, Any]:
-    raw = profile.get("raw_payload") if isinstance(profile, dict) else getattr(profile, "raw_payload", None)
-    return dict(raw) if isinstance(raw, dict) else {}
+def _required_text(profile: Mapping[str, Any], key: str) -> str:
+    text = _optional_text(profile, key)
+    if text is None:
+        raise ValueError(f"cex_token_profile_sync_{key}_required")
+    return text
+
+
+def _required_url(profile: Mapping[str, Any], key: str) -> str:
+    text = _required_text(profile, key)
+    if not text.startswith(("http://", "https://")):
+        raise ValueError(f"cex_token_profile_sync_{key}_invalid")
+    return text
+
+
+def _required_raw_payload(profile: Mapping[str, Any]) -> dict[str, Any]:
+    raw = profile.get("raw_payload")
+    if raw is None:
+        raise TypeError("cex_token_profile_sync_raw_payload_required")
+    if not isinstance(raw, Mapping):
+        raise TypeError("cex_token_profile_sync_raw_payload_invalid")
+    return dict(raw)
 
 
 def _symbol_lookup_keys(symbol: Any) -> set[str]:
