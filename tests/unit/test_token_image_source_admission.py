@@ -3,6 +3,8 @@ from __future__ import annotations
 from hashlib import sha256
 from types import SimpleNamespace
 
+import pytest
+
 from parallax.domains.asset_market.services.token_image_source_admission import (
     TokenImageSourceCandidate,
     admit_token_image_sources,
@@ -21,7 +23,7 @@ def test_image_source_candidates_cover_all_exact_profile_source_families() -> No
         },
         binance_web3={
             "logo_url": "https://bin.bnbstatic.com/static/images/bonk.png",
-            "updated_at_ms": 202,
+            "observed_at_ms": 202,
         },
         gmgn_stream={
             "raw_payload_json": {"i": "https://gmgn.ai/external-res/stream-bonk.png"},
@@ -45,6 +47,59 @@ def test_image_source_candidates_cover_all_exact_profile_source_families() -> No
         ("okx_dex_evidence", "asset_identity_evidence.raw_payload_json.tokenLogoUrl"),
     ]
     assert [candidate.source_watermark_ms for candidate in candidates] == [101, 202, 303, 404]
+
+
+@pytest.mark.parametrize(
+    "source_row",
+    [
+        pytest.param({"logo_url": "https://gmgn.ai/external-res/missing.png"}, id="missing"),
+        pytest.param(
+            {
+                "logo_url": "https://gmgn.ai/external-res/updated-only.png",
+                "updated_at_ms": 202,
+            },
+            id="updated-only",
+        ),
+        pytest.param(
+            {
+                "logo_url": "https://gmgn.ai/external-res/zero.png",
+                "observed_at_ms": 0,
+            },
+            id="zero",
+        ),
+        pytest.param(
+            {
+                "logo_url": "https://gmgn.ai/external-res/negative.png",
+                "observed_at_ms": -1,
+            },
+            id="negative",
+        ),
+        pytest.param(
+            {
+                "logo_url": "https://gmgn.ai/external-res/bool.png",
+                "observed_at_ms": True,
+            },
+            id="bool",
+        ),
+        pytest.param(
+            {
+                "logo_url": "https://gmgn.ai/external-res/string.png",
+                "observed_at_ms": "1700000001000",
+            },
+            id="string",
+        ),
+    ],
+)
+def test_image_source_candidates_require_positive_observed_source_watermark(source_row: dict[str, object]) -> None:
+    with pytest.raises(ValueError, match="token_image_source_admission_source_watermark_required"):
+        image_source_candidates_for_target(
+            target={"target_type": "Asset", "target_id": "asset:sol:bonk"},
+            gmgn_openapi=source_row,
+            binance_web3=None,
+            gmgn_stream=None,
+            okx_dex=None,
+            cex_profile=None,
+        )
 
 
 def test_image_source_candidates_skip_invalid_and_placeholder_urls() -> None:

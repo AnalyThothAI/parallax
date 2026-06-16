@@ -28,7 +28,6 @@ class TokenImageSourceDirtyTargetRepository:
         records = _target_records(
             targets,
             reason=reason,
-            now_ms=int(now_ms),
             default_due_at_ms=int(due_at_ms if due_at_ms is not None else now_ms),
         )
         if not records:
@@ -433,7 +432,6 @@ def _target_records(
     targets: Iterable[Mapping[str, Any]],
     *,
     reason: str,
-    now_ms: int,
     default_due_at_ms: int,
 ) -> list[dict[str, Any]]:
     records: dict[tuple[str, str, str], dict[str, Any]] = {}
@@ -445,7 +443,7 @@ def _target_records(
         source_kind = _required_text(target.get("source_kind"), field_name="source_kind")
         raw_ref_payload = target.get("raw_ref_json") or {}
         raw_ref_json = postgres_safe_json(raw_ref_payload)
-        source_watermark_ms = int(target.get("source_watermark_ms") or target.get("observed_at_ms") or now_ms)
+        source_watermark_ms = _source_watermark_ms(target)
         record = {
             "source_url_hash": _source_url_hash(source_url),
             "source_url": source_url,
@@ -590,6 +588,18 @@ def _priority_value(target: Mapping[str, Any]) -> int:
     if raw_priority in (None, ""):
         return 100
     return int(str(raw_priority))
+
+
+def _source_watermark_ms(target: Mapping[str, Any]) -> int:
+    try:
+        value = target["source_watermark_ms"]
+    except KeyError as exc:
+        raise ValueError("token_image_source_dirty_target_source_watermark_required") from exc
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("token_image_source_dirty_target_source_watermark_required")
+    if value <= 0:
+        raise ValueError("token_image_source_dirty_target_source_watermark_required")
+    return int(value)
 
 
 def _required_max_attempts(value: Any) -> int:

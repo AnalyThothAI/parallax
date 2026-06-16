@@ -384,13 +384,12 @@ def _bounded_raw_ref(
 
 
 def _source_watermark_ms(row: dict[str, Any]) -> int:
-    observed = _int_or_none(row.get("observed_at_ms"))
-    if observed is not None:
-        return observed
-    updated = _int_or_none(row.get("updated_at_ms"))
-    if updated is not None:
-        return updated
-    return 0
+    value = row.get("observed_at_ms")
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("token_image_source_admission_source_watermark_required")
+    if value <= 0:
+        raise ValueError("token_image_source_admission_source_watermark_required")
+    return int(value)
 
 
 def _raw(row: dict[str, Any] | None) -> dict[str, Any]:

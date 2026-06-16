@@ -210,6 +210,40 @@ def _target() -> dict[str, Any]:
     }
 
 
+@pytest.mark.parametrize(
+    "target",
+    [
+        pytest.param({key: value for key, value in _target().items() if key != "source_watermark_ms"}, id="missing"),
+        pytest.param(
+            {
+                **{key: value for key, value in _target().items() if key != "source_watermark_ms"},
+                "observed_at_ms": NOW_MS - 1,
+            },
+            id="observed-at-only",
+        ),
+        pytest.param({**_target(), "source_watermark_ms": None}, id="none"),
+        pytest.param({**_target(), "source_watermark_ms": 0}, id="zero"),
+        pytest.param({**_target(), "source_watermark_ms": -1}, id="negative"),
+        pytest.param({**_target(), "source_watermark_ms": True}, id="bool"),
+        pytest.param({**_target(), "source_watermark_ms": "1700000001000"}, id="string"),
+    ],
+)
+def test_token_image_source_dirty_enqueue_requires_formal_source_watermark_without_runtime_fallback(
+    target: dict[str, Any],
+) -> None:
+    conn = _ScriptedConnection([])
+
+    with pytest.raises(ValueError, match="token_image_source_dirty_target_source_watermark_required"):
+        TokenImageSourceDirtyTargetRepository(conn).enqueue_targets(
+            [target],
+            reason="token_profile_current_source_admission",
+            now_ms=NOW_MS,
+            commit=False,
+        )
+
+    assert conn.sql == ""
+
+
 def _dirty_claim() -> dict[str, Any]:
     return {
         "source_url": SOURCE_URL,

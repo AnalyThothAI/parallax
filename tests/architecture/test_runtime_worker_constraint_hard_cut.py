@@ -159,6 +159,7 @@ TOKEN_PROFILE_CURRENT_REPOSITORY_PATH = SRC / "domains/asset_market/repositories
 TOKEN_IMAGE_SOURCE_DIRTY_TARGET_REPOSITORY_PATH = (
     SRC / "domains/asset_market/repositories/token_image_source_dirty_target_repository.py"
 )
+TOKEN_IMAGE_SOURCE_ADMISSION_SERVICE_PATH = SRC / "domains/asset_market/services/token_image_source_admission.py"
 TOKEN_IMAGE_ASSET_REPOSITORY_PATH = SRC / "domains/asset_market/repositories/token_image_asset_repository.py"
 IDENTITY_EVIDENCE_REPOSITORY_PATH = SRC / "domains/asset_market/repositories/identity_evidence_repository.py"
 REGISTRY_REPOSITORY_PATH = SRC / "domains/asset_market/repositories/registry_repository.py"
@@ -1748,6 +1749,32 @@ def test_token_image_source_dirty_completion_counts_require_real_cursor_rowcount
     assert "changed += _cursor_rowcount(cursor)" in functions["mark_error"]
     assert "rowcount = _cursor_rowcount(cursor)" in functions["_delete_claims_returning"]
     assert "if rowcount != len(rows):" in functions["_delete_claims_returning"]
+
+
+@pytest.mark.architecture
+def test_token_image_source_dirty_target_source_watermark_has_no_runtime_fallback() -> None:
+    repository_text = TOKEN_IMAGE_SOURCE_DIRTY_TARGET_REPOSITORY_PATH.read_text(encoding="utf-8")
+    admission_text = TOKEN_IMAGE_SOURCE_ADMISSION_SERVICE_PATH.read_text(encoding="utf-8")
+    repository_target_source = _function_source_by_name(
+        TOKEN_IMAGE_SOURCE_DIRTY_TARGET_REPOSITORY_PATH,
+        "_target_records",
+    )
+    admission_watermark_source = _function_source_by_name(
+        TOKEN_IMAGE_SOURCE_ADMISSION_SERVICE_PATH,
+        "_source_watermark_ms",
+    )
+    forbidden = (
+        'target.get("source_watermark_ms") or target.get("observed_at_ms")',
+        'target.get("observed_at_ms") or now_ms',
+        'target.get("source_watermark_ms") or now_ms',
+        'row.get("updated_at_ms")',
+        "return 0",
+    )
+
+    assert "token_image_source_dirty_target_source_watermark_required" in repository_text
+    assert "token_image_source_admission_source_watermark_required" in admission_text
+    assert [token for token in forbidden if token in repository_target_source] == []
+    assert [token for token in forbidden if token in admission_watermark_source] == []
 
 
 @pytest.mark.architecture

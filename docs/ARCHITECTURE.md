@@ -400,6 +400,11 @@ are wrong too.
    input to that writer: producers must pass positive source watermarks, and
    the dirty repository plus ops image repair must not synthesize them from
    `computed_at_ms`, `updated_at_ms`, tuple identity, or runtime `now_ms`.
+   `token_image_source_dirty_targets` is the image-mirror control plane:
+   Token Profile Current image admission must carry positive source-row
+   `observed_at_ms` as `source_watermark_ms`, and image-source dirty enqueue
+   must not synthesize that watermark from target-level `observed_at_ms`,
+   `updated_at_ms`, or runtime `now_ms`.
    Missing current rows may become explicit pending/unsupported public blocks,
    but malformed present rows are projection damage, not pending state.
    `news_items.content_class`, `news_items.content_tags_json`,

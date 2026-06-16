@@ -15926,6 +15926,51 @@ RepositorySession Unit of Work；失败时不能留下半个 snapshot 或半套 
 - Targeted ruff/mypy 通过。
 - 按当前用户指令，本轮不运行 integration-heavy gate。
 
+### Root447 - Token Image Source dirty enqueue 继续用 observed/updated/now 修补 source watermark
+
+发现：
+
+- `TokenImageSourceDirtyTargetRepository._target_records(...)` 原来会把缺失或 falsy 的
+  `source_watermark_ms` 依次修补成 target-level `observed_at_ms`，最后修补成 enqueue
+  时的运行时 `now_ms`。
+- `image_source_candidates_for_target(...)` 的 `_source_watermark_ms(...)` 原来先读源行
+  `observed_at_ms`，缺失时退到 `updated_at_ms`，再缺失时返回 `0`；随后 repository
+  又会把这个 `0` 洗成 `now_ms`。
+- 结果是 Token Profile Current 的图片 admission 可以把“源行没有事实观察时间”伪装成
+  “刚刚有新事实到达”，并把坏水位写入 `token_image_source_dirty_targets`。
+
+根因：
+
+- Root446 收紧的是 profile-current dirty queue，但 Token Image Mirror 还有一条相邻的
+  image-source dirty queue。两者都是控制面队列，`source_watermark_ms` 都承担事实前沿语义；
+  只修 profile-current queue 会留下一个同类入口。
+- `updated_at_ms` 是 source-cache 行的写入/处理时间，不是 provider logo URL 被观察到的事实时间。
+  target-level `observed_at_ms` 也不是 dirty command 的正式字段。把这些值当作 source watermark
+  会让控制面状态混入处理时间，破坏 Kappa/CQRS 中“事实时间”和“投影/队列运行时间”的分离。
+- 更深层是兼容性宽入口残留：为避免历史 source row 缺字段导致 admission 中断，service 和
+  repository 分别保留了 fallback。成熟的 CQRS 写入口不应该修补 malformed producer payload，
+  而应该 fail closed，让上游事实缺口暴露出来。
+
+修复：
+
+- `TokenImageSourceDirtyTargetRepository.enqueue_targets(...)` 现在只接受正整数
+  `source_watermark_ms`。
+- 缺失、target-level `observed_at_ms`、0、负数、bool、字符串等输入都在 SQL 前抛
+  `token_image_source_dirty_target_source_watermark_required`。
+- `image_source_candidates_for_target(...)` 现在只从正整数 source-row `observed_at_ms` 生成
+  image-source dirty watermark；缺失、`updated_at_ms` only、0、负数、bool、字符串都抛
+  `token_image_source_admission_source_watermark_required`。
+- Asset Market 架构、全局架构、Worker Flow、Workers inventory、SDD 与 architecture guard
+  同步禁止 `updated_at_ms`、target-level `observed_at_ms`、runtime `now_ms` 水位修补回归。
+
+验证：
+
+- RED：新增 dirty repository、admission service、architecture guard 后，当前实现出现 `13 failed`，
+  证明旧代码确实接受了缺失/非法水位并依赖兼容兜底。
+- GREEN：同一聚焦命令转为 `14 passed`；Token Image Source dirty/admission/image mirror 非集成组
+  通过，`69 passed`。
+- 按当前用户指令，本轮不运行 integration-heavy gate。
+
 ## 剩余风险和建议
 
 1. 如果 Stocks Radar 需要真实 quote，必须新建 persisted quote fact/current read model，而不是恢复 request-time provider。
