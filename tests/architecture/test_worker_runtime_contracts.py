@@ -2052,9 +2052,11 @@ def test_token_image_mirror_worker_uses_formal_settings_contract_without_runtime
         'getattr(self.settings, "batch_size"',
         'getattr(self.settings, "lease_ms"',
         'getattr(self.settings, "retry_ms"',
+        'getattr(self.settings, "max_attempts"',
         'getattr(self.settings, "source_limit"',
         '"statement_timeout_seconds", 120.0',
         '"batch_size", 100',
+        '"max_attempts", 3',
     )
     violations = [token for token in forbidden_tokens if token in source]
 
@@ -2063,6 +2065,7 @@ def test_token_image_mirror_worker_uses_formal_settings_contract_without_runtime
     assert "limit=max(1, int(self.settings.batch_size))" in source
     assert "lease_ms=max(1, int(self.settings.lease_ms))" in source
     assert "retry_ms=max(1, int(self.settings.retry_ms))" in source
+    assert "max_attempts=int(self.settings.max_attempts)" in source
     service_forbidden_tokens = (
         "TOKEN_IMAGE_MIRROR_RETRY_MS",
         "retry_ms: int =",
@@ -2070,6 +2073,7 @@ def test_token_image_mirror_worker_uses_formal_settings_contract_without_runtime
     service_violations = [token for token in service_forbidden_tokens if token in service_source]
     assert service_violations == []
     assert "retry_ms: int = Field(default=300_000, ge=1)" in settings_class
+    assert "max_attempts: int = Field(default=3, ge=1)" in settings_class
 
 
 @pytest.mark.architecture

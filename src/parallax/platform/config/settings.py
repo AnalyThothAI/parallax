@@ -995,6 +995,7 @@ class TokenImageMirrorWorkerSettings(PerWorkerSettings):
     batch_size: int = Field(default=100, ge=1)
     source_limit: int = Field(default=5000, ge=0)
     retry_ms: int = Field(default=300_000, ge=1)
+    max_attempts: int = Field(default=3, ge=1)
     statement_timeout_seconds: float = Field(default=120.0, ge=0)
     advisory_lock_key: int = 2026052111
 
@@ -1921,6 +1922,7 @@ token_image_mirror:
   batch_size: 100
   source_limit: 5000
   retry_ms: 300000
+  max_attempts: 3
   statement_timeout_seconds: 120.0
   advisory_lock_key: 2026052111
 token_radar_projection:

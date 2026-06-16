@@ -376,6 +376,7 @@ def test_worker_factory_wires_notification_workers_with_shared_local_wake_waiter
     assert isinstance(workers["notification_rule"], NotificationWorker)
     assert isinstance(workers["notification_delivery"], NotificationDeliveryWorker)
     assert workers["notification_rule"].delivery_wake is workers["notification_delivery"].wake_waiter
+    assert workers["notification_delivery"].wake_waiter.close() is None
     assert workers["notification_rule"].settings.batch_size == 50
     assert workers["notification_rule"].settings.statement_timeout_seconds == 30
     assert workers["notification_delivery"].settings.batch_size == 1

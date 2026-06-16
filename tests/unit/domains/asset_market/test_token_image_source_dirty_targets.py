@@ -49,7 +49,14 @@ def test_existing_by_source_targets_loads_exact_dirty_target_keys() -> None:
         lambda repo: repo.enqueue_targets([_target()], reason="token_profile_current_source_admission", now_ms=NOW_MS),
         lambda repo: repo.claim_due(now_ms=NOW_MS, limit=25, lease_owner="token_image_mirror", lease_ms=600_000),
         lambda repo: repo.mark_done([_dirty_claim()], now_ms=NOW_MS),
-        lambda repo: repo.mark_error([_dirty_claim()], error="mirror failed", retry_ms=300_000, now_ms=NOW_MS),
+        lambda repo: repo.mark_error(
+            [_dirty_claim()],
+            error="mirror failed",
+            retry_ms=300_000,
+            max_attempts=3,
+            worker_name="token_image_mirror",
+            now_ms=NOW_MS,
+        ),
     ],
 )
 def test_token_image_source_dirty_mutations_require_connection_transaction_before_sql_when_committing(
@@ -73,6 +80,8 @@ def test_token_image_source_dirty_mutations_require_connection_transaction_befor
                 [claim],
                 error="mirror failed",
                 retry_ms=300_000,
+                max_attempts=3,
+                worker_name="token_image_mirror",
                 now_ms=NOW_MS,
                 commit=False,
             ),
@@ -106,6 +115,8 @@ def test_token_image_source_dirty_completion_requires_claim_attempt_field_withou
                 [claim],
                 error="mirror failed",
                 retry_ms=300_000,
+                max_attempts=3,
+                worker_name="token_image_mirror",
                 now_ms=NOW_MS,
                 commit=False,
             ),
@@ -144,7 +155,43 @@ def test_token_image_source_dirty_completion_counts_reject_invalid_cursor_rowcou
     repo = TokenImageSourceDirtyTargetRepository(conn)
 
     with pytest.raises(TypeError, match="token_image_source_dirty_target_rowcount_invalid"):
-        repo.mark_error([_dirty_claim()], error="mirror failed", retry_ms=30_000, now_ms=NOW_MS, commit=False)
+        repo.mark_error(
+            [_dirty_claim()],
+            error="mirror failed",
+            retry_ms=30_000,
+            max_attempts=3,
+            worker_name="token_image_mirror",
+            now_ms=NOW_MS,
+            commit=False,
+        )
+
+
+def test_token_image_source_dirty_error_terminalizes_exhausted_claim() -> None:
+    conn = _TerminalizingConnection()
+    repo = TokenImageSourceDirtyTargetRepository(conn)
+    claim = _dirty_claim()
+
+    changed = repo.mark_error(
+        [claim],
+        error="mirror failed",
+        retry_ms=30_000,
+        max_attempts=1,
+        worker_name="token_image_mirror",
+        now_ms=NOW_MS,
+        commit=False,
+    )
+
+    assert changed == 1
+    assert "DELETE FROM token_image_source_dirty_targets queue" in conn.sql_log[0]
+    assert any("INSERT INTO worker_queue_terminal_events" in sql for sql in conn.sql_log)
+    assert conn.terminal_params["worker_name"] == "token_image_mirror"
+    assert conn.terminal_params["source_table"] == "token_image_source_dirty_targets"
+    assert conn.terminal_params["target_key"] == f"{claim['source_url_hash']}:Asset:asset-alpha"
+    assert conn.terminal_params["final_status"] == "terminal"
+    assert conn.terminal_params["final_reason"] == "image_mirror_retry_budget_exhausted: mirror failed"
+    assert conn.terminal_params["final_reason_bucket"] == "retry_budget_exhausted"
+    assert conn.terminal_params["attempt_count"] == 1
+    assert conn.terminal_params["payload_hash"] == "payload-alpha"
 
 
 NOW_MS = 1_700_000_000_000
@@ -206,6 +253,54 @@ class _RowcountCursor:
     def __init__(self, rowcount: Any) -> None:
         if rowcount is not None:
             self.rowcount = rowcount
+
+
+class _TerminalizingConnection:
+    def __init__(self) -> None:
+        self.sql_log: list[str] = []
+        self.terminal_params: dict[str, Any] = {}
+
+    def execute(self, sql: str, params: dict[str, Any] | None = None) -> _TerminalizingCursor:
+        text = str(sql)
+        self.sql_log.append(text)
+        if "DELETE FROM token_image_source_dirty_targets queue" in text:
+            source_row = {
+                **_dirty_claim(),
+                "source_provider": "gmgn",
+                "source_kind": "asset_profiles.logo_url",
+                "raw_ref_json": {"asset_id": "asset-alpha"},
+                "source_watermark_ms": NOW_MS,
+                "priority": 30,
+                "first_dirty_at_ms": NOW_MS - 100,
+            }
+            return _TerminalizingCursor(rowcount=1, rows=[source_row])
+        if "SELECT terminal_generation" in text:
+            return _TerminalizingCursor(rowcount=0, row=None)
+        if "SELECT COALESCE(MAX(terminal_generation), 0) + 1 AS terminal_generation" in text:
+            return _TerminalizingCursor(rowcount=1, row={"terminal_generation": 1})
+        if "INSERT INTO worker_queue_terminal_events" in text:
+            self.terminal_params = dict(params or {})
+            return _TerminalizingCursor(rowcount=1, row=self.terminal_params)
+        raise AssertionError(f"unexpected SQL: {text}")
+
+
+class _TerminalizingCursor:
+    def __init__(
+        self,
+        *,
+        rowcount: int,
+        rows: list[dict[str, Any]] | None = None,
+        row: dict[str, Any] | None = None,
+    ) -> None:
+        self.rowcount = rowcount
+        self._rows = rows if rows is not None else []
+        self._row = row
+
+    def fetchall(self) -> list[dict[str, Any]]:
+        return list(self._rows)
+
+    def fetchone(self) -> dict[str, Any] | None:
+        return self._row
 
 
 class _MissingTransactionConnection:

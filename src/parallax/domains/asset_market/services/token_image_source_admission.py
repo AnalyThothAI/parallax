@@ -11,6 +11,7 @@ BINANCE_WEB3_PROFILE_PROVIDER = "binance_web3_profile"
 GMGN_STREAM_PROFILE_PROVIDER = "gmgn_stream_snapshot"
 OKX_DEX_PROFILE_PROVIDER = "okx_dex_evidence"
 BINANCE_CEX_PROFILE_PROVIDER = "binance_cex_profile"
+TOKEN_IMAGE_MIRROR_WORKER = "token_image_mirror"
 
 DIRTY_REASON = "token_profile_current_source_admission"
 
@@ -22,6 +23,7 @@ _COUNT_KEYS = (
     "error_existing",
     "unsupported_existing",
     "dirty_existing",
+    "terminal_existing",
 )
 
 
@@ -154,12 +156,17 @@ def admit_token_image_sources(
     asset_rows = repos.token_image_assets.by_source_urls(source_urls)
     dirty_identities = [_dirty_identity(candidate) for candidate in unique_candidates]
     dirty_rows = repos.token_image_source_dirty_targets.existing_by_source_targets(dirty_identities)
+    terminal_rows = repos.token_image_source_dirty_targets.unresolved_terminal_by_source_targets(
+        dirty_identities,
+        worker_name=TOKEN_IMAGE_MIRROR_WORKER,
+    )
 
     enqueues: list[dict[str, Any]] = []
     image_states: dict[tuple[str, str, str], dict[str, Any]] = {}
     for candidate in unique_candidates:
         source_key = _candidate_key(candidate)
         asset_row = asset_rows.get(candidate.source_url)
+        terminal_row = terminal_rows.get(source_key)
         if asset_row:
             status = _clean(asset_row.get("status"))
             if status in {"ready", "unsupported"}:
@@ -168,6 +175,14 @@ def admit_token_image_sources(
                 continue
             if status == "pending":
                 counts["pending_existing"] += 1
+                if terminal_row is not None:
+                    counts["terminal_existing"] += 1
+                    image_states[source_key] = _terminal_image_state(
+                        candidate,
+                        terminal_row=terminal_row,
+                        asset_row=asset_row,
+                    )
+                    continue
                 dirty_row = dirty_rows.get(source_key)
                 if dirty_row is not None:
                     counts["dirty_existing"] += 1
@@ -193,6 +208,14 @@ def admit_token_image_sources(
                 continue
             if status == "error":
                 counts["error_existing"] += 1
+                if terminal_row is not None:
+                    counts["terminal_existing"] += 1
+                    image_states[source_key] = _terminal_image_state(
+                        candidate,
+                        terminal_row=terminal_row,
+                        asset_row=asset_row,
+                    )
+                    continue
                 dirty_row = dirty_rows.get(source_key)
                 if dirty_row is not None:
                     counts["dirty_existing"] += 1
@@ -211,6 +234,11 @@ def admit_token_image_sources(
                     due_at_ms = max(int(now_ms), _int_or_zero(asset_row.get("next_refresh_at_ms")))
                     enqueues.append(candidate.as_dirty_target(due_at_ms=due_at_ms))
                 continue
+
+        if terminal_row is not None:
+            counts["terminal_existing"] += 1
+            image_states[source_key] = _terminal_image_state(candidate, terminal_row=terminal_row, asset_row=None)
+            continue
 
         dirty_row = dirty_rows.get(source_key)
         if dirty_row is not None:
@@ -299,6 +327,32 @@ def _dirty_identity(candidate: TokenImageSourceCandidate) -> dict[str, Any]:
         "target_type": candidate.target_type,
         "target_id": candidate.target_id,
     }
+
+
+def _terminal_image_state(
+    candidate: TokenImageSourceCandidate,
+    *,
+    terminal_row: dict[str, Any],
+    asset_row: dict[str, Any] | None,
+) -> dict[str, Any]:
+    state = {
+        "status": "error",
+        "source_url": candidate.source_url,
+        "source_provider": candidate.source_provider,
+        "source_url_hash": candidate.source_url_hash,
+        "target_type": candidate.target_type,
+        "target_id": candidate.target_id,
+        "terminal_id": terminal_row.get("terminal_id"),
+        "terminal_final_reason": terminal_row.get("final_reason"),
+        "terminalized_at_ms": terminal_row.get("terminalized_at_ms"),
+    }
+    if asset_row is not None:
+        state["asset_status"] = asset_row.get("status")
+        state["last_error"] = asset_row.get("last_error")
+        state["next_refresh_at_ms"] = asset_row.get("next_refresh_at_ms")
+    else:
+        state["last_error"] = terminal_row.get("final_reason")
+    return state
 
 
 def _candidate_key(candidate: TokenImageSourceCandidate) -> tuple[str, str, str]:

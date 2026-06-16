@@ -15779,6 +15779,37 @@ RepositorySession Unit of Work；失败时不能留下半个 snapshot 或半套 
 - Docker Compose 配置校验通过；`make docker-up` 已越过 `parallax config` 初始化，但在访问本机 Docker daemon socket `/Users/qinghuan/.docker/run/docker.sock` 时被系统拒绝，属于当前环境权限阻塞而不是 Compose 配置解析失败。
 - 按当前用户指令，本轮不运行 integration-heavy gate。
 
+### Root442 - Token Image Mirror 失败源没有正式 retry budget 和终态阻断
+
+发现：
+
+- `TokenImageMirrorWorker` 的失败路径已经把 `token_image_source_dirty_targets` 交给 repository `mark_error(...)` 处理，并读取 `self.settings.max_attempts`。
+- 但正式 `TokenImageMirrorWorkerSettings` 和默认 `workers.yaml` 模板没有 `max_attempts` 字段；单测 fake settings 临时带了该字段，所以真实 settings 启动路径反而更容易暴露问题。
+- 对坏 provider logo URL，如果只做 retry/update 而没有 exhausted terminal ledger 和 re-admission 阻断，同一个 `source_url_hash:target_type:target_id` 会被 Token Profile projection 反复重新放回 dirty queue。
+
+根因：
+
+- 这是 worker 运行时实现、正式配置面、控制面状态机三者脱节。成熟 Kappa/CQRS 里，retry cadence、retry budget、terminal ledger 都是可审计的控制面事实，不能只存在于 worker fake 或隐式对象属性上。
+- `retry_ms` 决定“下一次什么时候试”，`max_attempts` 决定“什么时候承认这条输入不可继续自动处理”。二者混在一起会造成 backlog 看起来只是延迟，实际是坏源无限再入队。
+- `token_image_source_dirty_targets` 是控制面队列，不是事实源。耗尽重试后应该删除 claim 并写 `worker_queue_terminal_events`，让 operator action 成为恢复入口，而不是让 profile projection 下一轮又自动补回同一条坏任务。
+
+修复：
+
+- `TokenImageMirrorWorkerSettings` 新增正式 `max_attempts: int = Field(default=3, ge=1)`，默认 workers YAML 同步输出 `token_image_mirror.max_attempts: 3`。
+- `TokenImageSourceDirtyTargetRepository.mark_error(...)` 按 claimed-row `attempt_count` 与正式 `max_attempts` 分类：未耗尽则按 `retry_ms` 释放重试，耗尽则 CAS 删除源 dirty row，并在同一连接事务里写 `worker_queue_terminal_events`。
+- terminal target key 固定为 `source_url_hash:target_type:target_id`，payload hash、lease owner、attempt count 都来自 claimed row，不重新计算或补默认值。
+- Token Profile image-source admission 查询 unresolved terminal events；同一个 image source target 在 operator resolve 之前不会被再次 enqueue。
+- CLI queue retry 支持 `token_image_mirror` / `token_image_source_dirty_targets`，保留人工解除终态后的恢复入口。
+
+验证：
+
+- 聚焦命令通过：正式 workers 默认值、exhausted terminalization、image mirror worker/source admission/profile current、architecture settings contract，`28 passed`。
+- 更宽非集成组合通过：image-source dirty repository、image mirror worker、source admission、profile current、CLI queue ops、bootstrap wiring、worker settings，`78 passed`。
+- Architecture guard 通过：image-source dirty connection transaction、rowcount evidence、TokenImageMirror formal settings contract，`3 passed`。
+- Targeted ruff/mypy、SDD validation、`git diff --check`、`docker compose config --quiet` 通过。
+- `make docker-up` 已越过 `parallax config` 初始化并确认使用 `/Users/qinghuan/.parallax/config.yaml` 与 `/Users/qinghuan/.parallax/workers.yaml`，但访问 `/Users/qinghuan/.docker/run/docker.sock` 被当前宿主环境拒绝，属于 Docker daemon 权限阻塞，不是 Compose 配置解析或应用配置失败。
+- 按当前用户指令，本轮不运行 integration-heavy gate。
+
 ## 剩余风险和建议
 
 1. 如果 Stocks Radar 需要真实 quote，必须新建 persisted quote fact/current read model，而不是恢复 request-time provider。

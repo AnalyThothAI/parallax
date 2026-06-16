@@ -159,24 +159,24 @@ done/error changed-row counts use `_cursor_rowcount(cursor)` and fail as
 `token_image_source_dirty_target_rowcount_required` /
 `token_image_source_dirty_target_rowcount_invalid` before reporting zero changed
 image-source targets
-(`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:231`,
-`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:250`,
-`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:261`,
-`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:265`,
-`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:298`,
-`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:314`,
-`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:516`,
-`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:520`,
-`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:522`,
-`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:524`,
-`tests/unit/domains/asset_market/test_token_image_source_dirty_targets.py:133`,
-`tests/unit/domains/asset_market/test_token_image_source_dirty_targets.py:137`,
-`tests/unit/domains/asset_market/test_token_image_source_dirty_targets.py:142`,
-`tests/unit/domains/asset_market/test_token_image_source_dirty_targets.py:146`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1223`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1224`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1228`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1231`).
+(`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:347`,
+`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:363`,
+`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:414`,
+`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:645`,
+`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:649`,
+`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:651`,
+`tests/unit/domains/asset_market/test_token_image_source_dirty_targets.py:144`,
+`tests/unit/domains/asset_market/test_token_image_source_dirty_targets.py:148`,
+`tests/unit/domains/asset_market/test_token_image_source_dirty_targets.py:152`,
+`tests/unit/domains/asset_market/test_token_image_source_dirty_targets.py:157`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1686`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1706`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1707`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1708`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1709`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1710`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1711`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1712`).
 
 Follow-up review found the same write-evidence gap at the token fact root:
 the token evidence and token intent insert paths now use `RETURNING *` with
@@ -461,12 +461,16 @@ claimed-row `source_url_hash`; missing source hashes fail before SQL and must no
 be restored by hashing the claimed `source_url`. Unit coverage asserts the
 missing field produces a `KeyError` cause before SQL, while the architecture
 guard rejects the old fallback tokens and requires direct `claim["source_url_hash"]`
-(`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:400`,
-`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:429`,
-`tests/unit/domains/asset_market/test_token_image_source_dirty_targets.py:121`,
-`tests/unit/domains/asset_market/test_token_image_source_dirty_targets.py:129`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1784`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1789`).
+(`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:528`,
+`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:530`,
+`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:531`,
+`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:637`,
+`tests/unit/domains/asset_market/test_token_image_source_dirty_targets.py:127`,
+`tests/unit/domains/asset_market/test_token_image_source_dirty_targets.py:132`,
+`tests/unit/domains/asset_market/test_token_image_source_dirty_targets.py:140`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2100`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2101`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2105`).
 
 Follow-up review found the same payload fallback one layer downstream in the
 Pulse Candidate worker: exit suppression for a missing current Radar row wrote
@@ -712,17 +716,17 @@ fallback
 `tests/unit/test_discovery_repository.py:426`,
 `tests/unit/test_discovery_repository.py:440`,
 `tests/unit/test_discovery_repository.py:457`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2623`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2635`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2637`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2639`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2645`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2652`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2658`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2661`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2662`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2664`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2678`).
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2680`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2682`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2683`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2684`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2687`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2688`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2689`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2692`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2696`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2697`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2699`).
 
 Follow-up review found the same rowcount evidence gap in `enriched_events`
 event-anchor lifecycle accounting: `attach_backfill_capture` and
@@ -1095,8 +1099,9 @@ attempt, and fail before SQL without synthesizing zero attempts
 `src/parallax/domains/asset_market/repositories/asset_profile_refresh_target_repository.py:57`,
 `src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:380`,
 `src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:403`,
-`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:405`,
-`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:429`,
+`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:68`,
+`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:501`,
+`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:543`,
 `src/parallax/domains/asset_market/repositories/asset_profile_refresh_target_repository.py:365`,
 `src/parallax/domains/asset_market/repositories/asset_profile_refresh_target_repository.py:389`,
 `tests/unit/domains/asset_market/test_token_profile_current_dirty_targets.py:184`,
@@ -1209,11 +1214,10 @@ Follow-up review found the same repository-owned manual commit root in the
 Token Image Source dirty queue repository: image-source dirty enqueue,
 due-claim, done, and error paths executed `token_image_source_dirty_targets`
 SQL before direct connection commit when the repository owned the commit
-(src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:18,
-src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:67,
-src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:162,
-src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:250,
-src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:298,
+(src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:68,
+src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:163,
+src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:291,
+src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:347,
 src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:467).
 The target contract is that repository-owned Token Image Source dirty queue
 mutations enter the connection transaction before SQL; empty inputs may return
@@ -4269,6 +4273,7 @@ come from PostgreSQL changed-row evidence rather than application-side
 - AC435. WHEN `ProjectionValidationAudit.run(...)` validates sampled Token Radar current-row references THEN it SHALL compute checked and missing intent/asset counts through one sampled aggregate SQL using `sampled_radar_rows`, `LEFT JOIN token_intents`, `LEFT JOIN registry_assets`, and `COUNT(*) FILTER`; it SHALL NOT loop over sampled rows to issue one `token_intents` or `registry_assets` `SELECT` per row.
 - AC436. WHEN `NewsItemProcessWorker` enqueues page or item-brief dirty targets for processed news items THEN `source_watermark_ms` SHALL come only from positive persisted `news_items.fetched_at_ms` or `news_items.published_at_ms`, missing source time SHALL fail closed with `news_item_process_source_watermark_required`, and the worker SHALL NOT use runtime `now_ms`, `fallback_ms`, or processing time as a source-watermark fallback.
 - AC437. WHEN `build_news_page_row(...)` publishes `news_page_rows.latest_at_ms` THEN it SHALL use only positive canonical item `published_at_ms`, missing or invalid published time SHALL fail closed with `news_page_projection_published_at_required`, and page projection SHALL NOT use `computed_at_ms`, `fetched_at_ms`, or worker processing time as a `latest_at_ms` fallback.
+- AC438. WHEN `TokenImageMirrorWorker` handles failed `token_image_source_dirty_targets` THEN dirty-source retry budget SHALL come from formal `settings.workers.token_image_mirror.max_attempts`, retryable claims SHALL reschedule in `token_image_source_dirty_targets`, exhausted claims SHALL be deleted and terminalized in `worker_queue_terminal_events` with target key `source_url_hash:target_type:target_id`, and Token Profile image admission SHALL NOT re-enqueue unresolved terminal events before operator action.
 
 ## Risks
 

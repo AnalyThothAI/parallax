@@ -182,6 +182,40 @@ def _retry_pulse_agent_job(
     return {"requeued": 1, "job": row}
 
 
+def _retry_token_image_source_target(
+    repos: object,
+    event: dict[str, Any],
+    *,
+    now_ms: int,
+    reason: str,
+) -> dict[str, Any]:
+    try:
+        enqueue_targets = cast(Any, repos).token_image_source_dirty_targets.enqueue_targets
+    except AttributeError as exc:
+        raise ValueError("token_image_source_dirty_target_repository_required") from exc
+    if not callable(enqueue_targets):
+        raise ValueError("token_image_source_dirty_target_repository_required")
+    source_row = _source_row(event)
+    target = {**source_row, "due_at_ms": int(now_ms)}
+    requeued = enqueue_targets(
+        [target],
+        reason=f"terminal_retry:{reason}",
+        now_ms=int(now_ms),
+        due_at_ms=int(now_ms),
+        commit=False,
+    )
+    requeued_count = int((requeued or {}).get("targets") or 0)
+    if requeued_count <= 0:
+        raise ValueError("token_image_source_retry_not_requeued")
+    return {
+        "requeued": requeued_count,
+        "source_url": str(source_row.get("source_url") or ""),
+        "target_type": str(source_row.get("target_type") or ""),
+        "target_id": str(source_row.get("target_id") or ""),
+        "due_at_ms": int(now_ms),
+    }
+
+
 def _source_row(event: dict[str, Any]) -> dict[str, Any]:
     source_row = event.get("source_row_json")
     if not isinstance(source_row, dict):
@@ -217,6 +251,7 @@ QUEUE_RETRY_TRANSITIONS = {
     ("resolution_refresh", "token_discovery_dirty_lookup_keys"): _retry_discovery_lookup_key,
     ("event_anchor_backfill", "event_anchor_backfill_jobs"): _retry_event_anchor_job,
     ("pulse_candidate", "pulse_agent_jobs"): _retry_pulse_agent_job,
+    ("token_image_mirror", "token_image_source_dirty_targets"): _retry_token_image_source_target,
 }
 
 

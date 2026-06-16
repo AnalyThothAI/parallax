@@ -130,6 +130,8 @@ class TokenImageMirrorWorker(WorkerBase):
                 claims,
                 error=error,
                 retry_ms=max(1, int(self.settings.retry_ms)),
+                max_attempts=int(self.settings.max_attempts),
+                worker_name=self.name,
                 now_ms=now_ms,
                 commit=False,
             )

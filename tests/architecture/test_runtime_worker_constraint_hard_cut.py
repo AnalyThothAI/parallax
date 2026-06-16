@@ -1689,8 +1689,14 @@ def test_token_image_source_dirty_completion_counts_require_real_cursor_rowcount
     completion_sources = "\n".join(
         _function_source(TOKEN_IMAGE_SOURCE_DIRTY_TARGET_REPOSITORY_PATH, node)
         for node in ast.walk(tree)
-        if isinstance(node, ast.FunctionDef) and node.name in {"mark_done", "mark_error"}
+        if isinstance(node, ast.FunctionDef) and node.name in {"mark_done", "mark_error", "_delete_claims_returning"}
     )
+    functions = {
+        node.name: _function_source(TOKEN_IMAGE_SOURCE_DIRTY_TARGET_REPOSITORY_PATH, node)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
+        and node.name in {"mark_done", "mark_error", "_delete_claims_returning"}
+    }
     forbidden = (
         'getattr(cursor, "rowcount", 0)',
         'int(getattr(cursor, "rowcount", 0) or 0)',
@@ -1700,7 +1706,10 @@ def test_token_image_source_dirty_completion_counts_require_real_cursor_rowcount
     assert "def _cursor_rowcount(cursor: Any) -> int:" in repository_text
     assert "token_image_source_dirty_target_rowcount_required" in repository_text
     assert "token_image_source_dirty_target_rowcount_invalid" in repository_text
-    assert completion_sources.count("return _cursor_rowcount(cursor)") == 2
+    assert "return _cursor_rowcount(cursor)" in functions["mark_done"]
+    assert "changed += _cursor_rowcount(cursor)" in functions["mark_error"]
+    assert "rowcount = _cursor_rowcount(cursor)" in functions["_delete_claims_returning"]
+    assert "if rowcount != len(rows):" in functions["_delete_claims_returning"]
 
 
 @pytest.mark.architecture

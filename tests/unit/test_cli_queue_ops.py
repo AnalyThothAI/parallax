@@ -197,6 +197,82 @@ def test_queue_resolve_retry_uses_registered_transition(monkeypatch) -> None:
     ]
 
 
+def test_queue_resolve_retry_requeues_token_image_source_terminal(monkeypatch) -> None:
+    from parallax.app.surfaces.cli.commands import ops as ops_module
+
+    source_row = {
+        "source_url_hash": "hash-image-source",
+        "source_url": "https://gmgn.ai/external-res/logo.png",
+        "source_provider": "gmgn_dex_profile",
+        "source_kind": "asset_profiles.logo_url",
+        "target_type": "Asset",
+        "target_id": "asset:sol:logo",
+        "raw_ref_json": {"asset_id": "asset:sol:logo"},
+        "source_watermark_ms": 1_700_000_000_000,
+        "priority": 20,
+        "payload_hash": "payload-image-source",
+    }
+    conn = _FakeTerminalConnection()
+    conn.rows = [
+        _terminal_row(
+            "terminal-image-1",
+            worker_name="token_image_mirror",
+            source_table="token_image_source_dirty_targets",
+            target_key="hash-image-source:Asset:asset:sol:logo",
+            source_row_json=source_row,
+        )
+    ]
+    repos = SimpleNamespace(
+        signals=SimpleNamespace(conn=conn),
+        token_image_source_dirty_targets=_FakeTokenImageSourceRetryRepository(),
+    )
+
+    @contextmanager
+    def fake_repositories(_settings: object):
+        yield repos
+
+    monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: SimpleNamespace())
+    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
+    monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_700_000_100_000)
+    stdout = io.StringIO()
+
+    code = main(
+        [
+            "ops",
+            "queue-resolve",
+            "--terminal-id",
+            "terminal-image-1",
+            "--action",
+            "retry",
+            "--reason",
+            "operator checked image source",
+            "--execute",
+        ],
+        stdout=stdout,
+    )
+
+    payload = json.loads(stdout.getvalue())
+    assert code == 0
+    assert payload["ok"] is True
+    assert payload["data"]["operator_action"] == "retry"
+    assert payload["data"]["transition"] == {
+        "requeued": 1,
+        "source_url": "https://gmgn.ai/external-res/logo.png",
+        "target_type": "Asset",
+        "target_id": "asset:sol:logo",
+        "due_at_ms": 1_700_000_100_000,
+    }
+    assert repos.token_image_source_dirty_targets.calls == [
+        {
+            "targets": [{**source_row, "due_at_ms": 1_700_000_100_000}],
+            "reason": "terminal_retry:operator checked image source",
+            "now_ms": 1_700_000_100_000,
+            "due_at_ms": 1_700_000_100_000,
+            "commit": False,
+        }
+    ]
+
+
 def test_queue_resolve_retry_rolls_back_when_transition_requeues_nothing(monkeypatch) -> None:
     from parallax.app.surfaces.cli.commands import ops as ops_module
 
@@ -302,6 +378,7 @@ def test_queue_retry_transitions_cover_phase_five_terminal_queues() -> None:
         ("resolution_refresh", "token_discovery_dirty_lookup_keys"),
         ("event_anchor_backfill", "event_anchor_backfill_jobs"),
         ("pulse_candidate", "pulse_agent_jobs"),
+        ("token_image_mirror", "token_image_source_dirty_targets"),
     }
     assert ("mention_semantics", "token_mention_semantics") not in queue_ops.QUEUE_RETRY_TRANSITIONS
 
@@ -379,3 +456,12 @@ class _FakeEmptyDiscoveryRetryRepository(_FakeDiscoveryRetryRepository):
     def enqueue_lookup_keys(self, lookup_keys, **kwargs):
         self.calls.append({"lookup_keys": list(lookup_keys), **kwargs})
         return 0
+
+
+class _FakeTokenImageSourceRetryRepository:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def enqueue_targets(self, targets, **kwargs):
+        self.calls.append({"targets": [dict(target) for target in targets], **kwargs})
+        return {"targets": len(targets)}

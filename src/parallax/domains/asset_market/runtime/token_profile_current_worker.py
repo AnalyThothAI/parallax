@@ -197,6 +197,7 @@ def _record_image_admission(result: dict[str, Any], counts: dict[str, int]) -> N
     result["image_error_existing"] += int(counts.get("error_existing") or 0)
     result["image_unsupported_existing"] += int(counts.get("unsupported_existing") or 0)
     result["image_dirty_existing"] += int(counts.get("dirty_existing") or 0)
+    result["image_terminal_existing"] += int(counts.get("terminal_existing") or 0)
 
 
 def _empty_result(*, now_ms: int) -> dict[str, Any]:
@@ -219,6 +220,7 @@ def _empty_result(*, now_ms: int) -> dict[str, Any]:
         "image_error_existing": 0,
         "image_unsupported_existing": 0,
         "image_dirty_existing": 0,
+        "image_terminal_existing": 0,
         "source_provider": {},
         "started_at_ms": int(now_ms),
         "finished_at_ms": int(now_ms),

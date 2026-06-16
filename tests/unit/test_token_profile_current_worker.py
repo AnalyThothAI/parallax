@@ -619,6 +619,10 @@ class FakeImageSourceDirtyTargets:
             in self.rows
         }
 
+    def unresolved_terminal_by_source_targets(self, targets, *, worker_name):
+        assert worker_name == "token_image_mirror"
+        return {}
+
     def enqueue_targets(self, targets, *, reason, now_ms, commit=True):
         self.enqueue_calls.append({"reason": reason, "now_ms": now_ms, "commit": commit})
         self.enqueued.extend(dict(target) for target in targets)

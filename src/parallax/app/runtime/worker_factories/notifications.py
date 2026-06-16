@@ -83,3 +83,6 @@ class _LocalWakeWaiter:
             return False
         self._event.clear()
         return True
+
+    def close(self) -> None:
+        self._event.set()

@@ -9,6 +9,7 @@ from psycopg.types.json import Jsonb
 
 from parallax.platform.current_read_model_payload_hash import stable_dirty_target_payload_hash
 from parallax.platform.db.json_safety import postgres_safe_json, postgres_safe_text
+from parallax.platform.db.queue_terminal import terminalize_source_row
 
 
 class TokenImageSourceDirtyTargetRepository:
@@ -228,6 +229,46 @@ class TokenImageSourceDirtyTargetRepository:
             (str(row["source_url_hash"]), str(row["target_type"]), str(row["target_id"])): dict(row) for row in rows
         }
 
+    def unresolved_terminal_by_source_targets(
+        self,
+        targets: Iterable[Mapping[str, Any]],
+        *,
+        worker_name: str,
+    ) -> dict[tuple[str, str, str], dict[str, Any]]:
+        records = _target_identity_records(targets)
+        if not records:
+            return {}
+        rows = self.conn.execute(
+            """
+            WITH incoming AS (
+              SELECT *
+              FROM unnest(
+                %(source_url_hashes)s::text[],
+                %(target_types)s::text[],
+                %(target_ids)s::text[],
+                %(target_keys)s::text[]
+              ) AS incoming(source_url_hash, target_type, target_id, target_key)
+            )
+            SELECT incoming.source_url_hash, incoming.target_type, incoming.target_id, terminal.*
+            FROM incoming
+            JOIN worker_queue_terminal_events terminal
+              ON terminal.worker_name = %(worker_name)s
+             AND terminal.source_table = 'token_image_source_dirty_targets'
+             AND terminal.target_key = incoming.target_key
+             AND terminal.operator_action IS NULL
+            """,
+            {
+                "source_url_hashes": [record["source_url_hash"] for record in records],
+                "target_types": [record["target_type"] for record in records],
+                "target_ids": [record["target_id"] for record in records],
+                "target_keys": [_terminal_target_key(record) for record in records],
+                "worker_name": _required_text(worker_name, field_name="worker_name"),
+            },
+        ).fetchall()
+        return {
+            (str(row["source_url_hash"]), str(row["target_type"]), str(row["target_id"])): dict(row) for row in rows
+        }
+
     def mark_done(self, claims: Iterable[Mapping[str, Any]], *, now_ms: int, commit: bool = True) -> int:
         records = _claim_records(claims)
         if not records:
@@ -269,51 +310,111 @@ class TokenImageSourceDirtyTargetRepository:
         error: str,
         now_ms: int,
         retry_ms: int,
+        max_attempts: int,
+        worker_name: str,
         commit: bool = True,
     ) -> int:
         records = _claim_records(claims)
         if not records:
             return 0
+        parsed_max_attempts = _required_max_attempts(max_attempts)
+        parsed_worker_name = _required_text(worker_name, field_name="worker_name")
+        retry_records = [record for record in records if int(record["attempt_count"]) < parsed_max_attempts]
+        exhausted_records = [record for record in records if int(record["attempt_count"]) >= parsed_max_attempts]
         params = {
-            **_claim_params(records),
+            **_claim_params(retry_records),
             "due_at_ms": int(now_ms) + max(1, int(retry_ms)),
             "now_ms": int(now_ms),
             "last_error": str(error)[:2048],
         }
 
         def _write() -> int:
-            cursor = self.conn.execute(
-                """
-                WITH failed AS (
-                  SELECT *
-                  FROM unnest(
-                    %(source_url_hashes)s::text[],
-                    %(target_types)s::text[],
-                    %(target_ids)s::text[],
-                    %(payload_hashes)s::text[],
-                    %(lease_owners)s::text[],
-                    %(attempt_counts)s::bigint[]
-                  ) AS failed(source_url_hash, target_type, target_id, payload_hash, lease_owner, attempt_count)
+            changed = 0
+            if retry_records:
+                cursor = self.conn.execute(
+                    """
+                    WITH failed AS (
+                      SELECT *
+                      FROM unnest(
+                        %(source_url_hashes)s::text[],
+                        %(target_types)s::text[],
+                        %(target_ids)s::text[],
+                        %(payload_hashes)s::text[],
+                        %(lease_owners)s::text[],
+                        %(attempt_counts)s::bigint[]
+                      ) AS failed(source_url_hash, target_type, target_id, payload_hash, lease_owner, attempt_count)
+                    )
+                    UPDATE token_image_source_dirty_targets queue
+                    SET due_at_ms = %(due_at_ms)s,
+                        leased_until_ms = NULL,
+                        lease_owner = NULL,
+                        last_error = %(last_error)s,
+                        updated_at_ms = %(now_ms)s
+                    FROM failed
+                    WHERE queue.source_url_hash = failed.source_url_hash
+                      AND queue.target_type = failed.target_type
+                      AND queue.target_id = failed.target_id
+                      AND queue.payload_hash = failed.payload_hash
+                      AND queue.lease_owner = failed.lease_owner
+                      AND queue.attempt_count = failed.attempt_count
+                    """,
+                    params,
                 )
-                UPDATE token_image_source_dirty_targets queue
-                SET due_at_ms = %(due_at_ms)s,
-                    leased_until_ms = NULL,
-                    lease_owner = NULL,
-                    last_error = %(last_error)s,
-                    updated_at_ms = %(now_ms)s
-                FROM failed
-                WHERE queue.source_url_hash = failed.source_url_hash
-                  AND queue.target_type = failed.target_type
-                  AND queue.target_id = failed.target_id
-                  AND queue.payload_hash = failed.payload_hash
-                  AND queue.lease_owner = failed.lease_owner
-                  AND queue.attempt_count = failed.attempt_count
-                """,
-                params,
-            )
-            return _cursor_rowcount(cursor)
+                changed += _cursor_rowcount(cursor)
+            if exhausted_records:
+                deleted_rows, deleted_count = self._delete_claims_returning(exhausted_records)
+                changed += deleted_count
+                for row in deleted_rows:
+                    terminalize_source_row(
+                        self.conn,
+                        worker_name=parsed_worker_name,
+                        source_table="token_image_source_dirty_targets",
+                        target_key=_terminal_target_key(row),
+                        source_row=row,
+                        final_status="terminal",
+                        final_reason=_retry_budget_exhausted_reason(error),
+                        now_ms=now_ms,
+                        attempt_count=int(row["attempt_count"]),
+                        payload_hash=_completion_payload_hash(row),
+                        first_seen_at_ms=_optional_int(row.get("first_dirty_at_ms")),
+                        last_attempted_at_ms=now_ms,
+                        commit=False,
+                    )
+            return changed
 
         return _run_repository_write(self.conn, commit, _write)
+
+    def _delete_claims_returning(self, records: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+        cursor = self.conn.execute(
+            """
+            WITH exhausted AS (
+              SELECT *
+              FROM unnest(
+                %(source_url_hashes)s::text[],
+                %(target_types)s::text[],
+                %(target_ids)s::text[],
+                %(payload_hashes)s::text[],
+                %(lease_owners)s::text[],
+                %(attempt_counts)s::bigint[]
+              ) AS exhausted(source_url_hash, target_type, target_id, payload_hash, lease_owner, attempt_count)
+            )
+            DELETE FROM token_image_source_dirty_targets queue
+            USING exhausted
+            WHERE queue.source_url_hash = exhausted.source_url_hash
+              AND queue.target_type = exhausted.target_type
+              AND queue.target_id = exhausted.target_id
+              AND queue.payload_hash = exhausted.payload_hash
+              AND queue.lease_owner = exhausted.lease_owner
+              AND queue.attempt_count = exhausted.attempt_count
+            RETURNING queue.*
+            """,
+            _claim_params(records),
+        )
+        rows = [dict(row) for row in cursor.fetchall()]
+        rowcount = _cursor_rowcount(cursor)
+        if rowcount != len(rows):
+            raise TypeError("token_image_source_dirty_target_rowcount_invalid")
+        return rows, rowcount
 
     def queue_depth(self, *, now_ms: int) -> int:
         row = self.conn.execute(
@@ -489,6 +590,34 @@ def _priority_value(target: Mapping[str, Any]) -> int:
     if raw_priority in (None, ""):
         return 100
     return int(str(raw_priority))
+
+
+def _required_max_attempts(value: Any) -> int:
+    try:
+        max_attempts = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("token image source dirty target max_attempts is required") from exc
+    if max_attempts <= 0:
+        raise ValueError("token image source dirty target max_attempts is required")
+    return max_attempts
+
+
+def _terminal_target_key(row: Mapping[str, Any]) -> str:
+    source_url_hash = _completion_source_url_hash(row)
+    target_type = _required_text(row.get("target_type"), field_name="target_type")
+    target_id = _required_text(row.get("target_id"), field_name="target_id")
+    return f"{source_url_hash}:{target_type}:{target_id}"
+
+
+def _retry_budget_exhausted_reason(error: str) -> str:
+    text = str(error).strip() or "token_image_mirror_failed"
+    return f"image_mirror_retry_budget_exhausted: {text}"[:2048]
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    return int(value)
 
 
 def _required_source_url(value: Any) -> str:

@@ -17,6 +17,7 @@ def test_token_image_mirror_worker_mirrors_claimed_rows_outside_db_sessions(monk
         interval_seconds=60,
         source_limit=2,
         batch_size=3,
+        max_attempts=3,
         lease_ms=600_000,
         retry_ms=300_000,
         statement_timeout_seconds=120,
@@ -78,6 +79,8 @@ def test_token_image_mirror_worker_mirrors_claimed_rows_outside_db_sessions(monk
             **image_claim("https://gmgn.ai/external-res/bad.png", "asset-bad", "error"),
             "error": "token_image_mirror_failed",
             "retry_ms": 300_000,
+            "max_attempts": 3,
+            "worker_name": "token_image_mirror",
             "now_ms": 1_700_000_000_000,
             "commit": False,
         }

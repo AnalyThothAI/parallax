@@ -141,6 +141,7 @@ def test_admit_token_image_sources_enqueues_missing_sources_and_preserves_backof
         "error_existing": 1,
         "unsupported_existing": 1,
         "dirty_existing": 0,
+        "terminal_existing": 0,
     }
     assert result.image_states_by_source_key[_dirty_key(missing)]["status"] == "mirror_pending"
     assert result.image_states_by_source_key[_dirty_key(missing)]["source_url_hash"] == missing.source_url_hash
@@ -301,6 +302,48 @@ def test_admit_token_image_sources_error_asset_with_existing_dirty_target_report
     }
 
 
+def test_admit_token_image_sources_does_not_reenqueue_unresolved_terminal_error() -> None:
+    candidate = _candidate("https://gmgn.ai/external-res/exhausted.png")
+    terminal_row = {
+        "terminal_id": "terminal-image-exhausted",
+        "target_key": f"{candidate.source_url_hash}:{candidate.target_type}:{candidate.target_id}",
+        "final_status": "terminal",
+        "final_reason": "image_mirror_retry_budget_exhausted: image_fetch_failed",
+        "terminalized_at_ms": NOW_MS - 10,
+    }
+    repos = _FakeRepos(
+        image_assets={
+            candidate.source_url: {
+                **_asset_row(candidate, status="error", next_refresh_at_ms=NOW_MS),
+                "last_error": "image_fetch_failed",
+            }
+        },
+        dirty_existing={},
+        terminal_existing={_dirty_key(candidate): terminal_row},
+    )
+
+    result = admit_token_image_sources(repos=repos, candidates=[candidate], now_ms=NOW_MS)
+
+    assert repos.dirty_targets.enqueued == []
+    assert result.counts["admitted"] == 0
+    assert result.counts["error_existing"] == 1
+    assert result.counts["terminal_existing"] == 1
+    assert result.image_states_by_source_key[_dirty_key(candidate)] == {
+        "status": "error",
+        "source_url": candidate.source_url,
+        "source_provider": candidate.source_provider,
+        "source_url_hash": candidate.source_url_hash,
+        "target_type": candidate.target_type,
+        "target_id": candidate.target_id,
+        "asset_status": "error",
+        "last_error": "image_fetch_failed",
+        "next_refresh_at_ms": NOW_MS,
+        "terminal_id": "terminal-image-exhausted",
+        "terminal_final_reason": "image_mirror_retry_budget_exhausted: image_fetch_failed",
+        "terminalized_at_ms": NOW_MS - 10,
+    }
+
+
 def test_admit_token_image_sources_dedupes_candidates_by_exact_target_source_key() -> None:
     high_priority = _candidate("https://gmgn.ai/external-res/dupe.png", priority=50)
     low_priority = _candidate("https://gmgn.ai/external-res/dupe.png", priority=20)
@@ -363,10 +406,15 @@ class _FakeRepos:
         *,
         image_assets: dict[str, dict[str, object]],
         dirty_existing: dict[tuple[str, str, str], dict[str, object]],
+        terminal_existing: dict[tuple[str, str, str], dict[str, object]] | None = None,
         enqueue_result_targets: int | None = None,
     ) -> None:
         self.token_image_assets = _FakeImageAssets(image_assets)
-        self.dirty_targets = _FakeDirtyTargets(dirty_existing, enqueue_result_targets=enqueue_result_targets)
+        self.dirty_targets = _FakeDirtyTargets(
+            dirty_existing,
+            terminal_existing=terminal_existing or {},
+            enqueue_result_targets=enqueue_result_targets,
+        )
         self.token_image_source_dirty_targets = self.dirty_targets
 
 
@@ -385,11 +433,14 @@ class _FakeDirtyTargets:
         self,
         rows: dict[tuple[str, str, str], dict[str, object]],
         *,
+        terminal_existing: dict[tuple[str, str, str], dict[str, object]],
         enqueue_result_targets: int | None,
     ) -> None:
         self.rows = rows
+        self.terminal_rows = terminal_existing
         self.enqueue_result_targets = enqueue_result_targets
         self.identity_calls: list[list[dict[str, object]]] = []
+        self.terminal_identity_calls: list[list[dict[str, object]]] = []
         self.enqueue_calls: list[dict[str, object]] = []
         self.enqueued: list[dict[str, object]] = []
 
@@ -417,6 +468,35 @@ class _FakeDirtyTargets:
                 str(target["target_id"]),
             )
             in self.rows
+        }
+
+    def unresolved_terminal_by_source_targets(
+        self,
+        targets: list[dict[str, object]],
+        *,
+        worker_name: str,
+    ) -> dict[tuple[str, str, str], dict[str, object]]:
+        assert worker_name == "token_image_mirror"
+        self.terminal_identity_calls.append(list(targets))
+        return {
+            (
+                str(target["source_url_hash"]),
+                str(target["target_type"]),
+                str(target["target_id"]),
+            ): self.terminal_rows[
+                (
+                    str(target["source_url_hash"]),
+                    str(target["target_type"]),
+                    str(target["target_id"]),
+                )
+            ]
+            for target in targets
+            if (
+                str(target["source_url_hash"]),
+                str(target["target_type"]),
+                str(target["target_id"]),
+            )
+            in self.terminal_rows
         }
 
     def enqueue_targets(
