@@ -16013,6 +16013,54 @@ RepositorySession Unit of Work；失败时不能留下半个 snapshot 或半套 
 - GREEN：同一聚焦命令转为 `8 passed`；Asset Profile Refresh 非集成组通过，`27 passed`。
 - 按当前用户指令，本轮不运行 integration-heavy gate。
 
+### Root449 - Token Capture Tier dirty rank-set 继续用 0/computed_at 修补 source watermark
+
+发现：
+
+- `TokenRadarProjection._enqueue_token_capture_tier_for_rank_changes(...)` 原来用
+  `int(row.get("source_max_received_at_ms") or 0)` 汇总 rank-set 水位，并在空集合时退到
+  projection `computed_at_ms`。
+- `TokenCaptureTierDirtyTargetRepository.enqueue_rank_set(...)` 原来又接受缺失的显式
+  `source_watermark_ms`，并从 rank rows 的 `source_max_received_at_ms`、legacy
+  `source_watermark_ms` 或 `0` 里推导。
+- ops `enqueue-token-capture-tier-rank-set` repair 也会把缺失的 current-row
+  `source_max_received_at_ms` 汇总为 `0`，dry-run 仍显示 would enqueue。
+
+根因：
+
+- Token Capture Tier dirty queue 是市场采集分层的控制面入口。它不写市场事实，但决定哪些目标会被
+  Tier 1 stream、Tier 2 poll 或 inline-only 捕获；因此 rank-set 水位仍然是源事实前沿，而不是
+  投影运行时间或“没有水位就 0”。
+- Root445 修过 Pulse/Narrative/Profile 的 Token Radar 下游水位，但 Capture Tier 是相邻的第四条
+  downstream fan-out。保留这条 `0`/`computed_at_ms` 兜底，会让市场采集控制面把 malformed
+  current row 当成可投递 work，后续 worker 只能看到一个失真的 queue frontier。
+- 更深层仍是兼容性入口没有一起收口：producer 想从 current row 补，repository 又想从 payload rows
+  补，ops repair 还想从读出来的行补。成熟 Kappa/CQRS 应该只有一个正式 command 字段：
+  producer 显式提供正整数 `source_watermark_ms`，repository 验证并写入。
+
+修复：
+
+- Token Radar capture-tier fan-out 改为 `_rank_set_source_watermark_ms(...)`，内部复用
+  `_downstream_source_watermark_ms(row)`，只接受正整数 current-row
+  `source_max_received_at_ms`。
+- `TokenCaptureTierDirtyTargetRepository.enqueue_rank_set(...)` 现在要求显式正整数
+  `source_watermark_ms`；缺失、0、负数、bool、字符串等都在 SQL 前抛
+  `token_capture_tier_dirty_target_source_watermark_required`。
+- ops capture-tier repair 在 dry-run 和 execute 都校验 bounded current rows 的正水位，缺失时抛
+  `ops_capture_tier_rank_set_source_watermark_required`，不再展示伪 `source_watermark_ms=0`。
+- Asset Market、Token Intel、全局架构、Worker Flow、Workers inventory、SDD 和 architecture guard
+  同步禁止 row-level fallback、legacy `source_watermark_ms`、`0`、`computed_at_ms`、runtime `now_ms`
+  回归。
+
+验证：
+
+- RED：新增 repository、Token Radar projection、ops repair、architecture guard 后，旧实现出现
+  repository `5 failed`、projection `5 failed`、architecture `2 failed`，证明旧链路确实会把坏水位
+  写成 0 或继续 enqueue。
+- GREEN：聚焦用例转为 repository `5 passed`、projection `5 passed`、architecture `2 passed`；
+  broader Capture Tier 非集成组通过，`25 passed`。
+- 按当前用户指令，本轮不运行 integration-heavy gate。
+
 ## 剩余风险和建议
 
 1. 如果 Stocks Radar 需要真实 quote，必须新建 persisted quote fact/current read model，而不是恢复 request-time provider。

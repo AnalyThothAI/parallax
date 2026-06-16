@@ -1388,6 +1388,21 @@ def test_token_capture_tier_dirty_write_counts_require_real_cursor_rowcount() ->
 
 
 @pytest.mark.architecture
+def test_token_capture_tier_dirty_enqueue_source_watermark_has_no_row_or_runtime_fallback() -> None:
+    repository_text = TOKEN_CAPTURE_TIER_DIRTY_TARGET_REPOSITORY_PATH.read_text(encoding="utf-8")
+    enqueue_source = _function_source_by_name(TOKEN_CAPTURE_TIER_DIRTY_TARGET_REPOSITORY_PATH, "enqueue_rank_set")
+    forbidden = (
+        "int(source_watermark_ms or 0)",
+        'row.get("source_max_received_at_ms") or row.get("source_watermark_ms")',
+        'row.get("source_watermark_ms") or 0',
+        "default=0",
+    )
+
+    assert "token_capture_tier_dirty_target_source_watermark_required" in repository_text
+    assert [token for token in forbidden if token in enqueue_source] == []
+
+
+@pytest.mark.architecture
 def test_token_capture_tier_repository_demote_counts_require_real_cursor_rowcount() -> None:
     repository_text = TOKEN_CAPTURE_TIER_REPOSITORY_PATH.read_text(encoding="utf-8")
     tree = _parse(TOKEN_CAPTURE_TIER_REPOSITORY_PATH)

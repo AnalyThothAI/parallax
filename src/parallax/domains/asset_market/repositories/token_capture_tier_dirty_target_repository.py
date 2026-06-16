@@ -29,20 +29,7 @@ class TokenCaptureTierDirtyTargetRepository:
             rows=row_records,
             exited_rows=exited_records,
         )
-        max_watermark_ms = max(
-            [
-                int(source_watermark_ms or 0),
-                *[
-                    int(row.get("source_max_received_at_ms") or row.get("source_watermark_ms") or 0)
-                    for row in row_records
-                ],
-                *[
-                    int(row.get("source_max_received_at_ms") or row.get("source_watermark_ms") or 0)
-                    for row in exited_records
-                ],
-            ],
-            default=0,
-        )
+        max_watermark_ms = _source_watermark_ms(source_watermark_ms)
 
         def _write() -> dict[str, int | str]:
             cursor = self.conn.execute(
@@ -230,6 +217,14 @@ def _cursor_rowcount(cursor: Any) -> int:
     if rowcount < 0:
         raise TypeError("token_capture_tier_dirty_target_rowcount_invalid")
     return int(rowcount)
+
+
+def _source_watermark_ms(value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("token_capture_tier_dirty_target_source_watermark_required")
+    if value <= 0:
+        raise ValueError("token_capture_tier_dirty_target_source_watermark_required")
+    return int(value)
 
 
 def token_capture_tier_rank_set_payload_hash(

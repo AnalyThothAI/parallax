@@ -1805,6 +1805,43 @@ def test_projection_enqueues_capture_tier_for_default_venue_rank_set_changes() -
     ]
 
 
+@pytest.mark.parametrize(
+    "source_value",
+    [None, 0, -1, True, "1700000000000"],
+)
+def test_projection_capture_tier_requires_current_row_source_watermark_without_computed_at_fallback(
+    source_value: object,
+) -> None:
+    now_ms = 1_777_800_060_000
+    row = {
+        "target_type": "Asset",
+        "target_id": "asset-1",
+        "target_type_key": "Asset",
+        "identity_id": "asset-1",
+        "rank": 1,
+        "rank_score": 88.0,
+        "lane": "resolved",
+        "quality_status": "ready",
+        "degraded_reasons_json": [],
+        "payload_hash": "row-hash",
+    }
+    if source_value is not None:
+        row["source_max_received_at_ms"] = source_value
+    repos = type("Repos", (), {"token_capture_tier_dirty_targets": FakeCaptureTierDirtyTargets()})()
+
+    with pytest.raises(RuntimeError, match="token_radar_downstream_source_watermark_required"):
+        TokenRadarProjection(repos=repos)._enqueue_token_capture_tier_for_rank_changes(
+            window="24h",
+            scope="all",
+            rows=[row],
+            exited_rows=[],
+            previous_by_key={},
+            computed_at_ms=now_ms,
+        )
+
+    assert repos.token_capture_tier_dirty_targets.enqueued == []
+
+
 def test_projection_capture_tier_uses_formal_current_identity_over_legacy_aliases() -> None:
     now_ms = 1_777_800_060_000
     row = {

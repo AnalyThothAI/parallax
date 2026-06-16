@@ -207,11 +207,11 @@ are wrong too.
    `composite.recommended_decision`, and `gates.max_decision` are required
    formal fields, and the cache writer does not coerce missing values into
    `0.0` or `discard`.
-   Pulse, Narrative Admission, and Token Profile Current downstream dirty
-   targets derive `source_watermark_ms` only from current-row positive
-   `source_max_received_at_ms`; missing or invalid source watermarks fail
-   closed instead of falling back to `computed_at_ms` or projection runtime
-   time.
+   Pulse, Narrative Admission, Token Profile Current, and Token Capture Tier
+   downstream dirty targets derive `source_watermark_ms` only from current-row
+   positive `source_max_received_at_ms`; missing or invalid source watermarks
+   fail closed instead of falling back to `computed_at_ms`, `0`, or projection
+   runtime time.
    Token Radar current-row delete/upsert, target-feature write/delete, and
    target-feature retention write accounting requires real PostgreSQL
    `cursor.rowcount` evidence. Missing, boolean, negative, or otherwise invalid

@@ -1035,13 +1035,7 @@ class TokenRadarProjection:
         ):
             return
         repo = self.repos.token_capture_tier_dirty_targets
-        source_watermark_ms = max(
-            [
-                *[int(row.get("source_max_received_at_ms") or 0) for row in tier_rows],
-                *[int(row.get("source_max_received_at_ms") or 0) for row in tier_exited_rows],
-            ],
-            default=int(computed_at_ms),
-        )
+        source_watermark_ms = _rank_set_source_watermark_ms(rows=tier_rows, exited_rows=tier_exited_rows)
         repo.enqueue_rank_set(
             reason=f"token_radar_capture_tier_rank_set:{window}:{scope}",
             rows=tier_rows,
@@ -1862,6 +1856,18 @@ def _downstream_source_watermark_ms(row: Mapping[str, Any]) -> int:
     if value <= 0:
         raise RuntimeError("token_radar_downstream_source_watermark_required")
     return cast(int, value)
+
+
+def _rank_set_source_watermark_ms(
+    *,
+    rows: Sequence[Mapping[str, Any]],
+    exited_rows: Sequence[Mapping[str, Any]],
+) -> int:
+    watermarks = [_downstream_source_watermark_ms(row) for row in rows]
+    watermarks.extend(_downstream_source_watermark_ms(row) for row in exited_rows)
+    if not watermarks:
+        raise RuntimeError("token_radar_downstream_source_watermark_required")
+    return max(watermarks)
 
 
 def _capture_tier_relevant_row(row: Mapping[str, Any]) -> bool:

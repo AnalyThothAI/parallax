@@ -226,24 +226,23 @@ enqueue/done changed-row counts use `_cursor_rowcount(cursor)` and fail as
 `token_capture_tier_dirty_target_rowcount_invalid` before reporting zero changed
 capture-tier dirty targets
 (`src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:15`,
-`src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:50`,
-`src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:103`,
-`src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:151`,
-`src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:169`,
-`src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:179`,
-`src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:223`,
-`src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:227`,
-`src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:229`,
-`src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:231`,
-`tests/unit/domains/asset_market/test_token_capture_tier_dirty_targets.py:63`,
-`tests/unit/domains/asset_market/test_token_capture_tier_dirty_targets.py:67`,
+`src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:37`,
+`src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:90`,
+`src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:109`,
+`src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:156`,
+`src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:166`,
+`src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:210`,
+`src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:214`,
+`src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:216`,
+`src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:218`,
+`tests/unit/domains/asset_market/test_token_capture_tier_dirty_targets.py:68`,
 `tests/unit/domains/asset_market/test_token_capture_tier_dirty_targets.py:72`,
-`tests/unit/domains/asset_market/test_token_capture_tier_dirty_targets.py:76`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1040`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1041`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1045`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1048`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1049`).
+`tests/unit/domains/asset_market/test_token_capture_tier_dirty_targets.py:83`,
+`tests/unit/domains/asset_market/test_token_capture_tier_dirty_targets.py:87`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1384`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1385`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1386`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1387`).
 
 Follow-up review found the same rowcount evidence gap in the serving/control
 projection itself: `demote_hot_rows_outside_rank_set` returns the number of hot
@@ -442,17 +441,16 @@ rank-source work, source projection, or queue SQL. The current implementation
 routes projection claim keys through `_claim_payload_hash(claim)`, and
 architecture coverage requires direct payload-hash readers while rejecting
 payload-hash default restoration tokens
-(`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1804`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1805`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1806`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1814`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1816`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:1295`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:1296`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:1297`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:1338`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:1339`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:1340`).
+(`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2169`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2190`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2191`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2192`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2202`,
+`src/parallax/domains/token_intel/services/token_radar_projection.py:1289`,
+`src/parallax/domains/token_intel/services/token_radar_projection.py:1332`,
+`src/parallax/domains/token_intel/services/token_radar_projection.py:1387`,
+`src/parallax/domains/token_intel/services/token_radar_projection.py:1389`,
+`src/parallax/domains/token_intel/services/token_radar_projection.py:1394`).
 
 Follow-up review found Token Image Source dirty completion still had a target-key
 compatibility fallback after the shared CAS fields were hardened: missing
@@ -4289,6 +4287,7 @@ come from PostgreSQL changed-row evidence rather than application-side
 - AC442. WHEN Token Profile Current dirty targets are enqueued by Token Radar, Asset Profile Refresh, Token Image Mirror, or ops image repair THEN producer rows SHALL carry a positive integer `source_watermark_ms`, `TokenProfileCurrentDirtyTargetRepository` SHALL reject missing, tuple-shaped, zero, negative, boolean, string, or otherwise invalid source watermarks with `token_profile_current_dirty_target_source_watermark_required`, and producer/repository/ops code SHALL NOT use `computed_at_ms`, `updated_at_ms`, tuple target identity, or runtime `now_ms` as a source-watermark fallback.
 - AC443. WHEN Token Profile Current admits image-source dirty targets for Token Image Mirror THEN source candidates SHALL carry a positive integer source-row `observed_at_ms` as `source_watermark_ms`, `TokenImageSourceDirtyTargetRepository` SHALL reject missing, zero, negative, boolean, string, target-level `observed_at_ms` fallback, or otherwise invalid source watermarks with `token_image_source_dirty_target_source_watermark_required`, Token Image Source admission SHALL fail missing or invalid source freshness with `token_image_source_admission_source_watermark_required`, and producer/repository code SHALL NOT use `updated_at_ms`, target-level `observed_at_ms`, or runtime `now_ms` as an image-source source-watermark fallback.
 - AC444. WHEN Asset Profile Refresh targets are enqueued THEN producer rows SHALL carry a positive integer `source_watermark_ms`, `AssetProfileRefreshTargetRepository` SHALL reject missing, zero, negative, boolean, string, `updated_at_ms` fallback, or otherwise invalid source watermarks with `asset_profile_refresh_target_source_watermark_required`, and producer/repository code SHALL NOT use source-cache `updated_at_ms` or runtime `now_ms` as an Asset Profile Refresh source-watermark fallback.
+- AC445. WHEN Token Radar projection or ops repair enqueues Token Capture Tier dirty rank-set work THEN producer rows SHALL derive `source_watermark_ms` only from positive current-row `source_max_received_at_ms`, `TokenCaptureTierDirtyTargetRepository` SHALL require an explicit positive integer `source_watermark_ms` and reject missing, zero, negative, boolean, string, row-level fallback, or otherwise invalid source watermarks with `token_capture_tier_dirty_target_source_watermark_required`, ops repair SHALL fail malformed current-row watermarks with `ops_capture_tier_rank_set_source_watermark_required`, and producer/repository/ops code SHALL NOT use `computed_at_ms`, row-level legacy `source_watermark_ms`, `0`, or runtime `now_ms` as a Token Capture Tier source-watermark fallback.
 
 ## Risks
 

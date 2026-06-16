@@ -494,6 +494,25 @@ def test_enqueue_token_capture_tier_rank_set_rejects_invalid_window_without_24h_
         )
 
 
+def test_enqueue_token_capture_tier_rank_set_rejects_missing_source_watermark_without_runtime_fallback() -> None:
+    from parallax.app.surfaces.cli.commands.ops import _enqueue_token_capture_tier_rank_set
+
+    registry = _FakeCaptureTierRegistry()
+    registry.rows = [
+        {key: value for key, value in registry.rows[0].items() if key != "source_max_received_at_ms"},
+    ]
+
+    with pytest.raises(ValueError, match="ops_capture_tier_rank_set_source_watermark_required"):
+        _enqueue_token_capture_tier_rank_set(
+            SimpleNamespace(registry=registry),
+            window="1h",
+            limit=25,
+            dry_run=True,
+            execute=False,
+            now_ms=1_700_000_100_000,
+        )
+
+
 def test_enqueue_token_capture_tier_rank_set_execute_writes_rank_set_dirty_target(monkeypatch) -> None:
     from parallax.app.surfaces.cli.commands import ops as ops_module
 
@@ -756,6 +775,8 @@ class _FakeCaptureTierRegistry:
             {
                 "target_type": "Asset",
                 "target_id": "asset-1",
+                "target_type_key": "Asset",
+                "identity_id": "asset-1",
                 "rank_score": 88,
                 "source_max_received_at_ms": 1_700_000_099_000,
                 "payload_hash": "hash-1",
@@ -763,6 +784,8 @@ class _FakeCaptureTierRegistry:
             {
                 "target_type": "CexToken",
                 "target_id": "cex-1",
+                "target_type_key": "CexToken",
+                "identity_id": "cex-1",
                 "rank_score": 77,
                 "source_max_received_at_ms": 1_700_000_098_000,
                 "payload_hash": "hash-2",

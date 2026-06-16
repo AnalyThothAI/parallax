@@ -849,6 +849,28 @@ def test_token_capture_tier_rank_set_hash_requires_formal_current_identity_witho
     assert [token for token in required if token not in source] == []
 
 
+def test_token_radar_capture_tier_fanout_requires_formal_source_watermark_without_runtime_fallback() -> None:
+    source = TOKEN_RADAR_PROJECTION.read_text(encoding="utf-8")
+    enqueue_source = source.split("def _enqueue_token_capture_tier_for_rank_changes", 1)[1].split(
+        "\n    @staticmethod",
+        1,
+    )[0]
+    watermark_source = source.split("def _rank_set_source_watermark_ms", 1)[1].split(
+        "\ndef _capture_tier_relevant_row",
+        1,
+    )[0]
+    forbidden = (
+        'int(row.get("source_max_received_at_ms") or 0)',
+        "default=int(computed_at_ms)",
+        "source_watermark_ms = max(",
+    )
+
+    assert "_rank_set_source_watermark_ms(rows=tier_rows, exited_rows=tier_exited_rows)" in enqueue_source
+    assert "_downstream_source_watermark_ms(row)" in watermark_source
+    assert "token_radar_downstream_source_watermark_required" in source
+    assert [token for token in forbidden if token in enqueue_source] == []
+
+
 def test_token_radar_rank_input_venue_uses_formal_identity_without_alias_override() -> None:
     source = TOKEN_RADAR_PROJECTION.read_text(encoding="utf-8")
     venue_source = source.split("def token_radar_venue_for_rank_input", 1)[1].split(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Mapping
 from contextlib import AbstractContextManager
 from typing import Any, cast
 
@@ -512,7 +513,7 @@ def _enqueue_token_capture_tier_rank_set(
             since_ms=since_ms,
             limit=parsed_limit,
         )
-        source_watermark_ms = max((int(row.get("source_max_received_at_ms") or 0) for row in rows), default=0)
+        source_watermark_ms = _ops_capture_tier_rank_set_source_watermark_ms(rows)
         data["target_count"] = len(rows)
         data["payload_hash"] = token_capture_tier_rank_set_payload_hash(reason=reason, rows=rows)
         data["source_watermark_ms"] = source_watermark_ms
@@ -526,7 +527,7 @@ def _enqueue_token_capture_tier_rank_set(
             since_ms=since_ms,
             limit=parsed_limit,
         )
-        source_watermark_ms = max((int(row.get("source_max_received_at_ms") or 0) for row in rows), default=0)
+        source_watermark_ms = _ops_capture_tier_rank_set_source_watermark_ms(rows)
         data["target_count"] = len(rows)
         data["payload_hash"] = token_capture_tier_rank_set_payload_hash(reason=reason, rows=rows)
         data["source_watermark_ms"] = source_watermark_ms
@@ -546,6 +547,25 @@ def _enqueue_token_capture_tier_rank_set(
     data["enqueued"] = enqueued
     data["skipped"] = 0 if enqueued else 1
     return data
+
+
+def _ops_capture_tier_rank_set_source_watermark_ms(rows: list[Mapping[str, Any]]) -> int:
+    if not rows:
+        return 0
+    watermarks = [_ops_capture_tier_rank_row_source_watermark_ms(row) for row in rows]
+    return max(watermarks)
+
+
+def _ops_capture_tier_rank_row_source_watermark_ms(row: Mapping[str, Any]) -> int:
+    try:
+        value = row["source_max_received_at_ms"]
+    except KeyError as exc:
+        raise ValueError("ops_capture_tier_rank_set_source_watermark_required") from exc
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("ops_capture_tier_rank_set_source_watermark_required")
+    if value <= 0:
+        raise ValueError("ops_capture_tier_rank_set_source_watermark_required")
+    return int(value)
 
 
 def _ops_window_ms(window: str) -> int:
