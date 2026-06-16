@@ -15749,6 +15749,36 @@ RepositorySession Unit of Work；失败时不能留下半个 snapshot 或半套 
 - Targeted static 通过：相关 worker/test/architecture 文件 ruff clean，`news_item_process_worker.py` mypy clean。
 - 按当前用户指令，本轮不运行 integration-heavy gate。
 
+### Root441 - News page `latest_at_ms` 用 projection `computed_at_ms` 补事实时间
+
+发现：
+
+- `build_news_page_row(...)` 原来把页面 row 的 `latest_at_ms` 写成 `int(item.get("published_at_ms") or computed_at_ms)`。
+- 当投影输入缺少 `published_at_ms` 或该值非法时，页面排序时间会退回到 page projection 的计算时间。
+- 这条路径和 Root440 属于同一类问题：缺失 source fact 被运行时钟伪装成“刚发生”。
+
+根因：
+
+- `latest_at_ms` 是 public News page 的服务排序/新鲜度字段，应描述 canonical item 的事实时间，而不是投影重算发生的时间。
+- 成熟 Kappa/CQRS 中，current read model 的内容字段必须由可重放事实决定；`computed_at_ms` 可以记录投影运行元数据，但不能参与业务排序语义。
+- 真实 `NewsRepository.upsert_news_item(...)` 已经把缺失 provider published time 规范化为 canonical `published_at_ms=fetched_at_ms`，且 `news_items.published_at_ms` 是 NOT NULL；因此 page projection 的 `computed_at_ms` fallback 是测试/fake/旧形状残留，不是生产必需兼容。
+
+修复：
+
+- `latest_at_ms` 改为 `_item_published_at_ms(item)`，只接受正数 canonical `published_at_ms`。
+- 缺少或非法 `published_at_ms` 时抛出 `news_page_projection_published_at_required[:news_item_id]`，让 page projection dirty target 走现有 error/retry/terminal 路径。
+- 新增单测证明 `fetched_at_ms` 和 `computed_at_ms` 都不能覆盖 canonical `published_at_ms`，以及缺失 published time 会 fail closed。
+- 新增 architecture guard，禁止 `item.get("published_at_ms") or computed_at_ms` 回归。
+- News domain 架构文档声明 page-row `latest_at_ms` 只能来自 canonical projected item `published_at_ms`。
+
+验证：
+
+- 聚焦命令通过：News page projection 两个单测 + architecture guard，`3 passed`。
+- 更宽非集成组合通过：完整 `test_news_page_projection.py` + `test_news_intel_boundaries.py`，`27 passed`。
+- Targeted static 通过：相关 production/test 文件 ruff clean，`news_page_projection.py` mypy clean。
+- Docker Compose 配置校验通过；`make docker-up` 已越过 `parallax config` 初始化，但在访问本机 Docker daemon socket `/Users/qinghuan/.docker/run/docker.sock` 时被系统拒绝，属于当前环境权限阻塞而不是 Compose 配置解析失败。
+- 按当前用户指令，本轮不运行 integration-heavy gate。
+
 ## 剩余风险和建议
 
 1. 如果 Stocks Radar 需要真实 quote，必须新建 persisted quote fact/current read model，而不是恢复 request-time provider。

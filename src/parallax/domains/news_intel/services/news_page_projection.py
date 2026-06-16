@@ -57,7 +57,7 @@ def build_news_page_row(
         "representative_news_item_id": representative_news_item_id,
         "story_key": story_key,
         "story": story_payload,
-        "latest_at_ms": int(item.get("published_at_ms") or computed_at_ms),
+        "latest_at_ms": _item_published_at_ms(item),
         "lifecycle_status": _lifecycle(item=item, token_lanes=token_lanes, fact_lanes=fact_lanes),
         "headline": str(item.get("title") or ""),
         "summary": str(item.get("summary") or ""),
@@ -447,6 +447,25 @@ def _optional_int(value: Any) -> int | None:
     if value is None:
         return None
     return int(value)
+
+
+def _item_published_at_ms(item: Mapping[str, Any]) -> int:
+    value = _positive_int(item.get("published_at_ms"))
+    if value is not None:
+        return value
+    news_item_id = str(item.get("news_item_id") or "").strip()
+    suffix = f":{news_item_id}" if news_item_id else ""
+    raise ValueError(f"news_page_projection_published_at_required{suffix}")
+
+
+def _positive_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
 
 
 def _optional_rating_score(value: Any) -> int | None:

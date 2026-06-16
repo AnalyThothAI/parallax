@@ -1,7 +1,43 @@
 from __future__ import annotations
 
+import pytest
+
 from parallax.domains.news_intel._constants import NEWS_PAGE_PROJECTION_VERSION
 from parallax.domains.news_intel.services.news_page_projection import build_news_page_row
+
+
+def test_build_news_page_row_uses_persisted_published_time_for_latest_at() -> None:
+    row = build_news_page_row(
+        item={
+            "news_item_id": "news-1",
+            "title": "Coinbase lists NEWX",
+            "summary": "Trading starts today",
+            "source_domain": "example.test",
+            "published_at_ms": 1000,
+            "fetched_at_ms": 3000,
+        },
+        token_mentions=[],
+        fact_candidates=[],
+        computed_at_ms=5000,
+    )
+
+    assert row["latest_at_ms"] == 1000
+
+
+def test_build_news_page_row_requires_canonical_published_time() -> None:
+    with pytest.raises(ValueError, match="news_page_projection_published_at_required:news-missing-time"):
+        build_news_page_row(
+            item={
+                "news_item_id": "news-missing-time",
+                "title": "Malformed item",
+                "summary": "",
+                "source_domain": "example.test",
+                "fetched_at_ms": 3000,
+            },
+            token_mentions=[],
+            fact_candidates=[],
+            computed_at_ms=5000,
+        )
 
 
 def test_build_news_page_row_includes_token_and_fact_lanes() -> None:

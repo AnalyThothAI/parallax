@@ -8,6 +8,7 @@ ROUTES_NEWS = ROOT / "src/parallax/app/surfaces/api/routes_news.py"
 OPENNEWS_CLIENT = ROOT / "src/parallax/integrations/news_feeds/opennews_client.py"
 NEWS_PROVIDER_WIRING = ROOT / "src/parallax/app/runtime/provider_wiring/news.py"
 NEWS_ITEM_PROCESS_WORKER = ROOT / "src/parallax/domains/news_intel/runtime/news_item_process_worker.py"
+NEWS_PAGE_PROJECTION = ROOT / "src/parallax/domains/news_intel/services/news_page_projection.py"
 
 FORBIDDEN_IMPORTS = (
     "domains.token_intel.runtime",
@@ -94,3 +95,11 @@ def test_news_item_process_source_watermark_has_no_runtime_now_fallback() -> Non
     assert "_source_watermark_ms(processed_item, fallback_ms=now)" not in text
     assert "return int(fallback_ms)" not in text
     assert "news_item_process_source_watermark_required" in text
+
+
+def test_news_page_projection_latest_at_uses_canonical_item_time() -> None:
+    text = NEWS_PAGE_PROJECTION.read_text()
+
+    assert 'item.get("published_at_ms") or computed_at_ms' not in text
+    assert '"latest_at_ms": _item_published_at_ms(item)' in text
+    assert "news_page_projection_published_at_required" in text
