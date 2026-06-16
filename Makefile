@@ -3,7 +3,7 @@ export UV_CACHE_DIR
 
 PARALLAX := uv run parallax
 
-.PHONY: help sync install uninstall tool-path test lint compile check init config db-migrate db-health serve status recent asset-flow account-alerts token-radar-cex-recover docker-up docker-status docker-logs docker-down docker-shell clean test-unit test-integration test-e2e test-golden test-architecture test-contract check-sdd-completion check-all coverage regen-contract install-hooks
+.PHONY: help sync install uninstall tool-path test lint compile check init config db-migrate db-health serve status recent asset-flow account-alerts token-radar-cex-recover docker-check docker-up docker-status docker-logs docker-down docker-shell clean test-unit test-integration test-e2e test-golden test-architecture test-contract check-sdd-completion check-all coverage regen-contract install-hooks
 
 help: ## show available targets
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "%-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -118,7 +118,16 @@ token-radar-cex-recover: ## recover Token Radar CEX recognition
 	@$(PARALLAX) ops rebuild-token-intents --window 24h --limit 5000 --projection-limit 5000
 	@$(PARALLAX) ops audit-token-radar --window 1h --scope all --limit 20
 
-docker-up: init ## build and start container service
+docker-check: ## verify Docker CLI, Compose plugin, and daemon access
+	@command -v docker >/dev/null 2>&1 || { echo "docker is not installed or not on PATH" >&2; exit 127; }
+	@docker compose version >/dev/null 2>&1 || { echo "docker compose plugin is unavailable" >&2; exit 127; }
+	@docker info >/dev/null 2>&1 || { \
+		echo "Docker daemon is not reachable from this shell." >&2; \
+		echo "Start Docker Desktop or grant this terminal access to the Docker socket, then rerun make docker-up." >&2; \
+		exit 1; \
+	}
+
+docker-up: docker-check init ## build and start container service
 	@if [ -n "$${GITHUB_TOKEN:-}" ]; then \
 		docker compose up -d --build app; \
 	elif command -v gh >/dev/null 2>&1 && GITHUB_TOKEN=$$(gh auth token 2>/dev/null); then \

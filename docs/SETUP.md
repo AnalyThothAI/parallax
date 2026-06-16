@@ -113,15 +113,21 @@ here. A snapshot lives at `generated/cli-help.md`.
 
 ```bash
 export GITHUB_TOKEN="$(gh auth token)"  # required when GitHub dependencies are private
-docker compose up -d --build app
-docker compose ps
-docker compose logs -f --tail=100 app
-docker compose down
+make docker-check
+make docker-up
+make docker-status
+make docker-logs
+make docker-down
 ```
 
 Bind-mounts host `~/.parallax/` into the container, including
 both `config.yaml` and `workers.yaml`; PostgreSQL data is pinned to the
 `parallax-postgres` named volume.
+
+`make docker-check` verifies the Docker CLI, the Compose plugin, and daemon
+access before the build starts. If it reports that the Docker daemon is not
+reachable, start Docker Desktop or grant the current terminal access to the
+Docker socket before rerunning `make docker-up`.
 
 PostgreSQL observability is part of the compose runtime. The PostgreSQL image
 loads `pg_stat_statements`, PoWA, `pg_stat_kcache`, `pg_qualstats`, and

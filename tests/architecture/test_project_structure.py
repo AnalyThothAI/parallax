@@ -312,6 +312,16 @@ def test_makefile_exposes_single_token_radar_cex_recovery_target():
     assert "\t@$(PARALLAX) ops audit-token-radar --window 1h --scope all --limit 20" in makefile
 
 
+def test_makefile_preflights_docker_up_daemon_access():
+    makefile = (ROOT / "Makefile").read_text()
+
+    assert "docker-check: ## verify Docker CLI, Compose plugin, and daemon access" in makefile
+    assert "docker-up: docker-check init ## build and start container service" in makefile
+    assert "\t@docker compose version >/dev/null 2>&1" in makefile
+    assert "\t@docker info >/dev/null 2>&1" in makefile
+    assert "Docker daemon is not reachable from this shell." in makefile
+
+
 def test_compose_bind_mounts_local_runtime_home_without_env_config_sources():
     compose = (ROOT / "compose.yaml").read_text()
     data = yaml.safe_load(compose)
