@@ -52,6 +52,61 @@ def test_enqueue_targets_coalesces_by_target_and_uses_lower_priority() -> None:
     assert conn.params[-1]["dirty_reason"] == "token_radar_changed"
 
 
+@pytest.mark.parametrize(
+    "target",
+    [
+        pytest.param(
+            {"target_type": "Asset", "target_id": "asset-1"},
+            id="missing",
+        ),
+        pytest.param(
+            {"target_type": "Asset", "target_id": "asset-1", "computed_at_ms": 1_700_000_001_000},
+            id="computed-at",
+        ),
+        pytest.param(
+            {"target_type": "Asset", "target_id": "asset-1", "updated_at_ms": 1_700_000_002_000},
+            id="updated-at",
+        ),
+        pytest.param(
+            ("Asset", "asset-1"),
+            id="tuple-target",
+        ),
+        pytest.param(
+            {"target_type": "Asset", "target_id": "asset-1", "source_watermark_ms": None},
+            id="none",
+        ),
+        pytest.param(
+            {"target_type": "Asset", "target_id": "asset-1", "source_watermark_ms": 0},
+            id="zero",
+        ),
+        pytest.param(
+            {"target_type": "Asset", "target_id": "asset-1", "source_watermark_ms": -1},
+            id="negative",
+        ),
+        pytest.param(
+            {"target_type": "Asset", "target_id": "asset-1", "source_watermark_ms": True},
+            id="bool",
+        ),
+        pytest.param(
+            {"target_type": "Asset", "target_id": "asset-1", "source_watermark_ms": "1700000001000"},
+            id="string",
+        ),
+    ],
+)
+def test_enqueue_targets_requires_formal_source_watermark_without_runtime_fallback(target) -> None:
+    conn = _ScriptedConnection([])
+
+    with pytest.raises(ValueError, match="token_profile_current_dirty_target_source_watermark_required"):
+        TokenProfileCurrentDirtyTargetRepository(conn).enqueue_targets(
+            [target],
+            reason="token_radar_changed",
+            now_ms=1_700_000_000_000,
+            commit=False,
+        )
+
+    assert conn.sql == []
+
+
 def test_claim_due_orders_by_priority_due_and_updated_and_increments_attempts() -> None:
     conn = _ScriptedConnection(
         [
@@ -236,7 +291,7 @@ def test_repository_session_exposes_token_profile_current_dirty_targets() -> Non
     "operation",
     [
         lambda repo: repo.enqueue_targets(
-            [{"target_type": "Asset", "target_id": "asset-1"}],
+            [{"target_type": "Asset", "target_id": "asset-1", "source_watermark_ms": 1_700_000_000_000}],
             reason="token_radar_changed",
             now_ms=1_700_000_000_000,
         ),

@@ -1643,7 +1643,7 @@ def _pulse_trigger_target(
         return None
     target_type, target_id = resolved_target
     reason = _pulse_trigger_reason(row, previous=previous, exited=exited)
-    source_watermark_ms = int(row.get("source_max_received_at_ms") or computed_at_ms)
+    source_watermark_ms = _downstream_source_watermark_ms(row)
     payload = {
         "target_type": target_type,
         "target_id": target_id,
@@ -1686,7 +1686,7 @@ def _narrative_admission_target(
         return None
     target_type, target_id = resolved_target
     reason = _narrative_admission_reason(row, previous=previous, exited=exited)
-    source_watermark_ms = int(row.get("source_max_received_at_ms") or computed_at_ms)
+    source_watermark_ms = _downstream_source_watermark_ms(row)
     payload = {
         "target_type": target_type,
         "target_id": target_id,
@@ -1733,7 +1733,7 @@ def _token_profile_current_target(
         return None
     target_type, target_id = resolved_target
     reason = _token_profile_current_reason(row, previous=previous, exited=exited)
-    source_watermark_ms = int(row.get("source_max_received_at_ms") or computed_at_ms)
+    source_watermark_ms = _downstream_source_watermark_ms(row)
     payload = {
         "target_type": target_type,
         "target_id": target_id,
@@ -1850,6 +1850,18 @@ def _capture_tier_rank_payload(row: Mapping[str, Any]) -> tuple[Any, ...]:
         str(row.get("quality_status") or ""),
         _json_ready(row.get("degraded_reasons_json") or []),
     )
+
+
+def _downstream_source_watermark_ms(row: Mapping[str, Any]) -> int:
+    try:
+        value = row["source_max_received_at_ms"]
+    except KeyError as exc:
+        raise RuntimeError("token_radar_downstream_source_watermark_required") from exc
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError("token_radar_downstream_source_watermark_required")
+    if value <= 0:
+        raise RuntimeError("token_radar_downstream_source_watermark_required")
+    return cast(int, value)
 
 
 def _capture_tier_relevant_row(row: Mapping[str, Any]) -> bool:

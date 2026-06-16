@@ -23,7 +23,6 @@ class TokenProfileCurrentDirtyTargetRepository:
         records = _target_records(
             targets,
             reason=reason,
-            now_ms=int(now_ms),
             default_due_at_ms=int(due_at_ms if due_at_ms is not None else now_ms),
         )
         if not records:
@@ -314,7 +313,6 @@ def _target_records(
     targets: Iterable[Mapping[str, Any] | tuple[str, str]],
     *,
     reason: str,
-    now_ms: int,
     default_due_at_ms: int,
 ) -> list[dict[str, Any]]:
     records: dict[tuple[str, str], dict[str, Any]] = {}
@@ -322,7 +320,7 @@ def _target_records(
         target_type, target_id = _target_key(target)
         if not target_type or not target_id:
             continue
-        source_watermark_ms = _source_watermark_ms(target, default=now_ms)
+        source_watermark_ms = _source_watermark_ms(target)
         priority = _priority_value(target)
         due_at_ms = (
             int(target.get("due_at_ms") or default_due_at_ms) if isinstance(target, Mapping) else default_due_at_ms
@@ -444,12 +442,18 @@ def _claim_params(records: list[dict[str, Any]]) -> dict[str, list[Any]]:
     }
 
 
-def _source_watermark_ms(target: Mapping[str, Any] | tuple[str, str], *, default: int) -> int:
+def _source_watermark_ms(target: Mapping[str, Any] | tuple[str, str]) -> int:
     if not isinstance(target, Mapping):
-        return int(default)
-    return int(
-        target.get("source_watermark_ms") or target.get("computed_at_ms") or target.get("updated_at_ms") or default
-    )
+        raise ValueError("token_profile_current_dirty_target_source_watermark_required")
+    try:
+        value = target["source_watermark_ms"]
+    except KeyError as exc:
+        raise ValueError("token_profile_current_dirty_target_source_watermark_required") from exc
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("token_profile_current_dirty_target_source_watermark_required")
+    if value <= 0:
+        raise ValueError("token_profile_current_dirty_target_source_watermark_required")
+    return int(value)
 
 
 def _priority_value(target: Mapping[str, Any] | tuple[str, str]) -> int:

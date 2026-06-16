@@ -402,6 +402,7 @@ def claim_row(provider: str, *, target_id: str = "asset-1") -> dict:
         "chain_id": "solana",
         "address": "abc",
         "payload_hash": f"hash:{provider}:asset-1",
+        "source_watermark_ms": 1_700_000_000_000,
         "lease_owner": "asset_profile_refresh",
         "attempt_count": 1,
         "due_at_ms": 1_700_000_000_000,

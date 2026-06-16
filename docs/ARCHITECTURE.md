@@ -207,6 +207,11 @@ are wrong too.
    `composite.recommended_decision`, and `gates.max_decision` are required
    formal fields, and the cache writer does not coerce missing values into
    `0.0` or `discard`.
+   Pulse, Narrative Admission, and Token Profile Current downstream dirty
+   targets derive `source_watermark_ms` only from current-row positive
+   `source_max_received_at_ms`; missing or invalid source watermarks fail
+   closed instead of falling back to `computed_at_ms` or projection runtime
+   time.
    Token Radar current-row delete/upsert, target-feature write/delete, and
    target-feature retention write accounting requires real PostgreSQL
    `cursor.rowcount` evidence. Missing, boolean, negative, or otherwise invalid
@@ -391,6 +396,10 @@ are wrong too.
    must be present and well shaped. The projection service emits those JSON
    fields by their storage names, and repository upsert input must not accept
    old `quality_flags` / `source_payload` aliases or empty JSON defaults.
+   `token_profile_current_dirty_targets` enqueue is a formal control-plane
+   input to that writer: producers must pass positive source watermarks, and
+   the dirty repository plus ops image repair must not synthesize them from
+   `computed_at_ms`, `updated_at_ms`, tuple identity, or runtime `now_ms`.
    Missing current rows may become explicit pending/unsupported public blocks,
    but malformed present rows are projection damage, not pending state.
    `news_items.content_class`, `news_items.content_tags_json`,

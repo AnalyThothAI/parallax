@@ -242,12 +242,13 @@ class AssetProfileRefreshWorker(WorkerBase):
 
 
 def _enqueue_profile_current(*, repos: Any, row: dict[str, Any], now_ms: int) -> None:
+    source_watermark_ms = _required_source_watermark_ms(row, error="asset_profile_refresh_source_watermark_required")
     repos.token_profile_current_dirty_targets.enqueue_targets(
         [
             {
                 "target_type": "Asset",
                 "target_id": str(row.get("asset_id") or row.get("target_id") or ""),
-                "source_watermark_ms": int(row.get("source_watermark_ms") or now_ms),
+                "source_watermark_ms": source_watermark_ms,
                 "priority": 40,
             }
         ],
@@ -255,3 +256,15 @@ def _enqueue_profile_current(*, repos: Any, row: dict[str, Any], now_ms: int) ->
         now_ms=now_ms,
         commit=False,
     )
+
+
+def _required_source_watermark_ms(row: dict[str, Any], *, error: str) -> int:
+    try:
+        value = row["source_watermark_ms"]
+    except KeyError as exc:
+        raise RuntimeError(error) from exc
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError(error)
+    if value <= 0:
+        raise RuntimeError(error)
+    return int(value)

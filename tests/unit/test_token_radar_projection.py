@@ -26,6 +26,7 @@ from parallax.domains.token_intel.services.token_radar_projection import (
     _compact_rank_key,
     _display_symbol,
     _market_context,
+    _narrative_admission_target,
     _patch_ranked_current_row,
     _project_group,
     _pulse_trigger_target,
@@ -33,6 +34,7 @@ from parallax.domains.token_intel.services.token_radar_projection import (
     _row_from_target_feature,
     _select_top_ranked_by_lane,
     _source_requests_for_targets,
+    _token_profile_current_target,
     token_radar_venue_for_rank_input,
 )
 from parallax.platform.current_read_model_payload_hash import PAYLOAD_HASH_HEX_LENGTH, PAYLOAD_HASH_PREFIX
@@ -1489,6 +1491,64 @@ def test_projection_enqueues_narrative_admission_for_realtime_rank_changes() -> 
             "commit": False,
         }
     ]
+
+
+@pytest.mark.parametrize(
+    "target_builder",
+    (_pulse_trigger_target, _narrative_admission_target, _token_profile_current_target),
+)
+def test_downstream_rank_change_targets_require_source_watermark_without_computed_at_fallback(target_builder):
+    now_ms = 1_777_800_060_000
+    row = {
+        "target_type_key": "Asset",
+        "identity_id": "asset-1",
+        "rank": 1,
+        "lane": "resolved",
+        "decision": "high_alert",
+        "factor_snapshot_json": {"schema_version": "factor"},
+        "source_event_ids_json": ["event-1"],
+        "payload_hash": "row-hash",
+    }
+
+    with pytest.raises(RuntimeError, match="token_radar_downstream_source_watermark_required"):
+        target_builder(
+            row,
+            previous=None,
+            window="1h",
+            scope="all",
+            computed_at_ms=now_ms,
+            exited=False,
+        )
+
+
+@pytest.mark.parametrize("source_value", (None, 0, -1, True, "1777800060000"))
+@pytest.mark.parametrize(
+    "target_builder",
+    (_pulse_trigger_target, _narrative_admission_target, _token_profile_current_target),
+)
+def test_downstream_rank_change_targets_reject_invalid_source_watermark(target_builder, source_value):
+    now_ms = 1_777_800_060_000
+    row = {
+        "target_type_key": "Asset",
+        "identity_id": "asset-1",
+        "rank": 1,
+        "lane": "resolved",
+        "decision": "high_alert",
+        "factor_snapshot_json": {"schema_version": "factor"},
+        "source_event_ids_json": ["event-1"],
+        "source_max_received_at_ms": source_value,
+        "payload_hash": "row-hash",
+    }
+
+    with pytest.raises(RuntimeError, match="token_radar_downstream_source_watermark_required"):
+        target_builder(
+            row,
+            previous=None,
+            window="1h",
+            scope="all",
+            computed_at_ms=now_ms,
+            exited=False,
+        )
 
 
 def test_projection_runtime_gate_suppresses_narrative_admission_dirty_targets() -> None:

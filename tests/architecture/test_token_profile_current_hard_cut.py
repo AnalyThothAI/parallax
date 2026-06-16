@@ -80,3 +80,34 @@ def test_token_radar_frontend_has_no_raw_icon_fallback() -> None:
     ]
 
     assert violations == []
+
+
+def test_token_profile_current_dirty_target_source_watermark_has_no_runtime_fallback() -> None:
+    repository = (
+        SRC / "domains/asset_market/repositories/token_profile_current_dirty_target_repository.py"
+    ).read_text(encoding="utf-8")
+    ops_queries = (SRC / "app/runtime/ops_cli_queries.py").read_text(encoding="utf-8")
+    producers = [
+        SRC / "domains/asset_market/runtime/asset_profile_refresh_worker.py",
+        SRC / "domains/asset_market/runtime/token_image_mirror_worker.py",
+    ]
+    forbidden = (
+        'target.get("source_watermark_ms") or target.get("computed_at_ms")',
+        'target.get("computed_at_ms") or target.get("updated_at_ms")',
+        'target.get("updated_at_ms") or default',
+        'int(row["source_watermark_ms"] or now_ms)',
+        'int(row.get("source_watermark_ms") or now_ms)',
+        'int(claim.get("source_watermark_ms") or now_ms)',
+        '"source_watermark_ms": int(row.get("source_watermark_ms") or now_ms)',
+        '"source_watermark_ms": int(claim.get("source_watermark_ms") or now_ms)',
+    )
+
+    assert "token_profile_current_dirty_target_source_watermark_required" in repository
+    assert "token_profile_image_repair_source_watermark_required" in ops_queries
+    assert [token for token in forbidden if token in repository or token in ops_queries] == []
+    assert [
+        f"{path.relative_to(SRC)} contains {token}"
+        for path in producers
+        for token in forbidden
+        if token in path.read_text(encoding="utf-8")
+    ] == []

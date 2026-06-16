@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 
@@ -72,6 +73,7 @@ def token_radar_max_market_tick_observed_at_ms(conn: Any) -> int | None:
 
 
 def token_profile_image_repair_targets(conn: Any, *, limit: int, now_ms: int) -> list[dict[str, Any]]:
+    del now_ms
     rows = conn.execute(
         """
         SELECT target_type, target_id, updated_at_ms AS source_watermark_ms
@@ -92,11 +94,23 @@ def token_profile_image_repair_targets(conn: Any, *, limit: int, now_ms: int) ->
         {
             "target_type": str(row["target_type"]),
             "target_id": str(row["target_id"]),
-            "source_watermark_ms": int(row["source_watermark_ms"] or now_ms),
+            "source_watermark_ms": _required_source_watermark_ms(row),
             "priority": 25,
         }
         for row in rows
     ]
+
+
+def _required_source_watermark_ms(row: Mapping[str, Any]) -> int:
+    try:
+        value = row["source_watermark_ms"]
+    except KeyError as exc:
+        raise ValueError("token_profile_image_repair_source_watermark_required") from exc
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("token_profile_image_repair_source_watermark_required")
+    if value <= 0:
+        raise ValueError("token_profile_image_repair_source_watermark_required")
+    return int(value)
 
 
 __all__ = [

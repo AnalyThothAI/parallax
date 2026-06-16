@@ -15868,6 +15868,64 @@ RepositorySession Unit of Work；失败时不能留下半个 snapshot 或半套 
 - `make docker-up` 触发显式 `docker-check` 前置检查后失败，原因是当前 shell 不能访问 Docker daemon；这是环境权限阻塞，不是 Compose 或应用配置解析失败。
 - 按当前用户指令，本轮不运行 integration-heavy gate。
 
+### Root445 - Token Radar 下游 dirty target 用 projection computed_at 补 source watermark
+
+发现：
+
+- `_pulse_trigger_target(...)`、`_narrative_admission_target(...)` 和 `_token_profile_current_target(...)` 原来都通过 `int(row.get("source_max_received_at_ms") or computed_at_ms)` 计算下游 `source_watermark_ms`。
+- 这意味着 Token Radar current row 一旦缺失正式 `source_max_received_at_ms`，下游 Pulse Trigger、Narrative Admission、Token Profile Current dirty queue 仍会被写入一个看似有效的水位。
+- 该水位来自 projection 运行时的 `computed_at_ms`，不是源事件、市场事实或 current row source frontier。
+
+根因：
+
+- 这是事实时间和处理时间混用。`source_watermark_ms` 是下游消费者判断 catch-up、去重、排序和 freshness 的事实源前沿；`computed_at_ms` 只是投影本次运行的处理元数据。
+- 在成熟 Kappa/CQRS 里，下游 dirty target 的 watermark 必须可追溯到 material facts 或正式 current row source frontier。用 projection 时间补洞会把“投影输入 malformed”伪装成“源事实刚刚更新”，让下游 worker 产生错误的新鲜度判断。
+- 更深一层，这是兼容性兜底残留：为了让 dirty fan-out 不因旧 row 形态中断，代码把缺字段修补成 runtime time。但 current read model 的字段合同已经收紧后，这类兜底会反过来掩盖投影链路的坏输入。
+
+修复：
+
+- 新增 `_downstream_source_watermark_ms(row)`，只接受正整数 current-row `source_max_received_at_ms`。
+- Pulse Trigger、Narrative Admission、Token Profile Current 三条下游 fan-out 全部改用该 helper。
+- 缺失、0、负数、bool、字符串等非法 source watermark 都抛 `token_radar_downstream_source_watermark_required`，失败发生在 dirty target payload 构造前。
+- Architecture guard 禁止 `int(row.get("source_max_received_at_ms") or computed_at_ms)` 回归；Token Intel、全局架构、Worker Flow、Workers inventory 和 SDD 同步写入该边界。
+
+验证：
+
+- RED：新增缺失 source watermark 单测时，三条 target builder 都没有抛错，`3 failed`，证明旧代码确实走了 `computed_at_ms` 兜底。
+- GREEN：缺失/非法 source watermark、下游 fan-out 现有行为、payload hash 噪声隔离和 architecture guard 的聚焦组合通过，`22 passed`；完整 `test_token_radar_projection.py` 加 architecture guard 也通过，`188 passed`。
+- Targeted ruff/mypy、SDD validation、SDD index check、`git diff --check`、`docker compose config --quiet` 通过。
+- `make docker-up` 在当前 shell 仍会停在 `docker-check`，因为无法访问 Docker daemon socket；这属于环境权限阻塞，不是 Compose 配置或本次代码修复失败。
+- 按当前用户指令，本轮不运行 integration-heavy gate。
+
+### Root446 - Token Profile Current dirty repository 继续用运行时间修补 source watermark
+
+发现：
+
+- `TokenProfileCurrentDirtyTargetRepository._source_watermark_ms(...)` 原来接受 tuple target，并在 mapping target 缺少 `source_watermark_ms` 时依次用 `computed_at_ms`、`updated_at_ms`、最终 `now_ms` 补水位。
+- `token_profile_image_repair_targets(...)` 从 `token_profile_current.updated_at_ms` 读出 `source_watermark_ms` 后，又用 `row["source_watermark_ms"] or now_ms` 修补空值。
+- `AssetProfileRefreshWorker` 和 `TokenImageMirrorWorker` 作为 profile-current dirty producer，也会把缺失的 claim/source watermark 补成运行时 `now_ms`。
+
+根因：
+
+- Root445 只修掉了 Token Radar producer 端的 `computed_at_ms` 兜底，但下游 Asset Market dirty repository 仍是宽入口。成熟 Kappa/CQRS 里，repository 是控制面事实入口，不应该把 malformed producer payload 洗白。
+- `token_profile_current_dirty_targets.source_watermark_ms` 影响 claim 合并、payload hash、租约释放和 freshness 排序。用 `updated_at_ms` 或 `now_ms` 修补会把“队列/投影处理时间”伪装成“源事实新鲜度”，使后续 Token Profile Current worker 对 source frontier 的判断失真。
+- tuple target 是更隐蔽的兼容面：它只有 identity，没有水位、priority、payload 语义。继续支持它等于允许 producer 绕过正式 dirty command 语言。
+
+修复：
+
+- `TokenProfileCurrentDirtyTargetRepository.enqueue_targets(...)` 现在只接受 mapping-shaped target，并要求正整数 `source_watermark_ms`。
+- 缺失、tuple target、0、负数、bool、字符串等输入都在 SQL 前抛 `token_profile_current_dirty_target_source_watermark_required`。
+- `token_profile_image_repair_targets(...)` 对 current-row source watermark 做同样正整数校验，缺失时抛 `token_profile_image_repair_source_watermark_required`，不再用 ops 运行时间补。
+- Asset Profile Refresh 和 Token Image Mirror producer 改为传递 claim/source 自带水位；缺水位分别以 `asset_profile_refresh_source_watermark_required` 和 `token_image_mirror_profile_dirty_source_watermark_required` 暴露坏控制面输入。
+- Asset Market 架构、全局架构、Worker Flow、Workers inventory、SDD 与 architecture guard 同步禁止 `computed_at_ms`、`updated_at_ms`、tuple identity 和 `now_ms` 水位兜底回归。
+
+验证：
+
+- RED：新增 dirty repository、ops image repair、architecture guard 后，当前实现分别出现 9 个 repository 失败、1 个 ops 失败、1 个 architecture 失败，证明旧代码确实会修补水位。
+- GREEN：Token Profile Current dirty repository、ops projection dirty target、Asset Profile Refresh worker、Token Image Mirror worker、Token Profile hard-cut architecture 组合通过，`50 passed`。
+- Targeted ruff/mypy 通过。
+- 按当前用户指令，本轮不运行 integration-heavy gate。
+
 ## 剩余风险和建议
 
 1. 如果 Stocks Radar 需要真实 quote，必须新建 persisted quote fact/current read model，而不是恢复 request-time provider。

@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 
+from parallax.app.runtime.ops_cli_queries import token_profile_image_repair_targets
 from parallax.app.runtime.projection_dirty_targets import enqueue_projection_dirty_targets
 from parallax.app.surfaces.cli.parser import build_parser
 
@@ -178,6 +179,21 @@ def test_enqueue_projection_dirty_targets_page_repair_can_run_unbounded_for_page
             "source_watermark_ms": NOW_MS - 3_000,
         },
     ]
+
+
+def test_token_profile_image_repair_targets_require_current_row_watermark_without_runtime_fallback() -> None:
+    conn = TokenProfileImageRepairConn(
+        [
+            {
+                "target_type": "Asset",
+                "target_id": "asset-1",
+                "source_watermark_ms": None,
+            }
+        ]
+    )
+
+    with pytest.raises(ValueError, match="token_profile_image_repair_source_watermark_required"):
+        token_profile_image_repair_targets(conn, limit=10, now_ms=NOW_MS)
 
 
 def test_enqueue_projection_dirty_targets_source_quality_only_does_not_scan_news_items() -> None:
@@ -400,6 +416,19 @@ class FakeCursor:
         self.rows = rows
 
     def fetchall(self) -> list[dict[str, str]]:
+        return list(self.rows)
+
+
+class TokenProfileImageRepairConn:
+    def __init__(self, rows: list[dict[str, Any]]) -> None:
+        self.rows = rows
+        self.statements: list[tuple[str, Any]] = []
+
+    def execute(self, sql: str, params: Any = None) -> TokenProfileImageRepairConn:
+        self.statements.append((sql, params))
+        return self
+
+    def fetchall(self) -> list[dict[str, Any]]:
         return list(self.rows)
 
 

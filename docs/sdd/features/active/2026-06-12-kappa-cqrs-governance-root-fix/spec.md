@@ -117,14 +117,14 @@ changed-row counts use `_cursor_rowcount(cursor)` and fail as
 `token_profile_current_dirty_target_rowcount_required` /
 `token_profile_current_dirty_target_rowcount_invalid` before reporting zero
 changed profile-current targets
-(`src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:229`,
-`src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:239`,
-`src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:281`,
-`src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:296`,
-`src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:485`,
+(`src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:228`,
+`src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:238`,
+`src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:280`,
+`src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:295`,
 `src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:489`,
-`src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:491`,
 `src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:493`,
+`src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:495`,
+`src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:497`,
 `tests/architecture/test_runtime_worker_constraint_hard_cut.py:1636`,
 `tests/architecture/test_runtime_worker_constraint_hard_cut.py:1637`,
 `tests/architecture/test_runtime_worker_constraint_hard_cut.py:1638`,
@@ -780,7 +780,7 @@ otherwise keeps delete-returning plus terminal-ledger insert inside
 
 Follow-up review found the same optional connection-transaction root in ops projection dirty repair: `enqueue_projection_dirty_targets` execute mode scanned `news_items` / `news_sources`, wrote `news_projection_dirty_targets`, and previously allowed a missing connection transaction contract to continue through `nullcontext()` (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:546`). The target contract is that dry-run keeps the explicit read-only `nullcontext()` branch, while execute mode calls `_transaction(repos.conn)` and raises `RuntimeError("projection_dirty_targets_transaction_required")` before repair scans or dirty enqueue when the connection transaction contract is missing (`src/parallax/app/runtime/projection_dirty_targets.py:22`, `src/parallax/app/runtime/projection_dirty_targets.py:49`, `src/parallax/app/runtime/projection_dirty_targets.py:184`, `src/parallax/app/runtime/projection_dirty_targets.py:188`, `tests/unit/test_ops_projection_dirty_targets.py:91`, `tests/unit/test_ops_projection_dirty_targets.py:103`, `tests/architecture/test_news_intel_kiss_simplification.py:996`, `tests/architecture/test_news_intel_kiss_simplification.py:1006`, `tests/architecture/test_news_intel_kiss_simplification.py:1008`).
 
-Follow-up SQL-performance review found that ops projection dirty repair must stay a keyset enqueue path rather than a wide News projection input rebuild. `_enqueue_news_targets` now calls `_fetch_news_item_rows` only when `news_item_projections` are selected, and source-quality-only repair proves no `FROM news_items` scan. `_fetch_news_item_rows` selects only `items.news_item_id`, `items.published_at_ms AS source_watermark_ms`, and `items.agent_admission_status`; architecture guards reject `LEFT JOIN LATERAL`, `news_token_mentions`, `news_fact_candidates`, `agent_admission_json`, and provider signal/impact wide rows from the repair query (`src/parallax/app/runtime/projection_dirty_targets.py:62`, `src/parallax/app/runtime/projection_dirty_targets.py:77`, `src/parallax/app/runtime/projection_dirty_targets.py:163`, `src/parallax/app/runtime/projection_dirty_targets.py:171`, `src/parallax/app/runtime/projection_dirty_targets.py:173`, `src/parallax/app/runtime/projection_dirty_targets.py:174`, `tests/unit/test_ops_projection_dirty_targets.py:183`, `tests/unit/test_ops_projection_dirty_targets.py:219`, `tests/architecture/test_news_intel_kiss_simplification.py:1012`, `tests/architecture/test_news_intel_kiss_simplification.py:1018`, `tests/architecture/test_news_intel_kiss_simplification.py:1019`, `tests/architecture/test_news_intel_kiss_simplification.py:1020`, `tests/architecture/test_news_intel_kiss_simplification.py:1022`, `tests/architecture/test_news_intel_kiss_simplification.py:1023`, `tests/architecture/test_news_intel_kiss_simplification.py:1024`, `tests/architecture/test_news_intel_kiss_simplification.py:1027`, `tests/architecture/test_news_intel_kiss_simplification.py:1028`, `tests/architecture/test_news_intel_kiss_simplification.py:1029`, `tests/architecture/test_news_intel_kiss_simplification.py:1030`, `tests/architecture/test_news_intel_kiss_simplification.py:1031`).
+Follow-up SQL-performance review found that ops projection dirty repair must stay a keyset enqueue path rather than a wide News projection input rebuild. `_enqueue_news_targets` now calls `_fetch_news_item_rows` only when `news_item_projections` are selected, and source-quality-only repair proves no `FROM news_items` scan. `_fetch_news_item_rows` selects only `items.news_item_id`, `items.published_at_ms AS source_watermark_ms`, and `items.agent_admission_status`; architecture guards reject `LEFT JOIN LATERAL`, `news_token_mentions`, `news_fact_candidates`, `agent_admission_json`, and provider signal/impact wide rows from the repair query (`src/parallax/app/runtime/projection_dirty_targets.py:62`, `src/parallax/app/runtime/projection_dirty_targets.py:77`, `src/parallax/app/runtime/projection_dirty_targets.py:163`, `src/parallax/app/runtime/projection_dirty_targets.py:171`, `src/parallax/app/runtime/projection_dirty_targets.py:173`, `src/parallax/app/runtime/projection_dirty_targets.py:175`, `tests/unit/test_ops_projection_dirty_targets.py:199`, `tests/unit/test_ops_projection_dirty_targets.py:235`, `tests/architecture/test_news_intel_kiss_simplification.py:1012`, `tests/architecture/test_news_intel_kiss_simplification.py:1018`, `tests/architecture/test_news_intel_kiss_simplification.py:1019`, `tests/architecture/test_news_intel_kiss_simplification.py:1020`, `tests/architecture/test_news_intel_kiss_simplification.py:1022`, `tests/architecture/test_news_intel_kiss_simplification.py:1023`, `tests/architecture/test_news_intel_kiss_simplification.py:1024`, `tests/architecture/test_news_intel_kiss_simplification.py:1027`, `tests/architecture/test_news_intel_kiss_simplification.py:1028`, `tests/architecture/test_news_intel_kiss_simplification.py:1029`, `tests/architecture/test_news_intel_kiss_simplification.py:1030`, `tests/architecture/test_news_intel_kiss_simplification.py:1031`).
 
 Follow-up review found the same optional connection-transaction root in `PulseJobsRepository`: terminal/dead paths updated `pulse_agent_jobs`, wrote `worker_queue_terminal_events`, fell back to `nullcontext()` when connection transaction support was absent, and retained manual commit branches (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:561`, `src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:594`). The target contract is that Pulse job terminal/dead transitions fail before job-state or terminal-ledger SQL when connection transaction support is missing, and otherwise keep both writes inside the connection transaction (`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:596`, `src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:197`, `tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:55`, `tests/architecture/test_pulse_no_compat.py:255`).
 
@@ -814,10 +814,10 @@ direct repository-session access to `self.repos.pulse_trigger_dirty_targets`,
 `self.repos.token_profile_current_dirty_targets`, and
 `self.repos.token_capture_tier_dirty_targets`, so missing downstream repositories
 are session wiring failures instead of optional work
-(`src/parallax/domains/token_intel/services/token_radar_projection.py:915`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:962`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:1007`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:1032`).
+(`src/parallax/domains/token_intel/services/token_radar_projection.py:920`,
+`src/parallax/domains/token_intel/services/token_radar_projection.py:967`,
+`src/parallax/domains/token_intel/services/token_radar_projection.py:1012`,
+`src/parallax/domains/token_intel/services/token_radar_projection.py:1037`).
 Architecture tests reject the old optional repository probes and `if repo is None:`
 branches
 (`tests/architecture/test_token_radar_source_width_contract.py:130`,
@@ -1093,7 +1093,7 @@ The target contract is that `token_profile_current_dirty_targets`,
 `token_image_source_dirty_targets`, and `asset_profile_refresh_targets`
 completion keys read `claim["attempt_count"]`, require a positive claimed-row
 attempt, and fail before SQL without synthesizing zero attempts
-(`src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:53`,
+(`src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:52`,
 `src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:67`,
 `src/parallax/domains/asset_market/repositories/asset_profile_refresh_target_repository.py:57`,
 `src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:380`,
@@ -1199,10 +1199,10 @@ Token Profile Current dirty queue repository: profile-current dirty enqueue,
 due-claim, done, and error paths executed `token_profile_current_dirty_targets`
 SQL before direct connection commit when the repository owned the commit
 (src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:14,
-src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:53,
-src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:166,
-src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:229,
-src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:281,
+src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:52,
+src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:165,
+src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:228,
+src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:280,
 src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:432).
 The target contract is that repository-owned Token Profile Current dirty queue
 mutations enter the connection transaction before SQL; empty inputs may return
@@ -4283,6 +4283,8 @@ come from PostgreSQL changed-row evidence rather than application-side
 - AC438. WHEN `TokenImageMirrorWorker` handles failed `token_image_source_dirty_targets` THEN dirty-source retry budget SHALL come from formal `settings.workers.token_image_mirror.max_attempts`, retryable claims SHALL reschedule in `token_image_source_dirty_targets`, exhausted claims SHALL be deleted and terminalized in `worker_queue_terminal_events` with target key `source_url_hash:target_type:target_id`, and Token Profile image admission SHALL NOT re-enqueue unresolved terminal events before operator action.
 - AC439. WHEN Binance CEX profile sync writes `cex_token_profiles` source-cache rows THEN provider output SHALL be materialized as formal mapping records with required `base_symbol`, `provider`, `symbol`, `logo_url`, `source_ref`, and mapping-shaped `raw_payload` before opening the DB transaction; object-attribute profile compatibility, provider/symbol fallbacks, and empty raw-payload defaults SHALL fail before source-cache SQL.
 - AC440. WHEN Token Profile Current projection builds or repository writes `token_profile_current` rows THEN projection output and repository input SHALL use formal `quality_flags_json` and `source_payload_json` fields, missing or incorrectly shaped JSON fields SHALL fail before serving-row SQL, and repository code SHALL NOT restore old `quality_flags` / `source_payload` aliases or empty JSON defaults.
+- AC441. WHEN Token Radar projection enqueues downstream Pulse Trigger, Narrative Admission, or Token Profile Current dirty targets from current rows THEN `source_watermark_ms` SHALL come only from positive current-row `source_max_received_at_ms`, missing or invalid source watermarks SHALL fail closed with `token_radar_downstream_source_watermark_required`, and projection code SHALL NOT use `computed_at_ms` or projection runtime time as a downstream source-watermark fallback.
+- AC442. WHEN Token Profile Current dirty targets are enqueued by Token Radar, Asset Profile Refresh, Token Image Mirror, or ops image repair THEN producer rows SHALL carry a positive integer `source_watermark_ms`, `TokenProfileCurrentDirtyTargetRepository` SHALL reject missing, tuple-shaped, zero, negative, boolean, string, or otherwise invalid source watermarks with `token_profile_current_dirty_target_source_watermark_required`, and producer/repository/ops code SHALL NOT use `computed_at_ms`, `updated_at_ms`, tuple target identity, or runtime `now_ms` as a source-watermark fallback.
 
 ## Risks
 

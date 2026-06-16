@@ -269,7 +269,7 @@ def _enqueue_profile_current_for_claims(*, repos: Any, claims: list[dict[str, An
         {
             "target_type": str(claim.get("target_type") or ""),
             "target_id": str(claim.get("target_id") or ""),
-            "source_watermark_ms": int(claim.get("source_watermark_ms") or now_ms),
+            "source_watermark_ms": _required_claim_source_watermark_ms(claim),
             "priority": 30,
         }
         for claim in claims
@@ -282,6 +282,18 @@ def _enqueue_profile_current_for_claims(*, repos: Any, claims: list[dict[str, An
             now_ms=now_ms,
             commit=False,
         )
+
+
+def _required_claim_source_watermark_ms(claim: dict[str, Any]) -> int:
+    try:
+        value = claim["source_watermark_ms"]
+    except KeyError as exc:
+        raise RuntimeError("token_image_mirror_profile_dirty_source_watermark_required") from exc
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError("token_image_mirror_profile_dirty_source_watermark_required")
+    if value <= 0:
+        raise RuntimeError("token_image_mirror_profile_dirty_source_watermark_required")
+    return int(value)
 
 
 def _error_text(exc: BaseException) -> str:

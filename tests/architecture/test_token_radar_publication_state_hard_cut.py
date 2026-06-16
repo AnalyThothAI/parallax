@@ -818,11 +818,14 @@ def test_token_radar_downstream_fanout_uses_formal_current_identity_without_alia
         'row.get("target_id") or row.get("identity_id")',
         'str(row.get("target_type") or "").strip()',
         'str(row.get("target_id") or "").strip()',
+        'int(row.get("source_max_received_at_ms") or computed_at_ms)',
     )
     required = (
         "_current_row_resolved_target(row)",
         '_required_projection_row_text(row, "target_type_key")',
         '_required_projection_row_text(row, "identity_id")',
+        "_downstream_source_watermark_ms(row)",
+        "token_radar_downstream_source_watermark_required",
     )
 
     assert [token for token in forbidden if token in fanout_source] == []
