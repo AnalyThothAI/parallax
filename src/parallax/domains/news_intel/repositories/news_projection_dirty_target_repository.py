@@ -95,14 +95,12 @@ class NewsProjectionDirtyTargetRepository:
                 FROM incoming
                 ON CONFLICT(projection_name, target_kind, target_id, "window") DO UPDATE SET
                   dirty_reason = CASE
-                    WHEN news_projection_dirty_targets.source_watermark_ms = 0
-                      OR EXCLUDED.source_watermark_ms >= news_projection_dirty_targets.source_watermark_ms
+                    WHEN EXCLUDED.source_watermark_ms >= news_projection_dirty_targets.source_watermark_ms
                       THEN EXCLUDED.dirty_reason
                     ELSE news_projection_dirty_targets.dirty_reason
                   END,
                   payload_hash = CASE
-                    WHEN news_projection_dirty_targets.source_watermark_ms = 0
-                      OR EXCLUDED.source_watermark_ms >= news_projection_dirty_targets.source_watermark_ms
+                    WHEN EXCLUDED.source_watermark_ms >= news_projection_dirty_targets.source_watermark_ms
                       THEN EXCLUDED.payload_hash
                     ELSE news_projection_dirty_targets.payload_hash
                   END,
@@ -117,10 +115,7 @@ class NewsProjectionDirtyTargetRepository:
                       AND (
                         EXCLUDED.source_watermark_ms > news_projection_dirty_targets.source_watermark_ms
                         OR (
-                          (
-                            news_projection_dirty_targets.source_watermark_ms = 0
-                            OR EXCLUDED.source_watermark_ms >= news_projection_dirty_targets.source_watermark_ms
-                          )
+                          EXCLUDED.source_watermark_ms >= news_projection_dirty_targets.source_watermark_ms
                           AND (
                             news_projection_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
                             OR news_projection_dirty_targets.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
@@ -135,10 +130,7 @@ class NewsProjectionDirtyTargetRepository:
                       AND (
                         EXCLUDED.source_watermark_ms > news_projection_dirty_targets.source_watermark_ms
                         OR (
-                          (
-                            news_projection_dirty_targets.source_watermark_ms = 0
-                            OR EXCLUDED.source_watermark_ms >= news_projection_dirty_targets.source_watermark_ms
-                          )
+                          EXCLUDED.source_watermark_ms >= news_projection_dirty_targets.source_watermark_ms
                           AND (
                             news_projection_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
                             OR news_projection_dirty_targets.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
@@ -468,7 +460,14 @@ def _dirty_records(
         if not projection_name or not target_kind or not target_id:
             continue
         _validate_projection_name(projection_name)
-        source_watermark_ms = int(row.get("source_watermark_ms") or 0)
+        source_watermark_ms = _source_watermark_ms(
+            row,
+            required=_requires_source_watermark(
+                projection_name=projection_name,
+                target_kind=target_kind,
+                window=window,
+            ),
+        )
         priority = _priority_value(row)
         target_due_at_ms = int(row.get("due_at_ms") or default_due_at_ms)
         key = (projection_name, target_kind, target_id, window)
@@ -499,6 +498,28 @@ def _dirty_records(
             if not existing["_payload_hash_explicit"]:
                 existing["payload_hash"] = _dirty_payload_hash(existing, reason=reason)
     return list(records.values())
+
+
+def _requires_source_watermark(*, projection_name: str, target_kind: str, window: str) -> bool:
+    if projection_name in {"page", "brief_input"}:
+        return target_kind == "news_item"
+    if projection_name == "source_quality":
+        return target_kind == "source" and window != "_refresh"
+    return False
+
+
+def _source_watermark_ms(row: Mapping[str, Any], *, required: bool) -> int:
+    try:
+        value = row["source_watermark_ms"]
+    except KeyError as exc:
+        if not required:
+            return 0
+        raise ValueError("news_projection_dirty_target_source_watermark_required") from exc
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("news_projection_dirty_target_source_watermark_required")
+    if value <= 0:
+        raise ValueError("news_projection_dirty_target_source_watermark_required")
+    return int(value)
 
 
 def _dirty_params(records: list[dict[str, Any]]) -> dict[str, list[Any]]:

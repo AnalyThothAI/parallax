@@ -112,6 +112,9 @@ class NewsSourceQualityProjectionWorker(WorkerBase):
                         news_item_ids=changed_item_ids,
                         reason="source_quality_status_changed",
                         now_ms=now,
+                        source_watermark_ms_by_news_item_id={
+                            str(news_item_id): now for news_item_id in changed_item_ids
+                        },
                         commit=False,
                     )
                     mark_work_done(repos, claimed, now_ms=now, commit=False)
@@ -126,9 +129,7 @@ class NewsSourceQualityProjectionWorker(WorkerBase):
                             now_ms=now,
                             due_at_ms=min(int(target["due_at_ms"]) for target in future_targets),
                             source_watermark_ms_by_source_window={
-                                (str(target["source_id"]), str(target["window"])): int(
-                                    target.get("source_watermark_ms") or 0
-                                )
+                                (str(target["source_id"]), str(target["window"])): int(target["source_watermark_ms"])
                                 for target in future_targets
                             },
                             commit=False,
@@ -227,20 +228,28 @@ def _future_source_quality_targets(rows: Iterable[Mapping[str, Any]], *, now_ms:
         if latest_item_ms is not None:
             due_candidates.append(latest_item_ms + window_ms + 1)
         if not has_items:
-            due_candidates = [int(now_ms) + window_ms]
+            continue
+        source_watermark_ms = _source_watermark_ms(row)
         targets.append(
             {
                 "source_id": source_id,
                 "window": window,
                 "due_at_ms": max(int(now_ms) + 1, min(due_candidates)),
-                "source_watermark_ms": int(row.get("computed_at_ms") or now_ms),
+                "source_watermark_ms": source_watermark_ms,
             }
         )
     return targets
 
 
+def _source_watermark_ms(row: Mapping[str, Any]) -> int:
+    value = _optional_int(row.get("latest_item_published_at_ms"))
+    if value is None or value <= 0:
+        raise ValueError("news_source_quality_window_source_watermark_required")
+    return int(value)
+
+
 def _optional_int(value: Any) -> int | None:
-    if value is None:
+    if value is None or isinstance(value, bool):
         return None
     try:
         return int(value)

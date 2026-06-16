@@ -102,6 +102,7 @@ class NewsFetchWorker(WorkerBase):
                 news_item_ids=changed_item_ids,
                 reason="source_metadata_changed",
                 now_ms=now,
+                source_watermark_ms_by_news_item_id={news_item_id: now for news_item_id in changed_item_ids},
                 commit=False,
             )
             enqueue_source_quality_refresh(

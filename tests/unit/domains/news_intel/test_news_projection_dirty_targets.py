@@ -38,6 +38,7 @@ from parallax.platform.config.settings import (
 
 NOW_MS = 1_779_000_000_000
 NEWS_SOURCE_PROVIDER_SCHEMA_TYPES = ("atom", "cryptopanic", "json_feed", "opennews", "rss")
+_MISSING = object()
 
 
 def _page_projection_settings(**overrides: Any) -> NewsPageProjectionWorkerSettings:
@@ -123,7 +124,14 @@ def test_dirty_target_terminalize_requires_connection_transaction_before_delete_
     [
         pytest.param(
             lambda repo: repo.enqueue_targets(
-                [{"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"}],
+                [
+                    {
+                        "projection_name": "page",
+                        "target_kind": "news_item",
+                        "target_id": "news-1",
+                        "source_watermark_ms": NOW_MS - 1_000,
+                    }
+                ],
                 reason="unit",
                 now_ms=NOW_MS,
             ),
@@ -316,7 +324,14 @@ def test_news_projection_dirty_enqueue_counts_require_cursor_rowcount() -> None:
 
     with pytest.raises(TypeError, match="news_projection_dirty_target_rowcount_required"):
         repo.enqueue_targets(
-            [{"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"}],
+            [
+                {
+                    "projection_name": "page",
+                    "target_kind": "news_item",
+                    "target_id": "news-1",
+                    "source_watermark_ms": NOW_MS - 1_000,
+                }
+            ],
             reason="unit",
             now_ms=NOW_MS,
         )
@@ -329,7 +344,14 @@ def test_news_projection_dirty_enqueue_counts_reject_invalid_cursor_rowcount(row
 
     with pytest.raises(TypeError, match="news_projection_dirty_target_rowcount_invalid"):
         repo.enqueue_targets(
-            [{"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"}],
+            [
+                {
+                    "projection_name": "page",
+                    "target_kind": "news_item",
+                    "target_id": "news-1",
+                    "source_watermark_ms": NOW_MS - 1_000,
+                }
+            ],
             reason="unit",
             now_ms=NOW_MS,
         )
@@ -341,14 +363,87 @@ def test_news_projection_dirty_enqueue_count_uses_postgres_rowcount_not_candidat
 
     changed = repo.enqueue_targets(
         [
-            {"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"},
-            {"projection_name": "page", "target_kind": "news_item", "target_id": "news-2"},
+            {
+                "projection_name": "page",
+                "target_kind": "news_item",
+                "target_id": "news-1",
+                "source_watermark_ms": NOW_MS - 1_000,
+            },
+            {
+                "projection_name": "page",
+                "target_kind": "news_item",
+                "target_id": "news-2",
+                "source_watermark_ms": NOW_MS - 2_000,
+            },
         ],
         reason="unit",
         now_ms=NOW_MS,
     )
 
     assert changed == 0
+
+
+@pytest.mark.parametrize("projection_name", ["page", "brief_input"])
+@pytest.mark.parametrize(
+    "source_watermark_ms",
+    [
+        pytest.param(_MISSING, id="missing"),
+        pytest.param(None, id="none"),
+        pytest.param(0, id="zero"),
+        pytest.param(-1, id="negative"),
+        pytest.param(True, id="bool"),
+        pytest.param("10", id="string"),
+    ],
+)
+def test_news_item_projection_dirty_enqueue_requires_positive_source_watermark(
+    projection_name: str,
+    source_watermark_ms: object,
+) -> None:
+    conn = TransactionalScriptedConnection([[]], rowcount=0)
+    repo = NewsProjectionDirtyTargetRepository(conn)
+    target: dict[str, Any] = {
+        "projection_name": projection_name,
+        "target_kind": "news_item",
+        "target_id": "news-1",
+    }
+    if source_watermark_ms is not _MISSING:
+        target["source_watermark_ms"] = source_watermark_ms
+
+    with pytest.raises(ValueError, match="news_projection_dirty_target_source_watermark_required"):
+        repo.enqueue_targets([target], reason="unit", now_ms=NOW_MS)
+
+    assert conn.sql == []
+
+
+@pytest.mark.parametrize(
+    "source_watermark_ms",
+    [
+        pytest.param(_MISSING, id="missing"),
+        pytest.param(None, id="none"),
+        pytest.param(0, id="zero"),
+        pytest.param(-1, id="negative"),
+        pytest.param(True, id="bool"),
+        pytest.param("10", id="string"),
+    ],
+)
+def test_news_source_quality_window_dirty_enqueue_requires_positive_source_watermark(
+    source_watermark_ms: object,
+) -> None:
+    conn = TransactionalScriptedConnection([[]], rowcount=0)
+    repo = NewsProjectionDirtyTargetRepository(conn)
+    target: dict[str, Any] = {
+        "projection_name": "source_quality",
+        "target_kind": "source",
+        "target_id": "source-1",
+        "window": "24h",
+    }
+    if source_watermark_ms is not _MISSING:
+        target["source_watermark_ms"] = source_watermark_ms
+
+    with pytest.raises(ValueError, match="news_projection_dirty_target_source_watermark_required"):
+        repo.enqueue_targets([target], reason="unit", now_ms=NOW_MS)
+
+    assert conn.sql == []
 
 
 def test_news_projection_dirty_claim_due_returning_rows_require_cursor_rowcount() -> None:
@@ -649,8 +744,18 @@ def test_fetch_worker_enqueues_page_and_source_quality_dirty_for_material_source
     assert repos.dirty.enqueued == [
         {
             "rows": [
-                {"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"},
-                {"projection_name": "page", "target_kind": "news_item", "target_id": "news-2"},
+                {
+                    "projection_name": "page",
+                    "target_kind": "news_item",
+                    "target_id": "news-1",
+                    "source_watermark_ms": NOW_MS,
+                },
+                {
+                    "projection_name": "page",
+                    "target_kind": "news_item",
+                    "target_id": "news-2",
+                    "source_watermark_ms": NOW_MS,
+                },
             ],
             "reason": "source_metadata_changed",
             "now_ms": NOW_MS,
@@ -917,7 +1022,7 @@ def test_brief_worker_enqueues_only_page_dirty_after_current_brief_write() -> No
     for key, value in WorkerAttrs.items():
         setattr(worker, key, value)
     packet = SimpleNamespace(
-        news_item=SimpleNamespace(news_item_id="news-1"),
+        news_item=SimpleNamespace(news_item_id="news-1", published_at_ms=NOW_MS - 1_000),
         input_hash="input-1",
     )
 
@@ -937,7 +1042,14 @@ def test_brief_worker_enqueues_only_page_dirty_after_current_brief_write() -> No
     assert repos.news.brief_commits == [False]
     assert repos.dirty.enqueued == [
         {
-            "rows": [{"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"}],
+            "rows": [
+                {
+                    "projection_name": "page",
+                    "target_kind": "news_item",
+                    "target_id": "news-1",
+                    "source_watermark_ms": NOW_MS - 1_000,
+                }
+            ],
             "reason": "news_item_brief_updated",
             "now_ms": NOW_MS,
             "commit": False,
@@ -969,7 +1081,14 @@ def test_source_quality_worker_enqueues_page_dirty_when_source_quality_status_ch
     assert repos.news_item_ids_requested_for_sources == [["source-1"]]
     assert repos.dirty.enqueued == [
         {
-            "rows": [{"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"}],
+            "rows": [
+                {
+                    "projection_name": "page",
+                    "target_kind": "news_item",
+                    "target_id": "news-1",
+                    "source_watermark_ms": NOW_MS,
+                }
+            ],
             "reason": "source_quality_status_changed",
             "now_ms": NOW_MS,
             "commit": False,
@@ -982,7 +1101,7 @@ def test_source_quality_worker_enqueues_page_dirty_when_source_quality_status_ch
                     "target_id": "source-1",
                     "window": "24h",
                     "due_at_ms": NOW_MS + 60 * 60 * 1000,
-                    "source_watermark_ms": NOW_MS,
+                    "source_watermark_ms": NOW_MS - 1_000,
                 }
             ],
             "reason": "source_quality_window_due",

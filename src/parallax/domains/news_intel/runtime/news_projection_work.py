@@ -98,7 +98,7 @@ def enqueue_source_quality_window_work(
             "target_kind": "source",
             "target_id": source_id,
             "window": window,
-            "source_watermark_ms": int(watermarks.get((source_id, window), 0)),
+            "source_watermark_ms": _watermark_for_key(watermarks, (source_id, window)),
             **({"due_at_ms": int(due_at_ms)} if due_at_ms is not None else {}),
         }
         for source_id, window in _unique_pairs(source_windows)
@@ -226,10 +226,24 @@ def _news_item_target(
     *,
     watermarks: Mapping[str, int],
 ) -> dict[str, Any]:
-    target: dict[str, Any] = {"projection_name": projection_name, "target_kind": "news_item", "target_id": news_item_id}
-    if news_item_id in watermarks:
-        target["source_watermark_ms"] = int(watermarks[news_item_id])
-    return target
+    return {
+        "projection_name": projection_name,
+        "target_kind": "news_item",
+        "target_id": news_item_id,
+        "source_watermark_ms": _watermark_for_key(watermarks, news_item_id),
+    }
+
+
+def _watermark_for_key(watermarks: Mapping[Any, int], key: Any) -> int:
+    try:
+        value = watermarks[key]
+    except KeyError as exc:
+        raise ValueError("news_projection_dirty_target_source_watermark_required") from exc
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("news_projection_dirty_target_source_watermark_required")
+    if value <= 0:
+        raise ValueError("news_projection_dirty_target_source_watermark_required")
+    return int(value)
 
 
 def _target_ids(

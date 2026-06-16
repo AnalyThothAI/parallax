@@ -92,7 +92,7 @@ def _enqueue_news_targets(
     )
     page_rows = [row for row in news_item_rows if "page" in news_item_projections]
     brief_rows = [row for row in news_item_rows if "brief_input" in news_item_projections and _row_brief_eligible(row)]
-    watermarks = {str(row["news_item_id"]): int(row["source_watermark_ms"] or 0) for row in news_item_rows}
+    watermarks = {str(row["news_item_id"]): _news_item_source_watermark_ms(row) for row in news_item_rows}
     enqueued_pages = (
         enqueue_page_reprojection(
             repos,
@@ -153,6 +153,18 @@ def _row_brief_eligible(row: Mapping[str, Any]) -> bool:
 
 def _news_item_brief_priority(row: Mapping[str, Any]) -> int:
     return news_item_agent_brief_priority(item=row)
+
+
+def _news_item_source_watermark_ms(row: Mapping[str, Any]) -> int:
+    try:
+        value = row["source_watermark_ms"]
+    except KeyError as exc:
+        raise ValueError("ops_news_projection_dirty_source_watermark_required") from exc
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("ops_news_projection_dirty_source_watermark_required")
+    if value <= 0:
+        raise ValueError("ops_news_projection_dirty_source_watermark_required")
+    return int(value)
 
 
 def _fetch_ids(conn: Any, sql: str, column: str) -> list[str]:

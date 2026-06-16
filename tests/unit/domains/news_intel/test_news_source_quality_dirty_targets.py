@@ -46,7 +46,7 @@ def test_source_quality_worker_projects_claimed_source_window_and_reschedules_ta
                     "target_id": "source-1",
                     "window": "24h",
                     "due_at_ms": NOW_MS + 60 * 60 * 1000,
-                    "source_watermark_ms": NOW_MS,
+                    "source_watermark_ms": NOW_MS - 1_000,
                 }
             ],
             "reason": "source_quality_window_due",

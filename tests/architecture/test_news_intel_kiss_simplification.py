@@ -476,6 +476,33 @@ def test_news_projection_dirty_enqueue_counts_require_real_cursor_rowcount_witho
     assert "return _cursor_rowcount(cursor)" in enqueue_source
 
 
+def test_news_projection_dirty_source_watermarks_have_no_zero_or_runtime_fallback() -> None:
+    repository_path = "src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py"
+    work_path = "src/parallax/domains/news_intel/runtime/news_projection_work.py"
+    worker_path = "src/parallax/domains/news_intel/runtime/news_source_quality_projection_worker.py"
+    ops_path = "src/parallax/app/runtime/projection_dirty_targets.py"
+    repository_text = _read(repository_path)
+    dirty_records_source = _function_source(repository_path, "_dirty_records")
+    work_text = _read(work_path)
+    ops_text = _read(ops_path)
+    future_targets_source = _function_source(worker_path, "_future_source_quality_targets")
+    forbidden = (
+        'row.get("source_watermark_ms") or 0',
+        'int(row.get("source_watermark_ms") or 0)',
+        "source_watermark_ms = 0",
+    )
+
+    assert "news_projection_dirty_target_source_watermark_required" in repository_text
+    assert "news_projection_dirty_target_source_watermark_required" in work_text
+    assert "ops_news_projection_dirty_source_watermark_required" in ops_text
+    assert [token for token in forbidden if token in repository_text] == []
+    assert [token for token in forbidden if token in dirty_records_source] == []
+    assert [token for token in forbidden if token in work_text] == []
+    assert [token for token in forbidden if token in ops_text] == []
+    assert 'row.get("computed_at_ms") or now_ms' not in future_targets_source
+    assert '"latest_item_published_at_ms"' in future_targets_source
+
+
 def test_news_repository_write_counts_require_real_cursor_rowcount_without_defaults() -> None:
     path = "src/parallax/domains/news_intel/repositories/news_repository.py"
     repository_text = _read(path)

@@ -20,29 +20,32 @@ EXPECTED_MODULE_IDS = (
     "assets/commodities",
     "assets/fx",
     "assets/crypto",
-    "assets/crypto-derivatives",
     "rates/fed-funds",
     "rates/yield-curve",
-    "rates/auctions",
     "rates/real-rates",
     "rates/expectations",
-    "fed/statements",
-    "fed/speeches",
     "liquidity/transmission-chain",
     "liquidity/fed-balance-sheet",
     "liquidity/operations",
     "liquidity/rrp-tga",
     "liquidity/reserves",
-    "liquidity/global-dollar",
-    "liquidity/subsurface",
     "economy/gdp",
     "economy/employment",
     "economy/inflation",
+    "volatility/vix",
+    "credit/stress",
+)
+
+DELETED_MODULE_IDS = (
+    "assets/crypto-derivatives",
+    "rates/auctions",
+    "fed/statements",
+    "fed/speeches",
+    "liquidity/global-dollar",
+    "liquidity/subsurface",
     "economy/consumer",
     "volatility/dashboard",
-    "volatility/vix",
     "credit/cds",
-    "credit/stress",
 )
 
 
@@ -53,6 +56,19 @@ def test_macro_module_view_version_is_exported() -> None:
 def test_catalog_exposes_exact_supported_module_ids() -> None:
     assert MACRO_MODULE_IDS == EXPECTED_MODULE_IDS
     assert tuple(config.module_id for config in list_macro_module_configs()) == EXPECTED_MODULE_IDS
+
+
+def test_catalog_hard_deletes_proxy_only_modules() -> None:
+    deleted_route_paths = {f"/macro/{module_id}" for module_id in DELETED_MODULE_IDS}
+
+    for module_id in DELETED_MODULE_IDS:
+        with pytest.raises(UnsupportedMacroModuleError):
+            get_macro_module_config(module_id)
+
+    for config in list_macro_module_configs():
+        assert config.module_id not in DELETED_MODULE_IDS
+        assert config.route_path not in deleted_route_paths
+        assert not (set(config.related_routes) & deleted_route_paths)
 
 
 def test_catalog_configs_have_stable_contract_fields() -> None:

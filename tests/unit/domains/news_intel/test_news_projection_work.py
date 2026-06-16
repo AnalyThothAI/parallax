@@ -7,6 +7,7 @@ from parallax.domains.news_intel.runtime.news_projection_work import (
     enqueue_item_brief_work,
     enqueue_page_reprojection,
     enqueue_source_quality_refresh,
+    enqueue_source_quality_window_work,
     page_news_item_ids,
     source_quality_claim_windows,
 )
@@ -67,12 +68,18 @@ def test_enqueue_page_reprojection_hides_page_projection_name() -> None:
         news_item_ids=["news-1", "news-1", ""],
         reason="news_item_processed",
         now_ms=NOW_MS,
+        source_watermark_ms_by_news_item_id={"news-1": NOW_MS - 1_000},
         commit=False,
     )
 
     assert count == 1
     assert repos.news_projection_dirty_targets.enqueued == [
-        {"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"}
+        {
+            "projection_name": "page",
+            "target_kind": "news_item",
+            "target_id": "news-1",
+            "source_watermark_ms": NOW_MS - 1_000,
+        }
     ]
 
 
@@ -115,6 +122,7 @@ def test_enqueue_news_item_work_filters_non_servable_duplicate_ids() -> None:
         news_item_ids=["news-survivor", "news-deleted"],
         reason="canonical_news_item_merge",
         now_ms=NOW_MS,
+        source_watermark_ms_by_news_item_id={"news-survivor": NOW_MS - 1_000},
         commit=False,
     )
     brief_count = enqueue_item_brief_work(
@@ -122,6 +130,7 @@ def test_enqueue_news_item_work_filters_non_servable_duplicate_ids() -> None:
         news_item_ids=["news-survivor", "news-deleted"],
         reason="canonical_news_item_merge",
         now_ms=NOW_MS,
+        source_watermark_ms_by_news_item_id={"news-survivor": NOW_MS - 1_000},
         commit=False,
     )
 
@@ -132,8 +141,18 @@ def test_enqueue_news_item_work_filters_non_servable_duplicate_ids() -> None:
         ["news-survivor", "news-deleted"],
     ]
     assert repos.news_projection_dirty_targets.enqueued == [
-        {"projection_name": "page", "target_kind": "news_item", "target_id": "news-survivor"},
-        {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-survivor"},
+        {
+            "projection_name": "page",
+            "target_kind": "news_item",
+            "target_id": "news-survivor",
+            "source_watermark_ms": NOW_MS - 1_000,
+        },
+        {
+            "projection_name": "brief_input",
+            "target_kind": "news_item",
+            "target_id": "news-survivor",
+            "source_watermark_ms": NOW_MS - 1_000,
+        },
     ]
 
 
@@ -156,6 +175,35 @@ def test_enqueue_news_item_work_requires_repository_servable_filter() -> None:
     assert repos.news_projection_dirty_targets.enqueued == []
 
 
+def test_news_item_projection_work_requires_source_watermark_before_enqueue() -> None:
+    repos = FakeRepos()
+
+    for operation in (
+        lambda: enqueue_page_reprojection(
+            repos,
+            news_item_ids=["news-1"],
+            reason="news_item_processed",
+            now_ms=NOW_MS,
+            commit=False,
+        ),
+        lambda: enqueue_item_brief_work(
+            repos,
+            news_item_ids=["news-1"],
+            reason="news_item_processed",
+            now_ms=NOW_MS,
+            commit=False,
+        ),
+    ):
+        try:
+            operation()
+        except ValueError as exc:
+            assert "news_projection_dirty_target_source_watermark_required" in str(exc)
+        else:  # pragma: no cover - assertion branch documents the expected failure mode.
+            raise AssertionError("news item projection dirty work must require source_watermark_ms")
+
+    assert repos.news_projection_dirty_targets.enqueued == []
+
+
 def test_source_quality_refresh_is_source_scoped_not_window_fanout() -> None:
     repos = FakeRepos()
 
@@ -172,6 +220,25 @@ def test_source_quality_refresh_is_source_scoped_not_window_fanout() -> None:
         {"projection_name": "source_quality", "target_kind": "source", "target_id": "source-1", "window": "_refresh"},
         {"projection_name": "source_quality", "target_kind": "source", "target_id": "source-2", "window": "_refresh"},
     ]
+
+
+def test_source_quality_window_work_requires_source_watermark_before_enqueue() -> None:
+    repos = FakeRepos()
+
+    try:
+        enqueue_source_quality_window_work(
+            repos,
+            source_windows=[("source-1", "24h")],
+            reason="source_quality_window_due",
+            now_ms=NOW_MS,
+            commit=False,
+        )
+    except ValueError as exc:
+        assert "news_projection_dirty_target_source_watermark_required" in str(exc)
+    else:  # pragma: no cover - assertion branch documents the expected failure mode.
+        raise AssertionError("source_quality window dirty work must require source_watermark_ms")
+
+    assert repos.news_projection_dirty_targets.enqueued == []
 
 
 def test_claim_helpers_filter_by_semantic_work_type() -> None:

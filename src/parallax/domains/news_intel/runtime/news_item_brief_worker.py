@@ -556,6 +556,9 @@ class NewsItemBriefWorker(WorkerBase):
                 news_item_ids=[news_item_id],
                 reason="news_item_agent_admission_updated",
                 now_ms=int(now_ms),
+                source_watermark_ms_by_news_item_id={
+                    news_item_id: _page_dirty_source_watermark_ms(target, item=item)
+                },
                 commit=False,
             )
             mark_work_done(repos, [target], now_ms=int(now_ms), commit=False)
@@ -699,6 +702,12 @@ class NewsItemBriefWorker(WorkerBase):
                 news_item_ids=[packet.news_item.news_item_id],
                 reason="news_item_brief_updated",
                 now_ms=int(computed_at_ms),
+                source_watermark_ms_by_news_item_id={
+                    packet.news_item.news_item_id: _page_dirty_source_watermark_ms(
+                        {},
+                        published_at_ms=getattr(packet.news_item, "published_at_ms", None),
+                    )
+                },
                 commit=False,
             )
 
@@ -1140,6 +1149,30 @@ def _dict(value: Any) -> dict[str, Any]:
     if isinstance(value, Mapping):
         return dict(value)
     return {}
+
+
+def _page_dirty_source_watermark_ms(
+    target: Mapping[str, Any],
+    *,
+    item: Mapping[str, Any] | None = None,
+    published_at_ms: int | None = None,
+) -> int:
+    if "source_watermark_ms" in target:
+        return _positive_watermark(target["source_watermark_ms"])
+    item_payload = _dict(item)
+    for value in (published_at_ms, item_payload.get("published_at_ms"), item_payload.get("fetched_at_ms")):
+        if value is not None:
+            return _positive_watermark(value)
+    raise ValueError("news_item_brief_page_dirty_source_watermark_required")
+
+
+def _positive_watermark(value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("news_item_brief_page_dirty_source_watermark_required")
+    watermark = int(value)
+    if watermark <= 0:
+        raise ValueError("news_item_brief_page_dirty_source_watermark_required")
+    return watermark
 
 
 def _agent_admission_payload(value: NewsItemAgentAdmission) -> dict[str, Any]:
