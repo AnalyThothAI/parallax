@@ -77,8 +77,11 @@ Pulse, Narrative Admission, Token Profile Current, and Token Capture Tier
 downstream dirty targets derive `source_watermark_ms` only from the current
 row's positive `source_max_received_at_ms`; missing or invalid watermarks fail
 closed instead of falling back to `computed_at_ms`, `0`, or projection runtime
-time. Capture-tier rank-set repair may read bounded current rows, but those rows
-must also carry positive source watermarks before enqueue.
+time. Pulse Trigger and Narrative Admission dirty repositories also reject
+missing, zero, negative, boolean, or string producer watermarks before queue SQL
+and keep no zero-watermark enqueue compatibility branch. Capture-tier rank-set
+repair may read bounded current rows, but those rows must also carry positive
+source watermarks before enqueue.
 Rank-set selection requires each rank input to expose a non-negative
 `latest_event_received_at_ms` and a known `lane` before window filtering and
 resolved/attention selection; malformed rank inputs fail instead of being

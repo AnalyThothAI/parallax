@@ -169,6 +169,9 @@ ASSET_PROFILE_REFRESH_TARGET_REPOSITORY_PATH = (
 ASSET_PROFILE_REPOSITORY_PATH = SRC / "domains/asset_market/repositories/asset_profile_repository.py"
 ASSET_PROFILE_REFRESH_SERVICE_PATH = SRC / "domains/asset_market/services/asset_profile_refresh.py"
 CEX_TOKEN_PROFILE_REPOSITORY_PATH = SRC / "domains/asset_market/repositories/cex_token_profile_repository.py"
+PULSE_TRIGGER_DIRTY_TARGET_REPOSITORY_PATH = (
+    SRC / "domains/pulse_lab/repositories/pulse_trigger_dirty_target_repository.py"
+)
 NARRATIVE_ADMISSION_DIRTY_TARGET_REPOSITORY_PATH = (
     SRC / "domains/narrative_intel/repositories/narrative_admission_dirty_target_repository.py"
 )
@@ -1400,6 +1403,33 @@ def test_token_capture_tier_dirty_enqueue_source_watermark_has_no_row_or_runtime
 
     assert "token_capture_tier_dirty_target_source_watermark_required" in repository_text
     assert [token for token in forbidden if token in enqueue_source] == []
+
+
+@pytest.mark.architecture
+def test_pulse_and_narrative_dirty_enqueue_source_watermarks_have_no_zero_fallback() -> None:
+    repositories = {
+        "pulse": (
+            PULSE_TRIGGER_DIRTY_TARGET_REPOSITORY_PATH,
+            "pulse_trigger_dirty_target_source_watermark_required",
+        ),
+        "narrative": (
+            NARRATIVE_ADMISSION_DIRTY_TARGET_REPOSITORY_PATH,
+            "narrative_admission_dirty_target_source_watermark_required",
+        ),
+    }
+    forbidden = (
+        'target.get("source_watermark_ms") or 0',
+        'int(target.get("source_watermark_ms") or 0)',
+    )
+    zero_compat_forbidden = "source_watermark_ms = 0"
+
+    for name, (path, marker) in repositories.items():
+        repository_text = path.read_text(encoding="utf-8")
+        target_source = _function_source_by_name(path, "_target_records")
+
+        assert marker in repository_text, name
+        assert [token for token in forbidden if token in target_source] == [], name
+        assert zero_compat_forbidden not in repository_text, name
 
 
 @pytest.mark.architecture

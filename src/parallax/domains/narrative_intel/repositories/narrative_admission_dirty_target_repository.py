@@ -110,26 +110,22 @@ class _NarrativeDirtyTargetRepository:
             FROM incoming
             ON CONFLICT(target_type, target_id, "window", scope) DO UPDATE SET
               projection_version = CASE
-                WHEN {table}.source_watermark_ms = 0
-                  OR EXCLUDED.source_watermark_ms >= {table}.source_watermark_ms
+                WHEN EXCLUDED.source_watermark_ms >= {table}.source_watermark_ms
                   THEN EXCLUDED.projection_version
                 ELSE {table}.projection_version
               END,
               schema_version = CASE
-                WHEN {table}.source_watermark_ms = 0
-                  OR EXCLUDED.source_watermark_ms >= {table}.source_watermark_ms
+                WHEN EXCLUDED.source_watermark_ms >= {table}.source_watermark_ms
                   THEN EXCLUDED.schema_version
                 ELSE {table}.schema_version
               END,
               dirty_reason = CASE
-                WHEN {table}.source_watermark_ms = 0
-                  OR EXCLUDED.source_watermark_ms >= {table}.source_watermark_ms
+                WHEN EXCLUDED.source_watermark_ms >= {table}.source_watermark_ms
                   THEN EXCLUDED.dirty_reason
                 ELSE {table}.dirty_reason
               END,
               payload_hash = CASE
-                WHEN {table}.source_watermark_ms = 0
-                  OR EXCLUDED.source_watermark_ms >= {table}.source_watermark_ms
+                WHEN EXCLUDED.source_watermark_ms >= {table}.source_watermark_ms
                   THEN EXCLUDED.payload_hash
                 ELSE {table}.payload_hash
               END,
@@ -144,10 +140,7 @@ class _NarrativeDirtyTargetRepository:
                   AND (
                     EXCLUDED.source_watermark_ms > {table}.source_watermark_ms
                     OR (
-                      (
-                        {table}.source_watermark_ms = 0
-                        OR EXCLUDED.source_watermark_ms >= {table}.source_watermark_ms
-                      )
+                      EXCLUDED.source_watermark_ms >= {table}.source_watermark_ms
                       AND (
                         {table}.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
                         OR {table}.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
@@ -164,10 +157,7 @@ class _NarrativeDirtyTargetRepository:
                   AND (
                     EXCLUDED.source_watermark_ms > {table}.source_watermark_ms
                     OR (
-                      (
-                        {table}.source_watermark_ms = 0
-                        OR EXCLUDED.source_watermark_ms >= {table}.source_watermark_ms
-                      )
+                      EXCLUDED.source_watermark_ms >= {table}.source_watermark_ms
                       AND (
                         {table}.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
                         OR {table}.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
@@ -547,7 +537,7 @@ def _target_records(
         ]
         if missing:
             raise ValueError(f"{reason} dirty target missing required fields: {', '.join(missing)}")
-        source_watermark_ms = int(target.get("source_watermark_ms") or 0)
+        source_watermark_ms = _source_watermark_ms(target)
         priority = _priority_value(target)
         due_at_ms = int(target.get("due_at_ms") or default_due_at_ms)
         record = {
@@ -575,6 +565,18 @@ def _target_records(
             existing["priority"] = min(int(existing["priority"]), priority)
             existing["due_at_ms"] = min(int(existing["due_at_ms"]), due_at_ms)
     return list(records.values())
+
+
+def _source_watermark_ms(target: Mapping[str, Any]) -> int:
+    try:
+        value = target["source_watermark_ms"]
+    except KeyError as exc:
+        raise ValueError("narrative_admission_dirty_target_source_watermark_required") from exc
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("narrative_admission_dirty_target_source_watermark_required")
+    if value <= 0:
+        raise ValueError("narrative_admission_dirty_target_source_watermark_required")
+    return int(value)
 
 
 def _target_params(records: list[dict[str, Any]]) -> dict[str, list[Any]]:

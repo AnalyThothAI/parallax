@@ -90,14 +90,12 @@ class PulseTriggerDirtyTargetRepository:
                 FROM incoming
                 ON CONFLICT(target_type, target_id, "window", scope) DO UPDATE SET
                   dirty_reason = CASE
-                    WHEN pulse_trigger_dirty_targets.source_watermark_ms = 0
-                      OR EXCLUDED.source_watermark_ms >= pulse_trigger_dirty_targets.source_watermark_ms
+                    WHEN EXCLUDED.source_watermark_ms >= pulse_trigger_dirty_targets.source_watermark_ms
                       THEN EXCLUDED.dirty_reason
                     ELSE pulse_trigger_dirty_targets.dirty_reason
                   END,
                   payload_hash = CASE
-                    WHEN pulse_trigger_dirty_targets.source_watermark_ms = 0
-                      OR EXCLUDED.source_watermark_ms >= pulse_trigger_dirty_targets.source_watermark_ms
+                    WHEN EXCLUDED.source_watermark_ms >= pulse_trigger_dirty_targets.source_watermark_ms
                       THEN EXCLUDED.payload_hash
                     ELSE pulse_trigger_dirty_targets.payload_hash
                   END,
@@ -112,10 +110,7 @@ class PulseTriggerDirtyTargetRepository:
                       AND (
                         EXCLUDED.source_watermark_ms > pulse_trigger_dirty_targets.source_watermark_ms
                         OR (
-                          (
-                            pulse_trigger_dirty_targets.source_watermark_ms = 0
-                            OR EXCLUDED.source_watermark_ms >= pulse_trigger_dirty_targets.source_watermark_ms
-                          )
+                          EXCLUDED.source_watermark_ms >= pulse_trigger_dirty_targets.source_watermark_ms
                           AND (
                             pulse_trigger_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
                             OR pulse_trigger_dirty_targets.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
@@ -130,10 +125,7 @@ class PulseTriggerDirtyTargetRepository:
                       AND (
                         EXCLUDED.source_watermark_ms > pulse_trigger_dirty_targets.source_watermark_ms
                         OR (
-                          (
-                            pulse_trigger_dirty_targets.source_watermark_ms = 0
-                            OR EXCLUDED.source_watermark_ms >= pulse_trigger_dirty_targets.source_watermark_ms
-                          )
+                          EXCLUDED.source_watermark_ms >= pulse_trigger_dirty_targets.source_watermark_ms
                           AND (
                             pulse_trigger_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
                             OR pulse_trigger_dirty_targets.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
@@ -409,7 +401,7 @@ def _target_records(
         scope = str(target.get("scope") or "").strip()
         if not target_type or not target_id or not window or not scope:
             continue
-        source_watermark_ms = int(target.get("source_watermark_ms") or 0)
+        source_watermark_ms = _source_watermark_ms(target)
         priority = _priority_value(target)
         due_at_ms = int(target.get("due_at_ms") or default_due_at_ms)
         record = {
@@ -435,6 +427,18 @@ def _target_records(
             existing["priority"] = min(int(existing["priority"]), priority)
             existing["due_at_ms"] = min(int(existing["due_at_ms"]), due_at_ms)
     return list(records.values())
+
+
+def _source_watermark_ms(target: Mapping[str, Any]) -> int:
+    try:
+        value = target["source_watermark_ms"]
+    except KeyError as exc:
+        raise ValueError("pulse_trigger_dirty_target_source_watermark_required") from exc
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("pulse_trigger_dirty_target_source_watermark_required")
+    if value <= 0:
+        raise ValueError("pulse_trigger_dirty_target_source_watermark_required")
+    return int(value)
 
 
 def _target_params(records: list[dict[str, Any]]) -> dict[str, list[Any]]:

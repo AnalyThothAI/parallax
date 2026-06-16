@@ -211,7 +211,10 @@ are wrong too.
    downstream dirty targets derive `source_watermark_ms` only from current-row
    positive `source_max_received_at_ms`; missing or invalid source watermarks
    fail closed instead of falling back to `computed_at_ms`, `0`, or projection
-   runtime time.
+   runtime time. Pulse Trigger and Narrative Admission dirty repositories also
+   reject missing, zero, negative, boolean, or string producer watermarks before
+   queue SQL, and their enqueue SQL no longer carries a zero-watermark
+   compatibility branch.
    Token Radar current-row delete/upsert, target-feature write/delete, and
    target-feature retention write accounting requires real PostgreSQL
    `cursor.rowcount` evidence. Missing, boolean, negative, or otherwise invalid

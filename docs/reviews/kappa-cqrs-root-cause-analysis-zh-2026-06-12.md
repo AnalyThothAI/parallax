@@ -16061,6 +16061,51 @@ RepositorySession Unit of Work；失败时不能留下半个 snapshot 或半套 
   broader Capture Tier 非集成组通过，`25 passed`。
 - 按当前用户指令，本轮不运行 integration-heavy gate。
 
+### Root450 - Pulse/Narrative dirty enqueue 入口继续接受 0 水位和非法 producer payload
+
+发现：
+
+- Root445/AC441 已经让 Token Radar producer 在构造 Pulse Trigger 和 Narrative Admission 下游 dirty
+  target 时只使用 current-row 正数 `source_max_received_at_ms`。
+- 但 `PulseTriggerDirtyTargetRepository._target_records(...)` 和
+  `NarrativeAdmissionDirtyTargetRepository._target_records(...)` 仍通过
+  `int(target.get("source_watermark_ms") or 0)` 接受缺失、`None`、0、负数、bool、字符串等
+  malformed command payload。
+- 两个仓储的 enqueue SQL 还保留了
+  `source_watermark_ms = 0 OR EXCLUDED.source_watermark_ms >= ...` 的冲突合并分支。正水位入口成立后，
+  这个 `= 0` 分支已经不再提供必要语义，只会给后续读代码制造“0 是合法历史状态”的错觉。
+
+根因：
+
+- 之前的修复只收紧了 producer，而没有把 dirty queue repository 当作独立的 command ingress。
+  在成熟 CQRS/Kappa 设计里，producer 和 repository 不是互相信任的“内部函数链”，而是两个边界：
+  producer 负责从事实行导出正式 command，repository 负责拒绝不符合 command schema 的输入。
+- `source_watermark_ms` 是事实前沿，不是调度时间，也不是缺字段时可以被 `0` 表示的默认值。把缺失水位
+  写成 0，会让后续 worker 看到一个可 claim 的控制面任务，却无法区分“事实真的早于所有当前数据”还是
+  “上游 payload 坏了”。
+- SQL 层的 zero-watermark 兼容分支进一步模糊了这个边界：它让旧的坏状态看起来像一个需要特殊处理的
+  合法状态，而不是应该通过 ops/迁移显式清理的历史污染。
+
+修复：
+
+- `PulseTriggerDirtyTargetRepository.enqueue_targets(...)` 现在只接受非 bool 的正整数
+  `source_watermark_ms`。
+- `NarrativeAdmissionDirtyTargetRepository.enqueue_targets(...)` 做同样校验。
+- 缺失、0、负数、bool、字符串等输入分别抛
+  `pulse_trigger_dirty_target_source_watermark_required` 和
+  `narrative_admission_dirty_target_source_watermark_required`，并且失败发生在 queue SQL 前。
+- 两个 enqueue SQL 的 `source_watermark_ms = 0` 兼容分支已删除；如果库里存在历史 0 水位行，新的正水位
+  仍会通过普通 `EXCLUDED.source_watermark_ms >= existing.source_watermark_ms` 规则覆盖，不需要特殊分支。
+- Pulse、Narrative、Token Intel、全局架构、Worker Flow、Workers inventory、SDD 和 architecture guard
+  同步禁止入口层 zero fallback 回归。
+
+验证：
+
+- RED：新增 Pulse/Narrative dirty watermark 单测和 architecture guard 后，当前实现出现 `13 failed`，
+  证明两个仓储确实接受了坏水位或缺少 hard-cut 标记。
+- GREEN：聚焦命令转为 `13 passed`；Pulse/Narrative dirty repository 非集成组通过，`74 passed`。
+- 按当前用户指令，本轮不运行 integration-heavy gate。
+
 ## 剩余风险和建议
 
 1. 如果 Stocks Radar 需要真实 quote，必须新建 persisted quote fact/current read model，而不是恢复 request-time provider。

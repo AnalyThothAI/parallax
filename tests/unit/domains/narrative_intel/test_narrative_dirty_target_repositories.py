@@ -11,6 +11,8 @@ from parallax.domains.narrative_intel.repositories.narrative_admission_dirty_tar
     _payload_hash,
 )
 
+_MISSING = object()
+
 
 def test_enqueue_targets_coalesces_by_full_narrative_key_and_versions() -> None:
     conn = _ScriptedConnection([])
@@ -64,6 +66,36 @@ def test_enqueue_targets_coalesces_by_full_narrative_key_and_versions() -> None:
     assert conn.params[-1]["source_watermark_ms_values"] == [11]
     assert conn.params[-1]["priorities"] == [20]
     assert conn.params[-1]["dirty_reason"] == "token_radar_changed"
+
+
+@pytest.mark.parametrize(
+    "source_watermark_ms",
+    [
+        pytest.param(_MISSING, id="missing"),
+        pytest.param(None, id="none"),
+        pytest.param(0, id="zero"),
+        pytest.param(-1, id="negative"),
+        pytest.param(True, id="bool"),
+        pytest.param("10", id="string"),
+    ],
+)
+def test_enqueue_targets_requires_formal_source_watermark_without_zero_fallback(source_watermark_ms: object) -> None:
+    conn = _ScriptedConnection([])
+    target = _target()
+    if source_watermark_ms is _MISSING:
+        target.pop("source_watermark_ms")
+    else:
+        target["source_watermark_ms"] = source_watermark_ms
+
+    with pytest.raises(ValueError, match="narrative_admission_dirty_target_source_watermark_required"):
+        NarrativeAdmissionDirtyTargetRepository(conn).enqueue_targets(
+            [target],
+            reason="token_radar_changed",
+            now_ms=1_700_000_000_000,
+            commit=False,
+        )
+
+    assert conn.sql == []
 
 
 def test_enqueue_targets_rejects_incomplete_narrative_target() -> None:

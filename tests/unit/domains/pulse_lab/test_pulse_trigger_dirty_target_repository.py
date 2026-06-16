@@ -11,6 +11,8 @@ from parallax.domains.pulse_lab.repositories.pulse_trigger_dirty_target_reposito
     _payload_hash,
 )
 
+_MISSING = object()
+
 
 def test_enqueue_targets_coalesces_by_full_pulse_key_and_uses_lower_priority() -> None:
     conn = _ScriptedConnection([])
@@ -57,6 +59,39 @@ def test_enqueue_targets_coalesces_by_full_pulse_key_and_uses_lower_priority() -
     assert conn.params[-1]["source_watermark_ms_values"] == [11]
     assert conn.params[-1]["priorities"] == [20]
     assert conn.params[-1]["dirty_reason"] == "token_radar_changed"
+
+
+@pytest.mark.parametrize(
+    "source_watermark_ms",
+    [
+        pytest.param(_MISSING, id="missing"),
+        pytest.param(None, id="none"),
+        pytest.param(0, id="zero"),
+        pytest.param(-1, id="negative"),
+        pytest.param(True, id="bool"),
+        pytest.param("10", id="string"),
+    ],
+)
+def test_enqueue_targets_requires_formal_source_watermark_without_zero_fallback(source_watermark_ms: object) -> None:
+    conn = _ScriptedConnection([])
+    target: dict[str, Any] = {
+        "target_type": "Asset",
+        "target_id": "asset-1",
+        "window": "1h",
+        "scope": "all",
+    }
+    if source_watermark_ms is not _MISSING:
+        target["source_watermark_ms"] = source_watermark_ms
+
+    with pytest.raises(ValueError, match="pulse_trigger_dirty_target_source_watermark_required"):
+        PulseTriggerDirtyTargetRepository(conn).enqueue_targets(
+            [target],
+            reason="token_radar_changed",
+            now_ms=1_700_000_000_000,
+            commit=False,
+        )
+
+    assert conn.sql == []
 
 
 def test_claim_due_orders_by_priority_due_and_updated_and_increments_attempts() -> None:
@@ -366,13 +401,14 @@ def test_repository_session_exposes_pulse_trigger_dirty_targets() -> None:
             "enqueue_targets",
             lambda repository: repository.enqueue_targets(
                 [
-                    {
-                        "target_type": "Asset",
-                        "target_id": "asset-1",
-                        "window": "1h",
-                        "scope": "all",
-                    }
-                ],
+                        {
+                            "target_type": "Asset",
+                            "target_id": "asset-1",
+                            "window": "1h",
+                            "scope": "all",
+                            "source_watermark_ms": 10,
+                        }
+                    ],
                 reason="token_radar_changed",
                 now_ms=1_700_000_000_000,
             ),

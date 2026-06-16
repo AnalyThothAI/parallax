@@ -43,6 +43,10 @@ Worker claim/done/error writes are caller-owned inside
 done, error, and reschedule mutations require a callable connection
 transaction before queue SQL; missing transaction support is a contract failure,
 not permission to call `self.conn.commit()`.
+Dirty-target enqueue requires a positive producer-supplied
+`source_watermark_ms`; missing, zero, negative, boolean, or string watermarks
+fail before queue SQL, and enqueue SQL does not carry a zero-watermark
+compatibility branch.
 Dirty-target done/error/reschedule completion keys require the positive
 `attempt_count`, non-empty `lease_owner`, and `payload_hash` returned by
 `claim_due`; malformed keys fail before SQL instead of being restored to zero
