@@ -62,7 +62,7 @@ describe("macroChartModel", () => {
     expect(model.series.map((series) => series.label)).not.toContain("rates:dgs10");
   });
 
-  it("does not fall back to canonical concept keys when backend labels are absent", () => {
+  it("drops unlabeled chart series and heatmap rows instead of naming placeholders", () => {
     const model = buildMacroTimeSeriesModel(
       {
         id: "equity_proxy_performance",
@@ -83,14 +83,95 @@ describe("macroChartModel", () => {
       },
     );
 
-    expect(model.series[0]?.label).toBe("未命名指标");
-    expect(model.series[0]?.label).not.toBe("asset:spx");
+    expect(model.series).toEqual([]);
+
+    const matrix = buildMacroHeatmapMatrix([
+      {
+        concept_key: "asset:spy",
+        correlations: { "asset:spy": 1, "asset:qqq": 0.92 },
+      },
+      {
+        concept_key: "asset:qqq",
+        label: "QQQ",
+        correlations: { "asset:spy": 0.92, "asset:qqq": 1 },
+      },
+    ]);
+
+    expect(matrix.columns.map((column) => column.key)).toEqual(["asset:qqq"]);
+    expect(matrix.rows.map((row) => row.label)).toEqual(["QQQ"]);
+    expect(JSON.stringify(matrix)).not.toContain("未命名指标");
+    expect(JSON.stringify(model)).not.toContain("asset:spx");
+  });
+
+  it("drops chart models with missing chart ids instead of assigning unknown ids", () => {
+    const chart = {
+      id: "",
+      series: [{ concept_key: "asset:spx", label: "S&P 500", latest: 110, unit: "index" }],
+    } as MacroModuleChart;
+    const data: MacroSeriesData = {
+      window: "60d",
+      data_gaps: [],
+      series: {
+        "asset:spx": {
+          concept_key: "asset:spx",
+          points: [
+            { observed_at: "2026-05-18", value: 100 },
+            { observed_at: "2026-05-19", value: 110 },
+          ],
+        },
+      },
+    };
+
+    expect(buildMacroTimeSeriesModel(chart, data)).toMatchObject({
+      chartId: "",
+      series: [],
+    });
+    expect(buildMacroYieldCurveModel(chart)).toEqual({
+      chartId: "",
+      points: [],
+    });
+    expect(JSON.stringify(buildMacroTimeSeriesModel(chart, data))).not.toContain("unknown_chart");
+  });
+
+  it("does not manufacture unknown chart status when backend status metadata is absent", () => {
+    const model = buildMacroTimeSeriesModel({
+      id: "equity_proxy_performance",
+      series: [{ concept_key: "asset:spx", label: "S&P 500", latest: 110, unit: "index" }],
+    });
+
+    expect(model.status).toBeNull();
+    expect(JSON.stringify(model)).not.toContain("unknown");
+  });
+
+  it("does not manufacture ok series status when backend series status is absent", () => {
+    const model = buildMacroTimeSeriesModel(
+      {
+        id: "equity_proxy_performance",
+        series: [{ concept_key: "asset:spx", label: "S&P 500", latest: 110, unit: "index" }],
+      },
+      {
+        window: "60d",
+        data_gaps: [],
+        series: {
+          "asset:spx": {
+            concept_key: "asset:spx",
+            points: [
+              { observed_at: "2026-05-18", value: 100 },
+              { observed_at: "2026-05-19", value: 110 },
+            ],
+          },
+        },
+      },
+    );
+
+    expect(model.series[0]?.status).toBeNull();
+    expect(JSON.stringify(model.series[0])).not.toContain('"ok"');
   });
 
   it("normalizes returns from the first numeric backend observation", () => {
     const chart: MacroModuleChart = {
       id: "asset_proxy_performance",
-      series: [{ concept_key: "asset:spy", latest: 104, unit: "usd" }],
+      series: [{ concept_key: "asset:spy", label: "SPY", latest: 104, unit: "usd" }],
     };
     const data: MacroSeriesData = {
       window: "60d",
@@ -136,11 +217,11 @@ describe("macroChartModel", () => {
     const chart: MacroModuleChart = {
       id: "yield_curve",
       series: [
-        { concept_key: "rates:dgs10", latest: 4.2, unit: "percent" },
-        { concept_key: "rates:dgs2", latest: 3.8, unit: "percent" },
-        { concept_key: "rates:10y2y", latest: 0.4, unit: "percent" },
-        { concept_key: "rates:dgs30", latest: "4.7", unit: "percent" },
-        { concept_key: "rates:dgs5", latest: 4.0, unit: "percent" },
+        { concept_key: "rates:dgs10", label: "10Y", latest: 4.2, unit: "percent" },
+        { concept_key: "rates:dgs2", label: "2Y", latest: 3.8, unit: "percent" },
+        { concept_key: "rates:10y2y", label: "10Y-2Y", latest: 0.4, unit: "percent" },
+        { concept_key: "rates:dgs30", label: "30Y", latest: "4.7", unit: "percent" },
+        { concept_key: "rates:dgs5", label: "5Y", latest: 4.0, unit: "percent" },
       ],
     };
 
@@ -153,6 +234,19 @@ describe("macroChartModel", () => {
       "rates:dgs30",
     ]);
     expect(model.points.map((point) => point.tenorYears)).toEqual([2, 5, 10, 30]);
+  });
+
+  it("drops yield curve points without backend labels instead of generating tenor labels", () => {
+    const model = buildMacroYieldCurveModel({
+      id: "yield_curve",
+      series: [
+        { concept_key: "rates:dgs10", latest: 4.2, unit: "percent" },
+        { concept_key: "rates:dgs2", label: "2Y", latest: 3.8, unit: "percent" },
+      ],
+    });
+
+    expect(model.points.map((point) => point.label)).toEqual(["2Y"]);
+    expect(JSON.stringify(model)).not.toContain("10Y");
   });
 
   it("uses the latest inline point when a yield curve series omits latest", () => {

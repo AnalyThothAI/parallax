@@ -12,6 +12,8 @@ from parallax.app.surfaces.api.exceptions import ApiBadRequest
 from parallax.app.surfaces.api.responses import _json
 from parallax.domains.macro_intel._constants import (
     MACRO_CORE_CONCEPTS,
+    MACRO_VIEW_HISTORY_LIMIT_PER_SERIES,
+    MACRO_VIEW_HISTORY_LOOKBACK_DAYS,
     MACRO_VIEW_PROJECTION_VERSION,
 )
 from parallax.domains.macro_intel.observation_identity import normalize_macro_date
@@ -28,7 +30,11 @@ from parallax.domains.macro_intel.services.macro_module_catalog import (
     UnsupportedMacroModuleError,
     get_macro_module_config,
 )
-from parallax.domains.macro_intel.services.macro_module_views import build_macro_module_view
+from parallax.domains.macro_intel.services.macro_module_views import (
+    TRADE_MAP_RELIABILITY_CONCEPTS,
+    TRADE_MAP_RELIABILITY_WINDOW_DAYS,
+    build_macro_module_view,
+)
 from parallax.domains.macro_intel.services.macro_series_view import (
     UnsupportedMacroConceptError,
     UnsupportedMacroSeriesWindowError,
@@ -37,8 +43,11 @@ from parallax.domains.macro_intel.services.macro_series_view import (
     validate_macro_series_concepts,
     validate_macro_series_window,
 )
+from parallax.domains.news_intel.queries.news_page_query import NewsPageQuery
 
 router = APIRouter()
+
+_MACRO_MARKET_EVENT_NEWS_LIMIT = 6
 
 
 @router.get("/macro")
@@ -116,10 +125,10 @@ def macro_module(request: Request, module_id: str) -> JSONResponse:
         raise ApiBadRequest(exc.code, field="module_id") from exc
     with runtime.repositories() as repos:
         snapshot = repos.macro_intel.latest_snapshot(projection_version=MACRO_VIEW_PROJECTION_VERSION)
-        observations = repos.macro_intel.latest_observations(limit=250, concept_keys=_module_concepts(config))
+        observations = _module_observations(repos, module_id=module_id, concept_keys=_module_concepts(config))
+        news_rows = _market_event_news_rows(repos, module_id=module_id)
         publication_state = repos.macro_intel.macro_series_publication_state(MACRO_VIEW_PROJECTION_VERSION)
         currentness = _macro_currentness(snapshot=snapshot, publication_state=publication_state)
-        cex_board = _cex_board(repos, module_id)
         daily_brief = _daily_brief(repos, module_id)
     return _json(
         {
@@ -129,10 +138,10 @@ def macro_module(request: Request, module_id: str) -> JSONResponse:
                 snapshot=snapshot,
                 observations=observations,
                 daily_brief=daily_brief,
+                news_rows=news_rows,
                 facts_max_observed_at=currentness["facts_max_observed_at"],
                 projection_lag_days=currentness["projection_lag_days"],
                 projection_behind_facts=bool(currentness["projection_behind_facts"]),
-                cex_board=cex_board,
             ),
         }
     )
@@ -260,23 +269,25 @@ def _module_concepts(config: Any) -> tuple[str, ...]:
     return tuple(dict.fromkeys((*config.required_concepts, *config.optional_concepts)))
 
 
-def _cex_board(repos: Any, module_id: str) -> dict[str, Any] | None:
-    if module_id != "assets/crypto-derivatives":
-        return None
-    board = repos.cex_oi_radar.latest_board(limit=20)
-    publication = board.get("publication") if isinstance(board, dict) else None
-    state = board.get("state") if isinstance(board, dict) else None
-    rows = board.get("rows") if isinstance(board, dict) else []
-    return {
-        "status": (publication or {}).get("status") if isinstance(publication, dict) else "missing",
-        "degraded_reasons": [],
-        "observed_at_ms": (publication or {}).get("published_at_ms")
-        if isinstance(publication, dict)
-        else (state or {}).get("current_published_at_ms")
-        if isinstance(state, dict)
-        else None,
-        "rows": rows if isinstance(rows, list) else [],
-    }
+def _module_observations(repos: Any, *, module_id: str, concept_keys: tuple[str, ...]) -> list[dict[str, Any]]:
+    if module_id == "overview":
+        return repos.macro_intel.observations_for_concepts(
+            concept_keys=tuple(dict.fromkeys((*concept_keys, *TRADE_MAP_RELIABILITY_CONCEPTS))),
+            lookback_days=TRADE_MAP_RELIABILITY_WINDOW_DAYS,
+            limit_per_series=TRADE_MAP_RELIABILITY_WINDOW_DAYS + 10,
+        )
+    return repos.macro_intel.observations_for_concepts(
+        concept_keys=concept_keys,
+        lookback_days=MACRO_VIEW_HISTORY_LOOKBACK_DAYS,
+        limit_per_series=MACRO_VIEW_HISTORY_LIMIT_PER_SERIES,
+    )
+
+
+def _market_event_news_rows(repos: Any, *, module_id: str) -> list[dict[str, Any]]:
+    if module_id != "overview":
+        return []
+    data = NewsPageQuery(repository=repos.news).list_news(limit=_MACRO_MARKET_EVENT_NEWS_LIMIT)
+    return [dict(row) for row in data["items"]]
 
 
 def _daily_brief(repos: Any, module_id: str) -> dict[str, Any] | None:

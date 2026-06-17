@@ -21,6 +21,19 @@ describe("macroRatesChartModel", () => {
     expect(model.missingLabels).toContain("SOFR 30D");
   });
 
+  it("drops unknown corridor missing concept keys instead of exposing raw ids", () => {
+    const chart = {
+      ...macroFedFundsModuleFixture().primary_chart,
+      missing_concept_keys: ["fed:sofr_30d", "fed:not_mapped"],
+    };
+
+    const model = buildRatesCorridorModel(chart);
+
+    expect(model.missingLabels).toContain("SOFR 30D");
+    expect(model.missingLabels).not.toContain("fed:not_mapped");
+    expect(model.missingLabels.join("\n")).not.toContain("not_mapped");
+  });
+
   it("falls back to inline chart points and then latest snapshots", () => {
     const chart = macroFedFundsModuleFixture().primary_chart;
     const model = buildRatesCorridorModel(chart);

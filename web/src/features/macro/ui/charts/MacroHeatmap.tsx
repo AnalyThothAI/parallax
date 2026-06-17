@@ -7,11 +7,7 @@ import "./macroCharts.css";
 export function MacroHeatmap({ caption, rows }: { caption: string; rows: MacroSemanticRecord[] }) {
   const matrix = useMemo(() => buildMacroHeatmapMatrix(rows), [rows]);
   if (matrix.rows.length === 0) {
-    return (
-      <div aria-label={`${caption} state`} className="macro-chart-state-panel" role="status">
-        暂无相关性矩阵数据
-      </div>
-    );
+    return null;
   }
   return (
     <div className="macro-heatmap-wrap">

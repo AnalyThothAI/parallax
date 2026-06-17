@@ -11,7 +11,8 @@ export function useMacroPrimarySeries({
   token: string;
 }) {
   const seriesConceptKeys = chartConceptKeys(chart);
-  const shouldFetchSeries = seriesConceptKeys.length > 0 && !isYieldCurveChart(chart);
+  const shouldFetchSeries =
+    Boolean(chartIdentifier(chart)) && seriesConceptKeys.length > 0 && !isYieldCurveChart(chart);
   return useMacroSeriesQuery({
     conceptKeys: shouldFetchSeries ? seriesConceptKeys : [],
     token,
@@ -20,5 +21,5 @@ export function useMacroPrimarySeries({
 }
 
 function isYieldCurveChart(chart: MacroModuleChart): boolean {
-  return chartIdentifier(chart).includes("curve");
+  return Boolean(chartIdentifier(chart)?.includes("curve"));
 }

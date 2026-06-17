@@ -125,7 +125,17 @@ def _series_gap(code: str, concept_key: str) -> dict[str, Any]:
 
 def _concept_label(concept_key: str) -> str:
     metadata = MACRO_CONCEPT_METADATA.get(concept_key, {})
-    return str(metadata.get("short_label") or metadata.get("label") or "未命名指标")
+    label = _metadata_label(metadata)
+    if label:
+        return label
+    raise ValueError(f"Missing macro concept label metadata: {concept_key}")
+
+
+def _metadata_label(metadata: Mapping[str, Any]) -> str | None:
+    label = metadata.get("short_label") or metadata.get("label")
+    if isinstance(label, str) and label.strip():
+        return label
+    return None
 
 
 def _point(observation: Mapping[str, Any]) -> dict[str, Any]:

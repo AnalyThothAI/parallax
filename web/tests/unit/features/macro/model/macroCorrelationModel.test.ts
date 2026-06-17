@@ -1,11 +1,9 @@
 import {
   assetLabel,
   assetTitleByKey,
-  correlationGapLabel,
   correlationTone,
   matrixCorrelationLabel,
   signedCorrelationLabel,
-  sourceLabel,
   strongestCorrelationPairs,
 } from "@features/macro";
 import type { MacroAssetCorrelationData } from "@lib/types";
@@ -31,7 +29,7 @@ describe("macroCorrelationModel", () => {
     ]);
   });
 
-  it("formats correlation labels, asset labels, source labels, gaps, and tone", () => {
+  it("formats correlation labels, asset labels, and tone for the asset preview", () => {
     const data = correlationFixture();
     const titleByKey = assetTitleByKey(data);
 
@@ -40,10 +38,7 @@ describe("macroCorrelationModel", () => {
       "asset:spy": "SPY",
     });
     expect(assetLabel("asset:spy", titleByKey)).toBe("SPY");
-    expect(assetLabel("missing", titleByKey)).toBe("资产");
-    expect(sourceLabel("yahoo")).toBe("Yahoo");
-    expect(sourceLabel("internal:asset_proxy")).toBe("数据源");
-    expect(sourceLabel("Custom Feed")).toBe("Custom Feed");
+    expect(assetLabel("missing", titleByKey)).toBeNull();
     expect(matrixCorrelationLabel(0.923)).toBe("0.92");
     expect(matrixCorrelationLabel(null)).toBe("-");
     expect(signedCorrelationLabel(0.923)).toBe("+0.92");
@@ -51,12 +46,6 @@ describe("macroCorrelationModel", () => {
     expect(correlationTone(0.55)).toBe("constructive");
     expect(correlationTone(-0.35)).toBe("stress");
     expect(correlationTone(null)).toBe("gap");
-    expect(
-      correlationGapLabel(
-        { code: "insufficient_overlap", left: "asset:spy", right: "asset:qqq", sample_size: 2 },
-        titleByKey,
-      ),
-    ).toBe("重叠样本不足：SPY / QQQ");
   });
 });
 

@@ -9,7 +9,7 @@ from typing import Any, NotRequired, TypedDict, cast
 
 from psycopg.types.json import Jsonb
 
-from parallax.domains.macro_intel._constants import MACRO_VIEW_PROJECTION_VERSION
+from parallax.domains.macro_intel._constants import MACRO_EVENT_CONCEPTS, MACRO_VIEW_PROJECTION_VERSION
 from parallax.domains.macro_intel.observation_identity import (
     macro_observation_fact_payload_hash,
     macro_observation_id,
@@ -1411,7 +1411,7 @@ class MacroIntelRepository:
               FROM macro_observations
               WHERE concept_key = ANY(%s)
                 AND observed_at >= CURRENT_DATE - %s::int
-                AND value_numeric IS NOT NULL
+                AND (value_numeric IS NOT NULL OR concept_key = ANY(%s))
             ),
             series_ranked AS (
               SELECT
@@ -1446,6 +1446,7 @@ class MacroIntelRepository:
             (
                 list(bounded_concept_keys),
                 int(lookback_days),
+                list(MACRO_EVENT_CONCEPTS),
                 projection_version,
                 int(projected_at_ms),
                 int(limit_per_series),

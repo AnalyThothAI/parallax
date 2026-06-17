@@ -107,9 +107,6 @@ function macroShellModuleNavItems(): MacroShellModuleNavItem[] {
 }
 
 function visibleHref(node: MacroNavigationNode): string | null {
-  if (node.navHidden || node.productTier === "hiddenSupported") {
-    return null;
-  }
   if (node.pageKind) {
     return node.href;
   }

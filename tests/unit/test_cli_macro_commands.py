@@ -12,7 +12,12 @@ import pytest
 
 from parallax.app.surfaces.cli.parser import build_parser
 from parallax.cli import main
-from parallax.domains.macro_intel._constants import MACRO_HISTORY_REQUIRED_CONCEPTS, MACRO_PROVIDER_SERIES_TO_CONCEPT
+from parallax.domains.macro_intel._constants import (
+    MACRO_EVENT_PROVIDER_SERIES_TO_CONCEPT,
+    MACRO_HISTORY_REQUIRED_CONCEPTS,
+    MACRO_IMPORTABLE_PROVIDER_SERIES_TO_CONCEPT,
+    MACRO_PROVIDER_SERIES_TO_CONCEPT,
+)
 from parallax.domains.macro_intel.observation_identity import (
     macro_observation_fact_payload_hash,
     macro_observation_id,
@@ -52,7 +57,18 @@ ENVELOPE = {
 
 
 def _macrodata_workers(timeout_seconds: float = 240.0) -> SimpleNamespace:
-    return SimpleNamespace(macro_sync=SimpleNamespace(macrodata_timeout_seconds=timeout_seconds))
+    return SimpleNamespace(
+        macro_sync=SimpleNamespace(
+            bundle_names=(
+                "macro-core",
+                "macro-calendar-core",
+                "treasury-auction-core",
+                "fed-text-core",
+                "crypto-derivatives-core",
+            ),
+            macrodata_timeout_seconds=timeout_seconds,
+        )
+    )
 
 
 def test_macro_import_bundle_parser_accepts_file() -> None:
@@ -395,10 +411,99 @@ def test_macrodata_runtime_state_reports_missing_required_catalog_series(monkeyp
         "missing_required_series_count": 2,
         "required_series_available": False,
         "missing_required_series_sample": ["nyfed:SRF", "yahoo:USDCNY=X"],
+        "required_bundle_count": 0,
+        "missing_required_bundle_count": 0,
+        "required_bundles_available": True,
+        "missing_required_bundles": [],
         "macro_core_bundle_available": True,
         "missing_required_bundle_series_count": 2,
         "required_bundle_series_available": False,
         "missing_required_bundle_series_sample": ["nyfed:SRF", "yahoo:USDCNY=X"],
+        "missing_required_bundle_series_by_bundle": {},
+    }
+
+
+def test_macrodata_runtime_state_reports_missing_configured_sync_bundles(monkeypatch) -> None:
+    from parallax.integrations.macrodata import runner
+
+    bundle_series = {
+        "macro-core": {"fred:SP500"},
+        "macro-calendar-core": None,
+        "treasury-auction-core": {"treasury_auction:10y_bid_to_cover"},
+        "fed-text-core": {"official_fed_text:speech_latest"},
+    }
+
+    monkeypatch.setattr(runner, "_macrodata_cli_package_version", lambda: "0.1.8")
+    monkeypatch.setattr(
+        runner,
+        "_macrodata_catalog_series",
+        lambda: {"fred:SP500", "treasury_auction:10y_bid_to_cover"},
+    )
+    monkeypatch.setattr(runner, "_macrodata_bundle_series", lambda bundle_name: bundle_series[bundle_name])
+    monkeypatch.setattr(runner, "_macrodata_cli_entrypoint_available", lambda: True)
+    monkeypatch.setattr(runner, "resolve_macrodata_command", lambda *, environ=None: ["/app/.venv/bin/macrodata"])
+
+    state = runner.macrodata_runtime_state(
+        required_series=("fred:SP500",),
+        required_bundles=("macro-core", "macro-calendar-core", "treasury-auction-core", "fed-text-core"),
+    )
+
+    assert state["required_bundle_count"] == 4
+    assert state["missing_required_bundle_count"] == 1
+    assert state["required_bundles_available"] is False
+    assert state["missing_required_bundles"] == ["macro-calendar-core"]
+
+
+def test_macrodata_runtime_state_reports_missing_event_bundle_series(monkeypatch) -> None:
+    from parallax.integrations.macrodata import runner
+
+    bundle_series = {
+        "macro-core": {"fred:SP500"},
+        "macro-calendar-core": {
+            "official_calendar:fomc_decision_next",
+            "official_calendar:bea_gdp_next",
+            "official_calendar:bea_pce_next",
+        },
+    }
+    required_calendar_series = (
+        "official_calendar:fomc_decision_next",
+        "official_calendar:bea_gdp_next",
+        "official_calendar:bea_pce_next",
+        "official_calendar:bls_cpi_next",
+        "official_calendar:bls_employment_next",
+        "official_calendar:bls_ppi_next",
+    )
+
+    monkeypatch.setattr(runner, "_macrodata_cli_package_version", lambda: "0.1.11")
+    monkeypatch.setattr(runner, "_macrodata_catalog_series", lambda: {"fred:SP500", *required_calendar_series})
+    monkeypatch.setattr(runner, "_macrodata_bundle_series", lambda bundle_name: bundle_series[bundle_name])
+    monkeypatch.setattr(runner, "_macrodata_cli_entrypoint_available", lambda: True)
+    monkeypatch.setattr(runner, "resolve_macrodata_command", lambda *, environ=None: ["/app/.venv/bin/macrodata"])
+
+    state = runner.macrodata_runtime_state(
+        required_series=("fred:SP500", *required_calendar_series),
+        required_bundles=("macro-core", "macro-calendar-core"),
+        required_bundle_series={
+            "macro-core": ("fred:SP500",),
+            "macro-calendar-core": required_calendar_series,
+        },
+    )
+
+    assert state["missing_required_bundle_count"] == 0
+    assert state["required_bundles_available"] is True
+    assert state["required_bundle_series_available"] is False
+    assert state["missing_required_bundle_series_count"] == 3
+    assert state["missing_required_bundle_series_sample"] == [
+        "macro-calendar-core:official_calendar:bls_cpi_next",
+        "macro-calendar-core:official_calendar:bls_employment_next",
+        "macro-calendar-core:official_calendar:bls_ppi_next",
+    ]
+    assert state["missing_required_bundle_series_by_bundle"] == {
+        "macro-calendar-core": [
+            "official_calendar:bls_cpi_next",
+            "official_calendar:bls_employment_next",
+            "official_calendar:bls_ppi_next",
+        ]
     }
 
 
@@ -879,14 +984,19 @@ def test_macro_status_reports_repository_counts(monkeypatch) -> None:
                 "command_path": "/app/.venv/bin/macrodata",
                 "command_error_code": None,
                 "catalog_available": True,
-                "required_series_count": len(MACRO_PROVIDER_SERIES_TO_CONCEPT),
+                "required_series_count": len(MACRO_IMPORTABLE_PROVIDER_SERIES_TO_CONCEPT),
                 "missing_required_series_count": 0,
                 "required_series_available": True,
                 "missing_required_series_sample": [],
+                "required_bundle_count": 5,
+                "missing_required_bundle_count": 0,
+                "required_bundles_available": True,
+                "missing_required_bundles": [],
                 "macro_core_bundle_available": True,
                 "missing_required_bundle_series_count": 0,
                 "required_bundle_series_available": True,
                 "missing_required_bundle_series_sample": [],
+                "missing_required_bundle_series_by_bundle": {},
             },
             "observations_count": 0,
             "concept_count": 0,
@@ -986,16 +1096,103 @@ def test_macro_status_repository_exception_returns_structured_error_without_secr
                 "command_path": "/app/.venv/bin/macrodata",
                 "command_error_code": None,
                 "catalog_available": True,
-                "required_series_count": len(MACRO_PROVIDER_SERIES_TO_CONCEPT),
+                "required_series_count": len(MACRO_IMPORTABLE_PROVIDER_SERIES_TO_CONCEPT),
                 "missing_required_series_count": 0,
                 "required_series_available": True,
                 "missing_required_series_sample": [],
+                "required_bundle_count": 5,
+                "missing_required_bundle_count": 0,
+                "required_bundles_available": True,
+                "missing_required_bundles": [],
                 "macro_core_bundle_available": True,
                 "missing_required_bundle_series_count": 0,
                 "required_bundle_series_available": True,
                 "missing_required_bundle_series_sample": [],
+                "missing_required_bundle_series_by_bundle": {},
             },
         },
+    }
+
+
+def test_macro_status_requires_importable_event_bundle_series(monkeypatch) -> None:
+    from parallax.app.surfaces.cli.commands import macro as macro_module
+
+    repo = FakeMacroIntelRepository()
+    captured: dict[str, object] = {}
+    _patch_macro_dependencies(monkeypatch, macro_module, repo, settings=FakeSettings(fred_env="APP_FRED_KEY"))
+
+    def fake_macrodata_runtime_state(*, required_series, required_bundles, required_bundle_series):
+        captured["required_series"] = tuple(required_series)
+        captured["required_bundles"] = tuple(required_bundles)
+        captured["required_bundle_series"] = {
+            bundle_name: tuple(series_keys) for bundle_name, series_keys in required_bundle_series.items()
+        }
+        return {
+            "package_version": "0.1.test",
+            "entrypoint_available": True,
+            "command_mode": "console_script",
+            "command_path": "/app/.venv/bin/macrodata",
+            "command_error_code": None,
+            "catalog_available": True,
+            "required_series_count": len(required_series),
+            "missing_required_series_count": 0,
+            "required_series_available": True,
+            "missing_required_series_sample": [],
+            "required_bundle_count": len(required_bundles),
+            "missing_required_bundle_count": 0,
+            "required_bundles_available": True,
+            "missing_required_bundles": [],
+            "macro_core_bundle_available": True,
+            "missing_required_bundle_series_count": 0,
+            "required_bundle_series_available": True,
+            "missing_required_bundle_series_sample": [],
+            "missing_required_bundle_series_by_bundle": {},
+        }
+
+    monkeypatch.setattr(macro_module, "macrodata_runtime_state", fake_macrodata_runtime_state)
+    stdout = io.StringIO()
+
+    code = main(["macro", "status"], stdout=stdout)
+
+    assert code == 0
+    assert captured["required_series"] == tuple(MACRO_IMPORTABLE_PROVIDER_SERIES_TO_CONCEPT)
+    assert captured["required_bundles"] == (
+        "macro-core",
+        "macro-calendar-core",
+        "treasury-auction-core",
+        "fed-text-core",
+        "crypto-derivatives-core",
+    )
+    assert all(
+        not series_key.startswith(("okx:", "deribit:"))
+        for series_key in captured["required_bundle_series"]["macro-core"]
+    )
+    assert captured["required_bundle_series"] == {
+        "macro-core": tuple(
+            series_key
+            for series_key, concept_key in MACRO_PROVIDER_SERIES_TO_CONCEPT.items()
+            if not concept_key.startswith("crypto_derivatives:")
+        ),
+        "macro-calendar-core": tuple(
+            series_key
+            for series_key in MACRO_EVENT_PROVIDER_SERIES_TO_CONCEPT
+            if series_key.startswith("official_calendar:")
+        ),
+        "treasury-auction-core": tuple(
+            series_key
+            for series_key in MACRO_EVENT_PROVIDER_SERIES_TO_CONCEPT
+            if series_key.startswith("treasury_auction:")
+        ),
+        "fed-text-core": tuple(
+            series_key
+            for series_key in MACRO_EVENT_PROVIDER_SERIES_TO_CONCEPT
+            if series_key.startswith("official_fed_text:")
+        ),
+        "crypto-derivatives-core": tuple(
+            series_key
+            for series_key, concept_key in MACRO_PROVIDER_SERIES_TO_CONCEPT.items()
+            if concept_key.startswith("crypto_derivatives:")
+        ),
     }
 
 
@@ -1064,7 +1261,7 @@ def _patch_macro_dependencies(
     monkeypatch.setattr(
         macro_module,
         "macrodata_runtime_state",
-        lambda *, required_series: {
+        lambda *, required_series, required_bundles, required_bundle_series: {
             "package_version": "0.1.test",
             "entrypoint_available": True,
             "command_mode": "console_script",
@@ -1075,10 +1272,15 @@ def _patch_macro_dependencies(
             "missing_required_series_count": 0,
             "required_series_available": True,
             "missing_required_series_sample": [],
+            "required_bundle_count": len(required_bundles),
+            "missing_required_bundle_count": 0,
+            "required_bundles_available": True,
+            "missing_required_bundles": [],
             "macro_core_bundle_available": True,
             "missing_required_bundle_series_count": 0,
             "required_bundle_series_available": True,
             "missing_required_bundle_series_sample": [],
+            "missing_required_bundle_series_by_bundle": {},
         },
     )
     monkeypatch.setattr(macro_module, "_now_ms", lambda: NOW_MS)

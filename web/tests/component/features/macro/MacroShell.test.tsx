@@ -66,42 +66,6 @@ describe("MacroShell", () => {
     expect(screen.queryByText(/frontend score/i)).not.toBeInTheDocument();
   });
 
-  it("renders matrix header actions through the same shell structure", () => {
-    const header: MacroShellHeaderModel = {
-      actions: <button type="button">60d</button>,
-      breadcrumbs: [
-        { label: "宏观", href: "/macro" },
-        { label: "大类资产", href: "/macro/assets" },
-        { label: "相关性", href: "/macro/assets/correlation" },
-      ],
-      eyebrow: "宏观工作台",
-      question: "资产之间的风险传导是否正在同步？",
-      statusItems: [
-        { label: "状态", value: "滚动相关性" },
-        { label: "窗口", value: "60d" },
-      ],
-      title: "资产相关性",
-    };
-
-    renderWithProviders(
-      <MacroShell header={header} pageKind="matrix" productTier="primary">
-        <section aria-label="matrix content">Matrix content</section>
-      </MacroShell>,
-      { route: "/macro/assets/correlation" },
-    );
-
-    expect(screen.getByLabelText("宏观工作台")).toHaveAttribute("data-page-kind", "matrix");
-    expect(screen.getByRole("heading", { name: "资产相关性" })).toBeInTheDocument();
-    expect(screen.getByRole("navigation", { name: "宏观模块" })).toBeInTheDocument();
-    expect(screen.getByRole("navigation", { name: "宏观面包屑" })).toHaveTextContent(
-      "宏观/大类资产/相关性",
-    );
-    expect(screen.getByRole("button", { name: "60d" })).toBeInTheDocument();
-    expect(screen.getByLabelText("页面操作")).toContainElement(
-      screen.getByRole("button", { name: "60d" }),
-    );
-  });
-
   it("renders a scoped freshness alert before module content", () => {
     const header: MacroShellHeaderModel = {
       breadcrumbs: [
@@ -155,7 +119,7 @@ describe("MacroShell", () => {
     };
 
     renderWithProviders(
-      <MacroShell header={header} pageKind="overview" productTier="secondary">
+      <MacroShell header={header} pageKind="overview" productTier="primary">
         <section aria-label="overview content">Overview content</section>
       </MacroShell>,
       { route: "/macro" },
@@ -163,7 +127,7 @@ describe("MacroShell", () => {
 
     const shell = screen.getByLabelText("宏观工作台");
     expect(shell).toHaveAttribute("data-page-kind", "overview");
-    expect(shell).toHaveAttribute("data-product-tier", "secondary");
+    expect(shell).toHaveAttribute("data-product-tier", "primary");
     expect(screen.getByRole("navigation", { name: "宏观面包屑" })).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "宏观模块" })).toBeInTheDocument();
     expect(screen.getByLabelText("页面状态")).toBeInTheDocument();

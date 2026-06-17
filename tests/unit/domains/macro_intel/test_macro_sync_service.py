@@ -88,6 +88,49 @@ def test_sync_service_enqueue_due_windows_uses_formal_queue_summary_repository_c
     assert summary["enqueued_steady_windows"] == 1
 
 
+def test_sync_service_enqueue_due_windows_schedules_all_configured_product_bundles() -> None:
+    from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
+
+    bundle_names = (
+        "macro-core",
+        "macro-calendar-core",
+        "treasury-auction-core",
+        "fed-text-core",
+        "crypto-derivatives-core",
+    )
+    repo = FakeMacroSyncQueueRepository(
+        max_observed_at_by_bundle={
+            "macro-core": date(2026, 5, 17),
+            "macro-calendar-core": None,
+            "treasury-auction-core": date(2026, 5, 10),
+            "fed-text-core": date(2026, 5, 8),
+            "crypto-derivatives-core": date(2026, 5, 20),
+        }
+    )
+    service = MacroSyncService(
+        settings=FakeSettings(bundle_names=bundle_names),
+        repository_factory=FakeRepositoryFactory(repo),
+        runner=FakeRunner(),
+        wake_emitter=FakeWakeBus(),
+        clock_ms=lambda: NOW_MS,
+    )
+
+    summary = service.enqueue_due_windows(now_ms=NOW_MS)
+
+    assert summary["scheduled_bundle_names"] == bundle_names
+    assert summary["enqueued_steady_windows"] == 5
+    assert summary["enqueued_bootstrap_windows"] == 1
+    assert summary["enqueued_gap_windows"] == 2
+    assert repo.sync_state_reads == [
+        {"source_name": "macrodata-cli", "bundle_name": "macro-core"},
+        {"source_name": "macrodata-cli", "bundle_name": "macro-calendar-core"},
+        {"source_name": "macrodata-cli", "bundle_name": "treasury-auction-core"},
+        {"source_name": "macrodata-cli", "bundle_name": "fed-text-core"},
+        {"source_name": "macrodata-cli", "bundle_name": "crypto-derivatives-core"},
+    ]
+    assert {window["bundle_name"] for window in repo.enqueued_windows} == set(bundle_names)
+
+
 def test_sync_service_enqueue_due_windows_requires_formal_queue_summary_repository_contract() -> None:
     from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
 
@@ -652,6 +695,7 @@ def _empty_envelope() -> dict[str, object]:
 class FakeMacroSyncSettings:
     def __init__(self, **overrides: object) -> None:
         self.bundle_name = "macro-core"
+        self.bundle_names = ("macro-core",)
         self.source_name = "macrodata-cli"
         self.bootstrap_lookback_days = 1095
         self.max_window_days = 31
@@ -899,14 +943,23 @@ class FakeMacroIntelRepository:
 
 
 class FakeMacroSyncQueueRepository:
-    def __init__(self, *, max_observed_at: date | None) -> None:
+    def __init__(
+        self,
+        *,
+        max_observed_at: date | None = None,
+        max_observed_at_by_bundle: dict[str, date | None] | None = None,
+    ) -> None:
         self.max_observed_at = max_observed_at
+        self.max_observed_at_by_bundle = dict(max_observed_at_by_bundle or {})
         self.enqueued_windows: list[dict[str, object]] = []
         self.queue_summary_calls: list[dict[str, object]] = []
+        self.sync_state_reads: list[dict[str, object]] = []
 
     def macro_sync_state_max_observed_at(self, *, source_name: str, bundle_name: str) -> date | None:
         assert source_name == "macrodata-cli"
-        assert bundle_name == "macro-core"
+        self.sync_state_reads.append({"source_name": source_name, "bundle_name": bundle_name})
+        if bundle_name in self.max_observed_at_by_bundle:
+            return self.max_observed_at_by_bundle[bundle_name]
         return self.max_observed_at
 
     def enqueue_macro_sync_window(self, **kwargs: object) -> str:

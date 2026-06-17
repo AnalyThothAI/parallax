@@ -1,9 +1,7 @@
 import type { Page, Route } from "@playwright/test";
 import {
   macroAssetsModuleFixture,
-  macroAuctionsProxyModuleFixture,
   macroCorrelationFixture,
-  macroExpectationsProxyModuleFixture,
   macroFedFundsModuleFixture,
   macroModuleFixture,
   macroOverviewModuleFixture,
@@ -1358,7 +1356,7 @@ function macroModuleIdFromPath(path: string) {
 }
 
 function isParentMacroModule(moduleId: string) {
-  return new Set(["rates", "fed", "liquidity", "economy", "volatility", "credit"]).has(moduleId);
+  return new Set(["rates", "liquidity", "economy", "volatility", "credit"]).has(moduleId);
 }
 
 function macroModuleData(moduleId: string) {
@@ -1372,12 +1370,8 @@ function macroModuleData(moduleId: string) {
       return macroFedFundsModuleFixture();
     case "rates/yield-curve":
       return macroYieldCurveModuleFixture();
-    case "rates/auctions":
-      return macroAuctionsProxyModuleFixture();
     case "rates/real-rates":
       return macroRealRatesModuleFixture();
-    case "rates/expectations":
-      return macroExpectationsProxyModuleFixture();
     default:
       break;
   }

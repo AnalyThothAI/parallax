@@ -17,11 +17,9 @@ export {
 export {
   assetLabel,
   assetTitleByKey,
-  correlationGapLabel,
   correlationTone,
   matrixCorrelationLabel,
   signedCorrelationLabel,
-  sourceLabel,
   strongestCorrelationPairs,
 } from "./model/macroCorrelationModel";
 export { MACRO_NAVIGATION_TREE } from "./model/macroNavigationTree";
@@ -31,7 +29,6 @@ export { MacroNormalizedReturnChart } from "./ui/charts/MacroNormalizedReturnCha
 export { MacroTimeSeriesChart } from "./ui/charts/MacroTimeSeriesChart";
 export { MacroYieldCurveChart } from "./ui/charts/MacroYieldCurveChart";
 export { MacroLeafModulePage } from "./ui/pages/MacroLeafModulePage";
-export { MacroMatrixPage } from "./ui/pages/MacroMatrixPage";
 export { MacroModulePageRenderer } from "./ui/pages/MacroModulePageRenderer";
 export { MacroOverviewModulePage } from "./ui/pages/MacroOverviewModulePage";
 export { MacroDataTable } from "./ui/tables/MacroDataTable";

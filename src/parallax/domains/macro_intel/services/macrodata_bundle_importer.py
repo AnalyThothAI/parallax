@@ -8,8 +8,8 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Any, cast
 
 from parallax.domains.macro_intel._constants import (
+    MACRO_IMPORTABLE_PROVIDER_SERIES_TO_CONCEPT,
     MACRO_PROVIDER_SERIES_SOURCE_PRIORITY,
-    MACRO_PROVIDER_SERIES_TO_CONCEPT,
     MACRO_VIEW_PROJECTION_VERSION,
 )
 from parallax.domains.macro_intel.observation_identity import normalize_macro_date
@@ -24,10 +24,10 @@ def parse_macrodata_bundle(envelope: Mapping[str, Any], *, now_ms: int) -> Macro
     bundle_name = str(snapshot.get("bundle") or "unknown")
     asof = snapshot.get("asof")
     observations = _sequence(snapshot.get("observations"))
-    coverage = _mapping(snapshot.get("coverage"))
-    missing_series = list(_sequence(snapshot.get("missing_series")))
-    series_errors = list(_sequence(snapshot.get("series_errors")))
-    reason_codes = list(_sequence(snapshot.get("reason_codes")))
+    coverage = _json_mapping(snapshot.get("coverage"))
+    missing_series = list(_json_sequence(snapshot.get("missing_series")))
+    series_errors = list(_json_sequence(snapshot.get("series_errors")))
+    reason_codes = list(_json_sequence(snapshot.get("reason_codes")))
     data_quality = str(snapshot.get("data_quality") or "ok")
     normalized_observations = _observations(observations, now_ms=now_ms)
     max_observed_at = _max_observed_at(normalized_observations)
@@ -172,21 +172,22 @@ def _observation(raw_observation: Mapping[str, Any], *, now_ms: int) -> dict[str
     series_key = str(raw_observation.get("series_key") or "").strip()
     if not series_key:
         raise ValueError("macrodata observation missing series_key")
-    concept_key = MACRO_PROVIDER_SERIES_TO_CONCEPT.get(series_key)
+    concept_key = MACRO_IMPORTABLE_PROVIDER_SERIES_TO_CONCEPT.get(series_key)
     if concept_key is None:
-        raise ValueError(f"unknown macro-core series_key: {series_key}")
+        raise ValueError(f"unknown macrodata series_key: {series_key}")
+    persisted_series_key = _persisted_series_key(series_key=series_key, raw_observation=raw_observation)
     return {
         "source_name": str(raw_observation.get("provider") or _provider_prefix(series_key)),
         "concept_key": concept_key,
-        "series_key": series_key,
+        "series_key": persisted_series_key,
         "source_priority": MACRO_PROVIDER_SERIES_SOURCE_PRIORITY[series_key],
-        "observed_at": normalize_macro_date(raw_observation.get("observed_at")),
+        "observed_at": _observed_date(series_key=series_key, raw_observation=raw_observation),
         "value_numeric": _numeric_value(raw_observation.get("value")),
         "unit": raw_observation.get("unit"),
         "frequency": raw_observation.get("frequency"),
         "data_quality": str(raw_observation.get("data_quality") or "ok"),
         "source_ts": raw_observation.get("source_ts"),
-        "raw_payload": dict(raw_observation),
+        "raw_payload": _json_mapping(raw_observation),
         "ingested_at_ms": int(now_ms),
     }
 
@@ -194,8 +195,12 @@ def _observation(raw_observation: Mapping[str, Any], *, now_ms: int) -> dict[str
 def _numeric_value(value: Any) -> int | float | Decimal | None:
     if isinstance(value, bool):
         return None
-    if isinstance(value, int | float | Decimal):
+    if isinstance(value, int):
         return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, Decimal):
+        return value if value.is_finite() else None
     if isinstance(value, str):
         stripped = value.strip()
         if not stripped:
@@ -206,6 +211,30 @@ def _numeric_value(value: Any) -> int | float | Decimal | None:
             return None
         return parsed if math.isfinite(parsed) else None
     return None
+
+
+def _observed_date(*, series_key: str, raw_observation: Mapping[str, Any]) -> date:
+    observed_at = raw_observation.get("observed_at")
+    if series_key.startswith("official_fed_text:") and isinstance(observed_at, str):
+        return normalize_macro_date(observed_at.split("T", 1)[0])
+    return normalize_macro_date(observed_at)
+
+
+def _persisted_series_key(*, series_key: str, raw_observation: Mapping[str, Any]) -> str:
+    if not series_key.startswith("official_fed_text:"):
+        return series_key
+    source_url = _document_source_url(raw_observation)
+    if not source_url:
+        return series_key
+    digest = hashlib.sha256(source_url.encode()).hexdigest()[:12]
+    return f"{series_key}#{digest}"
+
+
+def _document_source_url(raw_observation: Mapping[str, Any]) -> str:
+    provenance = _json_sequence(raw_observation.get("provenance"))
+    first = provenance[0] if provenance and isinstance(provenance[0], Mapping) else {}
+    source_url = first.get("source_url") if isinstance(first, Mapping) else None
+    return str(source_url or "").strip()
 
 
 def _provider_prefix(series_key: str) -> str:
@@ -225,6 +254,26 @@ def _mapping(value: object) -> dict[str, Any]:
 
 def _sequence(value: object) -> Sequence[Any]:
     return value if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray) else []
+
+
+def _json_mapping(value: object) -> dict[str, Any]:
+    return cast("dict[str, Any]", _json_payload(dict(value) if isinstance(value, Mapping) else {}))
+
+
+def _json_sequence(value: object) -> list[Any]:
+    return cast("list[Any]", _json_payload(list(_sequence(value))))
+
+
+def _json_payload(value: object) -> object:
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, Decimal):
+        return float(value) if value.is_finite() else None
+    if isinstance(value, Mapping):
+        return {str(key): _json_payload(item) for key, item in value.items()}
+    if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
+        return [_json_payload(item) for item in value]
+    return value
 
 
 def _max_observed_at(observations: Sequence[Mapping[str, Any]]) -> date | str | None:

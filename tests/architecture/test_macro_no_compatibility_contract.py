@@ -2,6 +2,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src" / "parallax"
+WEB_SRC = ROOT / "web" / "src"
 ALEMBIC_VERSIONS = SRC / "platform" / "db" / "alembic" / "versions"
 
 FORBIDDEN_MACRO_COMPATIBILITY_TOKENS = (
@@ -23,6 +24,93 @@ RETIRED_CEX_RUN_SERVING_DOC_TOKENS = (
     "按 `run_id` 重建",
 )
 
+HARD_DELETED_MACRO_MODULE_IDS = (
+    "assets/correlation",
+    "assets/crypto-derivatives",
+    "rates/auctions",
+    "rates/expectations",
+    "fed/statements",
+    "fed/speeches",
+    "liquidity/global-dollar",
+    "liquidity/reserves",
+    "liquidity/subsurface",
+    "liquidity/transmission-chain",
+    "liquidity/operations",
+    "liquidity/fed-balance-sheet",
+    "economy/consumer",
+    "volatility/dashboard",
+    "credit/cds",
+)
+
+MACRO_RUNTIME_SCAN_ROOTS = (
+    SRC / "domains/macro_intel",
+    SRC / "app/surfaces/api/routes_macro.py",
+    SRC / "app/surfaces/cli/commands/macro.py",
+    WEB_SRC / "features/macro",
+    WEB_SRC / "routes/macro.route.tsx",
+    WEB_SRC / "features/cockpit/ui/appNavigation.ts",
+)
+
+MACRO_SOURCE_BACKLOG_PLACEHOLDER_TOKENS = (
+    "来源待接入",
+    "future-source",
+    "future source",
+    "static backlog",
+    "CME FedWatch",
+    "FedWatch",
+    "fake FedWatch",
+    "OPRA",
+    "TRACE",
+    "CDS",
+    "CDX",
+    "DataShop",
+    "LiveVol",
+    "auction-tail",
+    "when-issued",
+    "STFM",
+)
+
+MACRO_PRODUCT_PLACEHOLDER_TOKENS = (
+    "未命名指标",
+    "单位未标注",
+    "宏观图表",
+    "宏观表格",
+    "未知",
+    "未知来源",
+    "未知状态",
+    "未知宏观状态",
+    "unknown_chart",
+    "unknown_table",
+)
+
+MACRO_EMPTY_RUNTIME_FACTORY_TOKENS = ("_empty_chart",)
+
+MACRO_RAW_CONCEPT_METADATA_FALLBACK_TOKENS = (
+    'MACRO_CONCEPT_METADATA.get(concept_key, {}).get("label") or concept_key',
+    'MACRO_CONCEPT_METADATA.get(concept_key, {}).get("short_label") or concept_key',
+    'MACRO_CONCEPT_METADATA.get(concept_key, {}).get("unit_label") or str(unit or "")',
+    'metadata.get("label") or concept_key',
+    'metadata.get("short_label") or concept_key',
+    'metadata.get("unit_label") or str(unit or "")',
+    'metadata.get("short_label") or _feature_label(concept_key, feature)',
+)
+
+ALLOWED_DELETED_MACRO_ROUTE_REFERENCES = {
+    "src/parallax/app/surfaces/api/routes_macro.py": {"/macro/assets/correlation"},
+    "web/src/features/macro/api/useMacroAssetCorrelationQuery.ts": {"/macro/assets/correlation"},
+}
+
+
+def _iter_macro_runtime_source_paths() -> list[Path]:
+    suffixes = {".py", ".ts", ".tsx"}
+    paths: list[Path] = []
+    for root in MACRO_RUNTIME_SCAN_ROOTS:
+        if root.is_file():
+            paths.append(root)
+            continue
+        paths.extend(path for path in root.rglob("*") if path.suffix in suffixes)
+    return sorted(paths)
+
 
 def test_runtime_source_does_not_reference_retired_macro_serving_contracts() -> None:
     offenders: list[str] = []
@@ -37,6 +125,80 @@ def test_runtime_source_does_not_reference_retired_macro_serving_contracts() -> 
         )
 
     assert offenders == []
+
+
+def test_deleted_macro_product_routes_do_not_reappear_in_runtime_source() -> None:
+    forbidden_route_tokens = tuple(f"/macro/{module_id}" for module_id in HARD_DELETED_MACRO_MODULE_IDS)
+    offenders: list[str] = []
+
+    for path in _iter_macro_runtime_source_paths():
+        relative_path = path.relative_to(ROOT).as_posix()
+        text = path.read_text(encoding="utf-8")
+        allowed_tokens = ALLOWED_DELETED_MACRO_ROUTE_REFERENCES.get(relative_path, set())
+        offenders.extend(
+            f"{relative_path} contains deleted macro route {token}"
+            for token in forbidden_route_tokens
+            if token in text and token not in allowed_tokens
+        )
+
+    assert offenders == []
+
+
+def test_deleted_macro_frontend_page_components_are_removed() -> None:
+    removed_paths = [
+        WEB_SRC / "features/macro/ui/pages/MacroMatrixPage.tsx",
+        WEB_SRC / "features/macro/ui/correlation/CorrelationRead.tsx",
+    ]
+
+    assert [path.relative_to(ROOT).as_posix() for path in removed_paths if path.exists()] == []
+
+
+def test_macro_runtime_source_has_no_future_source_backlog_placeholders() -> None:
+    offenders: list[str] = []
+    for path in _iter_macro_runtime_source_paths():
+        relative_path = path.relative_to(ROOT).as_posix()
+        text = path.read_text(encoding="utf-8")
+        offenders.extend(
+            f"{relative_path} contains source-backlog placeholder {token!r}"
+            for token in MACRO_SOURCE_BACKLOG_PLACEHOLDER_TOKENS
+            if token in text
+        )
+
+    assert offenders == []
+
+
+def test_macro_runtime_source_does_not_manufacture_unnamed_indicator_labels() -> None:
+    offenders: list[str] = []
+    for path in _iter_macro_runtime_source_paths():
+        relative_path = path.relative_to(ROOT).as_posix()
+        text = path.read_text(encoding="utf-8")
+        offenders.extend(
+            f"{relative_path} contains product placeholder {token!r}"
+            for token in MACRO_PRODUCT_PLACEHOLDER_TOKENS
+            if token in text
+        )
+
+    assert offenders == []
+
+
+def test_macro_runtime_source_has_no_empty_chart_compatibility_factory() -> None:
+    offenders: list[str] = []
+    for path in _iter_macro_runtime_source_paths():
+        relative_path = path.relative_to(ROOT).as_posix()
+        text = path.read_text(encoding="utf-8")
+        offenders.extend(
+            f"{relative_path} contains empty runtime factory {token!r}"
+            for token in MACRO_EMPTY_RUNTIME_FACTORY_TOKENS
+            if token in text
+        )
+
+    assert offenders == []
+
+
+def test_macro_module_views_do_not_use_raw_concept_key_or_unit_metadata_fallbacks() -> None:
+    source = (SRC / "domains/macro_intel/services/macro_module_views.py").read_text(encoding="utf-8")
+
+    assert [token for token in MACRO_RAW_CONCEPT_METADATA_FALLBACK_TOKENS if token in source] == []
 
 
 def test_canonical_docs_do_not_republish_retired_cex_run_serving_instructions() -> None:
@@ -134,18 +296,6 @@ def test_macro_assets_daily_brief_requires_repository_contract_without_optional_
 
     assert [token for token in forbidden_tokens if token in route_source] == []
     assert "repos.macro_intel.latest_macro_daily_brief" in route_source
-
-
-def test_macro_crypto_derivatives_cex_board_requires_repository_contract_without_optional_repo() -> None:
-    route_source = (SRC / "app/surfaces/api/routes_macro.py").read_text()
-
-    forbidden_tokens = (
-        'getattr(repos, "cex_oi_radar", None)',
-        "if board_repo is None:",
-    )
-
-    assert [token for token in forbidden_tokens if token in route_source] == []
-    assert "repos.cex_oi_radar.latest_board" in route_source
 
 
 def test_macrodata_bundle_import_requires_session_unit_of_work_without_conn_transaction_fallback() -> None:

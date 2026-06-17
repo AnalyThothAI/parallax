@@ -71,9 +71,10 @@ export function buildRatesCorridorModel(
     ...REQUIRED_CORRIDOR_KEYS.filter((key) => !isRenderable(seriesByKey.get(key))).map(
       (key) => CORRIDOR_LABELS[key],
     ),
-    ...(chart.missing_concept_keys ?? []).map(
-      (concept) => CORRIDOR_LABELS[CORRIDOR_SERIES_BY_CONCEPT[concept]] ?? concept,
-    ),
+    ...(chart.missing_concept_keys ?? []).flatMap((concept) => {
+      const key = CORRIDOR_SERIES_BY_CONCEPT[concept];
+      return key ? [CORRIDOR_LABELS[key]] : [];
+    }),
   ]);
 
   return {

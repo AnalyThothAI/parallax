@@ -27,9 +27,7 @@ export type AppNavigationGroup = {
 const macroNavigationRoot = MACRO_NAVIGATION_TREE[0];
 
 function adaptMacroNavigationNode(node: MacroNavigationNode): AppNavigationItem {
-  const visibleChildren = node.children
-    ?.filter((child) => !child.navHidden)
-    .map(adaptMacroNavigationNode);
+  const visibleChildren = node.children?.map(adaptMacroNavigationNode);
   const children = visibleChildren?.length ? visibleChildren : undefined;
   const matchPath = node.matchPath ?? (children?.length ? `${node.href}/*` : undefined);
 
@@ -42,9 +40,7 @@ function adaptMacroNavigationNode(node: MacroNavigationNode): AppNavigationItem 
   };
 }
 
-const macroNavigationChildren =
-  macroNavigationRoot.children?.filter((child) => !child.navHidden).map(adaptMacroNavigationNode) ??
-  [];
+const macroNavigationChildren = macroNavigationRoot.children?.map(adaptMacroNavigationNode) ?? [];
 
 export const APP_NAVIGATION_GROUPS: AppNavigationGroup[] = [
   {

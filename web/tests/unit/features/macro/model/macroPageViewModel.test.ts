@@ -16,8 +16,14 @@ describe("macroPageViewModel", () => {
     expect(gapLabel({ code: "insufficient_history:60d", label: "历史样本不足" })).toBe(
       "历史样本不足",
     );
-    expect(gapLabel("insufficient_history:60d")).toBe("数据缺口待确认");
-    expect(gapLabel({ code: "basis_missing" })).toBe("数据缺口待确认");
+    expect(gapLabel("insufficient_history:60d")).toBeNull();
+    expect(gapLabel({ code: "basis_missing" })).toBeNull();
+  });
+
+  it("drops unlabeled gap payloads instead of manufacturing placeholder labels", () => {
+    expect(gapLabel({})).toBeNull();
+    expect(gapLabel({ code: "" })).toBeNull();
+    expect(gapLabel(null)).toBeNull();
   });
 
   it("prefers snapshot display labels for dates and statuses", () => {
@@ -38,6 +44,41 @@ describe("macroPageViewModel", () => {
     expect(formatMacroScalar("insufficient_history")).toBe("历史样本不足");
   });
 
+  it("keeps empty scalar values null instead of manufacturing placeholder copy", () => {
+    expect(formatMacroScalar(null)).toBeNull();
+    expect(formatMacroScalar(undefined)).toBeNull();
+    expect(formatMacroScalar("")).toBeNull();
+    expect(formatMacroScalar("暂无")).toBeNull();
+    expect(formatMacroScalar("unknown")).toBeNull();
+    expect(formatMacroScalar({ raw: true })).toBeNull();
+    expect(formatMacroScalar([])).toBeNull();
+    expect(formatMacroScalar([{ raw: true }, "ok"])).toBe("正常");
+  });
+
+  it("drops unmapped snapshot statuses instead of manufacturing placeholder copy", () => {
+    const module = macroModuleFixture({
+      snapshot: {
+        ...macroModuleFixture().snapshot,
+        status: "provider_not_configured",
+        status_label: null,
+      },
+    });
+
+    expect(macroStatusLabel(module)).toBeNull();
+  });
+
+  it("keeps missing snapshot dates empty instead of manufacturing date copy", () => {
+    const module = macroModuleFixture({
+      snapshot: {
+        ...macroModuleFixture().snapshot,
+        asof_date: null,
+        asof_label: null,
+      },
+    });
+
+    expect(macroAsOfLabel(module)).toBeNull();
+  });
+
   it("accepts v3 module fixtures without old macro module payload keys", () => {
     const module = macroModuleFixture();
 
@@ -48,6 +89,7 @@ describe("macroPageViewModel", () => {
     expect(module.transmission).toEqual([
       {
         kind: "flow",
+        key: "flow:yahoo",
         label: "Yahoo",
         status: "partial",
         status_label: "部分可用",
@@ -93,6 +135,33 @@ describe("macroPageViewModel", () => {
     });
   });
 
+  it("omits missing snapshot dates from freshness alert copy", () => {
+    const module = macroModuleFixture({
+      snapshot: {
+        ...macroModuleFixture().snapshot,
+        status: "stale",
+        status_label: "数据滞后",
+        asof_date: null,
+        asof_label: null,
+      },
+      data_health: {
+        ...macroModuleFixture().data_health,
+        module_gaps: [
+          {
+            code: "stale_latest:135d",
+            label: "最新观测滞后 135 天",
+          },
+        ],
+      },
+    });
+
+    expect(macroFreshnessAlert(module)).toEqual({
+      detail: "宏观快照整体处于滞后状态，请先确认同步与投影状态。",
+      items: ["最新观测滞后 135 天"],
+      title: "宏观数据滞后",
+    });
+  });
+
   it("labels stale gap payloads as partial sequence lag instead of fact-layer lag", () => {
     const module = macroModuleFixture({
       snapshot: {
@@ -117,6 +186,33 @@ describe("macroPageViewModel", () => {
     expect(macroFreshnessAlert(module)).toEqual({
       detail: "截至 2026-06-09；页面已使用最新可用观测，少数指标仍有新鲜度缺口。",
       items: ["最新观测已过期：8 天未更新"],
+      title: "部分宏观序列滞后",
+    });
+  });
+
+  it("does not manufacture freshness alert item labels from stale gap codes", () => {
+    const module = macroModuleFixture({
+      snapshot: {
+        ...macroModuleFixture().snapshot,
+        status: "partial",
+        status_label: "部分可用",
+        asof_date: "2026-06-09",
+        asof_label: "截至 2026-06-09",
+      },
+      data_health: {
+        ...macroModuleFixture().data_health,
+        summary_status: "missing",
+        module_gaps: [
+          {
+            code: "stale_latest_8d",
+          },
+        ],
+      },
+    });
+
+    expect(macroFreshnessAlert(module)).toEqual({
+      detail: "截至 2026-06-09；页面已使用最新可用观测，少数指标仍有新鲜度缺口。",
+      items: [],
       title: "部分宏观序列滞后",
     });
   });

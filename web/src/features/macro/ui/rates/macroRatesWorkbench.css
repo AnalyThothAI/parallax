@@ -260,28 +260,6 @@
     font-weight: 800;
   }
 
-  .macro-rates-health-chip-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 7px;
-    min-width: 0;
-    padding-top: 8px;
-  }
-
-  .macro-rates-health-chip {
-    max-width: 100%;
-    min-width: 0;
-    padding: 5px 8px;
-    border: 1px solid rgba(251, 191, 36, 0.2);
-    border-radius: 999px;
-    color: #fde68a;
-    background: rgba(251, 191, 36, 0.08);
-    font-size: 0.74rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
   .macro-rates-corridor-chart,
   .macro-rates-corridor {
     display: grid;

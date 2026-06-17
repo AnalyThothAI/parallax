@@ -69,9 +69,7 @@
     background: rgba(15, 23, 42, 0.28);
   }
 
-  .macro-correlation-pair-list,
-  .macro-correlation-coverage-list,
-  .macro-correlation-gap-list {
+  .macro-correlation-pair-list {
     display: grid;
     gap: 8px;
     min-width: 0;
@@ -80,9 +78,7 @@
     list-style: none;
   }
 
-  .macro-correlation-pair-list li,
-  .macro-correlation-coverage-list li,
-  .macro-correlation-gap-list li {
+  .macro-correlation-pair-list li {
     display: grid;
     gap: 4px 8px;
     min-width: 0;
@@ -98,8 +94,7 @@
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  .macro-correlation-pair-list strong,
-  .macro-correlation-coverage-list strong {
+  .macro-correlation-pair-list strong {
     min-width: 0;
     color: var(--text-primary, #f8fafc);
     font-size: 0.8rem;
@@ -128,11 +123,7 @@
     color: var(--text-muted, #94a3b8);
   }
 
-  .macro-correlation-pair-list small,
-  .macro-correlation-coverage-list span,
-  .macro-correlation-coverage-list small,
-  .macro-correlation-gap-list li,
-  .macro-correlation-empty {
+  .macro-correlation-pair-list small {
     color: var(--text-muted, #94a3b8);
     font-size: 0.78rem;
     line-height: 1.4;
@@ -140,147 +131,5 @@
 
   .macro-correlation-pair-list small {
     grid-column: 1 / -1;
-  }
-
-  .macro-correlation-read,
-  .macro-correlation-diagnostics,
-  .macro-correlation-lane {
-    display: grid;
-    gap: 12px;
-    min-width: 0;
-  }
-
-  .macro-correlation-read p {
-    max-width: 880px;
-    margin: 0;
-    color: var(--text-primary, #f8fafc);
-    font-size: 1rem;
-    font-weight: 800;
-    line-height: 1.45;
-  }
-
-  .macro-correlation-read-facts {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 10px;
-    min-width: 0;
-    margin: 0;
-  }
-
-  .macro-correlation-read-facts div,
-  .macro-correlation-lane {
-    min-width: 0;
-    padding: 12px;
-    border: 1px solid rgba(148, 163, 184, 0.14);
-    border-radius: 8px;
-    background: rgba(10, 16, 27, 0.28);
-  }
-
-  .macro-correlation-read-facts dt {
-    color: var(--text-muted, #94a3b8);
-    font-size: 0.72rem;
-  }
-
-  .macro-correlation-read-facts dd {
-    min-width: 0;
-    margin: 4px 0 0;
-    color: var(--text-primary, #f8fafc);
-    font-size: 0.86rem;
-    font-weight: 800;
-    line-height: 1.35;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .macro-correlation-diagnostics-summary {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-    min-width: 0;
-    margin: 0;
-  }
-
-  .macro-correlation-diagnostics-summary div {
-    min-width: 0;
-    padding: 10px;
-    border: 1px solid rgba(148, 163, 184, 0.12);
-    border-radius: 8px;
-    background: rgba(10, 16, 27, 0.22);
-  }
-
-  .macro-correlation-diagnostics-summary dt {
-    color: var(--text-muted, #94a3b8);
-    font-size: 0.72rem;
-  }
-
-  .macro-correlation-diagnostics-summary dd {
-    margin: 4px 0 0;
-    color: var(--text-primary, #f8fafc);
-    font-size: 0.9rem;
-    font-weight: 800;
-  }
-
-  .macro-correlation-detail-group,
-  .macro-correlation-matrix-details {
-    min-width: 0;
-  }
-
-  .macro-correlation-detail-group > summary,
-  .macro-correlation-matrix-details > summary {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    min-width: 0;
-    padding: 8px 0;
-    color: var(--text-secondary, #cbd5e1);
-    cursor: pointer;
-    font-size: 0.8rem;
-    font-weight: 800;
-  }
-
-  .macro-correlation-matrix-details > summary {
-    padding: 10px 0 4px;
-  }
-
-  .macro-correlation-lane-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
-    min-width: 0;
-  }
-
-  .macro-correlation-lane h4 {
-    margin: 0;
-    color: var(--text-primary, #f8fafc);
-    font-size: 0.84rem;
-  }
-
-  @media (min-width: 768px) and (max-width: 1279px) {
-    .macro-correlation-read-facts,
-    .macro-correlation-lane-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-  }
-
-  @media (max-width: 767px) {
-    .macro-correlation-diagnostics-summary,
-    .macro-correlation-lane-grid {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    .macro-correlation-evidence-panel .macro-correlation-lane-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 8px;
-    }
-
-    .macro-correlation-evidence-panel .macro-correlation-lane {
-      padding: 10px;
-    }
-
-    .macro-correlation-read-facts {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
   }
 }

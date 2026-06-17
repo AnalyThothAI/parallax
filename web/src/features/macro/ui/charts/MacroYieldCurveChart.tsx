@@ -53,26 +53,22 @@ export function MacroYieldCurveChart({ chart, title }: { chart: MacroModuleChart
     };
   }, [points]);
 
+  if (points.length === 0) {
+    return null;
+  }
+
   return (
     <figure aria-label={title} className="macro-chart-figure">
       <figcaption>{title}</figcaption>
-      {points.length > 0 ? (
-        <>
-          <div className="macro-chart-canvas-host macro-yield-chart-host" ref={containerRef} />
-          <div className="macro-yield-curve-points">
-            {points.map((point) => (
-              <span data-testid="macro-yield-curve-point" key={point.conceptKey}>
-                <b>{point.label}</b>
-                <strong>{formatMacroChartValue(point.value, point.unit)}</strong>
-              </span>
-            ))}
-          </div>
-        </>
-      ) : (
-        <div aria-label={`${title} state`} className="macro-chart-state-panel" role="status">
-          暂无收益率曲线数据
-        </div>
-      )}
+      <div className="macro-chart-canvas-host macro-yield-chart-host" ref={containerRef} />
+      <div className="macro-yield-curve-points">
+        {points.map((point) => (
+          <span data-testid="macro-yield-curve-point" key={point.conceptKey}>
+            <b>{point.label}</b>
+            <strong>{formatMacroChartValue(point.value, point.unit)}</strong>
+          </span>
+        ))}
+      </div>
     </figure>
   );
 }

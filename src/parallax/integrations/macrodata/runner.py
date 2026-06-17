@@ -123,6 +123,8 @@ def resolve_macrodata_command(*, environ: Mapping[str, str] | None = None) -> li
 def macrodata_runtime_state(
     *,
     required_series: Sequence[str] = (),
+    required_bundles: Sequence[str] = (),
+    required_bundle_series: Mapping[str, Sequence[str]] | None = None,
     environ: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     command_path: str | None = None
@@ -139,10 +141,35 @@ def macrodata_runtime_state(
     catalog_series = _macrodata_catalog_series()
     macro_core_series = _macrodata_bundle_series("macro-core")
     required = tuple(dict.fromkeys(str(item) for item in required_series))
-    missing = [series_key for series_key in required if catalog_series is None or series_key not in catalog_series]
-    missing_bundle = [
-        series_key for series_key in required if macro_core_series is None or series_key not in macro_core_series
+    required_bundle_names = tuple(dict.fromkeys(str(item).strip() for item in required_bundles if str(item).strip()))
+    missing_required_bundles = [
+        bundle_name for bundle_name in required_bundle_names if _macrodata_bundle_series(bundle_name) is None
     ]
+    missing = [series_key for series_key in required if catalog_series is None or series_key not in catalog_series]
+    if required_bundle_series:
+        required_bundle_name_set = set(required_bundle_names)
+        missing_bundle_by_name: dict[str, list[str]] = {}
+        missing_bundle: list[str] = []
+        for bundle_name, expected_series in required_bundle_series.items():
+            normalized_bundle_name = str(bundle_name).strip()
+            if not normalized_bundle_name or (
+                required_bundle_name_set and normalized_bundle_name not in required_bundle_name_set
+            ):
+                continue
+            bundle_series = _macrodata_bundle_series(normalized_bundle_name)
+            missing_for_bundle = [
+                str(series_key)
+                for series_key in dict.fromkeys(str(item) for item in expected_series)
+                if bundle_series is None or str(series_key) not in bundle_series
+            ]
+            if missing_for_bundle:
+                missing_bundle_by_name[normalized_bundle_name] = missing_for_bundle
+                missing_bundle.extend(f"{normalized_bundle_name}:{series_key}" for series_key in missing_for_bundle)
+    else:
+        missing_bundle_by_name = {}
+        missing_bundle = [
+            series_key for series_key in required if macro_core_series is None or series_key not in macro_core_series
+        ]
     return {
         "package_version": _macrodata_cli_package_version(),
         "entrypoint_available": _macrodata_cli_entrypoint_available(),
@@ -154,10 +181,15 @@ def macrodata_runtime_state(
         "missing_required_series_count": len(missing),
         "required_series_available": False if catalog_series is None else not missing,
         "missing_required_series_sample": _edge_sample(missing, edge_count=12),
+        "required_bundle_count": len(required_bundle_names),
+        "missing_required_bundle_count": len(missing_required_bundles),
+        "required_bundles_available": not missing_required_bundles,
+        "missing_required_bundles": list(missing_required_bundles),
         "macro_core_bundle_available": macro_core_series is not None,
         "missing_required_bundle_series_count": len(missing_bundle),
         "required_bundle_series_available": False if macro_core_series is None else not missing_bundle,
         "missing_required_bundle_series_sample": _edge_sample(missing_bundle, edge_count=12),
+        "missing_required_bundle_series_by_bundle": missing_bundle_by_name,
     }
 
 

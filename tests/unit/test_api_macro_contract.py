@@ -12,7 +12,11 @@ from parallax.app.surfaces.api.exceptions import (
 )
 from parallax.app.surfaces.api.http import create_api_router
 from parallax.app.surfaces.api.routes_macro import _public_macro
-from parallax.domains.macro_intel._constants import MACRO_CORE_CONCEPTS
+from parallax.domains.macro_intel._constants import (
+    MACRO_CORE_CONCEPTS,
+    MACRO_VIEW_HISTORY_LIMIT_PER_SERIES,
+    MACRO_VIEW_HISTORY_LOOKBACK_DAYS,
+)
 from parallax.domains.macro_intel.services.macro_gap_payloads import build_macro_data_gaps
 
 
@@ -82,6 +86,23 @@ def test_macro_api_returns_latest_snapshot_without_postgres() -> None:
                 "watch_triggers": [{"code": "vix_breaks_30"}],
                 "invalidations": [{"code": "sofr_iorb_normalizes"}],
                 "trade_map": [{"expression": "risk_down_credit_sensitive", "time_window": "1w"}],
+                "top_changes": [
+                    {
+                        "code": "sofr_above_iorb",
+                        "label": "SOFR 高于 IORB",
+                        "description": "SOFR is above IORB",
+                        "node": "funding",
+                        "kind": "trigger",
+                    }
+                ],
+                "quality_blockers": [
+                    {
+                        "code": "missing_asset_spx",
+                        "label": "缺少当前数据：SPX",
+                        "description": "检查对应 provider 导入与最新观测。",
+                        "severity": "error",
+                    }
+                ],
             },
             "scorecard_json": {
                 "projection_version": "macro_regime_v4",
@@ -178,6 +199,23 @@ def test_macro_api_returns_latest_snapshot_without_postgres() -> None:
                 "watch_triggers": [{"code": "vix_breaks_30"}],
                 "invalidations": [{"code": "sofr_iorb_normalizes"}],
                 "trade_map": [{"expression": "risk_down_credit_sensitive", "time_window": "1w"}],
+                "top_changes": [
+                    {
+                        "code": "sofr_above_iorb",
+                        "label": "SOFR 高于 IORB",
+                        "description": "SOFR is above IORB",
+                        "node": "funding",
+                        "kind": "trigger",
+                    }
+                ],
+                "quality_blockers": [
+                    {
+                        "code": "missing_asset_spx",
+                        "label": "缺少当前数据：SPX",
+                        "description": "检查对应 provider 导入与最新观测。",
+                        "severity": "error",
+                    }
+                ],
             },
             "scorecard": {
                 "projection_version": "macro_regime_v4",
@@ -258,9 +296,7 @@ def test_macro_public_payload_requires_snapshot_json_sections(field_name: str) -
         ("data_gaps_json", {}),
     ),
 )
-def test_macro_public_payload_rejects_misshaped_snapshot_json_sections(
-    field_name: str, invalid_value: object
-) -> None:
+def test_macro_public_payload_rejects_misshaped_snapshot_json_sections(field_name: str, invalid_value: object) -> None:
     snapshot = _macro_snapshot()
     snapshot[field_name] = invalid_value
 
@@ -375,6 +411,7 @@ def test_macro_module_api_returns_backend_module_view() -> None:
                     "freshness_days": 1,
                     "history_points": 1,
                     "data_gaps": build_macro_data_gaps(["insufficient_history:20d"]),
+                    "data_quality": "ok",
                     "source": {"name": "fred"},
                 },
                 "rates:dgs10": {
@@ -384,6 +421,7 @@ def test_macro_module_api_returns_backend_module_view() -> None:
                     "freshness_days": 1,
                     "history_points": 1,
                     "data_gaps": build_macro_data_gaps(["insufficient_history:20d"]),
+                    "data_quality": "ok",
                     "source": {"name": "fred"},
                 },
             },
@@ -405,7 +443,8 @@ def test_macro_module_api_returns_backend_module_view() -> None:
         ("latest_snapshot", "macro_regime_v4"),
         ("macro_series_publication_state", "macro_regime_v4"),
     ]
-    assert repo.latest_observations_call == {
+    assert repo.latest_observations_call is None
+    assert repo.observations_for_concepts_call == {
         "concept_keys": (
             "rates:dgs2",
             "rates:dgs10",
@@ -421,9 +460,9 @@ def test_macro_module_api_returns_backend_module_view() -> None:
             "rates:10y2y",
             "rates:10y3m",
         ),
-        "limit": 250,
+        "lookback_days": MACRO_VIEW_HISTORY_LOOKBACK_DAYS,
+        "limit_per_series": MACRO_VIEW_HISTORY_LIMIT_PER_SERIES,
     }
-    assert repo.observations_for_concepts_call is None
     payload = response.json()
     assert payload["ok"] is True
     assert payload["data"]["snapshot"]["module_id"] == "rates/yield-curve"
@@ -454,6 +493,158 @@ def test_macro_module_api_returns_backend_module_view() -> None:
     assert "signals" not in payload["data"]
     assert "latest_import_run" not in payload["data"]["provenance"]
     assert all(isinstance(gap, dict) for gap in payload["data"]["data_health"]["module_gaps"])
+
+
+def test_macro_overview_module_api_loads_event_concepts_for_market_event_flow() -> None:
+    snapshot = _macro_snapshot()
+    snapshot["scenario_json"] = {
+        "current_regime": "funding_stress",
+        "trade_map": [{"expression": "risk_down_credit_sensitive", "time_window": "1w"}],
+    }
+    repo = FakeMacroIntelRepository(
+        snapshot=snapshot,
+        observations=[
+            _macro_observation("asset:ndx", "2026-05-01", 100.0),
+            _macro_observation("asset:ndx", "2026-05-20", 94.0),
+            _macro_observation("crypto:btc", "2026-05-01", 100.0),
+            _macro_observation("crypto:btc", "2026-05-20", 90.0),
+            _macro_observation("asset:gld", "2026-05-01", 100.0),
+            _macro_observation("asset:gld", "2026-05-20", 104.0),
+            _macro_observation("asset:spx", "2026-05-01", 100.0),
+            _macro_observation("asset:spx", "2026-05-20", 98.0),
+            _macro_observation("asset:tlt", "2026-05-01", 100.0),
+            _macro_observation("asset:tlt", "2026-05-20", 101.0),
+            {
+                **_macro_observation("event:fomc_decision_next", "2026-06-17", 1),
+                "series_key": "official_calendar:fomc_decision_next",
+                "source_name": "official_calendar",
+                "unit": "days",
+                "frequency": "event",
+                "raw_payload_json": {
+                    "series_key": "official_calendar:fomc_decision_next",
+                    "provider": "official_calendar",
+                    "observed_at": "2026-06-17",
+                    "value": 1,
+                    "unit": "days",
+                    "frequency": "event",
+                    "provenance": [
+                        {
+                            "event_title": "FOMC decision",
+                            "event_time": "14:00 ET",
+                            "source_url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+                        }
+                    ],
+                },
+            },
+        ],
+    )
+    app = _app(repo)
+
+    with TestClient(app) as client:
+        response = client.get("/api/macro/modules/overview", headers={"Authorization": "Bearer secret"})
+
+    assert response.status_code == 200
+    assert repo.latest_observations_call is None
+    assert repo.observations_for_concepts_call is not None
+    assert repo.observations_for_concepts_call["lookback_days"] == 60
+    assert "event:fomc_decision_next" in repo.observations_for_concepts_call["concept_keys"]
+    assert "event:fed_speech" in repo.observations_for_concepts_call["concept_keys"]
+    assert "event:bea_gdp_next" in repo.observations_for_concepts_call["concept_keys"]
+    assert "event:treasury_auction_10y_bid_to_cover" in repo.observations_for_concepts_call["concept_keys"]
+    assert "asset:ndx" in repo.observations_for_concepts_call["concept_keys"]
+    assert "crypto:btc" in repo.observations_for_concepts_call["concept_keys"]
+    assert "asset:gld" in repo.observations_for_concepts_call["concept_keys"]
+    assert "asset:spx" in repo.observations_for_concepts_call["concept_keys"]
+    assert "asset:tlt" in repo.observations_for_concepts_call["concept_keys"]
+    payload = response.json()
+    assert "event_catalysts" not in payload["data"]["module_read"]["decision_console"]
+    assert "event_heatmap" not in payload["data"]["module_read"]["decision_console"]
+    assert payload["data"]["module_read"]["market_event_flow"]["rows"] == [
+        {
+            "key": "official_calendar:fomc_decision_next",
+            "label": "FOMC 决议",
+            "date": "2026-06-17",
+            "detail": "2026-06-17 · 还有 1 天 · 14:00 ET",
+            "source": "官方日历",
+            "source_url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+            "kind": "calendar",
+            "window": "0-3d",
+            "severity": "high",
+            "severity_label": "高",
+            "category": "policy",
+            "category_label": "政策",
+            "impact": "policy_path",
+            "impact_label": "政策路径",
+            "watch": "利率路径和流动性定价。",
+        }
+    ]
+    assert (
+        payload["data"]["module_read"]["decision_console"]["trade_map"][0]["historical_review"]["win_rate_label"]
+        == "5/5"
+    )
+
+
+def test_macro_overview_module_api_loads_news_rows_for_market_event_flow() -> None:
+    macro_intel = FakeMacroIntelRepository(snapshot=_macro_snapshot(), observations=[])
+    news = FakeNewsRepository(
+        rows=[
+            {
+                "row_id": "news-row-1",
+                "news_item_id": "news-1",
+                "headline": "中东震荡下，日本追加预算预期升温",
+                "summary": "油价与美元走强，风险资产低开。",
+                "source_domain": "bloomberg.com",
+                "canonical_url": "https://news.google.com/articles/macro-1",
+                "latest_at_ms": 1_781_049_600_000,
+                "token_lanes": [{"symbol": "SPX"}, {"symbol": "美元"}],
+                "market_scope": {
+                    "primary": "macro_policy",
+                    "scope": ["macro_policy", "equities", "fx"],
+                    "status": "classified",
+                },
+                "signal": {
+                    "agent_signal": {
+                        "status": "ready",
+                        "decision_class": "context",
+                        "direction": "neutral",
+                    },
+                    "display_signal": {
+                        "status": "ready",
+                        "direction": "neutral",
+                        "label_zh": "中性",
+                    },
+                    "alert_eligibility": {"in_app_eligible": False, "decision_class": "context"},
+                },
+            }
+        ]
+    )
+    app = _app(macro_intel, news=news)
+
+    with TestClient(app) as client:
+        response = client.get("/api/macro/modules/overview", headers={"Authorization": "Bearer secret"})
+
+    assert response.status_code == 200
+    assert news.calls == [{"cursor": None, "limit": 7, "q": None, "signal": None, "status": None}]
+    payload = response.json()
+    assert payload["data"]["module_read"]["market_event_flow"]["rows"] == [
+        {
+            "key": "news:news-row-1",
+            "label": "中东震荡下，日本追加预算预期升温",
+            "date": "2026-06-10",
+            "detail": "油价与美元走强，风险资产低开。",
+            "source": "bloomberg.com",
+            "source_url": "https://news.google.com/articles/macro-1",
+            "kind": "news",
+            "window": "recent",
+            "severity": "low",
+            "severity_label": "低",
+            "category": "macro_policy",
+            "category_label": "美联储",
+            "impact": "mainline_context",
+            "impact_label": "不改主线",
+            "watch": "SPX · 美元 · 美联储",
+        }
+    ]
 
 
 def test_macro_module_api_rejects_unsupported_module() -> None:
@@ -493,103 +684,6 @@ def test_macro_module_api_rejects_parent_categories(module_id: str) -> None:
 
     assert response.status_code == 400
     assert response.json() == {"ok": False, "error": "unsupported_macro_module", "field": "module_id"}
-
-
-def test_macro_module_api_compacts_crypto_derivatives_cex_rows() -> None:
-    repo = FakeMacroIntelRepository(
-        snapshot={
-            "snapshot_id": "snapshot-1",
-            "projection_version": "macro_regime_v4",
-            "asof_date": "2026-05-20",
-            "status": "partial",
-            "regime": "tightening",
-            "computed_at_ms": 1_779_000_000_000,
-            "panels_json": {"assets": {"regime": "risk_on"}},
-            "indicators_json": {"crypto:btc": {"value": 110_000}},
-            "triggers_json": [],
-            "features_json": {
-                "crypto:btc": {
-                    "latest": {"value": 110_000, "observed_at": "2026-05-20", "unit": "usd"},
-                    "freshness_days": 1,
-                    "data_gaps": [],
-                },
-            },
-            "chain_json": {"assets": {"regime": "risk_on"}},
-            "scenario_json": {"current_regime": "risk_on", "watch_triggers": []},
-            "source_coverage_json": {"latest_coverage_ratio": 0.5, "history_coverage_ratio": 0.0},
-            "data_gaps_json": [],
-            "scorecard_json": {"projection_version": "macro_regime_v4", "chain_average": 6.8},
-        },
-        observations=[],
-    )
-    cex_repo = FakeCexOiRadarRepository(
-        board={
-            "publication": {
-                "status": "partial",
-                "published_at_ms": 1_779_000_200_000,
-            },
-            "rows": [
-                {
-                    "row_id": "cex-row-internal",
-                    "rank": 1,
-                    "target_id": "cex-token:btc",
-                    "pricefeed_id": "pricefeed:cex:binance:swap:BTCUSDT",
-                    "native_market_id": "BTCUSDT",
-                    "base_symbol": "BTC",
-                    "quote_symbol": "USDT",
-                    "open_interest_usd": 12_500_000_000,
-                    "funding_rate": 0.0001,
-                    "volume_24h_usd": 31_000_000_000,
-                    "mark_price": 110_100.0,
-                    "score": 91.2,
-                    "score_components_json": {"oi": 50},
-                    "observed_at_ms": 1_779_000_100_000,
-                    "computed_at_ms": 1_779_000_150_000,
-                }
-            ],
-        }
-    )
-    app = _app(repo, cex_oi_radar=cex_repo)
-
-    with TestClient(app) as client:
-        response = client.get(
-            "/api/macro/modules/assets/crypto-derivatives",
-            headers={"Authorization": "Bearer secret"},
-        )
-
-    assert response.status_code == 200
-    assert cex_repo.latest_board_call == {"limit": 20}
-    cex_table = next(table for table in response.json()["data"]["tables"] if table["id"] == "cex_perp_board")
-    row = cex_table["rows"][0]
-    assert row == {
-        "row_id": "BTCUSDT",
-        "row_quality": "partial",
-        "source_state": {"label": "CEX OI Radar", "status": "partial"},
-        "cells": {
-            "symbol": {"display_value": "BTC", "sort_value": "BTC"},
-            "open_interest": {"display_value": "12.50B", "sort_value": 12_500_000_000.0},
-            "funding": {"display_value": "0.0100%", "sort_value": 0.0001},
-            "volume_24h": {"display_value": "31.00B", "sort_value": 31_000_000_000.0},
-            "score": {"display_value": "91.20", "sort_value": 91.2},
-        },
-    }
-    assert "run_id" not in row
-    assert "target_id" not in row
-    assert "pricefeed_id" not in row
-    assert "score_components_json" not in row
-    assert "rank" not in row
-    assert "native_market_id" not in row
-    assert "mark_price" not in row
-
-
-def test_macro_crypto_derivatives_requires_cex_board_repository_contract() -> None:
-    app = _app(FakeMacroIntelRepository(snapshot=None))
-
-    with pytest.raises(AttributeError, match="latest_board"), TestClient(app) as client:
-        client.get(
-            "/api/macro/modules/assets/crypto-derivatives",
-            headers={"Authorization": "Bearer secret"},
-        )
 
 
 def test_macro_series_api_returns_bounded_concept_series() -> None:
@@ -726,24 +820,36 @@ class MissingDailyBriefMacroIntelRepository(FakeMacroIntelRepository):
         return super().__getattribute__(name)
 
 
-class FakeCexOiRadarRepository:
-    def __init__(self, *, board: dict[str, object]) -> None:
-        self.board = board
-        self.latest_board_call: dict[str, object] | None = None
+class FakeNewsRepository:
+    def __init__(self, *, rows: list[dict[str, object]] | None = None) -> None:
+        self.rows = rows or []
+        self.calls: list[dict[str, object]] = []
 
-    def latest_board(self, *, limit: int):
-        self.latest_board_call = {"limit": limit}
-        return self.board
+    def list_news_page_rows(
+        self,
+        *,
+        limit: int,
+        cursor: str | None = None,
+        status: str | None = None,
+        signal: str | None = None,
+        q: str | None = None,
+    ):
+        self.calls.append(
+            {
+                "cursor": cursor,
+                "limit": limit,
+                "q": q,
+                "signal": signal,
+                "status": status,
+            }
+        )
+        return self.rows[:limit]
 
 
 class FakeRepositoryContext:
-    def __init__(
-        self,
-        macro_intel: FakeMacroIntelRepository,
-        cex_oi_radar: FakeCexOiRadarRepository | None = None,
-    ) -> None:
+    def __init__(self, macro_intel: FakeMacroIntelRepository, news: FakeNewsRepository) -> None:
         self.macro_intel = macro_intel
-        self.cex_oi_radar = cex_oi_radar
+        self.news = news
 
     def __enter__(self):
         return self
@@ -753,29 +859,21 @@ class FakeRepositoryContext:
 
 
 class FakeRuntime:
-    def __init__(
-        self,
-        macro_intel: FakeMacroIntelRepository,
-        cex_oi_radar: FakeCexOiRadarRepository | None = None,
-    ) -> None:
+    def __init__(self, macro_intel: FakeMacroIntelRepository, news: FakeNewsRepository | None = None) -> None:
         self.settings = type("FakeSettings", (), {"ws_token": "secret"})()
         self.macro_intel = macro_intel
-        self.cex_oi_radar = cex_oi_radar
+        self.news = news or FakeNewsRepository()
 
     def repositories(self):
-        return FakeRepositoryContext(self.macro_intel, cex_oi_radar=self.cex_oi_radar)
+        return FakeRepositoryContext(self.macro_intel, self.news)
 
 
-def _app(
-    macro_intel: FakeMacroIntelRepository,
-    *,
-    cex_oi_radar: FakeCexOiRadarRepository | None = None,
-) -> FastAPI:
+def _app(macro_intel: FakeMacroIntelRepository, *, news: FakeNewsRepository | None = None) -> FastAPI:
     app = FastAPI()
     app.add_exception_handler(ApiUnauthorized, api_unauthorized_response)
     app.add_exception_handler(ApiBadRequest, api_bad_request_response)
     app.include_router(create_api_router(lambda _: ({"ok": True}, 200)))
-    app.state.service = FakeRuntime(macro_intel, cex_oi_radar=cex_oi_radar)
+    app.state.service = FakeRuntime(macro_intel, news)
     return app
 
 
@@ -805,7 +903,7 @@ def _macro_snapshot() -> dict[str, object]:
         "triggers_json": [{"code": "sofr_above_iorb"}],
         "data_gaps_json": [],
         "source_coverage_json": {"latest_coverage_ratio": 1.0},
-        "features_json": {"rates:dgs10": {"history_points": 252}},
+        "features_json": {"rates:dgs10": {"history_points": 252, "data_quality": "ok"}},
         "chain_json": {"liquidity": {"regime": "supportive"}},
         "scenario_json": {"current_regime": "risk_on"},
         "scorecard_json": {"projection_version": "macro_regime_v4"},

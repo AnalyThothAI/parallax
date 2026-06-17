@@ -11,43 +11,21 @@ import {
 } from "./model/macroPageViewModel";
 import { isRatesModuleId } from "./model/macroRatesWorkbenchModel";
 import { buildMacroBreadcrumbs, type MacroModuleId } from "./model/macroRoutes";
-import { MacroMatrixPage } from "./ui/pages/MacroMatrixPage";
 import { MacroModulePageRenderer } from "./ui/pages/MacroModulePageRenderer";
-import { MacroShell, type MacroShellHeaderModel } from "./ui/shell/MacroShell";
+import {
+  MacroShell,
+  type MacroShellHeaderModel,
+  type MacroShellStatusItem,
+} from "./ui/shell/MacroShell";
 
-type MacroWorkbenchRouteProps =
-  | {
-      moduleId: MacroModuleId;
-      pageKind: Exclude<MacroPageKind, "matrix" | "unsupported">;
-      productTier: Exclude<MacroProductTier, "unsupported">;
-      routeKind?: "module";
-      token: string;
-    }
-  | {
-      routeKind: "matrix";
-      token: string;
-    }
-  | {
-      routeKind: "unsupported";
-      routeTail: string;
-      token: string;
-    };
+type MacroWorkbenchRouteProps = {
+  moduleId: MacroModuleId;
+  pageKind: MacroPageKind;
+  productTier: MacroProductTier;
+  token: string;
+};
 
 export function MacroWorkbenchRoute(props: MacroWorkbenchRouteProps) {
-  if (props.routeKind === "unsupported") {
-    return (
-      <section className="macro-module-route" aria-label="宏观">
-        <div aria-label="不支持的宏观页面" className="macro-route-unsupported" role="status">
-          <strong>不支持的宏观页面</strong>
-          <span>/macro/{props.routeTail}</span>
-        </div>
-      </section>
-    );
-  }
-  if (props.routeKind === "matrix") {
-    return <MacroMatrixPage token={props.token} />;
-  }
-
   return (
     <MacroModuleWorkbenchRoute
       moduleId={props.moduleId}
@@ -65,8 +43,8 @@ function MacroModuleWorkbenchRoute({
   token,
 }: {
   moduleId: MacroModuleId;
-  pageKind: Exclude<MacroPageKind, "matrix" | "unsupported">;
-  productTier: Exclude<MacroProductTier, "unsupported">;
+  pageKind: MacroPageKind;
+  productTier: MacroProductTier;
   token: string;
 }) {
   const query = useMacroModuleQuery({ moduleId, token });
@@ -109,7 +87,7 @@ function macroModuleHeader({
       breadcrumbs: buildMacroBreadcrumbs(moduleId),
       eyebrow: "Assets",
       question: null,
-      statusItems: [{ label: "截至", value: macroAsOfLabel(module) }],
+      statusItems: compactStatusItems([statusItem("截至", macroAsOfLabel(module))]),
       title: macroModuleTitle(moduleId, module),
     };
   }
@@ -119,10 +97,10 @@ function macroModuleHeader({
       breadcrumbs: buildMacroBreadcrumbs(moduleId),
       eyebrow: "利率工作台",
       question: module.snapshot.question ?? module.snapshot.subtitle ?? null,
-      statusItems: [
-        { label: "数据", value: macroStatusLabel(module) },
-        { label: "截至", value: macroAsOfLabel(module) },
-      ],
+      statusItems: compactStatusItems([
+        statusItem("数据", macroStatusLabel(module)),
+        statusItem("截至", macroAsOfLabel(module)),
+      ]),
       title: macroModuleTitle(moduleId, module),
     };
   }
@@ -131,10 +109,18 @@ function macroModuleHeader({
     breadcrumbs: buildMacroBreadcrumbs(moduleId),
     eyebrow: module.snapshot.section ?? "宏观工作台",
     question: module.snapshot.question ?? module.snapshot.subtitle ?? null,
-    statusItems: [
-      { label: "状态", value: macroStatusLabel(module) },
-      { label: "截至", value: macroAsOfLabel(module) },
-    ],
+    statusItems: compactStatusItems([
+      statusItem("状态", macroStatusLabel(module)),
+      statusItem("截至", macroAsOfLabel(module)),
+    ]),
     title: macroModuleTitle(moduleId, module),
   };
+}
+
+function statusItem(label: string, value: string | null): MacroShellStatusItem | null {
+  return value ? { label, value } : null;
+}
+
+function compactStatusItems(items: Array<MacroShellStatusItem | null>): MacroShellStatusItem[] {
+  return items.filter((item): item is MacroShellStatusItem => item !== null);
 }

@@ -863,7 +863,7 @@
 - **Additional Root55 files**: `src/parallax/app/runtime/wake_bus.py`, `src/parallax/app/runtime/wake_waiter.py`, `tests/unit/test_db_pool_bundle.py`, `tests/unit/test_wake_waiter.py`, `tests/architecture/test_worker_runtime_contracts.py`, `docs/WORKERS.md`
 - **Additional Root56 files**: `src/parallax/domains/asset_market/runtime/resolution_refresh_worker.py`, `tests/unit/test_resolution_refresh_worker.py`, `tests/architecture/test_runtime_worker_constraint_hard_cut.py`, `docs/WORKERS.md`, `docs/WORKER_FLOW.md`, `src/parallax/domains/asset_market/ARCHITECTURE.md`
 - **Additional Root57 files**: `src/parallax/domains/notifications/runtime/notification_delivery.py`, `src/parallax/domains/notifications/repositories/notification_repository.py`, `tests/unit/test_notification_worker_runtime.py`, `tests/architecture/test_notifications_hard_cut.py`, `docs/WORKERS.md`, `docs/WORKER_FLOW.md`
-- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for docs/generated/sdd-work-index.md; coordinate with 2026-06-11-executable-harness-followup for docs/generated/sdd-work-index.md
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for docs/generated/sdd-work-index.md; coordinate with 2026-06-11-executable-harness-followup for docs/generated/sdd-work-index.md; coordinate with 2026-06-16-macro-decision-console for shared macro runtime, macro docs, and web macro surfaces
 - **Failing test first**: `tests/architecture/test_api_read_paths_provider_free.py::test_stocks_radar_api_is_provider_free` - remains part of the final acceptance set.
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated

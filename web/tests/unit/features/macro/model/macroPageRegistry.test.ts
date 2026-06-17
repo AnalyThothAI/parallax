@@ -1,35 +1,37 @@
 import {
-  HIDDEN_MACRO_NAV_LABELS,
   flattenMacroRouteDescriptors,
-  hiddenMacroDirectRoutes,
-  macroRouteDescriptor,
   supportedMacroAuditRoutes,
 } from "@features/macro/model/macroPageRegistry";
 import { describe, expect, it } from "vitest";
 
 describe("macroPageRegistry", () => {
   it("keeps the supported audit route catalog aligned with addressable macro pages", () => {
-    expect(supportedMacroAuditRoutes).toHaveLength(26);
-    expect(macroRouteDescriptor("assets/correlation")).toEqual({
-      href: "/macro/assets/correlation",
-      label: "相关性",
-      pageKind: "matrix",
-      productTier: "primary",
-      routeId: "assets/correlation",
-    });
+    expect(supportedMacroAuditRoutes).toHaveLength(16);
+    expect(supportedMacroAuditRoutes.map((route) => route.href)).not.toContain(
+      "/macro/assets/correlation",
+    );
   });
 
-  it("keeps hidden-supported direct routes addressable but out of primary nav", () => {
-    expect(hiddenMacroDirectRoutes.map((route) => route.label)).toEqual([
-      ...HIDDEN_MACRO_NAV_LABELS,
-    ]);
-    expect(hiddenMacroDirectRoutes.map((route) => route.href)).toEqual([
-      "/macro/rates/auctions",
-      "/macro/fed/statements",
-      "/macro/fed/speeches",
-      "/macro/volatility/dashboard",
-      "/macro/credit/cds",
-    ]);
+  it("hard deletes weak routes instead of keeping hidden direct routes", () => {
+    expect(supportedMacroAuditRoutes.map((route) => route.href)).not.toEqual(
+      expect.arrayContaining([
+        "/macro/assets/crypto-derivatives",
+        "/macro/assets/correlation",
+        "/macro/rates/auctions",
+        "/macro/rates/expectations",
+        "/macro/fed/statements",
+        "/macro/fed/speeches",
+        "/macro/liquidity/global-dollar",
+        "/macro/liquidity/reserves",
+        "/macro/liquidity/subsurface",
+        "/macro/liquidity/transmission-chain",
+        "/macro/liquidity/operations",
+        "/macro/liquidity/fed-balance-sheet",
+        "/macro/economy/consumer",
+        "/macro/volatility/dashboard",
+        "/macro/credit/cds",
+      ]),
+    );
   });
 
   it("throws when an addressable macro node is only partially annotated", () => {

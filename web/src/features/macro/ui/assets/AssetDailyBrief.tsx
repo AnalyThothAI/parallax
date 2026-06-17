@@ -2,21 +2,19 @@ import type { MacroDailyBrief } from "../../model/macroAssetOverviewModel";
 
 import "./macroAssetOverview.css";
 
-export function AssetDailyBrief({
-  brief,
-  fallback,
-}: {
-  brief: MacroDailyBrief | null;
-  fallback: string;
-}) {
-  const blocks = brief?.blocks.slice(0, 3) ?? [];
+export function AssetDailyBrief({ brief }: { brief: MacroDailyBrief }) {
+  const blocks = brief.blocks.slice(0, 3);
+  const headline = textValue(brief.headline);
+  if (!headline) {
+    return null;
+  }
   return (
     <div className="macro-daily-brief">
       <div className="macro-daily-brief-head">
         <span>今日判断</span>
-        <strong>{cleanHeadline(brief?.headline ?? fallback)}</strong>
+        <strong>{cleanHeadline(headline)}</strong>
       </div>
-      {brief?.dataQuality ? <DailyBriefQuality quality={brief.dataQuality} /> : null}
+      {brief.dataQuality ? <DailyBriefQuality quality={brief.dataQuality} /> : null}
       {blocks.length ? (
         <ul className="macro-daily-brief-signals" aria-label="今日判断信号">
           {blocks.map((block) => (
@@ -44,19 +42,28 @@ function DailyBriefQuality({ quality }: { quality: NonNullable<MacroDailyBrief["
       </div>
       <div>
         <dt>缺口</dt>
-        <dd>{quality.gapCount ?? 0}</dd>
+        <dd>{formatCount(quality.gapCount)}</dd>
       </div>
     </dl>
   );
 }
 
 function formatRatio(value: number | undefined): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "待确认";
+  if (typeof value !== "number" || !Number.isFinite(value)) return "样本不足";
   return `${Math.round(value * 100)}%`;
+}
+
+function formatCount(value: number | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "样本不足";
+  return String(value);
 }
 
 function cleanHeadline(value: string): string {
   return value.replace(/^今日判断[：:]\s*/, "");
+}
+
+function textValue(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
 }
 
 function stanceLabel(value: string): string {

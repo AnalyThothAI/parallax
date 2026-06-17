@@ -12,8 +12,10 @@ from parallax.app.runtime.wake_bus import WakeBus
 from parallax.app.surfaces.cli.dependencies import postgres_connection, repositories
 from parallax.domains.macro_intel._constants import (
     MACRO_CONCEPT_METADATA,
+    MACRO_EVENT_PROVIDER_SERIES_TO_CONCEPT,
     MACRO_HISTORY_REQUIRED_CONCEPTS,
     MACRO_HISTORY_REQUIRED_POINTS_BY_CONCEPT,
+    MACRO_IMPORTABLE_PROVIDER_SERIES_TO_CONCEPT,
     MACRO_PROVIDER_SERIES_TO_CONCEPT,
     MACRO_REQUIRED_STAT_POINTS,
     MACRO_VIEW_HISTORY_LOOKBACK_DAYS,
@@ -109,7 +111,11 @@ def _handle_sync(args: object) -> tuple[int, dict[str, Any]]:
 def _handle_status() -> tuple[int, dict[str, Any]]:
     settings = load_settings(require_ws_token=False)
     fred_state = fred_api_key_state(settings)
-    macrodata_state = macrodata_runtime_state(required_series=tuple(MACRO_PROVIDER_SERIES_TO_CONCEPT))
+    macrodata_state = macrodata_runtime_state(
+        required_series=tuple(MACRO_IMPORTABLE_PROVIDER_SERIES_TO_CONCEPT),
+        required_bundles=tuple(settings.workers.macro_sync.bundle_names),
+        required_bundle_series=_required_macrodata_bundle_series(settings.workers.macro_sync.bundle_names),
+    )
     try:
         with repositories(settings) as repos:
             history = repos.macro_intel.concept_history_counts(
@@ -153,6 +159,43 @@ def _fred_payload_from_diagnostics(diagnostics: Mapping[str, Any]) -> dict[str, 
         "fred_api_key_env": diagnostics.get("fred_api_key_env"),
         "fred_api_key_configured": bool(diagnostics.get("fred_api_key_configured")),
     }
+
+
+def _required_macrodata_bundle_series(bundle_names: Sequence[str]) -> dict[str, tuple[str, ...]]:
+    configured = tuple(dict.fromkeys(str(item).strip() for item in bundle_names if str(item).strip()))
+    required: dict[str, tuple[str, ...]] = {}
+    for bundle_name in configured:
+        if bundle_name == "macro-core":
+            required[bundle_name] = _numeric_series_excluding_crypto_derivatives()
+        elif bundle_name == "macro-calendar-core":
+            required[bundle_name] = _event_series_with_prefix("official_calendar:")
+        elif bundle_name == "treasury-auction-core":
+            required[bundle_name] = _event_series_with_prefix("treasury_auction:")
+        elif bundle_name == "fed-text-core":
+            required[bundle_name] = _event_series_with_prefix("official_fed_text:")
+        elif bundle_name == "crypto-derivatives-core":
+            required[bundle_name] = _crypto_derivatives_series()
+    return required
+
+
+def _numeric_series_excluding_crypto_derivatives() -> tuple[str, ...]:
+    return tuple(
+        series_key
+        for series_key, concept_key in MACRO_PROVIDER_SERIES_TO_CONCEPT.items()
+        if not concept_key.startswith("crypto_derivatives:")
+    )
+
+
+def _crypto_derivatives_series() -> tuple[str, ...]:
+    return tuple(
+        series_key
+        for series_key, concept_key in MACRO_PROVIDER_SERIES_TO_CONCEPT.items()
+        if concept_key.startswith("crypto_derivatives:")
+    )
+
+
+def _event_series_with_prefix(prefix: str) -> tuple[str, ...]:
+    return tuple(series_key for series_key in MACRO_EVENT_PROVIDER_SERIES_TO_CONCEPT if series_key.startswith(prefix))
 
 
 def _notify_imported_observations(settings: object, summary: Mapping[str, Any]) -> None:

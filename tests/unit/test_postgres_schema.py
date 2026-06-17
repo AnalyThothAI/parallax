@@ -218,6 +218,9 @@ NEWS_PAGE_SEARCH_DOCUMENT_MIGRATION = Path(
 PULSE_PUBLIC_SEARCH_TRGM_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260612_0179_pulse_public_search_trgm_indexes.py"
 )
+MACRO_EVENT_TEXT_SERIES_NULLABLE_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260616_0180_macro_event_text_series_nullable.py"
+)
 NEWS_AGENT_MARKET_ADMISSION_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260606_0151_news_agent_market_admission_hard_cut.py"
 )
@@ -2818,6 +2821,21 @@ def test_signal_pulse_public_search_migration_adds_trigram_indexes() -> None:
     assert "ON pulse_candidates USING GIN (target_id gin_trgm_ops) WHERE target_id IS NOT NULL" in normalized_text
     assert "ON pulse_agent_jobs USING GIN (subject_key gin_trgm_ops)" in normalized_text
     assert "ON pulse_agent_jobs USING GIN (target_id gin_trgm_ops) WHERE target_id IS NOT NULL" in normalized_text
+
+
+def test_macro_event_text_series_nullable_migration_allows_text_event_rows() -> None:
+    assert MACRO_EVENT_TEXT_SERIES_NULLABLE_MIGRATION.exists(), (
+        f"{MACRO_EVENT_TEXT_SERIES_NULLABLE_MIGRATION} missing; Fed text event rows need nullable value_numeric"
+    )
+    text = MACRO_EVENT_TEXT_SERIES_NULLABLE_MIGRATION.read_text()
+
+    assert 'revision = "20260616_0180"' in text
+    assert 'down_revision = "20260612_0179"' in text
+    assert "ALTER TABLE macro_observation_series_rows" in text
+    assert "ALTER COLUMN value_numeric DROP NOT NULL" in text
+    assert "ALTER COLUMN value_numeric SET NOT NULL" in text
+    assert "DELETE FROM macro_observation_series_rows" not in text
+    assert "ANALYZE macro_observation_series_rows" in text
 
 
 def test_token_search_demotion_migration_demotes_only_unprotected_search_assets() -> None:

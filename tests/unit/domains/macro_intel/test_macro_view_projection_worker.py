@@ -159,6 +159,50 @@ def test_macro_view_projection_worker_unchanged_series_marks_done_without_snapsh
     assert wake_bus.macro_view_snapshot_updates == []
 
 
+def test_macro_view_projection_worker_event_targets_refresh_without_numeric_snapshot() -> None:
+    target = _concept_dirty_target("event:fomc_decision_next")
+    wake_bus = FakeWakeBus()
+    repo = FakeMacroIntelRepository(
+        dirty_targets=[target],
+        observations=[],
+        refresh_result={
+            "status": "published",
+            "rows_written": 2,
+            "source_rows": 2,
+            "source_signature": "sig-event",
+        },
+    )
+    db = FakeDB(repo)
+    worker = _worker(db, wake_emitter=wake_bus)
+
+    result = worker.run_once_sync()
+
+    assert result.processed == 1
+    assert result.notes["claimed"] == 1
+    assert result.notes["series_status"] == "published"
+    assert result.notes["projected_rows_written"] == 2
+    assert result.notes["snapshot_rows_written"] == 0
+    assert result.notes["source_rows_scanned"] == 0
+    assert result.notes["targets_loaded"] == 0
+    assert result.notes["rows_written"] == 2
+    assert repo.calls == [
+        "claim_macro_projection_dirty_targets",
+        "refresh_observation_series_rows_for_concepts",
+        "mark_macro_projection_dirty_targets_done",
+    ]
+    assert repo.refresh_call == {
+        "projection_version": "macro_regime_v4",
+        "now_ms": NOW_MS,
+        "lookback_days": 1095,
+        "limit_per_series": 800,
+        "claimed_targets": [target],
+        "concept_keys": ("event:fomc_decision_next",),
+    }
+    assert repo.done_targets == [(target, NOW_MS, False)]
+    assert repo.snapshots == []
+    assert wake_bus.macro_view_snapshot_updates == []
+
+
 def test_macro_view_projection_worker_current_target_rebuilds_snapshot_when_series_is_unchanged() -> None:
     target = _dirty_target()
     wake_bus = FakeWakeBus()

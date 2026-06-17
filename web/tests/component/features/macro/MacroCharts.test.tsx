@@ -56,16 +56,14 @@ describe("Macro chart primitives", () => {
     expect(chartMocks.lineSeries.setData).toHaveBeenCalled();
   });
 
-  it("keeps an empty chart state accessible without requiring canvas pixels", () => {
-    render(<MacroTimeSeriesChart chart={{ id: "empty_chart", series: [] }} title="Empty chart" />);
+  it("returns no time-series chrome when the chart has no drawable series", () => {
+    const { container } = render(
+      <MacroTimeSeriesChart chart={{ id: "empty_chart", series: [] }} title="Empty chart" />,
+    );
 
-    expect(screen.getByRole("figure", { name: "Empty chart" })).toBeInTheDocument();
-    expect(screen.getByRole("status", { name: "Empty chart state" })).toHaveTextContent(
-      "暂无可绘制序列",
-    );
-    expect(screen.getByRole("status", { name: "Empty chart state" })).not.toHaveTextContent(
-      "chart_series_missing",
-    );
+    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByText("暂无可绘制序列")).not.toBeInTheDocument();
+    expect(screen.queryByText("chart_series_missing")).not.toBeInTheDocument();
     expect(chartMocks.createChart).not.toHaveBeenCalled();
   });
 
@@ -142,10 +140,10 @@ describe("Macro chart primitives", () => {
         chart={{
           id: "yield_curve",
           series: [
-            { concept_key: "rates:dgs10", latest: 4.2, unit: "percent" },
-            { concept_key: "rates:dgs2", latest: 3.8, unit: "percent" },
-            { concept_key: "rates:dgs30", latest: 4.7, unit: "percent" },
-            { concept_key: "rates:dgs5", latest: 4.0, unit: "percent" },
+            { concept_key: "rates:dgs10", label: "10Y", latest: 4.2, unit: "percent" },
+            { concept_key: "rates:dgs2", label: "2Y", latest: 3.8, unit: "percent" },
+            { concept_key: "rates:dgs30", label: "30Y", latest: 4.7, unit: "percent" },
+            { concept_key: "rates:dgs5", label: "5Y", latest: 4.0, unit: "percent" },
           ],
         }}
         title="Yield curve"
@@ -198,26 +196,20 @@ describe("Macro chart primitives", () => {
     expect(points.map((point) => point.textContent)).toEqual(["2Y3.8%", "10Y4.2%"]);
   });
 
-  it("renders localized chart empty states for yield curves and heatmaps", () => {
-    const { rerender } = render(
+  it("returns no yield-curve or heatmap chrome when models have no drawable rows", () => {
+    const { container, rerender } = render(
       <MacroYieldCurveChart chart={{ id: "yield_curve", series: [] }} title="Yield curve" />,
     );
 
-    expect(screen.getByRole("status", { name: "Yield curve state" })).toHaveTextContent(
-      "暂无收益率曲线数据",
-    );
-    expect(screen.getByRole("status", { name: "Yield curve state" })).not.toHaveTextContent(
-      "yield_curve_points_missing",
-    );
+    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByText("暂无收益率曲线数据")).not.toBeInTheDocument();
+    expect(screen.queryByText("yield_curve_points_missing")).not.toBeInTheDocument();
 
     rerender(<MacroHeatmap caption="Asset correlation heatmap" rows={[]} />);
 
-    expect(
-      screen.getByRole("status", { name: "Asset correlation heatmap state" }),
-    ).toHaveTextContent("暂无相关性矩阵数据");
-    expect(
-      screen.getByRole("status", { name: "Asset correlation heatmap state" }),
-    ).not.toHaveTextContent("heatmap_rows_missing");
+    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByText("暂无相关性矩阵数据")).not.toBeInTheDocument();
+    expect(screen.queryByText("heatmap_rows_missing")).not.toBeInTheDocument();
   });
 
   it("renders a heatmap as an accessible table with raw numeric labels", () => {

@@ -21,94 +21,90 @@ const LINE_COLORS: Record<string, string> = {
 export function RatesCorridorChart({ model }: { model: RatesCorridorModel }) {
   const geometry = useMemo(() => buildGeometry(model), [model]);
 
+  if (!geometry.hasData) {
+    return null;
+  }
+
   return (
     <figure
       aria-label="联邦基金目标走廊"
       className="macro-rates-corridor-chart macro-rates-corridor"
     >
       <figcaption>联邦基金目标走廊</figcaption>
-      {geometry.hasData ? (
-        <>
-          <svg
-            aria-labelledby="rates-corridor-title rates-corridor-desc"
-            className="macro-rates-corridor-svg"
-            role="img"
-            viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-          >
-            <title id="rates-corridor-title">联邦基金目标走廊</title>
-            <desc id="rates-corridor-desc">目标区间与 EFFR、IORB、SOFR 及 SOFR 30D 序列。</desc>
+      <svg
+        aria-labelledby="rates-corridor-title rates-corridor-desc"
+        className="macro-rates-corridor-svg"
+        role="img"
+        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+      >
+        <title id="rates-corridor-title">联邦基金目标走廊</title>
+        <desc id="rates-corridor-desc">目标区间与 EFFR、IORB、SOFR 及 SOFR 30D 序列。</desc>
+        <line
+          className="macro-rates-corridor-axis"
+          x1={PLOT.left}
+          x2={WIDTH - PLOT.right}
+          y1={HEIGHT - PLOT.bottom}
+          y2={HEIGHT - PLOT.bottom}
+        />
+        <line
+          className="macro-rates-corridor-axis"
+          x1={PLOT.left}
+          x2={PLOT.left}
+          y1={PLOT.top}
+          y2={HEIGHT - PLOT.bottom}
+        />
+        {geometry.yTicks.map((tick) => (
+          <g key={tick.label}>
             <line
-              className="macro-rates-corridor-axis"
+              className="macro-rates-corridor-grid"
               x1={PLOT.left}
               x2={WIDTH - PLOT.right}
-              y1={HEIGHT - PLOT.bottom}
-              y2={HEIGHT - PLOT.bottom}
+              y1={tick.y}
+              y2={tick.y}
             />
-            <line
-              className="macro-rates-corridor-axis"
-              x1={PLOT.left}
-              x2={PLOT.left}
-              y1={PLOT.top}
-              y2={HEIGHT - PLOT.bottom}
-            />
-            {geometry.yTicks.map((tick) => (
-              <g key={tick.label}>
-                <line
-                  className="macro-rates-corridor-grid"
-                  x1={PLOT.left}
-                  x2={WIDTH - PLOT.right}
-                  y1={tick.y}
-                  y2={tick.y}
-                />
-                <text className="macro-rates-corridor-tick" x={12} y={tick.y + 4}>
-                  {tick.label}
-                </text>
-              </g>
-            ))}
-            {geometry.bandPoints ? (
-              <polygon
-                className="macro-rates-corridor-band"
-                data-testid="rates-corridor-band"
-                points={geometry.bandPoints}
-              />
-            ) : null}
-            {geometry.lines.map((line) => (
-              <polyline
-                className="macro-rates-corridor-line"
-                data-testid={`rates-corridor-line-${line.key.replace("_", "-")}`}
-                key={line.key}
-                points={line.points}
-                stroke={LINE_COLORS[line.key] ?? "#cbd5e1"}
-              />
-            ))}
-            {geometry.xLabels.map((label) => (
-              <text
-                className="macro-rates-corridor-date"
-                key={label.time}
-                textAnchor={label.anchor}
-                x={label.x}
-                y={HEIGHT - 14}
-              >
-                {label.text}
-              </text>
-            ))}
-          </svg>
-          <div className="macro-rates-chart-legend macro-rates-corridor-legend">
-            {model.lower ? <LegendChip series={model.lower} tone="band" /> : null}
-            {model.upper ? <LegendChip series={model.upper} tone="band" /> : null}
-            {model.lines.map((series) => (
-              <LegendChip key={series.key} series={series} tone={series.key} />
-            ))}
-          </div>
-          {model.missingLabels.length > 0 ? (
-            <p className="macro-rates-corridor-missing">待补齐：{model.missingLabels.join("、")}</p>
-          ) : null}
-        </>
-      ) : (
-        <div className="macro-rates-empty" role="status">
-          暂无可绘制走廊数据
-        </div>
-      )}
+            <text className="macro-rates-corridor-tick" x={12} y={tick.y + 4}>
+              {tick.label}
+            </text>
+          </g>
+        ))}
+        {geometry.bandPoints ? (
+          <polygon
+            className="macro-rates-corridor-band"
+            data-testid="rates-corridor-band"
+            points={geometry.bandPoints}
+          />
+        ) : null}
+        {geometry.lines.map((line) => (
+          <polyline
+            className="macro-rates-corridor-line"
+            data-testid={`rates-corridor-line-${line.key.replace("_", "-")}`}
+            key={line.key}
+            points={line.points}
+            stroke={LINE_COLORS[line.key] ?? "#cbd5e1"}
+          />
+        ))}
+        {geometry.xLabels.map((label) => (
+          <text
+            className="macro-rates-corridor-date"
+            key={label.time}
+            textAnchor={label.anchor}
+            x={label.x}
+            y={HEIGHT - 14}
+          >
+            {label.text}
+          </text>
+        ))}
+      </svg>
+      <div className="macro-rates-chart-legend macro-rates-corridor-legend">
+        {model.lower ? <LegendChip series={model.lower} tone="band" /> : null}
+        {model.upper ? <LegendChip series={model.upper} tone="band" /> : null}
+        {model.lines.map((series) => (
+          <LegendChip key={series.key} series={series} tone={series.key} />
+        ))}
+      </div>
+      {model.missingLabels.length > 0 ? (
+        <p className="macro-rates-corridor-missing">缺少指标：{model.missingLabels.join("、")}</p>
+      ) : null}
     </figure>
   );
 }

@@ -12,6 +12,10 @@ export function MacroInsightBrief({
   brief: MacroWorkbenchBrief;
   title: string;
 }) {
+  if (!brief.summary && brief.rows.length === 0) {
+    return null;
+  }
+
   return (
     <MacroPanel
       ariaLabel={ariaLabel}
@@ -21,7 +25,7 @@ export function MacroInsightBrief({
       title={title}
     >
       <div className="macro-workbench-brief">
-        <p className="macro-workbench-brief-summary">{brief.summary}</p>
+        {brief.summary ? <p className="macro-workbench-brief-summary">{brief.summary}</p> : null}
         {brief.rows.length > 0 ? (
           <dl className="macro-workbench-brief-grid" aria-label={`${title}要点`}>
             {brief.rows.map((row) => (

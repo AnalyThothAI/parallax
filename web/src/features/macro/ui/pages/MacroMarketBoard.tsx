@@ -1,6 +1,16 @@
 import type { MacroModuleChart, MacroModuleTable, MacroSeriesData } from "@lib/types";
 
-import { chartCaption, chartIdentifier, tableCaption } from "../../model/macroModulePageModel";
+import {
+  buildMacroNormalizedReturnModel,
+  buildMacroTimeSeriesModel,
+  buildMacroYieldCurveModel,
+} from "../../model/macroChartModel";
+import {
+  chartCaption,
+  chartIdentifier,
+  tableCaption,
+  tableIdentifier,
+} from "../../model/macroModulePageModel";
 import { formatMacroScalar } from "../../model/macroPageViewModel";
 import type { MacroModuleId } from "../../model/macroRoutes";
 import { MacroNormalizedReturnChart } from "../charts/MacroNormalizedReturnChart";
@@ -30,9 +40,17 @@ export function MacroMarketBoard({
   supportingTables?: MacroModuleTable[];
   title?: string;
 }) {
-  const tables = [supportingTable, ...supportingTables].filter((table): table is MacroModuleTable =>
-    Boolean(table && (table.rows?.length ?? 0) > 0),
-  );
+  const tables = [supportingTable, ...supportingTables].filter(renderableTable);
+  const hasChartEvidence = hasRenderablePrimaryChart({
+    chart,
+    moduleId,
+    seriesData,
+    seriesLoading,
+  });
+
+  if (!hasChartEvidence && tables.length === 0) {
+    return null;
+  }
 
   return (
     <MacroPanel
@@ -41,23 +59,35 @@ export function MacroMarketBoard({
       span="full"
       title={title}
     >
-      <MacroPrimaryChart
-        chart={chart}
-        moduleId={moduleId}
-        seriesData={seriesData}
-        seriesLoading={seriesLoading}
-      />
+      {hasChartEvidence ? (
+        <MacroPrimaryChart
+          chart={chart}
+          moduleId={moduleId}
+          seriesData={seriesData}
+          seriesLoading={seriesLoading}
+        />
+      ) : null}
       {tables.map((table) => (
-        <TableBlock key={String(table.id ?? tableCaption(table))} table={table} />
+        <TableBlock key={String(table.id)} table={table} />
       ))}
     </MacroPanel>
   );
 }
 
+function renderableTable(table: MacroModuleTable | null | undefined): table is MacroModuleTable {
+  return Boolean(
+    table && tableIdentifier(table) && tableCaption(table) && (table.rows?.length ?? 0) > 0,
+  );
+}
+
 function TableBlock({ table }: { table: MacroModuleTable }) {
+  const caption = tableCaption(table);
+  if (!caption) {
+    return null;
+  }
   return (
     <>
-      <MacroDataTable caption={tableCaption(table)} table={table} />
+      <MacroDataTable caption={caption} table={table} />
       <TableSourceNote source={table.source} />
     </>
   );
@@ -68,7 +98,8 @@ function TableSourceNote({ source }: { source: MacroModuleTable["source"] }) {
   if (!note) {
     return null;
   }
-  return <p className="macro-table-source-note">{formatMacroScalar(note)}</p>;
+  const label = formatMacroScalar(note);
+  return label ? <p className="macro-table-source-note">{label}</p> : null;
 }
 
 export function MacroPrimaryChart({
@@ -84,6 +115,9 @@ export function MacroPrimaryChart({
 }) {
   const title = chartCaption(chart);
   const chartId = chartIdentifier(chart);
+  if (!title || !chartId) {
+    return null;
+  }
   if (isYieldCurveChart(chart) || moduleId === "rates/yield-curve") {
     return <MacroYieldCurveChart chart={chart} title={title} />;
   }
@@ -101,9 +135,43 @@ export function MacroPrimaryChart({
 }
 
 function isYieldCurveChart(chart: MacroModuleChart): boolean {
-  return chartIdentifier(chart).includes("curve");
+  return Boolean(chartIdentifier(chart)?.includes("curve"));
 }
 
-function chartStatusLabel(chart: MacroModuleChart): string {
-  return chart.status_label ?? String(chart.status ?? "unknown");
+function hasRenderablePrimaryChart({
+  chart,
+  moduleId,
+  seriesData,
+  seriesLoading,
+}: {
+  chart: MacroModuleChart;
+  moduleId: MacroModuleId;
+  seriesData?: MacroSeriesData | null;
+  seriesLoading?: boolean;
+}): boolean {
+  if (isYieldCurveChart(chart) || moduleId === "rates/yield-curve") {
+    if (!chartIdentifier(chart)) {
+      return false;
+    }
+    return buildMacroYieldCurveModel(chart).points.length > 0;
+  }
+  if (seriesLoading) {
+    return buildMacroTimeSeriesModel(chart).series.length > 0;
+  }
+  const chartId = chartIdentifier(chart);
+  if (!chartId) {
+    return false;
+  }
+  const model =
+    moduleId.startsWith("assets") || chartId.includes("performance")
+      ? buildMacroNormalizedReturnModel(chart, seriesData)
+      : buildMacroTimeSeriesModel(chart, seriesData);
+  return model.series.some((series) => series.points.length >= model.minPoints);
+}
+
+function chartStatusLabel(chart: MacroModuleChart): string | null {
+  return (
+    chart.status_label ??
+    (typeof chart.status === "string" && chart.status.trim() ? chart.status : null)
+  );
 }

@@ -26,7 +26,7 @@ Cboe, CFTC, crypto providers, or macrodata directly.
 ```text
 macro_sync_windows
   -> MacroSyncWorker claim
-  -> packaged macrodata bundle history macro-core
+  -> packaged macrodata history bundles configured in workers.macro_sync.bundle_names
   -> macro_observations / macro_import_runs / macro_sync_runs
   -> wake macro_observations_imported
   -> macro_projection_dirty_targets
@@ -173,17 +173,52 @@ failure and must not be treated as "no brief". Overview/global regime fields
 describe the whole macro state; module-local `data_health` describes page
 readiness without overriding global scores. Raw provider payloads, old
 provenance JSON blobs, and old v1/v2 module fields are not public compatibility
-surfaces.
+surfaces. `data_health` gap rows are display-ready source-health records:
+module pages preserve the backend `label`, `severity`, `scope`, and
+`remediation_hint` so missing implemented depth sources are shown as concrete
+repair actions rather than frontend-inferred provider advice or opaque warning
+chips.
 Module view shaping follows the same persisted-snapshot contract as
 `/api/macro`: `snapshot=None` may render an explicit missing module view, but a
 present snapshot must carry the formal mapping/list-shaped JSON sections before
 the builder can produce `macro_module_view_v3`. The builder must not restore
 missing `features_json`, `chain_json`, `scenario_json`, or `data_gaps_json`
 through empty compatibility payloads.
-The `/macro/assets/crypto-derivatives` module reads optional CEX board data
-through the persisted `cex_oi_radar` repository. Missing board rows are exposed
-as a `missing` board state; a missing repository contract is a route/session
-failure, not a reason to omit the board.
+The overview module's decision console is derived from `scenario_json` and
+module data-health payloads inside the module-view builder, then rendered by
+the frontend without local macro scoring. `top_changes`, `quality_blockers`,
+`trade_map`, `future_catalysts`, `watchlist_alerts`, and `data_credibility`
+are the first-screen compression layer; raw indicator codes are not
+user-facing product copy. Source-backed official calendar, Treasury auction,
+Federal Reserve text events, and projected News Intel story rows are rendered
+as the top-level `module_read.market_event_flow` block after
+`structured_analysis`, not as duplicated decision-console event sections. Macro
+overview may consume the `news_page_rows` read model for source-backed news
+events, but must not repair or reshape raw `news_items` as a macro fallback.
+Standalone macrodata event bundles such as `macro-calendar-core`,
+`treasury-auction-core`, and `fed-text-core` are part of the default
+`macro_sync` bundle set and may also be imported into `macro_observations` as
+`event:*` concepts. Those event concepts are importable facts and projected
+series rows for module display, but they do not expand `MACRO_CORE_CONCEPTS`,
+do not participate in numeric `macro_regime_v4` scoring/history readiness, and
+changed event-only dirty targets refresh `macro_observation_series_rows`
+without rebuilding the current macro snapshot. Text/document events such as
+Fed statements, minutes, press releases, and speeches may have
+`value_numeric=NULL` in both facts and `macro_observation_series_rows`; product
+copy is taken from the raw payload/provenance title, never from a numeric
+sentinel value. Overview market-event rows preserve official `source_url`
+provenance when present; Fed text rows also expose `document_type` and speech
+`speaker` metadata for inspection without restoring deleted Fed text routes or
+adding text-score compatibility fields. Official calendar rows preserve
+source-provided release timing and reference periods when available, including
+BLS `event_time_et` and `reference_period`.
+`macro-calendar-core` currently covers official Federal Reserve, BEA, and BLS
+next-release events; BLS rows remain event-only and do not imply
+actual-vs-consensus, revision, or surprise coverage.
+Proxy-only and gap-only macro modules are hard-deleted from the public macro
+module catalog instead of being hidden or kept as compatibility shells. Removed
+ids use the ordinary unsupported-module route; future pages need real persisted
+facts and a new catalog entry before they become product surface again.
 
 Offline replay is also a fact-ingest path. `macro import-bundle` writes
 `macro_observations`, `macro_import_runs`, and
@@ -213,15 +248,15 @@ manual commits when test/runtime sessions omit the formal contract.
   process. Timeout is recorded as source health and does not rely on worker
   thread cancellation to stop provider IO.
 - `workers.macro_sync` is the single formal execution-budget contract for
-  sync source/bundle identity, due-window enqueue cadence, claim lease, retry
-  delay, session timeout, and bounded windows per cycle. Runtime code must read
-  those fields directly and must not synthesize defaults from older settings
-  shapes or constructor wake aliases.
+  sync source identity, `bundle_names`, due-window enqueue cadence, claim
+  lease, retry delay, session timeout, and bounded windows per cycle. Runtime
+  code must read those fields directly and must not synthesize defaults from
+  older settings shapes or constructor wake aliases.
 - `uv run parallax macro sync --bundle macro-core --start <YYYY-MM-DD>
   --end <YYYY-MM-DD>` runs one operator-triggered bounded window through the
   same `MacroSyncService` as `macro_sync`.
 - `uv run parallax macro import-bundle --file /path/bundle.json`
-  imports a saved macrodata-cli `macro-core` envelope for offline replay/seed.
+  imports a saved macrodata-cli envelope for offline replay/seed.
   `--stdin` is the streaming equivalent. It emits the persisted-fact wake hint
   but is not the normal freshness path. The importer requires
   `RepositorySession.unit_of_work` and `require_transaction`; it must not fall
@@ -235,6 +270,10 @@ manual commits when test/runtime sessions omit the formal contract.
   `required_bundle_series_available` is false, the packaged macrodata
   dependency is too old for the current Parallax series map even if individual
   providers can fetch data manually.
+- `volatility/vix` uses persisted macro facts only. MOVE is represented by the
+  packaged macrodata Yahoo Finance `yahoo:^MOVE` proxy mapped to `vol:move`;
+  licensed ICE/Bloomberg MOVE or intraday redistribution is tracked only as
+  source backlog until a separate approved feed exists.
 - `MacroSyncService.enqueue_due_windows(...)` reports sync queue state only
   through the formal `MacroIntelRepository.macro_sync_queue_summary(...)`
   contract over persisted `macro_sync_windows`; missing method support is

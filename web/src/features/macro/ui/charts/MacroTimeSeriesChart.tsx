@@ -92,6 +92,10 @@ export function MacroLineChartFigure({
     };
   }, [visibleSeries]);
 
+  if (visibleSeries.length === 0 && !stateLabel) {
+    return null;
+  }
+
   return (
     <figure aria-label={title} className="macro-chart-figure">
       <figcaption>{title}</figcaption>
@@ -109,7 +113,7 @@ export function MacroLineChartFigure({
   );
 }
 
-function chartStateLabel(model: MacroTimeSeriesModel): string {
+function chartStateLabel(model: MacroTimeSeriesModel): string | null {
   if (
     model.status === "insufficient_history" ||
     model.series.some((series) => series.status === "insufficient_history")
@@ -120,7 +124,7 @@ function chartStateLabel(model: MacroTimeSeriesModel): string {
       "历史样本不足"
     );
   }
-  return model.statusLabel ?? "暂无可绘制序列";
+  return model.statusLabel ?? null;
 }
 
 function ChartLegend({

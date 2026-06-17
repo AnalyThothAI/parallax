@@ -65,20 +65,24 @@ class MacroSyncService:
     def enqueue_due_windows(self, *, now_ms: int | None = None) -> dict[str, Any]:
         now = int(now_ms if now_ms is not None else self.clock_ms())
         with self._repository_session() as repos:
-            summary = ensure_due_macro_sync_windows(
-                repos=repos,
-                source_name=str(self.sync_settings.source_name),
-                bundle_name=str(self.sync_settings.bundle_name),
-                now=_date_from_ms(now),
-                now_ms=now,
-                bootstrap_lookback_days=int(self.sync_settings.bootstrap_lookback_days),
-                max_window_days=int(self.sync_settings.max_window_days),
-                steady_overlap_days=int(self.sync_settings.steady_overlap_days),
-                steady_interval_seconds=float(self.sync_settings.interval_seconds),
-                max_bootstrap_windows_per_cycle=int(self.sync_settings.max_bootstrap_windows_per_cycle),
-                max_attempts=int(self.sync_settings.max_attempts),
-            )
+            bundle_summaries: list[dict[str, Any]] = []
+            for bundle_name in _macro_sync_bundle_names(self.sync_settings):
+                bundle_summary = ensure_due_macro_sync_windows(
+                    repos=repos,
+                    source_name=str(self.sync_settings.source_name),
+                    bundle_name=bundle_name,
+                    now=_date_from_ms(now),
+                    now_ms=now,
+                    bootstrap_lookback_days=int(self.sync_settings.bootstrap_lookback_days),
+                    max_window_days=int(self.sync_settings.max_window_days),
+                    steady_overlap_days=int(self.sync_settings.steady_overlap_days),
+                    steady_interval_seconds=float(self.sync_settings.interval_seconds),
+                    max_bootstrap_windows_per_cycle=int(self.sync_settings.max_bootstrap_windows_per_cycle),
+                    max_attempts=int(self.sync_settings.max_attempts),
+                )
+                bundle_summaries.append({"bundle_name": bundle_name, **bundle_summary})
             queue_summary = repos.macro_intel.macro_sync_queue_summary(now_ms=now)
+        summary = _aggregate_enqueue_summaries(bundle_summaries)
         return {**summary, **queue_summary}
 
     def run_claimed_window_once(self, *, lease_owner: str, now_ms: int | None = None) -> MacroSyncRunSummary | None:
@@ -318,6 +322,34 @@ def _require_macro_sync_worker_settings(settings: Any) -> Any:
         return settings.workers.macro_sync
     except AttributeError as exc:
         raise RuntimeError("macro_sync_worker_settings_required") from exc
+
+
+def _macro_sync_bundle_names(sync_settings: Any) -> tuple[str, ...]:
+    try:
+        raw_bundle_names = sync_settings.bundle_names
+    except AttributeError as exc:
+        raise RuntimeError("macro_sync_bundle_names_required") from exc
+    bundle_names = tuple(str(item).strip() for item in raw_bundle_names if str(item).strip())
+    if not bundle_names:
+        raise ValueError("macro_sync_bundle_names_required")
+    if len(set(bundle_names)) != len(bundle_names):
+        raise ValueError("macro_sync_bundle_names_unique")
+    return bundle_names
+
+
+def _aggregate_enqueue_summaries(bundle_summaries: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "scheduled_bundle_names": tuple(str(summary["bundle_name"]) for summary in bundle_summaries),
+        "bundle_summaries": bundle_summaries,
+        "enqueued_bootstrap_windows": sum(
+            int(summary.get("enqueued_bootstrap_windows") or 0) for summary in bundle_summaries
+        ),
+        "enqueued_gap_windows": sum(int(summary.get("enqueued_gap_windows") or 0) for summary in bundle_summaries),
+        "enqueued_steady_windows": sum(
+            int(summary.get("enqueued_steady_windows") or 0) for summary in bundle_summaries
+        ),
+        "enqueued_windows": sum(int(summary.get("enqueued_windows") or 0) for summary in bundle_summaries),
+    }
 
 
 def _run_result_envelope(run_result: object) -> Mapping[str, Any]:

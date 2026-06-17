@@ -32,7 +32,7 @@ path.
 
 ```text
 macro_sync windows
-  -> packaged macrodata bundle history macro-core
+  -> packaged macrodata history bundles configured in workers.macro_sync.bundle_names
   -> macro_observations / macro_import_runs / macro_sync_runs
   -> wake macro_observations_imported
   -> macro_view_projection
@@ -622,7 +622,11 @@ are wrong too.
    by `MacroViewProjectionWorker`. That worker reads statement timeout,
    claim batch, lease, retry, lookback, and per-series bounds from the formal
    `macro_view_projection` worker settings; the worker must not keep runtime
-   fallback constants for those execution budgets. `macro_view_snapshots`
+   fallback constants for those execution budgets. Event/document rows in
+   `macro_observation_series_rows` may have `value_numeric=NULL`; the writer
+   must preserve those rows for decision-console catalysts instead of forcing
+   numeric sentinels or dropping them with numeric-series filters.
+   `macro_view_snapshots`
    JSON sections are also part of the writer contract: missing
    `panels_json`, `indicators_json`, `triggers_json`, `data_gaps_json`,
    `source_coverage_json`, `features_json`, `chain_json`, `scenario_json`, or

@@ -3,8 +3,11 @@ import { useMemo } from "react";
 
 import type { AssetDiagnosticsSummary } from "../../model/macroAssetOverviewModel";
 import { tableCaption } from "../../model/macroModulePageModel";
-import type { MacroDataHealthBucket } from "../../model/macroModulePresentation";
-import { buildMacroTableModel } from "../../model/macroTableColumns";
+import type {
+  MacroDataHealthBucket,
+  MacroDataHealthBucketItem,
+} from "../../model/macroModulePresentation";
+import { buildMacroTableModel, type MacroTableRowModel } from "../../model/macroTableColumns";
 import { MacroSourceTable } from "../tables/MacroSourceTable";
 import { MacroTableFrame } from "../tables/MacroTableFrame";
 
@@ -24,21 +27,18 @@ export function AssetDiagnosticsBoard({
   return (
     <div className="macro-assets-diagnostics">
       <dl className="macro-assets-diagnostics-summary">
-        <SummaryItem label="状态" value={summary.moduleStatus} />
+        {summary.moduleStatus ? <SummaryItem label="状态" value={summary.moduleStatus} /> : null}
         <SummaryItem label="来源" value={String(summary.sourceCount)} />
         <SummaryItem label="缺口" value={String(summary.gapCount)} />
       </dl>
       <GapSection buckets={buckets} gapCount={summary.gapCount} />
-      <details className="macro-assets-diagnostics-section">
-        <summary>来源</summary>
-        <MacroSourceTable caption="数据源" source={provenance} />
-      </details>
-      {availabilityTable ? (
+      {summary.sourceCount > 0 ? (
         <details className="macro-assets-diagnostics-section">
-          <summary>覆盖</summary>
-          <CompactAvailabilityTable table={availabilityTable} />
+          <summary>来源</summary>
+          <MacroSourceTable caption="数据源" source={provenance} />
         </details>
       ) : null}
+      {availabilityTable ? <AvailabilitySection table={availabilityTable} /> : null}
     </div>
   );
 }
@@ -53,18 +53,17 @@ function SummaryItem({ label, value }: { label: string; value: string }) {
 }
 
 function GapSection({ buckets, gapCount }: { buckets: MacroDataHealthBucket[]; gapCount: number }) {
-  if (gapCount <= 0) {
-    return (
-      <div className="macro-assets-health-empty" role="status">
-        暂无数据缺口
-      </div>
-    );
+  const visibleBuckets = buckets.filter(
+    (bucket) => bucket.items.length > 0 || (bucket.referenceCount ?? 0) > 0,
+  );
+  if (gapCount <= 0 || visibleBuckets.length === 0) {
+    return null;
   }
   return (
     <details className="macro-assets-diagnostics-section">
       <summary>缺口 {gapCount}</summary>
       <div className="macro-assets-health-buckets">
-        {buckets.map((bucket) => (
+        {visibleBuckets.map((bucket) => (
           <div className="macro-assets-health-bucket" key={bucket.key}>
             <div className="macro-assets-health-bucket-head">
               <h4>{bucket.label}</h4>
@@ -73,16 +72,8 @@ function GapSection({ buckets, gapCount }: { buckets: MacroDataHealthBucket[]; g
             {bucket.referenceCount ? (
               <p className="macro-assets-health-reference">总览级缺口</p>
             ) : bucket.items.length > 0 ? (
-              <div className="macro-assets-health-chip-list">
-                {bucket.items.map((item, index) => (
-                  <span className="macro-assets-health-chip" key={`${bucket.key}:${index}:${item}`}>
-                    {item}
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <div className="macro-assets-health-empty">暂无</div>
-            )}
+              <GapList bucket={bucket} />
+            ) : null}
           </div>
         ))}
       </div>
@@ -90,16 +81,84 @@ function GapSection({ buckets, gapCount }: { buckets: MacroDataHealthBucket[]; g
   );
 }
 
-function CompactAvailabilityTable({ table }: { table: MacroModuleTable }) {
+function GapList({ bucket }: { bucket: MacroDataHealthBucket }) {
+  return (
+    <ul className="macro-assets-health-gap-list">
+      {bucket.items.map((item) => (
+        <li data-severity={item.severity ?? undefined} key={`${bucket.key}:${item.key}`}>
+          <b>{item.label}</b>
+          {gapMeta(item) ? <span>{gapMeta(item)}</span> : null}
+          {item.detail ? <small>{item.detail}</small> : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function gapMeta(item: MacroDataHealthBucketItem): string | null {
+  return [severityLabel(item.severity), scopeLabel(item.scope)].filter(Boolean).join(" · ") || null;
+}
+
+function severityLabel(severity: string | null): string | null {
+  return (
+    {
+      critical: "严重",
+      error: "错误",
+      info: "提示",
+      warning: "警告",
+    }[severity ?? ""] ?? null
+  );
+}
+
+function scopeLabel(scope: string | null): string | null {
+  return (
+    {
+      chart_blocker: "图表阻断",
+      global_reference: "总览参考",
+      module_blocker: "模块阻断",
+      module_reference: "模块参考",
+    }[scope ?? ""] ?? null
+  );
+}
+
+function AvailabilitySection({ table }: { table: MacroModuleTable }) {
   const model = useMemo(() => buildMacroTableModel(table), [table]);
-  const rows = model.rows.slice(0, 12);
+  const rows = useMemo(() => availabilityRows(model.rows), [model.rows]);
   if (rows.length === 0) {
-    return <p className="macro-table-source-note">暂无覆盖明细。</p>;
+    return null;
   }
   return (
-    <MacroTableFrame caption={tableCaption(table)} minWidth={760} stickyFirstColumn>
-      <table className="macro-assets-availability-table" aria-label={tableCaption(table)}>
-        <caption>{tableCaption(table)}</caption>
+    <details className="macro-assets-diagnostics-section">
+      <summary>覆盖</summary>
+      <CompactAvailabilityTable rows={rows} table={table} />
+    </details>
+  );
+}
+
+type AvailabilityRow = {
+  coverage: string | null;
+  item: string;
+  latest: string | null;
+  notes: string | null;
+  rowId: string;
+  status: string | null;
+};
+
+function CompactAvailabilityTable({
+  rows,
+  table,
+}: {
+  rows: AvailabilityRow[];
+  table: MacroModuleTable;
+}) {
+  const caption = tableCaption(table);
+  if (!caption) {
+    return null;
+  }
+  return (
+    <MacroTableFrame caption={caption} minWidth={760} stickyFirstColumn>
+      <table className="macro-assets-availability-table" aria-label={caption}>
+        <caption>{caption}</caption>
         <thead>
           <tr>
             <th scope="col">项目</th>
@@ -111,16 +170,48 @@ function CompactAvailabilityTable({ table }: { table: MacroModuleTable }) {
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.id}>
-              <th scope="row">{row.cells.item?.displayValue ?? "暂无"}</th>
-              <td>{row.cells.status?.displayValue ?? "暂无"}</td>
-              <td>{row.cells.latest?.displayValue ?? "暂无"}</td>
-              <td>{row.cells.coverage?.displayValue ?? "暂无"}</td>
-              <td>{row.cells.notes?.displayValue ?? "暂无"}</td>
+            <tr key={row.rowId}>
+              <th scope="row">{row.item}</th>
+              <td>{row.status}</td>
+              <td>{row.latest}</td>
+              <td>{row.coverage}</td>
+              <td>{row.notes}</td>
             </tr>
           ))}
         </tbody>
       </table>
     </MacroTableFrame>
   );
+}
+
+function availabilityRows(rows: MacroTableRowModel[]): AvailabilityRow[] {
+  return rows
+    .map((row) => {
+      const item = displayCell(row, "item");
+      const status = displayCell(row, "status");
+      const latest = displayCell(row, "latest");
+      const coverage = displayCell(row, "coverage");
+      const notes = displayCell(row, "notes");
+      if (!item || ![status, latest, coverage, notes].some(Boolean)) {
+        return null;
+      }
+      return {
+        coverage,
+        item,
+        latest,
+        notes,
+        rowId: row.id,
+        status,
+      };
+    })
+    .filter((row): row is AvailabilityRow => Boolean(row))
+    .slice(0, 12);
+}
+
+function displayCell(row: MacroTableRowModel, columnId: string): string | null {
+  const value = row.cells[columnId]?.displayValue;
+  if (!value || value === "暂无") {
+    return null;
+  }
+  return value;
 }

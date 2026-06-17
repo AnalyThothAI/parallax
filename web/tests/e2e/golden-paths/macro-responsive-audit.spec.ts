@@ -18,51 +18,31 @@ const PRODUCT_ROUTES = [
   "/macro/assets/commodities",
   "/macro/assets/fx",
   "/macro/assets/crypto",
-  "/macro/assets/crypto-derivatives",
-  "/macro/assets/correlation",
   "/macro/rates/fed-funds",
   "/macro/rates/yield-curve",
   "/macro/rates/real-rates",
-  "/macro/rates/expectations",
-  "/macro/liquidity/transmission-chain",
-  "/macro/liquidity/fed-balance-sheet",
-  "/macro/liquidity/operations",
   "/macro/liquidity/rrp-tga",
-  "/macro/liquidity/reserves",
-  "/macro/liquidity/global-dollar",
-  "/macro/liquidity/subsurface",
   "/macro/economy/gdp",
   "/macro/economy/employment",
   "/macro/economy/inflation",
-  "/macro/economy/consumer",
   "/macro/volatility/vix",
   "/macro/credit/stress",
 ];
 
-const PARENT_ALIAS_ROUTES = [
-  { route: "/macro/rates", target: /\/macro\/rates\/fed-funds$/ },
-  { route: "/macro/fed", target: /\/macro\/fed\/statements$/ },
-  { route: "/macro/liquidity", target: /\/macro\/liquidity\/transmission-chain$/ },
-  { route: "/macro/economy", target: /\/macro\/economy\/gdp$/ },
-  { route: "/macro/volatility", target: /\/macro\/volatility\/dashboard$/ },
-  { route: "/macro/credit", target: /\/macro\/credit\/cds$/ },
-];
-
-const HIDDEN_DIRECT_ROUTES = [
-  "/macro/rates/auctions",
-  "/macro/fed/statements",
-  "/macro/fed/speeches",
-  "/macro/volatility/dashboard",
-  "/macro/credit/cds",
+const HARD_DELETED_CATEGORY_ROUTES = [
+  "/macro/assets/correlation",
+  "/macro/rates",
+  "/macro/liquidity",
+  "/macro/economy",
+  "/macro/volatility",
+  "/macro/credit",
 ];
 
 const RATES_PRIMARY_RAW_TEXT_PATTERN =
   /macro_module_view_v3|source_snapshot_id|\b(?:rates|fed|liquidity|inflation):[a-z0-9_:-]+\b|\b[a-z][a-z0-9]*(?:_[a-z0-9]+)*_missing\b|\{|\}/;
 
 test.describe("macro responsive audit", () => {
-  test("macro product and hidden-supported routes satisfy responsive layout contract", async ({
-    page,
-  }, testInfo) => {
+  test("macro product routes satisfy responsive layout contract", async ({ page }, testInfo) => {
     test.skip(
       testInfo.project.name !== "desktop-1366",
       "runs its own viewport matrix inside one project",
@@ -72,18 +52,26 @@ test.describe("macro responsive audit", () => {
 
     page.on("console", (message) => {
       const text = message.text();
-      if (message.type() === "error" && !isMockWebSocketHandshakeError(text)) {
+      if (
+        message.type() === "error" &&
+        !isMockWebSocketHandshakeError(text) &&
+        !isExpectedMacroNotFoundDuringHardDeleteAudit(text, page.url())
+      ) {
         consoleErrors.push(text);
       }
     });
-    page.on("pageerror", (error) => consoleErrors.push(error.message));
+    page.on("pageerror", (error) => {
+      if (!isExpectedMacroNotFoundDuringHardDeleteAudit(error.message, page.url())) {
+        consoleErrors.push(error.message);
+      }
+    });
 
     await installMockApi(page);
 
     for (const viewport of MACRO_AUDIT_VIEWPORTS) {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
 
-      for (const route of [...PRODUCT_ROUTES, ...HIDDEN_DIRECT_ROUTES]) {
+      for (const route of PRODUCT_ROUTES) {
         await page.goto(route);
         await expect(page.getByLabel("宏观工作台")).toBeVisible();
         await expectRatesWorkbenchHierarchy(page);
@@ -94,15 +82,10 @@ test.describe("macro responsive audit", () => {
         await expectNoUnhandledApiRequests(page);
       }
 
-      for (const { route, target } of PARENT_ALIAS_ROUTES) {
+      for (const route of HARD_DELETED_CATEGORY_ROUTES) {
         await page.goto(route);
-        await expect(page).toHaveURL(target);
-        await expect(page.getByLabel("宏观工作台")).toBeVisible();
-        await expectRatesWorkbenchHierarchy(page);
-        await expectNoMacroBodyOverflow(page);
-        await expectNoMacroLabelFragmentation(page);
-        await expectMacroTableFramesBounded(page);
-        await expectHiddenMacroLabelsAbsent(page);
+        await expect(page.getByRole("alert")).toContainText("404 Not Found");
+        await expect(page.getByLabel("宏观工作台")).toHaveCount(0);
         await expectNoUnhandledApiRequests(page);
       }
     }
@@ -150,4 +133,11 @@ async function expectRatesWorkbenchHierarchy(page: Page) {
 
 function isMockWebSocketHandshakeError(text: string): boolean {
   return /WebSocket connection to 'ws:\/\/(?:127\.0\.0\.1|localhost):\d+\/ws' failed/.test(text);
+}
+
+function isExpectedMacroNotFoundDuringHardDeleteAudit(text: string, pageUrl: string): boolean {
+  return (
+    text.includes("404 Not Found") &&
+    HARD_DELETED_CATEGORY_ROUTES.includes(new URL(pageUrl).pathname)
+  );
 }

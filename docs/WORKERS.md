@@ -340,10 +340,12 @@ Macro Intel has a normal fact-ingest worker. `macro_sync` claims bounded
 sync windows, runs the packaged `macrodata` executable outside DB
 transactions, writes `macro_observations`, `macro_import_runs`, and
 sync control/audit rows, then wakes the macro view projection as a hint.
-`MacroSyncWorker` and `MacroSyncService` read source/bundle, enqueue windows,
-claim lease, retry delay, session timeout, and batch size from the formal
-`macro_sync` worker settings; they do not keep old constructor `wake_bus`
-aliases or per-field runtime defaults.
+`MacroSyncWorker` and `MacroSyncService` read source identity,
+`bundle_names`, enqueue windows, claim lease, retry delay, session timeout,
+and batch size from the formal `macro_sync` worker settings; they do not keep
+old constructor `wake_bus` aliases or per-field runtime defaults. The default
+bundle set syncs numeric `macro-core` plus official event bundles
+`macro-calendar-core`, `treasury-auction-core`, and `fed-text-core`.
 FRED key lookup is also a formal root-settings contract: settings owns the
 default env name, and `macrodata_fred_api_key_env: null` or blank disables env
 lookup instead of letting worker/runtime code restore `FINANCE_FRED_API_KEY`.

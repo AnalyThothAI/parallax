@@ -177,4 +177,4 @@ exclude_lines = [
 [tool.uv.sources]
 coinglass-cli = { git = "https://github.com/AnalyThothAI/coinglass-cli.git", rev = "592bf2f973411e4d516ca928f65aaabf40d707eb" }
 cryptopanic-cli = { git = "https://github.com/AnalyThothAI/cryptopanic-cli.git", rev = "921245022ff30fc027dd7dde7dd59f4a6d94ae7c" }
-macrodata-cli = { git = "https://github.com/AnalyThothAI/macrodata-cli.git", tag = "v0.1.8" }
+macrodata-cli = { git = "https://github.com/AnalyThothAI/macrodata-cli.git", rev = "dd86aa8bcd234e8fb427ba9d058e9b478e2a0e6c" }

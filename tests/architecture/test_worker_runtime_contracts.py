@@ -1659,6 +1659,7 @@ def test_macro_sync_worker_and_service_use_formal_settings_wake_contract_without
         "wake_bus=",
         '"source_name", "macrodata-cli"',
         '"bundle_name", "macro-core"',
+        "self.sync_settings.bundle_name",
         '"bootstrap_lookback_days", 1095',
         '"max_window_days", 31',
         '"steady_overlap_days", 7',
@@ -1684,14 +1685,15 @@ def test_macro_sync_worker_and_service_use_formal_settings_wake_contract_without
     assert "configured = max(1, int(self.settings.batch_size))" in worker_source
     assert "self.sync_settings = _require_macro_sync_worker_settings(settings)" in service_source
     assert "source_name=str(self.sync_settings.source_name)" in service_source
-    assert "bundle_name=str(self.sync_settings.bundle_name)" in service_source
+    assert "for bundle_name in _macro_sync_bundle_names(self.sync_settings):" in service_source
     assert "bootstrap_lookback_days=int(self.sync_settings.bootstrap_lookback_days)" in service_source
     assert "steady_interval_seconds=float(self.sync_settings.interval_seconds)" in service_source
     assert "lease_ms=int(self.sync_settings.lease_ms)" in service_source
     assert "retry_delay_ms=int(self.sync_settings.retry_delay_ms)" in service_source
     assert "statement_timeout_seconds=self.sync_settings.statement_timeout_seconds" in service_source
     assert "wake_emitter=ctx.wake_bus" in macro_factory_source
-    assert "batch_size: int = Field(default=1, ge=1)" in settings_class
+    assert "batch_size: int = Field(default=3, ge=1)" in settings_class
+    assert "bundle_names: tuple[str, ...] = (" in settings_class
     assert "statement_timeout_seconds: float = Field(default=30.0, ge=0)" in settings_class
     assert "lease_ms: int = Field(default=300_000, ge=1)" in settings_class
     assert "retry_delay_ms: int = Field(default=900_000, ge=1)" in settings_class
@@ -3247,8 +3249,7 @@ def test_runtime_job_queue_is_ops_descriptor_only_without_generic_executor() -> 
     assert "PULSE_AGENT_JOBS" in job_queue_source
     assert "NOTIFICATION_DELIVERIES" in job_queue_source
     assert (
-        "from parallax.app.runtime.job_queue import "
-        "JOB_QUEUE_DESCRIPTORS, JobQueueDescriptor"
+        "from parallax.app.runtime.job_queue import JOB_QUEUE_DESCRIPTORS, JobQueueDescriptor"
     ) in ops_diagnostics_source
 
 

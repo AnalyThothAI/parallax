@@ -2,6 +2,9 @@ import type { RatesWorkbenchView } from "../../model/macroRatesWorkbenchModel";
 import { MacroPanel } from "../primitives/MacroPanel";
 
 export function RatesMarketRead({ view }: { view: RatesWorkbenchView }) {
+  if (!view.marketHeadline) {
+    return null;
+  }
   const asOf = compactAsOfLabel(view.asOfLabel);
   const gapCount = view.missingPrimaryItems.length;
   const proxyNote =
@@ -11,7 +14,7 @@ export function RatesMarketRead({ view }: { view: RatesWorkbenchView }) {
     <MacroPanel
       ariaLabel="利率简报"
       className="macro-rates-market-read-panel"
-      meta={`${view.readinessLabel} · ${asOf}`}
+      meta={[view.readinessLabel, asOf].filter(Boolean).join(" · ")}
       span="full"
       title="利率简报"
     >
@@ -26,10 +29,12 @@ export function RatesMarketRead({ view }: { view: RatesWorkbenchView }) {
               <dt>状态</dt>
               <dd>{view.readinessLabel}</dd>
             </div>
-            <div>
-              <dt>截至</dt>
-              <dd>{asOf}</dd>
-            </div>
+            {asOf ? (
+              <div>
+                <dt>截至</dt>
+                <dd>{asOf}</dd>
+              </div>
+            ) : null}
             <div>
               <dt>缺口</dt>
               <dd>{gapCount > 0 ? `${gapCount} 项` : "0"}</dd>
@@ -52,6 +57,6 @@ export function RatesMarketRead({ view }: { view: RatesWorkbenchView }) {
   );
 }
 
-function compactAsOfLabel(label: string): string {
-  return label.replace(/^截至\s*/, "");
+function compactAsOfLabel(label: string | null): string | null {
+  return label ? label.replace(/^截至\s*/, "") : null;
 }
