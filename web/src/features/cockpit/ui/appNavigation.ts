@@ -2,7 +2,6 @@ import { MACRO_NAVIGATION_TREE, type MacroNavigationNode } from "@features/macro
 import {
   BarChart3,
   BriefcaseBusiness,
-  FlaskConical,
   Newspaper,
   Radar,
   ServerCog,
@@ -81,12 +80,6 @@ export const APP_NAVIGATION_GROUPS: AppNavigationGroup[] = [
         label: "Watchlist",
         matchPath: "/watchlist/*",
         to: "/watchlist",
-      },
-      {
-        icon: FlaskConical,
-        label: "Signal Lab",
-        matchPath: "/signal-lab/*",
-        to: "/signal-lab",
       },
     ],
   },

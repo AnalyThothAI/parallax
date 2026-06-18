@@ -52,8 +52,6 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
     if (path.startsWith("/api/token-images/")) return fulfillTokenImage(route);
     if (path === "/api/search/inspect") return fulfill(route, searchInspectData(url));
     if (path === "/api/signal-lab/pulse") return fulfill(route, signalPulseData(url));
-    if (path.startsWith("/api/signal-lab/pulse/")) return fulfill(route, pulseItem());
-    if (path === "/api/social-events/by-ids") return fulfill(route, socialEventsByIds(url));
     if (path === "/api/target-social-timeline") return fulfill(route, timelineData());
     if (path === "/api/target-posts") return fulfill(route, targetPostsData(url));
     if (path === "/api/account-quality") return fulfill(route, accountQualityData());
@@ -698,18 +696,6 @@ function signalPulseData(url: URL) {
   };
 }
 
-function socialEventsByIds(url: URL) {
-  const ids = (url.searchParams.get("ids") ?? "")
-    .split(",")
-    .map((id) => id.trim())
-    .filter(Boolean);
-  const byId = new Map(postsData().items.map((item) => [item.event_id, sourceEvent(item)]));
-  return {
-    events: ids.map((id) => byId.get(id)).filter(Boolean),
-    not_found: ids.filter((id) => !byId.has(id)),
-  };
-}
-
 function pulseItem() {
   const row = assetFlowRow();
   return {
@@ -795,22 +781,6 @@ function pulseItem() {
     created_at_ms: NOW,
     updated_at_ms: NOW,
     playbooks: [],
-  };
-}
-
-function sourceEvent(item: ReturnType<typeof post>) {
-  return {
-    event_id: item.event_id,
-    timestamp_ms: item.received_at_ms,
-    source_provider: "gmgn",
-    channel: "twitter_monitor_basic",
-    action: item.reference?.type ?? "tweet",
-    author_handle: item.author_handle,
-    author_name: item.author_handle,
-    author_followers: item.post_quality.score >= 80 ? 168_905 : 220,
-    author_watched: item.is_watched,
-    text_clean: item.text,
-    canonical_url: item.url,
   };
 }
 

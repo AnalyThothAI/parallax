@@ -1,6 +1,5 @@
 import type { LivePayload, ScopeKey, SignalPulseItem, TokenFlowItem, WindowKey } from "@lib/types";
-import { livePath, searchPath, signalLabPulsePath, tokenTargetPath } from "@shared/routing/paths";
-import { searchWithOptionalPrefix } from "@shared/routing/searchParams";
+import { livePath, searchPath, tokenTargetPath } from "@shared/routing/paths";
 import { tokenSearchPath } from "@shared/routing/tokenSearch";
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -23,7 +22,6 @@ type UseLiveSelectionArgs = {
 export function useLiveSelection({ scope }: UseLiveSelectionArgs) {
   const navigate = useNavigate();
   const location = useLocation();
-  const isSignalLabRoute = location.pathname.startsWith("/signal-lab");
   const [selectedSignal, setSelectedSignal] = useState<SelectedSignal>(null);
   const [selectedTapeEventId, setSelectedTapeEventId] = useState<string | null>(null);
   const mobileTask = useLiveTaskStore((state) => state.mobileTask);
@@ -65,8 +63,6 @@ export function useLiveSelection({ scope }: UseLiveSelectionArgs) {
     setSelectedSignal({ kind: "pulse", item });
     setSelectedTapeEventId(item.candidate_id);
     setMobileTask("lab");
-    const search = item.display_status?.startsWith("hidden_") ? "?visibility=hidden" : "";
-    navigate(signalLabPulsePath(item.candidate_id, search));
   };
 
   const selectAccountEvent = (item: LivePayload) => {
@@ -77,22 +73,6 @@ export function useLiveSelection({ scope }: UseLiveSelectionArgs) {
 
   const submitEvidenceSearch = (searchText: string) => {
     const query = searchText.trim();
-    if (isSignalLabRoute) {
-      const next = new URLSearchParams(location.search);
-      if (query) {
-        next.set("q", query);
-      } else {
-        next.delete("q");
-      }
-      navigate({
-        pathname: "/signal-lab",
-        search: searchWithOptionalPrefix(next),
-      });
-      setSelectedSignal(null);
-      setSelectedTapeEventId(null);
-      setMobileTask("lab");
-      return;
-    }
     navigate(searchPath({ q: query, window: "24h", scope }));
     setSelectedSignal(null);
     setSelectedTapeEventId(null);

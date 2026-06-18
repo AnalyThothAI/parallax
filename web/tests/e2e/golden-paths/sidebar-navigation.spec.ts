@@ -40,7 +40,6 @@ test.describe("desktop sidebar navigation", () => {
       "News",
       "宏观",
       "Watchlist",
-      "Signal Lab",
       "Ops",
     ]) {
       await expect(primaryNavigation.getByRole("link", { name: routeName })).toBeVisible();
@@ -68,7 +67,6 @@ test.describe("desktop sidebar navigation", () => {
     await expectSidebarRouteClickFast(page, "News", "/news");
     await expectSidebarRouteClickFast(page, "Stocks", "/stocks");
     await expectSidebarRouteClickFast(page, "Token Radar", "/");
-    await expectSidebarRouteClickFast(page, "Signal Lab", "/signal-lab");
     await expectSidebarRouteClickFast(page, "Ops", "/ops");
     await expectSidebarRouteClickFast(page, "宏观", "/macro");
     await expectSidebarRouteClickFast(page, "Watchlist", "/watchlist");
@@ -85,7 +83,6 @@ test.describe("desktop sidebar navigation", () => {
 
     await expectSidebarRouteClickFast(page, "News", "/news");
     await expectSidebarRouteClickFast(page, "Stocks", "/stocks");
-    await expectSidebarRouteClickFast(page, "Signal Lab", "/signal-lab");
   });
 
   test("keeps desktop sidebar navigation available when route APIs fail", async ({ page }) => {

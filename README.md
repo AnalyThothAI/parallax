@@ -93,7 +93,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
 
 | Surface | Role |
 | --- | --- |
-| React console | Operator workbench for Radar, Search, Token Case, Signal Lab, Stocks/CEX, News, Macro, Watchlist, Ops, and notifications. |
+| React console | Operator workbench for Radar, Search, Token Case, Signal Pulse, Stocks/CEX, News, Macro, Watchlist, Ops, and notifications. |
 | HTTP API | Authenticated `/api/*` read surfaces, health checks, bootstrap, token images, status, and diagnostics. |
 | WebSocket | Authenticated `/ws` replay/live stream for events, subscriptions, notifications, and live market updates. |
 | JSON CLI | Scriptable local/operator interface for config, DB health, read-model queries, macro sync/status, and ops repair commands. |

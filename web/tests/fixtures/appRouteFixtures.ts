@@ -248,7 +248,7 @@ export function notificationFixture(overrides: Partial<NotificationItem> = {}): 
     created_at_ms: NOW,
     updated_at_ms: NOW,
     read_at_ms: null,
-    payload: { route: "/signal-lab/pulse/candidate%3Arkc" },
+    payload: { route: "/" },
     channels: ["in_app"],
     ...overrides,
   };

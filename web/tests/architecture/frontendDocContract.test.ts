@@ -80,7 +80,6 @@ describe("frontend documentation contract", () => {
       { term: "News", to: "/news" },
       { term: "Macro", to: "/macro" },
       { term: "Watchlist", to: "/watchlist" },
-      { term: "Signal Lab", to: "/signal-lab" },
       { term: "Ops", to: "/ops" },
     ];
     const navigationItems = flattenNavigation(

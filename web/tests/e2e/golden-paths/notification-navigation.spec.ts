@@ -9,6 +9,6 @@ test("notification click navigates into Signal Pulse context", async ({ page }) 
   await expect(page.getByRole("button", { name: /open BNB pulse/i })).toBeVisible();
   await page.getByRole("button", { name: /open BNB pulse/i }).click();
 
-  await expect(page).toHaveURL(/\/signal-lab\?q=BNB/);
+  await page.waitForURL((url) => url.pathname === "/");
   await expect(page.getByRole("heading", { name: "Signal Pulse" })).toBeVisible();
 });

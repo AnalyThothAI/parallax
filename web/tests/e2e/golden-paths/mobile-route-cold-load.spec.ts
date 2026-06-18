@@ -42,42 +42,6 @@ const routeCases: RouteCase[] = [
     lastMeaningfulSelector: "[aria-labelledby='token-case-timeline'] article:last-of-type",
   },
   {
-    name: "signal lab queue",
-    path: "/signal-lab?window=4h&scope=matched&q=BNB",
-    primary: async (page) => {
-      await expect(page.getByRole("heading", { name: "Signal Pulse" })).toBeVisible();
-    },
-    specific: async (page) => {
-      await expect(page.locator("[aria-label='Signal Pulse candidate filters']")).toBeVisible();
-      await expect(page.getByRole("heading", { name: "候选列表" })).toBeVisible();
-      await expect(page.getByRole("button", { name: "查看 $BNB 详情" })).toBeVisible();
-      await expect(page.getByRole("link", { name: /打开完整视图/ })).toBeVisible();
-    },
-    nestedOverflowSelectors: [
-      ".signal-lab-layout",
-      ".signal-lab-list",
-      ".signal-lab-inspector-pane",
-    ],
-    lastMeaningfulSelector: ".signal-lab-inspector-pane",
-  },
-  {
-    name: "signal pulse detail",
-    path: "/signal-lab/pulse/pulse-bnb",
-    primary: async (page) => {
-      await expect(page.getByRole("heading", { name: "$BNB" })).toBeVisible();
-    },
-    specific: async (page) => {
-      await expect(page.getByRole("region", { name: "v2 decision surface" })).toBeVisible();
-      await expect(page.locator("[aria-label='agent reasoning']")).toBeVisible();
-      await expect(page.getByRole("region", { name: "source events" })).toContainText(
-        "$UPEG watched account evidence",
-      );
-      await expect(page.getByRole("link", { name: "event-upeg-1" })).toBeVisible();
-    },
-    nestedOverflowSelectors: ["[aria-label='source events']"],
-    lastMeaningfulSelector: "[aria-label='source events']",
-  },
-  {
     name: "stocks",
     path: "/stocks",
     primary: async (page) => {

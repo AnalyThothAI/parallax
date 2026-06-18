@@ -127,8 +127,6 @@ def _mount_frontend(app: FastAPI, *, frontend_dist: str | Path | None) -> None:
     app.add_api_route("/", frontend_index, include_in_schema=False)
     app.add_api_route("/app", frontend_index, include_in_schema=False)
     app.add_api_route("/app/{path:path}", frontend_index, include_in_schema=False)
-    app.add_api_route("/signal-lab", frontend_index, include_in_schema=False)
-    app.add_api_route("/signal-lab/{path:path}", frontend_index, include_in_schema=False)
     app.add_api_route("/news", frontend_index, include_in_schema=False)
     app.add_api_route("/news/{path:path}", frontend_index, include_in_schema=False)
     app.add_api_route("/macro", frontend_index, include_in_schema=False)

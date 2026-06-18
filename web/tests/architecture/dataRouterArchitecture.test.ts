@@ -108,6 +108,15 @@ describe("data router architecture", () => {
     expect(routerSource).toContain('path: "news/items/:newsItemId"');
     expect(routerSource).not.toContain(retiredNewsItemRoute);
   });
+
+  it("does not keep the retired Signal Lab page routes or navigation target", () => {
+    const routerSource = readSource("routes/router.tsx");
+    const navigationSource = readSource("features/cockpit/ui/appNavigation.ts");
+
+    expect(routerSource).not.toContain('path: "signal-lab"');
+    expect(routerSource).not.toContain('path: "signal-lab/pulse/:candidateId"');
+    expect(navigationSource).not.toContain('to: "/signal-lab"');
+  });
 });
 
 function readSource(path: string): string {

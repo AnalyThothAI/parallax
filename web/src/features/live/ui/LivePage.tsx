@@ -29,8 +29,8 @@ type LivePageProps = {
 
 /**
  * LivePage frames the live cockpit: it renders the routed top region above a persistent
- * bottom-deck (tape + signal-lab compact pulse). Token Radar rows open the item route; compact
- * pulse rows open the Signal Pulse detail route.
+ * bottom-deck (tape + signal pulse compact queue). Token Radar rows open the item route; compact
+ * pulse rows remain selected inside the live cockpit.
  */
 export function LivePage({
   liveSignalTapeItems,

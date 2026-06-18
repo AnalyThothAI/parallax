@@ -28,7 +28,6 @@ test("tablet shell keeps top-level route navigation in the sidebar drawer", asyn
     "News",
     "宏观",
     "Watchlist",
-    "Signal Lab",
     "Ops",
   ]) {
     await expect(primaryNavigation.getByRole("link", { name: routeName })).toBeVisible();
@@ -46,9 +45,9 @@ test("tablet shell keeps top-level route navigation in the sidebar drawer", asyn
   await expect(page).toHaveURL(/\/news(?:\?|$)/);
   await expect(primaryNavigation).toBeHidden();
 
-  await page.getByLabel("global search").fill("tablet-token");
+  await page.getByLabel("news search").fill("tablet-token");
   await page.getByRole("button", { name: "检索" }).click();
-  await expect(page).toHaveURL(/\/search\?q=tablet-token/);
+  await expect(page).toHaveURL(/\/news\?q=tablet-token/);
   await expectNoDocumentHorizontalOverflow(page);
   await expectNoUnhandledApiRequests(page);
 });

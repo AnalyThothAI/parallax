@@ -1,7 +1,7 @@
 import type { LiveMobileTask } from "@features/live";
 import type { NotificationItem, NotificationLivePayload, NotificationSummary } from "@lib/types";
 import { queryKeys } from "@shared/query/queryKeys";
-import { signalLabPath, watchlistPath } from "@shared/routing/paths";
+import { livePath, searchPath, watchlistPath } from "@shared/routing/paths";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -88,25 +88,14 @@ export function useNotificationsController({
   const openNotification = (notification: NotificationItem) => {
     markReadMutation.mutate(notification.notification_id);
     setDrawerOpen(false);
-    if (
-      notification.entity_type === "pulse_candidate" ||
-      notification.source_table === "pulse_candidates"
-    ) {
-      let q: string | null = null;
-      if (notification.symbol) {
-        q = notification.symbol;
-      } else if (typeof notification.payload?.candidate_id === "string") {
-        q = notification.payload.candidate_id;
-      } else if (notification.source_id) {
-        q = notification.source_id;
-      }
-      navigate(signalLabPath({ q }));
+    if (isSignalPulseNotification(notification)) {
+      navigate(livePath());
       setMobileTask("lab");
       return;
     }
     if (notification.symbol) {
-      navigate(signalLabPath({ q: notification.symbol }));
-      setMobileTask("lab");
+      navigate(searchPath({ q: notification.symbol }));
+      setMobileTask("radar");
       return;
     }
     if (notification.author_handle) {
@@ -115,8 +104,8 @@ export function useNotificationsController({
       return;
     }
     if (notification.event_id) {
-      navigate(signalLabPath({ q: notification.event_id }));
-      setMobileTask("lab");
+      navigate(searchPath({ q: notification.event_id }));
+      setMobileTask("radar");
     }
   };
 
@@ -144,6 +133,15 @@ export function useNotificationsController({
 
 function normalizedHandle(handle: string): string {
   return handle.trim().replace(/^@/, "").toLowerCase();
+}
+
+function isSignalPulseNotification(notification: NotificationItem): boolean {
+  return (
+    notification.entity_type === "pulse_candidate" ||
+    notification.entity_type === "signal_pulse" ||
+    notification.source_table === "pulse_candidates" ||
+    notification.source_table === "signal_pulse_candidates"
+  );
 }
 
 function summaryFromSocketNotifications(

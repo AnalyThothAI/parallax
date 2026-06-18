@@ -49,14 +49,6 @@ export function createAppRouteObjects(): RouteObject[] {
               lazy: () => import("./ops.route"),
             },
             {
-              path: "signal-lab/pulse/:candidateId",
-              lazy: () => import("./signal-lab.pulse.route"),
-            },
-            {
-              path: "signal-lab",
-              lazy: () => import("./signal-lab.route"),
-            },
-            {
               index: true,
               lazy: () => import("./live.route"),
             },
