@@ -18,9 +18,9 @@ from parallax.domains.news_intel.types.news_item_brief import (
 def test_default_news_item_brief_agent_config_uses_market_wide_validator_v2() -> None:
     config = default_news_item_brief_agent_config(model="gpt-5-mini", artifact_version_hash="artifact-v2")
 
-    assert config.prompt_version == "news-item-brief-market-wide-v2"
+    assert config.prompt_version == "news-item-brief-market-wide-v3"
     assert config.schema_version == "news_item_brief_market_v1"
-    assert config.validator_version == "news_item_brief_validator_market_v2"
+    assert config.validator_version == "news_item_brief_validator_market_v3"
 
 
 def test_news_item_brief_payload_uses_market_wide_entities() -> None:
