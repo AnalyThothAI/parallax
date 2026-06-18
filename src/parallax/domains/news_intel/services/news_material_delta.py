@@ -22,7 +22,6 @@ def decide_news_material_delta(
     representative_entities: Sequence[Mapping[str, Any]],
     fact_candidates: Sequence[Mapping[str, Any]],
     representative_fact_candidates: Sequence[Mapping[str, Any]],
-    current_brief: Mapping[str, Any] | None,
 ) -> NewsMaterialDelta:
     if representative_item is None:
         return NewsMaterialDelta(has_delta=True, reasons=["no_representative"], evidence={})

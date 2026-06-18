@@ -21,7 +21,6 @@ NewsItemAgentAdmissionStatus = Literal[
 
 @dataclass(frozen=True, slots=True)
 class NewsItemAgentAdmissionContext:
-    current_brief: Mapping[str, Any] | None = None
     exact_duplicate_candidates: Sequence[Mapping[str, Any]] = field(default_factory=tuple)
     story_candidates: Sequence[Mapping[str, Any]] = field(default_factory=tuple)
     material_delta: Mapping[str, Any] = field(default_factory=dict)
@@ -33,7 +32,6 @@ class NewsItemAgentAdmissionContext:
     @classmethod
     def from_repository_context(cls, context: Mapping[str, Any]) -> NewsItemAgentAdmissionContext:
         return cls(
-            current_brief=_optional_mapping(context.get("current_brief")),
             exact_duplicate_candidates=_list_of_mappings(context.get("exact_duplicate_candidates")),
             story_candidates=_list_of_mappings(context.get("story_candidates")),
             material_delta=_optional_mapping(context.get("material_delta")) or {},
@@ -57,11 +55,11 @@ __all__ = [
 ]
 
 
-def _optional_mapping(value: Any) -> Mapping[str, Any] | None:
-    return value if isinstance(value, Mapping) else None
-
-
 def _list_of_mappings(value: Any) -> list[Mapping[str, Any]]:
     if not isinstance(value, Sequence) or isinstance(value, str):
         return []
     return [item for item in value if isinstance(item, Mapping)]
+
+
+def _optional_mapping(value: Any) -> Mapping[str, Any] | None:
+    return value if isinstance(value, Mapping) else None

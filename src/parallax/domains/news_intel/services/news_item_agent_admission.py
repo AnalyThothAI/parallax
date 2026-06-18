@@ -79,7 +79,6 @@ def decide_news_item_agent_admission(
                 representative_entities=_list_of_mappings((representative or {}).get("entities")),
                 fact_candidates=fact_candidates,
                 representative_fact_candidates=_list_of_mappings((representative or {}).get("fact_candidates")),
-                current_brief=_optional_mapping((representative or {}).get("current_brief")) or context.current_brief,
             )
         )
         base_basis["material_delta"] = {
