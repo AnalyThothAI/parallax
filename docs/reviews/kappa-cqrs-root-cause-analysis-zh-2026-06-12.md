@@ -16106,6 +16106,52 @@ RepositorySession Unit of Work；失败时不能留下半个 snapshot 或半套 
 - GREEN：聚焦命令转为 `13 passed`；Pulse/Narrative dirty repository 非集成组通过，`74 passed`。
 - 按当前用户指令，本轮不运行 integration-heavy gate。
 
+### Root451 - News projection dirty/source-quality 继续把缺失 source watermark 修成 0 或运行时
+
+发现：
+
+- `NewsProjectionDirtyTargetRepository` 对 page / brief_input / source_quality window dirty target 仍接受缺失或非法
+  `source_watermark_ms`，并把它修补成 `0`。
+- dirty enqueue SQL 仍保留 `source_watermark_ms = 0 OR ...` 兼容分支，使 0 水位看起来像合法历史状态。
+- `news_projection_work.enqueue_source_quality_window_work(...)` 原来会从缺失的 source/window 水位 map 中取
+  `0`；`NewsSourceQualityProjectionWorker` 的未来 source-quality window reschedule 会从
+  `computed_at_ms` 或 worker `now_ms` 推导 source watermark。
+- ops projection-dirty repair 也会把缺失的 News item source watermark 修成 0。
+
+根因：
+
+- Root436/437 已经把 News item-process 和 page-row `latest_at_ms` 的事实时间收紧到 persisted item time，
+  但 projection dirty queue 入口还保留旧的宽入口。生产者、helper、repository、ops repair 任意一层继续
+  修补水位，都会把 malformed fact/control input 洗成可 claim 的控制面任务。
+- `news_projection_dirty_targets.source_watermark_ms` 是 page/brief/source-quality worker 判断 catch-up、
+  payload hash、排序和 freshness 的事实前沿。`0`、`computed_at_ms`、`now_ms` 都不是事实前沿。
+- source-quality `_refresh` 是 source-scoped expansion control target，可以不携带 item/window 水位；但一旦
+  展开成 source/window work，就必须从正数 `latest_item_published_at_ms` 派生，而不是用投影运行时间补洞。
+
+修复：
+
+- `NewsProjectionDirtyTargetRepository` 对 page、brief_input 和 source_quality window targets 要求正整数
+  `source_watermark_ms`；缺失、0、负数、bool、字符串都抛
+  `news_projection_dirty_target_source_watermark_required`，并删除 enqueue SQL 的 zero-watermark 兼容分支。
+- `news_projection_work` 的 page/brief/source-quality window helpers 在进入 repository 前同样校验正水位；
+  `_refresh` 保持为 source 级控制目标，不承担 item/window source frontier。
+- `NewsSourceQualityProjectionWorker` 的未来 window reschedule 只使用正数 `latest_item_published_at_ms`，
+  不再从 `computed_at_ms` 或 worker `now_ms` 生成 source watermark。
+- News fetch、item brief、source-quality status-change page dirty fan-out 现在显式传递 source watermarks；
+  ops repair 对 malformed News item source watermark 抛
+  `ops_news_projection_dirty_source_watermark_required`。
+- News domain architecture、全局架构、Worker Flow、Workers inventory、SDD 与 architecture guard 同步禁止
+  `row.get("source_watermark_ms") or 0`、`source_watermark_ms = 0`、
+  `row.get("computed_at_ms") or now_ms` 等运行时/零水位兜底回归。
+
+验证：
+
+- RED：新增 News projection dirty/source-quality 水位测试后，旧实现出现 `23 failed`，证明 page/brief/window
+  dirty enqueue 和 source-quality future target 确实会接受坏水位或使用运行时兜底。
+- GREEN：同一聚焦命令转为 `23 passed`；broader News 非集成组通过，`164 passed`。
+- Targeted ruff/mypy 通过；静态扫描只在 architecture test 的 forbidden-token 列表中保留旧模式文本。
+- 按当前用户指令，本轮不运行 integration-heavy gate。
+
 ## 剩余风险和建议
 
 1. 如果 Stocks Radar 需要真实 quote，必须新建 persisted quote fact/current read model，而不是恢复 request-time provider。

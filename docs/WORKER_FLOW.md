@@ -882,6 +882,11 @@ News projection dirty-target enqueue and done/error changed-row counts require
 PostgreSQL `cursor.rowcount` evidence; missing or invalid rowcount fails before
 the repository reports queue enqueue, completion, or retry work. Enqueue paths
 must not report candidate `len(records)` as write evidence.
+News page, item-brief, and source-quality window dirty enqueue also requires a
+positive producer-supplied `source_watermark_ms` before queue SQL.
+Source-quality `_refresh` targets are source-scoped expansion controls only;
+expanded source/window work uses positive `latest_item_published_at_ms` rather
+than `0`, `computed_at_ms`, or worker `now_ms`.
 News projection terminal delete paths validate PostgreSQL `cursor.rowcount`
 before terminal ledger writes; rowcount must match returned deleted rows, and
 missing, invalid, or mismatched rowcount fails before terminal counts or

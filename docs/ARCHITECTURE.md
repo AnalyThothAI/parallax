@@ -461,6 +461,11 @@ are wrong too.
    News projection dirty-target enqueue, done/error, and terminal delete counts
    require PostgreSQL `cursor.rowcount` evidence; missing or invalid rowcount is
    malformed repository/driver state, not default zero changed queue work.
+   Page, item-brief, and source-quality window dirty targets also require a
+   positive producer-supplied `source_watermark_ms` before enqueue SQL.
+   Source-quality `_refresh` targets are source-scoped expansion controls only;
+   expanded source/window work uses positive `latest_item_published_at_ms`, not
+   `0`, `computed_at_ms`, or runtime time.
    News projection dirty-target claim rows from `UPDATE
    news_projection_dirty_targets ... RETURNING news_projection_dirty_targets.*`
    require cursor rowcount to match returned rows before projection workers treat
