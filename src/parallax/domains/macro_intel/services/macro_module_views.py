@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -23,6 +23,7 @@ TRADE_MAP_RELIABILITY_WINDOW_DAYS = 60
 TRADE_MAP_PAPER_NOTIONAL_USD = 10_000
 
 _TRADE_MAP_HOLDING_PERIODS = (("1d", "1D", 1), ("5d", "5D", 5), ("20d", "20D", 20))
+_ReferenceGapGroup = tuple[str, str, tuple[str, ...], str]
 
 _ASSET_CHANGE_WINDOWS = (
     ("1w", "change_1w_pct", 7),
@@ -917,7 +918,7 @@ def _module_read(
         present = len([concept_key for concept_key in _module_concept_keys(config) if concept_key in feature_map])
         total = len(_module_concept_keys(config))
         confidence_label = f"模块覆盖 {present}/{total}" if total else "模块覆盖 0/0"
-    read = {
+    read: dict[str, Any] = {
         "headline": f"{config.title}：{headline_label}",
         "regime_label": headline_label,
         "confidence_label": confidence_label,
@@ -3181,7 +3182,7 @@ def _inflation_breakeven_row(feature_map: Mapping[str, Any]) -> dict[str, Any] |
 def _inflation_yoy_at_or_before(points: Sequence[tuple[date, float]], target_date: date) -> float | None:
     current_value = _point_value_at_or_before(points, target_date)
     prior_value = _point_value_at_or_before(points, target_date - timedelta(days=365))
-    if current_value is None or prior_value in (None, 0):
+    if current_value is None or prior_value is None or prior_value == 0:
         return None
     return _round_pct((current_value / prior_value - 1.0) * 100.0)
 
@@ -3702,7 +3703,14 @@ def _volatility_relative_return(
     mid_current = _point_value_at_or_before(mid_points, current_date)
     front_prior = _point_value_at_or_before(front_points, current_date - timedelta(days=days))
     mid_prior = _point_value_at_or_before(mid_points, current_date - timedelta(days=days))
-    if None in (front_current, mid_current, front_prior, mid_prior) or front_prior == 0 or mid_prior == 0:
+    if (
+        front_current is None
+        or mid_current is None
+        or front_prior is None
+        or mid_prior is None
+        or front_prior == 0
+        or mid_prior == 0
+    ):
         return None
     front_return = (float(front_current) / float(front_prior) - 1.0) * 100.0
     mid_return = (float(mid_current) / float(mid_prior) - 1.0) * 100.0
@@ -3716,7 +3724,7 @@ def _ratio_at_or_before(
 ) -> float | None:
     front_value = _point_value_at_or_before(front_points, target_date)
     back_value = _point_value_at_or_before(back_points, target_date)
-    if front_value is None or back_value in (None, 0):
+    if front_value is None or back_value is None or back_value == 0:
         return None
     return front_value / back_value
 
@@ -4793,7 +4801,7 @@ def _round_bp(value: float) -> float:
 
 
 def _round_pct(value: float) -> float:
-    rounded = round(float(value), 3)
+    rounded = round(float(value), 2)
     return 0.0 if rounded == 0 else rounded
 
 
@@ -4906,7 +4914,7 @@ def _decision_console(
         for item in (_trade_map_item(item, observations) for item in _mapping_list(scenario.get("trade_map")))
         if item is not None
     ]
-    payload = {
+    payload: dict[str, Any] = {
         "top_changes": [
             item
             for item in (_compact_signal(item) for item in _mapping_list(scenario.get("top_changes")))
@@ -5746,11 +5754,6 @@ def _format_usd(value: float, *, signed: bool = False) -> str:
     return f"{sign}${abs(rounded):,}"
 
 
-def _round_pct(value: float) -> float:
-    rounded = round(float(value), 2)
-    return 0.0 if rounded == 0 else rounded
-
-
 def _event_catalyst_candidates(observations: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     candidate_catalysts: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -6197,6 +6200,7 @@ def _data_health(
 
 
 def _asset_depth_reference_gaps(module_id: str, feature_map: Mapping[str, Any]) -> list[dict[str, Any]]:
+    groups: tuple[_ReferenceGapGroup, ...]
     if module_id == "assets":
         groups = (
             (
@@ -6493,6 +6497,7 @@ def _credit_depth_reference_gaps(module_id: str, feature_map: Mapping[str, Any])
 
 
 def _economy_depth_reference_gaps(module_id: str, feature_map: Mapping[str, Any]) -> list[dict[str, Any]]:
+    groups: tuple[_ReferenceGapGroup, ...]
     if module_id == "economy/gdp":
         groups = (
             (
@@ -6711,6 +6716,7 @@ def _policy_corridor_reference_gaps(module_id: str, feature_map: Mapping[str, An
 
 
 def _rates_depth_reference_gaps(module_id: str, feature_map: Mapping[str, Any]) -> list[dict[str, Any]]:
+    groups: tuple[_ReferenceGapGroup, ...]
     if module_id == "rates/yield-curve":
         groups = (
             (
@@ -7035,12 +7041,16 @@ def _concept_optional_text(concept_key: str, field: str) -> str | None:
 
 
 def _gap_payload(value: object) -> dict[str, Any]:
-    is_mapping_payload = isinstance(value, Mapping)
-    payload = dict(value) if is_mapping_payload else build_macro_data_gaps([str(value)])[0]
+    require_remediation_hint = False
+    if isinstance(value, Mapping):
+        payload: dict[str, Any] = {str(key): item for key, item in value.items()}
+        require_remediation_hint = True
+    else:
+        payload = dict(build_macro_data_gaps([str(value)])[0])
     payload["code"] = _required_data_gap_field(payload, "code")
     payload["label"] = _required_data_gap_field(payload, "label")
     payload["severity"] = _required_data_gap_field(payload, "severity")
-    if is_mapping_payload:
+    if require_remediation_hint:
         payload["remediation_hint"] = _required_data_gap_field(payload, "remediation_hint")
     payload.setdefault("score_participation", False)
     payload.setdefault("owner", "macro_intel")
@@ -7367,7 +7377,7 @@ def _availability_note(concept_key: str, feature: Mapping[str, Any]) -> str:
     if not feature:
         return "未在最新宏观投影中出现；检查 macrodata bundle 和 importer 映射。"
     source = _mapping(feature.get("source"))
-    source_name = _source_label(source)
+    source_name = _source_label(source) or "未标注来源"
     description = _concept_optional_text(concept_key, "description") or ""
     return f"{source_name}；{description}" if description else source_name
 
@@ -7426,7 +7436,7 @@ def _string_list(value: object) -> list[str]:
     return [str(value)]
 
 
-def _unique(values: Sequence[str]) -> list[str]:
+def _unique(values: Iterable[str]) -> list[str]:
     return list(dict.fromkeys(value for value in values if value))
 
 

@@ -194,7 +194,7 @@ def test_runtime_policy_uses_default_lane_when_missing() -> None:
 
     assert known.timeout_seconds == 15
     assert missing.timeout_seconds == 180
-    assert policy.model_for_lane("known") == "qwen3.6"
+    assert policy.model_for_lane("known") == "deepseek-v4-flash"
     assert missing is not policy.lane_for("missing")
     assert AgentExecutionErrorClass.TIMEOUT.value == "timeout"
 
@@ -208,6 +208,7 @@ def test_runtime_policy_resolves_model_capability_profiles() -> None:
                 model="local-model",
                 provider_family="deepseek",
                 client_validation_retries=2,
+                max_tokens=1200,
             ),
         },
     )
@@ -218,16 +219,18 @@ def test_runtime_policy_resolves_model_capability_profiles() -> None:
     assert deepseek.request_options.extra_body == {"thinking": {"type": "disabled"}}
     assert override.provider_family == AgentProviderFamily.DEEPSEEK
     assert override.client_validation_retries == 2
+    assert override.request_options.max_tokens == 1200
     assert override.request_options.extra_body == {}
 
 
 def test_runtime_policy_resolves_capability_for_inherited_deepseek_default_model() -> None:
-    policy = AgentRuntimePolicy(defaults=AgentRuntimeDefaultsPolicy(model="deepseek-v4-flash"))
+    policy = AgentRuntimePolicy(defaults=AgentRuntimeDefaultsPolicy(model="deepseek-v4-flash", max_tokens=1600))
 
     profile = policy.capability_for_lane("pulse.decision")
 
     assert profile.provider_family == AgentProviderFamily.DEEPSEEK
     assert profile.request_options.extra_body == {"thinking": {"type": "disabled"}}
+    assert profile.request_options.max_tokens == 1600
 
 
 def test_policy_models_forbid_extra_fields_and_invalid_non_positive_values() -> None:

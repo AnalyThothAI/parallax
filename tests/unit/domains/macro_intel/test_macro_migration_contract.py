@@ -163,8 +163,9 @@ def test_macro_constants_map_nyfed_unsecured_funding_concepts() -> None:
     assert _constants.MACRO_PROVIDER_SERIES_TO_CONCEPT["nyfed:EFFR_VOLUME"] == "fed:effr_volume"
     assert _constants.MACRO_PROVIDER_SERIES_TO_CONCEPT["nyfed:OBFR_VOLUME"] == "fed:obfr_volume"
     assert unsecured_depth_concepts.isdisjoint(_constants.MACRO_HISTORY_REQUIRED_CONCEPTS)
-    assert _constants.MACRO_PROVIDER_SERIES_SOURCE_PRIORITY["nyfed:EFFR"] > (
-        _constants.MACRO_PROVIDER_SERIES_SOURCE_PRIORITY["fred:EFFR"]
+    assert (
+        _constants.MACRO_PROVIDER_SERIES_SOURCE_PRIORITY["nyfed:EFFR"]
+        > (_constants.MACRO_PROVIDER_SERIES_SOURCE_PRIORITY["fred:EFFR"])
     )
 
     assert _constants.MACRO_CONCEPT_METADATA["fed:obfr"] == {
@@ -178,15 +179,11 @@ def test_macro_constants_map_nyfed_unsecured_funding_concepts() -> None:
 
 
 def test_macro_constants_map_bls_calendar_event_concepts() -> None:
-    assert _constants.MACRO_EVENT_PROVIDER_SERIES_TO_CONCEPT["official_calendar:bls_cpi_next"] == (
-        "event:bls_cpi_next"
-    )
+    assert _constants.MACRO_EVENT_PROVIDER_SERIES_TO_CONCEPT["official_calendar:bls_cpi_next"] == ("event:bls_cpi_next")
     assert _constants.MACRO_EVENT_PROVIDER_SERIES_TO_CONCEPT["official_calendar:bls_employment_next"] == (
         "event:bls_employment_next"
     )
-    assert _constants.MACRO_EVENT_PROVIDER_SERIES_TO_CONCEPT["official_calendar:bls_ppi_next"] == (
-        "event:bls_ppi_next"
-    )
+    assert _constants.MACRO_EVENT_PROVIDER_SERIES_TO_CONCEPT["official_calendar:bls_ppi_next"] == ("event:bls_ppi_next")
 
     assert "event:bls_cpi_next" in _constants.MACRO_EVENT_CONCEPTS
     assert "event:bls_employment_next" in _constants.MACRO_EVENT_CONCEPTS

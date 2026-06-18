@@ -344,7 +344,12 @@ def factor_snapshot():
                 "stale_fields": [],
             },
         },
-        "gates": {"eligible_for_high_alert": True, "blocked_reasons": [], "risk_reasons": []},
+        "gates": {
+            "eligible_for_high_alert": True,
+            "blocked_reasons": [],
+            "risk_reasons": [],
+            "max_decision": "high_alert",
+        },
         "data_health": {"identity": "ready", "market": "ready", "social": "ready", "alpha": "ready"},
         "families": families,
         "normalization": {"status": "ready", "cohort": {}, "factor_ranks": {}, "alpha_rank": None},

@@ -57,3 +57,14 @@ def test_agent_read_tool_manifest_is_serializable_and_hides_sql() -> None:
     assert "sql" not in entry
     assert entry["name"] == "token_radar.current_rows"
     assert entry["parameters_schema"]["type"] == "object"
+
+
+def test_news_current_briefs_tool_reads_brief_json_fields_not_retired_columns() -> None:
+    registry = build_default_agent_read_tool_registry()
+
+    sql = registry.get("news.current_briefs").sql
+
+    assert "headline_zh" not in sql
+    assert "brief_json ->> 'title_zh'" in sql
+    assert "brief_json ->> 'summary_zh'" in sql
+    assert "brief_json ->> 'market_read_zh'" in sql

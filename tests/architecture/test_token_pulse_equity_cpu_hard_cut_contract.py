@@ -53,7 +53,9 @@ def test_pulse_worker_uses_bounded_evidence_loader() -> None:
     assert "timeline_rows_for_event_ids" in calls
     assert "timeline_rows" not in calls
     assert "_source_event_ids(row)" in text
-    assert 'watched_only=scope == "matched"' in text
+    assert "PULSE_SCOPE_WATCHED_ONLY" in text
+    assert '"matched": True' in text
+    assert "watched_only=_watched_only_for_scope(scope" in text
 
 
 def test_token_target_repository_exposes_event_id_timeline_loader() -> None:

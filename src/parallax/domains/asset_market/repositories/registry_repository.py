@@ -766,6 +766,7 @@ class RegistryRepository:
         ).fetchone()
         return dict(row) if row else None
 
+
 def _transaction(conn: Any) -> AbstractContextManager[Any]:
     try:
         transaction = conn.transaction

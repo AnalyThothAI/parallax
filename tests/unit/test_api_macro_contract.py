@@ -479,7 +479,8 @@ def test_macro_module_api_returns_backend_module_view() -> None:
     assert payload["data"]["primary_chart"]["status"] == "partial"
     assert payload["data"]["primary_chart"]["series"][0]["status"] == "insufficient_history"
     assert payload["data"]["provenance"]["rows"][-1] == {
-        "source": "Yahoo",
+        "row_id": "source:Yahoo",
+        "source_label": "Yahoo",
         "status": "ok",
         "status_label": "可用",
         "latest_observed_at": "2026-05-20",

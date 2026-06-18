@@ -72,6 +72,15 @@ model.
 `NewsItemBriefWorker` remains the only runtime writer for
 `news_item_agent_runs` and `news_item_agent_briefs`. It rechecks deterministic
 market-wide `agent_admission` state and `market_scope_json` after claiming work.
+Admission decides whether a brief may execute; item-brief dirty-target priority
+is only a deterministic scheduling hint from admission status, material delta,
+market scope, source role, trust tier, and content class. The bounded packet
+builder keeps item context intentionally narrow (source item excerpt, capped
+entity lanes, capped fact lanes) so repeated or low-value news does not consume
+the same model budget as fresh material changes.
+Model output budgets live in `workers.agent_runtime` lane policy; the default
+`news.item_brief` lane caps generated tokens while still using the shared
+gateway audit hash for all request options.
 
 ## Read-Only Context Registry
 

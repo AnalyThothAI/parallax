@@ -60,6 +60,7 @@ def validate_news_item_brief_output(
     errors.extend(_evidence_ref_errors(payload_dict, packet=packet))
     errors.extend(_ready_evidence_errors(payload_dict, packet=packet))
     errors.extend(_ready_publishable_text_errors(payload_dict))
+    errors.extend(_ready_market_structure_errors(payload_dict, packet=packet))
     errors.extend(_unsupported_entity_errors(payload_dict, packet=packet))
     errors.extend(_trading_instruction_errors(payload_dict))
     try:
@@ -110,6 +111,35 @@ def _ready_publishable_text_errors(payload: dict[str, Any]) -> list[dict[str, st
     if str(payload.get("summary_zh") or "").strip() or str(payload.get("market_read_zh") or "").strip():
         return []
     return [_error("missing_publishable_text", "ready output requires summary_zh or market_read_zh")]
+
+
+def _ready_market_structure_errors(
+    payload: dict[str, Any],
+    *,
+    packet: NewsItemBriefInputPacket,
+) -> list[dict[str, str]]:
+    if payload.get("status") != "ready":
+        return []
+    if payload.get("decision_class") not in {"driver", "watch"}:
+        return []
+    errors: list[dict[str, str]] = []
+    if not _non_empty(payload.get("market_domains")):
+        errors.append(_error("missing_market_domains", "ready driver/watch output requires market_domains"))
+    paths = [path for path in payload.get("transmission_paths") or [] if isinstance(path, Mapping)]
+    if not paths:
+        errors.append(
+            _error("missing_transmission_path", "ready driver/watch output requires a source-backed transmission path")
+        )
+        return errors
+    allowed = set(packet.evidence_refs)
+    if not any(ref in allowed for path in paths for ref in _refs_from_mapping(path)):
+        errors.append(
+            _error(
+                "missing_transmission_path_evidence",
+                "ready driver/watch transmission path requires at least one valid evidence ref",
+            )
+        )
+    return errors
 
 
 def _drop_unsupported_market_impacts(payload: dict[str, Any], *, packet: NewsItemBriefInputPacket) -> dict[str, Any]:
@@ -200,6 +230,13 @@ def _evidence_refs_in_payload(value: Any) -> set[str]:
         for child in value:
             refs.update(_evidence_refs_in_payload(child))
     return refs
+
+
+def _refs_from_mapping(value: Mapping[str, Any]) -> set[str]:
+    refs = value.get("evidence_refs")
+    if not isinstance(refs, list):
+        return set()
+    return {str(ref) for ref in refs if str(ref or "")}
 
 
 def _strings_in_payload(value: Any) -> list[str]:

@@ -167,7 +167,7 @@ def _lane_rpm_policy() -> AgentRuntimePolicy:
     )
 
 
-def _deepseek_policy() -> AgentRuntimePolicy:
+def _deepseek_policy(*, max_tokens: int | None = None) -> AgentRuntimePolicy:
     return AgentRuntimePolicy(
         defaults=AgentRuntimeDefaultsPolicy(model="qwen3.6"),
         global_max_concurrency=1,
@@ -176,6 +176,7 @@ def _deepseek_policy() -> AgentRuntimePolicy:
             "test.lane": AgentLanePolicy(
                 model="deepseek-v4-flash",
                 provider_family="deepseek",
+                max_tokens=max_tokens,
                 max_concurrency=1,
                 timeout_seconds=10,
             )
@@ -524,7 +525,7 @@ def test_execute_reuses_chat_client_for_same_stage_policy() -> None:
 def test_execute_uses_registered_model_request_options() -> None:
     async def scenario() -> None:
         llm_gateway = FakeLLMGateway()
-        gateway = _gateway(llm_gateway=llm_gateway, policy=_deepseek_policy())
+        gateway = _gateway(llm_gateway=llm_gateway, policy=_deepseek_policy(max_tokens=2200))
 
         result = await gateway.execute(_spec())
 
@@ -539,6 +540,7 @@ def test_execute_uses_registered_model_request_options() -> None:
         assert call["timeout"] == 10.0
         assert call["response_format"] == {"type": "json_object"}
         assert call["extra_body"] == {"thinking": {"type": "disabled"}}
+        assert call["max_tokens"] == 2200
         assert "tool_choice" not in call
 
     asyncio.run(scenario())

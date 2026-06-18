@@ -122,6 +122,7 @@ def _append_validation_reask(
     error: str,
     schema: dict[str, Any],
 ) -> list[dict[str, str]]:
+    del schema
     return [
         *messages,
         {
@@ -129,8 +130,7 @@ def _append_validation_reask(
             "content": (
                 "The previous JSON object failed application validation. "
                 f"Validation error: {error[:1000]}\n"
-                "Return one corrected JSON object only for this schema:\n"
-                f"{json.dumps(schema, ensure_ascii=False, sort_keys=True)}"
+                "Return one corrected JSON object only. Use the JSON schema already provided in the system message."
             ),
         },
     ]

@@ -346,10 +346,7 @@ class FakeTokenFactConnection:
             return FakeResult(None, rowcount=self._next_rowcount())
         if normalized.startswith("INSERT INTO token_intent_resolutions"):
             return FakeResult({"resolution_id": "resolution-1"}, rowcount=self._next_rowcount())
-        if (
-            "FROM token_intent_resolutions" in normalized
-            and "WHERE intent_id = %s AND is_current = true" in normalized
-        ):
+        if "FROM token_intent_resolutions" in normalized and "WHERE intent_id = %s AND is_current = true" in normalized:
             return FakeResult(self.active_resolution_row)
         if "SELECT * FROM token_evidence WHERE evidence_id" in sql:
             return FakeResult({"evidence_id": str(params[0])})

@@ -43,14 +43,8 @@ def test_projection_validation_audit_batches_token_radar_reference_checks() -> N
     assert len(reference_sql) == 1
     assert "LEFT JOIN token_intents" in reference_sql[0]
     assert "LEFT JOIN registry_assets" in reference_sql[0]
-    assert all(
-        "SELECT 1 AS ok FROM token_intents WHERE intent_id = %s" not in sql
-        for sql in conn.executed_sql
-    )
-    assert all(
-        "SELECT 1 AS ok FROM registry_assets WHERE asset_id = %s" not in sql
-        for sql in conn.executed_sql
-    )
+    assert all("SELECT 1 AS ok FROM token_intents WHERE intent_id = %s" not in sql for sql in conn.executed_sql)
+    assert all("SELECT 1 AS ok FROM registry_assets WHERE asset_id = %s" not in sql for sql in conn.executed_sql)
 
 
 class RecordingProjectionValidationConn:
@@ -68,17 +62,13 @@ class RecordingProjectionValidationConn:
         self._latest_computed_at_ms = latest_computed_at_ms
         self.executed_sql: list[str] = []
 
-    def execute(
-        self, sql: str, params: tuple[object, ...] | None = None
-    ) -> RecordingRows:
+    def execute(self, sql: str, params: tuple[object, ...] | None = None) -> RecordingRows:
         self.executed_sql.append(sql)
         params_tuple = tuple(params or ())
         if "WITH sampled_radar_rows AS" in sql:
             sample = max(0, int(params_tuple[0] if params_tuple else 0))
             rows = self._radar_rows[:sample]
-            missing_intents = sum(
-                1 for row in rows if str(row.get("intent_id") or "") not in self._intent_ids
-            )
+            missing_intents = sum(1 for row in rows if str(row.get("intent_id") or "") not in self._intent_ids)
             missing_assets = sum(
                 1
                 for row in rows

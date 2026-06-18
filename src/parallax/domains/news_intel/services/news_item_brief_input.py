@@ -15,9 +15,9 @@ from parallax.domains.news_intel.types.news_item_brief import (
 )
 from parallax.platform.agent_hashing import json_sha256
 
-BODY_EXCERPT_MAX_CHARS = 2000
-MAX_ENTITY_LANES = 50
-MAX_FACT_LANES = 50
+BODY_EXCERPT_MAX_CHARS = 1200
+MAX_ENTITY_LANES = 24
+MAX_FACT_LANES = 20
 
 _NEWS_MARKET_DOMAINS = frozenset(
     {

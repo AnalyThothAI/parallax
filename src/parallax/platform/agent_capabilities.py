@@ -70,8 +70,21 @@ def resolve_agent_capability_profile(
         return profile
     payload = profile.model_dump(mode="python")
     for field_name in override.model_fields_set:
+        if field_name == "request_options":
+            payload[field_name] = _merge_request_options(
+                base=profile.request_options,
+                override=override.request_options,
+            )
+            continue
         payload[field_name] = getattr(override, field_name)
     return AgentCapabilityProfile(**payload)
+
+
+def _merge_request_options(*, base: AgentRequestOptions, override: AgentRequestOptions) -> AgentRequestOptions:
+    payload = base.model_dump(mode="python")
+    for field_name in override.model_fields_set:
+        payload[field_name] = getattr(override, field_name)
+    return AgentRequestOptions(**payload)
 
 
 __all__ = [

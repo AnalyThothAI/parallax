@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from parallax.domains.news_intel.services.news_item_brief_input import (
+    BODY_EXCERPT_MAX_CHARS,
+    MAX_ENTITY_LANES,
+    MAX_FACT_LANES,
     build_news_item_brief_input_packet,
     news_item_brief_material_input_payload,
 )
@@ -85,7 +88,10 @@ def test_packet_builds_market_wide_entity_lanes_refs_hash_and_source_text_constr
 
     payload = packet.model_dump(mode="json")
     assert packet.news_item.news_item_id == "item-1"
-    assert len(packet.news_item.body_excerpt) <= 2000
+    assert BODY_EXCERPT_MAX_CHARS == 1200
+    assert MAX_ENTITY_LANES == 24
+    assert MAX_FACT_LANES == 20
+    assert len(packet.news_item.body_excerpt) <= BODY_EXCERPT_MAX_CHARS
     assert payload["event_type"] == "macro_risk_repricing"
     assert payload["market_scope"] == ["us_equity", "ai_semiconductors", "crypto", "macro_rates"]
     assert payload["agent_admission"]["status"] == "eligible"
@@ -286,10 +292,14 @@ def test_packet_truncates_entity_and_fact_lanes_after_stable_sort() -> None:
         agent_config=_agent_config(),
     )
 
-    assert [lane.entity_id for lane in packet.entity_lanes] == [f"token-{index:03d}" for index in range(50)]
-    assert [lane.fact_candidate_id for lane in packet.fact_lanes] == [f"fact-{index:03d}" for index in range(50)]
-    assert len(packet.entity_lanes) == 50
-    assert len(packet.fact_lanes) == 50
+    assert [lane.entity_id for lane in packet.entity_lanes] == [
+        f"token-{index:03d}" for index in range(MAX_ENTITY_LANES)
+    ]
+    assert [lane.fact_candidate_id for lane in packet.fact_lanes] == [
+        f"fact-{index:03d}" for index in range(MAX_FACT_LANES)
+    ]
+    assert len(packet.entity_lanes) == MAX_ENTITY_LANES
+    assert len(packet.fact_lanes) == MAX_FACT_LANES
     assert packet.packet_id == repeat.packet_id
     assert packet.input_hash == repeat.input_hash
 

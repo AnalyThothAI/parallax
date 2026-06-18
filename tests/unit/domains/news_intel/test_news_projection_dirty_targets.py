@@ -964,7 +964,7 @@ def test_process_worker_enqueues_page_and_brief_dirty_in_same_transaction_after_
                     "target_kind": "news_item",
                     "target_id": "news-1",
                     "source_watermark_ms": NOW_MS - 1_000,
-                    "priority": 100,
+                    "priority": 34,
                 }
             ],
             "reason": "news_item_processed",
@@ -1001,12 +1001,49 @@ def test_ops_projection_repair_enqueues_provider_signal_brief_input_dirty_target
                     "target_kind": "news_item",
                     "target_id": "news-provider",
                     "source_watermark_ms": NOW_MS - 1_000,
-                    "priority": 100,
+                    "priority": 48,
                 }
             ],
             "reason": "ops_projection_dirty_repair",
             "now_ms": NOW_MS,
             "commit": False,
+        }
+    ]
+
+
+def test_ops_projection_repair_enqueues_eligible_refresh_brief_input_dirty_target() -> None:
+    repos = FakeOpsProjectionRepos(
+        row_overrides={
+            "agent_admission_status": "eligible_refresh",
+            "agent_admission_reason": "material_delta",
+            "agent_admission_json": {
+                "eligible": True,
+                "status": "eligible_refresh",
+                "reason": "material_delta",
+                "representative_news_item_id": "news-provider",
+                "basis": {"market_scope": ["crypto"]},
+                "version": "news_item_agent_admission_market_v2",
+            },
+        }
+    )
+
+    result = enqueue_projection_dirty_targets(
+        repos,
+        domain="news",
+        execute=True,
+        now_ms=NOW_MS,
+        projection="brief_input",
+        since_ms=NOW_MS - 60_000,
+    )
+
+    assert result["news"]["news_item_targets"] == 1
+    assert repos.dirty.enqueued[0]["rows"] == [
+        {
+            "projection_name": "brief_input",
+            "target_kind": "news_item",
+            "target_id": "news-provider",
+            "source_watermark_ms": NOW_MS - 1_000,
+            "priority": 10,
         }
     ]
 
@@ -1272,8 +1309,8 @@ class FakePageRepos:
 
 
 class FakeOpsProjectionRepos:
-    def __init__(self) -> None:
-        self.conn = FakeOpsProjectionConn()
+    def __init__(self, *, row_overrides: Mapping[str, Any] | None = None) -> None:
+        self.conn = FakeOpsProjectionConn(row_overrides=row_overrides)
         self.news = self
         self.dirty = FakeDirtyRepository(expected_projection_name=None)
         self.news_projection_dirty_targets = self.dirty
@@ -1283,48 +1320,49 @@ class FakeOpsProjectionRepos:
 
 
 class FakeOpsProjectionConn:
+    def __init__(self, *, row_overrides: Mapping[str, Any] | None = None) -> None:
+        self.row_overrides = dict(row_overrides or {})
+
     def execute(self, sql: str, _params: dict[str, Any] | None = None) -> Any:
         if "FROM news_items" in sql:
-            return FakeRowsCursor(
-                [
-                    {
-                        "news_item_id": "news-provider",
-                        "published_at_ms": NOW_MS - 1_000,
-                        "source_watermark_ms": NOW_MS - 1_000,
-                        "lifecycle_status": "processed",
-                        "content_class": "crypto_market",
-                        "content_classification_json": {"policy_version": "news_content_classification_v1"},
-                        "market_scope_json": {
-                            "scope": ["crypto"],
-                            "primary": "crypto",
-                            "status": "classified",
-                            "reason": "crypto_evidence",
-                            "basis": {"crypto_evidence": ["resolved_crypto_target:cex:BTC"]},
-                            "version": "news_market_scope_v1",
-                        },
-                        "agent_admission_status": "eligible",
-                        "agent_admission_reason": "eligible",
-                        "agent_admission_json": {
-                            "eligible": True,
-                            "status": "eligible",
-                            "reason": "eligible",
-                            "representative_news_item_id": "news-provider",
-                            "basis": {"market_scope": ["crypto"]},
-                            "version": "news_item_agent_admission_market_v2",
-                        },
-                        "agent_admission_version": "news_item_agent_admission_market_v2",
-                        "provider_type": "opennews",
-                        "provider_signal_json": {
-                            "source": "provider",
-                            "provider": "opennews",
-                            "status": "ready",
-                            "score": 95,
-                        },
-                        "token_mentions_json": [{"resolution_status": "known_symbol", "display_symbol": "BTC"}],
-                        "fact_candidates_json": [],
-                    }
-                ]
-            )
+            row = {
+                "news_item_id": "news-provider",
+                "published_at_ms": NOW_MS - 1_000,
+                "source_watermark_ms": NOW_MS - 1_000,
+                "lifecycle_status": "processed",
+                "content_class": "crypto_market",
+                "content_classification_json": {"policy_version": "news_content_classification_v1"},
+                "market_scope_json": {
+                    "scope": ["crypto"],
+                    "primary": "crypto",
+                    "status": "classified",
+                    "reason": "crypto_evidence",
+                    "basis": {"crypto_evidence": ["resolved_crypto_target:cex:BTC"]},
+                    "version": "news_market_scope_v1",
+                },
+                "agent_admission_status": "eligible",
+                "agent_admission_reason": "eligible",
+                "agent_admission_json": {
+                    "eligible": True,
+                    "status": "eligible",
+                    "reason": "eligible",
+                    "representative_news_item_id": "news-provider",
+                    "basis": {"market_scope": ["crypto"]},
+                    "version": "news_item_agent_admission_market_v2",
+                },
+                "agent_admission_version": "news_item_agent_admission_market_v2",
+                "provider_type": "opennews",
+                "provider_signal_json": {
+                    "source": "provider",
+                    "provider": "opennews",
+                    "status": "ready",
+                    "score": 95,
+                },
+                "token_mentions_json": [{"resolution_status": "known_symbol", "display_symbol": "BTC"}],
+                "fact_candidates_json": [],
+            }
+            row.update(self.row_overrides)
+            return FakeRowsCursor([row])
         if "FROM news_sources" in sql:
             return FakeRowsCursor([])
         raise AssertionError(f"unexpected SQL: {sql}")

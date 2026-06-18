@@ -465,7 +465,7 @@ def test_worker_factory_wires_news_fetch_by_default() -> None:
     assert isinstance(workers["macro_sync"], MacroSyncWorker)
     assert workers["macro_sync"].wake_emitter is db.wake
     assert not hasattr(workers["macro_sync"], "wake_bus")
-    assert workers["macro_sync"].settings.batch_size == 1
+    assert workers["macro_sync"].settings.batch_size == 3
     assert workers["macro_view_projection"].wake_emitter is db.wake
     assert not hasattr(workers["macro_view_projection"], "wake_bus")
     assert workers["macro_view_projection"].settings.advisory_lock_key == 2026052109

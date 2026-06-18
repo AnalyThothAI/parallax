@@ -520,9 +520,7 @@ def test_news_repository_write_counts_require_real_cursor_rowcount_without_defau
         "delete_page_rows_for_sources",
         "delete_page_rows_without_enabled_observation_edges",
     }
-    count_sources = {
-        function_name: _function_source(path, function_name) for function_name in count_functions
-    }
+    count_sources = {function_name: _function_source(path, function_name) for function_name in count_functions}
     forbidden = (
         'getattr(cursor, "rowcount", 0)',
         'int(getattr(cursor, "rowcount", 0) or 0)',
@@ -579,7 +577,7 @@ def test_news_repository_claim_due_sources_returning_counts_require_cursor_rowco
         ").fetchall()",
         "return len(rows)",
         "claimed_count = len(rows)",
-        "getattr(cursor, \"rowcount\", 0)",
+        'getattr(cursor, "rowcount", 0)',
         "cursor.rowcount or 0",
     )
 
@@ -602,9 +600,9 @@ def test_news_source_upsert_returning_row_requires_cursor_rowcount_match() -> No
     helper_source = _function_source(path, "_required_returning_row")
     forbidden = (
         ").fetchone()",
-        "return {**dict(row), \"status\": status}",
+        'return {**dict(row), "status": status}',
         "return {**dict(row), 'status': status}",
-        "getattr(cursor, \"rowcount\", 0)",
+        'getattr(cursor, "rowcount", 0)',
         "cursor.rowcount or 0",
     )
 
@@ -628,9 +626,9 @@ def test_news_provider_item_upsert_returning_row_requires_cursor_rowcount_match(
     helper_source = _function_source(path, "_required_returning_row")
     forbidden = (
         ").fetchone()",
-        "return {**dict(row), \"status\": status",
+        'return {**dict(row), "status": status',
         "return {**dict(row), 'status': status",
-        "getattr(cursor, \"rowcount\", 0)",
+        'getattr(cursor, "rowcount", 0)',
         "cursor.rowcount or 0",
     )
 
@@ -644,8 +642,7 @@ def test_news_provider_item_upsert_returning_row_requires_cursor_rowcount_match(
     assert "INSERT INTO news_provider_items" in upsert_source
     assert "RETURNING *" in upsert_source
     assert (
-        'return {**returned_row, "status": status, '
-        '"incoming_provider_payload_status": incoming_payload_status}'
+        'return {**returned_row, "status": status, "incoming_provider_payload_status": incoming_payload_status}'
     ) in upsert_source
 
 
@@ -659,7 +656,7 @@ def test_news_canonical_item_upsert_returning_row_requires_cursor_rowcount_match
     helper_source = _function_source(path, "_required_returning_row")
     forbidden = (
         ").fetchone()",
-        "getattr(cursor, \"rowcount\", 0)",
+        'getattr(cursor, "rowcount", 0)',
         "cursor.rowcount or 0",
     )
 
@@ -684,7 +681,7 @@ def test_news_observation_edge_upsert_requires_cursor_rowcount_match() -> None:
     write_source = upsert_source[cursor_start : upsert_source.index("provider_article_remapped_old_item_ids")]
     helper_source = _function_source(path, "_required_rowcount")
     forbidden = (
-        "\n        self.conn.execute(\n            \"\"\"\n            INSERT INTO news_item_observation_edges",
+        '\n        self.conn.execute(\n            """\n            INSERT INTO news_item_observation_edges',
         'getattr(cursor, "rowcount", 0)',
         "cursor.rowcount or 0",
     )
@@ -763,7 +760,7 @@ def test_news_edge_remap_returning_counts_require_cursor_rowcount_match() -> Non
         ").fetchall()",
         'getattr(cursor, "rowcount", 0)',
         "cursor.rowcount or 0",
-        "return [str(row[\"old_news_item_id\"]) for row in rows]",
+        'return [str(row["old_news_item_id"]) for row in rows]',
     )
 
     for source in (material_source, provider_source):
@@ -814,7 +811,7 @@ def test_news_fetch_run_finish_returning_row_requires_cursor_rowcount_match() ->
         ").fetchone()",
         "return dict(row)",
         "if row is None:",
-        "getattr(cursor, \"rowcount\", 0)",
+        'getattr(cursor, "rowcount", 0)',
         "cursor.rowcount or 0",
     )
 
@@ -835,8 +832,8 @@ def test_news_fetch_run_start_requires_insert_and_source_update_rowcounts() -> N
     start_source = _function_source(path, "start_fetch_run")
     helper_source = _function_source(path, "_required_rowcount")
     forbidden = (
-        "\n        self.conn.execute(\n            \"\"\"\n            INSERT INTO news_fetch_runs",
-        "\n        self.conn.execute(\n            \"\"\"\n            UPDATE news_sources",
+        '\n        self.conn.execute(\n            """\n            INSERT INTO news_fetch_runs',
+        '\n        self.conn.execute(\n            """\n            UPDATE news_sources',
         'getattr(cursor, "rowcount", 0)',
         "cursor.rowcount or 0",
     )
@@ -896,8 +893,8 @@ def test_news_page_row_returning_writes_require_cursor_rowcount_match() -> None:
 
     forbidden = (
         "if returned is None:",
-        "elif bool(returned[\"inserted\"]):",
-        "getattr(cursor, \"rowcount\", 0)",
+        'elif bool(returned["inserted"]):',
+        'getattr(cursor, "rowcount", 0)',
         "cursor.rowcount or 0",
     )
 
@@ -908,7 +905,7 @@ def test_news_page_row_returning_writes_require_cursor_rowcount_match() -> None:
     assert "if count != (1 if row is not None else 0):" in helper_source
     assert "returned_row = _optional_returning_row(cursor, returned)" in replace_source
     assert "if returned_row is None:" in replace_source
-    assert "elif bool(returned_row[\"inserted\"]):" in replace_source
+    assert 'elif bool(returned_row["inserted"]):' in replace_source
 
 
 def test_news_current_brief_schema_cleanup_returning_rows_require_cursor_rowcount_match() -> None:
@@ -917,7 +914,7 @@ def test_news_current_brief_schema_cleanup_returning_rows_require_cursor_rowcoun
     helper_source = _function_source(path, "_returned_rowcount")
     forbidden = (
         ").fetchall()",
-        "return [str(row[\"news_item_id\"]) for row in rows]",
+        'return [str(row["news_item_id"]) for row in rows]',
         'getattr(cursor, "rowcount", 0)',
         "cursor.rowcount or 0",
     )
@@ -928,7 +925,7 @@ def test_news_current_brief_schema_cleanup_returning_rows_require_cursor_rowcoun
     assert "RETURNING news_item_id" in cleanup_source
     assert "rows = cursor.fetchall()" in cleanup_source
     assert "_returned_rowcount(cursor, rows)" in cleanup_source
-    assert "cleared_ids = [str(row[\"news_item_id\"]) for row in rows]" in cleanup_source
+    assert 'cleared_ids = [str(row["news_item_id"]) for row in rows]' in cleanup_source
     assert "return cleared_ids" in cleanup_source
     assert "count = _cursor_rowcount(cursor)" in helper_source
     assert 'raise TypeError("news_repository_rowcount_invalid")' in helper_source
@@ -1360,7 +1357,7 @@ def test_news_page_list_requires_projected_page_row_contract_without_public_defa
     )
     forbidden = {
         'payload["agent_brief"] = _public_agent_brief_payload(payload.get("agent_brief"))',
-        'payloads.append(payload)',
+        "payloads.append(payload)",
     }
     offenders = sorted(token for token in forbidden if token in source)
     assert offenders == []

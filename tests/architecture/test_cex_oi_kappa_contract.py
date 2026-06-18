@@ -7,9 +7,7 @@ CEX_OI_REPOSITORY = ROOT / "src/parallax/domains/cex_market_intel/repositories/c
 CEX_DETAIL_REPOSITORY = ROOT / "src/parallax/domains/cex_market_intel/repositories/cex_detail_snapshot_repository.py"
 CEX_DETAIL_BUILDER = ROOT / "src/parallax/domains/cex_market_intel/services/cex_detail_snapshot_builder.py"
 CEX_BINANCE_OI_BUILDER = ROOT / "src/parallax/domains/cex_market_intel/services/binance_oi_radar_builder.py"
-CEX_COINGLASS_DETAIL_ENRICHER = (
-    ROOT / "src/parallax/domains/cex_market_intel/services/coinglass_detail_enricher.py"
-)
+CEX_COINGLASS_DETAIL_ENRICHER = ROOT / "src/parallax/domains/cex_market_intel/services/coinglass_detail_enricher.py"
 CEX_DERIVATIVE_SERIES_REPOSITORY = (
     ROOT / "src/parallax/domains/cex_market_intel/repositories/cex_derivative_series_repository.py"
 )
@@ -45,7 +43,7 @@ def test_cex_oi_board_payload_hash_ignores_computed_runtime_timestamps() -> None
 def test_cex_oi_board_repository_requires_formal_current_identity_without_defaults() -> None:
     text = CEX_OI_REPOSITORY.read_text(encoding="utf-8")
     forbidden = (
-        'board_period = str(period)',
+        "board_period = str(period)",
         '_row_id(board_period, str(row["target_id"]))',
         '"target_id": row["target_id"]',
         '"native_market_id": row["native_market_id"]',
@@ -99,7 +97,7 @@ def test_cex_derivative_series_upsert_skips_unchanged_conflict_rows() -> None:
     text = CEX_DERIVATIVE_SERIES_REPOSITORY.read_text(encoding="utf-8")
 
     assert "written += 1" not in text
-    assert "getattr(cursor, \"rowcount\", default)" not in text
+    assert 'getattr(cursor, "rowcount", default)' not in text
     assert "return default" not in text
     assert "return max(0, int(rowcount))" not in text
     assert "isinstance(rowcount, bool)" in text
@@ -211,10 +209,10 @@ def test_cex_detail_snapshot_builder_requires_identity_before_current_snapshot()
         '_list_of_dicts(row.get("level_bands"))',
         'str(period or "").strip().lower()',
         'source = str(row.get("observed_at_source") or "").strip().lower()',
-        'observed_at_ms is None or observed_at_ms == computed_at_ms',
+        "observed_at_ms is None or observed_at_ms == computed_at_ms",
         'or "unknown"',
         'band.get("kind") or "level"',
-        'if price is None:\n            continue',
+        "if price is None:\n            continue",
         '_strings(row.get("degraded_reasons"))',
         "def _strings(value: Any)",
     )
@@ -223,7 +221,7 @@ def test_cex_detail_snapshot_builder_requires_identity_before_current_snapshot()
         '_required_symbol(row, "base_symbol")',
         '_required_symbol(row, "quote_symbol")',
         '_required_status(row, "coinglass_status")',
-        '_required_period(period)',
+        "_required_period(period)",
         "_reject_legacy_json_aliases(row)",
         "_required_observed_at_ms(row)",
         "_required_observed_at_source(row)",
@@ -232,9 +230,7 @@ def test_cex_detail_snapshot_builder_requires_identity_before_current_snapshot()
         'raise ValueError("cex_detail_snapshot_identity_required:target_id")',
         '_required_text(exchange, "exchange")',
     )
-    worker_required = (
-        'build_cex_detail_snapshot(row=row, computed_at_ms=now, period=period, exchange="binance")',
-    )
+    worker_required = ('build_cex_detail_snapshot(row=row, computed_at_ms=now, period=period, exchange="binance")',)
 
     assert [token for token in forbidden if token in builder_text] == []
     assert 'if row.get("native_market_id")' not in worker_text
@@ -245,15 +241,15 @@ def test_cex_detail_snapshot_builder_requires_identity_before_current_snapshot()
 def test_binance_oi_radar_builder_requires_market_identity_before_provider_io() -> None:
     text = CEX_BINANCE_OI_BUILDER.read_text(encoding="utf-8")
     forbidden = (
-        'if not symbol:\n            continue',
+        "if not symbol:\n            continue",
         'str(route.get("native_market_id") or "").strip().upper()',
         'str(route.get("base_symbol") or "").strip().upper()',
     )
     required = (
         '_required_symbol(route, "native_market_id")',
         '_required_symbol(route, "base_symbol")',
-        'client.list_24h_tickers()',
-        'client.list_funding_premium()',
+        "client.list_24h_tickers()",
+        "client.list_funding_premium()",
     )
 
     assert [token for token in forbidden if token in text] == []

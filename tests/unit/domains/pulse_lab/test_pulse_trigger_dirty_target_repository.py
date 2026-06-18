@@ -401,14 +401,14 @@ def test_repository_session_exposes_pulse_trigger_dirty_targets() -> None:
             "enqueue_targets",
             lambda repository: repository.enqueue_targets(
                 [
-                        {
-                            "target_type": "Asset",
-                            "target_id": "asset-1",
-                            "window": "1h",
-                            "scope": "all",
-                            "source_watermark_ms": 10,
-                        }
-                    ],
+                    {
+                        "target_type": "Asset",
+                        "target_id": "asset-1",
+                        "window": "1h",
+                        "scope": "all",
+                        "source_watermark_ms": 10,
+                    }
+                ],
                 reason="token_radar_changed",
                 now_ms=1_700_000_000_000,
             ),

@@ -110,7 +110,10 @@ def test_json_object_strategy_reasks_within_same_strategy_after_validation_failu
         assert len(completions.calls) == 2
         assert outcome.audit_extra["safety_net_used"] is True
         assert outcome.audit_extra["safety_net_retries"] == 1
-        assert "failed application validation" in completions.calls[1]["messages"][-1]["content"]
+        retry_message = completions.calls[1]["messages"][-1]["content"]
+        assert "failed application validation" in retry_message
+        assert "schema already provided" in retry_message
+        assert '"properties"' not in retry_message
 
     asyncio.run(scenario())
 

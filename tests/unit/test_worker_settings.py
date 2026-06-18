@@ -526,6 +526,9 @@ def test_agent_runtime_capability_fields_default_to_model_registry() -> None:
 
     assert settings.agent_runtime.defaults.provider_family is None
     assert settings.agent_runtime.defaults.client_validation_retries is None
+    assert settings.agent_runtime.defaults.max_tokens is None
+    assert settings.agent_runtime.lanes["pulse.decision"].max_tokens is None
+    assert settings.agent_runtime.lanes["news.item_brief"].max_tokens == 2200
 
 
 def test_agent_runtime_default_model_uses_registered_capability_profile() -> None:
@@ -538,6 +541,10 @@ def test_agent_runtime_default_model_uses_registered_capability_profile() -> Non
     assert profile.request_options.extra_body == {"thinking": {"type": "disabled"}}
 
 
+def test_platform_agent_runtime_policy_default_matches_workers_settings_default() -> None:
+    assert AgentRuntimePolicy().defaults.model == WorkersSettings().agent_runtime.defaults.model
+
+
 def test_agent_runtime_lane_accepts_capability_overrides() -> None:
     settings = WorkersSettings(
         agent_runtime={
@@ -545,6 +552,7 @@ def test_agent_runtime_lane_accepts_capability_overrides() -> None:
                 "news.item_brief": {
                     "provider_family": "deepseek",
                     "client_validation_retries": 2,
+                    "max_tokens": 1800,
                 }
             }
         }
@@ -553,6 +561,7 @@ def test_agent_runtime_lane_accepts_capability_overrides() -> None:
     lane = settings.agent_runtime.lanes["news.item_brief"]
     assert lane.provider_family == "deepseek"
     assert lane.client_validation_retries == 2
+    assert lane.max_tokens == 1800
 
 
 def test_agent_runtime_rejects_legacy_output_strategy_field() -> None:

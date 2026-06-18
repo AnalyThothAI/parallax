@@ -600,9 +600,7 @@ _MODULE_CONFIGS = {
                 ),
             ),
         ),
-        related_routes=(
-            "/macro/rates/fed-funds",
-        ),
+        related_routes=("/macro/rates/fed-funds",),
     ),
     "economy/gdp": MacroModuleConfig(
         module_id="economy/gdp",

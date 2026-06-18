@@ -556,9 +556,7 @@ class NewsItemBriefWorker(WorkerBase):
                 news_item_ids=[news_item_id],
                 reason="news_item_agent_admission_updated",
                 now_ms=int(now_ms),
-                source_watermark_ms_by_news_item_id={
-                    news_item_id: _page_dirty_source_watermark_ms(target, item=item)
-                },
+                source_watermark_ms_by_news_item_id={news_item_id: _page_dirty_source_watermark_ms(target, item=item)},
                 commit=False,
             )
             mark_work_done(repos, [target], now_ms=int(now_ms), commit=False)

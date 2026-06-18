@@ -5201,9 +5201,7 @@ def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
         int(payload["agent_brief_computed_at_ms"]) if payload.get("agent_brief_computed_at_ms") is not None else None
     )
     payload["market_scope_json"] = _json(_required_page_mapping(payload, "market_scope"))
-    agent_admission = _agent_admission_mapping_payload(
-        _required_page_mapping(payload, "agent_admission")
-    )
+    agent_admission = _agent_admission_mapping_payload(_required_page_mapping(payload, "agent_admission"))
     payload["agent_admission_status"] = str(payload.get("agent_admission_status") or agent_admission["status"])
     payload["agent_admission_reason"] = str(payload.get("agent_admission_reason") or agent_admission["reason"])
     agent_admission["status"] = payload["agent_admission_status"]

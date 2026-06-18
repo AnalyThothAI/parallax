@@ -127,9 +127,7 @@ def test_news_page_row_payload_hash_rejects_legacy_story_keys_before_write() -> 
         ("source", []),
     ],
 )
-def test_news_page_row_payload_requires_formal_json_sections_before_write(
-    field_name: str, bad_value: object
-) -> None:
+def test_news_page_row_payload_requires_formal_json_sections_before_write(field_name: str, bad_value: object) -> None:
     conn = CapturingConnection()
     repo = NewsRepository(conn)
     row = _valid_news_page_row()

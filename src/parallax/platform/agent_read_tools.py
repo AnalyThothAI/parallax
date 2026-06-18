@@ -106,7 +106,14 @@ def build_default_agent_read_tool_registry() -> AgentReadToolRegistry:
                     "additionalProperties": False,
                 },
                 sql="""
-                    SELECT news_item_id, status, headline_zh, computed_at_ms
+                    SELECT news_item_id,
+                           status,
+                           direction,
+                           decision_class,
+                           brief_json ->> 'title_zh' AS title_zh,
+                           brief_json ->> 'summary_zh' AS summary_zh,
+                           brief_json ->> 'market_read_zh' AS market_read_zh,
+                           computed_at_ms
                     FROM news_item_agent_briefs
                     WHERE (%(status)s IS NULL OR status = %(status)s)
                     ORDER BY computed_at_ms DESC

@@ -78,9 +78,9 @@ def test_narrative_post_semantics_hydration_uses_batched_keyset_sql() -> None:
 
     forbidden = (
         "for post in posts:\n            row = self.conn.execute",
-        "post[\"event_id\"]",
-        "post[\"target_type\"]",
-        "post[\"target_id\"]",
+        'post["event_id"]',
+        'post["target_type"]',
+        'post["target_id"]',
     )
     required = (
         "WITH input_posts AS",
@@ -225,7 +225,7 @@ def test_api_scope_validator_rejects_invalid_scope_without_matched_fallback() ->
     )
     required = (
         "def _scope(value: str) -> str:",
-        "raise ApiBadRequest(\"invalid_scope\", field=\"scope\")",
+        'raise ApiBadRequest("invalid_scope", field="scope")',
     )
 
     assert [token for token in forbidden if token in source] == []
@@ -245,11 +245,11 @@ def test_cex_detail_api_requires_formal_query_identity_without_truthy_fallbacks(
     required = (
         "target_query = _cex_detail_target_query(",
         "market_query = _cex_detail_market_query(",
-        "raise ApiBadRequest(\"invalid_cex_detail_query\", field=\"target_type\")",
-        "raise ApiBadRequest(\"invalid_cex_detail_query\", field=\"target_id\")",
-        "raise ApiBadRequest(\"invalid_cex_detail_query\", field=\"exchange\")",
-        "raise ApiBadRequest(\"invalid_cex_detail_query\", field=\"symbol\")",
-        "raise ApiBadRequest(\"invalid_cex_detail_query\", field=\"query\")",
+        'raise ApiBadRequest("invalid_cex_detail_query", field="target_type")',
+        'raise ApiBadRequest("invalid_cex_detail_query", field="target_id")',
+        'raise ApiBadRequest("invalid_cex_detail_query", field="exchange")',
+        'raise ApiBadRequest("invalid_cex_detail_query", field="symbol")',
+        'raise ApiBadRequest("invalid_cex_detail_query", field="query")',
     )
 
     assert [token for token in forbidden if token in source] == []
@@ -264,7 +264,7 @@ def test_cex_radar_board_api_requires_formal_repository_payload_without_defaults
     forbidden = (
         'board.get("rows") or []',
         'payload.pop("score_components_json", None)',
-        'components or {}',
+        "components or {}",
     )
     required = (
         "_required_board_rows(board)",

@@ -803,6 +803,7 @@ class AgentLaneSettings(BaseModel):
     model: str | None = None
     provider_family: Literal["litellm", "deepseek"] | None = None
     client_validation_retries: int | None = Field(default=None, ge=0)
+    max_tokens: int | None = Field(default=None, ge=1)
     priority: Literal["high", "normal", "bulk", "low"] = "normal"
     max_concurrency: int = Field(default=1, ge=1)
     timeout_seconds: float = Field(default=180.0, ge=1)
@@ -833,7 +834,12 @@ def _default_agent_lanes() -> dict[str, AgentLaneSettings]:
             max_concurrency=1,
             timeout_seconds=240.0,
         ),
-        "news.item_brief": AgentLaneSettings(priority="low", max_concurrency=1, timeout_seconds=180.0),
+        "news.item_brief": AgentLaneSettings(
+            priority="low",
+            max_concurrency=1,
+            timeout_seconds=180.0,
+            max_tokens=2200,
+        ),
     }
 
 
@@ -843,6 +849,7 @@ class AgentRuntimeDefaultsSettings(BaseModel):
     model: str = "deepseek-v4-flash"
     provider_family: Literal["litellm", "deepseek"] | None = None
     client_validation_retries: int | None = Field(default=None, ge=0)
+    max_tokens: int | None = Field(default=None, ge=1)
     disable_thinking: bool = True
     include_usage: bool = True
 
@@ -1868,6 +1875,7 @@ agent_runtime:
       priority: "low"
       max_concurrency: 1
       timeout_seconds: 180.0
+      max_tokens: 2200
 collector:
   enabled: true
   mode: "continuous"

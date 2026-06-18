@@ -977,6 +977,7 @@ own maps next to the code they describe, and this file links to them.
 | News intelligence | [`src/parallax/domains/news_intel/ARCHITECTURE.md`](../src/parallax/domains/news_intel/ARCHITECTURE.md) | Configured source ingestion, raw news item facts, token mention observations, fact candidates, item briefs, and the News page read model. |
 | Macro intelligence | [`src/parallax/domains/macro_intel/ARCHITECTURE.md`](../src/parallax/domains/macro_intel/ARCHITECTURE.md) | `macro_sync` fact ingest, macro observation facts, deterministic `macro_regime_v4` feature/regime/scenario scoring, module v3 views, and Macro projection ownership. |
 | Account quality | [`src/parallax/domains/account_quality/ARCHITECTURE.md`](../src/parallax/domains/account_quality/ARCHITECTURE.md) | Account profile/stat/snapshot read-model ownership, ops-only backfill, and public account-quality read services. |
+| Watchlist intelligence | [`src/parallax/domains/watchlist_intel/ARCHITECTURE.md`](../src/parallax/domains/watchlist_intel/ARCHITECTURE.md) | Watchlist repository and public watchlist read surfaces. |
 
 When a subsystem needs more than a short row here, add
 `src/parallax/domains/<domain>/ARCHITECTURE.md` and link it from this

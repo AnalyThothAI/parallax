@@ -387,9 +387,7 @@ class FakeTransaction:
 
 class FakeTokenEvidence:
     def __init__(self, evidence_by_intent=None):
-        self.evidence_by_intent = {
-            str(intent_id): list(rows) for intent_id, rows in (evidence_by_intent or {}).items()
-        }
+        self.evidence_by_intent = {str(intent_id): list(rows) for intent_id, rows in (evidence_by_intent or {}).items()}
         self.batch_calls: list[tuple[str, ...]] = []
         self.single_calls: list[str] = []
 

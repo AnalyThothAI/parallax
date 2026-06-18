@@ -53,6 +53,21 @@ def test_registered_model_profile_preserves_request_options_when_overriding_capa
     assert profile.request_options.extra_body == {"thinking": {"type": "disabled"}}
 
 
+def test_registered_model_profile_merges_request_option_overrides() -> None:
+    from parallax.platform.agent_capabilities import (
+        AgentCapabilityProfile,
+        AgentRequestOptions,
+        resolve_agent_capability_profile,
+    )
+
+    override = AgentCapabilityProfile(request_options=AgentRequestOptions(max_tokens=2200))
+
+    profile = resolve_agent_capability_profile(model="deepseek-v4-flash", override=override)
+
+    assert profile.request_options.extra_body == {"thinking": {"type": "disabled"}}
+    assert profile.request_options.max_tokens == 2200
+
+
 def test_profile_rejects_legacy_output_strategy_fields() -> None:
     from parallax.platform.agent_capabilities import AgentCapabilityProfile
 

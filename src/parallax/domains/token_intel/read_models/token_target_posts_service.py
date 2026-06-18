@@ -57,11 +57,7 @@ class TokenTargetPostsService:
         resolved_now_ms = int(now_ms or time.time() * 1000)
         window_ms = _window_ms(window)
         watched_only = _watched_only(scope)
-        since_ms = (
-            0
-            if post_range in {"since_ignition", "all_history"}
-            else resolved_now_ms - window_ms
-        )
+        since_ms = 0 if post_range in {"since_ignition", "all_history"} else resolved_now_ms - window_ms
         rows = self.targets.timeline_rows(
             target_type=target_type,
             target_id=target_id,

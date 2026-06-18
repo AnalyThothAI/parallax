@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from parallax.platform.agent_capabilities import (
     AgentCapabilityProfile,
     AgentProviderFamily,
+    AgentRequestOptions,
     resolve_agent_capability_profile,
 )
 from parallax.platform.agent_hashing import json_sha256
@@ -55,6 +56,7 @@ class AgentLanePolicy(BaseModel):
     model: str | None = None
     provider_family: AgentProviderFamily | None = None
     client_validation_retries: int | None = Field(default=None, ge=0)
+    max_tokens: int | None = Field(default=None, ge=1)
     priority: str = "normal"
     max_concurrency: int = Field(default=1, ge=1)
     timeout_seconds: float = Field(default=180.0, ge=1)
@@ -73,9 +75,10 @@ class AgentLanePolicy(BaseModel):
 class AgentRuntimeDefaultsPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    model: str = "qwen3.6"
+    model: str = "deepseek-v4-flash"
     provider_family: AgentProviderFamily | None = None
     client_validation_retries: int | None = Field(default=None, ge=0)
+    max_tokens: int | None = Field(default=None, ge=1)
     disable_thinking: bool = True
     include_usage: bool = True
 
@@ -115,6 +118,7 @@ class AgentRuntimePolicy(BaseModel):
                         lane_policy.client_validation_retries,
                         self.defaults.client_validation_retries,
                     ),
+                    max_tokens=_first_non_none(lane_policy.max_tokens, self.defaults.max_tokens),
                 ),
             )
         if _defaults_have_capability_override(self.defaults):
@@ -123,6 +127,7 @@ class AgentRuntimePolicy(BaseModel):
                 override=_capability_profile_from_parts(
                     provider_family=self.defaults.provider_family,
                     client_validation_retries=self.defaults.client_validation_retries,
+                    max_tokens=self.defaults.max_tokens,
                 ),
             )
         return resolve_agent_capability_profile(model=model)
@@ -279,23 +284,34 @@ ReleaseCallback = Callable[[], None]
 
 
 def _lane_has_capability_override(lane_policy: AgentLanePolicy) -> bool:
-    return lane_policy.provider_family is not None or lane_policy.client_validation_retries is not None
+    return (
+        lane_policy.provider_family is not None
+        or lane_policy.client_validation_retries is not None
+        or lane_policy.max_tokens is not None
+    )
 
 
 def _defaults_have_capability_override(defaults: AgentRuntimeDefaultsPolicy) -> bool:
-    return defaults.provider_family is not None or defaults.client_validation_retries is not None
+    return (
+        defaults.provider_family is not None
+        or defaults.client_validation_retries is not None
+        or defaults.max_tokens is not None
+    )
 
 
 def _capability_profile_from_parts(
     *,
     provider_family: AgentProviderFamily | None,
     client_validation_retries: int | None,
+    max_tokens: int | None,
 ) -> AgentCapabilityProfile:
     payload: dict[str, Any] = {}
     if provider_family is not None:
         payload["provider_family"] = provider_family
     if client_validation_retries is not None:
         payload["client_validation_retries"] = client_validation_retries
+    if max_tokens is not None:
+        payload["request_options"] = AgentRequestOptions(max_tokens=max_tokens)
     return AgentCapabilityProfile(**payload)
 
 

@@ -906,7 +906,7 @@ def test_news_item_process_provider_only_non_crypto_row_enqueues_page_and_brief(
                     "target_kind": "news_item",
                     "target_id": "news-spacex",
                     "source_watermark_ms": NOW_MS - 1_000,
-                    "priority": 100,
+                    "priority": 35,
                 }
             ],
             "reason": "news_item_processed",
@@ -987,7 +987,7 @@ def test_news_item_process_admitted_crypto_row_enqueues_page_and_brief_with_stor
                     "target_kind": "news_item",
                     "target_id": "news-zec",
                     "source_watermark_ms": NOW_MS - 1_000,
-                    "priority": 100,
+                    "priority": 34,
                 }
             ],
             "reason": "news_item_processed",

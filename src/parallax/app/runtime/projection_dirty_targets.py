@@ -148,7 +148,7 @@ def _selected_projections(requested: str, available: tuple[str, ...]) -> tuple[s
 
 
 def _row_brief_eligible(row: Mapping[str, Any]) -> bool:
-    return str(row.get("agent_admission_status") or "").strip().lower() == "eligible"
+    return str(row.get("agent_admission_status") or "").strip().lower() in {"eligible", "eligible_refresh"}
 
 
 def _news_item_brief_priority(row: Mapping[str, Any]) -> int:

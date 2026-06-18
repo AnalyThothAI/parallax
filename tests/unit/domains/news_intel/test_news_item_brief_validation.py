@@ -530,6 +530,46 @@ def test_validation_rejects_ready_without_publishable_summary_or_market_read() -
     } in result.errors
 
 
+def test_validation_rejects_ready_driver_without_market_structure() -> None:
+    packet = _crypto_packet()
+    result = validate_news_item_brief_output(
+        payload=_ready_payload(market_domains=[], transmission_paths=[]),
+        packet=packet,
+        audit={},
+    )
+
+    assert result.publishable is False
+    assert result.status == "failed"
+    assert {
+        "code": "missing_market_domains",
+        "message": "ready driver/watch output requires market_domains",
+    } in result.errors
+    assert {
+        "code": "missing_transmission_path",
+        "message": "ready driver/watch output requires a source-backed transmission path",
+    } in result.errors
+
+
+def test_validation_rejects_ready_driver_transmission_path_without_evidence() -> None:
+    packet = _crypto_packet()
+    payload = _ready_payload()
+    payload["transmission_paths"] = [
+        {
+            **payload["transmission_paths"][0],
+            "evidence_refs": [],
+        }
+    ]
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is False
+    assert result.status == "failed"
+    assert {
+        "code": "missing_transmission_path_evidence",
+        "message": "ready driver/watch transmission path requires at least one valid evidence ref",
+    } in result.errors
+
+
 def test_validation_drops_unsupported_market_impacts_into_data_gaps() -> None:
     packet = _crypto_packet()
     payload = _ready_payload(
