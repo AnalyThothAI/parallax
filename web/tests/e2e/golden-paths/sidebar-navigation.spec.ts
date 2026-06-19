@@ -34,14 +34,7 @@ test.describe("desktop sidebar navigation", () => {
     const primaryNavigation = page.getByRole("navigation", { name: "Primary navigation" });
     await expect(primaryNavigation).toBeVisible();
 
-    for (const routeName of [
-      "Token Radar",
-      "Stocks",
-      "News",
-      "宏观",
-      "Watchlist",
-      "Ops",
-    ]) {
+    for (const routeName of ["Token Radar", "Stocks", "News", "宏观", "Watchlist", "Ops"]) {
       await expect(primaryNavigation.getByRole("link", { name: routeName })).toBeVisible();
     }
 
