@@ -3235,7 +3235,7 @@ class NewsRepository:
         if not target_ids:
             return []
         rows = self.conn.execute(
-            """
+            f"""
             WITH target_items AS (
               SELECT
 {_NEWS_ITEM_WORKER_COLUMNS_SQL}

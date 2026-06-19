@@ -28,6 +28,8 @@ def test_page_projection_loader_reads_source_payload_for_claimed_targets() -> No
 
     assert rows == []
     assert "WHERE items.news_item_id = ANY(%s::text[])" in conn.sql
+    assert "{_NEWS_ITEM_WORKER_COLUMNS_SQL}" not in conn.sql
+    assert "{_NEWS_ITEM_WORKER_JSON_SQL}" not in conn.sql
     assert "SELECT items.*" not in conn.sql
     assert "to_jsonb(items.*)" not in conn.sql
     assert "JOIN LATERAL" in conn.sql
