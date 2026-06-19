@@ -94,19 +94,22 @@ def build_default_agent_read_tool_registry() -> AgentReadToolRegistry:
                 """,
             ),
             ReadOnlySqlAgentTool(
-                name="news.current_briefs",
-                description="Read current News item agent briefs for research context.",
-                source_tables=("news_item_agent_briefs",),
+                name="news.story_current_briefs",
+                description="Read current News story agent briefs for bounded research context.",
+                source_tables=("news_story_agent_briefs",),
                 parameters_schema={
                     "type": "object",
                     "properties": {
                         "status": {"type": "string"},
+                        "story_key": {"type": "string"},
                         "limit": {"type": "integer", "minimum": 1, "maximum": 100},
                     },
                     "additionalProperties": False,
                 },
                 sql="""
-                    SELECT news_item_id,
+                    SELECT story_brief_key,
+                           story_key,
+                           representative_news_item_id,
                            status,
                            direction,
                            decision_class,
@@ -114,8 +117,9 @@ def build_default_agent_read_tool_registry() -> AgentReadToolRegistry:
                            brief_json ->> 'summary_zh' AS summary_zh,
                            brief_json ->> 'market_read_zh' AS market_read_zh,
                            computed_at_ms
-                    FROM news_item_agent_briefs
+                    FROM news_story_agent_briefs
                     WHERE (%(status)s IS NULL OR status = %(status)s)
+                      AND (%(story_key)s IS NULL OR story_key = %(story_key)s)
                     ORDER BY computed_at_ms DESC
                     LIMIT %(limit)s
                 """,

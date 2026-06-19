@@ -30,7 +30,6 @@ from parallax.domains.news_intel.types.news_extraction import NewsEntity, NewsFa
 from parallax.domains.news_intel.types.news_item_agent_admission import NewsItemAgentAdmission
 from parallax.domains.news_intel.types.news_item_brief_contract import (
     current_news_item_brief_sql_predicate,
-    is_current_news_item_brief_contract,
 )
 from parallax.domains.news_intel.types.news_market_scope import NewsMarketScope
 from parallax.domains.news_intel.types.news_material_identity import (
@@ -176,9 +175,6 @@ _NEWS_ITEM_AGENT_RUN_JSON_SQL = (
 _MATERIAL_MATCH_WINDOW_MS = 600_000
 _STORY_PROJECTION_WINDOW_MS = 72 * 60 * 60 * 1000
 _CURRENT_NEWS_ITEM_BRIEF_CURRENT_BRIEF_SQL = current_news_item_brief_sql_predicate("current_brief")
-_CURRENT_NEWS_ITEM_BRIEF_DUPLICATE_CURRENT_BRIEF_SQL = current_news_item_brief_sql_predicate("duplicate_current_brief")
-_CURRENT_NEWS_ITEM_BRIEF_STORY_CURRENT_BRIEF_SQL = current_news_item_brief_sql_predicate("story_current_brief")
-_CURRENT_NEWS_ITEM_BRIEF_BRIEFS_SQL = current_news_item_brief_sql_predicate("briefs")
 
 
 def _news_repository_transaction(conn: Any) -> AbstractContextManager[Any]:
@@ -248,10 +244,6 @@ class NewsRepository:
         now_ms: int,
         commit: bool = True,
     ) -> dict[str, Any]:
-        existing = self.conn.execute(
-            "SELECT * FROM news_sources WHERE source_id = %s",
-            (str(source_id),),
-        ).fetchone()
         payload = {
             "source_id": str(source_id),
             "provider_type": str(provider_type),
@@ -265,10 +257,14 @@ class NewsRepository:
             "refresh_interval_seconds": max(1, int(refresh_interval_seconds)),
             "coverage_tags_json": list(normalize_string_tuple(coverage_tags)),
             "asset_universe_json": list(normalize_string_tuple(asset_universe)),
-            "authority_scope_json": _json_dict(authority_scope),
-            "fetch_policy_json": _json_dict(fetch_policy),
-            "cost_policy_json": _json_dict(cost_policy),
+            "authority_scope_json": _optional_news_source_policy_mapping(authority_scope, "authority_scope"),
+            "fetch_policy_json": _optional_news_source_policy_mapping(fetch_policy, "fetch_policy"),
+            "cost_policy_json": _optional_news_source_policy_mapping(cost_policy, "cost_policy"),
         }
+        existing = self.conn.execute(
+            "SELECT * FROM news_sources WHERE source_id = %s",
+            (payload["source_id"],),
+        ).fetchone()
         status = "inserted"
         if existing is not None:
             status = "updated" if _source_material_changed(existing, payload) else "duplicate"
@@ -422,6 +418,58 @@ class NewsRepository:
         ).fetchall()
         return [str(row["news_item_id"]) for row in rows]
 
+    def list_news_item_source_watermarks_for_sources(self, *, source_ids: Sequence[str]) -> list[dict[str, Any]]:
+        normalized_ids = list(dict.fromkeys(str(source_id) for source_id in source_ids if str(source_id)))
+        if not normalized_ids:
+            return []
+        rows = self.conn.execute(
+            """
+            SELECT DISTINCT
+                   edges.news_item_id,
+                   GREATEST(
+                     COALESCE(NULLIF(items.published_at_ms, 0), 0),
+                     COALESCE(NULLIF(items.fetched_at_ms, 0), 0)
+                   )::bigint AS source_watermark_ms
+              FROM news_item_observation_edges AS edges
+              JOIN news_items AS items ON items.news_item_id = edges.news_item_id
+             WHERE edges.source_id = ANY(%s::text[])
+             ORDER BY edges.news_item_id ASC
+            """,
+            (normalized_ids,),
+        ).fetchall()
+        return [
+            {
+                "news_item_id": str(row["news_item_id"]),
+                "source_watermark_ms": _required_positive_news_item_source_watermark(row),
+            }
+            for row in rows
+        ]
+
+    def list_news_item_source_watermarks(self, *, news_item_ids: Sequence[str]) -> list[dict[str, Any]]:
+        normalized_ids = list(dict.fromkeys(str(news_item_id) for news_item_id in news_item_ids if str(news_item_id)))
+        if not normalized_ids:
+            return []
+        rows = self.conn.execute(
+            """
+            SELECT items.news_item_id,
+                   GREATEST(
+                     COALESCE(NULLIF(items.published_at_ms, 0), 0),
+                     COALESCE(NULLIF(items.fetched_at_ms, 0), 0)
+                   )::bigint AS source_watermark_ms
+              FROM news_items AS items
+             WHERE items.news_item_id = ANY(%s::text[])
+             ORDER BY items.news_item_id ASC
+            """,
+            (normalized_ids,),
+        ).fetchall()
+        return [
+            {
+                "news_item_id": str(row["news_item_id"]),
+                "source_watermark_ms": _required_positive_news_item_source_watermark(row),
+            }
+            for row in rows
+        ]
+
     def list_source_ids_for_news_items(self, *, news_item_ids: Sequence[str]) -> list[str]:
         normalized_ids = list(dict.fromkeys(str(news_item_id) for news_item_id in news_item_ids if str(news_item_id)))
         if not normalized_ids:
@@ -437,17 +485,47 @@ class NewsRepository:
         ).fetchall()
         return [str(row["source_id"]) for row in rows]
 
-    def list_news_item_ids_for_canonical_rebuild(self, *, limit: int) -> list[str]:
+    def list_news_items_for_canonical_rebuild(self, *, limit: int) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
-            SELECT news_item_id
-              FROM news_items
+            WITH candidates AS (
+              SELECT items.news_item_id,
+                     items.story_key,
+                     items.updated_at_ms,
+                     GREATEST(
+                       COALESCE(NULLIF(items.published_at_ms, 0), 0),
+                       COALESCE(NULLIF(items.fetched_at_ms, 0), 0)
+                     )::bigint AS source_watermark_ms
+                FROM news_items AS items
+               WHERE items.lifecycle_status = 'processed'
+                 AND items.story_key <> ''
+                 AND items.story_identity_version = %s
+                 AND EXISTS (
+                   SELECT 1
+                     FROM news_item_observation_edges AS edges
+                     JOIN news_sources AS edge_sources ON edge_sources.source_id = edges.source_id
+                    WHERE edges.news_item_id = items.news_item_id
+                      AND edge_sources.enabled = true
+                 )
+            )
+            SELECT news_item_id,
+                   story_key,
+                   source_watermark_ms
+              FROM candidates
+             WHERE source_watermark_ms > 0
              ORDER BY updated_at_ms DESC, news_item_id ASC
              LIMIT %s
             """,
-            (max(0, int(limit)),),
+            (NEWS_STORY_IDENTITY_VERSION, max(0, int(limit))),
         ).fetchall()
-        return [str(row["news_item_id"]) for row in rows]
+        return [
+            {
+                "news_item_id": str(row["news_item_id"]),
+                "story_key": str(row["story_key"] or ""),
+                "source_watermark_ms": _required_positive_news_item_source_watermark(row),
+            }
+            for row in rows
+        ]
 
     @_news_repository_write
     def claim_due_sources(
@@ -530,10 +608,14 @@ class NewsRepository:
         extra_json: Mapping[str, Any] | None = None,
         commit: bool = True,
     ) -> dict[str, Any]:
-        fetched = _first_int(fetched_count, items_seen)
-        inserted = _first_int(inserted_count, items_inserted)
-        updated = _first_int(updated_count, items_updated)
-        duplicates = _first_int(duplicate_count)
+        finished = _required_fetch_run_finished_at_ms(finished_at_ms)
+        finished_status = _required_fetch_run_completion_status(status)
+        fetched = _required_fetch_run_count("fetched_count", fetched_count, items_seen)
+        inserted = _required_fetch_run_count("inserted_count", inserted_count, items_inserted)
+        updated = _required_fetch_run_count("updated_count", updated_count, items_updated)
+        duplicates = _required_fetch_run_count("duplicate_count", duplicate_count)
+        response_status = _optional_fetch_run_http_status(http_status)
+        extra_payload = _optional_fetch_run_extra_json(extra_json)
         cursor = self.conn.execute(
             """
             UPDATE news_fetch_runs
@@ -550,21 +632,21 @@ class NewsRepository:
             RETURNING *
             """,
             (
-                int(finished_at_ms),
-                status,
+                finished,
+                finished_status,
                 fetched,
                 inserted,
                 updated,
                 duplicates,
-                int(http_status) if http_status is not None else None,
+                response_status,
                 _compact_error(error),
-                _json(dict(extra_json or {})),
+                _json(extra_payload),
                 fetch_run_id,
             ),
         )
         row = cursor.fetchone()
         returned_row = _required_returning_row(cursor, row)
-        if status == "success":
+        if finished_status == "success":
             self.conn.execute(
                 """
                 UPDATE news_sources
@@ -575,7 +657,7 @@ class NewsRepository:
                        updated_at_ms = %s
                  WHERE source_id = %s
                 """,
-                (int(finished_at_ms), int(finished_at_ms), int(finished_at_ms), source_id),
+                (finished, finished, finished, source_id),
             )
         else:
             self.conn.execute(
@@ -587,7 +669,7 @@ class NewsRepository:
                        updated_at_ms = %s
                  WHERE source_id = %s
                 """,
-                (_compact_error(error), int(finished_at_ms), int(finished_at_ms), source_id),
+                (_compact_error(error), finished, finished, source_id),
             )
         return returned_row
 
@@ -629,8 +711,8 @@ class NewsRepository:
         if row is None:
             return {}
         cursor = _json_dict(row["sync_cursor_json"])
-        cursor["high_watermark_ms"] = int(row["sync_high_watermark_ms"] or 0)
-        cursor["overlap_ms"] = int(row["sync_overlap_ms"] or 0)
+        cursor["high_watermark_ms"] = _required_source_sync_cursor_nonnegative_int(row, "sync_high_watermark_ms")
+        cursor["overlap_ms"] = _required_source_sync_cursor_nonnegative_int(row, "sync_overlap_ms")
         diagnostics = _json_dict(row["sync_diagnostics_json"])
         if diagnostics:
             cursor["diagnostics"] = diagnostics
@@ -2116,6 +2198,83 @@ class NewsRepository:
         returned_row = _required_returning_row(cursor, row)
         return returned_row
 
+    @_news_repository_write
+    def insert_news_story_agent_run(self, **payload: Any) -> dict[str, Any]:
+        payload.pop("commit", None)
+        cursor = self.conn.execute(
+            """
+            INSERT INTO news_story_agent_runs (
+              run_id, story_brief_key, story_key, story_identity_version, representative_news_item_id,
+              member_news_item_ids_json, provider, model, backend, execution_trace_id, workflow_name,
+              agent_name, lane, artifact_version_hash, prompt_version, schema_version,
+              validator_version, guardrail_version, input_hash, output_hash, execution_started,
+              status, outcome, error_class, error, request_json, response_json,
+              validation_errors_json, trace_metadata_json, usage_json, latency_ms,
+              started_at_ms, finished_at_ms, created_at_ms
+            )
+            VALUES (
+              %(run_id)s, %(story_brief_key)s, %(story_key)s, %(story_identity_version)s,
+              %(representative_news_item_id)s, %(member_news_item_ids_json)s,
+              %(provider)s, %(model)s, %(backend)s, %(execution_trace_id)s,
+              %(workflow_name)s, %(agent_name)s, %(lane)s, %(artifact_version_hash)s,
+              %(prompt_version)s, %(schema_version)s, %(validator_version)s, %(guardrail_version)s,
+              %(input_hash)s, %(output_hash)s, %(execution_started)s, %(status)s, %(outcome)s,
+              %(error_class)s, %(error)s, %(request_json)s, %(response_json)s,
+              %(validation_errors_json)s, %(trace_metadata_json)s, %(usage_json)s,
+              %(latency_ms)s, %(started_at_ms)s, %(finished_at_ms)s, %(created_at_ms)s
+            )
+            RETURNING *
+            """,
+            _story_agent_run_payload(payload),
+        )
+        row = cursor.fetchone()
+        returned_row = _required_returning_row(cursor, row)
+        return returned_row
+
+    @_news_repository_write
+    def upsert_news_story_agent_brief(self, **payload: Any) -> dict[str, Any]:
+        payload.pop("commit", None)
+        cursor = self.conn.execute(
+            """
+            INSERT INTO news_story_agent_briefs (
+              story_brief_key, story_key, story_identity_version, representative_news_item_id,
+              member_news_item_ids_json, agent_run_id, status, direction, decision_class, brief_json,
+              input_hash, artifact_version_hash, prompt_version, schema_version,
+              validator_version, computed_at_ms, created_at_ms, updated_at_ms
+            )
+            VALUES (
+              %(story_brief_key)s, %(story_key)s, %(story_identity_version)s,
+              %(representative_news_item_id)s, %(member_news_item_ids_json)s,
+              %(agent_run_id)s, %(status)s, %(direction)s, %(decision_class)s,
+              %(brief_json)s, %(input_hash)s, %(artifact_version_hash)s,
+              %(prompt_version)s, %(schema_version)s, %(validator_version)s,
+              %(computed_at_ms)s, %(created_at_ms)s, %(updated_at_ms)s
+            )
+            ON CONFLICT (story_brief_key) DO UPDATE SET
+              story_key = EXCLUDED.story_key,
+              story_identity_version = EXCLUDED.story_identity_version,
+              representative_news_item_id = EXCLUDED.representative_news_item_id,
+              member_news_item_ids_json = EXCLUDED.member_news_item_ids_json,
+              agent_run_id = EXCLUDED.agent_run_id,
+              status = EXCLUDED.status,
+              direction = EXCLUDED.direction,
+              decision_class = EXCLUDED.decision_class,
+              brief_json = EXCLUDED.brief_json,
+              input_hash = EXCLUDED.input_hash,
+              artifact_version_hash = EXCLUDED.artifact_version_hash,
+              prompt_version = EXCLUDED.prompt_version,
+              schema_version = EXCLUDED.schema_version,
+              validator_version = EXCLUDED.validator_version,
+              computed_at_ms = EXCLUDED.computed_at_ms,
+              updated_at_ms = EXCLUDED.updated_at_ms
+            RETURNING *
+            """,
+            _story_agent_brief_payload(payload),
+        )
+        row = cursor.fetchone()
+        returned_row = _required_returning_row(cursor, row)
+        return returned_row
+
     def get_news_item_agent_brief(self, news_item_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(
             """
@@ -2124,6 +2283,17 @@ class NewsRepository:
              WHERE news_item_id = %s
             """,
             (news_item_id,),
+        ).fetchone()
+        return dict(row) if row is not None else None
+
+    def get_news_story_agent_brief(self, story_brief_key: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """
+            SELECT *
+              FROM news_story_agent_briefs
+             WHERE story_brief_key = %s
+            """,
+            (str(story_brief_key),),
         ).fetchone()
         return dict(row) if row is not None else None
 
@@ -2709,9 +2879,9 @@ class NewsRepository:
             """,
             (
                 _json(market_scope_payload),
-                str(story_identity_payload.get("story_key") or ""),
+                str(story_identity_payload["story_key"]),
                 _json(story_identity_payload),
-                str(story_identity_payload.get("version") or ""),
+                str(story_identity_payload["version"]),
                 int(now_ms),
                 str(news_item_id),
             ),
@@ -2750,13 +2920,13 @@ class NewsRepository:
             """,
             (
                 _json(market_scope_payload),
-                str(story_identity_payload.get("story_key") or ""),
+                str(story_identity_payload["story_key"]),
                 _json(story_identity_payload),
-                str(story_identity_payload.get("version") or ""),
-                str(admission_payload.get("status") or ""),
-                str(admission_payload.get("reason") or ""),
+                str(story_identity_payload["version"]),
+                str(admission_payload["status"]),
+                str(admission_payload["reason"]),
                 _json(admission_payload),
-                str(admission_payload.get("version") or ""),
+                str(admission_payload["version"]),
                 representative_news_item_id,
                 int(now_ms),
                 int(now_ms),
@@ -2799,19 +2969,6 @@ class NewsRepository:
             ),
         )
         return _cursor_rowcount(cursor)
-
-    def _current_brief_for_item(self, news_item_id: str) -> dict[str, Any] | None:
-        row = self.conn.execute(
-            f"""
-            SELECT *
-              FROM news_item_agent_briefs AS current_brief
-             WHERE current_brief.news_item_id = %s
-               AND {_CURRENT_NEWS_ITEM_BRIEF_CURRENT_BRIEF_SQL}
-             LIMIT 1
-            """,
-            (str(news_item_id),),
-        ).fetchone()
-        return dict(row) if row is not None else None
 
     def _agent_exact_duplicate_context(self, item: Mapping[str, Any]) -> dict[str, Any]:
         news_item_id = str(item.get("news_item_id") or "")
@@ -2881,37 +3038,39 @@ class NewsRepository:
 
     def _agent_similar_story_context(self, item: Mapping[str, Any]) -> dict[str, Any]:
         story_key = str(item.get("story_key") or "")
-        news_item_id = str(item.get("news_item_id") or "")
         if not story_key:
             return {}
+        story_identity_version = _required_agent_admission_item_text(item, "story_identity_version")
+        news_item_id = _required_agent_admission_item_text(item, "news_item_id")
         row = self.conn.execute(
-            f"""
-            SELECT candidates.news_item_id,
-                   candidates.story_key,
+            """
+            SELECT current_brief.representative_news_item_id AS news_item_id,
+                   current_brief.story_key,
                    current_brief.status AS brief_status,
                    current_brief.input_hash AS brief_input_hash,
-                   candidates.published_at_ms
-              FROM news_items AS candidates
-              JOIN news_sources AS sources ON sources.source_id = candidates.source_id
-              JOIN news_item_agent_briefs AS current_brief
-                ON current_brief.news_item_id = candidates.news_item_id
-               AND {_CURRENT_NEWS_ITEM_BRIEF_CURRENT_BRIEF_SQL}
-             WHERE candidates.news_item_id <> %s
-               AND candidates.story_key = %s
+                   representative_items.published_at_ms
+              FROM news_story_agent_briefs AS current_brief
+              JOIN news_items AS representative_items
+                ON representative_items.news_item_id = current_brief.representative_news_item_id
+              JOIN news_sources AS sources ON sources.source_id = representative_items.source_id
+             WHERE current_brief.representative_news_item_id <> %s
+               AND current_brief.story_key = %s
+               AND current_brief.story_identity_version = %s
                AND sources.enabled = true
              ORDER BY
                CASE WHEN current_brief.status IN ('ready', 'insufficient') THEN 0 ELSE 1 END,
-               candidates.published_at_ms DESC,
-               candidates.news_item_id ASC
+               current_brief.updated_at_ms DESC,
+               representative_items.published_at_ms DESC,
+               current_brief.story_brief_key ASC
              LIMIT 1
             """,
-            (news_item_id, story_key),
+            (news_item_id, story_key, story_identity_version),
         ).fetchone()
         if row is None:
             return {}
         return {
             "similar_story": True,
-            "reason": "same_story_key_current_brief",
+            "reason": "same_story_key_story_current_brief",
             "story_key": story_key,
             "representative_news_item_id": str(row["news_item_id"]),
             "fresh_brief_status": str(row["brief_status"] or ""),
@@ -3076,7 +3235,7 @@ class NewsRepository:
         if not target_ids:
             return []
         rows = self.conn.execute(
-            f"""
+            """
             WITH target_items AS (
               SELECT
 {_NEWS_ITEM_WORKER_COLUMNS_SQL}
@@ -3128,10 +3287,6 @@ class NewsRepository:
                   'provider_article_keys_json',
                     COALESCE(edge_summary.provider_article_keys_json, items.provider_article_keys_json)
                 ) AS item,
-              CASE
-                WHEN current_brief.news_item_id IS NULL THEN NULL
-                ELSE to_jsonb(current_brief.*)
-              END AS current_brief,
               COALESCE(mentions.token_mentions, '[]'::jsonb) AS token_mentions,
               COALESCE(facts.fact_candidates, '[]'::jsonb) AS fact_candidates
             FROM target_items AS items
@@ -3179,9 +3334,6 @@ class NewsRepository:
                WHERE edges.news_item_id = items.news_item_id
                  AND edge_sources.enabled = true
             ) AS edge_summary ON true
-            LEFT JOIN news_item_agent_briefs AS current_brief
-              ON current_brief.news_item_id = items.news_item_id
-             AND {_CURRENT_NEWS_ITEM_BRIEF_CURRENT_BRIEF_SQL}
             LEFT JOIN LATERAL (
               SELECT COALESCE(jsonb_agg(to_jsonb(mentions.*) ORDER BY mentions.mention_id), '[]'::jsonb)
                 AS token_mentions
@@ -3201,9 +3353,8 @@ class NewsRepository:
         return [
             {
                 "item": _json_dict(row["item"]),
-                "current_brief": _json_dict(row["current_brief"]) if row["current_brief"] is not None else None,
-                "token_mentions": _json_list(row["token_mentions"]),
-                "fact_candidates": _json_list(row["fact_candidates"]),
+                "token_mentions": _required_page_projection_input_list(row, "token_mentions"),
+                "fact_candidates": _required_page_projection_input_list(row, "fact_candidates"),
             }
             for row in rows
         ]
@@ -3238,10 +3389,6 @@ class NewsRepository:
                   'source_domains_json', COALESCE(edge_summary.source_domains_json, '[]'::jsonb),
                   'provider_article_keys_json', COALESCE(edge_summary.provider_article_keys_json, '[]'::jsonb)
                 ) AS item,
-              CASE
-                WHEN current_brief.news_item_id IS NULL THEN NULL
-                ELSE to_jsonb(current_brief.*)
-              END AS current_brief,
               COALESCE(entity_rows.rows, '[]'::jsonb) AS entities,
               COALESCE(token_rows.rows, '[]'::jsonb) AS token_mentions,
               COALESCE(fact_rows.rows, '[]'::jsonb) AS fact_candidates,
@@ -3249,9 +3396,6 @@ class NewsRepository:
               COALESCE(story_candidates.rows, '[]'::jsonb) AS story_candidates
             FROM target_items AS items
             JOIN news_sources AS sources ON sources.source_id = items.source_id
-            LEFT JOIN news_item_agent_briefs AS current_brief
-              ON current_brief.news_item_id = items.news_item_id
-             AND {_CURRENT_NEWS_ITEM_BRIEF_CURRENT_BRIEF_SQL}
             LEFT JOIN LATERAL (
               SELECT COUNT(*)::int AS duplicate_count,
                      COALESCE(jsonb_agg(DISTINCT edges.source_id ORDER BY edges.source_id), '[]'::jsonb)
@@ -3329,8 +3473,8 @@ class NewsRepository:
                            'agent_admission_status', duplicate_items.agent_admission_status,
                            'current_brief',
                              CASE
-                               WHEN duplicate_current_brief.news_item_id IS NULL THEN NULL
-                               ELSE to_jsonb(duplicate_current_brief.*)
+                               WHEN duplicate_story_current_brief.story_brief_key IS NULL THEN NULL
+                               ELSE to_jsonb(duplicate_story_current_brief.*)
                              END,
                            'provider_article_keys',
                              COALESCE(duplicate_edge_evidence.provider_article_keys_json, '[]'::jsonb)
@@ -3394,10 +3538,10 @@ class NewsRepository:
                       ON duplicate_items.news_item_id = duplicate_candidate_ids.news_item_id
                     JOIN news_sources AS duplicate_item_sources
                       ON duplicate_item_sources.source_id = duplicate_items.source_id
-                    LEFT JOIN news_item_agent_briefs AS duplicate_current_brief
-                      ON duplicate_current_brief.news_item_id = duplicate_items.news_item_id
-                     AND duplicate_current_brief.status = 'ready'
-                     AND {_CURRENT_NEWS_ITEM_BRIEF_DUPLICATE_CURRENT_BRIEF_SQL}
+                    LEFT JOIN news_story_agent_briefs AS duplicate_story_current_brief
+                      ON duplicate_story_current_brief.story_key = duplicate_items.story_key
+                     AND duplicate_story_current_brief.story_identity_version = duplicate_items.story_identity_version
+                     AND duplicate_story_current_brief.status = 'ready'
                     LEFT JOIN LATERAL (
                       SELECT COALESCE(
                                jsonb_agg(provider_article_key ORDER BY provider_article_key),
@@ -3420,7 +3564,7 @@ class NewsRepository:
                      AND duplicate_item_sources.enabled = true
                      AND duplicate_items.lifecycle_status = 'processed'
                      AND (
-                       duplicate_current_brief.news_item_id IS NOT NULL
+                       duplicate_story_current_brief.story_brief_key IS NOT NULL
                        OR duplicate_items.agent_admission_status IN ('eligible', 'eligible_refresh')
                      )
                      AND EXISTS (
@@ -3466,7 +3610,7 @@ class NewsRepository:
                            'agent_admission_status', story_items.agent_admission_status,
                            'current_brief',
                              CASE
-                               WHEN story_current_brief.news_item_id IS NULL THEN NULL
+                               WHEN story_current_brief.story_brief_key IS NULL THEN NULL
                                ELSE to_jsonb(story_current_brief.*)
                              END,
                            'entities', COALESCE(story_entity_rows.rows, '[]'::jsonb),
@@ -3474,11 +3618,11 @@ class NewsRepository:
                          ) AS candidate,
                          story_items.published_at_ms,
                          story_items.news_item_id,
-                         CASE WHEN story_current_brief.news_item_id IS NULL THEN 0 ELSE 1 END AS ready_brief_rank,
                          CASE
                            WHEN story_items.agent_admission_status IN ('eligible', 'eligible_refresh') THEN 1
                            ELSE 0
                          END AS agent_admission_rank,
+                         CASE WHEN story_current_brief.status = 'ready' THEN 1 ELSE 0 END AS ready_brief_rank,
                          {source_role_rank_case_sql("story_item_sources.source_role")} AS source_role_rank,
                          CASE story_item_sources.trust_tier
                            WHEN 'official' THEN 40
@@ -3505,9 +3649,9 @@ class NewsRepository:
                       ON story_items.news_item_id = story_candidate_ids.news_item_id
                     JOIN news_sources AS story_item_sources
                       ON story_item_sources.source_id = story_items.source_id
-                    LEFT JOIN news_item_agent_briefs AS story_current_brief
-                      ON story_current_brief.news_item_id = story_items.news_item_id
-                     AND {_CURRENT_NEWS_ITEM_BRIEF_STORY_CURRENT_BRIEF_SQL}
+                    LEFT JOIN news_story_agent_briefs AS story_current_brief
+                      ON story_current_brief.story_key = story_items.story_key
+                     AND story_current_brief.story_identity_version = story_items.story_identity_version
                     LEFT JOIN LATERAL (
                       SELECT jsonb_agg(entity ORDER BY confidence DESC NULLS LAST, entity_id ASC) AS rows
                         FROM (
@@ -3530,6 +3674,7 @@ class NewsRepository:
                     ) AS story_fact_rows ON true
                    WHERE story_items.news_item_id <> items.news_item_id
                      AND story_item_sources.enabled = true
+                     AND story_items.story_identity_version = items.story_identity_version
                      AND story_items.published_at_ms <= %s
                      AND story_items.published_at_ms BETWEEN
                          items.published_at_ms - {_STORY_PROJECTION_WINDOW_MS}
@@ -3558,12 +3703,14 @@ class NewsRepository:
         return [
             {
                 "item": _json_dict(row["item"]),
-                "entities": _json_list(row["entities"]),
-                "token_mentions": _json_list(row["token_mentions"]),
-                "fact_candidates": _json_list(row["fact_candidates"]),
-                "current_brief": _json_dict(row["current_brief"]) if row["current_brief"] is not None else None,
-                "exact_duplicate_candidates": _json_list(row["exact_duplicate_candidates"]),
-                "story_candidates": _json_list(row["story_candidates"]),
+                "entities": _required_agent_admission_context_list(row, "entities"),
+                "token_mentions": _required_agent_admission_context_list(row, "token_mentions"),
+                "fact_candidates": _required_agent_admission_context_list(row, "fact_candidates"),
+                "exact_duplicate_candidates": _required_agent_admission_context_list(
+                    row,
+                    "exact_duplicate_candidates",
+                ),
+                "story_candidates": _required_agent_admission_context_list(row, "story_candidates"),
             }
             for row in rows
         ]
@@ -3597,8 +3744,7 @@ class NewsRepository:
               SELECT items.news_item_id,
                      items.story_key,
                      story_bounds.first_target_ordinal,
-                     items.published_at_ms,
-                     false AS fallback_item
+                     items.published_at_ms
                 FROM story_bounds
                 JOIN news_items AS items ON items.story_key = story_bounds.story_key
                WHERE items.published_at_ms BETWEEN story_bounds.lower_bound_ms AND story_bounds.upper_bound_ms
@@ -3649,6 +3795,7 @@ class NewsRepository:
                 group_order.append(group_key)
             grouped_ids[group_key].append(news_item_id)
 
+        story_current_by_key = self._current_story_agent_briefs_for_story_keys(group_order)
         payloads: list[dict[str, Any]] = []
         for group_key in group_order:
             member_payloads = [item_payloads_by_id[item_id] for item_id in grouped_ids[group_key]]
@@ -3659,14 +3806,32 @@ class NewsRepository:
             payloads.append(
                 {
                     "item": representative["item"],
-                    "current_brief": representative.get("current_brief"),
-                    "token_mentions": representative.get("token_mentions") or [],
-                    "fact_candidates": representative.get("fact_candidates") or [],
+                    "current_brief": story_current_by_key.get(group_key),
+                    "token_mentions": _required_story_projection_payload_list(representative, "token_mentions"),
+                    "fact_candidates": _required_story_projection_payload_list(representative, "fact_candidates"),
                     "story": story,
                     "member_items": [payload["item"] for payload in member_payloads],
                 }
             )
         return payloads
+
+    def _current_story_agent_briefs_for_story_keys(self, story_keys: Sequence[str]) -> dict[str, dict[str, Any]]:
+        target_keys = [str(story_key) for story_key in dict.fromkeys(story_keys) if str(story_key)]
+        if not target_keys:
+            return {}
+        rows = self.conn.execute(
+            """
+            SELECT DISTINCT ON (briefs.story_key)
+                   briefs.story_key,
+                   to_jsonb(briefs.*) AS current_brief
+              FROM news_story_agent_briefs AS briefs
+             WHERE briefs.story_key = ANY(%s::text[])
+               AND briefs.story_identity_version = %s
+             ORDER BY briefs.story_key ASC, briefs.updated_at_ms DESC, briefs.story_brief_key ASC
+            """,
+            (target_keys, NEWS_STORY_IDENTITY_VERSION),
+        ).fetchall()
+        return {str(row["story_key"]): _json_dict(row["current_brief"]) for row in rows if str(row["story_key"] or "")}
 
     def load_items_for_brief_targets(self, *, news_item_ids: Sequence[str]) -> list[dict[str, Any]]:
         target_ids = [str(item_id) for item_id in dict.fromkeys(news_item_ids) if str(item_id)]
@@ -3792,19 +3957,217 @@ class NewsRepository:
             results.append(
                 {
                     "item": item,
-                    "entities": _json_list(row["entities"]),
-                    "token_mentions": _json_list(row["token_mentions"]),
-                    "fact_candidates": _json_list(row["fact_candidates"]),
+                    "entities": _required_news_item_brief_target_list(row, "entities"),
+                    "token_mentions": _required_news_item_brief_target_list(row, "token_mentions"),
+                    "fact_candidates": _required_news_item_brief_target_list(row, "fact_candidates"),
                     "current_brief": _json_dict(row["current_brief"]) if row["current_brief"] is not None else None,
                     "latest_run": _json_dict(row["latest_run"]) if row["latest_run"] is not None else None,
-                    "source_updated_at_ms": int(row["source_updated_at_ms"] or 0),
+                    "source_updated_at_ms": _required_brief_target_source_updated_at_ms(row),
+                }
+            )
+        return results
+
+    def load_story_brief_targets(self, *, story_keys: Sequence[str]) -> list[dict[str, Any]]:
+        target_keys = [str(story_key) for story_key in dict.fromkeys(story_keys) if str(story_key)]
+        if not target_keys:
+            return []
+        rows = self.conn.execute(
+            f"""
+            WITH target_keys(story_key, ordinal) AS (
+              SELECT story_key, ordinal
+                FROM unnest(%s::text[]) WITH ORDINALITY AS keys(story_key, ordinal)
+            ),
+            candidates AS (
+              SELECT
+                items.news_item_id,
+                items.story_key,
+                target_keys.ordinal,
+                items.published_at_ms,
+                GREATEST(
+                  COALESCE(items.processed_at_ms, items.created_at_ms, 0),
+                  COALESCE(entity_updates.updated_at_ms, 0),
+                  COALESCE(mention_updates.updated_at_ms, 0),
+                  COALESCE(fact_updates.updated_at_ms, 0)
+                ) AS source_updated_at_ms
+              FROM target_keys
+              JOIN news_items AS items ON items.story_key = target_keys.story_key
+              LEFT JOIN LATERAL (
+                SELECT MAX(created_at_ms) AS updated_at_ms
+                  FROM news_item_entities
+                 WHERE news_item_id = items.news_item_id
+              ) AS entity_updates ON true
+              LEFT JOIN LATERAL (
+                SELECT MAX(created_at_ms) AS updated_at_ms
+                  FROM news_token_mentions
+                 WHERE news_item_id = items.news_item_id
+              ) AS mention_updates ON true
+              LEFT JOIN LATERAL (
+                SELECT MAX(updated_at_ms) AS updated_at_ms
+                  FROM news_fact_candidates
+                 WHERE news_item_id = items.news_item_id
+              ) AS fact_updates ON true
+              WHERE items.lifecycle_status = 'processed'
+                AND items.story_key <> ''
+                AND items.story_identity_version = %s
+                AND EXISTS (
+                  SELECT 1
+                    FROM news_item_observation_edges AS edges
+                    JOIN news_sources AS edge_sources ON edge_sources.source_id = edges.source_id
+                   WHERE edges.news_item_id = items.news_item_id
+                     AND edge_sources.enabled = true
+                )
+            )
+            SELECT
+              candidates.story_key,
+              candidates.source_updated_at_ms,
+              {_NEWS_ITEM_WORKER_JSON_SQL}
+                || jsonb_build_object(
+                  'source_name', sources.source_name,
+                  'source_role', sources.source_role,
+                  'trust_tier', sources.trust_tier,
+                  'duplicate_count', COALESCE(edge_summary.duplicate_count, 1),
+                  'source_ids_json', COALESCE(edge_summary.source_ids_json, '[]'::jsonb),
+                  'source_domains_json', COALESCE(edge_summary.source_domains_json, '[]'::jsonb),
+                  'provider_article_keys_json', COALESCE(edge_summary.provider_article_keys_json, '[]'::jsonb)
+                ) AS item,
+              CASE
+                WHEN current_brief.story_brief_key IS NULL THEN NULL
+                ELSE to_jsonb(current_brief.*)
+              END AS current_brief,
+              latest_run.latest_run AS latest_run,
+              COALESCE(entity_rows.rows, '[]'::jsonb) AS entities,
+              COALESCE(token_rows.rows, '[]'::jsonb) AS token_mentions,
+              COALESCE(fact_rows.rows, '[]'::jsonb) AS fact_candidates
+            FROM candidates
+            JOIN news_items AS items ON items.news_item_id = candidates.news_item_id
+            JOIN news_sources AS sources ON sources.source_id = items.source_id
+            LEFT JOIN news_story_agent_briefs AS current_brief
+              ON current_brief.story_key = items.story_key
+             AND current_brief.story_identity_version = items.story_identity_version
+            LEFT JOIN LATERAL (
+              SELECT to_jsonb(runs.*) AS latest_run
+                FROM news_story_agent_runs AS runs
+               WHERE runs.story_key = items.story_key
+                 AND runs.story_identity_version = items.story_identity_version
+               ORDER BY runs.finished_at_ms DESC, runs.run_id DESC
+               LIMIT 1
+            ) AS latest_run ON true
+            LEFT JOIN LATERAL (
+              SELECT COUNT(*)::int AS duplicate_count,
+                     COALESCE(jsonb_agg(DISTINCT edges.source_id ORDER BY edges.source_id), '[]'::jsonb)
+                       AS source_ids_json,
+                     COALESCE(
+                       jsonb_agg(DISTINCT edge_sources.source_domain ORDER BY edge_sources.source_domain)
+                         FILTER (WHERE edge_sources.source_domain IS NOT NULL),
+                       '[]'::jsonb
+                     ) AS source_domains_json,
+                     COALESCE(
+                       jsonb_agg(DISTINCT edges.provider_article_key ORDER BY edges.provider_article_key)
+                         FILTER (WHERE edges.provider_article_key <> ''),
+                       '[]'::jsonb
+                     ) AS provider_article_keys_json
+                FROM news_item_observation_edges AS edges
+                JOIN news_sources AS edge_sources ON edge_sources.source_id = edges.source_id
+               WHERE edges.news_item_id = items.news_item_id
+                 AND edge_sources.enabled = true
+            ) AS edge_summary ON true
+            LEFT JOIN LATERAL (
+              SELECT jsonb_agg(to_jsonb(entities.*) ORDER BY entities.entity_id ASC) AS rows
+                FROM news_item_entities AS entities
+               WHERE entities.news_item_id = items.news_item_id
+            ) AS entity_rows ON true
+            LEFT JOIN LATERAL (
+              SELECT jsonb_agg(to_jsonb(mentions.*) ORDER BY mentions.mention_id ASC) AS rows
+                FROM news_token_mentions AS mentions
+               WHERE mentions.news_item_id = items.news_item_id
+            ) AS token_rows ON true
+            LEFT JOIN LATERAL (
+              SELECT jsonb_agg(to_jsonb(facts.*) ORDER BY facts.fact_candidate_id ASC) AS rows
+                FROM news_fact_candidates AS facts
+               WHERE facts.news_item_id = items.news_item_id
+            ) AS fact_rows ON true
+            ORDER BY candidates.ordinal ASC, candidates.published_at_ms ASC, candidates.news_item_id ASC
+            """,
+            (target_keys, NEWS_STORY_IDENTITY_VERSION),
+        ).fetchall()
+        grouped: dict[str, dict[str, Any]] = {}
+        order: list[str] = []
+        for row in rows:
+            story_key = str(row["story_key"] or "")
+            source_updated_at_ms = _required_brief_target_source_updated_at_ms(row)
+            if story_key not in grouped:
+                grouped[story_key] = {
+                    "member_payloads": [],
+                    "current_brief": _json_dict(row["current_brief"]) if row["current_brief"] is not None else None,
+                    "latest_run": _json_dict(row["latest_run"]) if row["latest_run"] is not None else None,
+                    "source_updated_at_ms": 0,
+                }
+                order.append(story_key)
+            item = _json_dict(row["item"])
+            grouped[story_key]["source_updated_at_ms"] = max(
+                int(grouped[story_key]["source_updated_at_ms"]),
+                source_updated_at_ms,
+            )
+            grouped[story_key]["member_payloads"].append(
+                {
+                    "item": item,
+                    "entities": _story_brief_target_list(row, "entities"),
+                    "token_mentions": _story_brief_target_list(row, "token_mentions"),
+                    "fact_candidates": _story_brief_target_list(row, "fact_candidates"),
+                }
+            )
+
+        results: list[dict[str, Any]] = []
+        for story_key in order:
+            group = grouped[story_key]
+            member_payloads = list(group["member_payloads"])
+            if not member_payloads:
+                continue
+            representative = member_payloads[0]
+            representative_item = _json_dict(representative["item"])
+            story = _story_projection_payload(story_key=story_key, member_payloads=member_payloads)
+            story["story_identity_version"] = _required_story_item_text(
+                representative_item,
+                "story_identity_version",
+            )
+            story["market_scope_json"] = _required_story_item_json_value(representative_item, "market_scope_json")
+            story["agent_admission_json"] = _required_story_item_mapping(
+                representative_item,
+                "agent_admission_json",
+            )
+            event_type = str(representative_item.get("event_type") or "").strip()
+            if event_type:
+                story["event_type"] = event_type
+            results.append(
+                {
+                    "item": representative_item,
+                    "current_brief": group["current_brief"],
+                    "latest_run": group["latest_run"],
+                    "token_mentions": [
+                        token
+                        for payload in member_payloads
+                        for token in _story_brief_target_list(payload, "token_mentions")
+                    ],
+                    "fact_candidates": [
+                        fact
+                        for payload in member_payloads
+                        for fact in _story_brief_target_list(payload, "fact_candidates")
+                    ],
+                    "entities": [
+                        entity
+                        for payload in member_payloads
+                        for entity in _story_brief_target_list(payload, "entities")
+                    ],
+                    "story": story,
+                    "member_items": [payload["item"] for payload in member_payloads],
+                    "source_updated_at_ms": int(group["source_updated_at_ms"]),
                 }
             )
         return results
 
     def get_news_item_detail(self, *, news_item_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(
-            f"""
+            """
             SELECT to_jsonb(items.*) AS item,
                    to_jsonb(sources.*) AS source,
                    to_jsonb(provider_items.*) AS provider_item,
@@ -3812,14 +4175,6 @@ class NewsRepository:
                      WHEN fetch_runs.fetch_run_id IS NULL THEN NULL
                      ELSE to_jsonb(fetch_runs.*)
                    END AS fetch_run,
-                   CASE
-                     WHEN current_brief.news_item_id IS NULL THEN NULL
-                     ELSE to_jsonb(current_brief.*)
-                   END AS agent_brief,
-                   CASE
-                     WHEN latest_run.agent_run IS NULL THEN NULL
-                     ELSE latest_run.agent_run
-                   END AS agent_run,
                    COALESCE(
                      jsonb_agg(DISTINCT to_jsonb(entities.*))
                        FILTER (WHERE entities.entity_id IS NOT NULL),
@@ -3839,37 +4194,11 @@ class NewsRepository:
               JOIN news_sources AS sources ON sources.source_id = items.source_id
               JOIN news_provider_items AS provider_items ON provider_items.provider_item_id = items.provider_item_id
               LEFT JOIN news_fetch_runs AS fetch_runs ON fetch_runs.fetch_run_id = provider_items.fetch_run_id
-              LEFT JOIN news_item_agent_briefs AS current_brief
-                ON current_brief.news_item_id = items.news_item_id
-               AND {_CURRENT_NEWS_ITEM_BRIEF_CURRENT_BRIEF_SQL}
-              LEFT JOIN LATERAL (
-                SELECT jsonb_build_object(
-                         'backend', runs.backend,
-                         'status', runs.status,
-                         'outcome', runs.outcome,
-                         'execution_started', runs.execution_started,
-                         'model', runs.model,
-                         'provider', runs.provider,
-                         'lane', runs.lane,
-                         'workflow_name', runs.workflow_name,
-                         'agent_name', runs.agent_name,
-                         'error_class', runs.error_class,
-                         'error', runs.error,
-                         'latency_ms', runs.latency_ms,
-                         'started_at_ms', runs.started_at_ms,
-                         'finished_at_ms', runs.finished_at_ms
-                       ) AS agent_run
-                  FROM news_item_agent_runs AS runs
-                 WHERE runs.news_item_id = items.news_item_id
-                 ORDER BY runs.finished_at_ms DESC, runs.run_id DESC
-                 LIMIT 1
-              ) AS latest_run ON true
               LEFT JOIN news_item_entities AS entities ON entities.news_item_id = items.news_item_id
               LEFT JOIN news_token_mentions AS mentions ON mentions.news_item_id = items.news_item_id
               LEFT JOIN news_fact_candidates AS facts ON facts.news_item_id = items.news_item_id
              WHERE items.news_item_id = %s
-             GROUP BY items.news_item_id, sources.source_id, provider_items.provider_item_id, fetch_runs.fetch_run_id,
-                      current_brief.news_item_id, latest_run.agent_run
+             GROUP BY items.news_item_id, sources.source_id, provider_items.provider_item_id, fetch_runs.fetch_run_id
             """,
             (news_item_id,),
         ).fetchone()
@@ -3943,7 +4272,6 @@ class NewsRepository:
             (news_item_id,),
         ).fetchall()
         item_payload = _json_dict(row["item"])
-        agent_brief = _detail_agent_brief(row["agent_brief"])
         projected = dict(page_row)
         representative_news_item_id = _required_projected_page_text(projected, "representative_news_item_id")
         story_key = _required_projected_page_text(projected, "story_key")
@@ -3957,7 +4285,7 @@ class NewsRepository:
         content_tags = _required_projected_page_list(projected, "content_tags")
         content_classification = _required_projected_page_mapping(projected, "content_classification")
         _required_projected_page_mapping(projected, "page_source")
-        _required_projected_page_mapping(projected, "page_agent_brief")
+        agent_brief = _public_agent_brief_payload(_required_projected_page_mapping(projected, "page_agent_brief"))
         market_scope = _required_projected_page_mapping(projected, "market_scope")
         agent_admission_status = _required_projected_page_text(projected, "agent_admission_status")
         agent_admission_reason = _required_projected_page_text(projected, "agent_admission_reason")
@@ -3966,8 +4294,9 @@ class NewsRepository:
             projected,
             "agent_representative_news_item_id",
         )
-        token_mentions = _json_list(row["token_mentions"])
-        fact_candidates = _json_list(row["fact_candidates"])
+        entities = _required_news_item_detail_list(row, "entities")
+        token_mentions = _required_news_item_detail_list(row, "token_mentions")
+        fact_candidates = _required_news_item_detail_list(row, "fact_candidates")
         public_item = _public_news_item_payload(item_payload)
         return {
             **public_item,
@@ -3994,9 +4323,6 @@ class NewsRepository:
             if row["fetch_run"] is not None
             else None,
             "agent_brief": agent_brief,
-            "agent_run": _public_agent_run_payload(_json_dict(row["agent_run"]))
-            if row["agent_run"] is not None
-            else None,
             "observation_edges": [
                 _public_observation_edge_payload(_json_dict(observation_row["observation_edge"]))
                 for observation_row in observation_rows
@@ -4005,7 +4331,7 @@ class NewsRepository:
                 _public_provider_observation_payload(_json_dict(observation_row["provider_observation"]))
                 for observation_row in observation_rows
             ],
-            "entities": _json_list(row["entities"]),
+            "entities": entities,
             "token_mentions": token_mentions,
             "fact_candidates": fact_candidates,
         }
@@ -4060,7 +4386,7 @@ class NewsRepository:
         source_filter = list(dict.fromkeys(str(source_id) for source_id in (source_ids or []) if str(source_id)))
         source_filter_param = source_filter or None
         rows = self.conn.execute(
-            f"""
+            """
             WITH source_rows AS (
               SELECT source_id
                 FROM news_sources
@@ -4072,7 +4398,9 @@ class NewsRepository:
                      items.source_id,
                      items.published_at_ms,
                      items.fetched_at_ms,
-                     items.lifecycle_status
+                     items.lifecycle_status,
+                     items.story_key,
+                     items.story_identity_version
                 FROM source_rows AS sources
                 JOIN news_items AS items ON items.source_id = sources.source_id
                WHERE items.published_at_ms >= %s
@@ -4133,13 +4461,14 @@ class NewsRepository:
             ),
             brief_agg AS (
               SELECT items.source_id,
-                     COUNT(DISTINCT briefs.news_item_id) FILTER (
+                     COUNT(DISTINCT items.news_item_id) FILTER (
                        WHERE briefs.status = 'ready'
                      )::int AS ready_brief_count
                 FROM window_items AS items
-                JOIN news_item_agent_briefs AS briefs
-                  ON briefs.news_item_id = items.news_item_id
-                 AND {_CURRENT_NEWS_ITEM_BRIEF_BRIEFS_SQL}
+                JOIN news_story_agent_briefs AS briefs
+                  ON briefs.story_key = items.story_key
+                 AND briefs.story_identity_version = items.story_identity_version
+                 AND briefs.member_news_item_ids_json ? items.news_item_id
                GROUP BY items.source_id
             ),
             useful_item_agg AS (
@@ -4199,6 +4528,7 @@ class NewsRepository:
         changed_status_source_ids: list[str] = []
         for row in rows:
             payload = _source_quality_payload(row)
+            source_quality_status = str(payload.pop("source_quality_status"))
             payload["payload_hash"] = _current_read_model_payload_hash(payload, exclude=_PUBLICATION_METADATA_FIELDS)
             self.conn.execute(
                 """
@@ -4237,7 +4567,6 @@ class NewsRepository:
                 payload,
             )
             if normalized_status_window and payload["window"] == normalized_status_window:
-                status = _json_dict(row.get("diagnostics_json")).get("status")
                 cursor = self.conn.execute(
                     """
                     UPDATE news_sources
@@ -4247,10 +4576,10 @@ class NewsRepository:
                        AND source_quality_status IS DISTINCT FROM %s
                     """,
                     (
-                        str(status or "unknown"),
+                        source_quality_status,
                         payload["computed_at_ms"],
                         payload["source_id"],
-                        str(status or "unknown"),
+                        source_quality_status,
                     ),
                 )
                 if _cursor_rowcount(cursor) > 0:
@@ -4596,12 +4925,8 @@ class NewsRepository:
                 "projection_version": NEWS_PAGE_PROJECTION_VERSION,
             },
         ).fetchone()
-        current_policy = self._news_dedup_current_policy_diagnostics(
-            window_ms=max(0, int(window_ms)),
-            now_ms=resolved_now_ms,
-        )
         if row is None:
-            return {
+            payload = {
                 "raw_observation_count": 0,
                 "canonical_item_count": 0,
                 "observation_edge_count": 0,
@@ -4615,26 +4940,46 @@ class NewsRepository:
                 "preview_or_generic_url_rows": {},
                 "brief_input_risk": {},
                 "source_sync_diagnostics": [],
-                **current_policy,
             }
-        return {
-            "raw_observation_count": int(row["raw_observation_count"] or 0),
-            "canonical_item_count": int(row["canonical_item_count"] or 0),
-            "observation_edge_count": int(row["observation_edge_count"] or 0),
-            "enabled_serving_row_count": int(row["enabled_serving_row_count"] or 0),
-            "disabled_serving_row_count": int(row["disabled_serving_row_count"] or 0),
-            "enabled_exact_content_visible_duplicate_excess": int(
-                row["enabled_exact_content_visible_duplicate_excess"] or 0
-            ),
-            "top_visible_content_duplicate_groups": _json_list(row["top_visible_content_duplicate_groups"]),
-            "top_visible_canonical_duplicate_groups": _json_list(row["top_visible_canonical_duplicate_groups"]),
-            "material_title_duplicate_groups": _json_dict(row["material_title_duplicate_groups"]),
-            "case_insensitive_url_duplicate_groups": _json_dict(row["case_insensitive_url_duplicate_groups"]),
-            "preview_or_generic_url_rows": _json_dict(row["preview_or_generic_url_rows"]),
-            "brief_input_risk": _json_dict(row["brief_input_risk"]),
-            "source_sync_diagnostics": _json_list(row["source_sync_diagnostics"]),
-            **current_policy,
-        }
+        else:
+            payload = {
+                "raw_observation_count": _required_news_dedup_diagnostics_nonnegative_int(row, "raw_observation_count"),
+                "canonical_item_count": _required_news_dedup_diagnostics_nonnegative_int(row, "canonical_item_count"),
+                "observation_edge_count": _required_news_dedup_diagnostics_nonnegative_int(
+                    row, "observation_edge_count"
+                ),
+                "enabled_serving_row_count": _required_news_dedup_diagnostics_nonnegative_int(
+                    row, "enabled_serving_row_count"
+                ),
+                "disabled_serving_row_count": _required_news_dedup_diagnostics_nonnegative_int(
+                    row, "disabled_serving_row_count"
+                ),
+                "enabled_exact_content_visible_duplicate_excess": _required_news_dedup_diagnostics_nonnegative_int(
+                    row, "enabled_exact_content_visible_duplicate_excess"
+                ),
+                "top_visible_content_duplicate_groups": _required_news_dedup_diagnostics_list(
+                    row, "top_visible_content_duplicate_groups"
+                ),
+                "top_visible_canonical_duplicate_groups": _required_news_dedup_diagnostics_list(
+                    row, "top_visible_canonical_duplicate_groups"
+                ),
+                "material_title_duplicate_groups": _required_news_dedup_diagnostics_mapping(
+                    row, "material_title_duplicate_groups"
+                ),
+                "case_insensitive_url_duplicate_groups": _required_news_dedup_diagnostics_mapping(
+                    row, "case_insensitive_url_duplicate_groups"
+                ),
+                "preview_or_generic_url_rows": _required_news_dedup_diagnostics_mapping(
+                    row, "preview_or_generic_url_rows"
+                ),
+                "brief_input_risk": _required_news_dedup_diagnostics_mapping(row, "brief_input_risk"),
+                "source_sync_diagnostics": _required_news_dedup_diagnostics_list(row, "source_sync_diagnostics"),
+            }
+        current_policy = self._news_dedup_current_policy_diagnostics(
+            window_ms=max(0, int(window_ms)),
+            now_ms=resolved_now_ms,
+        )
+        return {**payload, **current_policy}
 
     def _news_dedup_current_policy_diagnostics(self, *, window_ms: int, now_ms: int) -> dict[str, Any]:
         visible_rows = self.conn.execute(
@@ -5125,10 +5470,18 @@ def _source_payload(source: NewsSourceConfig | Mapping[str, Any]) -> dict[str, A
     payload = dict(source)
     payload["coverage_tags"] = normalize_string_tuple(payload.get("coverage_tags"))
     payload["asset_universe"] = normalize_string_tuple(payload.get("asset_universe"))
-    payload["authority_scope"] = _json_dict(payload.get("authority_scope"))
-    payload["fetch_policy"] = _json_dict(payload.get("fetch_policy"))
-    payload["cost_policy"] = _json_dict(payload.get("cost_policy"))
+    payload["authority_scope"] = _optional_news_source_policy_mapping(payload.get("authority_scope"), "authority_scope")
+    payload["fetch_policy"] = _optional_news_source_policy_mapping(payload.get("fetch_policy"), "fetch_policy")
+    payload["cost_policy"] = _optional_news_source_policy_mapping(payload.get("cost_policy"), "cost_policy")
     return payload
+
+
+def _optional_news_source_policy_mapping(value: Any, field_name: str) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if not isinstance(value, Mapping):
+        raise ValueError(f"news_source_{field_name}_required")
+    return dict(value)
 
 
 def news_page_cursor(row: Mapping[str, Any]) -> str:
@@ -5172,45 +5525,79 @@ def _news_page_row_filter_sql(
 
 def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     payload = dict(row)
-    payload["latest_at_ms"] = int(payload["latest_at_ms"])
-    payload["computed_at_ms"] = int(payload["computed_at_ms"])
-    payload["headline"] = str(payload.get("headline") or "")
-    payload["canonical_url"] = str(payload.get("canonical_url") or "")
-    payload["summary"] = str(payload.get("summary") or "")
-    payload["search_text"] = str(payload.get("search_text") or "")
+    payload["latest_at_ms"] = _required_page_positive_int(payload, "latest_at_ms")
+    payload["computed_at_ms"] = _required_page_positive_int(payload, "computed_at_ms")
+    payload["headline"] = _required_page_string(payload, "headline")
+    payload["canonical_url"] = _required_page_string(payload, "canonical_url")
+    payload["summary"] = _required_page_string(payload, "summary")
+    payload["source_domain"] = _required_page_string(payload, "source_domain")
     payload["token_lanes_json"] = _json(_required_page_list(payload, "token_lanes"))
     payload["fact_lanes_json"] = _json(_required_page_list(payload, "fact_lanes"))
-    payload["representative_news_item_id"] = str(
-        payload.get("representative_news_item_id") or payload.get("news_item_id") or ""
-    )
-    payload["story_key"] = str(payload.get("story_key") or "")
+    payload["representative_news_item_id"] = _required_page_text(payload, "representative_news_item_id")
+    payload["story_key"] = _required_page_text(payload, "story_key")
     payload["story_json"] = _json(_required_page_mapping(payload, "story"))
     payload["token_impacts_json"] = _json(_required_page_list(payload, "token_impacts"))
-    payload["content_class"] = str(payload.get("content_class") or "low_signal")
+    payload["content_class"] = _required_page_text(payload, "content_class")
     payload["content_tags_json"] = _json(_required_page_list(payload, "content_tags"))
     payload["content_classification_json"] = _json(_required_page_mapping(payload, "content_classification"))
     payload["source_json"] = _json(_required_page_mapping(payload, "source"))
     agent_brief = _required_page_mapping(payload, "agent_brief")
-    agent_status = str(payload.get("agent_status") or "pending")
+    agent_brief_status = _required_page_nested_text(agent_brief, "agent_brief", "status")
+    agent_status = _required_page_text(payload, "agent_status")
+    if agent_status != agent_brief_status:
+        raise ValueError("news_page_row_payload_invalid:agent_status_mismatch")
+    if agent_status == "ready":
+        _required_page_nested_text(agent_brief, "agent_brief", "direction")
+        _required_page_nested_text(agent_brief, "agent_brief", "decision_class")
     signal = _required_page_mapping(payload, "signal")
     payload["signal_json"] = _json(signal)
     payload["provider_rating_json"] = _json(_required_page_mapping(payload, "provider_rating"))
     payload["agent_brief_json"] = _json(agent_brief)
     payload["agent_status"] = agent_status
-    payload["agent_brief_computed_at_ms"] = (
-        int(payload["agent_brief_computed_at_ms"]) if payload.get("agent_brief_computed_at_ms") is not None else None
-    )
+    payload["agent_brief_computed_at_ms"] = _optional_page_positive_int(payload, "agent_brief_computed_at_ms")
     payload["market_scope_json"] = _json(_required_page_mapping(payload, "market_scope"))
     agent_admission = _agent_admission_mapping_payload(_required_page_mapping(payload, "agent_admission"))
-    payload["agent_admission_status"] = str(payload.get("agent_admission_status") or agent_admission["status"])
-    payload["agent_admission_reason"] = str(payload.get("agent_admission_reason") or agent_admission["reason"])
-    agent_admission["status"] = payload["agent_admission_status"]
-    agent_admission["reason"] = payload["agent_admission_reason"]
-    payload["agent_admission_json"] = _json(agent_admission)
-    payload["agent_representative_news_item_id"] = str(
-        payload.get("agent_representative_news_item_id") or agent_admission.get("representative_news_item_id") or ""
+    payload["agent_admission_status"] = _required_page_text(payload, "agent_admission_status")
+    payload["agent_admission_reason"] = _required_page_text(payload, "agent_admission_reason")
+    payload["agent_representative_news_item_id"] = _required_page_text(payload, "agent_representative_news_item_id")
+    _require_page_agent_admission_match(
+        payload,
+        agent_admission,
+        payload_field="agent_admission_status",
+        admission_field="status",
     )
+    _require_page_agent_admission_match(
+        payload,
+        agent_admission,
+        payload_field="agent_admission_reason",
+        admission_field="reason",
+    )
+    _require_page_agent_admission_match(
+        payload,
+        agent_admission,
+        payload_field="agent_representative_news_item_id",
+        admission_field="representative_news_item_id",
+    )
+    payload["agent_admission_json"] = _json(agent_admission)
     return payload
+
+
+def _required_page_text(payload: Mapping[str, Any], field_name: str) -> str:
+    if field_name not in payload:
+        raise ValueError(f"news_page_row_payload_required:{field_name}")
+    value = payload[field_name]
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"news_page_row_payload_invalid:{field_name}")
+    return value
+
+
+def _required_page_string(payload: Mapping[str, Any], field_name: str) -> str:
+    if field_name not in payload:
+        raise ValueError(f"news_page_row_payload_required:{field_name}")
+    value = payload[field_name]
+    if not isinstance(value, str):
+        raise ValueError(f"news_page_row_payload_invalid:{field_name}")
+    return value
 
 
 def _required_page_mapping(payload: Mapping[str, Any], field_name: str) -> dict[str, Any]:
@@ -5229,6 +5616,33 @@ def _required_page_list(payload: Mapping[str, Any], field_name: str) -> list[Any
     if not isinstance(value, list):
         raise ValueError(f"news_page_row_payload_invalid:{field_name}")
     return list(value)
+
+
+def _required_page_positive_int(payload: Mapping[str, Any], field_name: str) -> int:
+    if field_name not in payload:
+        raise ValueError(f"news_page_row_payload_required:{field_name}")
+    value = payload[field_name]
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise ValueError(f"news_page_row_payload_invalid:{field_name}")
+    return value
+
+
+def _optional_page_positive_int(payload: Mapping[str, Any], field_name: str) -> int | None:
+    value = payload.get(field_name)
+    if value is None:
+        return None
+    return _required_page_positive_int(payload, field_name)
+
+
+def _required_page_nonnegative_int(payload: Mapping[str, Any], field_name: str) -> int:
+    if field_name not in payload:
+        raise ValueError(f"news_page_row_payload_required:{field_name}")
+    value = payload[field_name]
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(f"news_page_row_payload_invalid:{field_name}")
+    if value < 0:
+        raise ValueError(f"news_page_row_payload_invalid:{field_name}")
+    return value
 
 
 def _required_projected_page_text(projected: Mapping[str, Any], field_name: str) -> str:
@@ -5256,6 +5670,100 @@ def _required_projected_page_list(projected: Mapping[str, Any], field_name: str)
     if not isinstance(value, list):
         raise ValueError(f"news_item_detail_projection_invalid:{field_name}")
     return list(value)
+
+
+def _required_news_item_detail_list(row: Mapping[str, Any], field_name: str) -> list[Any]:
+    if field_name not in row:
+        raise ValueError(f"news_item_detail_evidence_required:{field_name}")
+    value = row[field_name]
+    if not isinstance(value, list):
+        raise ValueError(f"news_item_detail_evidence_invalid:{field_name}")
+    return list(value)
+
+
+def _required_news_item_brief_target_list(row: Mapping[str, Any], field_name: str) -> list[Any]:
+    return _required_repository_json_list(
+        row,
+        field_name,
+        error_prefix="news_item_brief_target_evidence",
+    )
+
+
+def _required_page_projection_input_list(row: Mapping[str, Any], field_name: str) -> list[Any]:
+    return _required_repository_json_list(
+        row,
+        field_name,
+        error_prefix="news_page_projection_input_evidence",
+    )
+
+
+def _required_agent_admission_context_list(row: Mapping[str, Any], field_name: str) -> list[Any]:
+    return _required_repository_json_list(row, field_name, error_prefix="news_agent_admission_context")
+
+
+def _required_repository_json_list(row: Mapping[str, Any], field_name: str, *, error_prefix: str) -> list[Any]:
+    if field_name not in row:
+        raise ValueError(f"{error_prefix}_required:{field_name}")
+    value = row[field_name]
+    if not isinstance(value, list):
+        raise ValueError(f"{error_prefix}_invalid:{field_name}")
+    return list(value)
+
+
+def _required_positive_news_item_source_watermark(row: Mapping[str, Any]) -> int:
+    field_name = "source_watermark_ms"
+    if field_name not in row:
+        raise ValueError(f"news_item_source_watermark_required:{field_name}")
+    value = row[field_name]
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"news_item_source_watermark_required:{field_name}")
+    return int(value)
+
+
+def _required_brief_target_source_updated_at_ms(row: Mapping[str, Any]) -> int:
+    field_name = "source_updated_at_ms"
+    if field_name not in row:
+        raise ValueError("news_brief_target_source_updated_at_ms_required")
+    value = row[field_name]
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError("news_brief_target_source_updated_at_ms_required")
+    return int(value)
+
+
+def _required_source_sync_cursor_nonnegative_int(row: Mapping[str, Any], field_name: str) -> int:
+    if field_name not in row:
+        raise ValueError(f"news_source_sync_cursor_{field_name}_required")
+    value = row[field_name]
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"news_source_sync_cursor_{field_name}_required")
+    return int(value)
+
+
+def _required_news_dedup_diagnostics_nonnegative_int(row: Mapping[str, Any], field_name: str) -> int:
+    if field_name not in row:
+        raise ValueError(f"news_dedup_diagnostics_{field_name}_required")
+    value = row[field_name]
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"news_dedup_diagnostics_{field_name}_required")
+    return int(value)
+
+
+def _required_news_dedup_diagnostics_list(row: Mapping[str, Any], field_name: str) -> list[Any]:
+    if field_name not in row:
+        raise ValueError(f"news_dedup_diagnostics_{field_name}_required")
+    value = row[field_name]
+    if not isinstance(value, list):
+        raise ValueError(f"news_dedup_diagnostics_{field_name}_required")
+    return list(value)
+
+
+def _required_news_dedup_diagnostics_mapping(row: Mapping[str, Any], field_name: str) -> dict[str, Any]:
+    if field_name not in row:
+        raise ValueError(f"news_dedup_diagnostics_{field_name}_required")
+    value = row[field_name]
+    if not isinstance(value, Mapping):
+        raise ValueError(f"news_dedup_diagnostics_{field_name}_required")
+    return dict(value)
 
 
 def _projected_news_page_row_payload(
@@ -5323,13 +5831,15 @@ def _required_news_page_row_list(projected: Mapping[str, Any], field_name: str) 
 
 
 def _story_projection_payload(*, story_key: str, member_payloads: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    member_items = [_json_dict(payload.get("item")) for payload in member_payloads]
-    member_news_item_ids = [str(item.get("news_item_id") or "") for item in member_items if item.get("news_item_id")]
+    member_items = [_required_story_projection_member_item(payload) for payload in member_payloads]
+    if not member_items:
+        raise ValueError("news_story_projection_member_item_required")
+    member_news_item_ids = [_required_story_projection_text(item, "news_item_id") for item in member_items]
     source_ids = sorted(
         {
             str(source_id)
             for item in member_items
-            for source_id in _json_list(item.get("source_ids_json")) or [item.get("source_id")]
+            for source_id in _required_story_projection_list(item, "source_ids_json")
             if str(source_id or "")
         }
     )
@@ -5337,7 +5847,7 @@ def _story_projection_payload(*, story_key: str, member_payloads: Sequence[Mappi
         {
             str(source_domain)
             for item in member_items
-            for source_domain in _json_list(item.get("source_domains_json")) or [item.get("source_domain")]
+            for source_domain in _required_story_projection_list(item, "source_domains_json")
             if str(source_domain or "")
         }
     )
@@ -5345,14 +5855,17 @@ def _story_projection_payload(*, story_key: str, member_payloads: Sequence[Mappi
         {
             str(provider_key)
             for item in member_items
-            for provider_key in _json_list(item.get("provider_article_keys_json"))
+            for provider_key in _required_story_projection_list(item, "provider_article_keys_json")
             if str(provider_key or "")
         }
     )
-    latest_at_ms = max((int(item.get("published_at_ms") or 0) for item in member_items), default=0)
-    earliest_at_ms = min((int(item.get("published_at_ms") or 0) for item in member_items), default=0)
-    representative_news_item_id = member_news_item_ids[0] if member_news_item_ids else ""
-    story_identity = _json_dict(member_items[0].get("story_identity_json")) if member_items else {}
+    published_at_ms_values = [
+        _required_story_projection_nonnegative_int(item, "published_at_ms") for item in member_items
+    ]
+    latest_at_ms = max(published_at_ms_values)
+    earliest_at_ms = min(published_at_ms_values)
+    representative_news_item_id = member_news_item_ids[0]
+    story_identity = _required_story_projection_mapping(member_items[0], "story_identity_json")
     return {
         "story_key": story_key,
         "representative_news_item_id": representative_news_item_id,
@@ -5367,33 +5880,162 @@ def _story_projection_payload(*, story_key: str, member_payloads: Sequence[Mappi
     }
 
 
+def _required_story_projection_member_item(payload: Mapping[str, Any]) -> dict[str, Any]:
+    value = payload.get("item")
+    if not isinstance(value, Mapping):
+        raise ValueError("news_story_projection_item_required")
+    return dict(value)
+
+
+def _required_story_projection_payload_list(payload: Mapping[str, Any], field_name: str) -> list[Any]:
+    if field_name not in payload:
+        raise ValueError(f"news_story_projection_{field_name}_required")
+    value = payload[field_name]
+    if not isinstance(value, list):
+        raise ValueError(f"news_story_projection_{field_name}_required")
+    return list(value)
+
+
+def _required_story_projection_text(item: Mapping[str, Any], field_name: str) -> str:
+    if field_name not in item:
+        raise ValueError(f"news_story_projection_{field_name}_required")
+    text = str(item[field_name]).strip()
+    if not text:
+        raise ValueError(f"news_story_projection_{field_name}_required")
+    return text
+
+
+def _required_story_projection_list(item: Mapping[str, Any], field_name: str) -> list[Any]:
+    if field_name not in item:
+        raise ValueError(f"news_story_projection_{field_name}_required")
+    value = item[field_name]
+    if isinstance(value, str) or not isinstance(value, list | tuple):
+        raise ValueError(f"news_story_projection_{field_name}_required")
+    return list(value)
+
+
+def _required_story_projection_mapping(item: Mapping[str, Any], field_name: str) -> dict[str, Any]:
+    if field_name not in item:
+        raise ValueError(f"news_story_projection_{field_name}_required")
+    value = item[field_name]
+    if not isinstance(value, Mapping) or not value:
+        raise ValueError(f"news_story_projection_{field_name}_required")
+    return dict(value)
+
+
+def _required_story_projection_nonnegative_int(item: Mapping[str, Any], field_name: str) -> int:
+    if field_name not in item:
+        raise ValueError(f"news_story_projection_{field_name}_required")
+    value = item[field_name]
+    if isinstance(value, bool):
+        raise ValueError(f"news_story_projection_{field_name}_required")
+    try:
+        resolved = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"news_story_projection_{field_name}_required") from exc
+    if resolved < 0:
+        raise ValueError(f"news_story_projection_{field_name}_required")
+    return resolved
+
+
+def _required_story_item_text(item: Mapping[str, Any], field_name: str) -> str:
+    if field_name not in item:
+        raise ValueError(f"news_story_brief_target_{field_name}_required")
+    text = str(item[field_name]).strip()
+    if not text:
+        raise ValueError(f"news_story_brief_target_{field_name}_required")
+    return text
+
+
+def _required_story_item_mapping(item: Mapping[str, Any], field_name: str) -> dict[str, Any]:
+    if field_name not in item:
+        raise ValueError(f"news_story_brief_target_{field_name}_required")
+    value = item[field_name]
+    if not isinstance(value, Mapping) or not value:
+        raise ValueError(f"news_story_brief_target_{field_name}_required")
+    return dict(value)
+
+
+def _required_story_item_json_value(item: Mapping[str, Any], field_name: str) -> object:
+    if field_name not in item:
+        raise ValueError(f"news_story_brief_target_{field_name}_required")
+    value = item[field_name]
+    if isinstance(value, Mapping):
+        if not value:
+            raise ValueError(f"news_story_brief_target_{field_name}_required")
+        return dict(value)
+    if isinstance(value, list | tuple | set):
+        if not value:
+            raise ValueError(f"news_story_brief_target_{field_name}_required")
+        return list(value)
+    if isinstance(value, str) and value.strip():
+        return value
+    raise ValueError(f"news_story_brief_target_{field_name}_required")
+
+
+def _story_brief_target_list(row: Mapping[str, Any], field_name: str) -> list[Any]:
+    value = row.get(field_name)
+    if value is None:
+        return []
+    if isinstance(value, str) or not isinstance(value, list | tuple):
+        raise ValueError(f"news_story_brief_target_{field_name}_required")
+    return list(value)
+
+
+def _required_agent_admission_item_text(item: Mapping[str, Any], field_name: str) -> str:
+    value = item.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"news_agent_admission_{field_name}_required")
+    return value.strip()
+
+
 def _apply_page_row_summary(payload: dict[str, Any], summary: Mapping[str, Any]) -> None:
-    payload["canonical_item_key"] = str(payload.get("canonical_item_key") or summary.get("canonical_item_key") or "")
-    payload["duplicate_count"] = int(payload.get("duplicate_count") or summary.get("duplicate_observation_count") or 1)
-    payload["source_ids_json"] = _json(payload.get("source_ids_json") or summary.get("source_ids_json") or [])
-    payload["source_domains_json"] = _json(
-        payload.get("source_domains_json") or summary.get("source_domains_json") or []
-    )
-    payload["provider_article_keys_json"] = _json(
-        payload.get("provider_article_keys_json") or summary.get("provider_article_keys_json") or []
-    )
+    payload["canonical_item_key"] = _required_page_text(payload, "canonical_item_key")
+    payload["duplicate_count"] = _required_page_nonnegative_int(payload, "duplicate_count")
+    payload["source_ids_json"] = _json(_required_page_list(payload, "source_ids_json"))
+    payload["source_domains_json"] = _json(_required_page_list(payload, "source_domains_json"))
+    payload["provider_article_keys_json"] = _json(_required_page_list(payload, "provider_article_keys_json"))
+    if not summary:
+        return
+    payload["canonical_item_key"] = _required_page_text(summary, "canonical_item_key")
+    payload["duplicate_count"] = _required_page_nonnegative_int(summary, "duplicate_observation_count")
+    payload["source_ids_json"] = _json(_required_page_list(summary, "source_ids_json"))
+    payload["source_domains_json"] = _json(_required_page_list(summary, "source_domains_json"))
+    payload["provider_article_keys_json"] = _json(_required_page_list(summary, "provider_article_keys_json"))
 
 
-def _detail_agent_brief(value: Any) -> dict[str, Any]:
-    return _public_agent_brief_payload(value)
+def _agent_publishable_summary(agent_brief: Mapping[str, Any], *, brief_json: Mapping[str, Any]) -> bool:
+    value = agent_brief.get("summary_zh")
+    if value is None and "summary_zh" in brief_json:
+        value = brief_json.get("summary_zh")
+    if not isinstance(value, str):
+        return False
+    return bool(value.strip())
 
 
-def _agent_publishable_summary(agent_brief: Mapping[str, Any]) -> bool:
-    brief_json = _json_dict(agent_brief.get("brief_json"))
-    return bool(
-        str(
-            agent_brief.get("summary_zh")
-            or brief_json.get("summary_zh")
-            or agent_brief.get("market_read_zh")
-            or brief_json.get("market_read_zh")
-            or ""
-        ).strip()
-    )
+def _required_json_mapping(payload: Mapping[str, Any], field_name: str, *, label: str) -> dict[str, Any]:
+    if field_name not in payload:
+        raise ValueError(f"unsupported {label} shape: missing {field_name}")
+    value = payload[field_name]
+    if not isinstance(value, Mapping):
+        raise ValueError(f"unsupported {label} shape: {field_name} must be mapping")
+    return dict(value)
+
+
+def _required_json_list(payload: Mapping[str, Any], field_name: str, *, label: str) -> list[Any]:
+    if field_name not in payload:
+        raise ValueError(f"unsupported {label} shape: missing {field_name}")
+    value = payload[field_name]
+    if isinstance(value, str) or not isinstance(value, list | tuple):
+        raise ValueError(f"unsupported {label} shape: {field_name} must be list")
+    return list(value)
+
+
+def _required_member_news_item_ids(payload: Mapping[str, Any], *, label: str) -> list[str]:
+    ids = _member_news_item_ids(_required_json_list(payload, "member_news_item_ids_json", label=label))
+    if not ids:
+        raise ValueError(f"unsupported {label} shape: member_news_item_ids_json must be non-empty")
+    return ids
 
 
 def _entity_payload(entity: NewsEntity) -> dict[str, Any]:
@@ -5463,12 +6105,14 @@ def _fact_payload(candidate: NewsFactCandidate) -> dict[str, Any]:
 
 
 def _agent_run_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    response_json = payload["response_json"]
+    label = "news item agent run payload"
     return {
         "run_id": str(payload["run_id"]),
         "news_item_id": str(payload["news_item_id"]),
         "provider": str(payload["provider"]),
         "model": str(payload["model"]),
-        "backend": str(payload.get("backend") or "litellm_sdk"),
+        "backend": _required_payload_text(payload, "backend", label=label),
         "execution_trace_id": payload.get("execution_trace_id"),
         "workflow_name": str(payload["workflow_name"]),
         "agent_name": str(payload["agent_name"]),
@@ -5480,17 +6124,21 @@ def _agent_run_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
         "guardrail_version": str(payload["guardrail_version"]),
         "input_hash": str(payload["input_hash"]),
         "output_hash": payload.get("output_hash"),
-        "execution_started": bool(payload.get("execution_started", False)),
+        "execution_started": bool(payload["execution_started"]),
         "status": str(payload["status"]),
         "outcome": str(payload["outcome"]),
         "error_class": payload.get("error_class"),
         "error": _compact_error(payload.get("error")),
-        "request_json": _json(payload.get("request_json") or {}),
-        "response_json": _json(payload["response_json"]) if payload.get("response_json") is not None else None,
-        "validation_errors_json": _json(payload.get("validation_errors_json") or []),
-        "trace_metadata_json": _json(payload.get("trace_metadata_json") or {}),
-        "usage_json": _json(payload.get("usage_json") or {}),
-        "latency_ms": int(payload.get("latency_ms") or 0),
+        "request_json": _json(_required_json_mapping(payload, "request_json", label="news item agent run payload")),
+        "response_json": _json(response_json) if response_json is not None else None,
+        "validation_errors_json": _json(
+            _required_json_list(payload, "validation_errors_json", label="news item agent run payload")
+        ),
+        "trace_metadata_json": _json(
+            _required_json_mapping(payload, "trace_metadata_json", label="news item agent run payload")
+        ),
+        "usage_json": _json(_required_json_mapping(payload, "usage_json", label="news item agent run payload")),
+        "latency_ms": _required_payload_nonnegative_int(payload, "latency_ms", label=label),
         "started_at_ms": int(payload["started_at_ms"]),
         "finished_at_ms": int(payload["finished_at_ms"]),
         "created_at_ms": int(payload["created_at_ms"]),
@@ -5499,9 +6147,9 @@ def _agent_run_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
 
 def _agent_brief_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
     status = str(payload["status"])
-    brief_json = _json_dict(payload.get("brief_json") or {})
-    if status == "ready" and not _agent_publishable_summary({**payload, "brief_json": brief_json}):
-        raise ValueError("ready news item agent brief requires publishable summary or market_read text")
+    brief_json = _required_json_mapping(payload, "brief_json", label="news item agent brief payload")
+    if status == "ready" and not _agent_publishable_summary(payload, brief_json=brief_json):
+        raise ValueError("ready news item agent brief requires publishable summary")
     return {
         "news_item_id": str(payload["news_item_id"]),
         "agent_run_id": str(payload["agent_run_id"]),
@@ -5520,31 +6168,146 @@ def _agent_brief_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _source_quality_payload(row: Mapping[str, Any]) -> dict[str, Any]:
+def _story_agent_run_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    response_json = payload["response_json"]
+    label = "news story agent run payload"
     return {
-        "row_id": str(row["row_id"]),
-        "source_id": str(row["source_id"]),
-        "window": str(row["window"]),
-        "computed_at_ms": int(row["computed_at_ms"]),
+        "run_id": str(payload["run_id"]),
+        "story_brief_key": str(payload["story_brief_key"]),
+        "story_key": str(payload["story_key"]),
+        "story_identity_version": str(payload["story_identity_version"]),
+        "representative_news_item_id": str(payload["representative_news_item_id"]),
+        "member_news_item_ids_json": _json(_required_member_news_item_ids(payload, label=label)),
+        "provider": str(payload["provider"]),
+        "model": str(payload["model"]),
+        "backend": _required_payload_text(payload, "backend", label=label),
+        "execution_trace_id": payload.get("execution_trace_id"),
+        "workflow_name": str(payload["workflow_name"]),
+        "agent_name": str(payload["agent_name"]),
+        "lane": str(payload["lane"]),
+        "artifact_version_hash": str(payload["artifact_version_hash"]),
+        "prompt_version": str(payload["prompt_version"]),
+        "schema_version": str(payload["schema_version"]),
+        "validator_version": str(payload["validator_version"]),
+        "guardrail_version": str(payload["guardrail_version"]),
+        "input_hash": str(payload["input_hash"]),
+        "output_hash": payload.get("output_hash"),
+        "execution_started": bool(payload["execution_started"]),
+        "status": str(payload["status"]),
+        "outcome": str(payload["outcome"]),
+        "error_class": payload.get("error_class"),
+        "error": _compact_error(payload.get("error")),
+        "request_json": _json(_required_json_mapping(payload, "request_json", label=label)),
+        "response_json": _json(response_json) if response_json is not None else None,
+        "validation_errors_json": _json(_required_json_list(payload, "validation_errors_json", label=label)),
+        "trace_metadata_json": _json(_required_json_mapping(payload, "trace_metadata_json", label=label)),
+        "usage_json": _json(_required_json_mapping(payload, "usage_json", label=label)),
+        "latency_ms": _required_payload_nonnegative_int(payload, "latency_ms", label=label),
+        "started_at_ms": int(payload["started_at_ms"]),
+        "finished_at_ms": int(payload["finished_at_ms"]),
+        "created_at_ms": int(payload["created_at_ms"]),
+    }
+
+
+def _story_agent_brief_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    status = str(payload["status"])
+    brief_json = _required_json_mapping(payload, "brief_json", label="news story agent brief payload")
+    if status == "ready" and not _agent_publishable_summary(payload, brief_json=brief_json):
+        raise ValueError("ready news story agent brief requires publishable summary")
+    return {
+        "story_brief_key": str(payload["story_brief_key"]),
+        "story_key": str(payload["story_key"]),
+        "story_identity_version": str(payload["story_identity_version"]),
+        "representative_news_item_id": str(payload["representative_news_item_id"]),
+        "member_news_item_ids_json": _json(
+            _required_member_news_item_ids(payload, label="news story agent brief payload")
+        ),
+        "agent_run_id": str(payload["agent_run_id"]),
+        "status": status,
+        "direction": str(payload["direction"]),
+        "decision_class": str(payload["decision_class"]),
+        "brief_json": _json(brief_json),
+        "input_hash": str(payload["input_hash"]),
+        "artifact_version_hash": str(payload["artifact_version_hash"]),
+        "prompt_version": str(payload["prompt_version"]),
+        "schema_version": str(payload["schema_version"]),
+        "validator_version": str(payload["validator_version"]),
+        "computed_at_ms": int(payload["computed_at_ms"]),
+        "created_at_ms": int(payload["created_at_ms"]),
+        "updated_at_ms": int(payload["updated_at_ms"]),
+    }
+
+
+def _member_news_item_ids(value: Any) -> list[str]:
+    return list(dict.fromkeys(str(item) for item in value if str(item)))
+
+
+def _source_quality_payload(row: Mapping[str, Any]) -> dict[str, Any]:
+    diagnostics_json = _required_source_quality_payload_mapping(row, "diagnostics_json")
+    source_quality_status = _required_source_quality_payload_diagnostics_text(diagnostics_json, "status")
+    return {
+        "row_id": _required_source_quality_payload_text(row, "row_id"),
+        "source_id": _required_source_quality_payload_text(row, "source_id"),
+        "window": _required_source_quality_payload_text(row, "window"),
+        "computed_at_ms": _required_source_quality_payload_nonnegative_int(row, "computed_at_ms"),
         "fetch_success_rate": _optional_float(row.get("fetch_success_rate")),
-        "items_fetched": int(row.get("items_fetched") or 0),
-        "items_inserted": int(row.get("items_inserted") or 0),
+        "items_fetched": _required_source_quality_payload_nonnegative_int(row, "items_fetched"),
+        "items_inserted": _required_source_quality_payload_nonnegative_int(row, "items_inserted"),
         "duplicate_rate": _optional_float(row.get("duplicate_rate")),
         "process_success_rate": _optional_float(row.get("process_success_rate")),
         "resolved_token_rate": _optional_float(row.get("resolved_token_rate")),
         "attention_rate": _optional_float(row.get("attention_rate")),
         "accepted_fact_rate": _optional_float(row.get("accepted_fact_rate")),
         "brief_ready_rate": _optional_float(row.get("brief_ready_rate")),
-        "median_lag_ms": int(row["median_lag_ms"]) if row.get("median_lag_ms") is not None else None,
+        "median_lag_ms": _optional_source_quality_payload_nonnegative_int(row, "median_lag_ms"),
         "quality_score": _optional_float(row.get("quality_score")),
-        "diagnostics_json": _json(row.get("diagnostics_json") or {}),
-        "projection_version": str(row["projection_version"]),
+        "diagnostics_json": _json(diagnostics_json),
+        "projection_version": _required_source_quality_payload_text(row, "projection_version"),
+        "source_quality_status": source_quality_status,
     }
 
 
+def _required_source_quality_payload_text(row: Mapping[str, Any], field_name: str) -> str:
+    value = row.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"news_source_quality_payload_{field_name}_required")
+    return value.strip()
+
+
+def _required_source_quality_payload_nonnegative_int(row: Mapping[str, Any], field_name: str) -> int:
+    value = row.get(field_name)
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError(f"news_source_quality_payload_{field_name}_required")
+    return value
+
+
+def _optional_source_quality_payload_nonnegative_int(row: Mapping[str, Any], field_name: str) -> int | None:
+    value = row.get(field_name)
+    if value is None:
+        return None
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError(f"news_source_quality_payload_{field_name}_required")
+    return value
+
+
+def _required_source_quality_payload_mapping(row: Mapping[str, Any], field_name: str) -> dict[str, Any]:
+    value = row.get(field_name)
+    if not isinstance(value, Mapping):
+        raise ValueError(f"news_source_quality_payload_{field_name}_required")
+    return dict(value)
+
+
+def _required_source_quality_payload_diagnostics_text(payload: Mapping[str, Any], field_name: str) -> str:
+    value = payload.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"news_source_quality_payload_diagnostics_{field_name}_required")
+    return value.strip()
+
+
 def _source_status_payload(row: Mapping[str, Any]) -> dict[str, Any]:
-    latest_quality = _json_dict(row.get("latest_quality_json"))
-    quality_payload = _source_quality_read_payload(latest_quality) if latest_quality else None
+    latest_quality = _optional_source_status_present_mapping(row, "latest_quality_json")
+    latest_fetch_run = _optional_source_status_present_mapping(row, "latest_fetch_run_json")
+    quality_payload = _source_quality_read_payload(latest_quality) if latest_quality is not None else None
     latest_item_published_at_ms = _optional_int(row.get("latest_item_published_at_ms"))
     latest_item_fetched_at_ms = _optional_int(row.get("latest_item_fetched_at_ms"))
     last_success_at_ms = _optional_int(row.get("last_success_at_ms"))
@@ -5552,63 +6315,177 @@ def _source_status_payload(row: Mapping[str, Any]) -> dict[str, Any]:
         latest_item_fetched_at_ms,
         last_success_at_ms,
     )
+    source_id = _required_source_status_text(row, "source_id")
+    provider_type = _required_source_status_text(row, "provider_type")
+    source_domain = _required_source_status_text(row, "source_domain")
+    source_name = _required_source_status_text(row, "source_name")
+    source_role = _required_source_status_text(row, "source_role")
+    trust_tier = _required_source_status_text(row, "trust_tier")
+    source_quality_status = _required_source_status_text(row, "source_quality_status")
+    enabled = _required_source_status_bool(row, "enabled")
+    managed_by_config = _required_source_status_bool(row, "managed_by_config")
+    refresh_interval_seconds = _required_source_status_nonnegative_int(row, "refresh_interval_seconds")
+    item_count = _required_source_status_nonnegative_int(row, "item_count")
+    sync_high_watermark_ms = _required_source_status_nonnegative_int(row, "sync_high_watermark_ms")
+    sync_overlap_ms = _required_source_status_nonnegative_int(row, "sync_overlap_ms")
+    next_fetch_after_ms = _required_source_status_nonnegative_int(row, "next_fetch_after_ms")
+    consecutive_failures = _required_source_status_nonnegative_int(row, "consecutive_failures")
+    last_error = _compact_error(row.get("last_error"))
     return {
-        "source_id": str(row["source_id"]),
-        "provider_type": str(row.get("provider_type") or ""),
-        "source_domain": str(row.get("source_domain") or ""),
-        "source_name": str(row.get("source_name") or ""),
-        "source_role": str(row.get("source_role") or ""),
-        "trust_tier": str(row.get("trust_tier") or ""),
-        "coverage_tags": _json_list(row.get("coverage_tags_json")),
-        "source_quality_status": str(row.get("source_quality_status") or "unknown"),
+        "source_id": source_id,
+        "provider_type": provider_type,
+        "source_domain": source_domain,
+        "source_name": source_name,
+        "source_role": source_role,
+        "trust_tier": trust_tier,
+        "coverage_tags": _required_source_status_text_list(row, "coverage_tags_json"),
+        "source_quality_status": source_quality_status,
         "quality": quality_payload,
-        "enabled": bool(row.get("enabled")),
-        "managed_by_config": bool(row.get("managed_by_config")),
-        "refresh_interval_seconds": int(row.get("refresh_interval_seconds") or 0),
-        "item_count": int(row.get("item_count") or 0),
+        "enabled": enabled,
+        "managed_by_config": managed_by_config,
+        "refresh_interval_seconds": refresh_interval_seconds,
+        "item_count": item_count,
         "latest_item_published_at_ms": latest_item_published_at_ms,
         "latest_item_fetched_at_ms": latest_item_fetched_at_ms,
         "last_seen_at_ms": last_seen_at_ms,
-        "latest_fetch_run": _latest_fetch_run_payload(row.get("latest_fetch_run_json")),
+        "latest_fetch_run": _latest_fetch_run_payload(latest_fetch_run),
         "latest_quality_counts": _latest_quality_counts(latest_quality),
-        "sync_high_watermark_ms": int(row.get("sync_high_watermark_ms") or 0),
-        "sync_overlap_ms": int(row.get("sync_overlap_ms") or 0),
-        "sync_diagnostics": _json_dict(row.get("sync_diagnostics_json")),
-        "dedup_diagnostics": _json_dict(row.get("dedup_diagnostics_json")),
+        "sync_high_watermark_ms": sync_high_watermark_ms,
+        "sync_overlap_ms": sync_overlap_ms,
+        "sync_diagnostics": _optional_source_status_mapping(row, "sync_diagnostics_json"),
+        "dedup_diagnostics": _optional_source_status_mapping(row, "dedup_diagnostics_json"),
         "provider_health": _provider_health_payload(
-            row=row,
+            enabled=enabled,
+            consecutive_failures=consecutive_failures,
+            source_quality_status=source_quality_status,
             quality_payload=quality_payload,
+            last_error=last_error,
+            last_success_at_ms=last_success_at_ms,
             last_seen_at_ms=last_seen_at_ms,
         ),
-        "provider_capability_tags": _provider_capability_tags(row=row),
+        "provider_capability_tags": _provider_capability_tags(
+            provider_type=provider_type,
+            source_role=source_role,
+            trust_tier=trust_tier,
+        ),
         "last_fetch_at_ms": _optional_int(row.get("last_fetch_at_ms")),
         "last_success_at_ms": last_success_at_ms,
-        "next_fetch_after_ms": int(row.get("next_fetch_after_ms") or 0),
-        "consecutive_failures": int(row.get("consecutive_failures") or 0),
-        "last_error": _compact_error(row.get("last_error")),
+        "next_fetch_after_ms": next_fetch_after_ms,
+        "consecutive_failures": consecutive_failures,
+        "last_error": last_error,
     }
 
 
 def _source_quality_read_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     return {
-        "row_id": str(row["row_id"]),
-        "source_id": str(row["source_id"]),
-        "window": str(row["window"]),
-        "computed_at_ms": int(row["computed_at_ms"]),
+        "row_id": _required_latest_quality_payload_text(row, "row_id"),
+        "source_id": _required_latest_quality_payload_text(row, "source_id"),
+        "window": _required_latest_quality_payload_text(row, "window"),
+        "computed_at_ms": _required_latest_quality_nonnegative_int(row, "computed_at_ms"),
         "fetch_success_rate": _optional_float(row.get("fetch_success_rate")),
-        "items_fetched": int(row.get("items_fetched") or 0),
-        "items_inserted": int(row.get("items_inserted") or 0),
+        "items_fetched": _required_latest_quality_nonnegative_int(row, "items_fetched"),
+        "items_inserted": _required_latest_quality_nonnegative_int(row, "items_inserted"),
         "duplicate_rate": _optional_float(row.get("duplicate_rate")),
         "process_success_rate": _optional_float(row.get("process_success_rate")),
         "resolved_token_rate": _optional_float(row.get("resolved_token_rate")),
         "attention_rate": _optional_float(row.get("attention_rate")),
         "accepted_fact_rate": _optional_float(row.get("accepted_fact_rate")),
         "brief_ready_rate": _optional_float(row.get("brief_ready_rate")),
-        "median_lag_ms": int(row["median_lag_ms"]) if row.get("median_lag_ms") is not None else None,
+        "median_lag_ms": _optional_latest_quality_nonnegative_int(row, "median_lag_ms"),
         "quality_score": _optional_float(row.get("quality_score")),
-        "diagnostics_json": _json_dict(row.get("diagnostics_json")),
-        "projection_version": str(row["projection_version"]),
+        "diagnostics_json": _required_latest_quality_mapping(row, "diagnostics_json"),
+        "projection_version": _required_latest_quality_payload_text(row, "projection_version"),
     }
+
+
+def _optional_source_status_mapping(row: Mapping[str, Any], field_name: str) -> dict[str, Any]:
+    value = row.get(field_name)
+    if value is None:
+        return {}
+    if not isinstance(value, Mapping):
+        raise ValueError(f"news_source_status_{field_name}_required")
+    return dict(value)
+
+
+def _optional_source_status_present_mapping(row: Mapping[str, Any], field_name: str) -> dict[str, Any] | None:
+    value = row.get(field_name)
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise ValueError(f"news_source_status_{field_name}_required")
+    return dict(value)
+
+
+def _required_latest_quality_mapping(row: Mapping[str, Any], field_name: str) -> dict[str, Any]:
+    value = row.get(field_name)
+    if not isinstance(value, Mapping):
+        raise ValueError(f"news_source_status_latest_quality_{field_name}_required")
+    return dict(value)
+
+
+def _required_latest_quality_payload_text(row: Mapping[str, Any], field_name: str) -> str:
+    value = row.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"news_source_status_latest_quality_{field_name}_required")
+    return value.strip()
+
+
+def _required_latest_quality_nonnegative_int(row: Mapping[str, Any], field_name: str) -> int:
+    value = row.get(field_name)
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError(f"news_source_status_latest_quality_{field_name}_required")
+    return value
+
+
+def _optional_latest_quality_nonnegative_int(row: Mapping[str, Any], field_name: str) -> int | None:
+    value = row.get(field_name)
+    if value is None:
+        return None
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError(f"news_source_status_latest_quality_{field_name}_required")
+    return value
+
+
+def _required_latest_quality_text(row: Mapping[str, Any], field_name: str) -> str:
+    value = row.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"news_source_status_latest_quality_diagnostics_{field_name}_required")
+    return value.strip()
+
+
+def _required_source_status_bool(row: Mapping[str, Any], field_name: str) -> bool:
+    value = row.get(field_name)
+    if not isinstance(value, bool):
+        raise ValueError(f"news_source_status_{field_name}_required")
+    return value
+
+
+def _required_source_status_nonnegative_int(row: Mapping[str, Any], field_name: str) -> int:
+    value = row.get(field_name)
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError(f"news_source_status_{field_name}_required")
+    return value
+
+
+def _required_source_status_text(row: Mapping[str, Any], field_name: str) -> str:
+    value = row.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"news_source_status_{field_name}_required")
+    return value.strip()
+
+
+def _required_source_status_text_list(row: Mapping[str, Any], field_name: str) -> list[str]:
+    value = row.get(field_name)
+    if not isinstance(value, list | tuple):
+        raise ValueError(f"news_source_status_{field_name}_required")
+    tags: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            raise ValueError(f"news_source_status_{field_name}_required")
+        text = item.strip()
+        if text:
+            tags.append(text)
+    return tags
 
 
 def _source_material_changed(existing: Mapping[str, Any], payload: Mapping[str, Any]) -> bool:
@@ -5746,22 +6623,33 @@ def _material_symbol_key_for_impacts(provider_token_impacts: object) -> str:
 def _current_policy_material_duplicate_groups(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     keyed_rows: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
-        if str(row.get("provider_type") or "").strip().lower() != "opennews":
+        provider_type = _required_current_policy_material_text(row, "provider_type").lower()
+        if provider_type != "opennews":
             continue
-        fingerprint = material_title_fingerprint(row.get("title"))
+        source_id = _required_current_policy_material_text(row, "source_id")
+        news_item_id = _required_current_policy_material_text(row, "news_item_id")
+        title = _required_current_policy_material_text(row, "title")
+        published_at_ms = _required_current_policy_material_positive_int(row, "published_at_ms")
+        provider_token_impacts = _required_current_policy_material_impacts(row, "provider_token_impacts_json")
+        fingerprint = material_title_fingerprint(title)
         if not material_title_is_eligible(fingerprint):
             continue
         payload = dict(row)
+        payload["provider_type"] = provider_type
+        payload["source_id"] = source_id
+        payload["news_item_id"] = news_item_id
+        payload["title"] = title
+        payload["published_at_ms"] = published_at_ms
         payload["material_title_fingerprint"] = fingerprint
-        payload["material_symbols"] = provider_symbol_set(row.get("provider_token_impacts_json"))
-        keyed_rows[(str(row.get("source_id") or ""), fingerprint)].append(payload)
+        payload["material_symbols"] = provider_symbol_set(provider_token_impacts)
+        keyed_rows[(source_id, fingerprint)].append(payload)
 
     groups: list[dict[str, Any]] = []
     for (source_id, fingerprint), source_rows in sorted(keyed_rows.items()):
         clusters: list[list[dict[str, Any]]] = []
         for row in sorted(
             source_rows,
-            key=lambda value: (int(value.get("published_at_ms") or 0), str(value.get("news_item_id") or "")),
+            key=lambda value: (int(value["published_at_ms"]), str(value["news_item_id"])),
         ):
             cluster = _current_policy_matching_material_cluster(clusters, row)
             if cluster is None:
@@ -5769,7 +6657,7 @@ def _current_policy_material_duplicate_groups(rows: Sequence[Mapping[str, Any]])
             else:
                 cluster.append(row)
         for cluster in clusters:
-            candidate_ids = [str(row.get("news_item_id") or "") for row in cluster]
+            candidate_ids = [str(row["news_item_id"]) for row in cluster]
             news_item_ids = list(dict.fromkeys(news_item_id for news_item_id in candidate_ids if news_item_id))
             if len(news_item_ids) <= 1:
                 continue
@@ -5796,16 +6684,39 @@ def _current_policy_matching_material_cluster(
     clusters: Sequence[list[dict[str, Any]]],
     row: Mapping[str, Any],
 ) -> list[dict[str, Any]] | None:
-    row_published_at = int(row.get("published_at_ms") or 0)
-    row_symbols = set(row.get("material_symbols") or set())
+    row_published_at = int(row["published_at_ms"])
+    row_symbols = set(row["material_symbols"])
     for cluster in clusters:
         if any(
-            abs(row_published_at - int(candidate.get("published_at_ms") or 0)) <= _MATERIAL_MATCH_WINDOW_MS
-            and symbol_sets_compatible(row_symbols, set(candidate.get("material_symbols") or set()))
+            abs(row_published_at - int(candidate["published_at_ms"])) <= _MATERIAL_MATCH_WINDOW_MS
+            and symbol_sets_compatible(row_symbols, set(candidate["material_symbols"]))
             for candidate in cluster
         ):
             return cluster
     return None
+
+
+def _required_current_policy_material_text(row: Mapping[str, Any], field_name: str) -> str:
+    value = row.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"news_dedup_current_policy_material_{field_name}_required")
+    return value.strip()
+
+
+def _required_current_policy_material_positive_int(row: Mapping[str, Any], field_name: str) -> int:
+    value = row.get(field_name)
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise ValueError(f"news_dedup_current_policy_material_{field_name}_required")
+    return value
+
+
+def _required_current_policy_material_impacts(row: Mapping[str, Any], field_name: str) -> object:
+    if field_name not in row:
+        raise ValueError(f"news_dedup_current_policy_material_{field_name}_required")
+    value = row[field_name]
+    if isinstance(value, str) or not isinstance(value, Mapping | list | tuple):
+        raise ValueError(f"news_dedup_current_policy_material_{field_name}_required")
+    return value
 
 
 def _distinct_old_news_item_ids(old_news_item_ids: Sequence[str], *, news_item_id: str) -> list[str]:
@@ -5895,12 +6806,29 @@ def _news_item_content_changed(existing: Mapping[str, Any], payload: Mapping[str
 
 def _news_item_aggregate_changed(existing: Mapping[str, Any], updated: Mapping[str, Any]) -> bool:
     return (
-        int(existing.get("duplicate_observation_count") or 0) != int(updated.get("duplicate_observation_count") or 0)
-        or _json_list(existing.get("source_ids_json")) != _json_list(updated.get("source_ids_json"))
-        or _json_list(existing.get("source_domains_json")) != _json_list(updated.get("source_domains_json"))
-        or _json_list(existing.get("provider_article_keys_json"))
-        != _json_list(updated.get("provider_article_keys_json"))
+        _required_news_item_aggregate_nonnegative_int(existing, "duplicate_observation_count")
+        != _required_news_item_aggregate_nonnegative_int(updated, "duplicate_observation_count")
+        or _required_news_item_aggregate_list(existing, "source_ids_json")
+        != _required_news_item_aggregate_list(updated, "source_ids_json")
+        or _required_news_item_aggregate_list(existing, "source_domains_json")
+        != _required_news_item_aggregate_list(updated, "source_domains_json")
+        or _required_news_item_aggregate_list(existing, "provider_article_keys_json")
+        != _required_news_item_aggregate_list(updated, "provider_article_keys_json")
     )
+
+
+def _required_news_item_aggregate_nonnegative_int(row: Mapping[str, Any], field_name: str) -> int:
+    value = row.get(field_name)
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError(f"news_item_aggregate_{field_name}_required")
+    return int(value)
+
+
+def _required_news_item_aggregate_list(row: Mapping[str, Any], field_name: str) -> list[Any]:
+    value = row.get(field_name)
+    if isinstance(value, str) or not isinstance(value, Sequence):
+        raise ValueError(f"news_item_aggregate_{field_name}_required")
+    return list(value)
 
 
 def _news_item_edge_changed(existing: Mapping[str, Any], payload: Mapping[str, Any]) -> bool:
@@ -5964,24 +6892,6 @@ def _agent_admission_payload(value: NewsItemAgentAdmission) -> dict[str, object]
     }
 
 
-def _agent_admission_public_payload(row: Mapping[str, Any]) -> dict[str, Any]:
-    payload = _json_dict(row.get("agent_admission_json"))
-    normalized = _agent_admission_mapping_payload(
-        {
-            **payload,
-            "status": row.get("agent_admission_status") or payload.get("status") or "needs_review",
-            "reason": row.get("agent_admission_reason") or payload.get("reason") or "",
-            "version": row.get("agent_admission_version")
-            or payload.get("version")
-            or NEWS_ITEM_AGENT_ADMISSION_VERSION,
-            "representative_news_item_id": row.get("agent_representative_news_item_id")
-            or payload.get("representative_news_item_id")
-            or "",
-        }
-    )
-    return dict(normalized)
-
-
 def _story_identity_payload(value: NewsStoryIdentity) -> dict[str, object]:
     if not isinstance(value, NewsStoryIdentity):
         raise ValueError("unsupported story identity payload shape")
@@ -6000,18 +6910,49 @@ def _story_identity_payload(value: NewsStoryIdentity) -> dict[str, object]:
 
 
 def _agent_admission_mapping_payload(payload: Mapping[str, Any]) -> dict[str, object]:
-    status = str(payload.get("status") or "needs_review")
-    reason = str(payload.get("reason") or "")
-    basis = payload.get("basis")
+    status = _required_page_nested_text(payload, "agent_admission", "status")
+    reason = _required_page_nested_text(payload, "agent_admission", "reason")
+    representative_news_item_id = _required_page_nested_text(
+        payload,
+        "agent_admission",
+        "representative_news_item_id",
+    )
+    basis = _required_page_nested_mapping(payload, "agent_admission", "basis")
+    version = _required_page_nested_text(payload, "agent_admission", "version")
     eligible = bool(payload.get("eligible")) if "eligible" in payload else status in {"eligible", "eligible_refresh"}
     return {
         "eligible": eligible,
         "status": status,
         "reason": reason,
-        "representative_news_item_id": str(payload.get("representative_news_item_id") or ""),
-        "basis": dict(basis) if isinstance(basis, Mapping) else {},
-        "version": str(payload.get("version") or NEWS_ITEM_AGENT_ADMISSION_VERSION),
+        "representative_news_item_id": representative_news_item_id,
+        "basis": basis,
+        "version": version,
     }
+
+
+def _required_page_nested_text(payload: Mapping[str, Any], object_name: str, field_name: str) -> str:
+    value = payload.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"news_page_row_payload_required:{object_name}.{field_name}")
+    return value.strip()
+
+
+def _required_page_nested_mapping(payload: Mapping[str, Any], object_name: str, field_name: str) -> dict[str, object]:
+    value = payload.get(field_name)
+    if not isinstance(value, Mapping):
+        raise ValueError(f"news_page_row_payload_required:{object_name}.{field_name}")
+    return dict(value)
+
+
+def _require_page_agent_admission_match(
+    payload: Mapping[str, Any],
+    agent_admission: Mapping[str, object],
+    *,
+    payload_field: str,
+    admission_field: str,
+) -> None:
+    if payload[payload_field] != agent_admission[admission_field]:
+        raise ValueError(f"news_page_row_payload_invalid:{payload_field}_mismatch")
 
 
 def _required_payload_list(payload: Mapping[str, object], field: str, *, label: str) -> list[object]:
@@ -6035,6 +6976,21 @@ def _required_payload_text(payload: Mapping[str, object], field: str, *, label: 
     if not value:
         raise ValueError(f"unsupported {label} shape: blank {field}")
     return value
+
+
+def _required_payload_nonnegative_int(payload: Mapping[str, Any], field: str, *, label: str) -> int:
+    if field not in payload:
+        raise ValueError(f"unsupported {label} shape: missing {field}")
+    value = payload[field]
+    if isinstance(value, bool):
+        raise ValueError(f"unsupported {label} shape: {field} must be non-negative integer")
+    try:
+        resolved = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"unsupported {label} shape: {field} must be non-negative integer") from exc
+    if resolved < 0:
+        raise ValueError(f"unsupported {label} shape: {field} must be non-negative integer")
+    return resolved
 
 
 def _required_payload_mapping(payload: Mapping[str, object], field: str, *, label: str) -> dict[str, object]:
@@ -6159,10 +7115,6 @@ def _public_fetch_run_payload(row: Mapping[str, Any]) -> dict[str, Any]:
 
 def _public_agent_brief_payload(value: Any) -> dict[str, Any]:
     payload = _json_dict(value)
-    has_contract_keys = any(key in payload for key in ("prompt_version", "schema_version", "validator_version"))
-    if has_contract_keys and not is_current_news_item_brief_contract(payload):
-        return {"status": "pending"}
-    brief_json = _json_dict(payload.get("brief_json"))
     public_fields = (
         "status",
         "direction",
@@ -6186,36 +7138,128 @@ def _public_agent_brief_payload(value: Any) -> dict[str, Any]:
         "bull_strength",
         "bear_strength",
     )
-    brief_fields = (
+    public_payload = {key: payload.get(key) for key in public_fields if key in payload}
+    public_payload["status"] = _required_public_agent_brief_text(payload, "status")
+    if public_payload["status"] == "ready":
+        public_payload["direction"] = _required_public_agent_brief_text(public_payload, "direction")
+        public_payload["decision_class"] = _required_public_agent_brief_text(public_payload, "decision_class")
+    for field_name in (
+        "event_type",
         "title_zh",
         "summary_zh",
         "market_read_zh",
-        "bull_view",
-        "bear_view",
-        "event_type",
-        "market_domains",
-        "affected_entities",
-        "transmission_paths",
-        "watch_triggers",
-        "invalidation_conditions",
-        "data_gaps",
-        "evidence_refs",
-    )
-    public_payload = {key: payload.get(key) for key in public_fields if key in payload}
-    public_payload["status"] = str(public_payload.get("status") or "pending")
-    public_brief_json = {key: brief_json.get(key) for key in brief_fields if key in brief_json}
-    for key, field_value in public_brief_json.items():
-        if key not in public_payload:
-            public_payload[key] = field_value
-    for list_key in ("affected_entities", "transmission_paths", "market_domains"):
+        "bull_strength",
+        "bear_strength",
+    ):
+        if field_name in public_payload:
+            public_payload[field_name] = _validate_public_agent_brief_text_field(public_payload, field_name)
+    for field_name in ("bull_view", "bear_view"):
+        if field_name in public_payload:
+            public_payload[field_name] = _validate_public_agent_brief_mapping_field(public_payload, field_name)
+    if "affected_entities" in public_payload:
+        public_payload["affected_entities"] = [
+            _validate_public_agent_brief_affected_entity(entity)
+            for entity in _required_public_agent_brief_list(public_payload, "affected_entities")
+        ]
+    for list_key in ("transmission_paths", "market_domains", "market_impacts"):
         if list_key in public_payload:
-            public_payload[list_key] = _json_list(public_payload.get(list_key))
+            public_payload[list_key] = _required_public_agent_brief_list(public_payload, list_key)
     for list_key in ("data_gaps", "evidence_refs", "watch_triggers", "invalidation_conditions"):
         if list_key in public_payload:
-            public_payload[list_key] = _json_list(public_payload.get(list_key))
+            public_payload[list_key] = _required_public_agent_brief_list(public_payload, list_key)
     if "data_gap_count" not in public_payload and "data_gaps" in public_payload:
-        public_payload["data_gap_count"] = len(_json_list(public_payload.get("data_gaps")))
+        public_payload["data_gap_count"] = len(_required_public_agent_brief_list(public_payload, "data_gaps"))
+    for field_name in ("computed_at_ms", "data_gap_count"):
+        if field_name in public_payload:
+            public_payload[field_name] = _validate_public_agent_brief_nonnegative_int_field(
+                public_payload,
+                field_name,
+            )
     return public_payload
+
+
+def _validate_public_agent_brief_text_field(payload: Mapping[str, Any], field_name: str) -> str:
+    return _required_public_agent_brief_text(payload, field_name)
+
+
+def _validate_public_agent_brief_mapping_field(payload: Mapping[str, Any], field_name: str) -> dict[str, Any]:
+    value = payload.get(field_name)
+    if not isinstance(value, Mapping):
+        raise ValueError(f"news_public_agent_brief_{field_name}_required")
+    return dict(value)
+
+
+def _validate_public_agent_brief_nonnegative_int_field(payload: Mapping[str, Any], field_name: str) -> int:
+    value = payload.get(field_name)
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError(f"news_public_agent_brief_{field_name}_required")
+    return value
+
+
+def _validate_public_agent_brief_affected_entity(value: Any) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ValueError("news_public_agent_brief_affected_entities_required")
+    entity = dict(value)
+    payload: dict[str, Any] = {}
+    for key in (
+        "label",
+        "symbol",
+        "name",
+        "entity_type",
+        "market_domain",
+        "resolution_status",
+        "target_type",
+        "target_id",
+        "impact_direction",
+        "reason_zh",
+    ):
+        text = _optional_public_agent_brief_affected_entity_text(entity, key)
+        if text is not None:
+            payload[key] = text
+    evidence_refs = _optional_public_agent_brief_affected_entity_string_list(entity, "evidence_refs")
+    if evidence_refs is not None:
+        payload["evidence_refs"] = evidence_refs
+    return payload
+
+
+def _optional_public_agent_brief_affected_entity_text(entity: Mapping[str, Any], field_name: str) -> str | None:
+    if field_name not in entity or entity.get(field_name) is None:
+        return None
+    value = entity.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"news_public_agent_brief_affected_entities_{field_name}_required")
+    return value.strip()
+
+
+def _optional_public_agent_brief_affected_entity_string_list(
+    entity: Mapping[str, Any],
+    field_name: str,
+) -> list[str] | None:
+    if field_name not in entity or entity.get(field_name) is None:
+        return None
+    values = entity.get(field_name)
+    if not isinstance(values, list):
+        raise ValueError(f"news_public_agent_brief_affected_entities_{field_name}_required")
+    refs: list[str] = []
+    for value in values:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"news_public_agent_brief_affected_entities_{field_name}_required")
+        refs.append(value.strip())
+    return refs
+
+
+def _required_public_agent_brief_list(payload: Mapping[str, Any], field_name: str) -> list[Any]:
+    value = payload.get(field_name)
+    if not isinstance(value, list):
+        raise ValueError(f"news_public_agent_brief_{field_name}_required")
+    return list(value)
+
+
+def _required_public_agent_brief_text(payload: Mapping[str, Any], field_name: str) -> str:
+    value = payload.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"news_public_agent_brief_{field_name}_required")
+    return value.strip()
 
 
 def _public_agent_run_payload(row: Mapping[str, Any]) -> dict[str, Any]:
@@ -6291,11 +7335,41 @@ def _compact_text(value: Any, *, max_length: int) -> str:
     return text[: max(0, max_length - 3)].rstrip() + "..."
 
 
-def _first_int(*values: int | None) -> int:
+def _required_fetch_run_count(field_name: str, *values: int | None) -> int:
     for value in values:
         if value is not None:
-            return max(0, int(value))
-    return 0
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise ValueError(f"news_fetch_run_{field_name}_required")
+            return int(value)
+    raise ValueError(f"news_fetch_run_{field_name}_required")
+
+
+def _required_fetch_run_completion_status(status: Any) -> str:
+    if not isinstance(status, str) or status.strip() not in {"success", "failed"}:
+        raise ValueError("news_fetch_run_status_required")
+    return status.strip()
+
+
+def _required_fetch_run_finished_at_ms(value: Any) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError("news_fetch_run_finished_at_ms_required")
+    return int(value)
+
+
+def _optional_fetch_run_http_status(value: Any) -> int | None:
+    if value is None:
+        return None
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError("news_fetch_run_http_status_required")
+    return int(value)
+
+
+def _optional_fetch_run_extra_json(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if not isinstance(value, Mapping):
+        raise ValueError("news_fetch_run_extra_json_required")
+    return dict(value)
 
 
 def _optional_float(value: Any) -> float | None:
@@ -6324,48 +7398,65 @@ def _max_optional_int(*values: int | None) -> int | None:
     return max(normalized)
 
 
-def _latest_fetch_run_payload(value: Any) -> dict[str, Any] | None:
-    row = _json_dict(value)
-    if not row:
+def _latest_fetch_run_payload(row: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    if row is None:
         return None
     return {
-        "status": str(row.get("status") or "unknown"),
+        "status": _required_latest_fetch_run_text(row, "status"),
         "started_at_ms": _optional_int(row.get("started_at_ms")),
         "finished_at_ms": _positive_optional_int(row.get("finished_at_ms")),
         "http_status": _optional_int(row.get("http_status")),
-        "fetched_count": int(row.get("fetched_count") or 0),
-        "inserted_count": int(row.get("inserted_count") or 0),
-        "updated_count": int(row.get("updated_count") or 0),
-        "duplicate_count": int(row.get("duplicate_count") or 0),
+        "fetched_count": _required_latest_fetch_run_nonnegative_int(row, "fetched_count"),
+        "inserted_count": _required_latest_fetch_run_nonnegative_int(row, "inserted_count"),
+        "updated_count": _required_latest_fetch_run_nonnegative_int(row, "updated_count"),
+        "duplicate_count": _required_latest_fetch_run_nonnegative_int(row, "duplicate_count"),
         "error": _compact_error(row.get("error")),
     }
 
 
-def _latest_quality_counts(latest_quality: Mapping[str, Any]) -> dict[str, Any]:
-    diagnostics = _json_dict(latest_quality.get("diagnostics_json"))
-    counts = _json_dict(diagnostics.get("counts"))
+def _required_latest_fetch_run_text(row: Mapping[str, Any], field_name: str) -> str:
+    value = row.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"news_source_status_latest_fetch_run_{field_name}_required")
+    return value.strip()
+
+
+def _required_latest_fetch_run_nonnegative_int(row: Mapping[str, Any], field_name: str) -> int:
+    value = row.get(field_name)
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError(f"news_source_status_latest_fetch_run_{field_name}_required")
+    return value
+
+
+def _latest_quality_counts(latest_quality: Mapping[str, Any] | None) -> dict[str, Any]:
+    if latest_quality is None:
+        return {}
+    diagnostics = _required_latest_quality_mapping(latest_quality, "diagnostics_json")
+    counts = _optional_source_status_mapping(diagnostics, "counts")
     return {str(key): value for key, value in counts.items()}
 
 
 def _provider_health_payload(
     *,
-    row: Mapping[str, Any],
+    enabled: bool,
+    consecutive_failures: int,
+    source_quality_status: str,
     quality_payload: Mapping[str, Any] | None,
+    last_error: str | None,
+    last_success_at_ms: int | None,
     last_seen_at_ms: int | None,
 ) -> dict[str, Any]:
-    consecutive_failures = int(row.get("consecutive_failures") or 0)
-    last_error = _compact_error(row.get("last_error"))
-    last_success_at_ms = _optional_int(row.get("last_success_at_ms"))
-    if not bool(row.get("enabled")):
+    if not enabled:
         status = "disabled"
         reason = "source_disabled"
     elif consecutive_failures > 0:
         status = "failing"
         reason = "consecutive_failures"
     else:
-        quality_status = str(row.get("source_quality_status") or "unknown")
+        quality_status = source_quality_status
         if quality_payload:
-            quality_status = str(_json_dict(quality_payload.get("diagnostics_json")).get("status") or quality_status)
+            diagnostics = _required_latest_quality_mapping(quality_payload, "diagnostics_json")
+            quality_status = _required_latest_quality_text(diagnostics, "status")
         if quality_status in {"healthy", "watch", "degraded", "poor"}:
             status = quality_status
             reason = "quality_status"
@@ -6385,22 +7476,28 @@ def _provider_health_payload(
     }
 
 
-def _provider_capability_tags(*, row: Mapping[str, Any]) -> list[str]:
-    provider_type = str(row.get("provider_type") or "").strip().lower()
-    source_role = str(row.get("source_role") or "").strip().lower()
-    trust_tier = str(row.get("trust_tier") or "").strip().lower()
+def _provider_capability_tags(*, provider_type: str, source_role: str, trust_tier: str) -> list[str]:
+    normalized_provider_type = provider_type.strip().lower()
+    normalized_source_role = source_role.strip().lower()
+    normalized_trust_tier = trust_tier.strip().lower()
     tags: list[str] = []
-    if provider_type in {"rss", "atom", "json_feed"}:
+    if normalized_provider_type in {"rss", "atom", "json_feed"}:
         tags.extend(["poll_primary_items", "http_cache"])
-    elif provider_type in {"cryptopanic", "manual_api", "openbb", "github", "ossinsight"}:
+    elif normalized_provider_type in {"cryptopanic", "manual_api", "openbb", "github", "ossinsight"}:
         tags.extend(["poll_primary_items", "api_backed"])
-    elif provider_type in {"twitter_profile", "twitter_thread_context", "reddit", "telegram_public", "hackernews"}:
+    elif normalized_provider_type in {
+        "twitter_profile",
+        "twitter_thread_context",
+        "reddit",
+        "telegram_public",
+        "hackernews",
+    }:
         tags.extend(["poll_primary_items", "browser_backed"])
     else:
         tags.append("poll_primary_items")
-    if source_role.startswith("official_") or trust_tier == "official":
+    if normalized_source_role.startswith("official_") or normalized_trust_tier == "official":
         tags.append("official_source")
-    if trust_tier in {"official", "high"}:
+    if normalized_trust_tier in {"official", "high"}:
         tags.append("high_trust")
     return list(dict.fromkeys(tags))
 

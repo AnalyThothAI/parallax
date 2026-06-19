@@ -8,7 +8,11 @@ from typing import Any
 from parallax.domains.news_intel.types.news_item_brief import (
     NewsItemBriefEntityLane,
     NewsItemBriefInputPacket,
+    NewsItemBriefNewsItem,
 )
+from parallax.domains.news_intel.types.news_story_brief import NewsStoryBriefInputPacket
+
+NewsBriefValidationPacket = NewsItemBriefInputPacket | NewsStoryBriefInputPacket
 
 _ASCII_TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{1,31}")
 _CJK_TOKEN_RE = re.compile(r"[\u3400-\u9fff]{2,}")
@@ -448,15 +452,22 @@ class _SourceBackedEntityKeySupport:
         return {key for key in keys if key}
 
 
-def source_backed_entity_keys(packet: NewsItemBriefInputPacket) -> set[str]:
+def source_backed_entity_keys(packet: NewsBriefValidationPacket) -> set[str]:
     return _source_backed_entity_key_support(packet).all_keys
 
 
-def _source_backed_entity_key_support(packet: NewsItemBriefInputPacket) -> _SourceBackedEntityKeySupport:
+def _packet_news_item(packet: NewsBriefValidationPacket) -> NewsItemBriefNewsItem:
+    if isinstance(packet, NewsItemBriefInputPacket):
+        return packet.news_item
+    return packet.representative_item
+
+
+def _source_backed_entity_key_support(packet: NewsBriefValidationPacket) -> _SourceBackedEntityKeySupport:
+    news_item = _packet_news_item(packet)
     labels: set[str] = set()
-    labels.update(_text_keys(packet.news_item.title))
-    labels.update(_text_keys(packet.news_item.summary))
-    labels.update(_text_keys(packet.news_item.body_excerpt))
+    labels.update(_text_keys(news_item.title))
+    labels.update(_text_keys(news_item.summary))
+    labels.update(_text_keys(news_item.body_excerpt))
     labels.update(_translated_source_entity_keys(packet))
     structured_by_domain: dict[str, set[str]] = {}
     domainless_structured_keys: set[str] = set()
@@ -526,7 +537,7 @@ def _add_structured_source_keys(
 def validate_affected_entity_support(
     entity: Mapping[str, Any],
     *,
-    packet: NewsItemBriefInputPacket,
+    packet: NewsBriefValidationPacket,
     payload: Mapping[str, Any],
 ) -> EntitySupportDecision:
     source_key_support = _source_backed_entity_key_support(packet)
@@ -581,7 +592,7 @@ def validate_affected_entity_support(
     return EntitySupportDecision(supported=False, reason="unsupported")
 
 
-def _source_backed_domains(packet: NewsItemBriefInputPacket) -> set[str]:
+def _source_backed_domains(packet: NewsBriefValidationPacket) -> set[str]:
     domains = {_norm(domain) for domain in packet.market_scope if _norm(domain) != "crypto"}
     domains.update(_norm(entity.market_domain) for entity in packet.entity_lanes)
     for fact in packet.fact_lanes:
@@ -656,7 +667,7 @@ def _contains_unbacked_synthetic_placeholder(
 def _label_name_supported_by_source_or_proxy(
     *,
     entity: Mapping[str, Any],
-    packet: NewsItemBriefInputPacket,
+    packet: NewsBriefValidationPacket,
     label_name_values: tuple[str, ...],
     label_name_keys: set[str],
     source_key_support: _SourceBackedEntityKeySupport,
@@ -720,7 +731,7 @@ def _display_label_supported_by_source_descriptor(
     label: str,
     *,
     entity: Mapping[str, Any],
-    packet: NewsItemBriefInputPacket,
+    packet: NewsBriefValidationPacket,
     source_keys: set[str],
     source_text_keys: set[str],
     source_key_support: _SourceBackedEntityKeySupport,
@@ -821,7 +832,7 @@ def _source_descriptor_base_keys(
     *,
     label: str,
     entity: Mapping[str, Any],
-    packet: NewsItemBriefInputPacket,
+    packet: NewsBriefValidationPacket,
     source_keys: set[str],
     source_text_keys: set[str],
     source_domains: set[str],
@@ -856,7 +867,7 @@ def _entity_descriptor_candidate_keys(entity: Mapping[str, Any]) -> set[str]:
 
 
 def _entity_specific_descriptor_source_keys(
-    packet: NewsItemBriefInputPacket,
+    packet: NewsBriefValidationPacket,
     *,
     candidate_domains: set[str],
 ) -> set[str]:
@@ -884,11 +895,12 @@ def _entity_specific_descriptor_source_keys(
     return keys
 
 
-def _domain_proxy_source_keys(packet: NewsItemBriefInputPacket, *, domain: str) -> set[str]:
+def _domain_proxy_source_keys(packet: NewsBriefValidationPacket, *, domain: str) -> set[str]:
+    news_item = _packet_news_item(packet)
     keys: set[str] = set()
-    keys.update(_text_keys(packet.news_item.title))
-    keys.update(_text_keys(packet.news_item.summary))
-    keys.update(_text_keys(packet.news_item.body_excerpt))
+    keys.update(_text_keys(news_item.title))
+    keys.update(_text_keys(news_item.summary))
+    keys.update(_text_keys(news_item.body_excerpt))
     keys.update(_translated_source_entity_keys(packet))
     for entity in packet.entity_lanes:
         keys.update(
@@ -1000,7 +1012,7 @@ def _domain_proxy_keys(domain: str) -> set[str]:
     return aliases
 
 
-def _translated_source_entity_keys(packet: NewsItemBriefInputPacket) -> set[str]:
+def _translated_source_entity_keys(packet: NewsBriefValidationPacket) -> set[str]:
     trigger_text = _translated_entity_trigger_text(packet)
     labels: set[str] = set()
     if _US_ENERGY_SECTOR_SOURCE_RE.search(trigger_text):
@@ -1014,11 +1026,12 @@ def _translated_source_entity_keys(packet: NewsItemBriefInputPacket) -> set[str]
     return labels
 
 
-def _translated_entity_trigger_text(packet: NewsItemBriefInputPacket) -> str:
+def _translated_entity_trigger_text(packet: NewsBriefValidationPacket) -> str:
+    news_item = _packet_news_item(packet)
     texts = [
-        packet.news_item.title,
-        packet.news_item.summary,
-        packet.news_item.body_excerpt,
+        news_item.title,
+        news_item.summary,
+        news_item.body_excerpt,
     ]
     for fact in packet.fact_lanes:
         texts.extend((fact.claim, fact.evidence_quote))

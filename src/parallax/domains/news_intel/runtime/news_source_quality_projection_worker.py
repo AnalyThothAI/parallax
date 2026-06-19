@@ -102,19 +102,21 @@ class NewsSourceQualityProjectionWorker(WorkerBase):
                         status_window=windows[0],
                         commit=False,
                     )
-                    changed_item_ids = (
-                        repos.news.list_news_item_ids_for_sources(source_ids=changed_source_ids)
-                        if changed_source_ids
-                        else []
+                    source_watermarks = _source_watermark_ms_by_source(
+                        aggregate_inputs,
+                        status_window=windows[0],
+                    )
+                    changed_item_watermarks = _page_dirty_watermarks_for_changed_sources(
+                        repos.news,
+                        changed_source_ids=changed_source_ids,
+                        source_watermark_ms_by_source=source_watermarks,
                     )
                     dirty_page_count = enqueue_page_reprojection(
                         repos,
-                        news_item_ids=changed_item_ids,
+                        news_item_ids=changed_item_watermarks,
                         reason="source_quality_status_changed",
                         now_ms=now,
-                        source_watermark_ms_by_news_item_id={
-                            str(news_item_id): now for news_item_id in changed_item_ids
-                        },
+                        source_watermark_ms_by_news_item_id=changed_item_watermarks,
                         commit=False,
                     )
                     mark_work_done(repos, claimed, now_ms=now, commit=False)
@@ -217,12 +219,10 @@ def _ordered_windows(source_windows: Iterable[tuple[str, str]]) -> list[str]:
 def _future_source_quality_targets(rows: Iterable[Mapping[str, Any]], *, now_ms: int) -> list[dict[str, Any]]:
     targets: list[dict[str, Any]] = []
     for row in rows:
-        window = str(row.get("window") or "").strip().lower()
-        source_id = str(row.get("source_id") or "")
-        if not source_id or not window:
-            continue
+        window = _required_future_target_text(row, "window").lower()
+        source_id = _required_future_target_text(row, "source_id")
         window_ms = window_ms_for_label(window)
-        has_items = int(row.get("item_count") or 0) > 0
+        has_items = _required_future_target_item_count(row) > 0
         due_candidates = [int(now_ms) + max(60_000, min(window_ms // 24, 3_600_000))]
         latest_item_ms = _optional_int(row.get("latest_item_published_at_ms"))
         if latest_item_ms is not None:
@@ -239,6 +239,67 @@ def _future_source_quality_targets(rows: Iterable[Mapping[str, Any]], *, now_ms:
             }
         )
     return targets
+
+
+def _source_watermark_ms_by_source(
+    rows: Iterable[Mapping[str, Any]],
+    *,
+    status_window: str,
+) -> dict[str, int]:
+    normalized_status_window = str(status_window).strip().lower()
+    watermarks: dict[str, int] = {}
+    for row in rows:
+        window = _required_future_target_text(row, "window").lower()
+        if window != normalized_status_window:
+            continue
+        source_id = _required_future_target_text(row, "source_id")
+        watermark = _source_watermark_ms(row)
+        watermarks[source_id] = max(watermarks.get(source_id, 0), watermark)
+    return watermarks
+
+
+def _page_dirty_watermarks_for_changed_sources(
+    news_repo: Any,
+    *,
+    changed_source_ids: Iterable[str],
+    source_watermark_ms_by_source: Mapping[str, int],
+) -> dict[str, int]:
+    watermarks: dict[str, int] = {}
+    for source_id in dict.fromkeys(str(source_id) for source_id in changed_source_ids if str(source_id)):
+        source_watermark_ms = source_watermark_ms_by_source.get(source_id)
+        if source_watermark_ms is None or source_watermark_ms <= 0:
+            raise ValueError("news_source_quality_page_dirty_source_watermark_required")
+        item_ids = news_repo.list_news_item_ids_for_sources(source_ids=[source_id])
+        for item_id in item_ids:
+            news_item_id = str(item_id)
+            if news_item_id:
+                watermarks[news_item_id] = max(watermarks.get(news_item_id, 0), int(source_watermark_ms))
+    return watermarks
+
+
+def _required_future_target_text(row: Mapping[str, Any], field_name: str) -> str:
+    try:
+        value = row[field_name]
+    except KeyError as exc:
+        raise ValueError(f"news_source_quality_future_target_{field_name}_required") from exc
+    if not isinstance(value, str):
+        raise ValueError(f"news_source_quality_future_target_{field_name}_required")
+    text = value.strip()
+    if not text:
+        raise ValueError(f"news_source_quality_future_target_{field_name}_required")
+    return text
+
+
+def _required_future_target_item_count(row: Mapping[str, Any]) -> int:
+    try:
+        value = row["item_count"]
+    except KeyError as exc:
+        raise ValueError("news_source_quality_future_target_item_count_required") from exc
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("news_source_quality_future_target_item_count_required")
+    if value < 0:
+        raise ValueError("news_source_quality_future_target_item_count_required")
+    return int(value)
 
 
 def _source_watermark_ms(row: Mapping[str, Any]) -> int:

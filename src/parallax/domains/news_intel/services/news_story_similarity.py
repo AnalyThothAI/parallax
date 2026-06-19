@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -146,12 +145,25 @@ def _evidence(
 
 def _provider_article_keys(row: Mapping[str, Any]) -> list[str]:
     keys: list[str] = []
-    for key in ("provider_article_keys", "provider_article_keys_json"):
-        keys.extend(str(value) for value in _json_list(row.get(key)) if str(value))
-    provider_article_key = _text(row.get("provider_article_key"))
-    if provider_article_key:
-        keys.append(provider_article_key)
+    keys.extend(_optional_provider_key_list(row, "provider_article_keys"))
+    keys.extend(_optional_provider_key_list(row, "provider_article_keys_json"))
     return list(dict.fromkeys(keys))
+
+
+def _optional_provider_key_list(row: Mapping[str, Any], field_name: str) -> list[str]:
+    if field_name not in row:
+        return []
+    value = row.get(field_name)
+    if isinstance(value, str) or not isinstance(value, Sequence):
+        raise ValueError(f"news_story_similarity_{field_name}_required")
+    keys: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            raise ValueError(f"news_story_similarity_{field_name}_required")
+        text = item.strip()
+        if text:
+            keys.append(text)
+    return keys
 
 
 def _article_url(row: Mapping[str, Any]) -> str:
@@ -176,20 +188,6 @@ def _canonical_key_is_article(row: Mapping[str, Any]) -> bool:
     if kind:
         return kind == "article"
     return bool(_article_url(row))
-
-
-def _json_list(value: Any) -> list[Any]:
-    if isinstance(value, list):
-        return value
-    if isinstance(value, tuple):
-        return list(value)
-    if isinstance(value, str) and value.strip():
-        try:
-            parsed = json.loads(value)
-        except json.JSONDecodeError:
-            return []
-        return parsed if isinstance(parsed, list) else []
-    return []
 
 
 def _text(value: Any) -> str:

@@ -18,7 +18,7 @@ from parallax.platform.agent_hashing import text_sha256
 from parallax.platform.agent_knowledge import render_agent_instructions
 
 _NEWS_ITEM_BRIEF_KNOWLEDGE_REFS = ("market_research_harness",)
-_NEWS_ITEM_BRIEF_READ_ONLY_TOOL_REFS = ("news.current_briefs",)
+_NEWS_ITEM_BRIEF_READ_ONLY_TOOL_REFS: tuple[str, ...] = ()
 
 
 @lru_cache(maxsize=1)

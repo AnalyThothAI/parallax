@@ -9,832 +9,832 @@
 
 ## Background
 
-The audit recorded that `/stocks-radar` constructed `StocksRadarService` during a request and passed `runtime.stock_quote_provider` into it (`docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:7`, `docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:11`). It also recorded that the service loaded rows from PostgreSQL and then called `self.quote_provider.quote(symbol)` per symbol (`docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:12`). The current target contract is documented as a DB-only stocks radar endpoint with an explicit unavailable quote state (`docs/ARCHITECTURE.md:55`, `docs/CONTRACTS.md:349`).
+The audit recorded that /stocks-radar constructed StocksRadarService during a request and passed runtime.stock_quote_provider into it (docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:7, docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:11). It also recorded that the service loaded rows from PostgreSQL and then called self.quote_provider.quote(symbol) per symbol (docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:12). The current target contract is documented as a DB-only stocks radar endpoint with an explicit unavailable quote state (docs/ARCHITECTURE.md:55, docs/CONTRACTS.md:349).
 
-Macro's CQRS boundary is likewise documented around macro observations, import runs, and projection dirty targets, with rowcount evidence required for writes (`src/parallax/domains/macro_intel/ARCHITECTURE.md:14`, `src/parallax/domains/macro_intel/ARCHITECTURE.md:15`, `src/parallax/domains/macro_intel/ARCHITECTURE.md:18`, `src/parallax/domains/macro_intel/ARCHITECTURE.md:102`). Current repository helpers `_delete_exited_observation_series_rows`, `_insert_observation_series_rows_chunk`, and `_single_rowcount` enforce that read-model writes and single-row accounting do not fall back to missing rowcount evidence (`src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1479`, `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1533`, `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:2219`).
+Macro's CQRS boundary is likewise documented around macro observations, import runs, and projection dirty targets, with rowcount evidence required for writes (src/parallax/domains/macro_intel/ARCHITECTURE.md:14, src/parallax/domains/macro_intel/ARCHITECTURE.md:15, src/parallax/domains/macro_intel/ARCHITECTURE.md:18, src/parallax/domains/macro_intel/ARCHITECTURE.md:102). Current repository helpers _delete_exited_observation_series_rows, _insert_observation_series_rows_chunk, and _single_rowcount enforce that read-model writes and single-row accounting do not fall back to missing rowcount evidence (src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1479, src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1533, src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:2219).
 
-The audit recorded that the `resolution_refresh` manifest was labeled `TARGET_SCOPED_EXPANSION` while already declaring `token_discovery_dirty_lookup_keys` and claiming lookup-key queue rows (`docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:28`, `docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:29`, `docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:30`, `docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:31`). The audit also recorded that `run_resolution_refresh_once` preserved an already-open repository helper path (`docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:47`, `docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:48`, `docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:49`).
+The audit recorded that the resolution_refresh manifest was labeled TARGET_SCOPED_EXPANSION while already declaring token_discovery_dirty_lookup_keys and claiming lookup-key queue rows (docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:28, docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:29, docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:30, docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:31). The audit also recorded that run_resolution_refresh_once preserved an already-open repository helper path (docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:47, docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:48, docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:49).
 
-The audit recorded that notification delivery stale-running cleanup used `UPDATE notification_deliveries` before each claim and lacked a matching stale-running partial index (`docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:62`, `docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:66`, `docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:67`, `docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:71`). The audit recommendation was to add the index and batch terminalization with `LIMIT` plus `FOR UPDATE SKIP LOCKED` (`docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:80`, `docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:83`, `docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:88`).
+The audit recorded that notification delivery stale-running cleanup used UPDATE notification_deliveries before each claim and lacked a matching stale-running partial index (docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:62, docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:66, docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:67, docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:71). The audit recommendation was to add the index and batch terminalization with LIMIT plus FOR UPDATE SKIP LOCKED (docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:80, docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:83, docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:88).
 
-The audit recorded that Token Radar publication called `prune_target_features` and `prune_edges` inside the publish attempt (`docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:90`, `docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:94`, `docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:95`). It also recorded that Pulse handle filtering expanded `source_event_ids_json` and `evidence_event_ids_json` through `jsonb_array_elements_text` (`docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:108`, `docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:112`, `docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:113`).
+The audit recorded that Token Radar publication called prune_target_features and prune_edges inside the publish attempt (docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:90, docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:94, docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:95). It also recorded that Pulse handle filtering expanded source_event_ids_json and evidence_event_ids_json through jsonb_array_elements_text (docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:108, docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:112, docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:113).
 
-Follow-up review found another Pulse read-path boundary leak: `/api/signal-lab/pulse` injected scheduler liveness from `_worker_running(runtime, "pulse_candidate")` into `SignalPulseService.pulse(...)`, and the public payload exposed `agent_worker_running` (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:149`). The target contract is that `SignalPulseHealth` is persisted summary/freshness state only (`src/parallax/app/surfaces/api/schemas.py:497`), with `agent_worker_running` absent from OpenAPI and frontend contracts (`tests/contract/test_openapi_drift.py:180`), and scheduler/worker liveness kept in status or ops diagnostics (`docs/CONTRACTS.md:638`).
+Follow-up review found another Pulse read-path boundary leak: /api/signal-lab/pulse injected scheduler liveness from _worker_running(runtime, "pulse_candidate") into SignalPulseService.pulse(...), and the public payload exposed agent_worker_running (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:149). The target contract is that SignalPulseHealth is persisted summary/freshness state only (src/parallax/app/surfaces/api/schemas.py:497), with agent_worker_running absent from OpenAPI and frontend contracts (tests/contract/test_openapi_drift.py:180), and scheduler/worker liveness kept in status or ops diagnostics (docs/CONTRACTS.md:638).
 
-Follow-up review also found that `/api/news/sources/status` derived supported provider types from `runtime.providers.news_intel.feed_client` and the private provider registry shape (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:168`). The target contract is that News source status combines persisted source rows with the static runtime provider-type contract, not a per-process provider object (`docs/CONTRACTS.md:222`), and architecture tests now reject runtime provider object access in that route (`tests/architecture/test_api_read_paths_provider_free.py:250`).
+Follow-up review also found that /api/news/sources/status derived supported provider types from runtime.providers.news_intel.feed_client and the private provider registry shape (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:168). The target contract is that News source status combines persisted source rows with the static runtime provider-type contract, not a per-process provider object (docs/CONTRACTS.md:222), and architecture tests now reject runtime provider object access in that route (tests/architecture/test_api_read_paths_provider_free.py:250).
 
-The same root cause remained in News provider-contract validation: `NewsFetchWorker` and runtime status health still probed the feed client or its private registry to learn supported provider types (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:182`). The target contract is that all News provider contract validation uses the same static platform provider-type contract and schema constraint values; provider clients fetch observations only (`docs/WORKERS.md:807`, `docs/WORKERS.md:811`, `src/parallax/domains/news_intel/ARCHITECTURE.md:246`).
+The same root cause remained in News provider-contract validation: NewsFetchWorker and runtime status health still probed the feed client or its private registry to learn supported provider types (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:182). The target contract is that all News provider contract validation uses the same static platform provider-type contract and schema constraint values; provider clients fetch observations only (docs/WORKERS.md:807, docs/WORKERS.md:811, src/parallax/domains/news_intel/ARCHITECTURE.md:246).
 
-Follow-up review then found the schema side of the same News provider contract still had a fallback from missing repository schema introspection to the Python `PROVIDER_TYPES` enum (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:199`). The target contract is that News provider-contract status validates configured sources against the live `news_sources` database constraint plus static runtime-supported types, with no provider object or enum fallback (`docs/CONTRACTS.md:142`, `docs/WORKERS.md:347`).
+Follow-up review then found the schema side of the same News provider contract still had a fallback from missing repository schema introspection to the Python PROVIDER_TYPES enum (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:199). The target contract is that News provider-contract status validates configured sources against the live news_sources database constraint plus static runtime-supported types, with no provider object or enum fallback (docs/CONTRACTS.md:142, docs/WORKERS.md:347).
 
-Follow-up review also found `NewsItemProcessWorker` still built agent-admission context with worker-memory fallbacks when `load_agent_admission_contexts` returned incomplete rows (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:212`, `src/parallax/domains/news_intel/runtime/news_item_process_worker.py:34`, `src/parallax/domains/news_intel/runtime/news_item_process_worker.py:194`, `tests/architecture/test_news_intel_kiss_simplification.py:123`, `tests/unit/domains/news_intel/test_news_workers.py:2053`). The target contract is that item-process writes deterministic facts, reads the admission context back through the News repository in the same transaction, and fails closed if that repository contract is missing or incomplete.
-Projection workers document RepositorySession.transaction as the transaction boundary for claimed work and read-model rewrites (`src/parallax/domains/news_intel/ARCHITECTURE.md:127`, `docs/WORKERS.md:624`).
+Follow-up review also found NewsItemProcessWorker still built agent-admission context with worker-memory fallbacks when load_agent_admission_contexts returned incomplete rows (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:212, src/parallax/domains/news_intel/runtime/news_item_process_worker.py:35, src/parallax/domains/news_intel/runtime/news_item_process_worker.py:194, tests/architecture/test_news_intel_kiss_simplification.py:123, tests/unit/domains/news_intel/test_news_workers.py:2053). The target contract is that item-process writes deterministic facts, reads the admission context back through the News repository in the same transaction, and fails closed if that repository contract is missing or incomplete.
+Projection workers document RepositorySession.transaction as the transaction boundary for claimed work and read-model rewrites (src/parallax/domains/news_intel/ARCHITECTURE.md:127, docs/WORKERS.md:624).
 
 Follow-up review found the same claim-field fallback one layer earlier in
-`NewsItemProcessWorker`: item processing completion and failure paths used
-claimed `processing_attempts` and `processing_lease_owner` for CAS, but the
-runtime helper converted missing or invalid `processing_attempts` to zero and
-missing `processing_lease_owner` to an empty string. The target contract is that
-claimed News item rows expose a positive `processing_attempts` and non-empty
-`processing_lease_owner` before deterministic writes, retry/terminal failure,
+NewsItemProcessWorker: item processing completion and failure paths used
+claimed processing_attempts and processing_lease_owner for CAS, but the
+runtime helper converted missing or invalid processing_attempts to zero and
+missing processing_lease_owner to an empty string. The target contract is that
+claimed News item rows expose a positive processing_attempts and non-empty
+processing_lease_owner before deterministic writes, retry/terminal failure,
 or downstream dirty enqueue; malformed claim rows fail before state-machine
 branching
-(`src/parallax/domains/news_intel/runtime/news_item_process_worker.py:34`,
-`src/parallax/domains/news_intel/runtime/news_item_process_worker.py:88`,
-`src/parallax/domains/news_intel/runtime/news_item_process_worker.py:89`,
-`src/parallax/domains/news_intel/runtime/news_item_process_worker.py:376`,
-`src/parallax/domains/news_intel/runtime/news_item_process_worker.py:388`,
-`tests/unit/domains/news_intel/test_news_workers.py:692`,
-`tests/unit/domains/news_intel/test_news_workers.py:720`,
-`tests/architecture/test_news_intel_kiss_simplification.py:141`,
-`tests/architecture/test_news_intel_kiss_simplification.py:159`,
-`tests/architecture/test_news_intel_kiss_simplification.py:161`).
+(src/parallax/domains/news_intel/runtime/news_item_process_worker.py:35,
+src/parallax/domains/news_intel/runtime/news_item_process_worker.py:88,
+src/parallax/domains/news_intel/runtime/news_item_process_worker.py:89,
+src/parallax/domains/news_intel/runtime/news_item_process_worker.py:376,
+src/parallax/domains/news_intel/runtime/news_item_process_worker.py:388,
+tests/unit/domains/news_intel/test_news_workers.py:692,
+tests/unit/domains/news_intel/test_news_workers.py:720,
+tests/architecture/test_news_intel_kiss_simplification.py:141,
+tests/architecture/test_news_intel_kiss_simplification.py:159,
+tests/architecture/test_news_intel_kiss_simplification.py:161).
 
 Follow-up review found the same claim-field gap across dirty completion keys:
-many queues already required claimed-row `attempt_count`, but still restored
-missing `lease_owner` to an empty string before done/error/reschedule or
+many queues already required claimed-row attempt_count, but still restored
+missing lease_owner to an empty string before done/error/reschedule or
 terminal SQL. The target contract is that dirty completion keys preserve both
-claimed-row fields: positive `attempt_count` and non-empty `lease_owner`; missing
+claimed-row fields: positive attempt_count and non-empty lease_owner; missing
 owners fail before rank-source work, source projection, or queue SQL.
 Architecture coverage rejects owner-default restoration tokens and requires
 direct lease-owner readers, with a row-indexed lease owner for the event-anchor
 worker special case
-(`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1763`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1764`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1765`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1775`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1778`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:1296`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:1297`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:1339`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:1340`,
-`src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py:838`,
-`src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py:839`).
+(tests/architecture/test_runtime_worker_constraint_hard_cut.py:1763,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1764,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1765,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1775,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1778,
+src/parallax/domains/token_intel/services/token_radar_projection.py:1296,
+src/parallax/domains/token_intel/services/token_radar_projection.py:1297,
+src/parallax/domains/token_intel/services/token_radar_projection.py:1339,
+src/parallax/domains/token_intel/services/token_radar_projection.py:1340,
+src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py:838,
+src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py:839).
 
-Follow-up review found that `asset_profile_refresh` source-cache scheduling
-still needed one formal runtime owner; `asset_profiles` is documented as the
-provider source cache and its `next_refresh_at_ms` must match refresh-target
-`due_at_ms` reschedules (`src/parallax/domains/asset_market/ARCHITECTURE.md:27`).
-`AssetProfileRefreshWorkerSettings` now exposes ready/missing/error refresh
-fields as formal settings (`src/parallax/platform/config/settings.py:990`,
-`src/parallax/platform/config/settings.py:994`,
-`src/parallax/platform/config/settings.py:995`,
-`src/parallax/platform/config/settings.py:996`).
-`AssetProfileRefreshWorker` owns the runtime computation and passes the same
-next-refresh value to refresh-target `due_at_ms` reschedules
-(`src/parallax/domains/asset_market/runtime/asset_profile_refresh_worker.py:22`,
-`src/parallax/domains/asset_market/runtime/asset_profile_refresh_worker.py:132`,
-`src/parallax/domains/asset_market/runtime/asset_profile_refresh_worker.py:167`,
-`src/parallax/domains/asset_market/runtime/asset_profile_refresh_worker.py:195`,
-`src/parallax/domains/asset_market/runtime/asset_profile_refresh_worker.py:212`).
-The service/repository boundary requires explicit `next_refresh_at_ms` instead
+Follow-up review found that asset_profile_refresh source-cache scheduling
+still needed one formal runtime owner; asset_profiles is documented as the
+provider source cache and its next_refresh_at_ms must match refresh-target
+due_at_ms reschedules (src/parallax/domains/asset_market/ARCHITECTURE.md:27).
+AssetProfileRefreshWorkerSettings now exposes ready/missing/error refresh
+fields as formal settings (src/parallax/platform/config/settings.py:990,
+src/parallax/platform/config/settings.py:994,
+src/parallax/platform/config/settings.py:995,
+src/parallax/platform/config/settings.py:996).
+AssetProfileRefreshWorker owns the runtime computation and passes the same
+next-refresh value to refresh-target due_at_ms reschedules
+(src/parallax/domains/asset_market/runtime/asset_profile_refresh_worker.py:22,
+src/parallax/domains/asset_market/runtime/asset_profile_refresh_worker.py:132,
+src/parallax/domains/asset_market/runtime/asset_profile_refresh_worker.py:167,
+src/parallax/domains/asset_market/runtime/asset_profile_refresh_worker.py:195,
+src/parallax/domains/asset_market/runtime/asset_profile_refresh_worker.py:212).
+The service/repository boundary requires explicit next_refresh_at_ms instead
 of owning hidden refresh constants
-(`src/parallax/domains/asset_market/services/asset_profile_refresh.py:28`,
-`src/parallax/domains/asset_market/services/asset_profile_refresh.py:90`,
-`src/parallax/domains/asset_market/repositories/asset_profile_repository.py:40`,
-`src/parallax/domains/asset_market/repositories/asset_profile_repository.py:72`).
+(src/parallax/domains/asset_market/services/asset_profile_refresh.py:28,
+src/parallax/domains/asset_market/services/asset_profile_refresh.py:90,
+src/parallax/domains/asset_market/repositories/asset_profile_repository.py:40,
+src/parallax/domains/asset_market/repositories/asset_profile_repository.py:72).
 
 Follow-up review found the same rowcount evidence gap in
-`asset_profile_refresh_targets` completion accounting: reschedule/error paths
+asset_profile_refresh_targets completion accounting: reschedule/error paths
 still had default zero-target accounting through rowcount fallback helpers. The
 target contract is that
 reschedule/error changed-row counts use _cursor_rowcount(cursor) and fail as
-`asset_profile_refresh_target_rowcount_required` /
-`asset_profile_refresh_target_rowcount_invalid` before reporting zero changed
+asset_profile_refresh_target_rowcount_required /
+asset_profile_refresh_target_rowcount_invalid before reporting zero changed
 refresh targets
-(`src/parallax/domains/asset_market/repositories/asset_profile_refresh_target_repository.py:57`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1611`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1612`,
-`src/parallax/domains/asset_market/repositories/asset_profile_refresh_target_repository.py:224`,
-`src/parallax/domains/asset_market/repositories/asset_profile_refresh_target_repository.py:277`,
-`src/parallax/domains/asset_market/repositories/asset_profile_refresh_target_repository.py:316`,
-`src/parallax/domains/asset_market/repositories/asset_profile_refresh_target_repository.py:318`,
-`src/parallax/domains/asset_market/repositories/asset_profile_refresh_target_repository.py:320`).
+(src/parallax/domains/asset_market/repositories/asset_profile_refresh_target_repository.py:57,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1611,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1612,
+src/parallax/domains/asset_market/repositories/asset_profile_refresh_target_repository.py:224,
+src/parallax/domains/asset_market/repositories/asset_profile_refresh_target_repository.py:277,
+src/parallax/domains/asset_market/repositories/asset_profile_refresh_target_repository.py:316,
+src/parallax/domains/asset_market/repositories/asset_profile_refresh_target_repository.py:318,
+src/parallax/domains/asset_market/repositories/asset_profile_refresh_target_repository.py:320).
 
 Follow-up review found the same rowcount evidence gap in
-`token_profile_current_dirty_targets` completion accounting: done/error paths
+token_profile_current_dirty_targets completion accounting: done/error paths
 reported changed-row counts after queue CAS mutations but could still restore
 missing rowcount evidence to zero. The target contract is that done/error
 changed-row counts use _cursor_rowcount(cursor) and fail as
-`token_profile_current_dirty_target_rowcount_required` /
-`token_profile_current_dirty_target_rowcount_invalid` before reporting zero
+token_profile_current_dirty_target_rowcount_required /
+token_profile_current_dirty_target_rowcount_invalid before reporting zero
 changed profile-current targets
-(`src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:228`,
-`src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:238`,
-`src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:280`,
-`src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:295`,
-`src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:489`,
-`src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:493`,
-`src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:495`,
-`src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:497`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1636`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1637`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1638`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1639`).
+(src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:228,
+src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:238,
+src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:280,
+src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:295,
+src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:489,
+src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:493,
+src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:495,
+src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:497,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1636,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1637,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1638,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1639).
 
 Follow-up review found the same rowcount evidence gap in
-`market_tick_current_dirty_targets` completion accounting: done/error paths
+market_tick_current_dirty_targets completion accounting: done/error paths
 reported changed-row counts after queue CAS mutations but could still restore
 missing rowcount evidence to zero. The target contract is that done/error
 changed-row counts use _cursor_rowcount(cursor) and fail as
-`market_tick_current_dirty_target_rowcount_required` /
-`market_tick_current_dirty_target_rowcount_invalid` before reporting zero
+market_tick_current_dirty_target_rowcount_required /
+market_tick_current_dirty_target_rowcount_invalid before reporting zero
 changed market-current targets
-(`src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py:168`,
-`src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py:178`,
-`src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py:216`,
-`src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py:231`,
-`src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py:387`,
-`src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py:391`,
-`src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py:393`,
-`src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py:395`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1111`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1112`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1116`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1119`).
+(src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py:168,
+src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py:178,
+src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py:216,
+src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py:231,
+src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py:387,
+src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py:391,
+src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py:393,
+src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py:395,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1111,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1112,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1116,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1119).
 
 Follow-up review found the same rowcount evidence gap in
-`token_image_source_dirty_targets` completion accounting: done/error paths
+token_image_source_dirty_targets completion accounting: done/error paths
 reported changed-row counts after image-source queue CAS mutations but could
 still restore missing rowcount evidence to zero. The target contract is that
 done/error changed-row counts use _cursor_rowcount(cursor) and fail as
-`token_image_source_dirty_target_rowcount_required` /
-`token_image_source_dirty_target_rowcount_invalid` before reporting zero changed
+token_image_source_dirty_target_rowcount_required /
+token_image_source_dirty_target_rowcount_invalid before reporting zero changed
 image-source targets
-(`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:346`,
-`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:362`,
-`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:400`,
-`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:413`,
-`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:655`,
-`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:659`,
-`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:661`,
-`tests/unit/domains/asset_market/test_token_image_source_dirty_targets.py:144`,
-`tests/unit/domains/asset_market/test_token_image_source_dirty_targets.py:148`,
-`tests/unit/domains/asset_market/test_token_image_source_dirty_targets.py:152`,
-`tests/unit/domains/asset_market/test_token_image_source_dirty_targets.py:157`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1726`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1745`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1746`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1747`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1748`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1749`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1750`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1751`).
+(src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:346,
+src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:362,
+src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:400,
+src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:413,
+src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:655,
+src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:659,
+src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:661,
+tests/unit/domains/asset_market/test_token_image_source_dirty_targets.py:144,
+tests/unit/domains/asset_market/test_token_image_source_dirty_targets.py:148,
+tests/unit/domains/asset_market/test_token_image_source_dirty_targets.py:152,
+tests/unit/domains/asset_market/test_token_image_source_dirty_targets.py:157,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1726,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1745,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1746,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1747,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1748,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1749,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1750,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1751).
 
 Follow-up review found the same write-evidence gap at the token fact root:
-the token evidence and token intent insert paths now use `RETURNING *` with
+the token evidence and token intent insert paths now use RETURNING * with
 required rowcount=1 before returning written facts
-(`src/parallax/domains/token_intel/repositories/token_evidence_repository.py:18`,
-`src/parallax/domains/token_intel/repositories/token_evidence_repository.py:41`,
-`src/parallax/domains/token_intel/repositories/token_evidence_repository.py:46`,
-`src/parallax/domains/token_intel/repositories/token_intent_repository.py:18`,
-`src/parallax/domains/token_intel/repositories/token_intent_repository.py:41`,
-`src/parallax/domains/token_intel/repositories/token_intent_repository.py:46`).
+(src/parallax/domains/token_intel/repositories/token_evidence_repository.py:18,
+src/parallax/domains/token_intel/repositories/token_evidence_repository.py:41,
+src/parallax/domains/token_intel/repositories/token_evidence_repository.py:46,
+src/parallax/domains/token_intel/repositories/token_intent_repository.py:18,
+src/parallax/domains/token_intel/repositories/token_intent_repository.py:41,
+src/parallax/domains/token_intel/repositories/token_intent_repository.py:46).
 Event-scoped token evidence/intent deletes require real non-negative rowcount,
 token intent evidence links accept only explicit rowcount 0/1, lookup-key
 replacement upserts require rowcount=1 after a real delete rowcount, and
 resolution supersede/upsert requires rowcount evidence before returning current
 resolution facts
-(`src/parallax/domains/token_intel/repositories/token_evidence_repository.py:54`,
-`src/parallax/domains/token_intel/repositories/token_intent_repository.py:47`,
-`src/parallax/domains/token_intel/repositories/token_intent_repository.py:108`,
-`src/parallax/domains/token_intel/repositories/token_intent_lookup_repository.py:12`,
-`src/parallax/domains/token_intel/repositories/token_intent_lookup_repository.py:23`,
-`src/parallax/domains/token_intel/repositories/token_intent_lookup_repository.py:38`,
-`src/parallax/domains/token_intel/repositories/intent_resolution_repository.py:15`,
-`src/parallax/domains/token_intel/repositories/intent_resolution_repository.py:27`,
-`src/parallax/domains/token_intel/repositories/intent_resolution_repository.py:39`,
-`src/parallax/domains/token_intel/repositories/intent_resolution_repository.py:78`).
+(src/parallax/domains/token_intel/repositories/token_evidence_repository.py:54,
+src/parallax/domains/token_intel/repositories/token_intent_repository.py:47,
+src/parallax/domains/token_intel/repositories/token_intent_repository.py:108,
+src/parallax/domains/token_intel/repositories/token_intent_lookup_repository.py:12,
+src/parallax/domains/token_intel/repositories/token_intent_lookup_repository.py:23,
+src/parallax/domains/token_intel/repositories/token_intent_lookup_repository.py:38,
+src/parallax/domains/token_intel/repositories/intent_resolution_repository.py:15,
+src/parallax/domains/token_intel/repositories/intent_resolution_repository.py:27,
+src/parallax/domains/token_intel/repositories/intent_resolution_repository.py:39,
+src/parallax/domains/token_intel/repositories/intent_resolution_repository.py:78).
 Unit coverage now exercises missing/invalid rowcount, required single-row
 0/2 failures, optional link 0/1 evidence, and supersede-update rowcount
-(`tests/unit/domains/token_intel/test_token_fact_repositories.py:110`,
-`tests/unit/domains/token_intel/test_token_fact_repositories.py:163`,
-`tests/unit/domains/token_intel/test_token_fact_repositories.py:211`,
-`tests/unit/domains/token_intel/test_token_fact_repositories.py:223`,
-`tests/unit/domains/token_intel/test_token_fact_repositories.py:238`,
-`tests/unit/domains/token_intel/test_token_fact_repositories.py:256`).
+(tests/unit/domains/token_intel/test_token_fact_repositories.py:110,
+tests/unit/domains/token_intel/test_token_fact_repositories.py:163,
+tests/unit/domains/token_intel/test_token_fact_repositories.py:211,
+tests/unit/domains/token_intel/test_token_fact_repositories.py:223,
+tests/unit/domains/token_intel/test_token_fact_repositories.py:238,
+tests/unit/domains/token_intel/test_token_fact_repositories.py:256).
 The architecture guard rejects fallback readback and rowcount-default
 compatibility for these token fact writers
-(`tests/architecture/test_runtime_worker_constraint_hard_cut.py:709`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:716`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:723`).
+(tests/architecture/test_runtime_worker_constraint_hard_cut.py:709,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:716,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:723).
 
 Follow-up review found the same rowcount evidence gap in
-`token_capture_tier_dirty_targets` write accounting: rank-set dirty enqueue and
+token_capture_tier_dirty_targets write accounting: rank-set dirty enqueue and
 done paths reported changed-row counts after queue mutations but could still
 restore missing rowcount evidence to zero. The target contract is that
 enqueue/done changed-row counts use _cursor_rowcount(cursor) and fail as
-`token_capture_tier_dirty_target_rowcount_required` /
-`token_capture_tier_dirty_target_rowcount_invalid` before reporting zero changed
+token_capture_tier_dirty_target_rowcount_required /
+token_capture_tier_dirty_target_rowcount_invalid before reporting zero changed
 capture-tier dirty targets
-(`src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:15`,
-`src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:37`,
-`src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:90`,
-`src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:109`,
-`src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:156`,
-`src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:166`,
-`src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:210`,
-`src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:214`,
-`src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:216`,
-`src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:218`,
-`tests/unit/domains/asset_market/test_token_capture_tier_dirty_targets.py:68`,
-`tests/unit/domains/asset_market/test_token_capture_tier_dirty_targets.py:72`,
-`tests/unit/domains/asset_market/test_token_capture_tier_dirty_targets.py:83`,
-`tests/unit/domains/asset_market/test_token_capture_tier_dirty_targets.py:87`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1384`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1385`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1386`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1387`).
+(src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:15,
+src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:37,
+src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:90,
+src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:109,
+src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:156,
+src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:166,
+src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:210,
+src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:214,
+src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:216,
+src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:218,
+tests/unit/domains/asset_market/test_token_capture_tier_dirty_targets.py:68,
+tests/unit/domains/asset_market/test_token_capture_tier_dirty_targets.py:72,
+tests/unit/domains/asset_market/test_token_capture_tier_dirty_targets.py:83,
+tests/unit/domains/asset_market/test_token_capture_tier_dirty_targets.py:87,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1384,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1385,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1386,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1387).
 
 Follow-up review found the same rowcount evidence gap in the serving/control
-projection itself: `demote_hot_rows_outside_rank_set` returns the number of hot
+projection itself: demote_hot_rows_outside_rank_set returns the number of hot
 tier rows demoted outside the active rank set. The
 target contract is that demotion changed-row counts use _cursor_rowcount(cursor)
-and fail as `token_capture_tier_repository_rowcount_required` /
-`token_capture_tier_repository_rowcount_invalid` before reporting zero demoted
+and fail as token_capture_tier_repository_rowcount_required /
+token_capture_tier_repository_rowcount_invalid before reporting zero demoted
 rows
-(`src/parallax/domains/asset_market/repositories/token_capture_tier_repository.py:138`,
-`src/parallax/domains/asset_market/repositories/token_capture_tier_repository.py:165`,
-`src/parallax/domains/asset_market/repositories/token_capture_tier_repository.py:205`,
-`src/parallax/domains/asset_market/repositories/token_capture_tier_repository.py:209`,
-`src/parallax/domains/asset_market/repositories/token_capture_tier_repository.py:211`,
-`src/parallax/domains/asset_market/repositories/token_capture_tier_repository.py:213`,
-`tests/unit/test_token_capture_tier_repository.py:132`,
-`tests/unit/test_token_capture_tier_repository.py:136`,
-`tests/unit/test_token_capture_tier_repository.py:144`,
-`tests/unit/test_token_capture_tier_repository.py:177`,
-`tests/unit/test_token_capture_tier_repository.py:186`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1126`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1135`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1136`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1140`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1141`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1142`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1143`).
+(src/parallax/domains/asset_market/repositories/token_capture_tier_repository.py:138,
+src/parallax/domains/asset_market/repositories/token_capture_tier_repository.py:165,
+src/parallax/domains/asset_market/repositories/token_capture_tier_repository.py:205,
+src/parallax/domains/asset_market/repositories/token_capture_tier_repository.py:209,
+src/parallax/domains/asset_market/repositories/token_capture_tier_repository.py:211,
+src/parallax/domains/asset_market/repositories/token_capture_tier_repository.py:213,
+tests/unit/test_token_capture_tier_repository.py:132,
+tests/unit/test_token_capture_tier_repository.py:136,
+tests/unit/test_token_capture_tier_repository.py:144,
+tests/unit/test_token_capture_tier_repository.py:177,
+tests/unit/test_token_capture_tier_repository.py:186,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1126,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1135,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1136,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1140,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1141,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1142,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1143).
 
 Follow-up review found the same current-row changed evidence gap in
-`asset_identity_current`: `recompute_current_identity` turns the changed
-boolean from `_upsert_current_identity` into `rows_written`, and the current
-identity write uses `RETURNING true AS changed`. The target contract is that
-`asset_identity_current` changed booleans
+asset_identity_current: recompute_current_identity turns the changed
+boolean from _upsert_current_identity into rows_written, and the current
+identity write uses RETURNING true AS changed. The target contract is that
+asset_identity_current changed booleans
 require PostgreSQL cursor.rowcount, only accept 0/1, and match returned-row
-presence before identity recompute `rows_written` is reported
-(`src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:266`,
-`src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:267`,
-`src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:270`,
-`src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:272`,
-`src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:275`,
-`src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:298`,
-`src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:313`,
-`src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:314`,
-`src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:298`,
-`src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:313`,
-`src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:314`,
-`src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:368`,
-`src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:370`,
-`src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:372`,
-`src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:374`,
-`src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:380`,
-`src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:382`,
-`src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:384`,
-`tests/unit/test_asset_identity_repository.py:104`,
-`tests/unit/test_asset_identity_repository.py:118`,
-`tests/unit/test_asset_identity_repository.py:143`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1491`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1504`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1516`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1521`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1522`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1524`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1525`).
+presence before identity recompute rows_written is reported
+(src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:266,
+src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:267,
+src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:270,
+src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:272,
+src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:275,
+src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:298,
+src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:313,
+src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:314,
+src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:298,
+src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:313,
+src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:314,
+src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:368,
+src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:370,
+src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:372,
+src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:374,
+src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:380,
+src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:382,
+src/parallax/domains/asset_market/repositories/identity_evidence_repository.py:384,
+tests/unit/test_asset_identity_repository.py:104,
+tests/unit/test_asset_identity_repository.py:118,
+tests/unit/test_asset_identity_repository.py:143,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1491,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1504,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1516,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1521,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1522,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1524,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1525).
 
-Follow-up review found that `PulseAdmissionPolicy` still needed a strict caller
+Follow-up review found that PulseAdmissionPolicy still needed a strict caller
 owned policy contract. Its classifier now requires explicit
-`recent_failure_count`, `failure_circuit_per_hour`, and
-`timeline_debounce_seconds` inputs (`src/parallax/domains/pulse_lab/services/pulse_admission_policy.py:19`,
-`src/parallax/domains/pulse_lab/services/pulse_admission_policy.py:29`,
-`src/parallax/domains/pulse_lab/services/pulse_admission_policy.py:30`,
-`src/parallax/domains/pulse_lab/services/pulse_admission_policy.py:31`).
-`PulseCandidateWorker` reads formal failure-circuit and timeline-debounce
+recent_failure_count, failure_circuit_per_hour, and
+timeline_debounce_seconds inputs (src/parallax/domains/pulse_lab/services/pulse_admission_policy.py:19,
+src/parallax/domains/pulse_lab/services/pulse_admission_policy.py:29,
+src/parallax/domains/pulse_lab/services/pulse_admission_policy.py:30,
+src/parallax/domains/pulse_lab/services/pulse_admission_policy.py:31).
+PulseCandidateWorker reads formal failure-circuit and timeline-debounce
 settings and passes them into the policy call
-(`src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:63`,
-`src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:98`,
-`src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:99`,
-`src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:491`,
-`src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:494`).
-`timeline_debounce_seconds` is exposed in the formal Pulse candidate worker
-settings (`src/parallax/platform/config/settings.py:1132`).
+(src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:63,
+src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:98,
+src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:99,
+src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:491,
+src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:494).
+timeline_debounce_seconds is exposed in the formal Pulse candidate worker
+settings (src/parallax/platform/config/settings.py:1132).
 
 Follow-up review found that notification rule evaluation still needed an
-explicit worker-owned clock contract. `NotificationRuleEngine` now has an
-`evaluate` method that requires `now_ms: int` and derives the evaluation
+explicit worker-owned clock contract. NotificationRuleEngine now has an
+evaluate method that requires now_ms: int and derives the evaluation
 timestamp only from that input
-(`src/parallax/domains/notifications/services/notification_rules.py:29`,
-`src/parallax/domains/notifications/services/notification_rules.py:45`,
-`src/parallax/domains/notifications/services/notification_rules.py:46`).
-`NotificationWorker` computes the runtime timestamp and passes it into
-`rule_engine.evaluate(now_ms=now_ms)`
-(`src/parallax/domains/notifications/runtime/notification_worker.py:31`,
-`src/parallax/domains/notifications/runtime/notification_worker.py:75`,
-`src/parallax/domains/notifications/runtime/notification_worker.py:76`,
-`src/parallax/domains/notifications/runtime/notification_worker.py:88`).
+(src/parallax/domains/notifications/services/notification_rules.py:29,
+src/parallax/domains/notifications/services/notification_rules.py:45,
+src/parallax/domains/notifications/services/notification_rules.py:46).
+NotificationWorker computes the runtime timestamp and passes it into
+rule_engine.evaluate(now_ms=now_ms)
+(src/parallax/domains/notifications/runtime/notification_worker.py:31,
+src/parallax/domains/notifications/runtime/notification_worker.py:75,
+src/parallax/domains/notifications/runtime/notification_worker.py:76,
+src/parallax/domains/notifications/runtime/notification_worker.py:88).
 The notification architecture guard rejects service-local wall-clock fallback
-tokens such as `import time`, optional `now_ms`, and `_now_ms()`
-(`tests/architecture/test_notifications_hard_cut.py:187`,
-`tests/architecture/test_notifications_hard_cut.py:188`,
-`tests/architecture/test_notifications_hard_cut.py:189`,
-`tests/architecture/test_notifications_hard_cut.py:190`,
-`tests/architecture/test_notifications_hard_cut.py:193`,
-`tests/architecture/test_notifications_hard_cut.py:194`,
-`tests/architecture/test_notifications_hard_cut.py:195`,
-`tests/architecture/test_notifications_hard_cut.py:196`).
+tokens such as import time, optional now_ms, and _now_ms()
+(tests/architecture/test_notifications_hard_cut.py:187,
+tests/architecture/test_notifications_hard_cut.py:188,
+tests/architecture/test_notifications_hard_cut.py:189,
+tests/architecture/test_notifications_hard_cut.py:190,
+tests/architecture/test_notifications_hard_cut.py:193,
+tests/architecture/test_notifications_hard_cut.py:194,
+tests/architecture/test_notifications_hard_cut.py:195,
+tests/architecture/test_notifications_hard_cut.py:196).
 
 Follow-up review found the same formal-policy gap in external delivery retry
-budgets. `NotificationWorker` writes external delivery control rows with
-`max_attempts=self.delivery_max_attempts`, so the constructor must require that
+budgets. NotificationWorker writes external delivery control rows with
+max_attempts=self.delivery_max_attempts, so the constructor must require that
 value explicitly and the runtime factory must pass
-`workers.notification_delivery.max_attempts`
-(`src/parallax/domains/notifications/runtime/notification_worker.py:31`,
-`src/parallax/domains/notifications/runtime/notification_worker.py:43`,
-`src/parallax/domains/notifications/runtime/notification_worker.py:55`,
-`src/parallax/domains/notifications/runtime/notification_worker.py:168`,
-`src/parallax/app/runtime/worker_factories/notifications.py:44`).
-The notification architecture guard rejects `delivery_max_attempts: int =` and
+workers.notification_delivery.max_attempts
+(src/parallax/domains/notifications/runtime/notification_worker.py:31,
+src/parallax/domains/notifications/runtime/notification_worker.py:43,
+src/parallax/domains/notifications/runtime/notification_worker.py:55,
+src/parallax/domains/notifications/runtime/notification_worker.py:168,
+src/parallax/app/runtime/worker_factories/notifications.py:44).
+The notification architecture guard rejects delivery_max_attempts: int = and
 requires the factory to pass the formal delivery setting
-(`tests/architecture/test_notifications_hard_cut.py:117`,
-`tests/architecture/test_notifications_hard_cut.py:129`,
-`tests/architecture/test_notifications_hard_cut.py:132`).
+(tests/architecture/test_notifications_hard_cut.py:117,
+tests/architecture/test_notifications_hard_cut.py:129,
+tests/architecture/test_notifications_hard_cut.py:132).
 
 Follow-up review found that notification query windows and News overscan
-policy also needed formal settings ownership. `NotificationsConfig` now owns
-`candidate_limit`, `watched_activity_window_ms`,
-`news_high_signal_recency_window_ms`, `news_high_signal_query_min_limit`, and
-`news_high_signal_query_multiplier`
-(`src/parallax/platform/config/settings.py:489`,
-`src/parallax/platform/config/settings.py:493`,
-`src/parallax/platform/config/settings.py:494`,
-`src/parallax/platform/config/settings.py:495`,
-`src/parallax/platform/config/settings.py:496`,
-`src/parallax/platform/config/settings.py:497`).
+policy also needed formal settings ownership. NotificationsConfig now owns
+candidate_limit, watched_activity_window_ms,
+news_high_signal_recency_window_ms, news_high_signal_query_min_limit, and
+news_high_signal_query_multiplier
+(src/parallax/platform/config/settings.py:489,
+src/parallax/platform/config/settings.py:493,
+src/parallax/platform/config/settings.py:494,
+src/parallax/platform/config/settings.py:495,
+src/parallax/platform/config/settings.py:496,
+src/parallax/platform/config/settings.py:497).
 The notification rule engine reads those settings for watched activity
 recency, News high-signal recency, and News high-signal query width
-(`src/parallax/domains/notifications/services/notification_rules.py:62`,
-`src/parallax/domains/notifications/services/notification_rules.py:291`,
-`src/parallax/domains/notifications/services/notification_rules.py:388`,
-`src/parallax/domains/notifications/services/notification_rules.py:389`).
+(src/parallax/domains/notifications/services/notification_rules.py:62,
+src/parallax/domains/notifications/services/notification_rules.py:291,
+src/parallax/domains/notifications/services/notification_rules.py:388,
+src/parallax/domains/notifications/services/notification_rules.py:389).
 The architecture guard rejects service-local policy constants such as
-`WATCHED_ACTIVITY_WINDOW_MS`, `NEWS_HIGH_SIGNAL_QUERY_MIN_LIMIT`,
-`NEWS_HIGH_SIGNAL_QUERY_MULTIPLIER`, and `NEWS_HIGH_SIGNAL_RECENCY_WINDOW_MS`
-(`tests/architecture/test_notifications_hard_cut.py:194`,
-`tests/architecture/test_notifications_hard_cut.py:198`,
-`tests/architecture/test_notifications_hard_cut.py:199`,
-`tests/architecture/test_notifications_hard_cut.py:200`,
-`tests/architecture/test_notifications_hard_cut.py:201`,
-`tests/architecture/test_notifications_hard_cut.py:204`,
-`tests/architecture/test_notifications_hard_cut.py:205`,
-`tests/architecture/test_notifications_hard_cut.py:206`,
-`tests/architecture/test_notifications_hard_cut.py:207`,
-`tests/architecture/test_notifications_hard_cut.py:208`,
-`tests/architecture/test_notifications_hard_cut.py:209`,
-`tests/architecture/test_notifications_hard_cut.py:210`,
-`tests/architecture/test_notifications_hard_cut.py:211`,
-`tests/architecture/test_notifications_hard_cut.py:212`).
+WATCHED_ACTIVITY_WINDOW_MS, NEWS_HIGH_SIGNAL_QUERY_MIN_LIMIT,
+NEWS_HIGH_SIGNAL_QUERY_MULTIPLIER, and NEWS_HIGH_SIGNAL_RECENCY_WINDOW_MS
+(tests/architecture/test_notifications_hard_cut.py:194,
+tests/architecture/test_notifications_hard_cut.py:198,
+tests/architecture/test_notifications_hard_cut.py:199,
+tests/architecture/test_notifications_hard_cut.py:200,
+tests/architecture/test_notifications_hard_cut.py:201,
+tests/architecture/test_notifications_hard_cut.py:204,
+tests/architecture/test_notifications_hard_cut.py:205,
+tests/architecture/test_notifications_hard_cut.py:206,
+tests/architecture/test_notifications_hard_cut.py:207,
+tests/architecture/test_notifications_hard_cut.py:208,
+tests/architecture/test_notifications_hard_cut.py:209,
+tests/architecture/test_notifications_hard_cut.py:210,
+tests/architecture/test_notifications_hard_cut.py:211,
+tests/architecture/test_notifications_hard_cut.py:212).
 
 Follow-up review found the same query-budget ownership issue in Signal Pulse
-notification pagination. `NotificationsConfig` now owns
-`signal_pulse_max_pages`
-(`src/parallax/platform/config/settings.py:489`,
-`src/parallax/platform/config/settings.py:498`,
-`src/parallax/platform/config/settings.py:1782`).
-The rule engine uses `signal_pulse_max_pages` only to derive the per-scope/status
+notification pagination. NotificationsConfig now owns
+signal_pulse_max_pages
+(src/parallax/platform/config/settings.py:489,
+src/parallax/platform/config/settings.py:498,
+src/parallax/platform/config/settings.py:1782).
+The rule engine uses signal_pulse_max_pages only to derive the per-scope/status
 candidate budget passed to the dedicated Signal Pulse notification candidate
 reader
-(`src/parallax/domains/notifications/services/notification_rules.py:181`,
-`src/parallax/domains/notifications/services/notification_rules.py:185`).
+(src/parallax/domains/notifications/services/notification_rules.py:181,
+src/parallax/domains/notifications/services/notification_rules.py:185).
 That reader materializes scopes/statuses as PostgreSQL keysets and applies a
 bucket window rank
-(`src/parallax/domains/pulse_lab/repositories/pulse_read_repository.py:97`,
-`src/parallax/domains/pulse_lab/repositories/pulse_read_repository.py:113`,
-`src/parallax/domains/pulse_lab/repositories/pulse_read_repository.py:119`,
-`src/parallax/domains/pulse_lab/repositories/pulse_read_repository.py:127`,
-`src/parallax/domains/pulse_lab/repositories/pulse_read_repository.py:128`).
+(src/parallax/domains/pulse_lab/repositories/pulse_read_repository.py:97,
+src/parallax/domains/pulse_lab/repositories/pulse_read_repository.py:113,
+src/parallax/domains/pulse_lab/repositories/pulse_read_repository.py:119,
+src/parallax/domains/pulse_lab/repositories/pulse_read_repository.py:127,
+src/parallax/domains/pulse_lab/repositories/pulse_read_repository.py:128).
 The architecture guard rejects the old service-local page constant and
 public-list cursor pagination, and requires the formal settings field plus
 dedicated reader call
-(`tests/architecture/test_notifications_hard_cut.py:215`,
-`tests/architecture/test_notifications_hard_cut.py:223`,
-`tests/architecture/test_notifications_hard_cut.py:224`,
-`tests/architecture/test_notifications_hard_cut.py:225`,
-`tests/architecture/test_notifications_hard_cut.py:226`,
-`tests/architecture/test_notifications_hard_cut.py:227`,
-`tests/architecture/test_notifications_hard_cut.py:228`,
-`tests/architecture/test_notifications_hard_cut.py:229`,
-`tests/architecture/test_notifications_hard_cut.py:230`,
-`tests/architecture/test_notifications_hard_cut.py:231`,
-`tests/architecture/test_notifications_hard_cut.py:232`).
+(tests/architecture/test_notifications_hard_cut.py:215,
+tests/architecture/test_notifications_hard_cut.py:223,
+tests/architecture/test_notifications_hard_cut.py:224,
+tests/architecture/test_notifications_hard_cut.py:225,
+tests/architecture/test_notifications_hard_cut.py:226,
+tests/architecture/test_notifications_hard_cut.py:227,
+tests/architecture/test_notifications_hard_cut.py:228,
+tests/architecture/test_notifications_hard_cut.py:229,
+tests/architecture/test_notifications_hard_cut.py:230,
+tests/architecture/test_notifications_hard_cut.py:231,
+tests/architecture/test_notifications_hard_cut.py:232).
 
 Follow-up review found the next field in the same dirty completion CAS key still
-had a compatibility fallback: completion helpers restored missing `payload_hash`
+had a compatibility fallback: completion helpers restored missing payload_hash
 to an empty string before done/error/reschedule SQL, and Token Radar projection
 could start target/source work with empty payload completion keys. The target
-contract is that dirty completion keys preserve claimed-row `payload_hash` as
-well as `attempt_count` and `lease_owner`; missing payload hashes fail before
+contract is that dirty completion keys preserve claimed-row payload_hash as
+well as attempt_count and lease_owner; missing payload hashes fail before
 rank-source work, source projection, or queue SQL. The current implementation
-routes projection claim keys through `_claim_payload_hash(claim)`, and
+routes projection claim keys through _claim_payload_hash(claim), and
 architecture coverage requires direct payload-hash readers while rejecting
 payload-hash default restoration tokens
-(`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2169`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2190`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2191`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2192`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2202`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:1289`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:1290`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:1291`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:1332`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:1387`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:1389`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:1394`).
+(tests/architecture/test_runtime_worker_constraint_hard_cut.py:2169,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2190,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2191,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2192,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2202,
+src/parallax/domains/token_intel/services/token_radar_projection.py:1289,
+src/parallax/domains/token_intel/services/token_radar_projection.py:1290,
+src/parallax/domains/token_intel/services/token_radar_projection.py:1291,
+src/parallax/domains/token_intel/services/token_radar_projection.py:1332,
+src/parallax/domains/token_intel/services/token_radar_projection.py:1387,
+src/parallax/domains/token_intel/services/token_radar_projection.py:1389,
+src/parallax/domains/token_intel/services/token_radar_projection.py:1394).
 
 Follow-up review found Token Image Source dirty completion still had a target-key
 compatibility fallback after the shared CAS fields were hardened: missing
-`source_url_hash` could be rederived from `source_url` before done/error
+source_url_hash could be rederived from source_url before done/error
 completion. The target contract is that completion keys use the exact
-claimed-row `source_url_hash`; missing source hashes fail before SQL and must not
-be restored by hashing the claimed `source_url`. Unit coverage asserts the
-missing field produces a `KeyError` cause before SQL, while the architecture
-guard rejects the old fallback tokens and requires direct `claim["source_url_hash"]`
-(`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:528`,
-`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:530`,
-`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:531`,
-`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:637`,
-`tests/unit/domains/asset_market/test_token_image_source_dirty_targets.py:127`,
-`tests/unit/domains/asset_market/test_token_image_source_dirty_targets.py:132`,
-`tests/unit/domains/asset_market/test_token_image_source_dirty_targets.py:140`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2100`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2101`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2105`).
+claimed-row source_url_hash; missing source hashes fail before SQL and must not
+be restored by hashing the claimed source_url. Unit coverage asserts the
+missing field produces a KeyError cause before SQL, while the architecture
+guard rejects the old fallback tokens and requires direct claim["source_url_hash"]
+(src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:528,
+src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:530,
+src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:531,
+src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:637,
+tests/unit/domains/asset_market/test_token_image_source_dirty_targets.py:127,
+tests/unit/domains/asset_market/test_token_image_source_dirty_targets.py:132,
+tests/unit/domains/asset_market/test_token_image_source_dirty_targets.py:140,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2100,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2101,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2105).
 
 Follow-up review found the same payload fallback one layer downstream in the
 Pulse Candidate worker: exit suppression for a missing current Radar row wrote
-`trigger_signature` as an empty string when the dirty
-claim omitted `payload_hash`. The target contract is that exit-suppression audit
-state uses the claimed dirty-trigger `payload_hash` directly and fails before
+trigger_signature as an empty string when the dirty
+claim omitted payload_hash. The target contract is that exit-suppression audit
+state uses the claimed dirty-trigger payload_hash directly and fails before
 admission writes when the claim payload is malformed. Unit coverage asserts
-`dirty_triggers_failed`, no admission writes, and
-`pulse_trigger_dirty_claim_payload_hash_required`; architecture coverage rejects
-payload-hash default restoration and requires direct `claim["payload_hash"]`
-(`src/parallax/domains/pulse_lab/ARCHITECTURE.md:181`,
-`src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:850`,
-`src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:852`,
-`src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:896`,
-`tests/unit/domains/pulse_lab/test_pulse_candidate_worker_dirty_triggers.py:160`,
-`tests/unit/domains/pulse_lab/test_pulse_candidate_worker_dirty_triggers.py:196`,
-`tests/unit/domains/pulse_lab/test_pulse_candidate_worker_dirty_triggers.py:200`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1849`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1809`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1814`,
-`src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:850`,
-`src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:852`,
-`src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:896`).
+dirty_triggers_failed, no admission writes, and
+pulse_trigger_dirty_claim_payload_hash_required; architecture coverage rejects
+payload-hash default restoration and requires direct claim["payload_hash"]
+(src/parallax/domains/pulse_lab/ARCHITECTURE.md:181,
+src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:850,
+src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:852,
+src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:896,
+tests/unit/domains/pulse_lab/test_pulse_candidate_worker_dirty_triggers.py:160,
+tests/unit/domains/pulse_lab/test_pulse_candidate_worker_dirty_triggers.py:196,
+tests/unit/domains/pulse_lab/test_pulse_candidate_worker_dirty_triggers.py:200,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1849,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1809,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1814,
+src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:850,
+src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:852,
+src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:896).
 
 Follow-up review found Token Radar downstream fan-out still compared previous
 and current row payload hashes through empty-string fallbacks before deciding
 whether to enqueue Pulse, Narrative Admission, or Token Profile Current dirty
-work. The target contract is that previous/current row `payload_hash` values are
+work. The target contract is that previous/current row payload_hash values are
 required read-model signatures; missing values fail before skip decisions or
 target-feature row hydration instead of being compared as equal empty signatures.
-Architecture coverage requires `_rank_change_payload_hash(previous)` and
-`_rank_change_payload_hash(row)`
-(`src/parallax/domains/token_intel/services/token_radar_projection.py:895`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:942`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:987`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:1404`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:1406`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:1411`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:2567`,
-`tests/unit/test_token_radar_projection.py:1019`,
-`tests/unit/test_token_radar_projection.py:1040`,
-`tests/unit/test_token_radar_projection.py:1049`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1822`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1823`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1824`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1828`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1829`).
+Architecture coverage requires _rank_change_payload_hash(previous) and
+_rank_change_payload_hash(row)
+(src/parallax/domains/token_intel/services/token_radar_projection.py:895,
+src/parallax/domains/token_intel/services/token_radar_projection.py:942,
+src/parallax/domains/token_intel/services/token_radar_projection.py:987,
+src/parallax/domains/token_intel/services/token_radar_projection.py:1404,
+src/parallax/domains/token_intel/services/token_radar_projection.py:1406,
+src/parallax/domains/token_intel/services/token_radar_projection.py:1411,
+src/parallax/domains/token_intel/services/token_radar_projection.py:2567,
+tests/unit/test_token_radar_projection.py:1019,
+tests/unit/test_token_radar_projection.py:1040,
+tests/unit/test_token_radar_projection.py:1049,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1822,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1823,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1824,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1828,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1829).
 
 Follow-up review found the same Token Radar identity leak one hop earlier in
 dirty completion claims: target dirty completion still accepted alias
-`target_type` / `target_id`, while source dirty completion still accepted
-defaulted `projection_version` or alias `event_id`, `target_type`, and
-`target_id`. The target contract is that target dirty completion keys require
-formal `target_type_key` and `identity_id`, source dirty completion keys require
-formal `projection_version`, `source_event_id`, `target_type_key`, and
-`identity_id`, and alias mapping is only allowed before enqueue, not after
+target_type / target_id, while source dirty completion still accepted
+defaulted projection_version or alias event_id, target_type, and
+target_id. The target contract is that target dirty completion keys require
+formal target_type_key and identity_id, source dirty completion keys require
+formal projection_version, source_event_id, target_type_key, and
+identity_id, and alias mapping is only allowed before enqueue, not after
 claim when building done/error CAS keys
-(`src/parallax/domains/token_intel/services/token_radar_projection.py:1290`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:1292`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:1320`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:1323`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:1328`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:1333`,
-`src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py:834`,
-`src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py:856`,
-`src/parallax/domains/token_intel/repositories/token_radar_source_dirty_event_repository.py:329`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1841`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1842`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1843`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1844`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1847`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1848`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1849`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1850`,
-`src/parallax/domains/token_intel/ARCHITECTURE.md:50`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1853`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1855`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1856`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1857`).
+(src/parallax/domains/token_intel/services/token_radar_projection.py:1290,
+src/parallax/domains/token_intel/services/token_radar_projection.py:1292,
+src/parallax/domains/token_intel/services/token_radar_projection.py:1320,
+src/parallax/domains/token_intel/services/token_radar_projection.py:1323,
+src/parallax/domains/token_intel/services/token_radar_projection.py:1328,
+src/parallax/domains/token_intel/services/token_radar_projection.py:1333,
+src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py:834,
+src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py:856,
+src/parallax/domains/token_intel/repositories/token_radar_source_dirty_event_repository.py:329,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1841,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1842,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1843,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1844,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1847,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1848,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1849,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1850,
+src/parallax/domains/token_intel/ARCHITECTURE.md:50,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1853,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1855,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1856,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1857).
 
 Follow-up review then found the architecture guard still carried repository
 upward-import exceptions for deterministic leaf primitives. The target contract
 is that News canonical identity, Narrative fingerprints, and Token Radar payload
 hash primitives live under the cited domain type leaf files, while the
-repository/query guard rejects `.services.`, `.runtime.`, and `.read_models.`
+repository/query guard rejects .services., .runtime., and .read_models.
 imports without an
-allowlist (`src/parallax/domains/news_intel/ARCHITECTURE.md:80`,
-`src/parallax/domains/narrative_intel/ARCHITECTURE.md:54`,
-`src/parallax/domains/token_intel/ARCHITECTURE.md:63`,
-`src/parallax/domains/news_intel/types/news_canonical_identity.py:34`,
-`src/parallax/domains/narrative_intel/types/fingerprints.py:14`,
-`src/parallax/domains/token_intel/types/token_radar_payload_hash.py:14`,
-`tests/architecture/test_src_domain_architecture.py:327`).
+allowlist (src/parallax/domains/news_intel/ARCHITECTURE.md:80,
+src/parallax/domains/narrative_intel/ARCHITECTURE.md:54,
+src/parallax/domains/token_intel/ARCHITECTURE.md:63,
+src/parallax/domains/news_intel/types/news_canonical_identity.py:34,
+src/parallax/domains/narrative_intel/types/fingerprints.py:14,
+src/parallax/domains/token_intel/types/token_radar_payload_hash.py:14,
+tests/architecture/test_src_domain_architecture.py:327).
 
-Follow-up review recorded the same optional-repository root in Token Case CEX detail reads: `TokenCaseService._cex_detail(...)` treated missing `cex_detail_snapshots` support as no detail, and Search Inspect did not pass the snapshot repository into the token-result dossier path (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:312`). The same root-cause note records the target contract: `CexToken` token dossiers read persisted `cex_detail_snapshots`; absent rows can produce structured missing detail, while absent repository support fails closed (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:314`).
+Follow-up review recorded the same optional-repository root in Token Case CEX detail reads: TokenCaseService._cex_detail(...) treated missing cex_detail_snapshots support as no detail, and Search Inspect did not pass the snapshot repository into the token-result dossier path (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:312). The same root-cause note records the target contract: CexToken token dossiers read persisted cex_detail_snapshots; absent rows can produce structured missing detail, while absent repository support fails closed (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:314).
 
-Follow-up review then found the same pattern in Token Case market-live reads: `_latest_market_tick(...)` treated missing `latest_market_tick` repository support as no market snapshot (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:325`). The target contract is that Token Case and Search Inspect market-live blocks read persisted current tick state; absent rows can produce structured `status` value `missing` (`docs/CONTRACTS.md:570`), while absent repository support fails closed (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:327`).
+Follow-up review then found the same pattern in Token Case market-live reads: _latest_market_tick(...) treated missing latest_market_tick repository support as no market snapshot (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:325). The target contract is that Token Case and Search Inspect market-live blocks read persisted current tick state; absent rows can produce structured status value missing (docs/CONTRACTS.md:570), while absent repository support fails closed (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:327).
 
-Follow-up review also found the same optional-contract pattern in Pulse dirty-trigger admission: `_call_optional(repos.pulse_jobs, "job_for_candidate", ...)` and `_call_optional(repos.pulse_admission, "edge_state_by_candidate", ...)` treated missing control-plane reads as empty state, while `recent_target_failure_count`, `pending_agent_job_count`, `pending_agent_job_count_for_window_scope`, and `pulse_trigger_dirty_targets.queue_depth` returned `0` when methods were absent (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:337`). The target contract is that Pulse dirty-trigger admission, capacity, edge-state, and queue-depth reads use formal PostgreSQL control-plane repositories; missing repository support fails dirty triggers for retry instead of becoming silent empty state (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:339`).
+Follow-up review also found the same optional-contract pattern in Pulse dirty-trigger admission: _call_optional(repos.pulse_jobs, "job_for_candidate", ...) and _call_optional(repos.pulse_admission, "edge_state_by_candidate", ...) treated missing control-plane reads as empty state, while recent_target_failure_count, pending_agent_job_count, pending_agent_job_count_for_window_scope, and pulse_trigger_dirty_targets.queue_depth returned 0 when methods were absent (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:337). The target contract is that Pulse dirty-trigger admission, capacity, edge-state, and queue-depth reads use formal PostgreSQL control-plane repositories; missing repository support fails dirty triggers for retry instead of becoming silent empty state (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:339).
 
-Follow-up review found the same optional-session root in Notification Rule writes: `NotificationWorker` entered a `nullcontext()` when `unit_of_work` was absent and then manually committed through the notification repository connection (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:363`). The target contract is that the notification rule worker writes `notifications` facts and `notification_deliveries` control rows inside the worker-session Unit of Work; missing UoW support fails before writes instead of becoming a compatibility commit path (`docs/WORKERS.md:210`, `docs/WORKERS.md:301`, `docs/WORKERS.md:302`, `docs/WORKERS.md:303`).
+Follow-up review found the same optional-session root in Notification Rule writes: NotificationWorker entered a nullcontext() when unit_of_work was absent and then manually committed through the notification repository connection (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:363). The target contract is that the notification rule worker writes notifications facts and notification_deliveries control rows inside the worker-session Unit of Work; missing UoW support fails before writes instead of becoming a compatibility commit path (docs/WORKERS.md:210, docs/WORKERS.md:301, docs/WORKERS.md:302, docs/WORKERS.md:303).
 
-Follow-up review found the same optional-session root in `import_macrodata_bundle(...)`: the previous path used `_unit_of_work(repos)` and raw connection-transaction fallback for Macro offline replay/seed, while `write_macrodata_bundle_import(...)` hid missing `require_transaction` behind a helper (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:377`). The target contract is now explicit: offline replay writes macro observations, import runs, and projection dirty targets through `RepositorySession.unit_of_work` and `require_transaction`, and must not fall back to raw `conn.transaction` or manual commits (`src/parallax/domains/macro_intel/ARCHITECTURE.md:205`, `src/parallax/domains/macro_intel/ARCHITECTURE.md:206`, `src/parallax/domains/macro_intel/ARCHITECTURE.md:207`, `src/parallax/domains/macro_intel/ARCHITECTURE.md:208`, `src/parallax/domains/macro_intel/services/macrodata_bundle_importer.py:75`, `src/parallax/domains/macro_intel/services/macrodata_bundle_importer.py:146`).
+Follow-up review found the same optional-session root in import_macrodata_bundle(...): the previous path used _unit_of_work(repos) and raw connection-transaction fallback for Macro offline replay/seed, while write_macrodata_bundle_import(...) hid missing require_transaction behind a helper (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:377). The target contract is now explicit: offline replay writes macro observations, import runs, and projection dirty targets through RepositorySession.unit_of_work and require_transaction, and must not fall back to raw conn.transaction or manual commits (src/parallax/domains/macro_intel/ARCHITECTURE.md:205, src/parallax/domains/macro_intel/ARCHITECTURE.md:206, src/parallax/domains/macro_intel/ARCHITECTURE.md:207, src/parallax/domains/macro_intel/ARCHITECTURE.md:208, src/parallax/domains/macro_intel/services/macrodata_bundle_importer.py:75, src/parallax/domains/macro_intel/services/macrodata_bundle_importer.py:146).
 
-Follow-up review found the same optional-session root in Pulse agent job writes: `PulseCandidateJobService.run_job(...)` previously wrapped write blocks in `_transaction(repos.conn)`, which could use raw connection transactions or return `nullcontext()` when transaction support was absent (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:394`, `docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:403`). The target contract is that Pulse agent run/step/eval/candidate/playbook/admission/job terminal writes use RepositorySession.transaction and fail before writes when session transaction support is missing (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:396`, `src/parallax/domains/pulse_lab/ARCHITECTURE.md:99`, `src/parallax/domains/pulse_lab/ARCHITECTURE.md:100`, `src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py:151`).
+Follow-up review found the same optional-session root in Pulse agent job writes: PulseCandidateJobService.run_job(...) previously wrapped write blocks in _transaction(repos.conn), which could use raw connection transactions or return nullcontext() when transaction support was absent (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:394, docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:403). The target contract is that Pulse agent run/step/eval/candidate/playbook/admission/job terminal writes use RepositorySession.transaction and fail before writes when session transaction support is missing (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:396, src/parallax/domains/pulse_lab/ARCHITECTURE.md:99, src/parallax/domains/pulse_lab/ARCHITECTURE.md:100, src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py:151).
 
-Follow-up review found the same optional-session root in News projection writes: `NewsPageProjectionWorker` and `NewsSourceQualityProjectionWorker` previously wrapped claim/write blocks in `_transaction(repos.conn)`, which could use raw connection transactions or return `nullcontext()` when transaction support was absent (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:410`, `docs/WORKER_FLOW.md:165`). The target contract is that News page/source-quality dirty claims, read-model writes, downstream dirty enqueue, and done/error state updates use RepositorySession.transaction and fail before claim/write when session transaction support is missing (`src/parallax/domains/news_intel/ARCHITECTURE.md:127`, `src/parallax/domains/news_intel/ARCHITECTURE.md:128`, `docs/WORKERS.md:624`, `src/parallax/domains/news_intel/runtime/news_page_projection_worker.py:45`, `src/parallax/domains/news_intel/runtime/news_source_quality_projection_worker.py:45`).
+Follow-up review found the same optional-session root in News projection writes: NewsPageProjectionWorker and NewsSourceQualityProjectionWorker previously wrapped claim/write blocks in _transaction(repos.conn), which could use raw connection transactions or return nullcontext() when transaction support was absent (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:410, docs/WORKER_FLOW.md:165). The target contract is that News page/source-quality dirty claims, read-model writes, downstream dirty enqueue, and done/error state updates use RepositorySession.transaction and fail before claim/write when session transaction support is missing (src/parallax/domains/news_intel/ARCHITECTURE.md:127, src/parallax/domains/news_intel/ARCHITECTURE.md:128, docs/WORKERS.md:624, src/parallax/domains/news_intel/runtime/news_page_projection_worker.py:45, src/parallax/domains/news_intel/runtime/news_source_quality_projection_worker.py:45).
 
-Follow-up review found the same raw-connection transaction root in the outer Pulse dirty-trigger worker: `PulseCandidateWorker` still wrapped dirty-trigger claim, admission/edge/public visibility writes, job enqueue, and dirty-target done/error updates in `_transaction(repos.conn)` (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:426`, `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:162`, `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:185`, `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:269`, `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:481`). The target contract is that PulseCandidateWorker uses RepositorySession.transaction and fails before dirty target claim when session transaction support is missing (`src/parallax/domains/pulse_lab/ARCHITECTURE.md:144`, `src/parallax/domains/pulse_lab/ARCHITECTURE.md:146`, `docs/WORKERS.md:435`, `docs/WORKERS.md:436`, `tests/architecture/test_pulse_no_compat.py:209`, `tests/unit/domains/pulse_lab/test_pulse_candidate_worker_dirty_triggers.py:30`).
+Follow-up review found the same raw-connection transaction root in the outer Pulse dirty-trigger worker: PulseCandidateWorker still wrapped dirty-trigger claim, admission/edge/public visibility writes, job enqueue, and dirty-target done/error updates in _transaction(repos.conn) (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:426, src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:162, src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:185, src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:269, src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:481). The target contract is that PulseCandidateWorker uses RepositorySession.transaction and fails before dirty target claim when session transaction support is missing (src/parallax/domains/pulse_lab/ARCHITECTURE.md:144, src/parallax/domains/pulse_lab/ARCHITECTURE.md:146, docs/WORKERS.md:435, docs/WORKERS.md:436, tests/architecture/test_pulse_no_compat.py:209, tests/unit/domains/pulse_lab/test_pulse_candidate_worker_dirty_triggers.py:30).
 
-Follow-up review found the same raw-connection transaction root in News runtime write workers: `NewsFetchWorker`, `NewsItemProcessWorker`, and `NewsItemBriefWorker` previously used direct raw connection transactions for source reconcile/claim, provider item/canonical item writes, deterministic item fact writes, agent admission/current brief writes, projection dirty enqueue, and failure state (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:441`, `src/parallax/domains/news_intel/runtime/news_fetch_worker.py:63`, `src/parallax/domains/news_intel/runtime/news_item_process_worker.py:56`, `src/parallax/domains/news_intel/runtime/news_item_brief_worker.py:50`). The target contract is that all three News writer workers use RepositorySession.transaction and fail before reconcile, claim, or write when session transaction support is missing (`src/parallax/domains/news_intel/ARCHITECTURE.md:160`, `src/parallax/domains/news_intel/ARCHITECTURE.md:162`, `docs/WORKERS.md:652`, `docs/WORKERS.md:654`, `tests/architecture/test_news_intel_kiss_simplification.py:200`, `tests/unit/domains/news_intel/test_news_workers.py:110`, `tests/unit/domains/news_intel/test_news_workers.py:587`, `tests/unit/domains/news_intel/test_news_item_brief_worker.py:54`).
+Follow-up review found the same raw-connection transaction root in News runtime write workers: NewsFetchWorker, NewsItemProcessWorker, and NewsItemBriefWorker previously used direct raw connection transactions for source reconcile/claim, provider item/canonical item writes, deterministic item fact writes, agent admission/current brief writes, projection dirty enqueue, and failure state (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:441, src/parallax/domains/news_intel/runtime/news_fetch_worker.py:63, src/parallax/domains/news_intel/runtime/news_item_process_worker.py:56, src/parallax/domains/news_intel/runtime/news_item_brief_worker.py:50). The target contract is that all three News writer workers use RepositorySession.transaction and fail before reconcile, claim, or write when session transaction support is missing (src/parallax/domains/news_intel/ARCHITECTURE.md:160, src/parallax/domains/news_intel/ARCHITECTURE.md:162, docs/WORKERS.md:652, docs/WORKERS.md:654, tests/architecture/test_news_intel_kiss_simplification.py:200, tests/unit/domains/news_intel/test_news_workers.py:110, tests/unit/domains/news_intel/test_news_workers.py:587, tests/unit/domains/news_intel/test_news_item_brief_worker.py:54).
 
 Follow-up review found the same malformed-ledger fallback inside
-`NewsItemBriefWorker`: reusable completed/failed news_item_agent_runs were
-allowed to lose `run_id` and either restore empty current-brief identity or fall
+NewsItemBriefWorker: reusable completed/failed news_item_agent_runs were
+allowed to lose run_id and either restore empty current-brief identity or fall
 through to another model call. The target contract is that
-the run row's `run_id` is required before completed-current restore,
+the run row's run_id is required before completed-current restore,
 failed-current restore, or invalid-completed-run audit; missing identity fails
 the dirty target as news_item_brief_run_id_required:{reason}
-(`src/parallax/domains/news_intel/ARCHITECTURE.md:83`,
-`src/parallax/domains/news_intel/runtime/news_item_brief_worker.py:50`,
-`src/parallax/domains/news_intel/runtime/news_item_brief_worker.py:367`,
-`src/parallax/domains/news_intel/runtime/news_item_brief_worker.py:716`,
-`src/parallax/domains/news_intel/runtime/news_item_brief_worker.py:883`,
-`src/parallax/domains/news_intel/runtime/news_item_brief_worker.py:894`,
-`src/parallax/domains/news_intel/runtime/news_item_brief_worker.py:932`,
-`src/parallax/domains/news_intel/runtime/news_item_brief_worker.py:937`,
-`src/parallax/domains/news_intel/runtime/news_item_brief_worker.py:941`,
-`src/parallax/domains/news_intel/runtime/news_item_brief_worker.py:944`,
-`tests/unit/domains/news_intel/test_news_item_brief_worker.py:351`,
-`tests/unit/domains/news_intel/test_news_item_brief_worker.py:431`,
-`tests/architecture/test_news_intel_kiss_simplification.py:842`,
-`tests/architecture/test_news_intel_kiss_simplification.py:843`).
+(src/parallax/domains/news_intel/ARCHITECTURE.md:83,
+src/parallax/domains/news_intel/runtime/news_item_brief_worker.py:50,
+src/parallax/domains/news_intel/runtime/news_item_brief_worker.py:367,
+src/parallax/domains/news_intel/runtime/news_item_brief_worker.py:716,
+src/parallax/domains/news_intel/runtime/news_item_brief_worker.py:883,
+src/parallax/domains/news_intel/runtime/news_item_brief_worker.py:894,
+src/parallax/domains/news_intel/runtime/news_item_brief_worker.py:932,
+src/parallax/domains/news_intel/runtime/news_item_brief_worker.py:937,
+src/parallax/domains/news_intel/runtime/news_item_brief_worker.py:941,
+src/parallax/domains/news_intel/runtime/news_item_brief_worker.py:944,
+tests/unit/domains/news_intel/test_news_item_brief_worker.py:351,
+tests/unit/domains/news_intel/test_news_item_brief_worker.py:431,
+tests/architecture/test_news_intel_kiss_simplification.py:842,
+tests/architecture/test_news_intel_kiss_simplification.py:843).
 
-Follow-up review found the same optional-session root in Event Anchor stale cleanup: `EventAnchorBackfillWorker._expire_stale_jobs` previously ran from `_worker_session`, called `expire_stale`, and then used `_commit_if_supported` / `commit()` instead of requiring `unit_of_work` before terminalizing `event_anchor_backfill_jobs` and matching `enriched_events` lifecycle state (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:455`, `docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:457`). The target contract is that stale cleanup enters `_transaction_session` / worker-session `unit_of_work` before `expire_stale` and terminal writes; missing session support fails before cleanup writes, guarded by source and tests (`src/parallax/domains/asset_market/runtime/event_anchor_backfill_worker.py:280`, `src/parallax/domains/asset_market/runtime/event_anchor_backfill_worker.py:281`, `src/parallax/domains/asset_market/runtime/event_anchor_backfill_worker.py:282`, `src/parallax/domains/asset_market/runtime/event_anchor_backfill_worker.py:395`, `src/parallax/domains/asset_market/runtime/event_anchor_backfill_worker.py:396`, `tests/architecture/test_runtime_worker_constraint_hard_cut.py:240`, `tests/unit/test_event_anchor_backfill_worker.py:118`, `src/parallax/domains/asset_market/ARCHITECTURE.md:21`, `docs/WORKERS.md:179`, `docs/WORKERS.md:392`).
+Follow-up review found the same optional-session root in Event Anchor stale cleanup: EventAnchorBackfillWorker._expire_stale_jobs previously ran from _worker_session, called expire_stale, and then used _commit_if_supported / commit() instead of requiring unit_of_work before terminalizing event_anchor_backfill_jobs and matching enriched_events lifecycle state (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:455, docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:457). The target contract is that stale cleanup enters _transaction_session / worker-session unit_of_work before expire_stale and terminal writes; missing session support fails before cleanup writes, guarded by source and tests (src/parallax/domains/asset_market/runtime/event_anchor_backfill_worker.py:280, src/parallax/domains/asset_market/runtime/event_anchor_backfill_worker.py:281, src/parallax/domains/asset_market/runtime/event_anchor_backfill_worker.py:282, src/parallax/domains/asset_market/runtime/event_anchor_backfill_worker.py:395, src/parallax/domains/asset_market/runtime/event_anchor_backfill_worker.py:396, tests/architecture/test_runtime_worker_constraint_hard_cut.py:240, tests/unit/test_event_anchor_backfill_worker.py:118, src/parallax/domains/asset_market/ARCHITECTURE.md:21, docs/WORKERS.md:179, docs/WORKERS.md:392).
 
-Follow-up review found the same manual-commit root in Token Capture Tier projection: `TokenCaptureTierWorker._project_once(...)` could claim `token_capture_tier_dirty_targets` with `commit=True`, while `project_once(..., commit: bool = True)` still had `_commit_if_supported(repos)` and manual `repos.conn.commit()` / `repos.commit()` probing after `token_capture_tier` writes (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:470`). The target contract is that `_project_once(...)` enters `repos.transaction()` before `claim_due`, `project_once(...)` calls `repos.require_transaction(operation="token_capture_tier_projection")`, and tests forbid `_commit_if_supported`, `commit=True`, `commit: bool`, and manual `commit()` compatibility (`src/parallax/domains/asset_market/runtime/token_capture_tier_worker.py:73`, `src/parallax/domains/asset_market/runtime/token_capture_tier_worker.py:74`, `src/parallax/domains/asset_market/runtime/token_capture_tier_worker.py:106`, `tests/architecture/test_runtime_worker_constraint_hard_cut.py:276`, `tests/architecture/test_runtime_worker_constraint_hard_cut.py:285`, `tests/architecture/test_runtime_worker_constraint_hard_cut.py:286`, `tests/architecture/test_runtime_worker_constraint_hard_cut.py:287`, `tests/architecture/test_runtime_worker_constraint_hard_cut.py:288`, `tests/unit/test_token_capture_tier_worker.py:247`, `tests/unit/test_token_capture_tier_worker.py:259`).
+Follow-up review found the same manual-commit root in Token Capture Tier projection: TokenCaptureTierWorker._project_once(...) could claim token_capture_tier_dirty_targets with commit=True, while project_once(..., commit: bool = True) still had _commit_if_supported(repos) and manual repos.conn.commit() / repos.commit() probing after token_capture_tier writes (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:470). The target contract is that _project_once(...) enters repos.transaction() before claim_due, project_once(...) calls repos.require_transaction(operation="token_capture_tier_projection"), and tests forbid _commit_if_supported, commit=True, commit: bool, and manual commit() compatibility (src/parallax/domains/asset_market/runtime/token_capture_tier_worker.py:73, src/parallax/domains/asset_market/runtime/token_capture_tier_worker.py:74, src/parallax/domains/asset_market/runtime/token_capture_tier_worker.py:106, tests/architecture/test_runtime_worker_constraint_hard_cut.py:276, tests/architecture/test_runtime_worker_constraint_hard_cut.py:285, tests/architecture/test_runtime_worker_constraint_hard_cut.py:286, tests/architecture/test_runtime_worker_constraint_hard_cut.py:287, tests/architecture/test_runtime_worker_constraint_hard_cut.py:288, tests/unit/test_token_capture_tier_worker.py:247, tests/unit/test_token_capture_tier_worker.py:259).
 
-Follow-up review found the same optional connection-transaction root one layer lower in Event Anchor repository terminal paths: `EventAnchorBackfillJobRepository.expire_stale(...)`, `mark_terminal(...)`, and `_transaction(self._conn)` still allowed old `_transaction(conn)` / `nullcontext()` behavior when `conn.transaction()` was absent (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:486`, `docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:488`, `docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:490`). The target contract is that `expire_stale(...)` and `mark_terminal(...)` enter `_transaction(self._conn)`, `_transaction(conn)` raises `RuntimeError("event_anchor_repository_transaction_required")` when no callable transaction exists, architecture tests reject `nullcontext` fallback, and the unit fake proves missing transaction leaves `conn.sql` empty (`src/parallax/domains/asset_market/repositories/event_anchor_backfill_job_repository.py:120`, `src/parallax/domains/asset_market/repositories/event_anchor_backfill_job_repository.py:206`, `src/parallax/domains/asset_market/repositories/event_anchor_backfill_job_repository.py:602`, `src/parallax/domains/asset_market/repositories/event_anchor_backfill_job_repository.py:606`, `src/parallax/domains/asset_market/repositories/event_anchor_backfill_job_repository.py:608`, `tests/architecture/test_runtime_worker_constraint_hard_cut.py:337`, `tests/architecture/test_runtime_worker_constraint_hard_cut.py:355`, `tests/architecture/test_runtime_worker_constraint_hard_cut.py:356`, `tests/architecture/test_runtime_worker_constraint_hard_cut.py:357`, `tests/unit/test_event_anchor_backfill_job_repository.py:337`, `tests/unit/test_event_anchor_backfill_job_repository.py:345`).
+Follow-up review found the same optional connection-transaction root one layer lower in Event Anchor repository terminal paths: EventAnchorBackfillJobRepository.expire_stale(...), mark_terminal(...), and _transaction(self._conn) still allowed old _transaction(conn) / nullcontext() behavior when conn.transaction() was absent (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:486, docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:488, docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:490). The target contract is that expire_stale(...) and mark_terminal(...) enter _transaction(self._conn), _transaction(conn) raises RuntimeError("event_anchor_repository_transaction_required") when no callable transaction exists, architecture tests reject nullcontext fallback, and the unit fake proves missing transaction leaves conn.sql empty (src/parallax/domains/asset_market/repositories/event_anchor_backfill_job_repository.py:120, src/parallax/domains/asset_market/repositories/event_anchor_backfill_job_repository.py:206, src/parallax/domains/asset_market/repositories/event_anchor_backfill_job_repository.py:602, src/parallax/domains/asset_market/repositories/event_anchor_backfill_job_repository.py:606, src/parallax/domains/asset_market/repositories/event_anchor_backfill_job_repository.py:608, tests/architecture/test_runtime_worker_constraint_hard_cut.py:337, tests/architecture/test_runtime_worker_constraint_hard_cut.py:355, tests/architecture/test_runtime_worker_constraint_hard_cut.py:356, tests/architecture/test_runtime_worker_constraint_hard_cut.py:357, tests/unit/test_event_anchor_backfill_job_repository.py:337, tests/unit/test_event_anchor_backfill_job_repository.py:345).
 
-Follow-up review found the same optional connection-transaction root in the platform Queue Terminal operator path: `resolve_terminal_event(...)` used `SELECT ... FOR UPDATE` but `_transaction(conn)` fell back to `nullcontext()` and retained a manual `conn.commit()` branch when the connection omitted `transaction()` (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:501`). The target contract is that operator retry/archive/quarantine resolution over `worker_queue_terminal_events` enters a callable connection transaction, raises `RuntimeError("queue_terminal_transaction_required")` before any SQL when absent, and never treats row-locking terminal resolution as a no-transaction compatibility path (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:509`, `src/parallax/platform/db/queue_terminal.py:224`, `src/parallax/platform/db/queue_terminal.py:237`, `src/parallax/platform/db/queue_terminal.py:267`, `src/parallax/platform/db/queue_terminal.py:376`, `tests/architecture/test_runtime_worker_constraint_hard_cut.py:282`, `tests/unit/test_queue_terminal.py:376`).
+Follow-up review found the same optional connection-transaction root in the platform Queue Terminal operator path: resolve_terminal_event(...) used SELECT ... FOR UPDATE but _transaction(conn) fell back to nullcontext() and retained a manual conn.commit() branch when the connection omitted transaction() (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:501). The target contract is that operator retry/archive/quarantine resolution over worker_queue_terminal_events enters a callable connection transaction, raises RuntimeError("queue_terminal_transaction_required") before any SQL when absent, and never treats row-locking terminal resolution as a no-transaction compatibility path (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:509, src/parallax/platform/db/queue_terminal.py:224, src/parallax/platform/db/queue_terminal.py:237, src/parallax/platform/db/queue_terminal.py:267, src/parallax/platform/db/queue_terminal.py:376, tests/architecture/test_runtime_worker_constraint_hard_cut.py:282, tests/unit/test_queue_terminal.py:376).
 
-Follow-up review found the same optional connection-transaction root in `DiscoveryRepository.terminalize_lookup_claims(...)`: it deleted claimed `token_discovery_dirty_lookup_keys`, wrote `worker_queue_terminal_events`, fell back to `nullcontext()` when `_transaction(self.conn)` had no `conn.transaction()`, and retained a manual `self.conn.commit()` branch (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:516`). The target contract is that discovery terminalization raises `RuntimeError("discovery_repository_transaction_required")` before delete or ledger SQL when the connection transaction contract is missing, and otherwise keeps delete-returning plus terminal-ledger insert inside `_transaction(self.conn)` (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:524`, `src/parallax/domains/asset_market/repositories/discovery_repository.py:317`, `src/parallax/domains/asset_market/repositories/discovery_repository.py:331`, `src/parallax/domains/asset_market/repositories/discovery_repository.py:341`, `src/parallax/domains/asset_market/repositories/discovery_repository.py:728`, `src/parallax/domains/asset_market/repositories/discovery_repository.py:732`, `src/parallax/domains/asset_market/repositories/discovery_repository.py:734`, `tests/architecture/test_runtime_worker_constraint_hard_cut.py:500`, `tests/architecture/test_runtime_worker_constraint_hard_cut.py:524`, `tests/architecture/test_runtime_worker_constraint_hard_cut.py:526`, `tests/unit/test_discovery_repository.py:204`, `tests/unit/test_discovery_repository.py:205`).
+Follow-up review found the same optional connection-transaction root in DiscoveryRepository.terminalize_lookup_claims(...): it deleted claimed token_discovery_dirty_lookup_keys, wrote worker_queue_terminal_events, fell back to nullcontext() when _transaction(self.conn) had no conn.transaction(), and retained a manual self.conn.commit() branch (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:516). The target contract is that discovery terminalization raises RuntimeError("discovery_repository_transaction_required") before delete or ledger SQL when the connection transaction contract is missing, and otherwise keeps delete-returning plus terminal-ledger insert inside _transaction(self.conn) (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:524, src/parallax/domains/asset_market/repositories/discovery_repository.py:317, src/parallax/domains/asset_market/repositories/discovery_repository.py:331, src/parallax/domains/asset_market/repositories/discovery_repository.py:341, src/parallax/domains/asset_market/repositories/discovery_repository.py:728, src/parallax/domains/asset_market/repositories/discovery_repository.py:732, src/parallax/domains/asset_market/repositories/discovery_repository.py:734, tests/architecture/test_runtime_worker_constraint_hard_cut.py:500, tests/architecture/test_runtime_worker_constraint_hard_cut.py:524, tests/architecture/test_runtime_worker_constraint_hard_cut.py:526, tests/unit/test_discovery_repository.py:204, tests/unit/test_discovery_repository.py:205).
 
 Follow-up review found the same rowcount evidence gap in Discovery lookup queue
 write accounting: lookup enqueue, done, and reschedule paths mutate
-`token_discovery_dirty_lookup_keys` but must not restore missing cursor evidence
-to zero (`src/parallax/domains/asset_market/repositories/discovery_repository.py:252`,
-`src/parallax/domains/asset_market/repositories/discovery_repository.py:300`).
+token_discovery_dirty_lookup_keys but must not restore missing cursor evidence
+to zero (src/parallax/domains/asset_market/repositories/discovery_repository.py:252,
+src/parallax/domains/asset_market/repositories/discovery_repository.py:300).
 The target contract is that changed-row counts return
 _cursor_rowcount(cursor) and fail as
-`discovery_repository_rowcount_required` /
-`discovery_repository_rowcount_invalid` before reporting changed lookup work
-(`src/parallax/domains/asset_market/repositories/discovery_repository.py:126`,
-`src/parallax/domains/asset_market/repositories/discovery_repository.py:262`,
-`src/parallax/domains/asset_market/repositories/discovery_repository.py:315`,
-`src/parallax/domains/asset_market/repositories/discovery_repository.py:729`,
-`src/parallax/domains/asset_market/repositories/discovery_repository.py:731`,
-`tests/unit/test_discovery_repository.py:498`,
-`tests/unit/test_discovery_repository.py:504`,
-`tests/unit/test_discovery_repository.py:532`,
-`tests/unit/test_discovery_repository.py:539`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2569`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2576`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2585`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2586`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2587`).
+discovery_repository_rowcount_required /
+discovery_repository_rowcount_invalid before reporting changed lookup work
+(src/parallax/domains/asset_market/repositories/discovery_repository.py:126,
+src/parallax/domains/asset_market/repositories/discovery_repository.py:262,
+src/parallax/domains/asset_market/repositories/discovery_repository.py:315,
+src/parallax/domains/asset_market/repositories/discovery_repository.py:729,
+src/parallax/domains/asset_market/repositories/discovery_repository.py:731,
+tests/unit/test_discovery_repository.py:498,
+tests/unit/test_discovery_repository.py:504,
+tests/unit/test_discovery_repository.py:532,
+tests/unit/test_discovery_repository.py:539,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2569,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2576,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2585,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2586,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2587).
 
 Follow-up review found a separate terminal RETURNING rowcount evidence gap in
-Discovery lookup-claim terminalization: `terminalize_lookup_claims` deletes
-claimed `token_discovery_dirty_lookup_keys` rows before terminal ledger evidence
-is emitted (`src/parallax/domains/asset_market/repositories/discovery_repository.py:319`,
-`src/parallax/domains/asset_market/repositories/discovery_repository.py:373`).
-The target contract is that `_delete_lookup_claims_returning` captures the
+Discovery lookup-claim terminalization: terminalize_lookup_claims deletes
+claimed token_discovery_dirty_lookup_keys rows before terminal ledger evidence
+is emitted (src/parallax/domains/asset_market/repositories/discovery_repository.py:319,
+src/parallax/domains/asset_market/repositories/discovery_repository.py:373).
+The target contract is that _delete_lookup_claims_returning captures the
 DELETE cursor, fetches returned rows, validates
 _returned_rowcount(cursor, rows), and returns PostgreSQL-proven
-`deleted_count` rather than list-length accounting
-(`src/parallax/domains/asset_market/repositories/discovery_repository.py:360`,
-`src/parallax/domains/asset_market/repositories/discovery_repository.py:361`,
-`src/parallax/domains/asset_market/repositories/discovery_repository.py:384`,
-`src/parallax/domains/asset_market/repositories/discovery_repository.py:385`,
-`src/parallax/domains/asset_market/repositories/discovery_repository.py:386`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2591`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2598`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2615`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2616`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2619`).
+deleted_count rather than list-length accounting
+(src/parallax/domains/asset_market/repositories/discovery_repository.py:360,
+src/parallax/domains/asset_market/repositories/discovery_repository.py:361,
+src/parallax/domains/asset_market/repositories/discovery_repository.py:384,
+src/parallax/domains/asset_market/repositories/discovery_repository.py:385,
+src/parallax/domains/asset_market/repositories/discovery_repository.py:386,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2591,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2598,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2615,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2616,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2619).
 Unit and architecture guards prove missing rowcount fails as
-`discovery_repository_rowcount_required`, invalid or mismatched rowcount fails
-as `discovery_repository_rowcount_invalid`, no `worker_queue_terminal_events`
+discovery_repository_rowcount_required, invalid or mismatched rowcount fails
+as discovery_repository_rowcount_invalid, no worker_queue_terminal_events
 insert happens before validation, and list-length accounting cannot return
 terminal counts
-(`tests/unit/test_discovery_repository.py:295`,
-`tests/unit/test_discovery_repository.py:299`,
-`tests/unit/test_discovery_repository.py:308`,
-`tests/unit/test_discovery_repository.py:311`,
-`tests/unit/test_discovery_repository.py:318`,
-`tests/unit/test_discovery_repository.py:327`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2604`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2605`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2606`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2609`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2610`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2613`).
+(tests/unit/test_discovery_repository.py:295,
+tests/unit/test_discovery_repository.py:299,
+tests/unit/test_discovery_repository.py:308,
+tests/unit/test_discovery_repository.py:311,
+tests/unit/test_discovery_repository.py:318,
+tests/unit/test_discovery_repository.py:327,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2604,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2605,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2606,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2609,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2610,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2613).
 
 Follow-up review found the remaining Discovery state-machine evidence gap in
-claim/result writes. `claim_due_lookup_keys` leases
-`token_discovery_dirty_lookup_keys` with
-`UPDATE token_discovery_dirty_lookup_keys` / `RETURNING` rows and validates
+claim/result writes. claim_due_lookup_keys leases
+token_discovery_dirty_lookup_keys with
+UPDATE token_discovery_dirty_lookup_keys / RETURNING rows and validates
 _returned_rowcount(cursor, rows) before returning claimed work
-(`src/parallax/domains/asset_market/repositories/discovery_repository.py:130`,
-`src/parallax/domains/asset_market/repositories/discovery_repository.py:201`,
-`src/parallax/domains/asset_market/repositories/discovery_repository.py:213`,
-`src/parallax/domains/asset_market/repositories/discovery_repository.py:223`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2623`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2637`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2639`).
-The lookup result `start_lookup` and `fail_lookup` paths use `RETURNING *` plus
-`_required_returning_row(cursor, row)`, while `finish_lookup` requires
-`_required_single_rowcount(cursor)` before reporting changed result state
-(`src/parallax/domains/asset_market/repositories/discovery_repository.py:388`,
-`src/parallax/domains/asset_market/repositories/discovery_repository.py:412`,
-`src/parallax/domains/asset_market/repositories/discovery_repository.py:425`,
-`src/parallax/domains/asset_market/repositories/discovery_repository.py:429`,
-`src/parallax/domains/asset_market/repositories/discovery_repository.py:484`,
-`src/parallax/domains/asset_market/repositories/discovery_repository.py:489`,
-`src/parallax/domains/asset_market/repositories/discovery_repository.py:517`,
-`src/parallax/domains/asset_market/repositories/discovery_repository.py:531`,
-`src/parallax/domains/asset_market/repositories/discovery_repository.py:744`,
-`src/parallax/domains/asset_market/repositories/discovery_repository.py:751`).
+(src/parallax/domains/asset_market/repositories/discovery_repository.py:130,
+src/parallax/domains/asset_market/repositories/discovery_repository.py:201,
+src/parallax/domains/asset_market/repositories/discovery_repository.py:213,
+src/parallax/domains/asset_market/repositories/discovery_repository.py:223,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2623,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2637,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2639).
+The lookup result start_lookup and fail_lookup paths use RETURNING * plus
+_required_returning_row(cursor, row), while finish_lookup requires
+_required_single_rowcount(cursor) before reporting changed result state
+(src/parallax/domains/asset_market/repositories/discovery_repository.py:388,
+src/parallax/domains/asset_market/repositories/discovery_repository.py:412,
+src/parallax/domains/asset_market/repositories/discovery_repository.py:425,
+src/parallax/domains/asset_market/repositories/discovery_repository.py:429,
+src/parallax/domains/asset_market/repositories/discovery_repository.py:484,
+src/parallax/domains/asset_market/repositories/discovery_repository.py:489,
+src/parallax/domains/asset_market/repositories/discovery_repository.py:517,
+src/parallax/domains/asset_market/repositories/discovery_repository.py:531,
+src/parallax/domains/asset_market/repositories/discovery_repository.py:744,
+src/parallax/domains/asset_market/repositories/discovery_repository.py:751).
 The target contract is that due-claim rowcount must match returned claim rows,
 start/fail result writes must be rowcount=1 with a returned row, and finish
 writes must be rowcount=1 before running/found/error state is reported. Tests
 and architecture guards cover missing/invalid/mismatched rowcount, valid
 rowcount=0/no-row claim no-op, rowcount=1/no-row failures, and removal of
 result readback fallback from lookup result writes
-(`tests/unit/test_discovery_repository.py:330`,
-`tests/unit/test_discovery_repository.py:344`,
-`tests/unit/test_discovery_repository.py:359`,
-`tests/unit/test_discovery_repository.py:401`,
-`tests/unit/test_discovery_repository.py:411`,
-`tests/unit/test_discovery_repository.py:426`,
-`tests/unit/test_discovery_repository.py:440`,
-`tests/unit/test_discovery_repository.py:457`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2680`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2682`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2683`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2684`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2687`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2688`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2689`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2715`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2721`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2722`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2723`).
+(tests/unit/test_discovery_repository.py:330,
+tests/unit/test_discovery_repository.py:344,
+tests/unit/test_discovery_repository.py:359,
+tests/unit/test_discovery_repository.py:401,
+tests/unit/test_discovery_repository.py:411,
+tests/unit/test_discovery_repository.py:426,
+tests/unit/test_discovery_repository.py:440,
+tests/unit/test_discovery_repository.py:457,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2680,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2682,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2683,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2684,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2687,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2688,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2689,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2715,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2721,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2722,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2723).
 
-Follow-up review found the same rowcount evidence gap in `enriched_events`
-event-anchor lifecycle accounting: `attach_backfill_capture` and
-`mark_backfill_terminal` classify attach/terminal state from PostgreSQL
+Follow-up review found the same rowcount evidence gap in enriched_events
+event-anchor lifecycle accounting: attach_backfill_capture and
+mark_backfill_terminal classify attach/terminal state from PostgreSQL
 UPDATE results, but that classification must not restore missing cursor
 evidence to a no-op. The target contract is that both lifecycle paths use
-`_single_row_mutation_applied(cursor)` and fail as
-`enriched_event_repository_rowcount_required` /
-`enriched_event_repository_rowcount_invalid` unless the driver provides exactly
-one of the valid single-row counts, `0` or `1`
-(`src/parallax/domains/asset_market/repositories/enriched_event_repository.py:98`,
-`src/parallax/domains/asset_market/repositories/enriched_event_repository.py:101`,
-`src/parallax/domains/asset_market/repositories/enriched_event_repository.py:124`,
-`src/parallax/domains/asset_market/repositories/enriched_event_repository.py:126`,
-`src/parallax/domains/asset_market/repositories/enriched_event_repository.py:146`,
-`src/parallax/domains/asset_market/repositories/enriched_event_repository.py:175`,
-`src/parallax/domains/asset_market/repositories/enriched_event_repository.py:179`,
-`src/parallax/domains/asset_market/repositories/enriched_event_repository.py:181`,
-`src/parallax/domains/asset_market/repositories/enriched_event_repository.py:182`,
-`src/parallax/domains/asset_market/repositories/enriched_event_repository.py:183`,
-`tests/unit/test_enriched_event_repository.py:90`,
-`tests/unit/test_enriched_event_repository.py:100`,
-`tests/unit/test_enriched_event_repository.py:108`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2027`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2037`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2042`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2043`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2044`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2045`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2046`).
+_single_row_mutation_applied(cursor) and fail as
+enriched_event_repository_rowcount_required /
+enriched_event_repository_rowcount_invalid unless the driver provides exactly
+one of the valid single-row counts, 0 or 1
+(src/parallax/domains/asset_market/repositories/enriched_event_repository.py:98,
+src/parallax/domains/asset_market/repositories/enriched_event_repository.py:101,
+src/parallax/domains/asset_market/repositories/enriched_event_repository.py:124,
+src/parallax/domains/asset_market/repositories/enriched_event_repository.py:126,
+src/parallax/domains/asset_market/repositories/enriched_event_repository.py:146,
+src/parallax/domains/asset_market/repositories/enriched_event_repository.py:175,
+src/parallax/domains/asset_market/repositories/enriched_event_repository.py:179,
+src/parallax/domains/asset_market/repositories/enriched_event_repository.py:181,
+src/parallax/domains/asset_market/repositories/enriched_event_repository.py:182,
+src/parallax/domains/asset_market/repositories/enriched_event_repository.py:183,
+tests/unit/test_enriched_event_repository.py:90,
+tests/unit/test_enriched_event_repository.py:100,
+tests/unit/test_enriched_event_repository.py:108,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2027,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2037,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2042,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2043,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2044,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2045,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:2046).
 
 Follow-up review found the same optional connection-transaction root in
-`NewsProjectionDirtyTargetRepository.terminalize_targets(...)`: it deleted
-claimed news_projection_dirty_targets, wrote `worker_queue_terminal_events`,
-fell back to `nullcontext()` when the connection transaction contract was
-absent, and retained a manual `self.conn.commit()` branch
-(`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:531`). The target
+NewsProjectionDirtyTargetRepository.terminalize_targets(...): it deleted
+claimed news_projection_dirty_targets, wrote worker_queue_terminal_events,
+fell back to nullcontext() when the connection transaction contract was
+absent, and retained a manual self.conn.commit() branch
+(docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:531). The target
 contract is that News projection dirty-target terminalization raises
 RuntimeError("news_projection_dirty_target_transaction_required") before
 delete or ledger SQL when the connection transaction contract is missing, and
 otherwise keeps delete-returning plus terminal-ledger insert inside
-`with _transaction(self.conn):`
-(`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:391`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:406`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:600`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:602`,
-`tests/architecture/test_news_intel_kiss_simplification.py:326`,
-`tests/architecture/test_news_intel_kiss_simplification.py:349`,
-`tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:104`,
-`tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:108`,
-`tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:109`).
+with _transaction(self.conn):
+(src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:383,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:398,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:402,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:580,
+tests/architecture/test_news_intel_kiss_simplification.py:326,
+tests/architecture/test_news_intel_kiss_simplification.py:349,
+tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:104,
+tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:108,
+tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:109).
 
-Follow-up review found the same optional connection-transaction root in ops projection dirty repair: `enqueue_projection_dirty_targets` execute mode scanned `news_items` / `news_sources`, wrote news_projection_dirty_targets, and previously allowed a missing connection transaction contract to continue through `nullcontext()` (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:546`). The target contract is that dry-run keeps the explicit read-only `nullcontext()` branch, while execute mode calls `_transaction(repos.conn)` and raises RuntimeError("projection_dirty_targets_transaction_required") before repair scans or dirty enqueue when the connection transaction contract is missing (`src/parallax/app/runtime/projection_dirty_targets.py:22`, `src/parallax/app/runtime/projection_dirty_targets.py:49`, `src/parallax/app/runtime/projection_dirty_targets.py:184`, `src/parallax/app/runtime/projection_dirty_targets.py:188`, `tests/unit/test_ops_projection_dirty_targets.py:91`, `tests/unit/test_ops_projection_dirty_targets.py:103`, `tests/architecture/test_news_intel_kiss_simplification.py:996`, `tests/architecture/test_news_intel_kiss_simplification.py:1006`, `tests/architecture/test_news_intel_kiss_simplification.py:1008`).
+Follow-up review found the same optional connection-transaction root in ops projection dirty repair: enqueue_projection_dirty_targets execute mode scanned news_items / news_sources, wrote news_projection_dirty_targets, and previously allowed a missing connection transaction contract to continue through nullcontext() (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:546). The target contract is that dry-run keeps the explicit read-only nullcontext() branch, while execute mode calls _transaction(repos.conn) and raises RuntimeError("projection_dirty_targets_transaction_required") before repair scans or dirty enqueue when the connection transaction contract is missing (src/parallax/app/runtime/projection_dirty_targets.py:22, src/parallax/app/runtime/projection_dirty_targets.py:49, src/parallax/app/runtime/projection_dirty_targets.py:184, src/parallax/app/runtime/projection_dirty_targets.py:188, tests/unit/test_ops_projection_dirty_targets.py:91, tests/unit/test_ops_projection_dirty_targets.py:103, tests/architecture/test_news_intel_kiss_simplification.py:996, tests/architecture/test_news_intel_kiss_simplification.py:1006, tests/architecture/test_news_intel_kiss_simplification.py:1008).
 
-Follow-up SQL-performance review found that ops projection dirty repair must stay a keyset enqueue path rather than a wide News projection input rebuild. `_enqueue_news_targets` now calls `_fetch_news_item_rows` only when `news_item_projections` are selected, and source-quality-only repair proves no `FROM news_items` scan. `_fetch_news_item_rows` selects only items.news_item_id, items.published_at_ms AS source_watermark_ms, and items.agent_admission_status; architecture guards reject LEFT JOIN LATERAL, news_token_mentions, news_fact_candidates, agent_admission_json, and provider signal/impact wide rows from the repair query (`src/parallax/app/runtime/projection_dirty_targets.py:62`, `src/parallax/app/runtime/projection_dirty_targets.py:77`, `src/parallax/app/runtime/projection_dirty_targets.py:163`, `src/parallax/app/runtime/projection_dirty_targets.py:171`, `src/parallax/app/runtime/projection_dirty_targets.py:173`, `src/parallax/app/runtime/projection_dirty_targets.py:175`, `tests/unit/test_ops_projection_dirty_targets.py:199`, `tests/unit/test_ops_projection_dirty_targets.py:235`, `tests/architecture/test_news_intel_kiss_simplification.py:1012`, `tests/architecture/test_news_intel_kiss_simplification.py:1018`, `tests/architecture/test_news_intel_kiss_simplification.py:1019`, `tests/architecture/test_news_intel_kiss_simplification.py:1020`, `tests/architecture/test_news_intel_kiss_simplification.py:1022`, `tests/architecture/test_news_intel_kiss_simplification.py:1023`, `tests/architecture/test_news_intel_kiss_simplification.py:1024`, `tests/architecture/test_news_intel_kiss_simplification.py:1027`, `tests/architecture/test_news_intel_kiss_simplification.py:1028`, `tests/architecture/test_news_intel_kiss_simplification.py:1029`, `tests/architecture/test_news_intel_kiss_simplification.py:1030`, `tests/architecture/test_news_intel_kiss_simplification.py:1031`).
+Follow-up SQL-performance review found that ops projection dirty repair must stay a keyset enqueue path rather than a wide News projection input rebuild. _enqueue_news_targets now calls _fetch_news_item_rows only when news_item_projections are selected, and source-quality-only repair proves no FROM news_items scan. _fetch_news_item_rows selects only items.news_item_id, items.published_at_ms AS source_watermark_ms, and items.agent_admission_status; architecture guards reject LEFT JOIN LATERAL, news_token_mentions, news_fact_candidates, agent_admission_json, and provider signal/impact wide rows from the repair query (src/parallax/app/runtime/projection_dirty_targets.py:62, src/parallax/app/runtime/projection_dirty_targets.py:77, src/parallax/app/runtime/projection_dirty_targets.py:163, src/parallax/app/runtime/projection_dirty_targets.py:171, src/parallax/app/runtime/projection_dirty_targets.py:173, src/parallax/app/runtime/projection_dirty_targets.py:175, tests/unit/test_ops_projection_dirty_targets.py:199, tests/unit/test_ops_projection_dirty_targets.py:235, tests/architecture/test_news_intel_kiss_simplification.py:1012, tests/architecture/test_news_intel_kiss_simplification.py:1018, tests/architecture/test_news_intel_kiss_simplification.py:1019, tests/architecture/test_news_intel_kiss_simplification.py:1020, tests/architecture/test_news_intel_kiss_simplification.py:1022, tests/architecture/test_news_intel_kiss_simplification.py:1023, tests/architecture/test_news_intel_kiss_simplification.py:1024, tests/architecture/test_news_intel_kiss_simplification.py:1027, tests/architecture/test_news_intel_kiss_simplification.py:1028, tests/architecture/test_news_intel_kiss_simplification.py:1029, tests/architecture/test_news_intel_kiss_simplification.py:1030, tests/architecture/test_news_intel_kiss_simplification.py:1031).
 
-Follow-up review found the same optional connection-transaction root in `PulseJobsRepository`: terminal/dead paths updated `pulse_agent_jobs`, wrote `worker_queue_terminal_events`, fell back to `nullcontext()` when connection transaction support was absent, and retained manual commit branches (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:561`, `src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:594`). The target contract is that Pulse job terminal/dead transitions fail before job-state or terminal-ledger SQL when connection transaction support is missing, and otherwise keep both writes inside the connection transaction (`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:596`, `src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:197`, `tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:55`, `tests/architecture/test_pulse_no_compat.py:255`).
+Follow-up review found the same optional connection-transaction root in PulseJobsRepository: terminal/dead paths updated pulse_agent_jobs, wrote worker_queue_terminal_events, fell back to nullcontext() when connection transaction support was absent, and retained manual commit branches (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:561, src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:594). The target contract is that Pulse job terminal/dead transitions fail before job-state or terminal-ledger SQL when connection transaction support is missing, and otherwise keep both writes inside the connection transaction (src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:596, src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:197, tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:55, tests/architecture/test_pulse_no_compat.py:255).
 
-Follow-up review found the same optional connection-transaction root in `PulseAdmissionRepository.claim_pulse_admission(...)`: admission wrote `pulse_candidate_edge_state`, used `SELECT ... FOR UPDATE`, depended on `_pulse_repository_shared._transaction(conn)`, and fell back to `nullcontext()` when `transaction` support was missing (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:576`, `docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:578`). The target contract is that Pulse admission raises `RuntimeError("pulse_repository_transaction_required")` before edge or budget SQL when `conn.transaction` is missing or not callable, while keeping admission writes inside `with _transaction(self.conn):` (`src/parallax/domains/pulse_lab/repositories/_pulse_repository_shared.py:122`, `src/parallax/domains/pulse_lab/repositories/_pulse_repository_shared.py:124`, `src/parallax/domains/pulse_lab/repositories/_pulse_repository_shared.py:126`, `src/parallax/domains/pulse_lab/repositories/pulse_admission_repository.py:213`, `tests/unit/domains/pulse_lab/test_pulse_admission_repository.py:116`, `tests/architecture/test_pulse_no_compat.py:873`).
+Follow-up review found the same optional connection-transaction root in PulseAdmissionRepository.claim_pulse_admission(...): admission wrote pulse_candidate_edge_state, used SELECT ... FOR UPDATE, depended on _pulse_repository_shared._transaction(conn), and fell back to nullcontext() when transaction support was missing (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:576, docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:578). The target contract is that Pulse admission raises RuntimeError("pulse_repository_transaction_required") before edge or budget SQL when conn.transaction is missing or not callable, while keeping admission writes inside with _transaction(self.conn): (src/parallax/domains/pulse_lab/repositories/_pulse_repository_shared.py:122, src/parallax/domains/pulse_lab/repositories/_pulse_repository_shared.py:124, src/parallax/domains/pulse_lab/repositories/_pulse_repository_shared.py:126, src/parallax/domains/pulse_lab/repositories/pulse_admission_repository.py:213, tests/unit/domains/pulse_lab/test_pulse_admission_repository.py:116, tests/architecture/test_pulse_no_compat.py:873).
 
-Follow-up review found the same optional connection-transaction root in Macro observation-series refresh: `MacroIntelRepository.refresh_observation_series_rows_for_concepts(...)` used `_transaction_context` around `macro_observation_series_rows` and `macro_observation_series_publication_state`, and previously fell back to `nullcontext()` when connection `transaction` support was missing (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:591`). The target contract is that changed current-row delete/insert and publication-state update run inside the connection transaction and fail before SQL when that contract is missing (`src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1345`, `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1351`, `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1352`, `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:2262`, `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:2263`, `tests/architecture/test_macro_no_compatibility_contract.py:224`).
+Follow-up review found the same optional connection-transaction root in Macro observation-series refresh: MacroIntelRepository.refresh_observation_series_rows_for_concepts(...) used _transaction_context around macro_observation_series_rows and macro_observation_series_publication_state, and previously fell back to nullcontext() when connection transaction support was missing (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:591). The target contract is that changed current-row delete/insert and publication-state update run inside the connection transaction and fail before SQL when that contract is missing (src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1345, src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1351, src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1352, src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:2262, src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:2263, tests/architecture/test_macro_no_compatibility_contract.py:224).
 
 Follow-up review found the same repository-owned manual commit root in Macro
-projection dirty-target control-plane mutations: `claim_macro_projection_dirty_targets(...)`,
-`mark_macro_projection_dirty_targets_done(...)`, and
-`mark_macro_projection_dirty_targets_error(...)` still executed
-`macro_projection_dirty_targets` SQL and then called `self.conn.commit()` when
-the repository owned the commit (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:2244`,
-`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:2245`,
-`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:2251`). The target contract is that repository-owned
+projection dirty-target control-plane mutations: claim_macro_projection_dirty_targets(...),
+mark_macro_projection_dirty_targets_done(...), and
+mark_macro_projection_dirty_targets_error(...) still executed
+macro_projection_dirty_targets SQL and then called self.conn.commit() when
+the repository owned the commit (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:2244,
+docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:2245,
+docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:2251). The target contract is that repository-owned
 Macro dirty-target claim/done/error mutations require a callable connection
-transaction before SQL, while `MacroViewProjectionWorker` keeps those writes
-caller-owned with `commit=False` inside RepositorySession.transaction
-(`src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1037`,
-`src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1064`,
-`src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1097`,
-`src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1150`,
-`src/parallax/domains/macro_intel/runtime/macro_view_projection_worker.py:54`,
-`src/parallax/domains/macro_intel/runtime/macro_view_projection_worker.py:62`,
-`docs/WORKERS.md:349`).
+transaction before SQL, while MacroViewProjectionWorker keeps those writes
+caller-owned with commit=False inside RepositorySession.transaction
+(src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1037,
+src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1064,
+src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1097,
+src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1150,
+src/parallax/domains/macro_intel/runtime/macro_view_projection_worker.py:54,
+src/parallax/domains/macro_intel/runtime/macro_view_projection_worker.py:62,
+docs/WORKERS.md:349).
 
 Follow-up review found the same optional repository-contract root in Token Radar
 downstream dirty-target fan-out after rank-set changes. The target contract is
-direct repository-session access to `self.repos.pulse_trigger_dirty_targets`,
-`self.repos.narrative_admission_dirty_targets`,
-`self.repos.token_profile_current_dirty_targets`, and
-`self.repos.token_capture_tier_dirty_targets`, so missing downstream repositories
+direct repository-session access to self.repos.pulse_trigger_dirty_targets,
+self.repos.narrative_admission_dirty_targets,
+self.repos.token_profile_current_dirty_targets, and
+self.repos.token_capture_tier_dirty_targets, so missing downstream repositories
 are session wiring failures instead of optional work
-(`src/parallax/domains/token_intel/services/token_radar_projection.py:920`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:967`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:1012`,
-`src/parallax/domains/token_intel/services/token_radar_projection.py:1037`).
-Architecture tests reject the old optional repository probes and `if repo is None:`
+(src/parallax/domains/token_intel/services/token_radar_projection.py:920,
+src/parallax/domains/token_intel/services/token_radar_projection.py:967,
+src/parallax/domains/token_intel/services/token_radar_projection.py:1012,
+src/parallax/domains/token_intel/services/token_radar_projection.py:1037).
+Architecture tests reject the old optional repository probes and if repo is None:
 branches
-(`tests/architecture/test_token_radar_source_width_contract.py:130`,
-`tests/architecture/test_token_radar_source_width_contract.py:154`,
-`tests/architecture/test_token_radar_source_width_contract.py:155`,
-`tests/architecture/test_token_radar_source_width_contract.py:156`,
-`tests/architecture/test_token_radar_source_width_contract.py:157`,
-`tests/architecture/test_token_radar_source_width_contract.py:158`,
-`tests/architecture/test_token_radar_source_width_contract.py:161`,
-`tests/architecture/test_token_radar_source_width_contract.py:162`,
-`tests/architecture/test_token_radar_source_width_contract.py:163`,
-`tests/architecture/test_token_radar_source_width_contract.py:164`).
+(tests/architecture/test_token_radar_source_width_contract.py:130,
+tests/architecture/test_token_radar_source_width_contract.py:154,
+tests/architecture/test_token_radar_source_width_contract.py:155,
+tests/architecture/test_token_radar_source_width_contract.py:156,
+tests/architecture/test_token_radar_source_width_contract.py:157,
+tests/architecture/test_token_radar_source_width_contract.py:158,
+tests/architecture/test_token_radar_source_width_contract.py:161,
+tests/architecture/test_token_radar_source_width_contract.py:162,
+tests/architecture/test_token_radar_source_width_contract.py:163,
+tests/architecture/test_token_radar_source_width_contract.py:164).
 
-Follow-up review found the same manual-commit root in Pulse job/run mutations: `enqueue_job(...)`, `mark_job_succeeded(...)`, running-job release, and `mark_stale_agent_runs_failed(...)` still used `self.conn.commit()` or `getattr(self.conn, "transaction", None)` compatibility under default `commit=True` (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:606`). The target contract is that repository-owned commits use `_run_job_write` to enter the connection transaction before job/run SQL, while commit false remains reserved for an outer session transaction (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:614`, `src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:138`, `src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:252`, `src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:608`, `tests/architecture/test_pulse_no_compat.py:263`).
+Follow-up review found the same manual-commit root in Pulse job/run mutations: enqueue_job(...), mark_job_succeeded(...), running-job release, and mark_stale_agent_runs_failed(...) still used self.conn.commit() or getattr(self.conn, "transaction", None) compatibility under default commit=True (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:606). The target contract is that repository-owned commits use _run_job_write to enter the connection transaction before job/run SQL, while commit false remains reserved for an outer session transaction (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:614, src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:138, src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:252, src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:608, tests/architecture/test_pulse_no_compat.py:263).
 
 Follow-up review found the same manual-commit root across the remaining Pulse
 agent write repositories: run, eval, evidence, candidate, playbook, and ordinary
@@ -893,47 +893,47 @@ _cursor_rowcount(cursor) to read PostgreSQL cursor.rowcount plus typed
 news_projection_dirty_target_rowcount_required /
 news_projection_dirty_target_rowcount_invalid failures before done/error
 changed-row counts are returned
-(`tests/architecture/test_news_intel_kiss_simplification.py:400`,
-`tests/architecture/test_news_intel_kiss_simplification.py:401`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:274`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:387`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:613`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:615`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:617`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:619`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:626`).
+(tests/architecture/test_news_intel_kiss_simplification.py:400,
+tests/architecture/test_news_intel_kiss_simplification.py:401,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:274,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:387,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:613,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:615,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:617,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:619,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:626).
 
 Follow-up review found the same rowcount evidence gap in the ordinary
-`NewsRepository` write-count paths: item lifecycle, source-quality status, and
+NewsRepository write-count paths: item lifecycle, source-quality status, and
 page-row mutation methods still had default zero-row accounting through
 getattr(cursor, "rowcount", 0), int(getattr(cursor, "rowcount", 0) or 0),
 or cursor.rowcount or 0. The target contract is that these changed-row counts
 use _cursor_rowcount(cursor) and fail as
 news_repository_rowcount_required / news_repository_rowcount_invalid before
 reporting zero changed News work
-(`tests/architecture/test_news_intel_kiss_simplification.py:498`,
-`tests/architecture/test_news_intel_kiss_simplification.py:499`,
-`tests/architecture/test_news_intel_kiss_simplification.py:500`,
-`tests/architecture/test_news_intel_kiss_simplification.py:501`,
-`tests/architecture/test_news_intel_kiss_simplification.py:503`,
-`tests/architecture/test_news_intel_kiss_simplification.py:510`,
-`tests/architecture/test_news_intel_kiss_simplification.py:511`,
-`tests/architecture/test_news_intel_kiss_simplification.py:512`,
-`tests/architecture/test_news_intel_kiss_simplification.py:513`,
-`tests/architecture/test_news_intel_kiss_simplification.py:514`,
-`tests/architecture/test_news_intel_kiss_simplification.py:516`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:209`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:2573`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5031`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5034`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5038`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5040`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5062`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5064`).
+(tests/architecture/test_news_intel_kiss_simplification.py:498,
+tests/architecture/test_news_intel_kiss_simplification.py:499,
+tests/architecture/test_news_intel_kiss_simplification.py:500,
+tests/architecture/test_news_intel_kiss_simplification.py:501,
+tests/architecture/test_news_intel_kiss_simplification.py:503,
+tests/architecture/test_news_intel_kiss_simplification.py:510,
+tests/architecture/test_news_intel_kiss_simplification.py:511,
+tests/architecture/test_news_intel_kiss_simplification.py:512,
+tests/architecture/test_news_intel_kiss_simplification.py:513,
+tests/architecture/test_news_intel_kiss_simplification.py:514,
+tests/architecture/test_news_intel_kiss_simplification.py:516,
+src/parallax/domains/news_intel/repositories/news_repository.py:209,
+src/parallax/domains/news_intel/repositories/news_repository.py:2573,
+src/parallax/domains/news_intel/repositories/news_repository.py:5031,
+src/parallax/domains/news_intel/repositories/news_repository.py:5034,
+src/parallax/domains/news_intel/repositories/news_repository.py:5038,
+src/parallax/domains/news_intel/repositories/news_repository.py:5040,
+src/parallax/domains/news_intel/repositories/news_repository.py:5062,
+src/parallax/domains/news_intel/repositories/news_repository.py:5064).
 
-Follow-up review found a narrower `NewsRepository` source-disable gap on top of
-that ordinary rowcount contract: `disable_unconfigured_sources`
-disabled stale configured sources through `UPDATE news_sources` / `RETURNING *`
+Follow-up review found a narrower NewsRepository source-disable gap on top of
+that ordinary rowcount contract: disable_unconfigured_sources
+disabled stale configured sources through UPDATE news_sources / RETURNING *
 and returned disabled-source accounting from return len(rows). The target
 contract is that source-disable RETURNING rows are validated through
 _returned_rowcount(cursor, rows), the helper first reads
@@ -941,66 +941,66 @@ _cursor_rowcount(cursor), missing rowcount fails as
 news_repository_rowcount_required, invalid or mismatched rowcount fails as
 news_repository_rowcount_invalid, reconcile callers may still receive verified
 disabled rows, and disable-count callers receive only the PostgreSQL-proven count
-(`src/parallax/domains/news_intel/repositories/news_repository.py:209`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:364`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:370`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:375`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:395`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:408`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5046`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5058`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5062`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5064`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5065`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5067`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5068`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5070`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5075`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5078`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5080`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:583`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:590`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:599`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:608`,
-`tests/architecture/test_news_intel_kiss_simplification.py:517`,
-`tests/architecture/test_news_intel_kiss_simplification.py:525`,
-`tests/architecture/test_news_intel_kiss_simplification.py:527`,
-`tests/architecture/test_news_intel_kiss_simplification.py:530`,
-`tests/architecture/test_news_intel_kiss_simplification.py:531`,
-`tests/architecture/test_news_intel_kiss_simplification.py:532`,
-`tests/architecture/test_news_intel_kiss_simplification.py:533`,
-`tests/architecture/test_news_intel_kiss_simplification.py:536`,
-`tests/architecture/test_news_intel_kiss_simplification.py:541`).
+(src/parallax/domains/news_intel/repositories/news_repository.py:209,
+src/parallax/domains/news_intel/repositories/news_repository.py:364,
+src/parallax/domains/news_intel/repositories/news_repository.py:370,
+src/parallax/domains/news_intel/repositories/news_repository.py:375,
+src/parallax/domains/news_intel/repositories/news_repository.py:395,
+src/parallax/domains/news_intel/repositories/news_repository.py:408,
+src/parallax/domains/news_intel/repositories/news_repository.py:5046,
+src/parallax/domains/news_intel/repositories/news_repository.py:5058,
+src/parallax/domains/news_intel/repositories/news_repository.py:5062,
+src/parallax/domains/news_intel/repositories/news_repository.py:5064,
+src/parallax/domains/news_intel/repositories/news_repository.py:5065,
+src/parallax/domains/news_intel/repositories/news_repository.py:5067,
+src/parallax/domains/news_intel/repositories/news_repository.py:5068,
+src/parallax/domains/news_intel/repositories/news_repository.py:5070,
+src/parallax/domains/news_intel/repositories/news_repository.py:5075,
+src/parallax/domains/news_intel/repositories/news_repository.py:5078,
+src/parallax/domains/news_intel/repositories/news_repository.py:5080,
+tests/unit/domains/news_intel/test_news_repository_queries.py:583,
+tests/unit/domains/news_intel/test_news_repository_queries.py:590,
+tests/unit/domains/news_intel/test_news_repository_queries.py:599,
+tests/unit/domains/news_intel/test_news_repository_queries.py:608,
+tests/architecture/test_news_intel_kiss_simplification.py:517,
+tests/architecture/test_news_intel_kiss_simplification.py:525,
+tests/architecture/test_news_intel_kiss_simplification.py:527,
+tests/architecture/test_news_intel_kiss_simplification.py:530,
+tests/architecture/test_news_intel_kiss_simplification.py:531,
+tests/architecture/test_news_intel_kiss_simplification.py:532,
+tests/architecture/test_news_intel_kiss_simplification.py:533,
+tests/architecture/test_news_intel_kiss_simplification.py:536,
+tests/architecture/test_news_intel_kiss_simplification.py:541).
 
 Follow-up review found the same completion-token attempt fallback inside News
-projection dirty-target completion keys. The old `_key_records(...)` path used
-`int(key.get("attempt_count") or 0)`, so a malformed page/source-quality dirty
-claim completion token missing `attempt_count` became a zero-attempt key instead
-of failing before SQL (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6173`,
-`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6175`,
-`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6178`). The target contract is
-that `mark_done(...)`, `mark_error(...)`, `delete_claimed_targets(...)`, and
-`terminalize_targets(...)` require the claimed row `attempt_count` in their
+projection dirty-target completion keys. The old _key_records(...) path used
+int(key.get("attempt_count") or 0), so a malformed page/source-quality dirty
+claim completion token missing attempt_count became a zero-attempt key instead
+of failing before SQL (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6173,
+docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6175,
+docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6178). The target contract is
+that mark_done(...), mark_error(...), delete_claimed_targets(...), and
+terminalize_targets(...) require the claimed row attempt_count in their
 completion keys and fail before transaction entry or SQL when that contract is
-missing (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6174`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:278`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:391`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:536`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:549`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:555`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:557`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:558`,
-`tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:186`,
-`tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:194`,
-`tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:197`,
-`tests/architecture/test_news_intel_kiss_simplification.py:377`,
-`tests/architecture/test_news_intel_kiss_simplification.py:388`,
-`tests/architecture/test_news_intel_kiss_simplification.py:389`,
-`tests/architecture/test_news_intel_kiss_simplification.py:390`).
+missing (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6174,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:278,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:383,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:561,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:580,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:582,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:584,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:586,
+tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:186,
+tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:194,
+tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:197,
+tests/architecture/test_news_intel_kiss_simplification.py:377,
+tests/architecture/test_news_intel_kiss_simplification.py:388,
+tests/architecture/test_news_intel_kiss_simplification.py:389,
+tests/architecture/test_news_intel_kiss_simplification.py:390).
 
 Follow-up review found the same repository-owned manual commit root in the
 Token Radar source dirty event repository: enqueue, due-claim, done, and error
-paths still executed `token_radar_source_dirty_events` SQL before direct
+paths still executed token_radar_source_dirty_events SQL before direct
 connection commit when the repository owned the commit
 (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:685,
 docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:687).
@@ -1014,12 +1014,12 @@ docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:706).
 Follow-up review found the same repository-owned manual commit root in the
 Token Radar target dirty queue repository: target enqueue, market enqueue,
 due-claim, recent-resolved catch-up enqueue, market-current enqueue, done, and
-error paths still executed `token_radar_dirty_targets` SQL before direct
+error paths still executed token_radar_dirty_targets SQL before direct
 connection commit when the repository owned the commit
-(`src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py:57`,
-`src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py:117`,
-`src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py:275`,
-`src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py:381`).
+(src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py:57,
+src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py:117,
+src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py:275,
+src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py:381).
 The target contract is that repository-owned Token Radar target dirty queue
 mutations enter the connection transaction before SQL; empty inputs may return
 without SQL, and caller-owned writes remain reserved for the outer
@@ -1027,33 +1027,33 @@ repository-session transaction.
 
 Follow-up review found the same completion-token attempt fallback inside Token
 Radar target/source dirty repositories after the service-level claim hard cut.
-`TokenRadarDirtyTargetRepository._key_records(...)` and
-`TokenRadarSourceDirtyEventRepository._key_records(...)` still restored missing
-completion-token attempts through `int(key.get("attempt_count") or 0)` before
-raising an invalid-attempt error (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6209`,
-`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6210`,
-`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6211`,
-`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6213`). The target contract is
-that both repositories read `key["attempt_count"]`, require a positive claimed
+TokenRadarDirtyTargetRepository._key_records(...) and
+TokenRadarSourceDirtyEventRepository._key_records(...) still restored missing
+completion-token attempts through int(key.get("attempt_count") or 0) before
+raising an invalid-attempt error (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6209,
+docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6210,
+docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6211,
+docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6213). The target contract is
+that both repositories read key["attempt_count"], require a positive claimed
 attempt for done/error completion keys, and fail before SQL without
-synthesizing zero attempts (`src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py:823`,
-`src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py:862`,
-`src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py:866`,
-`src/parallax/domains/token_intel/repositories/token_radar_source_dirty_event_repository.py:320`,
-`src/parallax/domains/token_intel/repositories/token_radar_source_dirty_event_repository.py:376`,
-`src/parallax/domains/token_intel/repositories/token_radar_source_dirty_event_repository.py:367`,
-`tests/unit/test_token_radar_dirty_target_repository.py:237`,
-`tests/unit/test_token_radar_dirty_target_repository.py:247`,
-`tests/unit/domains/token_intel/test_token_radar_source_dirty_events.py:137`,
-`tests/unit/domains/token_intel/test_token_radar_source_dirty_events.py:148`,
-`tests/architecture/test_token_radar_source_width_contract.py:177`,
-`tests/architecture/test_token_radar_source_width_contract.py:185`,
-`tests/architecture/test_token_radar_source_width_contract.py:191`).
+synthesizing zero attempts (src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py:823,
+src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py:862,
+src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py:866,
+src/parallax/domains/token_intel/repositories/token_radar_source_dirty_event_repository.py:320,
+src/parallax/domains/token_intel/repositories/token_radar_source_dirty_event_repository.py:376,
+src/parallax/domains/token_intel/repositories/token_radar_source_dirty_event_repository.py:367,
+tests/unit/test_token_radar_dirty_target_repository.py:237,
+tests/unit/test_token_radar_dirty_target_repository.py:247,
+tests/unit/domains/token_intel/test_token_radar_source_dirty_events.py:137,
+tests/unit/domains/token_intel/test_token_radar_source_dirty_events.py:148,
+tests/architecture/test_token_radar_source_width_contract.py:177,
+tests/architecture/test_token_radar_source_width_contract.py:185,
+tests/architecture/test_token_radar_source_width_contract.py:191).
 
 Follow-up review found the same repository-owned manual commit root one market
-stage earlier in `MarketTickCurrentDirtyTargetRepository`: market-current
+stage earlier in MarketTickCurrentDirtyTargetRepository: market-current
 dirty enqueue, due-claim, done, and error paths still executed
-`market_tick_current_dirty_targets` SQL before direct connection commit when
+market_tick_current_dirty_targets SQL before direct connection commit when
 the repository owned the commit
 (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:740,
 docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:744,
@@ -1066,140 +1066,140 @@ repository-session transaction
 docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:768).
 
 Follow-up review found the same completion-token attempt fallback in
-`MarketTickCurrentDirtyTargetRepository._claim_records(...)`: completion claims
-for `mark_done(...)` and `mark_error(...)` restored missing attempts through
-`int(claim.get("attempt_count") or 0)` before raising an invalid-attempt error
-(`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6243`,
-`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6245`,
-`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6247`). The target contract is
+MarketTickCurrentDirtyTargetRepository._claim_records(...): completion claims
+for mark_done(...) and mark_error(...) restored missing attempts through
+int(claim.get("attempt_count") or 0) before raising an invalid-attempt error
+(docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6243,
+docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6245,
+docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6247). The target contract is
 that market-current dirty done/error completion keys read
-`claim["attempt_count"]`, require a positive claimed-row attempt, and fail
+claim["attempt_count"], require a positive claimed-row attempt, and fail
 before SQL without synthesizing zero attempts
-(`src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py:305`,
-`src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py:324`,
-`src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py:326`,
-`tests/unit/test_market_tick_current_repository.py:185`,
-`tests/unit/test_market_tick_current_repository.py:198`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:983`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:986`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:991`).
+(src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py:305,
+src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py:324,
+src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py:326,
+tests/unit/test_market_tick_current_repository.py:185,
+tests/unit/test_market_tick_current_repository.py:198,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:983,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:986,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:991).
 
 Follow-up review found the same dirty-completion attempt fallback in the Asset
 Market profile/icon refresh control plane: Token Profile Current, Token Image
 Source, and Asset Profile Refresh dirty completion helpers restored missing
-claim attempts through `int(claim.get("attempt_count") or 0)` before failing
+claim attempts through int(claim.get("attempt_count") or 0) before failing
 (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6277,
 docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6279,
 docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6287,
 docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6292).
-The target contract is that `token_profile_current_dirty_targets`,
-`token_image_source_dirty_targets`, and `asset_profile_refresh_targets`
-completion keys read `claim["attempt_count"]`, require a positive claimed-row
+The target contract is that token_profile_current_dirty_targets,
+token_image_source_dirty_targets, and asset_profile_refresh_targets
+completion keys read claim["attempt_count"], require a positive claimed-row
 attempt, and fail before SQL without synthesizing zero attempts
-(`src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:52`,
-`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:67`,
-`src/parallax/domains/asset_market/repositories/asset_profile_refresh_target_repository.py:57`,
-`src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:386`,
-`src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:401`,
-`src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:403`,
-`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:506`,
-`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:541`,
-`src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:543`,
-`src/parallax/domains/asset_market/repositories/asset_profile_refresh_target_repository.py:401`,
-`tests/unit/domains/asset_market/test_token_profile_current_dirty_targets.py:239`,
-`tests/unit/domains/asset_market/test_token_image_source_dirty_targets.py:92`,
-`tests/unit/domains/asset_market/test_asset_profile_refresh_targets.py:77`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1586`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1602`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1604`).
+(src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:52,
+src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:67,
+src/parallax/domains/asset_market/repositories/asset_profile_refresh_target_repository.py:57,
+src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:386,
+src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:401,
+src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:403,
+src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:506,
+src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:541,
+src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:543,
+src/parallax/domains/asset_market/repositories/asset_profile_refresh_target_repository.py:401,
+tests/unit/domains/asset_market/test_token_profile_current_dirty_targets.py:239,
+tests/unit/domains/asset_market/test_token_image_source_dirty_targets.py:92,
+tests/unit/domains/asset_market/test_asset_profile_refresh_targets.py:77,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1586,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1602,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1604).
 
 Follow-up review found the same dirty-completion attempt fallback in Discovery,
 Narrative Admission, and Pulse Trigger control queues: malformed completion
-tokens missing `attempt_count` were either restored to zero or filtered into a
+tokens missing attempt_count were either restored to zero or filtered into a
 silent no-op before SQL
 (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6321,
 docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6326,
 docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6335,
 docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6343).
-The target contract is that `token_discovery_dirty_lookup_keys`,
-narrative_admission_dirty_targets, and `pulse_trigger_dirty_targets`
-completion keys read `claim["attempt_count"]`, require a positive claimed-row
+The target contract is that token_discovery_dirty_lookup_keys,
+narrative_admission_dirty_targets, and pulse_trigger_dirty_targets
+completion keys read claim["attempt_count"], require a positive claimed-row
 attempt, and fail before SQL without synthesizing zero attempts
-(`src/parallax/domains/asset_market/repositories/discovery_repository.py:62`,
-`src/parallax/domains/asset_market/repositories/discovery_repository.py:707`,
-`src/parallax/domains/asset_market/repositories/discovery_repository.py:724`,
-`src/parallax/domains/narrative_intel/repositories/narrative_admission_dirty_target_repository.py:507`,
-`src/parallax/domains/narrative_intel/repositories/narrative_admission_dirty_target_repository.py:606`,
-`src/parallax/domains/narrative_intel/repositories/narrative_admission_dirty_target_repository.py:637`,
-`src/parallax/domains/pulse_lab/repositories/pulse_trigger_dirty_target_repository.py:57`,
-`src/parallax/domains/pulse_lab/repositories/pulse_trigger_dirty_target_repository.py:462`,
-`src/parallax/domains/pulse_lab/repositories/pulse_trigger_dirty_target_repository.py:487`,
-`tests/unit/test_discovery_repository.py:259`,
-`tests/unit/domains/narrative_intel/test_narrative_dirty_target_repositories.py:322`,
-`tests/unit/domains/pulse_lab/test_pulse_trigger_dirty_target_repository.py:252`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1185`,
-`tests/architecture/test_pulse_no_compat.py:418`).
+(src/parallax/domains/asset_market/repositories/discovery_repository.py:62,
+src/parallax/domains/asset_market/repositories/discovery_repository.py:707,
+src/parallax/domains/asset_market/repositories/discovery_repository.py:724,
+src/parallax/domains/narrative_intel/repositories/narrative_admission_dirty_target_repository.py:507,
+src/parallax/domains/narrative_intel/repositories/narrative_admission_dirty_target_repository.py:606,
+src/parallax/domains/narrative_intel/repositories/narrative_admission_dirty_target_repository.py:637,
+src/parallax/domains/pulse_lab/repositories/pulse_trigger_dirty_target_repository.py:57,
+src/parallax/domains/pulse_lab/repositories/pulse_trigger_dirty_target_repository.py:462,
+src/parallax/domains/pulse_lab/repositories/pulse_trigger_dirty_target_repository.py:487,
+tests/unit/test_discovery_repository.py:259,
+tests/unit/domains/narrative_intel/test_narrative_dirty_target_repositories.py:322,
+tests/unit/domains/pulse_lab/test_pulse_trigger_dirty_target_repository.py:252,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1185,
+tests/architecture/test_pulse_no_compat.py:418).
 
 Follow-up review found the same attempt fallback one layer above repository
 completion in Event Anchor Backfill and Resolution Refresh worker retry
-decisions: worker code treated missing claimed-row `attempt_count` as zero
+decisions: worker code treated missing claimed-row attempt_count as zero
 before choosing reschedule, terminal, or retry-budget branches
 (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6367,
 docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6369,
 docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6371,
 docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:6380).
-The target contract is that claimed `event_anchor_backfill_jobs` and
-`token_discovery_dirty_lookup_keys` rows expose a positive `attempt_count`
-before retry/terminal guards run; worker code must read `row["attempt_count"]`
-or `claim["attempt_count"]` directly and fail malformed claim state before
+The target contract is that claimed event_anchor_backfill_jobs and
+token_discovery_dirty_lookup_keys rows expose a positive attempt_count
+before retry/terminal guards run; worker code must read row["attempt_count"]
+or claim["attempt_count"] directly and fail malformed claim state before
 branching
-(`src/parallax/domains/asset_market/runtime/event_anchor_backfill_worker.py:273`,
-`src/parallax/domains/asset_market/ARCHITECTURE.md:21`,
-`src/parallax/domains/asset_market/runtime/event_anchor_backfill_worker.py:472`,
-`src/parallax/domains/asset_market/runtime/resolution_refresh_worker.py:489`,
-`src/parallax/domains/asset_market/ARCHITECTURE.md:30`,
-`src/parallax/domains/asset_market/runtime/resolution_refresh_worker.py:491`,
-`tests/unit/test_event_anchor_backfill_worker.py:288`,
-`tests/unit/test_event_anchor_backfill_worker.py:298`,
-`tests/unit/test_resolution_refresh_worker.py:180`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1206`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1224`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1225`).
+(src/parallax/domains/asset_market/runtime/event_anchor_backfill_worker.py:273,
+src/parallax/domains/asset_market/ARCHITECTURE.md:21,
+src/parallax/domains/asset_market/runtime/event_anchor_backfill_worker.py:472,
+src/parallax/domains/asset_market/runtime/resolution_refresh_worker.py:489,
+src/parallax/domains/asset_market/ARCHITECTURE.md:30,
+src/parallax/domains/asset_market/runtime/resolution_refresh_worker.py:491,
+tests/unit/test_event_anchor_backfill_worker.py:288,
+tests/unit/test_event_anchor_backfill_worker.py:298,
+tests/unit/test_resolution_refresh_worker.py:180,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1206,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1224,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1225).
 
 Follow-up review found the same fallback in Pulse agent job execution/audit and
 Macro Sync retry-budget classification: Pulse code built run ids, trace metadata,
 failure state, timeout cancellation, backpressure release, and provider cooldown
 CAS from missing job attempts as zero, while Macro Sync treated a missing sync
 window attempt as zero and missing max attempts as one. The target contract is
-that claimed pulse agent job `attempt_count`, Pulse `max_attempts`, and claimed
-`macro_sync_windows` `attempt_count` / `max_attempts` are required before those
+that claimed pulse agent job attempt_count, Pulse max_attempts, and claimed
+macro_sync_windows attempt_count / max_attempts are required before those
 state-machine decisions; malformed control rows fail before repository SQL,
 agent audit construction, or retry/final failure classification
-(`src/parallax/domains/pulse_lab/ARCHITECTURE.md:45`,
-`src/parallax/domains/pulse_lab/ARCHITECTURE.md:57`,
-`src/parallax/domains/pulse_lab/ARCHITECTURE.md:58`,
-`src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py:129`,
-`src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py:659`,
-`src/parallax/domains/pulse_lab/services/pulse_decision_runtime.py:135`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:269`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:270`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:334`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:398`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:439`,
-`src/parallax/domains/macro_intel/ARCHITECTURE.md:16`,
-`src/parallax/domains/macro_intel/services/macro_sync_service.py:463`,
-`src/parallax/domains/macro_intel/services/macro_sync_service.py:468`,
-`src/parallax/domains/macro_intel/services/macro_sync_service.py:478`,
-`tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py:81`,
-`tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:163`,
-`tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:176`,
-`tests/unit/test_pulse_decision_agent_client.py:303`,
-`tests/unit/domains/macro_intel/test_macro_sync_service.py:361`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1232`).
+(src/parallax/domains/pulse_lab/ARCHITECTURE.md:45,
+src/parallax/domains/pulse_lab/ARCHITECTURE.md:57,
+src/parallax/domains/pulse_lab/ARCHITECTURE.md:58,
+src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py:129,
+src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py:659,
+src/parallax/domains/pulse_lab/services/pulse_decision_runtime.py:135,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:269,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:270,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:334,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:398,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:439,
+src/parallax/domains/macro_intel/ARCHITECTURE.md:16,
+src/parallax/domains/macro_intel/services/macro_sync_service.py:463,
+src/parallax/domains/macro_intel/services/macro_sync_service.py:468,
+src/parallax/domains/macro_intel/services/macro_sync_service.py:478,
+tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py:81,
+tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:163,
+tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:176,
+tests/unit/test_pulse_decision_agent_client.py:303,
+tests/unit/domains/macro_intel/test_macro_sync_service.py:361,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1232).
 
 Follow-up review found the same repository-owned manual commit root in the
 Token Profile Current dirty queue repository: profile-current dirty enqueue,
-due-claim, done, and error paths executed `token_profile_current_dirty_targets`
+due-claim, done, and error paths executed token_profile_current_dirty_targets
 SQL before direct connection commit when the repository owned the commit
 (src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:14,
 src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py:52,
@@ -1214,7 +1214,7 @@ repository-session transaction.
 
 Follow-up review found the same repository-owned manual commit root in the
 Token Image Source dirty queue repository: image-source dirty enqueue,
-due-claim, done, and error paths executed `token_image_source_dirty_targets`
+due-claim, done, and error paths executed token_image_source_dirty_targets
 SQL before direct connection commit when the repository owned the commit
 (src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:68,
 src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py:162,
@@ -1228,7 +1228,7 @@ repository-session transaction.
 
 Follow-up review found the same repository-owned manual commit root in the
 Asset Profile Refresh target repository: provider refresh target enqueue,
-due-claim, reschedule, and error paths executed `asset_profile_refresh_targets`
+due-claim, reschedule, and error paths executed asset_profile_refresh_targets
 SQL before direct connection commit when the repository owned the commit
 (src/parallax/domains/asset_market/repositories/asset_profile_refresh_target_repository.py:15,
 src/parallax/domains/asset_market/repositories/asset_profile_refresh_target_repository.py:57,
@@ -1249,31 +1249,31 @@ repository-session transaction.
 
 Follow-up review found the same repository-owned manual commit root in the
 Asset Profile source-cache repository: ready-profile upserts and missing/error
-status upserts executed `asset_profiles` SQL before direct connection commit
+status upserts executed asset_profiles SQL before direct connection commit
 when the repository owned the commit
 (src/parallax/domains/asset_market/repositories/asset_profile_repository.py:48,
 src/parallax/domains/asset_market/repositories/asset_profile_repository.py:120).
 The target contract is that repository-owned Asset Profile source-cache
 mutations enter the connection transaction before SQL, while
-`asset_profile_refresh` worker service writes remain caller-owned inside the
+asset_profile_refresh worker service writes remain caller-owned inside the
 outer repository-session transaction
 (src/parallax/domains/asset_market/runtime/asset_profile_refresh_worker.py:14,
 src/parallax/domains/asset_market/services/asset_profile_refresh.py:48,
 src/parallax/domains/asset_market/services/asset_profile_refresh.py:65).
 
 Follow-up review found the same repository-owned manual commit root in the CEX
-profile source-cache repository: `upsert_ready_profile_if_token_exists`
-executes `cex_token_profiles` SQL and must enter the connection transaction
+profile source-cache repository: upsert_ready_profile_if_token_exists
+executes cex_token_profiles SQL and must enter the connection transaction
 before that write when the repository owns the commit
 (src/parallax/domains/asset_market/repositories/cex_token_profile_repository.py:38,
 src/parallax/domains/asset_market/repositories/cex_token_profile_repository.py:56,
 src/parallax/domains/asset_market/repositories/cex_token_profile_repository.py:75,
 src/parallax/domains/asset_market/repositories/cex_token_profile_repository.py:93).
-Root63 made `sync_cex_token_profiles` hold a callable connection transaction,
-call `upsert_ready_profile_if_token_exists`, and pass `commit=False`; the
-service now also materializes provider rows through `_formal_profile(profile)`
+Root63 made sync_cex_token_profiles hold a callable connection transaction,
+call upsert_ready_profile_if_token_exists, and pass commit=False; the
+service now also materializes provider rows through _formal_profile(profile)
 before the transaction, while the repository requires
-`_required_raw_payload(raw_payload)` instead of an empty raw-payload default
+_required_raw_payload(raw_payload) instead of an empty raw-payload default
 (src/parallax/domains/asset_market/services/cex_token_profile_sync.py:12,
 src/parallax/domains/asset_market/services/cex_token_profile_sync.py:13,
 src/parallax/domains/asset_market/services/cex_token_profile_sync.py:20,
@@ -1286,7 +1286,7 @@ src/parallax/domains/asset_market/repositories/cex_token_profile_repository.py:1
 
 Follow-up review found the same repository-owned manual commit root in the
 Token Capture Tier dirty repository: rank-set dirty enqueue, due-claim, and
-done paths executed `token_capture_tier_dirty_targets` SQL before direct
+done paths executed token_capture_tier_dirty_targets SQL before direct
 connection commit when the repository owned the commit
 (src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:15,
 src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py:37,
@@ -1305,10 +1305,10 @@ return without SQL, and caller-owned writes remain reserved for the outer
 repository-session transaction.
 
 Follow-up review found an optional connection-transaction probe in Token Radar
-rank publication: `refresh_rank_set(...)` wrapped stale-running cleanup, offset
-advance, current-row publication, and run finish in `_transaction_context`, while
-the helper still used `getattr(conn, "transaction", None)` and produced a
-non-contract `TypeError` for non-callable transaction attributes
+rank publication: refresh_rank_set(...) wrapped stale-running cleanup, offset
+advance, current-row publication, and run finish in _transaction_context, while
+the helper still used getattr(conn, "transaction", None) and produced a
+non-contract TypeError for non-callable transaction attributes
 (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:888,
 docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:891,
 docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:892,
@@ -1327,16 +1327,16 @@ src/parallax/domains/token_intel/services/token_radar_projection.py:1983).
 
 Follow-up hardening found the same optional probe shape in Event Anchor
 repository terminal writes: Root39 had already required
-`expire_stale(...)` and `mark_terminal(...)` to use `_transaction(self._conn)`,
-but the transaction helper still used `getattr(conn, "transaction", None)`
+expire_stale(...) and mark_terminal(...) to use _transaction(self._conn),
+but the transaction helper still used getattr(conn, "transaction", None)
 (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:910,
 docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:911,
 docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:914).
-The target contract is that `expire_stale(...)`, `mark_terminal(...)`, and
-`_transaction(conn)` protect Event Anchor job terminal update and
-`worker_queue_terminal_events` ledger writes with direct callable connection
+The target contract is that expire_stale(...), mark_terminal(...), and
+_transaction(conn) protect Event Anchor job terminal update and
+worker_queue_terminal_events ledger writes with direct callable connection
 transaction support; missing or malformed support raises
-`event_anchor_repository_transaction_required` before terminal
+event_anchor_repository_transaction_required before terminal
 SQL (src/parallax/domains/asset_market/repositories/event_anchor_backfill_job_repository.py:111,
 src/parallax/domains/asset_market/repositories/event_anchor_backfill_job_repository.py:192,
 src/parallax/domains/asset_market/repositories/event_anchor_backfill_job_repository.py:564,
@@ -1347,9 +1347,9 @@ docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:918,
 tests/unit/test_event_anchor_backfill_job_repository.py:151).
 
 Follow-up review found another public-query boundary duplicate in ops
-diagnostics: `/api/ops/diagnostics` already owned the public `since_hours`,
-`window`, and `scope` defaults and validated `window` / `scope` before calling
-runtime composition, but `ops_diagnostics_payload(...)` still carried the same
+diagnostics: /api/ops/diagnostics already owned the public since_hours,
+window, and scope defaults and validated window / scope before calling
+runtime composition, but ops_diagnostics_payload(...) still carried the same
 defaults inside runtime composition
 (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:9007,
 docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:9011,
@@ -1357,8 +1357,8 @@ docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:9012,
 docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:9013).
 The target contract is that route signatures own product defaults, shared
 validators fail malformed values, and runtime diagnostics payload construction
-receives explicit query boundaries so direct callers cannot synthesize `1h` /
-`all` diagnostic reads outside the public surface
+receives explicit query boundaries so direct callers cannot synthesize 1h /
+all diagnostic reads outside the public surface
 (src/parallax/app/surfaces/api/routes_ops.py:28,
 src/parallax/app/surfaces/api/routes_ops.py:29,
 src/parallax/app/surfaces/api/routes_ops.py:30,
@@ -1374,14 +1374,14 @@ tests/architecture/test_api_read_paths_provider_free.py:87).
 Follow-up review found the same query-window duplication in Pulse freshness
 health: public Signal Pulse health and CLI health/replay callers already pass a
 4h or operator-specified health horizon explicitly, but the lower health
-repository/service still retained their own `since_hours=4` defaults
+repository/service still retained their own since_hours=4 defaults
 (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:9041,
 docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:9045,
 docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:9046,
 docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:9048,
 docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:9049).
 The target contract is that Pulse freshness SQL receives explicit
-`since_hours` from its caller, so direct repository/service callers cannot
+since_hours from its caller, so direct repository/service callers cannot
 synthesize a 4h health read outside the public read model or CLI surface
 (src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py:166,
 src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py:170,
@@ -1394,9 +1394,9 @@ tests/unit/domains/pulse_lab/test_write_gate_health.py:68,
 tests/architecture/test_pulse_no_compat.py:802).
 
 Follow-up review found a non-SQL compatibility fallback in Pulse recommendation
-clipping: `FinalDecision.playbook.monitoring_horizon` is a required v2 decision
-field, but the clipper still replaced missing horizons with `1h` while creating
-`ignore` or `abstain` playbook shapes
+clipping: FinalDecision.playbook.monitoring_horizon is a required v2 decision
+field, but the clipper still replaced missing horizons with 1h while creating
+ignore or abstain playbook shapes
 (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:9077,
 docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:9081,
 docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:9082,
@@ -1415,15 +1415,15 @@ tests/unit/test_pulse_recommendation_clipper.py:64,
 tests/architecture/test_pulse_no_compat.py:816).
 
 Follow-up review found the same public-query boundary duplication in Macro
-asset correlation: the API route already owns and validates the public `60d`
+asset correlation: the API route already owns and validates the public 60d
 window default before loading observations, but the correlation builder still
-kept its own `window="60d"` default
+kept its own window="60d" default
 (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:9115,
 docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:9119,
 docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:9120,
 docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:9121,
 docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:9123).
-The target contract is that `/api/macro/assets/correlation` resolves the
+The target contract is that /api/macro/assets/correlation resolves the
 requested correlation window, computes PostgreSQL query bounds from that
 validated value, and passes the same window explicitly into the pure builder
 (src/parallax/app/surfaces/api/routes_macro.py:69,
@@ -1435,14 +1435,14 @@ tests/unit/domains/macro_intel/test_macro_asset_correlation.py:13,
 tests/architecture/test_runtime_worker_constraint_hard_cut.py:1787).
 
 Follow-up review found the same write-count evidence gap in Macro Intel:
-`complete_macro_sync_window`, `retry_macro_sync_window`,
-`fail_macro_sync_window`, `update_macro_sync_state`,
-`rebuild_macro_sync_state`, `enqueue_macro_projection_dirty_target`,
-`enqueue_macro_projection_dirty_targets_for_changes`,
-`mark_macro_projection_dirty_targets_done`,
-`mark_macro_projection_dirty_targets_error`,
-`_delete_exited_observation_series_rows`, and
-`_insert_observation_series_rows_chunk` all return write-count or state
+complete_macro_sync_window, retry_macro_sync_window,
+fail_macro_sync_window, update_macro_sync_state,
+rebuild_macro_sync_state, enqueue_macro_projection_dirty_target,
+enqueue_macro_projection_dirty_targets_for_changes,
+mark_macro_projection_dirty_targets_done,
+mark_macro_projection_dirty_targets_error,
+_delete_exited_observation_series_rows, and
+_insert_observation_series_rows_chunk all return write-count or state
 classification results for Macro sync/projection/current-row mutations
 (src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:561,
 src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:596,
@@ -1455,7 +1455,7 @@ src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1097,
 src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1150,
 src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1479,
 src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1533).
-The target contract is that `_cursor_rowcount` and `_single_rowcount` require
+The target contract is that _cursor_rowcount and _single_rowcount require
 real PostgreSQL cursor.rowcount evidence, while tests cover missing/invalid
 rowcount and guard against default or length-based compatibility accounting
 (src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:2219,
@@ -1469,18 +1469,18 @@ tests/unit/domains/macro_intel/test_macro_generation_swap.py:281,
 tests/architecture/test_macro_no_compatibility_contract.py:249).
 
 Follow-up review found the same rowcount evidence gap in Narrative admission
-serving-row accounting. `upsert_admissions` writes `narrative_admissions` and
-returns `upserted`, while `stale_admission_target` deletes
-`narrative_admissions` and returns `staled_admissions`
+serving-row accounting. upsert_admissions writes narrative_admissions and
+returns upserted, while stale_admission_target deletes
+narrative_admissions and returns staled_admissions
 (src/parallax/domains/narrative_intel/repositories/narrative_repository.py:28,
 src/parallax/domains/narrative_intel/repositories/narrative_repository.py:91,
 src/parallax/domains/narrative_intel/repositories/narrative_repository.py:129,
 src/parallax/domains/narrative_intel/repositories/narrative_repository.py:253,
 src/parallax/domains/narrative_intel/repositories/narrative_repository.py:277,
 src/parallax/domains/narrative_intel/repositories/narrative_repository.py:287).
-The target contract is that `_cursor_rowcount` reads real PostgreSQL
-cursor.rowcount, failing as `narrative_repository_rowcount_required` or
-`narrative_repository_rowcount_invalid`, while tests and architecture guards
+The target contract is that _cursor_rowcount reads real PostgreSQL
+cursor.rowcount, failing as narrative_repository_rowcount_required or
+narrative_repository_rowcount_invalid, while tests and architecture guards
 cover missing/invalid rowcount plus default-zero fallback removal
 (src/parallax/domains/narrative_intel/repositories/narrative_repository.py:756,
 src/parallax/domains/narrative_intel/repositories/narrative_repository.py:758,
@@ -1496,409 +1496,406 @@ tests/architecture/test_runtime_worker_constraint_hard_cut.py:1830,
 tests/architecture/test_runtime_worker_constraint_hard_cut.py:1837).
 
 Follow-up review found the same rowcount evidence gap in Pulse stale agent-run
-cleanup. `mark_stale_agent_runs_failed` updates `pulse_agent_runs` and returns
+cleanup. mark_stale_agent_runs_failed updates pulse_agent_runs and returns
 changed-run counts from _cursor_rowcount(cursor)
-(`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:559`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:572`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:586`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:587`).
-The target contract is that `_cursor_rowcount` reads PostgreSQL
-cursor.rowcount, failing as `pulse_jobs_repository_rowcount_required` or
-`pulse_jobs_repository_rowcount_invalid`, while tests and architecture guards
+(src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:559,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:572,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:586,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:587).
+The target contract is that _cursor_rowcount reads PostgreSQL
+cursor.rowcount, failing as pulse_jobs_repository_rowcount_required or
+pulse_jobs_repository_rowcount_invalid, while tests and architecture guards
 cover missing/invalid rowcount plus default-zero fallback removal
-(`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:634`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:636`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:638`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:640`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:642`,
-`tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:220`,
-`tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:224`,
-`tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:230`,
-`tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:235`,
-`tests/architecture/test_pulse_no_compat.py:424`,
-`tests/architecture/test_pulse_no_compat.py:434`,
-`tests/architecture/test_pulse_no_compat.py:435`,
-`tests/architecture/test_pulse_no_compat.py:436`,
-`tests/architecture/test_pulse_no_compat.py:437`).
+(src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:634,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:636,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:638,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:640,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:642,
+tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:220,
+tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:224,
+tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:230,
+tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:235,
+tests/architecture/test_pulse_no_compat.py:424,
+tests/architecture/test_pulse_no_compat.py:434,
+tests/architecture/test_pulse_no_compat.py:435,
+tests/architecture/test_pulse_no_compat.py:436,
+tests/architecture/test_pulse_no_compat.py:437).
 
 Follow-up review then found the same rowcount evidence gap in Pulse job
-terminal/dead batches: `terminalize_exhausted_stale_running_jobs` and
-`terminalize_stale_jobs_by_window` update `pulse_agent_jobs`, return job rows,
+terminal/dead batches: terminalize_exhausted_stale_running_jobs and
+terminalize_stale_jobs_by_window update pulse_agent_jobs, return job rows,
 validate _returned_rowcount(cursor, rows), and only then write terminal ledger
 rows
-(`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:191`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:215`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:221`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:225`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:226`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:228`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:518`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:536`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:543`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:547`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:548`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:550`).
-The target contract is that `_returned_rowcount` first reads
-cursor.rowcount, requires it to match `len(rows)`, fails missing evidence as
-`pulse_jobs_repository_rowcount_required`, and fails invalid or mismatched
-evidence as `pulse_jobs_repository_rowcount_invalid`
-(`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:636`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:638`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:640`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:646`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:647`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:648`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:649`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:650`,
-`tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:241`,
-`tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:261`,
-`tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:268`,
-`tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:275`,
-`tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:280`,
-`tests/architecture/test_pulse_no_compat.py:445`,
-`tests/architecture/test_pulse_no_compat.py:455`,
-`tests/architecture/test_pulse_no_compat.py:456`,
-`tests/architecture/test_pulse_no_compat.py:457`,
-`tests/architecture/test_pulse_no_compat.py:458`,
-`tests/architecture/test_pulse_no_compat.py:459`,
-`tests/architecture/test_pulse_no_compat.py:460`,
-`tests/architecture/test_pulse_no_compat.py:461`).
+(src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:191,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:215,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:221,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:225,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:226,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:228,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:518,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:536,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:543,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:547,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:548,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:550).
+The target contract is that _returned_rowcount first reads
+cursor.rowcount, requires it to match len(rows), fails missing evidence as
+pulse_jobs_repository_rowcount_required, and fails invalid or mismatched
+evidence as pulse_jobs_repository_rowcount_invalid
+(src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:636,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:638,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:640,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:646,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:647,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:648,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:649,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:650,
+tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:241,
+tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:261,
+tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:268,
+tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:275,
+tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:280,
+tests/architecture/test_pulse_no_compat.py:445,
+tests/architecture/test_pulse_no_compat.py:455,
+tests/architecture/test_pulse_no_compat.py:456,
+tests/architecture/test_pulse_no_compat.py:457,
+tests/architecture/test_pulse_no_compat.py:458,
+tests/architecture/test_pulse_no_compat.py:459,
+tests/architecture/test_pulse_no_compat.py:460,
+tests/architecture/test_pulse_no_compat.py:461).
 
 Follow-up review found the remaining single-row Pulse job state-machine
-`RETURNING` gap. `enqueue_job` writes `pulse_agent_jobs` through `RETURNING *`
-and now returns through `_required_returning_row(cursor, row)`, while claim,
+RETURNING gap. enqueue_job writes pulse_agent_jobs through RETURNING *
+and now returns through _required_returning_row(cursor, row), while claim,
 success, failure, retry, timeout cancellation, and release paths update
-`pulse_agent_jobs` and return through `_optional_returning_row(cursor, row)`
-(`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:25`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:55`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:114`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:139`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:146`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:165`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:184`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:189`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:248`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:258`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:282`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:293`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:315`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:328`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:347`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:384`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:411`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:431`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:453`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:477`).
-The target contract is that `_single_returning_rowcount` reads PostgreSQL
+pulse_agent_jobs and return through _optional_returning_row
+(src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:25,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:55,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:114,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:139,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:146,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:165,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:184,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:189,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:248,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:258,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:282,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:293,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:315,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:328,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:347,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:384,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:411,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:431,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:453,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:477).
+The target contract is that _single_returning_rowcount reads PostgreSQL
 cursor.rowcount, accepts only rowcount 0/1, and requires returned-row presence
 to match that count before job state, retry/dead classification, terminal retry,
 timeout cancellation, release, or terminal ledger effects are reported; tests
 and architecture guards cover missing/invalid/mismatched rowcount plus chained
-`.fetchone()` compatibility removal
-(`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:653`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:654`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:655`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:657`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:636`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:662`,
-`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:668`,
-`tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:291`,
-`tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:315`,
-`tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:342`,
-`tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:363`,
-`tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:429`,
-`tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:445`,
-`tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:455`,
-`tests/architecture/test_pulse_no_compat.py:468`,
-`tests/architecture/test_pulse_no_compat.py:483`,
-`tests/architecture/test_pulse_no_compat.py:484`,
-`tests/architecture/test_pulse_no_compat.py:491`,
-`tests/architecture/test_pulse_no_compat.py:501`,
-`tests/architecture/test_pulse_no_compat.py:504`).
+.fetchone() compatibility removal
+(src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:653,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:654,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:655,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:657,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:636,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:662,
+src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:668,
+tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:291,
+tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:315,
+tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:342,
+tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:363,
+tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:429,
+tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:445,
+tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py:455,
+tests/architecture/test_pulse_no_compat.py:468,
+tests/architecture/test_pulse_no_compat.py:483,
+tests/architecture/test_pulse_no_compat.py:484,
+tests/architecture/test_pulse_no_compat.py:491,
+tests/architecture/test_pulse_no_compat.py:501,
+tests/architecture/test_pulse_no_compat.py:504).
 
 Follow-up review found the same chained-mutation rowcount evidence gap in
 Pulse evidence packet persistence. The packet upsert now proves
-`pulse_evidence_packets` through `RETURNING evidence_packet_id`, but the
-associated `UPDATE pulse_agent_runs` run-link must also prove it affected
-exactly one audit row before `upsert_packet` returns
-(`src/parallax/domains/pulse_lab/repositories/pulse_evidence_repository.py:42`,
-`src/parallax/domains/pulse_lab/repositories/pulse_evidence_repository.py:48`,
-`src/parallax/domains/pulse_lab/repositories/pulse_evidence_repository.py:67`,
-`src/parallax/domains/pulse_lab/repositories/pulse_evidence_repository.py:86`,
-`src/parallax/domains/pulse_lab/repositories/pulse_evidence_repository.py:87`,
-`src/parallax/domains/pulse_lab/repositories/pulse_evidence_repository.py:89`,
-`src/parallax/domains/pulse_lab/repositories/pulse_evidence_repository.py:96`).
-The target contract is that `_required_single_rowcount` rejects missing,
+pulse_evidence_packets through RETURNING evidence_packet_id, but the
+associated UPDATE pulse_agent_runs run-link must also prove it affected
+exactly one audit row before upsert_packet returns
+(src/parallax/domains/pulse_lab/repositories/pulse_evidence_repository.py:42,
+src/parallax/domains/pulse_lab/repositories/pulse_evidence_repository.py:48,
+src/parallax/domains/pulse_lab/repositories/pulse_evidence_repository.py:67,
+src/parallax/domains/pulse_lab/repositories/pulse_evidence_repository.py:86,
+src/parallax/domains/pulse_lab/repositories/pulse_evidence_repository.py:87,
+src/parallax/domains/pulse_lab/repositories/pulse_evidence_repository.py:89,
+src/parallax/domains/pulse_lab/repositories/pulse_evidence_repository.py:96).
+The target contract is that _required_single_rowcount rejects missing,
 invalid, zero-row, or multi-row run-link evidence as a repository contract
 failure; tests and architecture guards cover the second mutation independently
-from the packet `RETURNING` proof
-(`src/parallax/domains/pulse_lab/repositories/pulse_evidence_repository.py:31`,
-`src/parallax/domains/pulse_lab/repositories/pulse_evidence_repository.py:33`,
-`src/parallax/domains/pulse_lab/repositories/pulse_evidence_repository.py:34`,
-`tests/unit/domains/pulse_lab/test_pulse_evidence_repository.py:101`,
-`tests/unit/domains/pulse_lab/test_pulse_evidence_repository.py:126`,
-`tests/architecture/test_pulse_no_compat.py:718`,
-`tests/architecture/test_pulse_no_compat.py:721`,
-`tests/architecture/test_pulse_no_compat.py:722`).
+from the packet RETURNING proof
+(src/parallax/domains/pulse_lab/repositories/pulse_evidence_repository.py:31,
+src/parallax/domains/pulse_lab/repositories/pulse_evidence_repository.py:33,
+src/parallax/domains/pulse_lab/repositories/pulse_evidence_repository.py:34,
+tests/unit/domains/pulse_lab/test_pulse_evidence_repository.py:101,
+tests/unit/domains/pulse_lab/test_pulse_evidence_repository.py:126,
+tests/architecture/test_pulse_no_compat.py:718,
+tests/architecture/test_pulse_no_compat.py:721,
+tests/architecture/test_pulse_no_compat.py:722).
 
 Follow-up review found the same returned-rowcount evidence gap in
-ProjectionRepository dirty-range claims. `claim_dirty_ranges` leases
-`projection_dirty_ranges` through `UPDATE projection_dirty_ranges` with
-`RETURNING ranges.*`, so returned rows are worker lease identities, not just
+ProjectionRepository dirty-range claims. claim_dirty_ranges leases
+projection_dirty_ranges through UPDATE projection_dirty_ranges with
+RETURNING ranges.*, so returned rows are worker lease identities, not just
 query output
-(`src/parallax/domains/token_intel/repositories/projection_repository.py:296`,
-`src/parallax/domains/token_intel/repositories/projection_repository.py:305`,
-`src/parallax/domains/token_intel/repositories/projection_repository.py:317`,
-`src/parallax/domains/token_intel/repositories/projection_repository.py:322`).
+(src/parallax/domains/token_intel/repositories/projection_repository.py:296,
+src/parallax/domains/token_intel/repositories/projection_repository.py:305,
+src/parallax/domains/token_intel/repositories/projection_repository.py:317,
+src/parallax/domains/token_intel/repositories/projection_repository.py:322).
 The target contract is that claim rows are fetched from a saved cursor,
 _returned_rowcount(cursor, rows) validates PostgreSQL cursor.rowcount
 against returned rows, and only rowcount=0 with no rows is the valid no-work
 claim result
-(`src/parallax/domains/token_intel/repositories/projection_repository.py:305`,
-`src/parallax/domains/token_intel/repositories/projection_repository.py:326`,
-`src/parallax/domains/token_intel/repositories/projection_repository.py:327`,
-`src/parallax/domains/token_intel/repositories/projection_repository.py:410`,
-`src/parallax/domains/token_intel/repositories/projection_repository.py:420`,
-`src/parallax/domains/token_intel/repositories/projection_repository.py:422`,
-`tests/unit/domains/token_intel/test_projection_repository.py:77`,
-`tests/unit/domains/token_intel/test_projection_repository.py:90`,
-`tests/unit/domains/token_intel/test_projection_repository.py:102`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:898`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:911`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:916`).
+(src/parallax/domains/token_intel/repositories/projection_repository.py:305,
+src/parallax/domains/token_intel/repositories/projection_repository.py:326,
+src/parallax/domains/token_intel/repositories/projection_repository.py:327,
+src/parallax/domains/token_intel/repositories/projection_repository.py:410,
+src/parallax/domains/token_intel/repositories/projection_repository.py:420,
+src/parallax/domains/token_intel/repositories/projection_repository.py:422,
+tests/unit/domains/token_intel/test_projection_repository.py:77,
+tests/unit/domains/token_intel/test_projection_repository.py:90,
+tests/unit/domains/token_intel/test_projection_repository.py:102,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:898,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:911,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:916).
 
 Follow-up review found the remaining ProjectionRepository control-plane writes
-needed the same execution evidence. `advance_offset`, `finish_run`, and
-`enqueue_dirty_range` now save their write cursor and require
-`_required_single_rowcount(cursor)`, while `start_run` starts a run through
-`INSERT INTO projection_runs` plus `RETURNING *`, fetches from the saved cursor,
-and returns only through `_required_returning_row(cursor, row)` instead of
-`run_by_id` readback
-(`src/parallax/domains/token_intel/repositories/projection_repository.py:46`,
-`src/parallax/domains/token_intel/repositories/projection_repository.py:62`,
-`src/parallax/domains/token_intel/repositories/projection_repository.py:94`,
-`src/parallax/domains/token_intel/repositories/projection_repository.py:119`,
-`src/parallax/domains/token_intel/repositories/projection_repository.py:121`,
-`src/parallax/domains/token_intel/repositories/projection_repository.py:126`,
-`src/parallax/domains/token_intel/repositories/projection_repository.py:138`,
-`src/parallax/domains/token_intel/repositories/projection_repository.py:139`,
-`src/parallax/domains/token_intel/repositories/projection_repository.py:175`,
-`src/parallax/domains/token_intel/repositories/projection_repository.py:187`,
-`src/parallax/domains/token_intel/repositories/projection_repository.py:208`,
-`src/parallax/domains/token_intel/repositories/projection_repository.py:212`,
-`src/parallax/domains/token_intel/repositories/projection_repository.py:234`,
-`src/parallax/domains/token_intel/repositories/projection_repository.py:262`,
-`src/parallax/domains/token_intel/repositories/projection_repository.py:291`,
-`src/parallax/domains/token_intel/repositories/projection_repository.py:427`,
-`src/parallax/domains/token_intel/repositories/projection_repository.py:434`,
-`tests/unit/domains/token_intel/test_projection_repository.py:117`,
-`tests/unit/domains/token_intel/test_projection_repository.py:126`,
-`tests/unit/domains/token_intel/test_projection_repository.py:139`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:923`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:933`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:943`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:958`).
+needed the same execution evidence. advance_offset, finish_run, and
+enqueue_dirty_range now save their write cursor and require
+_required_single_rowcount(cursor), while start_run starts a run through
+INSERT INTO projection_runs plus RETURNING *, fetches from the saved cursor,
+and returns only through _required_returning_row(cursor, row) instead of
+run_by_id readback
+(src/parallax/domains/token_intel/repositories/projection_repository.py:46,
+src/parallax/domains/token_intel/repositories/projection_repository.py:62,
+src/parallax/domains/token_intel/repositories/projection_repository.py:94,
+src/parallax/domains/token_intel/repositories/projection_repository.py:119,
+src/parallax/domains/token_intel/repositories/projection_repository.py:121,
+src/parallax/domains/token_intel/repositories/projection_repository.py:126,
+src/parallax/domains/token_intel/repositories/projection_repository.py:138,
+src/parallax/domains/token_intel/repositories/projection_repository.py:139,
+src/parallax/domains/token_intel/repositories/projection_repository.py:175,
+src/parallax/domains/token_intel/repositories/projection_repository.py:187,
+src/parallax/domains/token_intel/repositories/projection_repository.py:208,
+src/parallax/domains/token_intel/repositories/projection_repository.py:212,
+src/parallax/domains/token_intel/repositories/projection_repository.py:234,
+src/parallax/domains/token_intel/repositories/projection_repository.py:262,
+src/parallax/domains/token_intel/repositories/projection_repository.py:291,
+src/parallax/domains/token_intel/repositories/projection_repository.py:427,
+src/parallax/domains/token_intel/repositories/projection_repository.py:434,
+tests/unit/domains/token_intel/test_projection_repository.py:117,
+tests/unit/domains/token_intel/test_projection_repository.py:126,
+tests/unit/domains/token_intel/test_projection_repository.py:139,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:923,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:933,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:943,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:958).
 
 Follow-up review found Token Radar narrative hydration still had an API-layer
-target-identity shape bridge. The route now passes the `AssetFlowService`
-payload directly into `hydrate_token_radar`, while `NarrativeReadModel` reads
-the formal public row `target` object through `_target_identity(row)` before
-digest lookup; the route guard forbids `_synthetic_target_type`,
-`_synthetic_target_id`, `_with_top_level_targets`, and `_strip_synthetic_targets`
+target-identity shape bridge. The route now passes the AssetFlowService
+payload directly into hydrate_token_radar, while NarrativeReadModel reads
+the formal public row target object through _target_identity(row) before
+digest lookup; the route guard forbids _synthetic_target_type,
+_synthetic_target_id, _with_top_level_targets, and _strip_synthetic_targets
 from returning
-(`src/parallax/app/surfaces/api/routes_radar.py:101`,
-`src/parallax/app/surfaces/api/routes_radar.py:111`,
-`src/parallax/app/surfaces/api/routes_radar.py:112`,
-`src/parallax/domains/narrative_intel/read_models/narrative_read_model.py:14`,
-`src/parallax/domains/narrative_intel/read_models/narrative_read_model.py:98`,
-`src/parallax/domains/narrative_intel/read_models/narrative_read_model.py:115`,
-`src/parallax/domains/narrative_intel/read_models/narrative_read_model.py:121`,
-`src/parallax/domains/narrative_intel/read_models/narrative_read_model.py:122`,
-`src/parallax/domains/narrative_intel/read_models/narrative_read_model.py:123`,
-`src/parallax/domains/narrative_intel/read_models/narrative_read_model.py:124`,
-`tests/unit/domains/narrative_intel/test_narrative_read_model.py:66`,
-`tests/unit/domains/narrative_intel/test_narrative_read_model.py:85`,
-`tests/unit/test_api_narrative_contract.py:177`,
-`tests/unit/test_api_narrative_contract.py:181`,
-`tests/unit/test_api_narrative_contract.py:183`,
-`tests/architecture/test_api_read_paths_provider_free.py:361`,
-`tests/architecture/test_api_read_paths_provider_free.py:365`,
-`tests/architecture/test_api_read_paths_provider_free.py:366`,
-`tests/architecture/test_api_read_paths_provider_free.py:368`,
-`tests/architecture/test_api_read_paths_provider_free.py:370`,
-`tests/architecture/test_api_read_paths_provider_free.py:371`,
-`tests/architecture/test_api_read_paths_provider_free.py:380`,
-`tests/architecture/test_api_read_paths_provider_free.py:381`).
+(src/parallax/app/surfaces/api/routes_radar.py:101,
+src/parallax/app/surfaces/api/routes_radar.py:111,
+src/parallax/app/surfaces/api/routes_radar.py:112,
+src/parallax/domains/narrative_intel/read_models/narrative_read_model.py:14,
+src/parallax/domains/narrative_intel/read_models/narrative_read_model.py:98,
+src/parallax/domains/narrative_intel/read_models/narrative_read_model.py:115,
+src/parallax/domains/narrative_intel/read_models/narrative_read_model.py:121,
+src/parallax/domains/narrative_intel/read_models/narrative_read_model.py:122,
+src/parallax/domains/narrative_intel/read_models/narrative_read_model.py:123,
+src/parallax/domains/narrative_intel/read_models/narrative_read_model.py:124,
+tests/unit/domains/narrative_intel/test_narrative_read_model.py:66,
+tests/unit/domains/narrative_intel/test_narrative_read_model.py:85,
+tests/unit/test_api_narrative_contract.py:177,
+tests/unit/test_api_narrative_contract.py:181,
+tests/unit/test_api_narrative_contract.py:183,
+tests/architecture/test_api_read_paths_provider_free.py:361,
+tests/architecture/test_api_read_paths_provider_free.py:365,
+tests/architecture/test_api_read_paths_provider_free.py:366,
+tests/architecture/test_api_read_paths_provider_free.py:368,
+tests/architecture/test_api_read_paths_provider_free.py:370,
+tests/architecture/test_api_read_paths_provider_free.py:371,
+tests/architecture/test_api_read_paths_provider_free.py:380,
+tests/architecture/test_api_read_paths_provider_free.py:381).
 
 Follow-up review found the same required-write evidence gap in Asset Market
-registry facts. In `RegistryRepository`, `upsert_cex_token`,
-`upsert_chain_asset`, `upsert_pricefeed`, and `upsert_us_equity_symbol` now
+registry facts. In RegistryRepository, upsert_cex_token,
+upsert_chain_asset, upsert_pricefeed, and upsert_us_equity_symbol now
 capture the PostgreSQL cursor, fetch one returned row, and return only through
-`_required_returning_row(cursor, row)`; CEX token, price-feed, and US equity
-symbol upserts use `RETURNING *`, while the chain-asset CTE result also requires
+_required_returning_row(cursor, row); CEX token, price-feed, and US equity
+symbol upserts use RETURNING *, while the chain-asset CTE result also requires
 rowcount=1 with a returned row
-(`src/parallax/domains/asset_market/repositories/registry_repository.py:10`,
-`src/parallax/domains/asset_market/repositories/registry_repository.py:14`,
-`src/parallax/domains/asset_market/repositories/registry_repository.py:34`,
-`src/parallax/domains/asset_market/repositories/registry_repository.py:47`,
-`src/parallax/domains/asset_market/repositories/registry_repository.py:51`,
-`src/parallax/domains/asset_market/repositories/registry_repository.py:52`,
-`src/parallax/domains/asset_market/repositories/registry_repository.py:54`,
-`src/parallax/domains/asset_market/repositories/registry_repository.py:80`,
-`src/parallax/domains/asset_market/repositories/registry_repository.py:108`,
-`src/parallax/domains/asset_market/repositories/registry_repository.py:123`,
-`src/parallax/domains/asset_market/repositories/registry_repository.py:152`,
-`src/parallax/domains/asset_market/repositories/registry_repository.py:153`,
-`src/parallax/domains/asset_market/repositories/registry_repository.py:155`,
-`src/parallax/domains/asset_market/repositories/registry_repository.py:205`,
-`src/parallax/domains/asset_market/repositories/registry_repository.py:226`,
-`src/parallax/domains/asset_market/repositories/registry_repository.py:247`,
-`src/parallax/domains/asset_market/repositories/registry_repository.py:248`,
-`src/parallax/domains/asset_market/repositories/registry_repository.py:250`,
-`src/parallax/domains/asset_market/repositories/registry_repository.py:278`,
-`src/parallax/domains/asset_market/repositories/registry_repository.py:295`,
-`src/parallax/domains/asset_market/repositories/registry_repository.py:310`,
-`src/parallax/domains/asset_market/repositories/registry_repository.py:311`).
-The shared `_required_returning_row` helper reads _cursor_rowcount(cursor),
-fails missing rowcount as `registry_repository_rowcount_required`, fails
-non-one or missing-row evidence as `registry_repository_rowcount_invalid`, and
-the architecture guard forbids `_row_by_id`, `return dict(row) if row else {}`,
-and `) or {}` from reappearing
-(`src/parallax/domains/asset_market/repositories/registry_repository.py:779`,
-`src/parallax/domains/asset_market/repositories/registry_repository.py:783`,
-`src/parallax/domains/asset_market/repositories/registry_repository.py:798`,
-`src/parallax/domains/asset_market/repositories/registry_repository.py:799`,
-`src/parallax/domains/asset_market/repositories/registry_repository.py:800`,
-`src/parallax/domains/asset_market/repositories/registry_repository.py:801`,
-`src/parallax/domains/asset_market/repositories/registry_repository.py:802`,
-`src/parallax/domains/asset_market/repositories/registry_repository.py:803`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1164`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1165`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1166`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1167`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1168`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1169`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1170`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1172`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1173`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1174`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1175`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1176`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1177`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1179`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1180`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1181`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1182`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:1183`).
+(src/parallax/domains/asset_market/repositories/registry_repository.py:10,
+src/parallax/domains/asset_market/repositories/registry_repository.py:14,
+src/parallax/domains/asset_market/repositories/registry_repository.py:34,
+src/parallax/domains/asset_market/repositories/registry_repository.py:47,
+src/parallax/domains/asset_market/repositories/registry_repository.py:51,
+src/parallax/domains/asset_market/repositories/registry_repository.py:52,
+src/parallax/domains/asset_market/repositories/registry_repository.py:54,
+src/parallax/domains/asset_market/repositories/registry_repository.py:80,
+src/parallax/domains/asset_market/repositories/registry_repository.py:108,
+src/parallax/domains/asset_market/repositories/registry_repository.py:123,
+src/parallax/domains/asset_market/repositories/registry_repository.py:152,
+src/parallax/domains/asset_market/repositories/registry_repository.py:153,
+src/parallax/domains/asset_market/repositories/registry_repository.py:155,
+src/parallax/domains/asset_market/repositories/registry_repository.py:205,
+src/parallax/domains/asset_market/repositories/registry_repository.py:226,
+src/parallax/domains/asset_market/repositories/registry_repository.py:247,
+src/parallax/domains/asset_market/repositories/registry_repository.py:248,
+src/parallax/domains/asset_market/repositories/registry_repository.py:250,
+src/parallax/domains/asset_market/repositories/registry_repository.py:278,
+src/parallax/domains/asset_market/repositories/registry_repository.py:295,
+src/parallax/domains/asset_market/repositories/registry_repository.py:310,
+src/parallax/domains/asset_market/repositories/registry_repository.py:311).
+The shared _required_returning_row helper reads _cursor_rowcount(cursor),
+fails missing rowcount as registry_repository_rowcount_required, fails
+non-one or missing-row evidence as registry_repository_rowcount_invalid, and
+the architecture guard forbids _row_by_id, return dict(row) if row else {},
+and ) or {} from reappearing
+(src/parallax/domains/asset_market/repositories/registry_repository.py:779,
+src/parallax/domains/asset_market/repositories/registry_repository.py:783,
+src/parallax/domains/asset_market/repositories/registry_repository.py:798,
+src/parallax/domains/asset_market/repositories/registry_repository.py:799,
+src/parallax/domains/asset_market/repositories/registry_repository.py:800,
+src/parallax/domains/asset_market/repositories/registry_repository.py:801,
+src/parallax/domains/asset_market/repositories/registry_repository.py:802,
+src/parallax/domains/asset_market/repositories/registry_repository.py:803,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1164,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1165,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1166,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1167,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1168,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1169,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1170,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1172,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1173,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1174,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1175,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1176,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1177,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1179,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1180,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1181,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1182,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:1183).
 Unit tests cover missing rowcount, invalid or unexpected rowcount, and
 rowcount=1 with no returned row for all four registry upsert operations
-(`tests/unit/test_registry_repository.py:219`,
-`tests/unit/test_registry_repository.py:220`,
-`tests/unit/test_registry_repository.py:223`,
-`tests/unit/test_registry_repository.py:227`,
-`tests/unit/test_registry_repository.py:228`,
-`tests/unit/test_registry_repository.py:229`,
-`tests/unit/test_registry_repository.py:235`,
-`tests/unit/test_registry_repository.py:239`,
-`tests/unit/test_registry_repository.py:240`,
-`tests/unit/test_registry_repository.py:245`).
+(tests/unit/test_registry_repository.py:219,
+tests/unit/test_registry_repository.py:220,
+tests/unit/test_registry_repository.py:223,
+tests/unit/test_registry_repository.py:227,
+tests/unit/test_registry_repository.py:228,
+tests/unit/test_registry_repository.py:229,
+tests/unit/test_registry_repository.py:235,
+tests/unit/test_registry_repository.py:239,
+tests/unit/test_registry_repository.py:240,
+tests/unit/test_registry_repository.py:245).
 
 Follow-up review found the same rowcount evidence gap in News projection
-dirty-target terminalization. `terminalize_targets` deletes claimed
-news_projection_dirty_targets through `_delete_claimed_target_rows(records)`,
+dirty-target terminalization. terminalize_targets deletes claimed
+news_projection_dirty_targets through _delete_claimed_target_rows(records),
 where cursor.fetchall() returns deleted rows, _returned_rowcount(cursor, rows)
 validates PostgreSQL cursor.rowcount, and only then may
 terminalize_source_row write terminal ledger evidence; the returned terminal
-count is the validated `deleted_count`
-(`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:391`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:283`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:286`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:321`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:322`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:323`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:407`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:410`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:413`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:615`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:426`).
-The `terminalize_targets` target contract is that `_returned_rowcount` reads
+count is the validated deleted_count
+(src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:383,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:275,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:278,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:300,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:309,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:313,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:314,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:398,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:402,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:413,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:418).
+The terminalize_targets target contract is that _returned_rowcount reads
 PostgreSQL cursor.rowcount, fails missing rowcount as
 news_projection_dirty_target_rowcount_required, fails invalid or mismatched
 rowcount as news_projection_dirty_target_rowcount_invalid, and tests plus
 architecture guards prove news_projection_dirty_targets terminal ledger writes
 are blocked before malformed RETURNING count evidence is trusted
-(`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:391`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:413`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:613`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:615`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:617`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:619`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:625`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:626`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:627`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:628`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:629`,
-`tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:257`,
-`tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:272`,
-`tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:284`,
-`tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:301`,
-`tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:310`,
-`tests/architecture/test_news_intel_kiss_simplification.py:412`,
-`tests/architecture/test_news_intel_kiss_simplification.py:425`,
-`tests/architecture/test_news_intel_kiss_simplification.py:431`,
-`tests/architecture/test_news_intel_kiss_simplification.py:433`,
-`tests/architecture/test_news_intel_kiss_simplification.py:434`).
+(src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:383,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:413,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:660,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:661,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:662,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:663,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:628,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:629,
+tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:257,
+tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:272,
+tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:284,
+tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:301,
+tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:310,
+tests/architecture/test_news_intel_kiss_simplification.py:412,
+tests/architecture/test_news_intel_kiss_simplification.py:425,
+tests/architecture/test_news_intel_kiss_simplification.py:431,
+tests/architecture/test_news_intel_kiss_simplification.py:433,
+tests/architecture/test_news_intel_kiss_simplification.py:434).
 
 Follow-up review found the same single-row rowcount evidence gap at the Evidence
-fact ingress boundary. `insert_raw_frame` and
-`insert_event_without_commit` now classify `raw_frames` and `events`
-conflict-ignore results only through `_single_rowcount(cursor) == 1`,
-and `_single_rowcount` fails missing or invalid PostgreSQL rowcount evidence as
-`evidence_repository_rowcount_required` or
-`evidence_repository_rowcount_invalid`
-(`src/parallax/domains/evidence/repositories/evidence_repository.py:30`,
-`src/parallax/domains/evidence/repositories/evidence_repository.py:45`,
-`src/parallax/domains/evidence/repositories/evidence_repository.py:53`,
-`src/parallax/domains/evidence/repositories/evidence_repository.py:63`,
-`src/parallax/domains/evidence/repositories/evidence_repository.py:66`,
-`src/parallax/domains/evidence/repositories/evidence_repository.py:88`,
-`src/parallax/domains/evidence/repositories/evidence_repository.py:391`,
-`src/parallax/domains/evidence/repositories/evidence_repository.py:393`,
-`src/parallax/domains/evidence/repositories/evidence_repository.py:395`,
-`src/parallax/domains/evidence/repositories/evidence_repository.py:397`,
-`src/parallax/domains/evidence/repositories/evidence_repository.py:399`).
-`insert_event_entities` now counts `event_entities` writes from the same
+fact ingress boundary. insert_raw_frame and
+insert_event_without_commit now classify raw_frames and events
+conflict-ignore results only through _single_rowcount(cursor) == 1,
+and _single_rowcount fails missing or invalid PostgreSQL rowcount evidence as
+evidence_repository_rowcount_required or
+evidence_repository_rowcount_invalid
+(src/parallax/domains/evidence/repositories/evidence_repository.py:30,
+src/parallax/domains/evidence/repositories/evidence_repository.py:45,
+src/parallax/domains/evidence/repositories/evidence_repository.py:53,
+src/parallax/domains/evidence/repositories/evidence_repository.py:63,
+src/parallax/domains/evidence/repositories/evidence_repository.py:66,
+src/parallax/domains/evidence/repositories/evidence_repository.py:88,
+src/parallax/domains/evidence/repositories/evidence_repository.py:391,
+src/parallax/domains/evidence/repositories/evidence_repository.py:393,
+src/parallax/domains/evidence/repositories/evidence_repository.py:395,
+src/parallax/domains/evidence/repositories/evidence_repository.py:397,
+src/parallax/domains/evidence/repositories/evidence_repository.py:399).
+insert_event_entities now counts event_entities writes from the same
 single-row rowcount contract, failing as
-`entity_repository_rowcount_required` or `entity_repository_rowcount_invalid`
+entity_repository_rowcount_required or entity_repository_rowcount_invalid
 before inserted-entity counts are returned
-(`src/parallax/domains/evidence/repositories/entity_repository.py:17`,
-`src/parallax/domains/evidence/repositories/entity_repository.py:32`,
-`src/parallax/domains/evidence/repositories/entity_repository.py:62`,
-`src/parallax/domains/evidence/repositories/entity_repository.py:176`,
-`src/parallax/domains/evidence/repositories/entity_repository.py:180`,
-`src/parallax/domains/evidence/repositories/entity_repository.py:182`).
-Unit tests cover missing, boolean, string, `None`, negative, and multi-row
+(src/parallax/domains/evidence/repositories/entity_repository.py:17,
+src/parallax/domains/evidence/repositories/entity_repository.py:32,
+src/parallax/domains/evidence/repositories/entity_repository.py:62,
+src/parallax/domains/evidence/repositories/entity_repository.py:176,
+src/parallax/domains/evidence/repositories/entity_repository.py:180,
+src/parallax/domains/evidence/repositories/entity_repository.py:182).
+Unit tests cover missing, boolean, string, None, negative, and multi-row
 rowcount values across raw-frame, event, and event-entity writes, and the
 architecture guard rejects bare/default rowcount classification
-(`tests/unit/domains/evidence/test_evidence_repositories.py:115`,
-`tests/unit/domains/evidence/test_evidence_repositories.py:116`,
-`tests/unit/domains/evidence/test_evidence_repositories.py:127`,
-`tests/unit/domains/evidence/test_evidence_repositories.py:128`,
-`tests/unit/domains/evidence/test_evidence_repositories.py:179`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:857`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:858`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:859`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:860`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:864`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:865`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:866`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:867`,
-`tests/architecture/test_runtime_worker_constraint_hard_cut.py:868`).
+(tests/unit/domains/evidence/test_evidence_repositories.py:115,
+tests/unit/domains/evidence/test_evidence_repositories.py:116,
+tests/unit/domains/evidence/test_evidence_repositories.py:127,
+tests/unit/domains/evidence/test_evidence_repositories.py:128,
+tests/unit/domains/evidence/test_evidence_repositories.py:179,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:857,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:858,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:859,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:860,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:864,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:865,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:866,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:867,
+tests/architecture/test_runtime_worker_constraint_hard_cut.py:868).
 
 Follow-up review found that CEX read-model rowcount helpers still preserved a
-post-hard-cut compatibility conversion. `CexOiRadarRepository` accounts for
-board delete/upsert writes through `_cursor_rowcount(delete_cursor)` and
-`_cursor_rowcount(upsert_cursor)`, and `_cursor_rowcount` now rejects missing,
+post-hard-cut compatibility conversion. CexOiRadarRepository accounts for
+board delete/upsert writes through _cursor_rowcount(delete_cursor) and
+_cursor_rowcount(upsert_cursor), and _cursor_rowcount now rejects missing,
 boolean, negative, and non-integer cursor.rowcount before board write counts
 are returned
 (src/parallax/domains/cex_market_intel/repositories/cex_oi_radar_repository.py:22,
@@ -1909,8 +1906,8 @@ src/parallax/domains/cex_market_intel/repositories/cex_oi_radar_repository.py:41
 src/parallax/domains/cex_market_intel/repositories/cex_oi_radar_repository.py:414,
 src/parallax/domains/cex_market_intel/repositories/cex_oi_radar_repository.py:415,
 src/parallax/domains/cex_market_intel/repositories/cex_oi_radar_repository.py:417).
-`CexDetailSnapshotRepository` accounts for snapshot upserts through
-`_rowcount(cursor)`, and `CexDerivativeSeriesRepository` accounts for derivative
+CexDetailSnapshotRepository accounts for snapshot upserts through
+_rowcount(cursor), and CexDerivativeSeriesRepository accounts for derivative
 series upserts through _cursor_rowcount(cursor) with the same non-boolean
 non-negative integer rowcount contract
 (src/parallax/domains/cex_market_intel/repositories/cex_detail_snapshot_repository.py:31,
@@ -1929,8 +1926,8 @@ src/parallax/domains/cex_market_intel/repositories/cex_derivative_series_reposit
 src/parallax/domains/cex_market_intel/repositories/cex_derivative_series_repository.py:139).
 Unit tests cover string, boolean, and negative rowcount for board/detail paths
 and missing/string/bool/negative rowcount for derivative series, while the
-architecture guard rejects restoring `return max(0, int(rowcount))` or
-`return max(int(rowcount), 0)` compatibility
+architecture guard rejects restoring return max(0, int(rowcount)) or
+return max(int(rowcount), 0) compatibility
 (tests/unit/domains/cex_market_intel/test_cex_oi_radar_repository.py:465,
 tests/unit/domains/cex_market_intel/test_cex_oi_radar_repository.py:483,
 tests/unit/domains/cex_market_intel/test_cex_detail_snapshot_repository.py:393,
@@ -1945,9 +1942,9 @@ tests/architecture/test_cex_oi_kappa_contract.py:189,
 tests/architecture/test_cex_oi_kappa_contract.py:192).
 
 Follow-up review found the same rowcount conversion gap in Token Radar write
-count helpers after the default-rowcount hard cut. `TokenRadarRepository`,
-`TokenRadarDirtyTargetRepository`, `TokenRadarSourceDirtyEventRepository`, and
-`TokenRadarRankSourceQuery` now require cursor.rowcount to be a non-boolean
+count helpers after the default-rowcount hard cut. TokenRadarRepository,
+TokenRadarDirtyTargetRepository, TokenRadarSourceDirtyEventRepository, and
+TokenRadarRankSourceQuery now require cursor.rowcount to be a non-boolean
 non-negative integer and reject numeric strings before current-row publication,
 target/source dirty queue accounting, or rank-source prune counts are returned
 (src/parallax/domains/token_intel/repositories/token_radar_repository.py:84,
@@ -1974,7 +1971,7 @@ src/parallax/domains/token_intel/queries/token_radar_rank_source_query.py:270).
 Unit tests cover numeric-string rowcount for current-row publication,
 target-feature writes, target dirty queue writes, source dirty queue writes, and
 rank-source prune writes. Architecture guards reject restoring
-`count = int(rowcount)` at those cursor rowcount boundaries while preserving
+count = int(rowcount) at those cursor rowcount boundaries while preserving
 explicit SQL aggregate count evidence for rank-source population
 (tests/unit/test_token_radar_repository.py:554,
 tests/unit/test_token_radar_repository.py:895,
@@ -1992,342 +1989,334 @@ tests/architecture/test_token_radar_source_width_contract.py:314,
 tests/architecture/test_token_radar_source_width_contract.py:315).
 
 Follow-up review found the same returned-row-only classification gap in News
-page read-model writes. `replace_page_rows_for_items` writes `news_page_rows`
-through `RETURNING (xmax = 0)` and must classify inserted, updated, and
-unchanged results only after `_optional_returning_row` validates real
+page read-model writes. replace_page_rows_for_items writes news_page_rows
+through RETURNING (xmax = 0) and must classify inserted, updated, and
+unchanged results only after _optional_returning_row validates real
 PostgreSQL cursor.rowcount against returned-row presence
-(`src/parallax/domains/news_intel/repositories/news_repository.py:4785`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:4788`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:4791`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:4823`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:4828`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:4825`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:4889`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:4892`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:4893`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:4894`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:4895`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5063`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5066`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5060`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5087`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5084`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5085`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5086`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5088`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5090`).
+(src/parallax/domains/news_intel/repositories/news_repository.py:5042,
+src/parallax/domains/news_intel/repositories/news_repository.py:5082,
+src/parallax/domains/news_intel/repositories/news_repository.py:5146,
+src/parallax/domains/news_intel/repositories/news_repository.py:5151,
+src/parallax/domains/news_intel/repositories/news_repository.py:5341).
 Unit and architecture coverage now require missing/invalid/mismatched rowcount
 to fail before page-row inserted/updated/unchanged accounting, while accepting
 the only unchanged projection shape as rowcount 0 with no returned row
-(`tests/unit/domains/news_intel/test_news_repository_queries.py:1315`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:1324`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:1332`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:1341`,
-`tests/architecture/test_news_intel_kiss_simplification.py:838`,
-`tests/architecture/test_news_intel_kiss_simplification.py:852`,
-`tests/architecture/test_news_intel_kiss_simplification.py:856`,
-`tests/architecture/test_news_intel_kiss_simplification.py:857`,
-`tests/architecture/test_news_intel_kiss_simplification.py:858`).
+(tests/unit/domains/news_intel/test_news_repository_queries.py:1315,
+tests/unit/domains/news_intel/test_news_repository_queries.py:1324,
+tests/unit/domains/news_intel/test_news_repository_queries.py:1332,
+tests/unit/domains/news_intel/test_news_repository_queries.py:1341,
+tests/architecture/test_news_intel_kiss_simplification.py:838,
+tests/architecture/test_news_intel_kiss_simplification.py:852,
+tests/architecture/test_news_intel_kiss_simplification.py:856,
+tests/architecture/test_news_intel_kiss_simplification.py:857,
+tests/architecture/test_news_intel_kiss_simplification.py:858).
 
 Follow-up review found the same returned-row-only evidence gap in News fetch
-source claims. `claim_due_sources` owns the
-`UPDATE news_sources ... RETURNING sources.*` source-claim path used before
-provider fetch work starts, and its target contract is to capture the cursor,
-fetch returned source rows, validate _returned_rowcount(cursor, rows), and
-return due-source claim rows only after cursor rowcount matches the returned row
-count. Missing rowcount fails as news_repository_rowcount_required; invalid or
-mismatched rowcount fails as news_repository_rowcount_invalid; architecture
-coverage rejects restored chained `.fetchall()` or returned-list-length
-accounting
-(`src/parallax/domains/news_intel/repositories/news_repository.py:453`,
-`src/parallax/domains/news_intel/ARCHITECTURE.md:118`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:477`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:486`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:487`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5056`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5060`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5062`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5075`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5076`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5078`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:742`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:759`,
-`tests/architecture/test_news_intel_kiss_simplification.py:544`,
-`tests/architecture/test_news_intel_kiss_simplification.py:559`,
-`tests/architecture/test_news_intel_kiss_simplification.py:561`,
-`tests/architecture/test_news_intel_kiss_simplification.py:564`).
+source claims. claim_due_sources owns the UPDATE news_sources AS sources
+and RETURNING sources.* source-claim path used before provider fetch work
+starts (src/parallax/domains/news_intel/repositories/news_repository.py:472,
+src/parallax/domains/news_intel/repositories/news_repository.py:477), and its
+target contract is to capture the cursor, fetch returned source rows, validate
+_returned_rowcount(cursor, rows), and return due-source claim rows only after
+cursor rowcount matches the returned row count. Missing rowcount fails as
+news_repository_rowcount_required; invalid or mismatched rowcount fails as
+news_repository_rowcount_invalid; architecture coverage rejects restored chained
+.fetchall() or returned-list-length accounting
+(src/parallax/domains/news_intel/repositories/news_repository.py:453,
+src/parallax/domains/news_intel/ARCHITECTURE.md:118,
+src/parallax/domains/news_intel/repositories/news_repository.py:477,
+src/parallax/domains/news_intel/repositories/news_repository.py:486,
+src/parallax/domains/news_intel/repositories/news_repository.py:487,
+src/parallax/domains/news_intel/repositories/news_repository.py:5056,
+src/parallax/domains/news_intel/repositories/news_repository.py:5060,
+src/parallax/domains/news_intel/repositories/news_repository.py:5062,
+src/parallax/domains/news_intel/repositories/news_repository.py:5075,
+src/parallax/domains/news_intel/repositories/news_repository.py:5076,
+src/parallax/domains/news_intel/repositories/news_repository.py:5078,
+tests/unit/domains/news_intel/test_news_repository_queries.py:742,
+tests/unit/domains/news_intel/test_news_repository_queries.py:759,
+tests/architecture/test_news_intel_kiss_simplification.py:544,
+tests/architecture/test_news_intel_kiss_simplification.py:559,
+tests/architecture/test_news_intel_kiss_simplification.py:561,
+tests/architecture/test_news_intel_kiss_simplification.py:564).
 
 Follow-up review found the same returned-row-only evidence gap in News
-fetch-run finalization. `finish_fetch_run` writes `UPDATE news_fetch_runs`,
-reads `row = cursor.fetchone()`, and must validate
-`_required_returning_row(cursor, row)` before `UPDATE news_sources` or
-`return returned_row`; the helper calls `_optional_returning_row(cursor, row)`
+fetch-run finalization. finish_fetch_run writes UPDATE news_fetch_runs,
+reads row = cursor.fetchone(), and must validate
+_required_returning_row(cursor, row) before UPDATE news_sources or
+return returned_row; the helper calls _optional_returning_row
 and fails malformed required-row evidence as
 news_repository_rowcount_invalid. Unit coverage requires missing rowcount,
 invalid/mismatched rowcount, missing required rows, and matching single-row
 success to preserve that order; architecture coverage rejects chained
-).fetchone(), `return dict(row)`, and rowcount-default restoration
-(`src/parallax/domains/news_intel/repositories/news_repository.py:514`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:537`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:539`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:550`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:565`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:566`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:570`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:592`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5073`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5097`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5099`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5100`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5093`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5094`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5096`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:912`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:922`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:935`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:946`,
-`tests/architecture/test_news_intel_kiss_simplification.py:753`,
-`tests/architecture/test_news_intel_kiss_simplification.py:787`,
-`tests/architecture/test_news_intel_kiss_simplification.py:759`,
-`tests/architecture/test_news_intel_kiss_simplification.py:760`,
-`tests/architecture/test_news_intel_kiss_simplification.py:768`,
-`tests/architecture/test_news_intel_kiss_simplification.py:772`,
-`tests/architecture/test_news_intel_kiss_simplification.py:774`).
+).fetchone(), return dict(row), and rowcount-default restoration
+(src/parallax/domains/news_intel/repositories/news_repository.py:514,
+src/parallax/domains/news_intel/repositories/news_repository.py:537,
+src/parallax/domains/news_intel/repositories/news_repository.py:539,
+src/parallax/domains/news_intel/repositories/news_repository.py:550,
+src/parallax/domains/news_intel/repositories/news_repository.py:565,
+src/parallax/domains/news_intel/repositories/news_repository.py:566,
+src/parallax/domains/news_intel/repositories/news_repository.py:570,
+src/parallax/domains/news_intel/repositories/news_repository.py:592,
+src/parallax/domains/news_intel/repositories/news_repository.py:5073,
+src/parallax/domains/news_intel/repositories/news_repository.py:5097,
+src/parallax/domains/news_intel/repositories/news_repository.py:5099,
+src/parallax/domains/news_intel/repositories/news_repository.py:5100,
+src/parallax/domains/news_intel/repositories/news_repository.py:5093,
+src/parallax/domains/news_intel/repositories/news_repository.py:5094,
+src/parallax/domains/news_intel/repositories/news_repository.py:5096,
+src/parallax/domains/news_intel/repositories/news_repository.py:5341,
+src/parallax/domains/news_intel/repositories/news_repository.py:5385,
+src/parallax/domains/news_intel/repositories/news_repository.py:5351,
+tests/unit/domains/news_intel/test_news_repository_queries.py:912,
+tests/unit/domains/news_intel/test_news_repository_queries.py:922,
+tests/unit/domains/news_intel/test_news_repository_queries.py:935,
+tests/unit/domains/news_intel/test_news_repository_queries.py:946,
+tests/architecture/test_news_intel_kiss_simplification.py:753,
+tests/architecture/test_news_intel_kiss_simplification.py:787,
+tests/architecture/test_news_intel_kiss_simplification.py:759,
+tests/architecture/test_news_intel_kiss_simplification.py:760,
+tests/architecture/test_news_intel_kiss_simplification.py:768,
+tests/architecture/test_news_intel_kiss_simplification.py:772,
+tests/architecture/test_news_intel_kiss_simplification.py:774).
 
 Follow-up review found the same execution-evidence gap at News fetch-run start.
-`start_fetch_run` writes `INSERT INTO news_fetch_runs`, validates
-`_required_rowcount(cursor, expected=1)` before `UPDATE news_sources`, validates
-the same helper again before `return fetch_run_id`, and the helper reads
+start_fetch_run writes INSERT INTO news_fetch_runs, validates
+_required_rowcount(cursor, expected=1) before UPDATE news_sources, validates
+the same helper again before return fetch_run_id, and the helper reads
 _cursor_rowcount(cursor) before failing invalid counts as
 news_repository_rowcount_invalid. Unit coverage requires missing/invalid
 insert and source-update rowcounts to fail in order, and architecture coverage
 keeps both required rowcount checks in the start path
-(`src/parallax/domains/news_intel/repositories/news_repository.py:491`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:495`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:500`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:503`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:510`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:511`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5068`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5069`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5071`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5073`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5074`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5077`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5079`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:854`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:865`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:877`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:888`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:900`,
-`tests/architecture/test_news_intel_kiss_simplification.py:777`,
-`tests/architecture/test_news_intel_kiss_simplification.py:791`,
-`tests/architecture/test_news_intel_kiss_simplification.py:792`,
-`tests/architecture/test_news_intel_kiss_simplification.py:794`,
-`tests/architecture/test_news_intel_kiss_simplification.py:796`,
-`tests/architecture/test_news_intel_kiss_simplification.py:797`,
-`tests/architecture/test_news_intel_kiss_simplification.py:798`).
+(src/parallax/domains/news_intel/repositories/news_repository.py:491,
+src/parallax/domains/news_intel/repositories/news_repository.py:495,
+src/parallax/domains/news_intel/repositories/news_repository.py:500,
+src/parallax/domains/news_intel/repositories/news_repository.py:503,
+src/parallax/domains/news_intel/repositories/news_repository.py:510,
+src/parallax/domains/news_intel/repositories/news_repository.py:511,
+src/parallax/domains/news_intel/repositories/news_repository.py:5068,
+src/parallax/domains/news_intel/repositories/news_repository.py:5069,
+src/parallax/domains/news_intel/repositories/news_repository.py:5071,
+src/parallax/domains/news_intel/repositories/news_repository.py:5073,
+src/parallax/domains/news_intel/repositories/news_repository.py:5074,
+src/parallax/domains/news_intel/repositories/news_repository.py:5077,
+src/parallax/domains/news_intel/repositories/news_repository.py:5079,
+tests/unit/domains/news_intel/test_news_repository_queries.py:854,
+tests/unit/domains/news_intel/test_news_repository_queries.py:865,
+tests/unit/domains/news_intel/test_news_repository_queries.py:877,
+tests/unit/domains/news_intel/test_news_repository_queries.py:888,
+tests/unit/domains/news_intel/test_news_repository_queries.py:900,
+tests/architecture/test_news_intel_kiss_simplification.py:777,
+tests/architecture/test_news_intel_kiss_simplification.py:791,
+tests/architecture/test_news_intel_kiss_simplification.py:792,
+tests/architecture/test_news_intel_kiss_simplification.py:794,
+tests/architecture/test_news_intel_kiss_simplification.py:796,
+tests/architecture/test_news_intel_kiss_simplification.py:797,
+tests/architecture/test_news_intel_kiss_simplification.py:798).
 
 Follow-up review found the same RETURNING-row evidence gap one step earlier in
-News configured-source reconciliation. `upsert_source` writes
-`INSERT INTO news_sources`, reads `row = cursor.fetchone()`, then validates
-`_required_returning_row(cursor, row)` before `return {**returned_row, "status": status}`.
-The required helper delegates to `_optional_returning_row(cursor, row)`, so
+News configured-source reconciliation. upsert_source writes
+INSERT INTO news_sources, reads row = cursor.fetchone(), then validates
+_required_returning_row(cursor, row) before return {**returned_row, "status": status}.
+The required helper delegates to _optional_returning_row, so
 missing rowcount fails as a required-rowcount error and no-row or rowcount/row
 mismatch fails as invalid rowcount. Unit coverage now requires missing,
 invalid/mismatched, and no-row source upsert results to fail, and architecture
 coverage keeps the source write segment from restoring chained fetchone or
 dict(row) success paths
-(`src/parallax/domains/news_intel/repositories/news_repository.py:230`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:279`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:281`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:304`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:326`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:327`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:328`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5084`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5085`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5097`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5100`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5093`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5094`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:367`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:382`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:398`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:409`,
-`tests/architecture/test_news_intel_kiss_simplification.py:568`,
-`tests/architecture/test_news_intel_kiss_simplification.py:572`,
-`tests/architecture/test_news_intel_kiss_simplification.py:576`,
-`tests/architecture/test_news_intel_kiss_simplification.py:578`,
-`tests/architecture/test_news_intel_kiss_simplification.py:582`,
-`tests/architecture/test_news_intel_kiss_simplification.py:588`,
-`tests/architecture/test_news_intel_kiss_simplification.py:591`).
+(src/parallax/domains/news_intel/repositories/news_repository.py:230,
+src/parallax/domains/news_intel/repositories/news_repository.py:279,
+src/parallax/domains/news_intel/repositories/news_repository.py:281,
+src/parallax/domains/news_intel/repositories/news_repository.py:304,
+src/parallax/domains/news_intel/repositories/news_repository.py:326,
+src/parallax/domains/news_intel/repositories/news_repository.py:327,
+src/parallax/domains/news_intel/repositories/news_repository.py:328,
+src/parallax/domains/news_intel/repositories/news_repository.py:5084,
+src/parallax/domains/news_intel/repositories/news_repository.py:5085,
+src/parallax/domains/news_intel/repositories/news_repository.py:5097,
+src/parallax/domains/news_intel/repositories/news_repository.py:5100,
+src/parallax/domains/news_intel/repositories/news_repository.py:5093,
+src/parallax/domains/news_intel/repositories/news_repository.py:5094,
+src/parallax/domains/news_intel/repositories/news_repository.py:5341,
+src/parallax/domains/news_intel/repositories/news_repository.py:5351,
+tests/unit/domains/news_intel/test_news_repository_queries.py:367,
+tests/unit/domains/news_intel/test_news_repository_queries.py:382,
+tests/unit/domains/news_intel/test_news_repository_queries.py:398,
+tests/unit/domains/news_intel/test_news_repository_queries.py:409,
+tests/architecture/test_news_intel_kiss_simplification.py:568,
+tests/architecture/test_news_intel_kiss_simplification.py:572,
+tests/architecture/test_news_intel_kiss_simplification.py:576,
+tests/architecture/test_news_intel_kiss_simplification.py:578,
+tests/architecture/test_news_intel_kiss_simplification.py:582,
+tests/architecture/test_news_intel_kiss_simplification.py:588,
+tests/architecture/test_news_intel_kiss_simplification.py:591).
 
 Follow-up review found the same required-row evidence gap at the News provider
-observation boundary. `upsert_provider_item` persists provider observations
-through `INSERT INTO news_provider_items`, captures
-`cursor = self.conn.execute`, reads `row = cursor.fetchone()`, validates
-`_required_returning_row(cursor, row)`, and returns
-`return {**returned_row, "status": status, "incoming_provider_payload_status": incoming_payload_status}`.
+observation boundary. upsert_provider_item persists provider observations
+through INSERT INTO news_provider_items, captures
+cursor = self.conn.execute, reads row = cursor.fetchone(), validates
+_required_returning_row(cursor, row), and returns
+return {**returned_row, "status": status, "incoming_provider_payload_status": incoming_payload_status}.
 That makes inserted/updated provider-item outcomes require rowcount=1 with one
 returned row, while duplicate/no-material-change still returns the already-read
 existing row without running the write. Unit coverage now requires missing,
 invalid/mismatched, and no-row provider-item upserts to fail, and architecture
 coverage forbids restoring chained fetchone or dict(row) success in the
 provider-item write segment
-(`src/parallax/domains/news_intel/repositories/news_repository.py:675`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:806`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:808`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:851`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:869`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:870`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:871`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5084`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5093`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5094`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:425`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:440`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:458`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:469`,
-`tests/architecture/test_news_intel_kiss_simplification.py:594`,
-`tests/architecture/test_news_intel_kiss_simplification.py:601`,
-`tests/architecture/test_news_intel_kiss_simplification.py:602`,
-`tests/architecture/test_news_intel_kiss_simplification.py:604`,
-`tests/architecture/test_news_intel_kiss_simplification.py:608`,
-`tests/architecture/test_news_intel_kiss_simplification.py:612`,
-`tests/architecture/test_news_intel_kiss_simplification.py:613`,
-`tests/architecture/test_news_intel_kiss_simplification.py:614`,
-`tests/architecture/test_news_intel_kiss_simplification.py:615`,
-`tests/architecture/test_news_intel_kiss_simplification.py:616`,
-`tests/architecture/test_news_intel_kiss_simplification.py:618`).
+(src/parallax/domains/news_intel/repositories/news_repository.py:675,
+src/parallax/domains/news_intel/repositories/news_repository.py:806,
+src/parallax/domains/news_intel/repositories/news_repository.py:808,
+src/parallax/domains/news_intel/repositories/news_repository.py:851,
+src/parallax/domains/news_intel/repositories/news_repository.py:869,
+src/parallax/domains/news_intel/repositories/news_repository.py:870,
+src/parallax/domains/news_intel/repositories/news_repository.py:871,
+src/parallax/domains/news_intel/repositories/news_repository.py:5084,
+src/parallax/domains/news_intel/repositories/news_repository.py:5093,
+src/parallax/domains/news_intel/repositories/news_repository.py:5094,
+tests/unit/domains/news_intel/test_news_repository_queries.py:425,
+tests/unit/domains/news_intel/test_news_repository_queries.py:440,
+tests/unit/domains/news_intel/test_news_repository_queries.py:458,
+tests/unit/domains/news_intel/test_news_repository_queries.py:469,
+tests/architecture/test_news_intel_kiss_simplification.py:594,
+tests/architecture/test_news_intel_kiss_simplification.py:601,
+tests/architecture/test_news_intel_kiss_simplification.py:602,
+tests/architecture/test_news_intel_kiss_simplification.py:604,
+tests/architecture/test_news_intel_kiss_simplification.py:608,
+tests/architecture/test_news_intel_kiss_simplification.py:612,
+tests/architecture/test_news_intel_kiss_simplification.py:613,
+tests/architecture/test_news_intel_kiss_simplification.py:614,
+tests/architecture/test_news_intel_kiss_simplification.py:615,
+tests/architecture/test_news_intel_kiss_simplification.py:616,
+tests/architecture/test_news_intel_kiss_simplification.py:618).
 
 Follow-up review found the same required-row evidence gap at the News canonical
-item merge boundary. `upsert_canonical_news_item` persists canonical product
-facts through `INSERT INTO news_items`, captures `cursor = self.conn.execute`,
-reads `row = cursor.fetchone()`, validates
-`_required_returning_row(cursor, row)`, and uses
-`str(returned_row["news_item_id"])` before observation-edge writes, remap cleanup,
+item merge boundary. upsert_canonical_news_item persists canonical product
+facts through INSERT INTO news_items, captures cursor = self.conn.execute,
+reads row = cursor.fetchone(), validates
+_required_returning_row(cursor, row), and uses
+str(returned_row["news_item_id"]) before observation-edge writes, remap cleanup,
 and summary refresh can continue. Unit coverage now requires missing,
 invalid/mismatched, and no-row canonical item upsert results to fail, and
 architecture coverage forbids restoring chained fetchone or rowcount-default
 success in the canonical item write segment
-(`src/parallax/domains/news_intel/repositories/news_repository.py:874`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1111`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1113`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1199`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1227`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1228`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1248`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1290`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1298`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1306`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5084`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5093`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5094`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:486`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:499`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:515`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:525`,
-`tests/architecture/test_news_intel_kiss_simplification.py:623`,
-`tests/architecture/test_news_intel_kiss_simplification.py:637`,
-`tests/architecture/test_news_intel_kiss_simplification.py:641`,
-`tests/architecture/test_news_intel_kiss_simplification.py:642`,
-`tests/architecture/test_news_intel_kiss_simplification.py:643`,
-`tests/architecture/test_news_intel_kiss_simplification.py:644`,
-`tests/architecture/test_news_intel_kiss_simplification.py:645`,
-`tests/architecture/test_news_intel_kiss_simplification.py:646`).
+(src/parallax/domains/news_intel/repositories/news_repository.py:874,
+src/parallax/domains/news_intel/repositories/news_repository.py:1111,
+src/parallax/domains/news_intel/repositories/news_repository.py:1113,
+src/parallax/domains/news_intel/repositories/news_repository.py:1199,
+src/parallax/domains/news_intel/repositories/news_repository.py:1227,
+src/parallax/domains/news_intel/repositories/news_repository.py:1228,
+src/parallax/domains/news_intel/repositories/news_repository.py:1248,
+src/parallax/domains/news_intel/repositories/news_repository.py:1290,
+src/parallax/domains/news_intel/repositories/news_repository.py:1298,
+src/parallax/domains/news_intel/repositories/news_repository.py:1306,
+src/parallax/domains/news_intel/repositories/news_repository.py:5084,
+src/parallax/domains/news_intel/repositories/news_repository.py:5093,
+src/parallax/domains/news_intel/repositories/news_repository.py:5094,
+tests/unit/domains/news_intel/test_news_repository_queries.py:486,
+tests/unit/domains/news_intel/test_news_repository_queries.py:499,
+tests/unit/domains/news_intel/test_news_repository_queries.py:515,
+tests/unit/domains/news_intel/test_news_repository_queries.py:525,
+tests/architecture/test_news_intel_kiss_simplification.py:623,
+tests/architecture/test_news_intel_kiss_simplification.py:637,
+tests/architecture/test_news_intel_kiss_simplification.py:641,
+tests/architecture/test_news_intel_kiss_simplification.py:642,
+tests/architecture/test_news_intel_kiss_simplification.py:643,
+tests/architecture/test_news_intel_kiss_simplification.py:644,
+tests/architecture/test_news_intel_kiss_simplification.py:645,
+tests/architecture/test_news_intel_kiss_simplification.py:646).
 
 Follow-up review then found the same execution-evidence gap on the observation
-edge hop itself. `upsert_canonical_news_item` now captures the
-`news_item_observation_edges` cursor, validates
-`_required_rowcount(cursor, expected=1)`, and unit/architecture coverage requires
+edge hop itself. upsert_canonical_news_item now captures the
+news_item_observation_edges cursor, validates
+_required_rowcount(cursor, expected=1), and unit/architecture coverage requires
 missing, invalid, zero, or multi-row edge evidence to fail before provider-article
 remap, material duplicate remap, summary refresh, or affected-item accounting can
 treat the provider observation as linked
-(`src/parallax/domains/news_intel/repositories/news_repository.py:874`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1256`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1258`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1286`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5068`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5069`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5071`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:540`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:554`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:569`,
-`tests/architecture/test_news_intel_kiss_simplification.py:649`,
-`tests/architecture/test_news_intel_kiss_simplification.py:664`,
-`tests/architecture/test_news_intel_kiss_simplification.py:669`).
+(src/parallax/domains/news_intel/repositories/news_repository.py:874,
+src/parallax/domains/news_intel/repositories/news_repository.py:1256,
+src/parallax/domains/news_intel/repositories/news_repository.py:1258,
+src/parallax/domains/news_intel/repositories/news_repository.py:1286,
+src/parallax/domains/news_intel/repositories/news_repository.py:5068,
+src/parallax/domains/news_intel/repositories/news_repository.py:5069,
+src/parallax/domains/news_intel/repositories/news_repository.py:5071,
+tests/unit/domains/news_intel/test_news_repository_queries.py:540,
+tests/unit/domains/news_intel/test_news_repository_queries.py:554,
+tests/unit/domains/news_intel/test_news_repository_queries.py:569,
+tests/architecture/test_news_intel_kiss_simplification.py:649,
+tests/architecture/test_news_intel_kiss_simplification.py:664,
+tests/architecture/test_news_intel_kiss_simplification.py:669).
 
 Follow-up review found the next hop after observation-edge linking had the same
-returned-row-only compatibility shape. `_refresh_news_item_observation_summary`
-now captures the `UPDATE news_items` / `RETURNING items.*` cursor, reads
-`row = cursor.fetchone()`, validates `_required_returning_row(cursor, row)` for
-the current canonical item, and uses `_optional_returning_row(cursor, row)` only
-for explicit old zero-edge cleanup through `required=False`. Unit and architecture
+returned-row-only compatibility shape. _refresh_news_item_observation_summary
+now captures the UPDATE news_items / RETURNING items.* cursor, reads
+row = cursor.fetchone(), validates _required_returning_row(cursor, row) for
+the current canonical item, and uses _optional_returning_row only
+for explicit old zero-edge cleanup through required=False. Unit and architecture
 coverage require missing/invalid/mismatched rowcount and no required row to fail,
 and forbid fallback SELECT readback in the summary refresh path
-(`src/parallax/domains/news_intel/repositories/news_repository.py:1681`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1686`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1688`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1709`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1717`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1721`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1723`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1724`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1344`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:583`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:596`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:612`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:626`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:640`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:651`,
-`tests/architecture/test_news_intel_kiss_simplification.py:672`,
-`tests/architecture/test_news_intel_kiss_simplification.py:680`,
-`tests/architecture/test_news_intel_kiss_simplification.py:682`,
-`tests/architecture/test_news_intel_kiss_simplification.py:697`,
-`tests/architecture/test_news_intel_kiss_simplification.py:698`).
+(src/parallax/domains/news_intel/repositories/news_repository.py:1681,
+src/parallax/domains/news_intel/repositories/news_repository.py:1686,
+src/parallax/domains/news_intel/repositories/news_repository.py:1688,
+src/parallax/domains/news_intel/repositories/news_repository.py:1709,
+src/parallax/domains/news_intel/repositories/news_repository.py:1717,
+src/parallax/domains/news_intel/repositories/news_repository.py:1721,
+src/parallax/domains/news_intel/repositories/news_repository.py:1723,
+src/parallax/domains/news_intel/repositories/news_repository.py:1724,
+src/parallax/domains/news_intel/repositories/news_repository.py:1344,
+src/parallax/domains/news_intel/repositories/news_repository.py:5351,
+tests/unit/domains/news_intel/test_news_repository_queries.py:583,
+tests/unit/domains/news_intel/test_news_repository_queries.py:596,
+tests/unit/domains/news_intel/test_news_repository_queries.py:612,
+tests/unit/domains/news_intel/test_news_repository_queries.py:626,
+tests/unit/domains/news_intel/test_news_repository_queries.py:640,
+tests/unit/domains/news_intel/test_news_repository_queries.py:651,
+tests/architecture/test_news_intel_kiss_simplification.py:672,
+tests/architecture/test_news_intel_kiss_simplification.py:680,
+tests/architecture/test_news_intel_kiss_simplification.py:682,
+tests/architecture/test_news_intel_kiss_simplification.py:697,
+tests/architecture/test_news_intel_kiss_simplification.py:698).
 
 Follow-up review found the same returned-list-only evidence gap in the canonical
-edge-remap helpers. `_remap_material_duplicate_edges_to_news_item` and
-`_remap_provider_article_edges_to_news_item` both update
-`news_item_observation_edges`, return old item ids through
-`RETURNING remapped.old_news_item_id`, fetch `rows = cursor.fetchall()`, and now
+edge-remap helpers. _remap_material_duplicate_edges_to_news_item and
+_remap_provider_article_edges_to_news_item both update
+news_item_observation_edges, return old item ids through
+RETURNING remapped.old_news_item_id, fetch rows = cursor.fetchall(), and now
 validate _returned_rowcount(cursor, rows) before returning those old ids to
 old-item summary cleanup, dirty-target remap, zero-edge cleanup, or affected-item
 accounting. Unit coverage requires missing, invalid, and mismatched rowcount to
 fail for both remap helpers, while architecture coverage rejects restored
-chained `.fetchall()` or direct old item-id returned-row accounting
-(`src/parallax/domains/news_intel/repositories/news_repository.py:1538`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1582`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1591`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1607`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1625`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1626`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1630`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1638`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1647`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1660`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1676`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1677`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5075`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5076`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5078`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:658`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:675`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:726`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:740`,
-`tests/architecture/test_news_intel_kiss_simplification.py:702`,
-`tests/architecture/test_news_intel_kiss_simplification.py:716`,
-`tests/architecture/test_news_intel_kiss_simplification.py:717`,
-`tests/architecture/test_news_intel_kiss_simplification.py:719`,
-`tests/architecture/test_news_intel_kiss_simplification.py:720`,
-`tests/architecture/test_news_intel_kiss_simplification.py:723`).
+chained .fetchall() or direct old item-id returned-row accounting
+(src/parallax/domains/news_intel/repositories/news_repository.py:1538,
+src/parallax/domains/news_intel/repositories/news_repository.py:1582,
+src/parallax/domains/news_intel/repositories/news_repository.py:1591,
+src/parallax/domains/news_intel/repositories/news_repository.py:1607,
+src/parallax/domains/news_intel/repositories/news_repository.py:1625,
+src/parallax/domains/news_intel/repositories/news_repository.py:1626,
+src/parallax/domains/news_intel/repositories/news_repository.py:1630,
+src/parallax/domains/news_intel/repositories/news_repository.py:1638,
+src/parallax/domains/news_intel/repositories/news_repository.py:1647,
+src/parallax/domains/news_intel/repositories/news_repository.py:1660,
+src/parallax/domains/news_intel/repositories/news_repository.py:1676,
+src/parallax/domains/news_intel/repositories/news_repository.py:1677,
+src/parallax/domains/news_intel/repositories/news_repository.py:5075,
+src/parallax/domains/news_intel/repositories/news_repository.py:5076,
+src/parallax/domains/news_intel/repositories/news_repository.py:5078,
+tests/unit/domains/news_intel/test_news_repository_queries.py:658,
+tests/unit/domains/news_intel/test_news_repository_queries.py:675,
+tests/unit/domains/news_intel/test_news_repository_queries.py:726,
+tests/unit/domains/news_intel/test_news_repository_queries.py:740,
+tests/architecture/test_news_intel_kiss_simplification.py:702,
+tests/architecture/test_news_intel_kiss_simplification.py:716,
+tests/architecture/test_news_intel_kiss_simplification.py:717,
+tests/architecture/test_news_intel_kiss_simplification.py:719,
+tests/architecture/test_news_intel_kiss_simplification.py:720,
+tests/architecture/test_news_intel_kiss_simplification.py:723).
 
 Follow-up review found the same required-row evidence gap at the News item-brief
-agent ledger/current boundary. `insert_news_item_agent_run` now captures the
+agent ledger/current boundary. insert_news_item_agent_run now captures the
 news_item_agent_runs INSERT ... RETURNING * cursor, reads
-`row = cursor.fetchone()`, validates `_required_returning_row(cursor, row)`, and
-returns only that validated ledger row. `upsert_news_item_agent_brief` applies
+row = cursor.fetchone(), validates _required_returning_row(cursor, row), and
+returns only that validated ledger row. upsert_news_item_agent_brief applies
 the same required single-row contract to news_item_agent_briefs current upserts
 before page dirty fan-out, publication eligibility, or returned current rows can
 advance. Unit coverage requires missing rowcount, invalid/mismatched rowcount,
@@ -2335,49 +2324,49 @@ missing required rows, and matching single-row results for both paths, including
 the explicit news_repository_rowcount_required and
 news_repository_rowcount_invalid errors; architecture coverage forbids
 restoring chained fetchone or dict(row) success paths
-(`src/parallax/domains/news_intel/ARCHITECTURE.md:126`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:2053`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:2055`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:2074`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:2078`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:2079`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:2080`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:2083`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:2085`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:2111`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:2115`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:2116`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:2117`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5093`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5094`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5096`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5062`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5065`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5068`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:1350`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:1363`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:1379`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:1389`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:1403`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:1416`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:1432`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:1442`,
-`tests/architecture/test_news_intel_kiss_simplification.py:765`,
-`tests/architecture/test_news_intel_kiss_simplification.py:760`,
-`tests/architecture/test_news_intel_kiss_simplification.py:767`,
-`tests/architecture/test_news_intel_kiss_simplification.py:768`,
-`tests/architecture/test_news_intel_kiss_simplification.py:769`,
-`tests/architecture/test_news_intel_kiss_simplification.py:770`,
-`tests/architecture/test_news_intel_kiss_simplification.py:772`,
-`tests/architecture/test_news_intel_kiss_simplification.py:773`,
-`tests/architecture/test_news_intel_kiss_simplification.py:774`,
-`tests/architecture/test_news_intel_kiss_simplification.py:776`).
+(src/parallax/domains/news_intel/ARCHITECTURE.md:126,
+src/parallax/domains/news_intel/repositories/news_repository.py:2053,
+src/parallax/domains/news_intel/repositories/news_repository.py:2055,
+src/parallax/domains/news_intel/repositories/news_repository.py:2074,
+src/parallax/domains/news_intel/repositories/news_repository.py:2078,
+src/parallax/domains/news_intel/repositories/news_repository.py:2079,
+src/parallax/domains/news_intel/repositories/news_repository.py:2080,
+src/parallax/domains/news_intel/repositories/news_repository.py:2083,
+src/parallax/domains/news_intel/repositories/news_repository.py:2085,
+src/parallax/domains/news_intel/repositories/news_repository.py:2111,
+src/parallax/domains/news_intel/repositories/news_repository.py:2115,
+src/parallax/domains/news_intel/repositories/news_repository.py:2116,
+src/parallax/domains/news_intel/repositories/news_repository.py:2117,
+src/parallax/domains/news_intel/repositories/news_repository.py:5093,
+src/parallax/domains/news_intel/repositories/news_repository.py:5094,
+src/parallax/domains/news_intel/repositories/news_repository.py:5096,
+src/parallax/domains/news_intel/repositories/news_repository.py:5062,
+src/parallax/domains/news_intel/repositories/news_repository.py:5065,
+src/parallax/domains/news_intel/repositories/news_repository.py:5068,
+tests/unit/domains/news_intel/test_news_repository_queries.py:1350,
+tests/unit/domains/news_intel/test_news_repository_queries.py:1363,
+tests/unit/domains/news_intel/test_news_repository_queries.py:1379,
+tests/unit/domains/news_intel/test_news_repository_queries.py:1389,
+tests/unit/domains/news_intel/test_news_repository_queries.py:1403,
+tests/unit/domains/news_intel/test_news_repository_queries.py:1416,
+tests/unit/domains/news_intel/test_news_repository_queries.py:1432,
+tests/unit/domains/news_intel/test_news_repository_queries.py:1442,
+tests/architecture/test_news_intel_kiss_simplification.py:765,
+tests/architecture/test_news_intel_kiss_simplification.py:760,
+tests/architecture/test_news_intel_kiss_simplification.py:767,
+tests/architecture/test_news_intel_kiss_simplification.py:768,
+tests/architecture/test_news_intel_kiss_simplification.py:769,
+tests/architecture/test_news_intel_kiss_simplification.py:770,
+tests/architecture/test_news_intel_kiss_simplification.py:772,
+tests/architecture/test_news_intel_kiss_simplification.py:773,
+tests/architecture/test_news_intel_kiss_simplification.py:774,
+tests/architecture/test_news_intel_kiss_simplification.py:776).
 
 Follow-up review found the optional-row evidence gap in the old-item
-representative reselection cleanup. `_reselect_news_item_representative_from_edges`
+representative reselection cleanup. _reselect_news_item_representative_from_edges
 now captures the UPDATE news_items ... RETURNING items.* cursor, reads
-`row = cursor.fetchone()`, validates `_optional_returning_row(cursor, row)`, and
-returns `{}` only for the explicit rowcount=0/no-row no-representative-edge
+row = cursor.fetchone(), validates _optional_returning_row, and
+returns {} only for the explicit rowcount=0/no-row no-representative-edge
 cleanup result. Rowcount=1 with a returned row is the only valid representative
 fact refresh before item-scoped derived facts are cleared or affected-item
 accounting continues. Unit coverage requires missing rowcount,
@@ -2385,197 +2374,186 @@ invalid/mismatched rowcount, rowcount=1/no-row mismatch, explicit zero-row
 no-op, and matching single-row refresh with news_repository_rowcount_required
 and news_repository_rowcount_invalid failures; architecture coverage forbids
 restoring chained fetchone or dict(row) success paths
-(`src/parallax/domains/news_intel/ARCHITECTURE.md:218`,
-`src/parallax/domains/news_intel/ARCHITECTURE.md:219`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1964`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1965`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:1992`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:2044`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:2048`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:2049`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:2050`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5084`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5085`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5089`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5062`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5065`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5067`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5068`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5070`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:658`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:672`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:688`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:698`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:708`,
-`tests/architecture/test_news_intel_kiss_simplification.py:715`,
-`tests/architecture/test_news_intel_kiss_simplification.py:709`,
-`tests/architecture/test_news_intel_kiss_simplification.py:711`,
-`tests/architecture/test_news_intel_kiss_simplification.py:719`,
-`tests/architecture/test_news_intel_kiss_simplification.py:723`,
-`tests/architecture/test_news_intel_kiss_simplification.py:724`,
-`tests/architecture/test_news_intel_kiss_simplification.py:725`).
+(src/parallax/domains/news_intel/ARCHITECTURE.md:218,
+src/parallax/domains/news_intel/ARCHITECTURE.md:219,
+src/parallax/domains/news_intel/repositories/news_repository.py:1964,
+src/parallax/domains/news_intel/repositories/news_repository.py:1965,
+src/parallax/domains/news_intel/repositories/news_repository.py:1992,
+src/parallax/domains/news_intel/repositories/news_repository.py:2044,
+src/parallax/domains/news_intel/repositories/news_repository.py:2048,
+src/parallax/domains/news_intel/repositories/news_repository.py:2049,
+src/parallax/domains/news_intel/repositories/news_repository.py:2050,
+src/parallax/domains/news_intel/repositories/news_repository.py:5084,
+src/parallax/domains/news_intel/repositories/news_repository.py:5085,
+src/parallax/domains/news_intel/repositories/news_repository.py:5089,
+src/parallax/domains/news_intel/repositories/news_repository.py:5062,
+src/parallax/domains/news_intel/repositories/news_repository.py:5065,
+src/parallax/domains/news_intel/repositories/news_repository.py:5067,
+src/parallax/domains/news_intel/repositories/news_repository.py:5068,
+src/parallax/domains/news_intel/repositories/news_repository.py:5070,
+src/parallax/domains/news_intel/repositories/news_repository.py:5351,
+tests/unit/domains/news_intel/test_news_repository_queries.py:658,
+tests/unit/domains/news_intel/test_news_repository_queries.py:672,
+tests/unit/domains/news_intel/test_news_repository_queries.py:688,
+tests/unit/domains/news_intel/test_news_repository_queries.py:698,
+tests/unit/domains/news_intel/test_news_repository_queries.py:708,
+tests/architecture/test_news_intel_kiss_simplification.py:715,
+tests/architecture/test_news_intel_kiss_simplification.py:709,
+tests/architecture/test_news_intel_kiss_simplification.py:711,
+tests/architecture/test_news_intel_kiss_simplification.py:719,
+tests/architecture/test_news_intel_kiss_simplification.py:723,
+tests/architecture/test_news_intel_kiss_simplification.py:724,
+tests/architecture/test_news_intel_kiss_simplification.py:725).
 
 Follow-up review found the same returned-rows evidence gap at the News
-item-process claim boundary. `claim_unprocessed_items` now captures the claim
-cursor, updates rows through `UPDATE news_items AS items`, returns claim payloads
-from `RETURNING items.*`, reads `rows = cursor.fetchall()`, validates
+item-process claim boundary. claim_unprocessed_items now captures the claim
+cursor, updates rows through UPDATE news_items AS items, returns claim payloads
+from RETURNING items.*, reads rows = cursor.fetchall(), validates
 _returned_rowcount(cursor, rows), and returns claimed_rows only after cursor
 rowcount matches the returned rows. Unit coverage requires
 news_repository_rowcount_required, news_repository_rowcount_invalid, zero-row
 no-op, and matching claim rows; architecture coverage forbids restoring chained
 ).fetchall() or direct return [dict(row) for row in rows] claim accounting
-(`src/parallax/domains/news_intel/repositories/news_repository.py:2356`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:2385`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:2388`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:2395`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:2398`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:2453`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:2454`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:2455`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:2456`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5077`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5078`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5080`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:259`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:266`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:279`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:289`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:301`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:317`,
-`tests/architecture/test_news_intel_kiss_simplification.py:827`,
-`tests/architecture/test_news_intel_kiss_simplification.py:832`,
-`tests/architecture/test_news_intel_kiss_simplification.py:833`,
-`tests/architecture/test_news_intel_kiss_simplification.py:834`,
-`tests/architecture/test_news_intel_kiss_simplification.py:835`,
-`tests/architecture/test_news_intel_kiss_simplification.py:843`,
-`tests/architecture/test_news_intel_kiss_simplification.py:844`,
-`tests/architecture/test_news_intel_kiss_simplification.py:845`,
-`tests/architecture/test_news_intel_kiss_simplification.py:846`,
-`tests/architecture/test_news_intel_kiss_simplification.py:847`).
+(src/parallax/domains/news_intel/repositories/news_repository.py:2444,
+src/parallax/domains/news_intel/repositories/news_repository.py:2476,
+src/parallax/domains/news_intel/repositories/news_repository.py:2486,
+src/parallax/domains/news_intel/repositories/news_repository.py:2541,
+src/parallax/domains/news_intel/repositories/news_repository.py:2542,
+src/parallax/domains/news_intel/repositories/news_repository.py:2543,
+src/parallax/domains/news_intel/repositories/news_repository.py:2544,
+tests/unit/domains/news_intel/test_news_repository_queries.py:259,
+tests/unit/domains/news_intel/test_news_repository_queries.py:266,
+tests/unit/domains/news_intel/test_news_repository_queries.py:279,
+tests/unit/domains/news_intel/test_news_repository_queries.py:289,
+tests/unit/domains/news_intel/test_news_repository_queries.py:301,
+tests/unit/domains/news_intel/test_news_repository_queries.py:317,
+tests/architecture/test_news_intel_kiss_simplification.py:827,
+tests/architecture/test_news_intel_kiss_simplification.py:832,
+tests/architecture/test_news_intel_kiss_simplification.py:833,
+tests/architecture/test_news_intel_kiss_simplification.py:834,
+tests/architecture/test_news_intel_kiss_simplification.py:835,
+tests/architecture/test_news_intel_kiss_simplification.py:843,
+tests/architecture/test_news_intel_kiss_simplification.py:844,
+tests/architecture/test_news_intel_kiss_simplification.py:845,
+tests/architecture/test_news_intel_kiss_simplification.py:846,
+tests/architecture/test_news_intel_kiss_simplification.py:847).
 
 Follow-up review found the same returned-rows evidence gap at the News current
-item-brief schema cleanup boundary. `clear_current_briefs_outside_schema`
+item-brief schema cleanup boundary. clear_current_briefs_outside_schema
 deletes stale current news_item_agent_briefs rows through
-`DELETE FROM news_item_agent_briefs` / `RETURNING news_item_id`, reads
-`rows = cursor.fetchall()`, validates _returned_rowcount(cursor, rows), and
-returns `cleared_ids` only after cursor rowcount matches the returned ids. Unit
+DELETE FROM news_item_agent_briefs / RETURNING news_item_id, reads
+rows = cursor.fetchall(), validates _returned_rowcount(cursor, rows), and
+returns cleared_ids only after cursor rowcount matches the returned ids. Unit
 coverage requires news_repository_rowcount_required,
 news_repository_rowcount_invalid, zero-row no-op, and matching deleted ids;
 architecture coverage forbids restoring chained ).fetchall() or direct
 returned-list cleanup accounting
-(`src/parallax/domains/news_intel/repositories/news_repository.py:2149`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:2167`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:2170`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:2174`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:2175`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:2176`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:2177`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5068`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5070`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5083`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5084`,
-`src/parallax/domains/news_intel/repositories/news_repository.py:5086`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:1533`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:1537`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:1550`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:1557`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:1567`,
-`tests/unit/domains/news_intel/test_news_repository_queries.py:1580`,
-`tests/architecture/test_news_intel_kiss_simplification.py:885`,
-`tests/architecture/test_news_intel_kiss_simplification.py:890`,
-`tests/architecture/test_news_intel_kiss_simplification.py:891`,
-`tests/architecture/test_news_intel_kiss_simplification.py:892`,
-`tests/architecture/test_news_intel_kiss_simplification.py:900`,
-`tests/architecture/test_news_intel_kiss_simplification.py:901`,
-`tests/architecture/test_news_intel_kiss_simplification.py:902`,
-`tests/architecture/test_news_intel_kiss_simplification.py:903`).
+(src/parallax/domains/news_intel/repositories/news_repository.py:2237,
+src/parallax/domains/news_intel/repositories/news_repository.py:2255,
+src/parallax/domains/news_intel/repositories/news_repository.py:2258,
+src/parallax/domains/news_intel/repositories/news_repository.py:2262,
+src/parallax/domains/news_intel/repositories/news_repository.py:2263,
+src/parallax/domains/news_intel/repositories/news_repository.py:2264,
+tests/unit/domains/news_intel/test_news_repository_queries.py:1533,
+tests/unit/domains/news_intel/test_news_repository_queries.py:1537,
+tests/unit/domains/news_intel/test_news_repository_queries.py:1550,
+tests/unit/domains/news_intel/test_news_repository_queries.py:1557,
+tests/unit/domains/news_intel/test_news_repository_queries.py:1567,
+tests/unit/domains/news_intel/test_news_repository_queries.py:1580,
+tests/architecture/test_news_intel_kiss_simplification.py:885,
+tests/architecture/test_news_intel_kiss_simplification.py:890,
+tests/architecture/test_news_intel_kiss_simplification.py:891,
+tests/architecture/test_news_intel_kiss_simplification.py:892,
+tests/architecture/test_news_intel_kiss_simplification.py:900,
+tests/architecture/test_news_intel_kiss_simplification.py:901,
+tests/architecture/test_news_intel_kiss_simplification.py:902,
+tests/architecture/test_news_intel_kiss_simplification.py:903).
 
 Follow-up review found the same returned-rows evidence gap at the News
-projection dirty-target claim boundary. `claim_due` claims due
-news_projection_dirty_targets with `FOR UPDATE SKIP LOCKED`,
-`UPDATE news_projection_dirty_targets`, and
-`RETURNING news_projection_dirty_targets.*`,
-then reads `rows = cursor.fetchall()`, validates
+projection dirty-target claim boundary. claim_due claims due
+news_projection_dirty_targets with FOR UPDATE SKIP LOCKED,
+UPDATE news_projection_dirty_targets, and
+RETURNING news_projection_dirty_targets.*,
+then reads rows = cursor.fetchall(), validates
 _returned_rowcount(cursor, rows), and returns claimed_rows only after cursor
 rowcount matches the claim rows. Unit coverage requires
 news_projection_dirty_target_rowcount_required,
 news_projection_dirty_target_rowcount_invalid, zero-row no-op, and matching
 claim rows; architecture coverage forbids restoring chained ).fetchall() or
 direct returned-list claim accounting
-(`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:165`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:192`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:205`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:207`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:217`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:221`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:222`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:223`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:625`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:627`,
-`src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:628`,
-`tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:354`,
-`tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:358`,
-`tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:366`,
-`tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:367`,
-`tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:370`,
-`tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:377`,
-`tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:386`,
-`tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:400`,
-`tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:412`,
-`tests/architecture/test_news_intel_kiss_simplification.py:437`,
-`tests/architecture/test_news_intel_kiss_simplification.py:443`,
-`tests/architecture/test_news_intel_kiss_simplification.py:455`,
-`tests/architecture/test_news_intel_kiss_simplification.py:456`,
-`tests/architecture/test_news_intel_kiss_simplification.py:457`,
-`tests/architecture/test_news_intel_kiss_simplification.py:458`,
-`tests/architecture/test_news_intel_kiss_simplification.py:459`,
-`tests/architecture/test_news_intel_kiss_simplification.py:460`,
-`tests/architecture/test_news_intel_kiss_simplification.py:461`,
-`tests/architecture/test_news_intel_kiss_simplification.py:462`).
+(src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:165,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:192,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:205,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:207,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:217,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:221,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:222,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:223,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:625,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:627,
+src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py:628,
+tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:354,
+tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:358,
+tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:366,
+tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:367,
+tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:370,
+tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:377,
+tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:386,
+tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:400,
+tests/unit/domains/news_intel/test_news_projection_dirty_targets.py:412,
+tests/architecture/test_news_intel_kiss_simplification.py:437,
+tests/architecture/test_news_intel_kiss_simplification.py:443,
+tests/architecture/test_news_intel_kiss_simplification.py:455,
+tests/architecture/test_news_intel_kiss_simplification.py:456,
+tests/architecture/test_news_intel_kiss_simplification.py:457,
+tests/architecture/test_news_intel_kiss_simplification.py:458,
+tests/architecture/test_news_intel_kiss_simplification.py:459,
+tests/architecture/test_news_intel_kiss_simplification.py:460,
+tests/architecture/test_news_intel_kiss_simplification.py:461,
+tests/architecture/test_news_intel_kiss_simplification.py:462).
 
 Follow-up review found the same write-evidence gap in notification fact
 aggregation. The notification aggregate helper updates an existing notifications
 row after the insert-conflict path reports a dedupe conflict; that aggregate
-`UPDATE notifications` now captures the cursor, validates
-`_single_row_write_count(`, and requires the result to be exactly `1` before
+UPDATE notifications now captures the cursor, validates
+_single_row_write_count(, and requires the result to be exactly 1 before
 returning aggregate success
-(`src/parallax/domains/notifications/repositories/notification_repository.py:327`,
-`src/parallax/domains/notifications/repositories/notification_repository.py:329`,
-`src/parallax/domains/notifications/repositories/notification_repository.py:366`,
-`src/parallax/domains/notifications/repositories/notification_repository.py:368`,
-`src/parallax/domains/notifications/repositories/notification_repository.py:369`,
-`src/parallax/domains/notifications/repositories/notification_repository.py:371`,
-`src/parallax/domains/notifications/repositories/notification_repository.py:372`,
-`src/parallax/domains/notifications/repositories/notification_repository.py:373`).
+(src/parallax/domains/notifications/repositories/notification_repository.py:327,
+src/parallax/domains/notifications/repositories/notification_repository.py:329,
+src/parallax/domains/notifications/repositories/notification_repository.py:366,
+src/parallax/domains/notifications/repositories/notification_repository.py:368,
+src/parallax/domains/notifications/repositories/notification_repository.py:369,
+src/parallax/domains/notifications/repositories/notification_repository.py:371,
+src/parallax/domains/notifications/repositories/notification_repository.py:372,
+src/parallax/domains/notifications/repositories/notification_repository.py:373).
 The target contract is that missing aggregate rowcount fails as
-`notification_aggregate_rowcount_required`, invalid/zero/multi-row rowcount
-fails as `notification_aggregate_rowcount_invalid`, and tests plus architecture
+notification_aggregate_rowcount_required, invalid/zero/multi-row rowcount
+fails as notification_aggregate_rowcount_invalid, and tests plus architecture
 guards prove aggregate success is no longer inferred from bare UPDATE execution
 or readback state
-(`tests/unit/test_notification_worker_runtime.py:641`,
-`tests/unit/test_notification_worker_runtime.py:645`,
-`tests/unit/test_notification_worker_runtime.py:651`,
-`tests/unit/test_notification_worker_runtime.py:656`,
-`tests/unit/test_notification_worker_runtime.py:662`,
-`tests/unit/test_notification_worker_runtime.py:668`,
-`tests/unit/test_notification_worker_runtime.py:669`,
-`tests/unit/test_notification_worker_runtime.py:671`,
-`tests/unit/test_notification_worker_runtime.py:1213`,
-`tests/unit/test_notification_worker_runtime.py:1245`,
-`tests/unit/test_notification_worker_runtime.py:1247`,
-`tests/unit/test_notification_worker_runtime.py:1248`,
-`tests/unit/test_notification_worker_runtime.py:1279`,
-`tests/architecture/test_notifications_hard_cut.py:407`,
-`tests/architecture/test_notifications_hard_cut.py:418`,
-`tests/architecture/test_notifications_hard_cut.py:419`,
-`tests/architecture/test_notifications_hard_cut.py:423`,
-`tests/architecture/test_notifications_hard_cut.py:424`,
-`tests/architecture/test_notifications_hard_cut.py:425`,
-`tests/architecture/test_notifications_hard_cut.py:426`).
+(tests/unit/test_notification_worker_runtime.py:641,
+tests/unit/test_notification_worker_runtime.py:645,
+tests/unit/test_notification_worker_runtime.py:651,
+tests/unit/test_notification_worker_runtime.py:656,
+tests/unit/test_notification_worker_runtime.py:662,
+tests/unit/test_notification_worker_runtime.py:668,
+tests/unit/test_notification_worker_runtime.py:669,
+tests/unit/test_notification_worker_runtime.py:671,
+tests/unit/test_notification_worker_runtime.py:1213,
+tests/unit/test_notification_worker_runtime.py:1245,
+tests/unit/test_notification_worker_runtime.py:1247,
+tests/unit/test_notification_worker_runtime.py:1248,
+tests/unit/test_notification_worker_runtime.py:1279,
+tests/architecture/test_notifications_hard_cut.py:407,
+tests/architecture/test_notifications_hard_cut.py:418,
+tests/architecture/test_notifications_hard_cut.py:419,
+tests/architecture/test_notifications_hard_cut.py:423,
+tests/architecture/test_notifications_hard_cut.py:424,
+tests/architecture/test_notifications_hard_cut.py:425,
+tests/architecture/test_notifications_hard_cut.py:426).
 
-## Problem
 
-Current read and worker paths preserve old compatibility lanes that blur the boundary between provider IO, material facts, rebuildable read models, and maintenance work. This makes the Kappa/CQRS system harder to reason about, adds hidden request-time latency and external dependencies, and leaves several PostgreSQL hot paths vulnerable to table growth.
+Current read and worker paths preserve old compatibility lanes that blur the boundary between provider IO, material facts, rebuildable read models, and maintenance work. This makes the Kappa/CQRS system harder to reason about, adds hidden request-time latency and external dependencies, and leaves several PostgreSQL hot paths vulnerable to table growth (docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:16, docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:54, docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:75, docs/references/POSTGRES_PERFORMANCE.md:10).
 
 ## Clarifications
 

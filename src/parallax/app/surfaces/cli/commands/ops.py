@@ -589,25 +589,17 @@ def _rebuild_news_canonical_items(
         "execute": bool(execute),
     }
     if dry_run:
-        news_item_ids = repos.news.list_news_item_ids_for_canonical_rebuild(limit=max(0, int(limit)))
-        targets = [
-            {"projection_name": projection_name, "target_kind": "news_item", "target_id": news_item_id}
-            for news_item_id in news_item_ids
-            for projection_name in ("page", "brief_input")
-        ]
-        data["matched_canonical_items"] = len(news_item_ids)
+        rows = repos.news.list_news_items_for_canonical_rebuild(limit=max(0, int(limit)))
+        targets = _news_canonical_rebuild_targets(rows)
+        data["matched_canonical_items"] = len(rows)
         data["would_enqueue"] = len(targets)
         data["enqueued"] = 0
         data["deleted_disabled_rows"] = 0
         return data
     with _transaction(repos.conn):
-        news_item_ids = repos.news.list_news_item_ids_for_canonical_rebuild(limit=max(0, int(limit)))
-        targets = [
-            {"projection_name": projection_name, "target_kind": "news_item", "target_id": news_item_id}
-            for news_item_id in news_item_ids
-            for projection_name in ("page", "brief_input")
-        ]
-        data["matched_canonical_items"] = len(news_item_ids)
+        rows = repos.news.list_news_items_for_canonical_rebuild(limit=max(0, int(limit)))
+        targets = _news_canonical_rebuild_targets(rows)
+        data["matched_canonical_items"] = len(rows)
         data["would_enqueue"] = len(targets)
         deleted = repos.news.delete_page_rows_without_enabled_observation_edges(commit=False)
         enqueued = repos.news_projection_dirty_targets.enqueue_targets(
@@ -619,6 +611,62 @@ def _rebuild_news_canonical_items(
     data["enqueued"] = int(enqueued)
     data["deleted_disabled_rows"] = int(deleted)
     return data
+
+
+def _news_canonical_rebuild_targets(rows: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    targets: list[dict[str, Any]] = []
+    story_watermarks: dict[str, int] = {}
+    story_order: list[str] = []
+    for row in rows:
+        news_item_id = _required_news_canonical_rebuild_text(row, "news_item_id")
+        source_watermark_ms = _required_news_canonical_rebuild_watermark(row)
+        targets.append(
+            {
+                "projection_name": "page",
+                "target_kind": "news_item",
+                "target_id": news_item_id,
+                "source_watermark_ms": source_watermark_ms,
+            }
+        )
+        story_key = _required_news_canonical_rebuild_text(row, "story_key")
+        if story_key not in story_watermarks:
+            story_order.append(story_key)
+        story_watermarks[story_key] = max(story_watermarks.get(story_key, 0), source_watermark_ms)
+    targets.extend(
+        {
+            "projection_name": "story_brief",
+            "target_kind": "story",
+            "target_id": story_key,
+            "source_watermark_ms": story_watermarks[story_key],
+        }
+        for story_key in story_order
+    )
+    return targets
+
+
+def _required_news_canonical_rebuild_text(row: Mapping[str, Any], field_name: str) -> str:
+    try:
+        value = row[field_name]
+    except KeyError as exc:
+        raise ValueError(f"ops_news_canonical_rebuild_{field_name}_required") from exc
+    if not isinstance(value, str):
+        raise ValueError(f"ops_news_canonical_rebuild_{field_name}_required")
+    text = value.strip()
+    if not text:
+        raise ValueError(f"ops_news_canonical_rebuild_{field_name}_required")
+    return text
+
+
+def _required_news_canonical_rebuild_watermark(row: Mapping[str, Any]) -> int:
+    try:
+        value = row["source_watermark_ms"]
+    except KeyError as exc:
+        raise ValueError("ops_news_canonical_rebuild_source_watermark_required") from exc
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("ops_news_canonical_rebuild_source_watermark_required")
+    if value <= 0:
+        raise ValueError("ops_news_canonical_rebuild_source_watermark_required")
+    return int(value)
 
 
 def _cursor_mapping(raw: str) -> dict[str, Any]:

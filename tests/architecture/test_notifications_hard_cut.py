@@ -524,11 +524,54 @@ def test_notification_runtime_uses_semantic_signature_not_legacy_in_app_signatur
 
 def test_notification_api_sanitizes_news_high_signal_payloads() -> None:
     text = (SRC / "app/surfaces/api/routes_notifications.py").read_text(encoding="utf-8")
+    payload_json_source = text.split("def _notification_payload_json", maxsplit=1)[1].split("\n\n", maxsplit=1)[0]
 
     assert "_public_notification_payload(" in text
     assert 'payload["payload"] = _json_loads(payload.pop("payload_json"' not in text
+    assert 'payload.pop("payload_json", "{}")' not in text
+    assert '_notification_payload_json(rule_id, payload.pop("payload_json", None))' in text
+    assert "news_high_signal_payload_json_required" in text
     assert "news_high_signal" in text
-    assert "_NEWS_HIGH_SIGNAL_PAYLOAD_KEYS" in text
+    assert "_NEWS_HIGH_SIGNAL_PAYLOAD_KEYS" not in text
+    assert "public = {key: payload[key] for key in _NEWS_HIGH_SIGNAL_PAYLOAD_KEYS" not in text
+    assert '_required_news_mapping(raw_payload, "payload")' in text
+    assert '_required_news_mapping(value, "agent_brief")' in text
+    assert '_required_news_list(value, "affected_entities")' in text
+    assert '_required_news_list(value, "token_impacts")' in text
+    assert "_optional_news_payload_text(payload, key)" in text
+    assert '_public_news_story_payload(payload["story"])' in text
+    assert '_public_news_market_scope_payload(payload["market_scope"])' in text
+    assert '_public_news_agent_admission_payload(payload["agent_admission"])' in text
+    assert "_required_news_payload_text(" in text
+    assert "_required_news_payload_string_list(" in text
+    assert "_optional_news_payload_string_list(" in text
+    assert "_required_news_payload_mapping(" in text
+    assert "_required_news_payload_positive_int(" in text
+    assert '_optional_news_payload_bool(payload, "external_push_eligible")' in text
+    assert '_optional_news_payload_nonnegative_int(payload, "duplicate_count")' in text
+    assert '_required_news_agent_brief_text(payload, "status")' in text
+    assert "_optional_news_agent_brief_text(payload, key)" in text
+    assert "_optional_news_affected_entity_text(entity, key)" in text
+    assert '_optional_news_affected_entity_string_list(entity, "evidence_refs")' in text
+    assert "_optional_news_token_impact_text(impact, key)" in text
+    assert "news_high_signal_{field_name}_required" in text
+    assert "json.loads" not in payload_json_source
+    assert "if isinstance(value, Mapping):" in payload_json_source
+    assert "**payload" not in text.split("def _public_news_story_payload", maxsplit=1)[1].split("\n\n", maxsplit=1)[0]
+    assert (
+        "**payload"
+        not in text.split("def _public_news_market_scope_payload", maxsplit=1)[1].split(
+            "\n\n",
+            maxsplit=1,
+        )[0]
+    )
+    assert (
+        "**payload"
+        not in text.split("def _public_news_agent_admission_payload", maxsplit=1)[1].split(
+            "\n\n",
+            maxsplit=1,
+        )[0]
+    )
 
 
 def test_notification_stale_running_terminalization_is_bounded_and_skip_locked() -> None:

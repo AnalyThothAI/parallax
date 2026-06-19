@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from parallax.domains.news_intel.services.news_item_agent_admission import (
     NewsItemAgentAdmissionContext,
     decide_news_item_agent_admission,
@@ -76,6 +78,57 @@ def test_missing_provider_rating_market_news_is_not_agent_eligible() -> None:
     assert admission.reason == "provider_rating_missing"
     assert admission.basis["provider_rating"]["score"] is None
     assert admission.basis["provider_rating"]["min_score"] == 80
+
+
+@pytest.mark.parametrize("score", [True, "95", 95.5])
+def test_provider_rating_rejects_malformed_score_without_int_repair(score: object) -> None:
+    with pytest.raises(ValueError, match="news_item_agent_admission_provider_rating_score_required"):
+        decide_news_item_agent_admission(
+            item=_item(
+                title="Ford shares rise after analyst upgrade",
+                provider_signal_json={"source": "provider", "status": "ready", "score": score},
+            ),
+            entities=[{"entity_id": "entity-f", "raw_value": "Ford", "entity_type": "company", "symbol": "F"}],
+            token_mentions=[],
+            fact_candidates=[],
+            context=NewsItemAgentAdmissionContext.empty(),
+            now_ms=NOW_MS,
+        )
+
+
+@pytest.mark.parametrize(
+    ("item_overrides", "match"),
+    [
+        pytest.param(
+            {"content_classification_json": '{"policy_version":"news_content_classification_v1"}'},
+            "news_item_agent_admission_content_classification_json_required",
+            id="classification_string",
+        ),
+        pytest.param(
+            {"source_policy_json": '{"status":"disabled"}'},
+            "news_item_agent_admission_source_policy_json_required",
+            id="source_policy_string",
+        ),
+        pytest.param(
+            {"provider_signal_json": '{"source":"provider","status":"ready","score":95}'},
+            "news_item_agent_admission_provider_signal_json_required",
+            id="provider_signal_string",
+        ),
+    ],
+)
+def test_agent_admission_rejects_malformed_present_item_json_fields(
+    item_overrides: dict[str, object],
+    match: str,
+) -> None:
+    with pytest.raises(ValueError, match=match):
+        decide_news_item_agent_admission(
+            item=_item(**item_overrides),
+            entities=[],
+            token_mentions=[],
+            fact_candidates=[],
+            context=NewsItemAgentAdmissionContext.empty(),
+            now_ms=NOW_MS,
+        )
 
 
 def test_high_score_old_item_is_not_filtered_by_agent_age_gate() -> None:
@@ -170,6 +223,70 @@ def test_similar_story_without_delta_is_covered_skip() -> None:
     assert admission.eligible is False
     assert admission.status == "similar_story_covered"
     assert admission.representative_news_item_id == "news-rep"
+
+
+def test_agent_admission_rejects_malformed_present_context_arrays() -> None:
+    with pytest.raises(ValueError, match="news_item_agent_admission_representative_entities_required"):
+        decide_news_item_agent_admission(
+            item=_item(story_key="story:hormuz", source_role="news"),
+            entities=[{"normalized_value": "iran", "entity_type": "country"}],
+            token_mentions=[],
+            fact_candidates=[{"event_type": "geopolitical_risk", "validation_status": "accepted"}],
+            context=NewsItemAgentAdmissionContext(
+                story_candidates=[
+                    {
+                        "news_item_id": "news-rep",
+                        "story_key": "story:hormuz",
+                        "source_role": "news",
+                        "current_brief": {"status": "ready"},
+                        "entities": '[{"normalized_value":"iran","entity_type":"country"}]',
+                        "fact_candidates": [{"event_type": "geopolitical_risk", "validation_status": "accepted"}],
+                    }
+                ],
+            ),
+            now_ms=NOW_MS,
+        )
+
+
+def test_repository_context_allows_absent_optional_sections() -> None:
+    context = NewsItemAgentAdmissionContext.from_repository_context({})
+
+    assert context.exact_duplicate_candidates == []
+    assert context.story_candidates == []
+    assert context.material_delta == {}
+
+
+@pytest.mark.parametrize(
+    ("repository_context", "error"),
+    [
+        (
+            {"exact_duplicate_candidates": {"news_item_id": "news-rep"}},
+            "news_item_agent_admission_context_exact_duplicate_candidates_required",
+        ),
+        (
+            {"exact_duplicate_candidates": ["news-rep"]},
+            "news_item_agent_admission_context_exact_duplicate_candidates_required",
+        ),
+        (
+            {"story_candidates": {"news_item_id": "news-rep"}},
+            "news_item_agent_admission_context_story_candidates_required",
+        ),
+        (
+            {"story_candidates": ["news-rep"]},
+            "news_item_agent_admission_context_story_candidates_required",
+        ),
+        (
+            {"material_delta": "material"},
+            "news_item_agent_admission_context_material_delta_required",
+        ),
+    ],
+)
+def test_repository_context_rejects_malformed_present_sections(
+    repository_context: dict[str, object],
+    error: str,
+) -> None:
+    with pytest.raises(ValueError, match=error):
+        NewsItemAgentAdmissionContext.from_repository_context(repository_context)
 
 
 def test_similar_story_with_pending_representative_brief_is_covered_skip() -> None:

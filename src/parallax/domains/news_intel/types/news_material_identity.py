@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
@@ -62,10 +61,7 @@ def symbol_sets_compatible(incoming: Iterable[str], existing: Iterable[str]) -> 
 
 def _coerce_provider_token_impacts(provider_token_impacts: object) -> Sequence[Any]:
     if isinstance(provider_token_impacts, str):
-        try:
-            provider_token_impacts = json.loads(provider_token_impacts or "[]")
-        except json.JSONDecodeError:
-            return ()
+        raise ValueError("news_material_identity_provider_token_impacts_json_required")
     if isinstance(provider_token_impacts, Mapping):
         if "symbol" in provider_token_impacts:
             return (provider_token_impacts,)

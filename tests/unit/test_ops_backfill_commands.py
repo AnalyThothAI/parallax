@@ -571,14 +571,29 @@ def test_rebuild_news_canonical_items_execute_reads_and_writes_inside_transactio
         "dry_run": False,
         "execute": True,
         "matched_canonical_items": 2,
-        "would_enqueue": 4,
-        "enqueued": 4,
+        "would_enqueue": 3,
+        "enqueued": 3,
         "deleted_disabled_rows": 3,
     }
     assert news.list_depths == [1]
     assert news.delete_depths == [1]
     assert dirty_targets.enqueue_depths == [1]
     assert conn.events == ["enter", "exit"]
+
+
+def test_rebuild_news_canonical_targets_require_story_key() -> None:
+    from parallax.app.surfaces.cli.commands.ops import _news_canonical_rebuild_targets
+
+    with pytest.raises(ValueError, match="ops_news_canonical_rebuild_story_key_required"):
+        _news_canonical_rebuild_targets(
+            [
+                {
+                    "news_item_id": "news-1",
+                    "story_key": "",
+                    "source_watermark_ms": 1_700_000_090_000,
+                }
+            ]
+        )
 
 
 def test_sync_gmgn_directory_reads_provider_outside_transaction_and_writes_inside_transaction():
@@ -858,10 +873,21 @@ class _FakeNewsRepository:
         self.list_depths: list[int] = []
         self.delete_depths: list[int] = []
 
-    def list_news_item_ids_for_canonical_rebuild(self, *, limit: int) -> list[str]:
+    def list_news_items_for_canonical_rebuild(self, *, limit: int) -> list[dict[str, Any]]:
         assert limit == 25
         self.list_depths.append(self.conn.transaction_depth)
-        return ["news-1", "news-2"]
+        return [
+            {
+                "news_item_id": "news-1",
+                "story_key": "story-sol",
+                "source_watermark_ms": 1_700_000_090_000,
+            },
+            {
+                "news_item_id": "news-2",
+                "story_key": "story-sol",
+                "source_watermark_ms": 1_700_000_099_000,
+            },
+        ]
 
     def delete_page_rows_without_enabled_observation_edges(self, *, commit: bool) -> int:
         assert commit is False
@@ -874,9 +900,28 @@ class _FakeNewsProjectionDirtyTargets:
         self.conn = conn
         self.enqueue_depths: list[int] = []
 
-    def enqueue_targets(self, targets: list[dict[str, str]], *, reason: str, now_ms: int, commit: bool) -> int:
+    def enqueue_targets(self, targets: list[dict[str, Any]], *, reason: str, now_ms: int, commit: bool) -> int:
         self.enqueue_depths.append(self.conn.transaction_depth)
-        assert [target["target_id"] for target in targets] == ["news-1", "news-1", "news-2", "news-2"]
+        assert targets == [
+            {
+                "projection_name": "page",
+                "target_kind": "news_item",
+                "target_id": "news-1",
+                "source_watermark_ms": 1_700_000_090_000,
+            },
+            {
+                "projection_name": "page",
+                "target_kind": "news_item",
+                "target_id": "news-2",
+                "source_watermark_ms": 1_700_000_099_000,
+            },
+            {
+                "projection_name": "story_brief",
+                "target_kind": "story",
+                "target_id": "story-sol",
+                "source_watermark_ms": 1_700_000_099_000,
+            },
+        ]
         assert reason == "ops_news_canonical_rebuild"
         assert now_ms == 1_700_000_100_000
         assert commit is False

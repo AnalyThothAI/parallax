@@ -3,14 +3,15 @@ from __future__ import annotations
 import pytest
 
 from parallax.domains.asset_market.repositories.asset_profile_repository import (
-    ERROR_REFRESH_MS,
     GMGN_DEX_PROFILE_PROVIDER,
-    READY_REFRESH_MS,
     AssetProfileRepository,
 )
 from parallax.domains.asset_market.repositories.registry_repository import RegistryRepository
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
+
+READY_REFRESH_MS = 21_600_000
+ERROR_REFRESH_MS = 900_000
 
 
 def test_ready_profile_round_trips_by_asset_id(tmp_path):

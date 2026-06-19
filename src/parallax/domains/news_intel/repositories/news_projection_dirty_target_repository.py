@@ -9,7 +9,7 @@ from typing import Any, cast
 from parallax.platform.db.json_safety import postgres_safe_json
 from parallax.platform.db.queue_terminal import terminalize_source_row
 
-_ALLOWED_PROJECTION_NAMES = frozenset({"brief_input", "page", "source_quality"})
+_ALLOWED_PROJECTION_NAMES = frozenset({"brief_input", "page", "source_quality", "story_brief"})
 
 
 class NewsProjectionDirtyTargetRepository:
@@ -29,7 +29,7 @@ class NewsProjectionDirtyTargetRepository:
             rows,
             reason=reason,
             now_ms=now_ms,
-            default_due_at_ms=int(due_at_ms if due_at_ms is not None else now_ms),
+            default_due_at_ms=_required_dirty_due_at_ms(due_at_ms if due_at_ms is not None else now_ms),
         )
         if not records:
             return 0
@@ -451,15 +451,12 @@ def _dirty_records(
 ) -> list[dict[str, Any]]:
     records: dict[tuple[str, str, str, str], dict[str, Any]] = {}
     for row in rows:
-        projection_name = str(row.get("projection_name") or "")
-        target_kind = str(row.get("target_kind") or "")
-        target_id = str(row.get("target_id") or "")
-        window = str(row.get("window") or "")
-        if projection_name != "source_quality":
-            window = ""
-        if not projection_name or not target_kind or not target_id:
-            continue
+        projection_name = _dirty_record_text(row, field="projection_name")
+        target_kind = _dirty_record_text(row, field="target_kind")
+        target_id = _dirty_record_text(row, field="target_id")
+        window = _dirty_record_window(row, projection_name=projection_name)
         _validate_projection_name(projection_name)
+        _validate_projection_target(projection_name=projection_name, target_kind=target_kind)
         source_watermark_ms = _source_watermark_ms(
             row,
             required=_requires_source_watermark(
@@ -469,7 +466,7 @@ def _dirty_records(
             ),
         )
         priority = _priority_value(row)
-        target_due_at_ms = int(row.get("due_at_ms") or default_due_at_ms)
+        target_due_at_ms = _dirty_due_at_ms(row, default_due_at_ms=default_due_at_ms)
         key = (projection_name, target_kind, target_id, window)
         existing = records.get(key)
         record = {
@@ -500,9 +497,34 @@ def _dirty_records(
     return list(records.values())
 
 
+def _dirty_record_text(row: Mapping[str, Any], *, field: str) -> str:
+    try:
+        value = row[field]
+    except KeyError as exc:
+        raise ValueError(f"news_projection_dirty_target_{field}_required") from exc
+    if not isinstance(value, str):
+        raise ValueError(f"news_projection_dirty_target_{field}_required")
+    text = value.strip()
+    if not text:
+        raise ValueError(f"news_projection_dirty_target_{field}_required")
+    return text
+
+
+def _dirty_record_window(row: Mapping[str, Any], *, projection_name: str) -> str:
+    if projection_name == "source_quality":
+        return _dirty_record_text(row, field="window").lower()
+    if "window" not in row:
+        return ""
+    if row["window"] != "":
+        raise ValueError("news_projection_dirty_target_window_empty_required")
+    return ""
+
+
 def _requires_source_watermark(*, projection_name: str, target_kind: str, window: str) -> bool:
     if projection_name in {"page", "brief_input"}:
         return target_kind == "news_item"
+    if projection_name == "story_brief":
+        return target_kind == "story"
     if projection_name == "source_quality":
         return target_kind == "source" and window != "_refresh"
     return False
@@ -538,20 +560,16 @@ def _dirty_params(records: list[dict[str, Any]]) -> dict[str, list[Any]]:
 def _key_records(keys: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for key in keys:
-        projection_name = str(key.get("projection_name") or "")
-        target_kind = str(key.get("target_kind") or "")
-        target_id = str(key.get("target_id") or "")
-        has_window = "window" in key
-        window = str(key.get("window") or "") if has_window else ""
-        if not projection_name or not target_kind or not target_id:
-            raise ValueError("news projection dirty target completion requires full target key from claim_due")
+        projection_name = _completion_key_text(key, "projection_name")
+        target_kind = _completion_key_text(key, "target_kind")
+        target_id = _completion_key_text(key, "target_id")
+        window = _completion_window_text(key)
         _validate_projection_name(projection_name)
-        if not has_window:
-            raise ValueError("news projection dirty target completion requires window from claim_due")
-        if projection_name == "source_quality" and not window:
+        _validate_projection_target(projection_name=projection_name, target_kind=target_kind)
+        if projection_name == "source_quality" and not window.strip():
             raise ValueError("news source_quality dirty target completion requires window from claim_due")
-        if projection_name != "source_quality":
-            window = ""
+        if projection_name != "source_quality" and window != "":
+            raise ValueError("news projection dirty target completion requires empty window from claim_due")
         payload_hash = _completion_payload_hash(key)
         lease_owner = _completion_lease_owner(key)
         attempt_count = _completion_attempt_count(key)
@@ -571,6 +589,29 @@ def _key_records(keys: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
             }
         )
     return records
+
+
+def _completion_key_text(key: Mapping[str, Any], field: str) -> str:
+    try:
+        value = key[field]
+    except KeyError as exc:
+        raise ValueError("news projection dirty target completion requires full target key from claim_due") from exc
+    if not isinstance(value, str):
+        raise ValueError("news projection dirty target completion requires full target key from claim_due")
+    text = value.strip()
+    if not text:
+        raise ValueError("news projection dirty target completion requires full target key from claim_due")
+    return text
+
+
+def _completion_window_text(key: Mapping[str, Any]) -> str:
+    try:
+        value = key["window"]
+    except KeyError as exc:
+        raise ValueError("news projection dirty target completion requires window from claim_due") from exc
+    if not isinstance(value, str):
+        raise ValueError("news projection dirty target completion requires window from claim_due")
+    return value
 
 
 def _completion_attempt_count(key: Mapping[str, Any]) -> int:
@@ -612,6 +653,16 @@ def _completion_payload_hash(key: Mapping[str, Any]) -> str:
 def _validate_projection_name(projection_name: str) -> None:
     if projection_name not in _ALLOWED_PROJECTION_NAMES:
         raise ValueError(f"unsupported news projection_name: {projection_name}")
+
+
+def _validate_projection_target(*, projection_name: str, target_kind: str) -> None:
+    if projection_name in {"page", "brief_input"} and target_kind == "news_item":
+        return
+    if projection_name == "source_quality" and target_kind == "source":
+        return
+    if projection_name == "story_brief" and target_kind == "story":
+        return
+    raise ValueError(f"unsupported news projection target: {projection_name}/{target_kind}")
 
 
 def _transaction(conn: Any) -> AbstractContextManager[Any]:
@@ -689,9 +740,24 @@ def _dirty_payload_hash(record: Mapping[str, Any], *, reason: str) -> str:
 
 def _priority_value(row: Mapping[str, Any]) -> int:
     raw_priority = row.get("priority")
-    if raw_priority in (None, ""):
+    if raw_priority is None:
         return 100
-    return int(str(raw_priority))
+    if not isinstance(raw_priority, int) or isinstance(raw_priority, bool):
+        raise ValueError("news_projection_dirty_target_priority_required")
+    return raw_priority
+
+
+def _dirty_due_at_ms(row: Mapping[str, Any], *, default_due_at_ms: int) -> int:
+    value = row.get("due_at_ms")
+    if value is None:
+        return default_due_at_ms
+    return _required_dirty_due_at_ms(value)
+
+
+def _required_dirty_due_at_ms(value: Any) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise ValueError("news_projection_dirty_target_due_at_ms_required")
+    return value
 
 
 def _payload_hash(payload: Mapping[str, Any]) -> str:

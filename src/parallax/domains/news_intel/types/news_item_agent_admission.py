@@ -32,9 +32,9 @@ class NewsItemAgentAdmissionContext:
     @classmethod
     def from_repository_context(cls, context: Mapping[str, Any]) -> NewsItemAgentAdmissionContext:
         return cls(
-            exact_duplicate_candidates=_list_of_mappings(context.get("exact_duplicate_candidates")),
-            story_candidates=_list_of_mappings(context.get("story_candidates")),
-            material_delta=_optional_mapping(context.get("material_delta")) or {},
+            exact_duplicate_candidates=_optional_context_mapping_list(context, "exact_duplicate_candidates"),
+            story_candidates=_optional_context_mapping_list(context, "story_candidates"),
+            material_delta=_optional_context_mapping(context, "material_delta"),
         )
 
 
@@ -55,11 +55,28 @@ __all__ = [
 ]
 
 
-def _list_of_mappings(value: Any) -> list[Mapping[str, Any]]:
-    if not isinstance(value, Sequence) or isinstance(value, str):
+def _optional_context_mapping_list(context: Mapping[str, Any], field_name: str) -> list[Mapping[str, Any]]:
+    if field_name not in context:
         return []
-    return [item for item in value if isinstance(item, Mapping)]
+    value = context[field_name]
+    if not isinstance(value, list):
+        _raise_context_value_error(field_name)
+    rows: list[Mapping[str, Any]] = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            _raise_context_value_error(field_name)
+        rows.append(dict(item))
+    return rows
 
 
-def _optional_mapping(value: Any) -> Mapping[str, Any] | None:
-    return value if isinstance(value, Mapping) else None
+def _optional_context_mapping(context: Mapping[str, Any], field_name: str) -> Mapping[str, Any]:
+    if field_name not in context:
+        return {}
+    value = context[field_name]
+    if not isinstance(value, Mapping):
+        _raise_context_value_error(field_name)
+    return dict(value)
+
+
+def _raise_context_value_error(field_name: str) -> None:
+    raise ValueError(f"news_item_agent_admission_context_{field_name}_required")

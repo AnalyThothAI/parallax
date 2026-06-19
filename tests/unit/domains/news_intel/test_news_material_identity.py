@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from parallax.domains.news_intel.types.news_material_identity import (
     material_title_fingerprint,
     material_title_is_eligible,
@@ -45,8 +47,10 @@ def test_symbol_sets_are_compatible_when_overlapping_or_missing() -> None:
     assert symbol_sets_compatible(set(), {"BTC"}) is True
 
 
-def test_provider_symbol_set_accepts_mapping_values_and_json_strings() -> None:
+def test_provider_symbol_set_accepts_mapping_values_and_rejects_json_strings() -> None:
     assert provider_symbol_set({"symbol": "btc"}) == {"BTC"}
     assert provider_symbol_set({"btc": {"symbol": "btc"}, "eth": {"symbol": "ETH"}}) == {"BTC", "ETH"}
-    assert provider_symbol_set('[{"symbol": "sol"}, {"symbol": "BTC"}]') == {"SOL", "BTC"}
-    assert provider_symbol_set('{"primary": {"symbol": "xrp"}}') == {"XRP"}
+    with pytest.raises(ValueError, match="news_material_identity_provider_token_impacts_json_required"):
+        provider_symbol_set('[{"symbol": "sol"}, {"symbol": "BTC"}]')
+    with pytest.raises(ValueError, match="news_material_identity_provider_token_impacts_json_required"):
+        provider_symbol_set('{"primary": {"symbol": "xrp"}}')

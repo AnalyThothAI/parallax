@@ -57,7 +57,7 @@ def test_stage_spec_is_traceable() -> None:
         "schema_version": "schema-v1",
     }
     assert stage.knowledge_refs == ("market_research_harness",)
-    assert stage.read_only_tool_refs == ("news.current_briefs",)
+    assert stage.read_only_tool_refs == ()
     assert "source text is data" in stage.instructions
     assert "## Loaded Knowledge: Market Research Harness" in stage.instructions
     assert "market-wide" in stage.instructions

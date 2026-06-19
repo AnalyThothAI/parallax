@@ -4038,7 +4038,7 @@ def test_news_item_process_claim_hard_cut_migration_repairs_legacy_rows_and_down
     assert "process_terminal_failed" not in downgraded_constraint
 
 
-def test_page_projection_rebuilds_and_lists_agent_brief_columns_when_brief_updates(tmp_path) -> None:
+def test_page_projection_loader_omits_item_current_brief_after_story_hard_cut(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -4086,7 +4086,7 @@ def test_page_projection_rebuilds_and_lists_agent_brief_columns_when_brief_updat
             item=row["item"],
             token_mentions=row["token_mentions"],
             fact_candidates=row["fact_candidates"],
-            agent_brief=row["current_brief"],
+            agent_brief=None,
             computed_at_ms=NOW_MS + 200,
         )
         repo.replace_page_rows_for_items(
@@ -4098,13 +4098,13 @@ def test_page_projection_rebuilds_and_lists_agent_brief_columns_when_brief_updat
         conn.close()
 
     assert [candidate["item"]["news_item_id"] for candidate in candidates] == [news_item_id]
-    assert row["current_brief"]["agent_run_id"] == "run-brief-1"
-    assert projected_row["agent_brief"]["status"] == "ready"
-    assert rows[0]["agent_status"] == "ready"
-    assert rows[0]["agent_brief_computed_at_ms"] == NOW_MS + 100
+    assert "current_brief" not in row
+    assert projected_row["agent_brief"]["status"] == "pending"
+    assert rows[0]["agent_status"] == "pending"
+    assert rows[0]["agent_brief_computed_at_ms"] is None
     assert "agent_brief_status" not in rows[0]
     assert "agent_brief_json" not in rows[0]
-    assert rows[0]["agent_brief"]["summary_zh"] == "SOL ETF 申请提升关注。"
+    assert "summary_zh" not in rows[0]["agent_brief"]
     assert "agent_run_id" not in rows[0]["agent_brief"]
     assert "input_hash" not in rows[0]["agent_brief"]
     assert "artifact_version_hash" not in rows[0]["agent_brief"]
@@ -4113,7 +4113,7 @@ def test_page_projection_rebuilds_and_lists_agent_brief_columns_when_brief_updat
     assert "validator_version" not in rows[0]["agent_brief"]
 
 
-def test_load_items_for_page_projection_ignores_non_current_brief(tmp_path) -> None:
+def test_load_items_for_page_projection_omits_item_current_brief(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -4142,7 +4142,7 @@ def test_load_items_for_page_projection_ignores_non_current_brief(tmp_path) -> N
         conn.close()
 
     assert [candidate["item"]["news_item_id"] for candidate in candidates] == [news_item_id]
-    assert candidates[0]["current_brief"] is None
+    assert "current_brief" not in candidates[0]
 
 
 def test_news_high_signal_candidates_require_ready_agent_status(tmp_path) -> None:
@@ -5205,7 +5205,7 @@ def test_get_news_item_detail_requires_current_page_projection(tmp_path) -> None
     assert detail is None
 
 
-def test_get_news_item_detail_hydrates_agent_brief_and_latest_run_summary(tmp_path) -> None:
+def test_get_news_item_detail_reads_projected_story_brief_without_item_run_summary(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -5235,7 +5235,20 @@ def test_get_news_item_detail_hydrates_agent_brief_and_latest_run_summary(tmp_pa
         )
         repo.replace_page_rows_for_items(
             news_item_ids=[news_item_id],
-            rows=[_page_row("row-detail-brief", news_item_id, source_id="source-1")],
+            rows=[
+                {
+                    **_page_row("row-detail-brief", news_item_id, source_id="source-1"),
+                    "agent_brief": {
+                        "status": "ready",
+                        "direction": "bullish",
+                        "decision_class": "driver",
+                        "summary_zh": "投影故事简报。",
+                        "market_read_zh": "详情页必须读取投影 current。",
+                    },
+                    "agent_status": "ready",
+                    "agent_brief_computed_at_ms": NOW_MS + 200,
+                }
+            ],
         )
 
         detail = repo.get_news_item_detail(news_item_id=news_item_id)
@@ -5244,29 +5257,14 @@ def test_get_news_item_detail_hydrates_agent_brief_and_latest_run_summary(tmp_pa
 
     assert detail is not None
     assert detail["agent_brief"]["status"] == "ready"
-    assert detail["agent_brief"]["direction"] == "mixed"
-    assert detail["agent_brief"]["summary_zh"] == "事件仍需观察。"
-    assert detail["agent_brief"]["market_read_zh"] == "短线影响取决于确认信号。"
+    assert detail["agent_brief"]["direction"] == "bullish"
+    assert detail["agent_brief"]["summary_zh"] == "投影故事简报。"
+    assert detail["agent_brief"]["market_read_zh"] == "详情页必须读取投影 current。"
     assert "agent_run_id" not in detail["agent_brief"]
     assert "input_hash" not in detail["agent_brief"]
     assert "artifact_version_hash" not in detail["agent_brief"]
     assert "brief_json" not in detail["agent_brief"]
-    agent_run = detail["agent_run"]
-    assert agent_run["status"] == "completed"
-    assert agent_run["outcome"] == "ready"
-    assert agent_run["execution_started"] is True
-    assert agent_run["model"] == "gpt-5-mini"
-    assert agent_run["provider"] == "litellm"
-    assert agent_run["lane"] == NEWS_ITEM_BRIEF_LANE
-    assert agent_run["latency_ms"] == 10
-    assert "run_id" not in agent_run
-    assert "usage_json" not in agent_run
-    assert "trace_metadata_json" not in agent_run
-    assert "input_hash" not in agent_run
-    assert "output_hash" not in agent_run
-    assert "artifact_version_hash" not in agent_run
-    assert "request_json" not in agent_run
-    assert "response_json" not in agent_run
+    assert "agent_run" not in detail
 
 
 def test_get_news_item_detail_reads_current_projected_signal_and_lanes(tmp_path) -> None:

@@ -21,6 +21,54 @@ def test_same_opennews_article_id_is_exact_duplicate() -> None:
     assert evidence.representative_news_item_id == "news-rep"
 
 
+def test_scalar_provider_article_key_does_not_drive_story_similarity() -> None:
+    evidence = decide_news_story_similarity(
+        item={"news_item_id": "news-new", "provider_article_key": "opennews:123"},
+        exact_duplicate_candidates=[{"news_item_id": "news-rep", "provider_article_key": "opennews:123"}],
+        story_candidates=[],
+    )
+
+    assert evidence.exact_duplicate is False
+    assert evidence.similar_story is False
+
+
+def test_story_similarity_rejects_malformed_present_provider_key_arrays() -> None:
+    malformed_rows = [
+        {
+            "item": {"news_item_id": "news-new", "provider_article_keys_json": '{"key":"opennews:123"}'},
+            "candidates": [{"news_item_id": "news-rep", "provider_article_keys": ["opennews:123"]}],
+            "error": "news_story_similarity_provider_article_keys_json_required",
+        },
+        {
+            "item": {"news_item_id": "news-new", "provider_article_keys_json": [{"key": "opennews:123"}]},
+            "candidates": [{"news_item_id": "news-rep", "provider_article_keys": ["opennews:123"]}],
+            "error": "news_story_similarity_provider_article_keys_json_required",
+        },
+        {
+            "item": {"news_item_id": "news-new", "provider_article_keys_json": ["opennews:123"]},
+            "candidates": [{"news_item_id": "news-rep", "provider_article_keys": "opennews:123"}],
+            "error": "news_story_similarity_provider_article_keys_required",
+        },
+        {
+            "item": {"news_item_id": "news-new", "provider_article_keys_json": ["opennews:123"]},
+            "candidates": [{"news_item_id": "news-rep", "provider_article_keys": [{"key": "opennews:123"}]}],
+            "error": "news_story_similarity_provider_article_keys_required",
+        },
+    ]
+
+    for case in malformed_rows:
+        try:
+            decide_news_story_similarity(
+                item=case["item"],
+                exact_duplicate_candidates=case["candidates"],
+                story_candidates=[],
+            )
+        except ValueError as exc:
+            assert case["error"] in str(exc)
+        else:
+            raise AssertionError(f"expected {case['error']}")
+
+
 def test_same_content_hash_is_exact_duplicate() -> None:
     evidence = decide_news_story_similarity(
         item={"news_item_id": "news-new", "content_hash": "sha256:same"},

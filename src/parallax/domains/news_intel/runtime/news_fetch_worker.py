@@ -94,15 +94,17 @@ class NewsFetchWorker(WorkerBase):
                 for row in reconciled_sources
                 if str(row.get("status") or "") in {"updated", "disabled"} and row.get("source_id")
             ]
-            changed_item_ids = (
-                repos.news.list_news_item_ids_for_sources(source_ids=changed_source_ids) if changed_source_ids else []
+            changed_item_watermarks = _metadata_changed_item_watermarks(
+                repos.news.list_news_item_source_watermarks_for_sources(source_ids=changed_source_ids)
+                if changed_source_ids
+                else []
             )
             metadata_dirty_count = enqueue_page_reprojection(
                 repos,
-                news_item_ids=changed_item_ids,
+                news_item_ids=changed_item_watermarks,
                 reason="source_metadata_changed",
                 now_ms=now,
-                source_watermark_ms_by_news_item_id={news_item_id: now for news_item_id in changed_item_ids},
+                source_watermark_ms_by_news_item_id=changed_item_watermarks,
                 commit=False,
             )
             enqueue_source_quality_refresh(
@@ -332,12 +334,17 @@ class NewsFetchWorker(WorkerBase):
             if news_item_id and status in {"inserted", "updated"}:
                 affected_item_ids = _affected_news_item_ids(news)
                 dirty_news_item_ids.extend(affected_item_ids)
+        dirty_item_watermarks = _written_item_watermarks(
+            repository.list_news_item_source_watermarks(news_item_ids=dirty_news_item_ids)
+            if dirty_news_item_ids
+            else []
+        )
         enqueue_page_reprojection(
             repos,
             news_item_ids=dirty_news_item_ids,
             reason="news_item_written",
             now_ms=fetched_at_ms,
-            source_watermark_ms_by_news_item_id={news_item_id: fetched_at_ms for news_item_id in dirty_news_item_ids},
+            source_watermark_ms_by_news_item_id=dirty_item_watermarks,
             commit=False,
         )
         return counts
@@ -352,6 +359,10 @@ class NewsFetchWorker(WorkerBase):
                     source_id=source_id,
                     status="failed",
                     finished_at_ms=now_ms,
+                    fetched_count=0,
+                    inserted_count=0,
+                    updated_count=0,
+                    duplicate_count=0,
                     error=str(error),
                     commit=False,
                 )
@@ -379,11 +390,80 @@ def _notify_news_page_dirty(wake_emitter: Any | None, *, count: int, reason: str
     wake_emitter.notify_news_page_dirty(count=int(count), reason=str(reason))
 
 
-def _cursor_high_watermark_ms(cursor: Mapping[str, Any]) -> int | None:
+def _metadata_changed_item_watermarks(rows: list[Mapping[str, Any]]) -> dict[str, int]:
+    watermarks: dict[str, int] = {}
+    for row in rows:
+        news_item_id = _required_metadata_dirty_text(row, "news_item_id")
+        source_watermark_ms = _required_metadata_dirty_watermark(row)
+        watermarks[news_item_id] = max(watermarks.get(news_item_id, 0), source_watermark_ms)
+    return watermarks
+
+
+def _written_item_watermarks(rows: list[Mapping[str, Any]]) -> dict[str, int]:
+    watermarks: dict[str, int] = {}
+    for row in rows:
+        news_item_id = _required_written_item_dirty_text(row, "news_item_id")
+        source_watermark_ms = _required_written_item_dirty_watermark(row)
+        watermarks[news_item_id] = max(watermarks.get(news_item_id, 0), source_watermark_ms)
+    return watermarks
+
+
+def _required_metadata_dirty_text(row: Mapping[str, Any], field_name: str) -> str:
     try:
-        value = int(cursor.get("high_watermark_ms") or 0)
-    except (TypeError, ValueError):
+        value = row[field_name]
+    except KeyError as exc:
+        raise ValueError(f"news_fetch_metadata_dirty_{field_name}_required") from exc
+    if not isinstance(value, str):
+        raise ValueError(f"news_fetch_metadata_dirty_{field_name}_required")
+    text = value.strip()
+    if not text:
+        raise ValueError(f"news_fetch_metadata_dirty_{field_name}_required")
+    return text
+
+
+def _required_metadata_dirty_watermark(row: Mapping[str, Any]) -> int:
+    try:
+        value = row["source_watermark_ms"]
+    except KeyError as exc:
+        raise ValueError("news_fetch_metadata_dirty_source_watermark_required") from exc
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("news_fetch_metadata_dirty_source_watermark_required")
+    if value <= 0:
+        raise ValueError("news_fetch_metadata_dirty_source_watermark_required")
+    return int(value)
+
+
+def _required_written_item_dirty_text(row: Mapping[str, Any], field_name: str) -> str:
+    try:
+        value = row[field_name]
+    except KeyError as exc:
+        raise ValueError(f"news_fetch_item_dirty_{field_name}_required") from exc
+    if not isinstance(value, str):
+        raise ValueError(f"news_fetch_item_dirty_{field_name}_required")
+    text = value.strip()
+    if not text:
+        raise ValueError(f"news_fetch_item_dirty_{field_name}_required")
+    return text
+
+
+def _required_written_item_dirty_watermark(row: Mapping[str, Any]) -> int:
+    try:
+        value = row["source_watermark_ms"]
+    except KeyError as exc:
+        raise ValueError("news_fetch_item_dirty_source_watermark_required") from exc
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("news_fetch_item_dirty_source_watermark_required")
+    if value <= 0:
+        raise ValueError("news_fetch_item_dirty_source_watermark_required")
+    return int(value)
+
+
+def _cursor_high_watermark_ms(cursor: Mapping[str, Any]) -> int | None:
+    if "high_watermark_ms" not in cursor:
         return None
+    value = cursor["high_watermark_ms"]
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError("news_fetch_cursor_high_watermark_ms_required")
     return value if value > 0 else None
 
 
@@ -409,18 +489,21 @@ def _source_fetch_since_ms(
 def _fetch_policy_overlap_ms(source: Mapping[str, Any], source_cursor: Mapping[str, Any]) -> int:
     value = _fetch_policy_int(source, "rest_overlap_ms")
     if value is None:
-        try:
-            value = int(source_cursor.get("overlap_ms") or 0)
-        except (TypeError, ValueError):
-            value = 0
-    return max(0, int(value or 0))
+        return _required_cursor_overlap_ms(source_cursor)
+    return value
+
+
+def _required_cursor_overlap_ms(source_cursor: Mapping[str, Any]) -> int:
+    if "overlap_ms" not in source_cursor:
+        raise ValueError("news_fetch_cursor_overlap_ms_required")
+    value = source_cursor["overlap_ms"]
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError("news_fetch_cursor_overlap_ms_required")
+    return int(value)
 
 
 def _fetch_policy_int(source: Mapping[str, Any], key: str) -> int | None:
-    raw = source.get("fetch_policy_json")
-    if raw is None:
-        raw = source.get("fetch_policy")
-    policy = _mapping(raw)
+    policy = _optional_fetch_policy_mapping(source.get("fetch_policy_json"), "fetch_policy_json")
     value = policy.get(key)
     if value is None:
         return None
@@ -444,16 +527,12 @@ def _optional_str(value: Any) -> str | None:
     return normalized or None
 
 
-def _mapping(value: Any) -> dict[str, Any]:
+def _optional_fetch_policy_mapping(value: Any, field_name: str) -> dict[str, Any]:
+    if value is None:
+        return {}
     if isinstance(value, Mapping):
         return dict(value)
-    if isinstance(value, str) and value.strip():
-        try:
-            parsed = json.loads(value)
-        except json.JSONDecodeError:
-            return {}
-        return dict(parsed) if isinstance(parsed, Mapping) else {}
-    return {}
+    raise ValueError(f"news_fetch_{field_name}_required")
 
 
 def _now_ms() -> int:

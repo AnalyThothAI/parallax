@@ -4,19 +4,20 @@ from collections.abc import Mapping
 from contextlib import AbstractContextManager, nullcontext
 from typing import Any, cast
 
+from parallax.domains.news_intel._constants import NEWS_STORY_IDENTITY_VERSION
 from parallax.domains.news_intel.runtime.news_projection_work import (
-    enqueue_item_brief_work,
     enqueue_page_reprojection,
     enqueue_source_quality_refresh,
+    enqueue_story_brief_work,
 )
 from parallax.domains.news_intel.services.news_item_agent_policy import (
     news_item_agent_brief_priority,
 )
 
 DOMAIN_CHOICES = ("all", "news")
-PROJECTION_CHOICES = ("all", "brief_input", "page", "source_quality")
+PROJECTION_CHOICES = ("all", "page", "source_quality", "story_brief")
 
-_NEWS_ITEM_PROJECTIONS = ("brief_input", "page")
+_NEWS_ITEM_PROJECTIONS = ("page", "story_brief")
 
 
 def enqueue_projection_dirty_targets(
@@ -34,8 +35,8 @@ def enqueue_projection_dirty_targets(
     normalized_projection = str(projection or "all").strip().lower()
     if normalized_projection not in PROJECTION_CHOICES:
         raise ValueError(f"unsupported projection dirty target projection: {normalized_projection}")
-    if execute and normalized_projection in {"all", "brief_input"} and since_ms is None:
-        raise ValueError("executing brief_input repair requires --since-hours to bound expensive agent work")
+    if execute and normalized_projection in {"all", "story_brief"} and since_ms is None:
+        raise ValueError("executing story_brief repair requires --since-hours to bound expensive agent work")
     include_news = normalized_domain in {"all", "news"}
     result: dict[str, Any] = {
         "domain": normalized_domain,
@@ -91,8 +92,11 @@ def _enqueue_news_targets(
         else []
     )
     page_rows = [row for row in news_item_rows if "page" in news_item_projections]
-    brief_rows = [row for row in news_item_rows if "brief_input" in news_item_projections and _row_brief_eligible(row)]
+    story_brief_rows = [
+        row for row in news_item_rows if "story_brief" in news_item_projections and _row_brief_eligible(row)
+    ]
     watermarks = {str(row["news_item_id"]): _news_item_source_watermark_ms(row) for row in news_item_rows}
+    story_targets = _story_brief_targets(story_brief_rows)
     enqueued_pages = (
         enqueue_page_reprojection(
             repos,
@@ -105,17 +109,17 @@ def _enqueue_news_targets(
         if execute and page_rows
         else 0
     )
-    enqueued_briefs = (
-        enqueue_item_brief_work(
+    enqueued_story_briefs = (
+        enqueue_story_brief_work(
             repos,
-            news_item_ids=[str(row["news_item_id"]) for row in brief_rows],
-            priority_by_news_item_id={str(row["news_item_id"]): _news_item_brief_priority(row) for row in brief_rows},
-            source_watermark_ms_by_news_item_id=watermarks,
+            story_keys=story_targets["story_keys"],
+            priority_by_story_key=story_targets["priority_by_story_key"],
+            source_watermark_ms_by_story_key=story_targets["source_watermark_ms_by_story_key"],
             reason="ops_projection_dirty_repair",
             now_ms=now_ms,
             commit=False,
         )
-        if execute and brief_rows
+        if execute and story_targets["story_keys"]
         else 0
     )
     enqueued_source_quality = (
@@ -131,8 +135,8 @@ def _enqueue_news_targets(
     )
     return {
         "news_item_ids": len(news_item_rows),
-        "news_item_targets": len(page_rows) + len(brief_rows),
-        "news_item_targets_enqueued": int(enqueued_pages) + int(enqueued_briefs),
+        "news_item_targets": len(page_rows) + len(story_targets["story_keys"]),
+        "news_item_targets_enqueued": int(enqueued_pages) + int(enqueued_story_briefs),
         "source_ids": len(source_ids),
         "source_quality_targets": len(source_ids),
         "source_quality_targets_enqueued": int(enqueued_source_quality),
@@ -148,11 +152,46 @@ def _selected_projections(requested: str, available: tuple[str, ...]) -> tuple[s
 
 
 def _row_brief_eligible(row: Mapping[str, Any]) -> bool:
-    return str(row.get("agent_admission_status") or "").strip().lower() in {"eligible", "eligible_refresh"}
+    return _news_item_brief_priority(row) < 100
 
 
 def _news_item_brief_priority(row: Mapping[str, Any]) -> int:
     return news_item_agent_brief_priority(item=row)
+
+
+def _story_brief_targets(rows: list[Mapping[str, Any]]) -> dict[str, Any]:
+    story_keys: list[str] = []
+    priority_by_story_key: dict[str, int] = {}
+    source_watermark_ms_by_story_key: dict[str, int] = {}
+    for row in rows:
+        story_key = _news_item_story_key(row)
+        if story_key not in source_watermark_ms_by_story_key:
+            story_keys.append(story_key)
+        priority = _news_item_brief_priority(row)
+        existing_priority = priority_by_story_key.get(story_key)
+        priority_by_story_key[story_key] = priority if existing_priority is None else min(existing_priority, priority)
+        source_watermark_ms_by_story_key[story_key] = max(
+            source_watermark_ms_by_story_key.get(story_key, 0),
+            _news_item_source_watermark_ms(row),
+        )
+    return {
+        "story_keys": story_keys,
+        "priority_by_story_key": priority_by_story_key,
+        "source_watermark_ms_by_story_key": source_watermark_ms_by_story_key,
+    }
+
+
+def _news_item_story_key(row: Mapping[str, Any]) -> str:
+    try:
+        value = row["story_key"]
+    except KeyError as exc:
+        raise ValueError("ops_news_projection_dirty_story_key_required") from exc
+    if not isinstance(value, str):
+        raise ValueError("ops_news_projection_dirty_story_key_required")
+    story_key = value.strip()
+    if not story_key:
+        raise ValueError("ops_news_projection_dirty_story_key_required")
+    return story_key
 
 
 def _news_item_source_watermark_ms(row: Mapping[str, Any]) -> int:
@@ -173,19 +212,34 @@ def _fetch_ids(conn: Any, sql: str, column: str) -> list[str]:
 
 
 def _fetch_news_item_rows(conn: Any, *, since_ms: int | None) -> list[dict[str, Any]]:
-    params: dict[str, Any] = {}
-    where_clause = ""
+    params: dict[str, Any] = {"story_identity_version": NEWS_STORY_IDENTITY_VERSION}
+    where_clauses = [
+        "items.lifecycle_status = 'processed'",
+        "items.story_key <> ''",
+        "items.story_identity_version = %(story_identity_version)s",
+    ]
     if since_ms is not None:
-        where_clause = "WHERE items.published_at_ms >= %(since_ms)s"
+        where_clauses.append(
+            """
+            GREATEST(
+              COALESCE(NULLIF(items.published_at_ms, 0), 0),
+              COALESCE(NULLIF(items.fetched_at_ms, 0), 0)
+            ) >= %(since_ms)s
+            """
+        )
         params["since_ms"] = int(since_ms)
+    where_clause = " AND ".join(where_clauses)
     rows = conn.execute(
         f"""
         SELECT items.news_item_id,
-               items.published_at_ms,
-               items.published_at_ms AS source_watermark_ms,
-               items.agent_admission_status
+               items.story_key,
+               GREATEST(
+                 COALESCE(NULLIF(items.published_at_ms, 0), 0),
+                 COALESCE(NULLIF(items.fetched_at_ms, 0), 0)
+               )::bigint AS source_watermark_ms,
+               items.agent_admission_json
           FROM news_items AS items
-         {where_clause}
+         WHERE {where_clause}
          ORDER BY items.news_item_id ASC
         """,
         params,

@@ -7,13 +7,16 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from parallax.domains.news_intel.services.news_item_brief_entity_support import (
+    NewsBriefValidationPacket,
     validate_affected_entity_support,
 )
 from parallax.domains.news_intel.types.news_item_brief import (
     DataGap,
     NewsItemBriefInputPacket,
+    NewsItemBriefNewsItem,
     NewsItemBriefPayload,
 )
+from parallax.domains.news_intel.types.news_story_brief import NewsStoryBriefInputPacket
 from parallax.platform.agent_hashing import json_sha256
 
 _ACTION_AUDIT_KEYS = frozenset({"tool_calls", "tools", "handoffs"})
@@ -45,7 +48,7 @@ class NewsItemBriefValidationResult(BaseModel):
 def validate_news_item_brief_output(
     *,
     payload: Any,
-    packet: NewsItemBriefInputPacket,
+    packet: NewsBriefValidationPacket,
     audit: Any,
 ) -> NewsItemBriefValidationResult:
     try:
@@ -89,14 +92,14 @@ def _unexpected_action_errors(audit: Any) -> list[dict[str, str]]:
     return _dedupe_errors(errors)
 
 
-def _evidence_ref_errors(payload: dict[str, Any], *, packet: NewsItemBriefInputPacket) -> list[dict[str, str]]:
+def _evidence_ref_errors(payload: dict[str, Any], *, packet: NewsBriefValidationPacket) -> list[dict[str, str]]:
     allowed = set(packet.evidence_refs)
     return [
         _error("unknown_evidence_ref", ref) for ref in sorted(_evidence_refs_in_payload(payload)) if ref not in allowed
     ]
 
 
-def _ready_evidence_errors(payload: dict[str, Any], *, packet: NewsItemBriefInputPacket) -> list[dict[str, str]]:
+def _ready_evidence_errors(payload: dict[str, Any], *, packet: NewsBriefValidationPacket) -> list[dict[str, str]]:
     if payload.get("status") != "ready":
         return []
     allowed = set(packet.evidence_refs)
@@ -108,15 +111,16 @@ def _ready_evidence_errors(payload: dict[str, Any], *, packet: NewsItemBriefInpu
 def _ready_publishable_text_errors(payload: dict[str, Any]) -> list[dict[str, str]]:
     if payload.get("status") != "ready":
         return []
-    if str(payload.get("summary_zh") or "").strip() or str(payload.get("market_read_zh") or "").strip():
+    summary = payload.get("summary_zh")
+    if isinstance(summary, str) and summary.strip():
         return []
-    return [_error("missing_publishable_text", "ready output requires summary_zh or market_read_zh")]
+    return [_error("missing_publishable_text", "ready output requires summary_zh")]
 
 
 def _ready_market_structure_errors(
     payload: dict[str, Any],
     *,
-    packet: NewsItemBriefInputPacket,
+    packet: NewsBriefValidationPacket,
 ) -> list[dict[str, str]]:
     if payload.get("status") != "ready":
         return []
@@ -142,7 +146,7 @@ def _ready_market_structure_errors(
     return errors
 
 
-def _drop_unsupported_market_impacts(payload: dict[str, Any], *, packet: NewsItemBriefInputPacket) -> dict[str, Any]:
+def _drop_unsupported_market_impacts(payload: dict[str, Any], *, packet: NewsBriefValidationPacket) -> dict[str, Any]:
     supported = _source_backed_market_labels(packet)
     kept_impacts: list[dict[str, Any]] = []
     dropped_labels: list[str] = []
@@ -175,12 +179,13 @@ def _drop_unsupported_market_impacts(payload: dict[str, Any], *, packet: NewsIte
     return normalized
 
 
-def _source_backed_market_labels(packet: NewsItemBriefInputPacket) -> set[str]:
+def _source_backed_market_labels(packet: NewsBriefValidationPacket) -> set[str]:
     labels: set[str] = set()
+    news_item = _packet_news_item(packet)
     text_fields = [
-        packet.news_item.title,
-        packet.news_item.summary,
-        packet.news_item.body_excerpt,
+        news_item.title,
+        news_item.summary,
+        news_item.body_excerpt,
     ]
     labels.update(_norm(token) for field in text_fields for token in re.findall(r"[A-Za-z0-9]{2,20}", field or ""))
     for entity in packet.entity_lanes:
@@ -199,7 +204,7 @@ def _source_backed_market_labels(packet: NewsItemBriefInputPacket) -> set[str]:
     return {label for label in labels if label}
 
 
-def _unsupported_entity_errors(payload: dict[str, Any], *, packet: NewsItemBriefInputPacket) -> list[dict[str, str]]:
+def _unsupported_entity_errors(payload: dict[str, Any], *, packet: NewsBriefValidationPacket) -> list[dict[str, str]]:
     errors: list[dict[str, str]] = []
     for entity in payload.get("affected_entities") or []:
         if not isinstance(entity, Mapping):
@@ -209,6 +214,14 @@ def _unsupported_entity_errors(payload: dict[str, Any], *, packet: NewsItemBrief
             continue
         errors.append(_error("unsupported_entity", str(entity.get("label") or entity.get("symbol") or "unknown")))
     return errors
+
+
+def _packet_news_item(packet: NewsBriefValidationPacket) -> NewsItemBriefNewsItem:
+    if isinstance(packet, NewsItemBriefInputPacket):
+        return packet.news_item
+    if isinstance(packet, NewsStoryBriefInputPacket):
+        return packet.representative_item
+    raise TypeError("news_brief_validation_packet_invalid")
 
 
 def _trading_instruction_errors(payload: dict[str, Any]) -> list[dict[str, str]]:

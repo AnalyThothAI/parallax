@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -63,7 +62,7 @@ def build_news_item_brief_input_packet(
         summary=_bounded(item.get("summary"), 2000),
         body_excerpt=_bounded(item.get("body_text"), BODY_EXCERPT_MAX_CHARS),
         canonical_url=_bounded(item.get("canonical_url"), 2000),
-        published_at_ms=_int(item.get("published_at_ms")),
+        published_at_ms=_required_item_published_at_ms(item),
         content_hash=_bounded(item.get("content_hash"), 160),
         source=NewsItemBriefSource(
             source_domain=_bounded(item.get("source_domain"), 255),
@@ -76,16 +75,10 @@ def build_news_item_brief_input_packet(
     fact_lanes = [_fact_lane(row) for row in sorted(fact_candidates, key=_fact_sort_key)[:MAX_FACT_LANES]]
     event_type = _optional_bounded(item.get("event_type"), 80)
     agent_admission = _agent_admission(item)
-    similarity = _context_object(item, "similarity_json", "similarity", fallback=agent_admission.get("similarity"))
-    material_delta = _context_object(
-        item,
-        "material_delta_json",
-        "material_delta",
-        fallback=agent_admission.get("material_delta"),
-    )
+    similarity = _context_object(item, "similarity_json")
+    material_delta = _context_object(item, "material_delta_json")
     market_scope = _market_scope(
         item=item,
-        agent_admission=agent_admission,
         entity_lanes=entity_lanes,
     )
     evidence_refs = _evidence_refs(
@@ -185,7 +178,7 @@ def _entity_lane(row: Mapping[str, Any]) -> NewsItemBriefEntityLane | None:
         role=_bounded(row.get("role") or row.get("text_surface") or "mentioned", 64),
         confidence=_optional_float(row.get("confidence")),
         evidence_refs=[f"entity:{entity_id}"],
-        candidate_targets=[_json_object(value) for value in _json_list(row.get("candidate_targets_json"))[:12]],
+        candidate_targets=_optional_lane_mapping_list(row, "candidate_targets_json", lane_name="entity")[:12],
     )
 
 
@@ -196,12 +189,13 @@ def _token_entity_lane(row: Mapping[str, Any]) -> NewsItemBriefEntityLane | None
     observed_symbol = _bounded(row.get("observed_symbol"), 64)
     target_type = _optional_bounded(row.get("target_type"), 80)
     target_id = _optional_bounded(row.get("target_id"), 160)
-    candidate_targets = [_json_object(value) for value in _json_list(row.get("candidate_targets_json"))[:12]]
+    candidate_targets = _optional_lane_mapping_list(row, "candidate_targets_json", lane_name="token")[:12]
+    resolution_status = _required_lane_text(row, "resolution_status", lane_name="token")
     market_domain = _token_mention_market_domain(
         target_id=target_id,
         target_type=target_type,
         candidate_targets=candidate_targets,
-        resolution_status=row.get("resolution_status"),
+        resolution_status=resolution_status,
     )
     return NewsItemBriefEntityLane(
         entity_id=mention_id,
@@ -210,7 +204,7 @@ def _token_entity_lane(row: Mapping[str, Any]) -> NewsItemBriefEntityLane | None
         display_name=_optional_bounded(row.get("display_name"), 160),
         entity_type=_token_mention_entity_type(market_domain),
         market_domain=market_domain,
-        resolution_status=_bounded(row.get("resolution_status") or "unknown", 64),
+        resolution_status=_bounded(resolution_status, 64),
         target_type=target_type,
         target_id=target_id,
         role="token_mention",
@@ -259,8 +253,11 @@ def _fact_lane(row: Mapping[str, Any]) -> NewsItemBriefFactLane:
         claim=_bounded(row.get("claim"), 800),
         realis=_bounded(row.get("realis"), 64),
         validation_status=_bounded(row.get("validation_status"), 64),
-        affected_targets=[_json_object(value) for value in _json_list(row.get("affected_targets_json"))[:20]],
-        rejection_reasons=[_bounded(value, 120) for value in _json_list(row.get("rejection_reasons_json"))[:12]],
+        affected_targets=_optional_lane_mapping_list(row, "affected_targets_json", lane_name="fact")[:20],
+        rejection_reasons=[
+            _bounded(value, 120)
+            for value in _optional_lane_scalar_list(row, "rejection_reasons_json", lane_name="fact")[:12]
+        ],
         evidence_quote=_bounded(row.get("evidence_quote"), 500),
     )
 
@@ -316,32 +313,26 @@ def _packet_id(
 def _market_scope(
     *,
     item: Mapping[str, Any],
-    agent_admission: Mapping[str, object],
     entity_lanes: list[NewsItemBriefEntityLane],
 ) -> list[str]:
-    explicit = _market_domain_list(item.get("market_scope_json") or item.get("market_scope"))
+    explicit = _market_domain_list(item, "market_scope_json")
     if explicit:
         return _stable_unique(explicit)[:12]
-    admitted = _agent_admission_market_scope(agent_admission)
     inferred = [lane.market_domain for lane in entity_lanes if lane.market_domain != "unknown"]
-    return _stable_unique([*admitted, *inferred])[:12]
+    return _stable_unique(inferred)[:12]
 
 
-def _agent_admission_market_scope(agent_admission: Mapping[str, object]) -> list[str]:
-    basis = _json_object(agent_admission.get("basis"))
-    return _market_domain_list(basis.get("market_scope"))
-
-
-def _market_domain_list(value: Any) -> list[str]:
-    if isinstance(value, str):
-        direct = _market_domain(value)
-        if direct:
-            return [direct]
-    return [domain for domain in (_market_domain(raw) for raw in _json_list(value)) if domain]
+def _market_domain_list(item: Mapping[str, Any], field_name: str) -> list[str]:
+    if field_name not in item or item[field_name] is None:
+        return []
+    value = item[field_name]
+    if isinstance(value, str) or not isinstance(value, Sequence):
+        raise ValueError(f"news_item_brief_{field_name}_required")
+    return [domain for domain in (_market_domain(raw) for raw in value) if domain]
 
 
 def _agent_admission(item: Mapping[str, Any]) -> dict[str, object]:
-    admission = _context_object(item, "agent_admission_json", "agent_admission")
+    admission = _context_object(item, "agent_admission_json")
     status = _bounded(item.get("agent_admission_status"), 64)
     reason = _bounded(item.get("agent_admission_reason"), 160)
     if status and "status" not in admission:
@@ -357,16 +348,11 @@ def _agent_admission(item: Mapping[str, Any]) -> dict[str, object]:
 def _context_object(
     item: Mapping[str, Any],
     json_key: str,
-    object_key: str,
-    *,
-    fallback: Any = None,
 ) -> dict[str, object]:
+    if json_key not in item or item[json_key] is None:
+        return {}
     value = item.get(json_key)
-    if value is None:
-        value = item.get(object_key)
-    if value is None:
-        value = fallback
-    return _bounded_json_object(value)
+    return _required_bounded_json_object(value, error_code=f"news_item_brief_{json_key}_required")
 
 
 def _entity_type(value: Any) -> str:
@@ -487,36 +473,61 @@ def _fact_sort_key(row: Mapping[str, Any]) -> tuple[str, str]:
     return (_str(row.get("fact_candidate_id")), _str(row.get("claim")))
 
 
-def _json_list(value: Any) -> list[Any]:
+def _optional_lane_scalar_list(row: Mapping[str, Any], field_name: str, *, lane_name: str) -> list[Any]:
+    value = _lane_json_value(row.get(field_name))
     if value is None:
         return []
-    if isinstance(value, str):
-        try:
-            parsed = json.loads(value)
-        except json.JSONDecodeError:
-            return []
-        return parsed if isinstance(parsed, list) else []
-    if isinstance(value, list):
-        return value
-    if isinstance(value, tuple | set):
-        return list(value)
-    return []
+    if isinstance(value, str) or not isinstance(value, Sequence):
+        raise ValueError(f"news_item_brief_{lane_name}_{field_name}_required")
+    values = list(value)
+    if any(isinstance(item, Mapping) or (isinstance(item, Sequence) and not isinstance(item, str)) for item in values):
+        raise ValueError(f"news_item_brief_{lane_name}_{field_name}_required")
+    return values
 
 
-def _json_object(value: Any) -> dict[str, object]:
-    if isinstance(value, str) and value.strip():
-        try:
-            parsed = json.loads(value)
-        except json.JSONDecodeError:
-            return {}
-        return _json_object(parsed)
-    if isinstance(value, Mapping):
-        return {str(key): child for key, child in value.items() if child is not None}
-    return {}
+def _optional_lane_mapping_list(row: Mapping[str, Any], field_name: str, *, lane_name: str) -> list[dict[str, object]]:
+    values = _optional_lane_json_list(row, field_name, lane_name=lane_name)
+    result: list[dict[str, object]] = []
+    for raw_item in values:
+        item = _lane_json_value(raw_item)
+        if not isinstance(item, Mapping):
+            raise ValueError(f"news_item_brief_{lane_name}_{field_name}_required")
+        result.append(_bounded_json_mapping(item))
+    return result
 
 
-def _bounded_json_object(value: Any, *, max_keys: int = 32) -> dict[str, object]:
-    payload = _json_object(value)
+def _optional_lane_json_list(row: Mapping[str, Any], field_name: str, *, lane_name: str) -> list[Any]:
+    value = _lane_json_value(row.get(field_name))
+    if value is None:
+        return []
+    if isinstance(value, str) or not isinstance(value, Sequence):
+        raise ValueError(f"news_item_brief_{lane_name}_{field_name}_required")
+    return list(value)
+
+
+def _required_lane_text(row: Mapping[str, Any], field_name: str, *, lane_name: str) -> str:
+    value = row.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"news_item_brief_{lane_name}_{field_name}_required")
+    return value.strip()
+
+
+def _lane_json_value(value: Any) -> Any:
+    return getattr(value, "obj", value)
+
+
+def _required_bounded_json_object(
+    value: Any,
+    *,
+    error_code: str,
+    max_keys: int = 32,
+) -> dict[str, object]:
+    if not isinstance(value, Mapping):
+        raise ValueError(error_code)
+    return _bounded_json_mapping(value, max_keys=max_keys)
+
+
+def _bounded_json_mapping(payload: Mapping[Any, Any], *, max_keys: int = 32) -> dict[str, object]:
     result: dict[str, object] = {}
     for key, child in list(payload.items())[:max_keys]:
         bounded_key = _bounded(key, 80)
@@ -567,11 +578,11 @@ def _optional_bounded(value: Any, max_length: int) -> str | None:
     return cleaned or None
 
 
-def _int(value: Any) -> int:
-    try:
-        return max(0, int(value or 0))
-    except (TypeError, ValueError):
-        return 0
+def _required_item_published_at_ms(item: Mapping[str, Any]) -> int:
+    value = item.get("published_at_ms")
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise ValueError("news_item_brief_published_at_ms_required")
+    return int(value)
 
 
 def _optional_float(value: Any) -> float | None:

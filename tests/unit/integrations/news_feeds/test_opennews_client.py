@@ -20,6 +20,16 @@ def test_opennews_fetch_policy_only_reads_json_contract() -> None:
     assert _source_fetch_policy({"fetch_policy_json": {"engineTypes": {"news": []}}}) == {"engineTypes": {"news": []}}
 
 
+def test_opennews_fetch_policy_rejects_malformed_present_json_contract() -> None:
+    for malformed_policy in (
+        '{"engineTypes": {"news": []}}',
+        "not-json",
+        ["not", "a", "mapping"],
+    ):
+        with pytest.raises(ValueError, match="OpenNews fetch_policy_json must be a mapping"):
+            _source_fetch_policy({"fetch_policy_json": malformed_policy})
+
+
 def test_opennews_client_constructor_is_rest_only() -> None:
     parameters = inspect.signature(OpenNewsFeedClient).parameters
 

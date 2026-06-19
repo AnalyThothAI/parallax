@@ -2,17 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.news_intel._constants import NEWS_PAGE_PROJECTION_VERSION
 from parallax.domains.news_intel.runtime.news_projection_work import (
+    PAGE_PROJECTION,
     claim_page_projection_work,
     mark_work_done,
     mark_work_error,
-    page_news_item_ids,
 )
 from parallax.domains.news_intel.services.news_page_projection import build_news_page_row
 
@@ -53,6 +53,7 @@ class NewsPageProjectionWorker(WorkerBase):
         marked_error = 0
         story_groups_projected = 0
         story_member_items = 0
+        claimed_ids: list[str] = []
 
         with self._repository_session() as repos, repos.transaction():
             claimed = claim_page_projection_work(
@@ -77,8 +78,8 @@ class NewsPageProjectionWorker(WorkerBase):
                     ),
                 )
 
-            claimed_ids = page_news_item_ids(claimed)
             try:
+                claimed_ids = _required_page_claim_news_item_ids(claimed)
                 with repos.transaction():
                     payloads = repos.news.load_story_projection_payloads_for_items(news_item_ids=claimed_ids)
                     story_keys: list[str] = []
@@ -92,15 +93,13 @@ class NewsPageProjectionWorker(WorkerBase):
                                 item=item,
                                 token_mentions=token_mentions,
                                 fact_candidates=fact_candidates,
-                                agent_brief=current_brief,
                                 story=story,
+                                agent_brief=current_brief,
                                 computed_at_ms=now,
                             )
                         )
-                        story_key = str((story or {}).get("story_key") or item.get("story_key") or "")
-                        if story_key:
-                            story_keys.append(story_key)
-                            story_groups_projected += 1
+                        story_keys.append(str(story["story_key"]))
+                        story_groups_projected += 1
                         member_item_ids.extend(_member_news_item_ids(member_items=member_items, story=story, item=item))
                     story_member_items = len(set(member_item_ids))
             except Exception as exc:
@@ -175,7 +174,7 @@ class NewsPageProjectionWorker(WorkerBase):
             mark_work_done(repos, claimed, now_ms=now, commit=False)
 
         return WorkerResult(
-            processed=len(page_news_item_ids(claimed)),
+            processed=len(claimed_ids),
             notes=_notes(
                 claimed=len(claimed),
                 projected=len(rows),
@@ -210,34 +209,107 @@ def _projection_parts(
     list[dict[str, Any]],
     list[dict[str, Any]],
     dict[str, Any] | None,
-    dict[str, Any] | None,
+    dict[str, Any],
     list[dict[str, Any]],
 ]:
-    item = dict(payload.get("item") or payload)
-    current_brief = payload.get("current_brief")
-    story = payload.get("story")
+    item = _required_mapping(payload, "item")
     return (
         item,
-        [dict(row) for row in payload.get("token_mentions") or []],
-        [dict(row) for row in payload.get("fact_candidates") or []],
-        dict(current_brief) if current_brief is not None else None,
-        dict(story) if story is not None else None,
-        [dict(row) for row in payload.get("member_items") or []],
+        _required_mapping_list(payload, "token_mentions"),
+        _required_mapping_list(payload, "fact_candidates"),
+        _optional_mapping(payload, "current_brief"),
+        _required_mapping(payload, "story"),
+        _required_mapping_list(payload, "member_items"),
     )
 
 
 def _member_news_item_ids(
     *,
     member_items: list[dict[str, Any]],
-    story: Mapping[str, Any] | None,
+    story: Mapping[str, Any],
     item: Mapping[str, Any],
 ) -> list[str]:
-    member_ids = [str(row.get("news_item_id") or "") for row in member_items if str(row.get("news_item_id") or "")]
-    if not member_ids and story:
-        member_ids = [str(member_id) for member_id in story.get("member_news_item_ids") or [] if str(member_id)]
+    del story
+    member_ids = [_required_member_news_item_id(row, item=item) for row in member_items]
     if not member_ids:
-        member_ids = [str(item["news_item_id"])]
+        news_item_id = str(item.get("news_item_id") or "")
+        suffix = f":{news_item_id}" if news_item_id else ""
+        raise ValueError(f"news_page_projection_member_items_required{suffix}")
     return member_ids
+
+
+def _required_member_news_item_id(row: Mapping[str, Any], *, item: Mapping[str, Any]) -> str:
+    value = row.get("news_item_id")
+    if not isinstance(value, str) or not value.strip():
+        news_item_id = str(item.get("news_item_id") or "")
+        suffix = f":{news_item_id}" if news_item_id else ""
+        raise ValueError(f"news_page_projection_member_item_news_item_id_required{suffix}")
+    return value.strip()
+
+
+def _required_mapping(payload: Mapping[str, Any], field_name: str) -> dict[str, Any]:
+    value = payload.get(field_name)
+    if not isinstance(value, Mapping):
+        raise ValueError(f"news_page_projection_payload_{field_name}_required")
+    return dict(value)
+
+
+def _optional_mapping(payload: Mapping[str, Any], field_name: str) -> dict[str, Any] | None:
+    value = payload.get(field_name)
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise ValueError(f"news_page_projection_payload_{field_name}_invalid")
+    return dict(value)
+
+
+def _required_mapping_list(payload: Mapping[str, Any], field_name: str) -> list[dict[str, Any]]:
+    value = payload.get(field_name)
+    if isinstance(value, str) or not isinstance(value, list | tuple):
+        raise ValueError(f"news_page_projection_payload_{field_name}_required")
+    rows = [dict(row) for row in value if isinstance(row, Mapping)]
+    if len(rows) != len(value):
+        raise ValueError(f"news_page_projection_payload_{field_name}_invalid")
+    return rows
+
+
+def _required_page_claim_news_item_ids(rows: Iterable[Mapping[str, Any]]) -> list[str]:
+    seen: set[str] = set()
+    news_item_ids: list[str] = []
+    for row in rows:
+        _require_claim_text(row, field="projection_name", expected=PAGE_PROJECTION)
+        _require_claim_text(row, field="target_kind", expected="news_item")
+        _require_claim_empty_window(row)
+        news_item_id = _require_claim_text(row, field="target_id")
+        if news_item_id in seen:
+            continue
+        seen.add(news_item_id)
+        news_item_ids.append(news_item_id)
+    return news_item_ids
+
+
+def _require_claim_text(row: Mapping[str, Any], *, field: str, expected: str | None = None) -> str:
+    try:
+        value = row[field]
+    except KeyError as exc:
+        raise ValueError(f"news_page_projection_claim_{field}_required") from exc
+    if not isinstance(value, str):
+        raise ValueError(f"news_page_projection_claim_{field}_required")
+    text = value.strip()
+    if not text:
+        raise ValueError(f"news_page_projection_claim_{field}_required")
+    if expected is not None and text != expected:
+        raise ValueError(f"news_page_projection_claim_{field}_required")
+    return text
+
+
+def _require_claim_empty_window(row: Mapping[str, Any]) -> None:
+    try:
+        value = row["window"]
+    except KeyError as exc:
+        raise ValueError("news_page_projection_claim_window_empty_required") from exc
+    if value != "":
+        raise ValueError("news_page_projection_claim_window_empty_required")
 
 
 def _notes(

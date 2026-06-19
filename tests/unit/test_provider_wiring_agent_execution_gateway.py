@@ -100,6 +100,7 @@ def test_wire_providers_passes_one_agent_execution_gateway_to_model_execution_fa
                 "lanes": {
                     "pulse.decision": {"model": "gpt-pulse"},
                     "news.item_brief": {"model": "gpt-news"},
+                    "news.story_brief": {"model": "gpt-story"},
                 },
             },
             "pulse_candidate": {"enabled": True},
@@ -127,6 +128,7 @@ def test_wire_providers_passes_one_agent_execution_gateway_to_model_execution_fa
     ) -> object:
         assert "llm_gateway" not in kwargs
         calls.append(("news_item_brief", settings.agent_runtime_model_for_lane("news.item_brief"), agent_gateway))
+        calls.append(("news_story_brief", settings.agent_runtime_model_for_lane("news.story_brief"), agent_gateway))
         return object()
 
     db_pool_token = object()
@@ -143,6 +145,7 @@ def test_wire_providers_passes_one_agent_execution_gateway_to_model_execution_fa
     assert providers.agent_execution_gateway is agent_gateway
     assert calls == [
         ("news_item_brief", "gpt-news", agent_gateway),
+        ("news_story_brief", "gpt-story", agent_gateway),
         ("pulse", "gpt-pulse", agent_gateway),
     ]
 

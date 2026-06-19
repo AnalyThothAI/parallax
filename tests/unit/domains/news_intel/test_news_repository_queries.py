@@ -10,7 +10,11 @@ from parallax.domains.news_intel._constants import (
     NEWS_ITEM_AGENT_ADMISSION_VERSION,
     NEWS_MARKET_SCOPE_VERSION,
 )
-from parallax.domains.news_intel.repositories.news_repository import NewsRepository
+from parallax.domains.news_intel.repositories.news_repository import (
+    NewsRepository,
+    _current_policy_material_duplicate_groups,
+    _news_item_aggregate_changed,
+)
 from parallax.domains.news_intel.types.news_item_agent_admission import NewsItemAgentAdmission
 from parallax.domains.news_intel.types.news_market_scope import NewsMarketScope
 from parallax.domains.news_intel.types.news_story_identity import NEWS_STORY_IDENTITY_VERSION, NewsStoryIdentity
@@ -33,6 +37,30 @@ def test_page_projection_loader_reads_source_payload_for_claimed_targets() -> No
     assert "'coverage_tags_json', source_rep.coverage_tags_json" in conn.sql
     assert "news_story_members" not in conn.sql
     assert "news_story_groups" not in conn.sql
+    assert "news_item_agent_briefs" not in conn.sql
+    assert "current_brief" not in conn.sql
+
+
+@pytest.mark.parametrize(
+    ("field_name", "bad_value"),
+    [
+        ("token_mentions", None),
+        ("token_mentions", {}),
+        ("fact_candidates", None),
+        ("fact_candidates", {}),
+    ],
+)
+def test_page_projection_loader_rejects_malformed_evidence_arrays_without_json_list_defaults(
+    field_name: str,
+    bad_value: object,
+) -> None:
+    row = _valid_page_projection_loader_row()
+    row[field_name] = bad_value
+    conn = NewsPageRowsConnection(rows=[row])
+    repo = NewsRepository(conn)
+
+    with pytest.raises(ValueError, match=f"news_page_projection_input_evidence.*{field_name}"):
+        repo.load_items_for_page_projection(news_item_ids=["news-1"])
 
 
 def test_brief_target_loader_includes_provider_duplicate_aggregation() -> None:
@@ -53,6 +81,174 @@ def test_brief_target_loader_includes_provider_duplicate_aggregation() -> None:
     assert "edge_sources.enabled = true" in conn.sql
     assert "story_member_rows" not in conn.sql
     assert "news_story_groups AS stories" not in conn.sql
+
+
+@pytest.mark.parametrize(
+    ("field_name", "bad_value"),
+    [
+        ("entities", None),
+        ("entities", {}),
+        ("token_mentions", None),
+        ("token_mentions", {}),
+        ("fact_candidates", None),
+        ("fact_candidates", {}),
+    ],
+)
+def test_brief_target_loader_rejects_malformed_evidence_arrays_without_json_list_defaults(
+    field_name: str,
+    bad_value: object,
+) -> None:
+    row = _valid_brief_target_loader_row()
+    row[field_name] = bad_value
+    conn = NewsPageRowsConnection(rows=[row])
+    repo = NewsRepository(conn)
+
+    with pytest.raises(ValueError, match=f"news_item_brief_target_evidence.*{field_name}"):
+        repo.load_items_for_brief_targets(news_item_ids=["news-1"])
+
+
+@pytest.mark.parametrize(
+    ("loader", "kwargs"),
+    [
+        pytest.param(
+            "item",
+            {"news_item_ids": ["news-1"]},
+            id="item_brief",
+        ),
+        pytest.param(
+            "story",
+            {"story_keys": ["story:news-1"]},
+            id="story_brief",
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    "source_updated_at_ms",
+    [
+        pytest.param(None, id="none"),
+        pytest.param(0, id="zero"),
+        pytest.param(-1, id="negative"),
+        pytest.param(True, id="bool"),
+        pytest.param("10", id="string"),
+    ],
+)
+def test_brief_target_loaders_require_positive_source_updated_at(
+    loader: str,
+    kwargs: dict[str, Any],
+    source_updated_at_ms: object,
+) -> None:
+    if loader == "item":
+        row = _valid_brief_target_loader_row()
+        row["source_updated_at_ms"] = source_updated_at_ms
+        conn = NewsPageRowsConnection(rows=[row])
+        method = NewsRepository(conn).load_items_for_brief_targets
+    else:
+        row = _valid_story_brief_target_row()
+        row["source_updated_at_ms"] = source_updated_at_ms
+        conn = StoryBriefTargetsConnection(rows=[row])
+        method = NewsRepository(conn).load_story_brief_targets
+
+    with pytest.raises(ValueError, match="news_brief_target_source_updated_at_ms_required"):
+        method(**kwargs)
+
+
+def test_news_item_source_watermarks_for_sources_reads_persisted_item_times() -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+
+    rows = repo.list_news_item_source_watermarks_for_sources(source_ids=["source-1"])
+
+    assert rows == []
+    assert "JOIN news_items AS items ON items.news_item_id = edges.news_item_id" in conn.sql
+    assert "items.published_at_ms" in conn.sql
+    assert "items.fetched_at_ms" in conn.sql
+    assert "source_watermark_ms" in conn.sql
+    assert "clock_timestamp" not in conn.sql
+    assert "now_ms" not in conn.sql
+
+
+def test_news_item_source_watermarks_reads_persisted_item_times_without_worker_clock() -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+
+    rows = repo.list_news_item_source_watermarks(news_item_ids=["news-1"])
+
+    assert rows == []
+    assert "FROM news_items AS items" in conn.sql
+    assert "items.published_at_ms" in conn.sql
+    assert "items.fetched_at_ms" in conn.sql
+    assert "source_watermark_ms" in conn.sql
+    assert "clock_timestamp" not in conn.sql
+    assert "now_ms" not in conn.sql
+
+
+def test_canonical_rebuild_list_reads_only_current_servable_news_items() -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+
+    rows = repo.list_news_items_for_canonical_rebuild(limit=25)
+
+    assert rows == []
+    assert "FROM news_items AS items" in conn.sql
+    assert "items.lifecycle_status = 'processed'" in conn.sql
+    assert "items.story_key <> ''" in conn.sql
+    assert "items.story_identity_version = %s" in conn.sql
+    assert "JOIN news_sources AS edge_sources ON edge_sources.source_id = edges.source_id" in conn.sql
+    assert "edge_sources.enabled = true" in conn.sql
+    assert "source_watermark_ms > 0" in conn.sql
+    assert conn.params == (NEWS_STORY_IDENTITY_VERSION, 25)
+
+
+@pytest.mark.parametrize(
+    ("field_name", "bad_value"),
+    [
+        pytest.param("sync_high_watermark_ms", None, id="missing_high_watermark"),
+        pytest.param("sync_high_watermark_ms", -1, id="negative_high_watermark"),
+        pytest.param("sync_high_watermark_ms", True, id="bool_high_watermark"),
+        pytest.param("sync_high_watermark_ms", "0", id="string_high_watermark"),
+        pytest.param("sync_overlap_ms", None, id="missing_overlap"),
+        pytest.param("sync_overlap_ms", -1, id="negative_overlap"),
+        pytest.param("sync_overlap_ms", False, id="bool_overlap"),
+        pytest.param("sync_overlap_ms", "0", id="string_overlap"),
+    ],
+)
+def test_source_sync_cursor_requires_explicit_nonnegative_sync_scalars(
+    field_name: str,
+    bad_value: object,
+) -> None:
+    row = {
+        "sync_cursor_json": {"page": "cursor"},
+        "sync_high_watermark_ms": 0,
+        "sync_overlap_ms": 0,
+        "sync_diagnostics_json": {"stop_reason": "caught_up"},
+    }
+    row[field_name] = bad_value
+    conn = SourceSyncCursorConnection(row=row)
+    repo = NewsRepository(conn)
+
+    with pytest.raises(ValueError, match=f"news_source_sync_cursor_{field_name}_required"):
+        repo.source_sync_cursor("source-1")
+
+
+@pytest.mark.parametrize(
+    ("field_name", "bad_value"),
+    [
+        ("entities", {"entity_id": "entity-1"}),
+        ("token_mentions", {"mention_id": "mention-1"}),
+        ("fact_candidates", {"fact_candidate_id": "fact-1"}),
+    ],
+)
+def test_story_brief_target_loader_rejects_malformed_member_evidence_arrays(
+    field_name: str,
+    bad_value: object,
+) -> None:
+    row = _valid_story_brief_target_row()
+    row[field_name] = bad_value
+    conn = StoryBriefTargetsConnection(rows=[row])
+    repo = NewsRepository(conn)
+
+    with pytest.raises(ValueError, match=f"news_story_brief_target_{field_name}_required"):
+        repo.load_story_brief_targets(story_keys=["story:news-1"])
 
 
 def test_agent_admission_context_loader_uses_narrow_news_item_payloads() -> None:
@@ -91,6 +287,75 @@ def test_agent_admission_context_provider_duplicate_lookup_uses_observation_edge
     assert "target_provider_edges" in conn.sql
     assert "duplicate_edges.provider_article_key = target_provider_edges.provider_article_key" in conn.sql
     assert "jsonb_array_elements_text" not in conn.sql
+
+
+def test_agent_admission_representative_current_state_uses_story_briefs() -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+
+    rows = repo.load_agent_admission_contexts(news_item_ids=["news-1"], now_ms=1_000)
+
+    assert rows == []
+    exact_duplicate_section = conn.sql.split(") AS exact_duplicates ON true", 1)[0]
+    story_candidate_section = conn.sql.split(") AS exact_duplicates ON true", 1)[1].split(
+        ") AS story_candidates ON true",
+        1,
+    )[0]
+    assert "LEFT JOIN news_story_agent_briefs AS duplicate_story_current_brief" in exact_duplicate_section
+    assert "duplicate_story_current_brief.story_brief_key IS NOT NULL" in exact_duplicate_section
+    assert "news_item_agent_briefs AS duplicate_current_brief" not in exact_duplicate_section
+    assert "LEFT JOIN news_story_agent_briefs AS story_current_brief" in story_candidate_section
+    assert "story_current_brief.story_brief_key" in story_candidate_section
+    assert "news_item_agent_briefs AS story_current_brief" not in story_candidate_section
+
+
+def test_agent_admission_context_loader_does_not_read_target_item_current_brief_audit_rows() -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+
+    rows = repo.load_agent_admission_contexts(news_item_ids=["news-1"], now_ms=1_000)
+
+    assert rows == []
+    assert "news_item_agent_briefs AS current_brief" not in conn.sql
+    assert "_CURRENT_NEWS_ITEM_BRIEF_CURRENT_BRIEF_SQL" not in conn.sql
+
+
+@pytest.mark.parametrize(
+    ("field_name", "bad_value"),
+    [
+        ("entities", None),
+        ("entities", {}),
+        ("token_mentions", None),
+        ("token_mentions", {}),
+        ("fact_candidates", None),
+        ("fact_candidates", {}),
+        ("exact_duplicate_candidates", None),
+        ("exact_duplicate_candidates", {}),
+        ("story_candidates", None),
+        ("story_candidates", {}),
+    ],
+)
+def test_agent_admission_context_loader_rejects_malformed_evidence_arrays_without_json_list_defaults(
+    field_name: str,
+    bad_value: object,
+) -> None:
+    row = _valid_agent_admission_context_loader_row()
+    row[field_name] = bad_value
+    conn = NewsPageRowsConnection(rows=[row])
+    repo = NewsRepository(conn)
+
+    with pytest.raises(ValueError, match=f"news_agent_admission_context.*{field_name}"):
+        repo.load_agent_admission_contexts(news_item_ids=["news-1"], now_ms=1_000)
+
+
+def test_agent_similar_story_context_requires_story_identity_version_without_default() -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+
+    with pytest.raises(ValueError, match="news_agent_admission_story_identity_version_required"):
+        repo._agent_similar_story_context({"news_item_id": "news-1", "story_key": "story:news-1"})
+
+    assert conn.statements == []
 
 
 def test_news_page_row_payload_hash_rejects_legacy_story_keys_before_write() -> None:
@@ -147,6 +412,251 @@ def test_news_page_row_payload_requires_formal_json_sections_before_write(field_
     ("field_name", "bad_value"),
     [
         ("representative_news_item_id", None),
+        ("representative_news_item_id", ""),
+        ("story_key", None),
+        ("story_key", ""),
+        ("content_class", None),
+        ("content_class", ""),
+        ("agent_status", None),
+        ("agent_status", ""),
+        ("agent_admission_status", None),
+        ("agent_admission_status", ""),
+        ("agent_admission_reason", None),
+        ("agent_admission_reason", ""),
+        ("agent_representative_news_item_id", None),
+        ("agent_representative_news_item_id", ""),
+    ],
+)
+def test_news_page_row_payload_requires_formal_text_identity_before_write(
+    field_name: str,
+    bad_value: object,
+) -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+    row = _valid_news_page_row()
+    if bad_value is None:
+        row.pop(field_name)
+    else:
+        row[field_name] = bad_value
+
+    with pytest.raises(ValueError, match=f"news_page_row_payload.*{field_name}"):
+        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row], commit=True)
+
+    assert conn.events == ["begin", "rollback"]
+    assert not any("INSERT INTO news_page_rows" in sql for sql, _params in conn.statements)
+
+
+def test_news_page_row_payload_requires_formal_agent_brief_status_before_write() -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+    row = _valid_news_page_row()
+    agent_brief = dict(row["agent_brief"])
+    agent_brief.pop("status")
+    row["agent_brief"] = agent_brief
+
+    with pytest.raises(ValueError, match=r"news_page_row_payload.*agent_brief.*status"):
+        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row], commit=True)
+
+    assert conn.events == ["begin", "rollback"]
+    assert not any("INSERT INTO news_page_rows" in sql for sql, _params in conn.statements)
+
+
+@pytest.mark.parametrize(
+    ("field_name", "bad_value"),
+    [
+        ("direction", None),
+        ("direction", ""),
+        ("decision_class", None),
+        ("decision_class", ""),
+    ],
+)
+def test_news_page_row_payload_ready_agent_brief_requires_formal_signal_fields_before_write(
+    field_name: str,
+    bad_value: object,
+) -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+    row = _valid_news_page_row()
+    agent_brief = {
+        "status": "ready",
+        "direction": "bullish",
+        "decision_class": "driver",
+        "summary_zh": "当前摘要",
+    }
+    if bad_value is None:
+        agent_brief.pop(field_name)
+    else:
+        agent_brief[field_name] = bad_value
+    row["agent_brief"] = agent_brief
+    row["agent_status"] = "ready"
+
+    with pytest.raises(ValueError, match=rf"news_page_row_payload.*agent_brief.*{field_name}"):
+        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row], commit=True)
+
+    assert conn.events == ["begin", "rollback"]
+    assert not any("INSERT INTO news_page_rows" in sql for sql, _params in conn.statements)
+
+
+def test_news_page_row_payload_rejects_agent_status_mismatch_before_write() -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+    row = _valid_news_page_row()
+    row["agent_status"] = "ready"
+
+    with pytest.raises(ValueError, match=r"news_page_row_payload.*agent_status.*mismatch"):
+        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row], commit=True)
+
+    assert conn.events == ["begin", "rollback"]
+    assert not any("INSERT INTO news_page_rows" in sql for sql, _params in conn.statements)
+
+
+@pytest.mark.parametrize(
+    ("field_name", "bad_value"),
+    [
+        ("canonical_item_key", None),
+        ("canonical_item_key", ""),
+        ("duplicate_count", None),
+        ("duplicate_count", "2"),
+        ("duplicate_count", 2.5),
+        ("duplicate_count", -1),
+        ("source_ids_json", None),
+        ("source_ids_json", {}),
+        ("source_domains_json", None),
+        ("source_domains_json", {}),
+        ("provider_article_keys_json", None),
+        ("provider_article_keys_json", {}),
+    ],
+)
+def test_news_page_row_payload_requires_formal_summary_fields_before_write(
+    field_name: str,
+    bad_value: object,
+) -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+    row = _valid_news_page_row()
+    if bad_value is None:
+        row.pop(field_name)
+    else:
+        row[field_name] = bad_value
+
+    with pytest.raises(ValueError, match=f"news_page_row_payload.*{field_name}"):
+        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row], commit=True)
+
+    assert conn.events == ["begin", "rollback"]
+    assert not any("INSERT INTO news_page_rows" in sql for sql, _params in conn.statements)
+
+
+@pytest.mark.parametrize(
+    ("field_name", "bad_value"),
+    [
+        ("headline", None),
+        ("headline", 123),
+        ("summary", None),
+        ("summary", 123),
+        ("source_domain", None),
+        ("source_domain", 123),
+        ("canonical_url", None),
+        ("canonical_url", 123),
+    ],
+)
+def test_news_page_row_payload_requires_formal_display_strings_before_write(
+    field_name: str,
+    bad_value: object,
+) -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+    row = _valid_news_page_row()
+    if bad_value is None:
+        row.pop(field_name)
+    else:
+        row[field_name] = bad_value
+
+    with pytest.raises(ValueError, match=f"news_page_row_payload.*{field_name}"):
+        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row], commit=True)
+
+    assert conn.events == ["begin", "rollback"]
+    assert not any("INSERT INTO news_page_rows" in sql for sql, _params in conn.statements)
+
+
+@pytest.mark.parametrize(
+    ("field_name", "bad_value"),
+    [
+        ("latest_at_ms", True),
+        ("latest_at_ms", "1779000000000"),
+        ("latest_at_ms", 1_779_000_000_000.5),
+        ("latest_at_ms", 0),
+        ("computed_at_ms", True),
+        ("computed_at_ms", "1779000000000"),
+        ("computed_at_ms", 1_779_000_000_000.5),
+        ("computed_at_ms", 0),
+        ("agent_brief_computed_at_ms", True),
+        ("agent_brief_computed_at_ms", "1779000000000"),
+        ("agent_brief_computed_at_ms", 1_779_000_000_000.5),
+        ("agent_brief_computed_at_ms", 0),
+    ],
+)
+def test_news_page_row_payload_requires_typed_timing_fields_before_write(
+    field_name: str,
+    bad_value: object,
+) -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+    row = _valid_news_page_row()
+    row[field_name] = bad_value
+
+    with pytest.raises(ValueError, match=f"news_page_row_payload.*{field_name}"):
+        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row], commit=True)
+
+    assert conn.events == ["begin", "rollback"]
+    assert not any("INSERT INTO news_page_rows" in sql for sql, _params in conn.statements)
+
+
+@pytest.mark.parametrize("field_name", ["status", "reason", "representative_news_item_id", "basis", "version"])
+def test_news_page_row_payload_requires_formal_agent_admission_fields_before_write(field_name: str) -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+    row = _valid_news_page_row()
+    agent_admission = dict(row["agent_admission"])
+    agent_admission.pop(field_name)
+    row["agent_admission"] = agent_admission
+
+    with pytest.raises(ValueError, match=f"news_page_row_payload.*agent_admission.*{field_name}"):
+        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row], commit=True)
+
+    assert conn.events == ["begin", "rollback"]
+    assert not any("INSERT INTO news_page_rows" in sql for sql, _params in conn.statements)
+
+
+@pytest.mark.parametrize(
+    ("top_level_field", "admission_field"),
+    [
+        ("agent_admission_status", "status"),
+        ("agent_admission_reason", "reason"),
+        ("agent_representative_news_item_id", "representative_news_item_id"),
+    ],
+)
+def test_news_page_row_payload_rejects_agent_admission_mismatch_before_write(
+    top_level_field: str,
+    admission_field: str,
+) -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+    row = _valid_news_page_row()
+    agent_admission = dict(row["agent_admission"])
+    agent_admission[admission_field] = "different"
+    row["agent_admission"] = agent_admission
+
+    with pytest.raises(ValueError, match=f"news_page_row_payload.*{top_level_field}.*mismatch"):
+        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row], commit=True)
+
+    assert conn.events == ["begin", "rollback"]
+    assert not any("INSERT INTO news_page_rows" in sql for sql, _params in conn.statements)
+
+
+@pytest.mark.parametrize(
+    ("field_name", "bad_value"),
+    [
+        ("representative_news_item_id", None),
         ("story_key", None),
         ("story", None),
         ("market_scope", None),
@@ -181,6 +691,59 @@ def test_news_item_detail_requires_formal_page_row_projection_without_raw_item_f
 
     with pytest.raises(ValueError, match=f"news_item_detail_projection.*{field_name}"):
         repo.get_news_item_detail(news_item_id="news-1")
+
+
+@pytest.mark.parametrize(
+    ("field_name", "bad_value"),
+    [
+        ("entities", None),
+        ("entities", {}),
+        ("token_mentions", None),
+        ("token_mentions", {}),
+        ("fact_candidates", None),
+        ("fact_candidates", {}),
+    ],
+)
+def test_news_item_detail_requires_explicit_evidence_arrays_without_json_list_defaults(
+    field_name: str,
+    bad_value: object,
+) -> None:
+    base_row = _valid_news_item_detail_base_row()
+    base_row[field_name] = bad_value
+    conn = NewsItemDetailConnection(
+        page_row=_valid_news_item_detail_page_row(),
+        base_row=base_row,
+    )
+    repo = NewsRepository(conn)
+
+    with pytest.raises(ValueError, match=f"news_item_detail_evidence.*{field_name}"):
+        repo.get_news_item_detail(news_item_id="news-1")
+
+
+def test_news_item_detail_reads_agent_current_from_projected_page_row_only() -> None:
+    page_row = _valid_news_item_detail_page_row()
+    page_row["page_agent_brief"] = {
+        "status": "ready",
+        "direction": "bullish",
+        "decision_class": "driver",
+        "summary_zh": "Projected story current.",
+    }
+    conn = NewsItemDetailConnection(page_row=page_row)
+    repo = NewsRepository(conn)
+
+    detail = repo.get_news_item_detail(news_item_id="news-1")
+
+    assert detail is not None
+    assert detail["agent_brief"] == {
+        "status": "ready",
+        "direction": "bullish",
+        "decision_class": "driver",
+        "summary_zh": "Projected story current.",
+    }
+    assert "agent_run" not in detail
+    combined_sql = "\n".join(sql for sql, _params in conn.statements)
+    assert "news_item_agent_briefs" not in combined_sql
+    assert "news_item_agent_runs" not in combined_sql
 
 
 @pytest.mark.parametrize(
@@ -497,6 +1060,41 @@ def test_upsert_source_returning_row_accepts_matching_required_row() -> None:
     assert "INSERT INTO news_sources" in conn.statements[1][0]
 
 
+@pytest.mark.parametrize(
+    ("field_name", "bad_value", "error"),
+    [
+        ("authority_scope", "authority", "news_source_authority_scope_required"),
+        ("fetch_policy", ["rest_limit"], "news_source_fetch_policy_required"),
+        ("cost_policy", "free", "news_source_cost_policy_required"),
+    ],
+)
+def test_upsert_source_rejects_malformed_policy_mappings_before_sql(
+    field_name: str,
+    bad_value: object,
+    error: str,
+) -> None:
+    conn = UpsertSourceConnection(
+        existing=None,
+        row={"source_id": "source-1", "provider_type": "rss"},
+    )
+    repo = NewsRepository(conn)
+
+    kwargs = {field_name: bad_value}
+    with pytest.raises(ValueError, match=error):
+        repo.upsert_source(
+            source_id="source-1",
+            provider_type="rss",
+            feed_url="https://example.com/feed.xml",
+            source_domain="example.com",
+            source_name="Example",
+            now_ms=1_000,
+            commit=False,
+            **kwargs,
+        )
+
+    assert conn.statements == []
+
+
 def test_upsert_provider_item_returning_row_requires_cursor_rowcount() -> None:
     conn = UpsertProviderItemConnection(
         existing=None,
@@ -730,6 +1328,32 @@ def test_refresh_news_item_observation_summary_allows_optional_no_row_without_fa
     assert conn.fallback_select_count == 0
 
 
+@pytest.mark.parametrize(
+    ("side", "field_name", "bad_value"),
+    [
+        ("existing", "duplicate_observation_count", None),
+        ("existing", "duplicate_observation_count", "1"),
+        ("existing", "duplicate_observation_count", True),
+        ("updated", "duplicate_observation_count", -1),
+        ("existing", "source_ids_json", None),
+        ("existing", "source_ids_json", {}),
+        ("updated", "source_domains_json", "[]"),
+        ("updated", "provider_article_keys_json", {}),
+    ],
+)
+def test_news_item_aggregate_changed_rejects_malformed_summary_fields(
+    side: str,
+    field_name: str,
+    bad_value: object,
+) -> None:
+    existing = _valid_news_item_aggregate_row()
+    updated = _valid_news_item_aggregate_row()
+    {"existing": existing, "updated": updated}[side][field_name] = bad_value
+
+    with pytest.raises(ValueError, match=f"news_item_aggregate_{field_name}_required"):
+        _news_item_aggregate_changed(existing, updated)
+
+
 def test_reselect_news_item_representative_returning_requires_cursor_rowcount() -> None:
     conn = ReselectRepresentativeReturningConnection(
         row={"news_item_id": "news-old"},
@@ -891,6 +1515,110 @@ def test_material_duplicate_edge_remap_returning_counts_reject_invalid_or_mismat
         _remap_material_duplicate_edges(repo)
 
     assert "UPDATE news_item_observation_edges AS edges" in conn.remap_sql
+
+
+@pytest.mark.parametrize(
+    ("field_name", "bad_value"),
+    [
+        pytest.param("raw_observation_count", None, id="missing_raw_observation_count"),
+        pytest.param("canonical_item_count", "1", id="string_canonical_item_count"),
+        pytest.param("observation_edge_count", True, id="bool_observation_edge_count"),
+        pytest.param("enabled_serving_row_count", -1, id="negative_enabled_serving_row_count"),
+        pytest.param("top_visible_content_duplicate_groups", {}, id="mapping_top_content_groups"),
+        pytest.param("material_title_duplicate_groups", [], id="list_material_title_groups"),
+        pytest.param("source_sync_diagnostics", None, id="missing_source_sync_diagnostics"),
+    ],
+)
+def test_news_dedup_diagnostics_rejects_malformed_summary_row(
+    field_name: str,
+    bad_value: object,
+) -> None:
+    row = _valid_news_dedup_diagnostics_row()
+    row[field_name] = bad_value
+    conn = DedupDiagnosticsConnection(summary_row=row)
+    repo = NewsRepository(conn)
+
+    with pytest.raises(ValueError, match=f"news_dedup_diagnostics_{field_name}_required"):
+        repo.news_dedup_diagnostics(window_ms=1_000, now_ms=1_779_000_000_000)
+
+
+def test_current_policy_material_duplicate_groups_reports_valid_opennews_duplicates() -> None:
+    groups = _current_policy_material_duplicate_groups(
+        [
+            _current_policy_material_row(news_item_id="news-1"),
+            _current_policy_material_row(news_item_id="news-2", published_at_ms=1_230_000),
+            _current_policy_material_row(provider_type="rss", news_item_id="news-rss"),
+        ]
+    )
+
+    assert groups == [
+        {
+            "source_id": "opennews-news",
+            "title_fingerprint": "bitcoin crashes as billions of longs get liquidated",
+            "row_count": 2,
+            "duplicate_rows": 1,
+            "news_item_ids": ["news-1", "news-2"],
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    ("field_name", "bad_value"),
+    [
+        ("provider_type", None),
+        ("provider_type", ""),
+        ("provider_type", 123),
+        ("source_id", None),
+        ("source_id", ""),
+        ("source_id", 123),
+        ("news_item_id", None),
+        ("news_item_id", ""),
+        ("news_item_id", 123),
+        ("title", None),
+        ("title", ""),
+        ("title", 123),
+        ("published_at_ms", None),
+        ("published_at_ms", 0),
+        ("published_at_ms", -1),
+        ("published_at_ms", True),
+        ("published_at_ms", "1200000"),
+        ("provider_token_impacts_json", None),
+        ("provider_token_impacts_json", '[{"symbol":"BTC"}]'),
+        ("provider_token_impacts_json", 123),
+    ],
+)
+def test_current_policy_material_duplicate_groups_rejects_malformed_opennews_rows(
+    field_name: str,
+    bad_value: object,
+) -> None:
+    row = _current_policy_material_row()
+    row[field_name] = bad_value
+
+    with pytest.raises(ValueError, match=f"news_dedup_current_policy_material_{field_name}_required"):
+        _current_policy_material_duplicate_groups([row])
+
+
+def test_current_policy_material_duplicate_groups_rejects_missing_opennews_contract_fields() -> None:
+    row = _current_policy_material_row()
+    row.pop("provider_token_impacts_json")
+
+    with pytest.raises(ValueError, match="news_dedup_current_policy_material_provider_token_impacts_json_required"):
+        _current_policy_material_duplicate_groups([row])
+
+
+def test_current_policy_material_duplicate_groups_skips_non_opennews_after_provider_type_validation() -> None:
+    groups = _current_policy_material_duplicate_groups(
+        [
+            {
+                "provider_type": "rss",
+                "source_id": 123,
+                "news_item_id": 456,
+                "published_at_ms": None,
+            }
+        ]
+    )
+
+    assert groups == []
 
 
 def test_disable_unconfigured_sources_returning_counts_require_cursor_rowcount() -> None:
@@ -1092,6 +1820,90 @@ def test_finish_fetch_run_returning_row_accepts_matching_required_row() -> None:
     assert len(conn.statements) == 2
     assert "UPDATE news_fetch_runs" in conn.statements[0][0]
     assert "UPDATE news_sources" in conn.statements[1][0]
+
+
+@pytest.mark.parametrize(
+    ("field_name", "kwargs"),
+    [
+        ("fetched_count", {"fetched_count": None, "items_seen": None}),
+        ("inserted_count", {"inserted_count": None, "items_inserted": None}),
+        ("updated_count", {"updated_count": None, "items_updated": None}),
+        ("duplicate_count", {"duplicate_count": None}),
+        ("fetched_count", {"fetched_count": True}),
+        ("inserted_count", {"inserted_count": "1"}),
+        ("updated_count", {"updated_count": -1}),
+        ("duplicate_count", {"duplicate_count": False}),
+    ],
+)
+def test_finish_fetch_run_requires_explicit_nonnegative_counts(
+    field_name: str,
+    kwargs: dict[str, object],
+) -> None:
+    conn = FinishFetchRunConnection(row={"fetch_run_id": "run-1", "status": "success"}, rowcount=1)
+    repo = NewsRepository(conn)
+
+    payload: dict[str, object] = {
+        "fetch_run_id": "run-1",
+        "source_id": "source-1",
+        "status": "success",
+        "finished_at_ms": 1_000,
+        "fetched_count": 1,
+        "inserted_count": 1,
+        "updated_count": 0,
+        "duplicate_count": 0,
+        "commit": False,
+    }
+    payload.update(kwargs)
+
+    with pytest.raises(ValueError, match=f"news_fetch_run_{field_name}_required"):
+        repo.finish_fetch_run(**payload)  # type: ignore[arg-type]
+
+    assert conn.statements == []
+
+
+@pytest.mark.parametrize(
+    ("field_name", "kwargs"),
+    [
+        ("status", {"status": None}),
+        ("status", {"status": ""}),
+        ("status", {"status": "running"}),
+        ("finished_at_ms", {"finished_at_ms": None}),
+        ("finished_at_ms", {"finished_at_ms": True}),
+        ("finished_at_ms", {"finished_at_ms": "1000"}),
+        ("finished_at_ms", {"finished_at_ms": -1}),
+        ("http_status", {"http_status": True}),
+        ("http_status", {"http_status": "200"}),
+        ("http_status", {"http_status": -1}),
+        ("extra_json", {"extra_json": []}),
+        ("extra_json", {"extra_json": "{}"}),
+    ],
+)
+def test_finish_fetch_run_requires_explicit_completion_scalar_contract(
+    field_name: str,
+    kwargs: dict[str, object],
+) -> None:
+    conn = FinishFetchRunConnection(row={"fetch_run_id": "run-1", "status": "success"}, rowcount=1)
+    repo = NewsRepository(conn)
+
+    payload: dict[str, object] = {
+        "fetch_run_id": "run-1",
+        "source_id": "source-1",
+        "status": "success",
+        "finished_at_ms": 1_000,
+        "fetched_count": 1,
+        "inserted_count": 1,
+        "updated_count": 0,
+        "duplicate_count": 0,
+        "http_status": 200,
+        "extra_json": {"provider": "opennews"},
+        "commit": False,
+    }
+    payload.update(kwargs)
+
+    with pytest.raises(ValueError, match=f"news_fetch_run_{field_name}_required"):
+        repo.finish_fetch_run(**payload)  # type: ignore[arg-type]
+
+    assert conn.statements == []
 
 
 def test_news_current_fact_writes_reject_reflective_payload_objects_before_insert() -> None:
@@ -1475,6 +2287,31 @@ def test_insert_news_item_agent_run_returning_row_accepts_matching_required_row(
     assert "INSERT INTO news_item_agent_runs" in conn.write_sql
 
 
+@pytest.mark.parametrize(
+    ("field_name", "error"),
+    [
+        ("backend", "unsupported news item agent run payload shape: blank backend"),
+        ("latency_ms", "unsupported news item agent run payload shape: missing latency_ms"),
+    ],
+)
+def test_insert_news_item_agent_run_requires_explicit_audit_scalar_fields(
+    field_name: str,
+    error: str,
+) -> None:
+    conn = AgentReturningConnection(
+        row={"run_id": "run-1", "news_item_id": "news-1"},
+        rowcount=1,
+    )
+    repo = NewsRepository(conn)
+    payload = _news_item_agent_run_payload()
+    payload.pop(field_name)
+
+    with pytest.raises(ValueError, match=error):
+        repo.insert_news_item_agent_run(**payload)
+
+    assert conn.write_sql == ""
+
+
 def test_upsert_news_item_agent_brief_returning_row_requires_cursor_rowcount() -> None:
     conn = AgentReturningConnection(
         row={"news_item_id": "news-1", "agent_run_id": "run-1"},
@@ -1526,6 +2363,103 @@ def test_upsert_news_item_agent_brief_returning_row_accepts_matching_required_ro
     assert row["news_item_id"] == "news-1"
     assert row["agent_run_id"] == "run-1"
     assert "INSERT INTO news_item_agent_briefs" in conn.write_sql
+
+
+def test_upsert_news_item_agent_brief_ready_payload_requires_summary_without_market_read_fallback() -> None:
+    conn = AgentReturningConnection(row={"news_item_id": "news-1", "agent_run_id": "run-1"}, rowcount=1)
+    repo = NewsRepository(conn)
+    payload = _news_item_agent_brief_payload(brief_json={"market_read_zh": "Legacy market read is not publishable."})
+
+    with pytest.raises(ValueError, match="ready news item agent brief requires publishable summary"):
+        repo.upsert_news_item_agent_brief(**payload)
+
+    assert conn.write_sql == ""
+
+
+def test_insert_news_story_agent_run_requires_explicit_audit_json_fields() -> None:
+    conn = AgentReturningConnection(
+        row={"run_id": "story-run-1", "story_brief_key": "story-brief-1"},
+        rowcount=1,
+    )
+    repo = NewsRepository(conn)
+    payload = _news_story_agent_run_payload()
+    payload.pop("request_json")
+
+    with pytest.raises(ValueError, match="unsupported news story agent run payload shape: missing request_json"):
+        repo.insert_news_story_agent_run(**payload)
+
+    assert conn.write_sql == ""
+
+
+@pytest.mark.parametrize(
+    ("field_name", "error"),
+    [
+        ("backend", "unsupported news story agent run payload shape: blank backend"),
+        ("latency_ms", "unsupported news story agent run payload shape: missing latency_ms"),
+    ],
+)
+def test_insert_news_story_agent_run_requires_explicit_audit_scalar_fields(
+    field_name: str,
+    error: str,
+) -> None:
+    conn = AgentReturningConnection(
+        row={"run_id": "story-run-1", "story_brief_key": "story-brief-1"},
+        rowcount=1,
+    )
+    repo = NewsRepository(conn)
+    payload = _news_story_agent_run_payload()
+    payload.pop(field_name)
+
+    with pytest.raises(ValueError, match=error):
+        repo.insert_news_story_agent_run(**payload)
+
+    assert conn.write_sql == ""
+
+
+def test_insert_news_story_agent_run_requires_non_empty_member_ids() -> None:
+    conn = AgentReturningConnection(
+        row={"run_id": "story-run-1", "story_brief_key": "story-brief-1"},
+        rowcount=1,
+    )
+    repo = NewsRepository(conn)
+    payload = _news_story_agent_run_payload(member_news_item_ids_json=[])
+
+    with pytest.raises(
+        ValueError,
+        match="unsupported news story agent run payload shape: member_news_item_ids_json must be non-empty",
+    ):
+        repo.insert_news_story_agent_run(**payload)
+
+    assert conn.write_sql == ""
+
+
+def test_upsert_news_story_agent_brief_requires_explicit_brief_json() -> None:
+    conn = AgentReturningConnection(
+        row={"story_brief_key": "story-brief-1", "agent_run_id": "story-run-1"},
+        rowcount=1,
+    )
+    repo = NewsRepository(conn)
+    payload = _news_story_agent_brief_payload()
+    payload.pop("brief_json")
+
+    with pytest.raises(ValueError, match="unsupported news story agent brief payload shape: missing brief_json"):
+        repo.upsert_news_story_agent_brief(**payload)
+
+    assert conn.write_sql == ""
+
+
+def test_upsert_news_story_agent_brief_ready_payload_requires_summary_without_market_read_fallback() -> None:
+    conn = AgentReturningConnection(
+        row={"story_brief_key": "story-brief-1", "agent_run_id": "story-run-1"},
+        rowcount=1,
+    )
+    repo = NewsRepository(conn)
+    payload = _news_story_agent_brief_payload(brief_json={"market_read_zh": "Legacy market read is not publishable."})
+
+    with pytest.raises(ValueError, match="ready news story agent brief requires publishable summary"):
+        repo.upsert_news_story_agent_brief(**payload)
+
+    assert conn.write_sql == ""
 
 
 def test_clear_current_briefs_outside_schema_returning_rows_require_cursor_rowcount() -> None:
@@ -1627,13 +2561,47 @@ class CapturingConnection:
         return CapturingConnectionTransaction(self.events)
 
 
-class NewsItemDetailConnection:
-    def __init__(self, *, page_row: dict[str, object]) -> None:
+class SourceSyncCursorConnection:
+    def __init__(self, *, row: dict[str, object]) -> None:
+        self.sql = ""
+        self.params: object = None
+        self.statements: list[tuple[str, object]] = []
+        self.row = row
+
+    def execute(self, sql: str, params: object = None) -> NewsItemDetailCursor:
+        self.sql = sql
+        self.params = params
+        self.statements.append((sql, params))
+        return NewsItemDetailCursor(row=self.row)
+
+
+class DedupDiagnosticsConnection:
+    def __init__(self, *, summary_row: dict[str, object]) -> None:
         self.sql = ""
         self.params: object = None
         self.statements: list[tuple[str, object]] = []
         self._cursors = [
-            NewsItemDetailCursor(row=_valid_news_item_detail_base_row()),
+            NewsItemDetailCursor(row=summary_row),
+            NewsItemDetailCursor(rows=[]),
+            NewsItemDetailCursor(rows=[]),
+            NewsItemDetailCursor(row={"row_count": 0}),
+            NewsItemDetailCursor(row={"row_count": 0}),
+        ]
+
+    def execute(self, sql: str, params: object = None) -> NewsItemDetailCursor:
+        self.sql = sql
+        self.params = params
+        self.statements.append((sql, params))
+        return self._cursors.pop(0)
+
+
+class NewsItemDetailConnection:
+    def __init__(self, *, page_row: dict[str, object], base_row: dict[str, object] | None = None) -> None:
+        self.sql = ""
+        self.params: object = None
+        self.statements: list[tuple[str, object]] = []
+        self._cursors = [
+            NewsItemDetailCursor(row=base_row or _valid_news_item_detail_base_row()),
             NewsItemDetailCursor(row=page_row),
             NewsItemDetailCursor(rows=[]),
         ]
@@ -1682,6 +2650,20 @@ class NewsPageRowsCursor:
 
     def fetchall(self) -> list[dict[str, object]]:
         return list(self._rows)
+
+
+class StoryBriefTargetsConnection:
+    def __init__(self, *, rows: list[dict[str, object]]) -> None:
+        self.sql = ""
+        self.params: object = None
+        self.statements: list[tuple[str, object]] = []
+        self.rows = rows
+
+    def execute(self, sql: str, params: object = None) -> NewsPageRowsCursor:
+        self.sql = sql
+        self.params = params
+        self.statements.append((sql, params))
+        return NewsPageRowsCursor(rows=self.rows)
 
 
 class RowcountConnection:
@@ -2418,6 +3400,30 @@ def _material_duplicate_candidate_row() -> dict[str, Any]:
     }
 
 
+def _current_policy_material_row(**overrides: Any) -> dict[str, Any]:
+    row: dict[str, Any] = {
+        "provider_type": "opennews",
+        "source_id": "opennews-news",
+        "news_item_id": "news-1",
+        "title": "Bitcoin crashes as billions of longs get liquidated",
+        "published_at_ms": 1_200_000,
+        "provider_token_impacts_json": [{"symbol": "BTC"}],
+    }
+    row.update(overrides)
+    return row
+
+
+def _valid_news_item_aggregate_row(**overrides: Any) -> dict[str, Any]:
+    row: dict[str, Any] = {
+        "duplicate_observation_count": 1,
+        "source_ids_json": ["source-1"],
+        "source_domains_json": ["example.com"],
+        "provider_article_keys_json": ["opennews:article-1"],
+    }
+    row.update(overrides)
+    return row
+
+
 def _remap_material_duplicate_edges(repo: NewsRepository) -> list[str]:
     return repo._remap_material_duplicate_edges_to_news_item(
         source_id="opennews-news",
@@ -2431,57 +3437,135 @@ def _remap_material_duplicate_edges(repo: NewsRepository) -> list[str]:
 
 
 def _insert_news_item_agent_run(repo: NewsRepository) -> dict[str, Any]:
-    return repo.insert_news_item_agent_run(
-        run_id="run-1",
-        news_item_id="news-1",
-        provider="openai",
-        model="gpt-test",
-        backend="litellm_sdk",
-        execution_trace_id="trace-1",
-        workflow_name="news_item_brief",
-        agent_name="news_item_brief",
-        lane="news.item_brief",
-        artifact_version_hash="artifact-1",
-        prompt_version="prompt-v1",
-        schema_version="schema-v1",
-        validator_version="validator-v1",
-        guardrail_version="guardrail-v1",
-        input_hash="input-1",
-        output_hash="output-1",
-        execution_started=True,
-        status="completed",
-        outcome="ready",
-        request_json={"messages": []},
-        response_json={"summary_zh": "摘要"},
-        validation_errors_json=[],
-        trace_metadata_json={},
-        usage_json={},
-        latency_ms=12,
-        started_at_ms=1_000,
-        finished_at_ms=1_100,
-        created_at_ms=1_100,
-        commit=False,
-    )
+    return repo.insert_news_item_agent_run(**_news_item_agent_run_payload())
+
+
+def _news_item_agent_run_payload(**overrides: Any) -> dict[str, Any]:
+    payload = {
+        "run_id": "run-1",
+        "news_item_id": "news-1",
+        "provider": "openai",
+        "model": "gpt-test",
+        "backend": "litellm_sdk",
+        "execution_trace_id": "trace-1",
+        "workflow_name": "news_item_brief",
+        "agent_name": "news_item_brief",
+        "lane": "news.item_brief",
+        "artifact_version_hash": "artifact-1",
+        "prompt_version": "prompt-v1",
+        "schema_version": "schema-v1",
+        "validator_version": "validator-v1",
+        "guardrail_version": "guardrail-v1",
+        "input_hash": "input-1",
+        "output_hash": "output-1",
+        "execution_started": True,
+        "status": "completed",
+        "outcome": "ready",
+        "request_json": {"messages": []},
+        "response_json": {"summary_zh": "摘要"},
+        "validation_errors_json": [],
+        "trace_metadata_json": {},
+        "usage_json": {},
+        "latency_ms": 12,
+        "started_at_ms": 1_000,
+        "finished_at_ms": 1_100,
+        "created_at_ms": 1_100,
+        "commit": False,
+    }
+    payload.update(overrides)
+    return payload
 
 
 def _upsert_news_item_agent_brief(repo: NewsRepository) -> dict[str, Any]:
-    return repo.upsert_news_item_agent_brief(
-        news_item_id="news-1",
-        agent_run_id="run-1",
-        status="ready",
-        direction="bullish",
-        decision_class="high_signal",
-        brief_json={"summary_zh": "这是一条可发布摘要"},
-        input_hash="input-1",
-        artifact_version_hash="artifact-1",
-        prompt_version="prompt-v1",
-        schema_version="schema-v1",
-        validator_version="validator-v1",
-        computed_at_ms=1_100,
-        created_at_ms=1_100,
-        updated_at_ms=1_100,
-        commit=False,
-    )
+    return repo.upsert_news_item_agent_brief(**_news_item_agent_brief_payload())
+
+
+def _news_item_agent_brief_payload(**overrides: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "news_item_id": "news-1",
+        "agent_run_id": "run-1",
+        "status": "ready",
+        "direction": "bullish",
+        "decision_class": "high_signal",
+        "brief_json": {"summary_zh": "这是一条可发布摘要"},
+        "input_hash": "input-1",
+        "artifact_version_hash": "artifact-1",
+        "prompt_version": "prompt-v1",
+        "schema_version": "schema-v1",
+        "validator_version": "validator-v1",
+        "computed_at_ms": 1_100,
+        "created_at_ms": 1_100,
+        "updated_at_ms": 1_100,
+        "commit": False,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _news_story_agent_run_payload(**overrides: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "run_id": "story-run-1",
+        "story_brief_key": "story-brief-1",
+        "story_key": "story:btc",
+        "story_identity_version": NEWS_STORY_IDENTITY_VERSION,
+        "representative_news_item_id": "news-1",
+        "member_news_item_ids_json": ["news-1", "news-2"],
+        "provider": "openai",
+        "model": "gpt-test",
+        "backend": "litellm_sdk",
+        "execution_trace_id": "trace-story-1",
+        "workflow_name": "news_story_brief",
+        "agent_name": "news_story_brief",
+        "lane": "news.story_brief",
+        "artifact_version_hash": "artifact-story-1",
+        "prompt_version": "prompt-story-v1",
+        "schema_version": "schema-story-v1",
+        "validator_version": "validator-story-v1",
+        "guardrail_version": "guardrail-story-v1",
+        "input_hash": "input-story-1",
+        "output_hash": "output-story-1",
+        "execution_started": True,
+        "status": "completed",
+        "outcome": "ready",
+        "request_json": {"messages": []},
+        "response_json": {"summary_zh": "故事摘要"},
+        "validation_errors_json": [],
+        "trace_metadata_json": {},
+        "usage_json": {},
+        "latency_ms": 12,
+        "started_at_ms": 1_000,
+        "finished_at_ms": 1_100,
+        "created_at_ms": 1_100,
+        "commit": False,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _news_story_agent_brief_payload(**overrides: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "story_brief_key": "story-brief-1",
+        "story_key": "story:btc",
+        "story_identity_version": NEWS_STORY_IDENTITY_VERSION,
+        "representative_news_item_id": "news-1",
+        "member_news_item_ids_json": ["news-1", "news-2"],
+        "agent_run_id": "story-run-1",
+        "status": "ready",
+        "direction": "bullish",
+        "decision_class": "high_signal",
+        "brief_json": {"summary_zh": "这是一条可发布故事摘要"},
+        "input_hash": "input-story-1",
+        "artifact_version_hash": "artifact-story-1",
+        "prompt_version": "prompt-story-v1",
+        "schema_version": "schema-story-v1",
+        "validator_version": "validator-story-v1",
+        "computed_at_ms": 1_100,
+        "created_at_ms": 1_100,
+        "updated_at_ms": 1_100,
+        "commit": False,
+    }
+    payload.update(overrides)
+    return payload
 
 
 def _finish_fetch_run(repo: NewsRepository) -> dict[str, Any]:
@@ -2604,8 +3688,8 @@ def _valid_news_page_row() -> dict[str, object]:
         "provider_article_keys_json": [],
         "market_scope": {"primary": "crypto"},
         "agent_admission": _valid_agent_admission_payload(),
-        "agent_admission_status": "needs_review",
-        "agent_admission_reason": "pending",
+        "agent_admission_status": "eligible",
+        "agent_admission_reason": "eligible",
         "agent_representative_news_item_id": "news-1",
     }
 
@@ -2688,6 +3772,81 @@ def _valid_news_item_detail_page_row() -> dict[str, object]:
         "agent_representative_news_item_id": "projected-agent-news-1",
         "computed_at_ms": 1_779_000_000_500,
         "projection_version": "news_page_rows_v5",
+    }
+
+
+def _valid_page_projection_loader_row() -> dict[str, object]:
+    return {
+        "item": _valid_news_item_detail_base_row()["item"],
+        "token_mentions": [],
+        "fact_candidates": [],
+    }
+
+
+def _valid_brief_target_loader_row() -> dict[str, object]:
+    return {
+        "item": _valid_news_item_detail_base_row()["item"],
+        "entities": [],
+        "token_mentions": [],
+        "fact_candidates": [],
+        "current_brief": None,
+        "latest_run": None,
+        "source_updated_at_ms": 1_779_000_000_500,
+    }
+
+
+def _valid_agent_admission_context_loader_row() -> dict[str, object]:
+    return {
+        "item": _valid_news_item_detail_base_row()["item"],
+        "entities": [],
+        "token_mentions": [],
+        "fact_candidates": [],
+        "exact_duplicate_candidates": [],
+        "story_candidates": [],
+    }
+
+
+def _valid_story_brief_target_row() -> dict[str, object]:
+    return {
+        "story_key": "story:news-1",
+        "current_brief": None,
+        "latest_run": None,
+        "source_updated_at_ms": 1_779_000_000_500,
+        "item": {
+            "news_item_id": "news-1",
+            "title": "Coinbase lists NEWX",
+            "summary": "Trading starts today",
+            "source_domain": "example.test",
+            "published_at_ms": 1_779_000_000_000,
+            "source_ids_json": ["source-1"],
+            "source_domains_json": ["example.test"],
+            "provider_article_keys_json": ["opennews:1"],
+            "story_identity_json": _valid_story_identity_payload(),
+            "story_identity_version": NEWS_STORY_IDENTITY_VERSION,
+            "market_scope_json": _valid_market_scope_payload(),
+            "agent_admission_json": _valid_agent_admission_payload(),
+        },
+        "entities": [],
+        "token_mentions": [],
+        "fact_candidates": [],
+    }
+
+
+def _valid_news_dedup_diagnostics_row() -> dict[str, object]:
+    return {
+        "raw_observation_count": 1,
+        "canonical_item_count": 1,
+        "observation_edge_count": 1,
+        "enabled_serving_row_count": 1,
+        "disabled_serving_row_count": 0,
+        "enabled_exact_content_visible_duplicate_excess": 0,
+        "top_visible_content_duplicate_groups": [],
+        "top_visible_canonical_duplicate_groups": [],
+        "material_title_duplicate_groups": {"groups": 0, "rows": 0, "duplicate_rows": 0, "top_groups": []},
+        "case_insensitive_url_duplicate_groups": {"groups": 0, "rows": 0, "duplicate_rows": 0, "top_groups": []},
+        "preview_or_generic_url_rows": {"rows": 0},
+        "brief_input_risk": {"rows": 0, "stale_rows": 0},
+        "source_sync_diagnostics": [],
     }
 
 

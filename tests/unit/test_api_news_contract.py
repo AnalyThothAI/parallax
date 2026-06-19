@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -303,6 +304,66 @@ def test_news_api_source_status_includes_provider_diagnostics_without_postgres()
     }
 
 
+@pytest.mark.parametrize(
+    ("provider_health", "error"),
+    [
+        (None, "news_source_status_provider_health_required"),
+        ("degraded", "news_source_status_provider_health_required"),
+        ({}, "news_source_status_provider_health_status_required"),
+        ({"status": " "}, "news_source_status_provider_health_status_required"),
+    ],
+)
+def test_news_api_source_hygiene_requires_projected_provider_health_without_quality_status_fallback(
+    provider_health: object,
+    error: str,
+) -> None:
+    news = FakeNewsRepository()
+    row: dict[str, object] = {
+        "source_id": "legacy-health",
+        "provider_type": "rss",
+        "coverage_tags": ["crypto_market"],
+        "enabled": True,
+        "source_quality_status": "degraded",
+    }
+    if provider_health is not None:
+        row["provider_health"] = provider_health
+    news.source_status_rows = [row]
+    app = _app(news)
+
+    with TestClient(app) as client, pytest.raises(ValueError, match=error):
+        client.get("/api/news/sources/status", headers={"Authorization": "Bearer secret"})
+
+
+@pytest.mark.parametrize(
+    ("row_patch", "error"),
+    [
+        ({"provider_type": None}, "news_source_status_provider_type_required"),
+        ({"provider_type": " "}, "news_source_status_provider_type_required"),
+        ({"coverage_tags": None}, "news_source_status_coverage_tags_required"),
+        ({"coverage_tags": "crypto_market"}, "news_source_status_coverage_tags_required"),
+        ({"coverage_tags": ["crypto_market", {"tag": "macro"}]}, "news_source_status_coverage_tags_required"),
+    ],
+)
+def test_news_api_source_status_requires_projected_provider_type_and_coverage_tags(
+    row_patch: dict[str, object],
+    error: str,
+) -> None:
+    news = FakeNewsRepository()
+    row: dict[str, object] = {
+        "source_id": "projected-source",
+        "provider_type": "rss",
+        "coverage_tags": ["crypto_market"],
+        "enabled": True,
+        "provider_health": {"status": "healthy"},
+    }
+    row.update(row_patch)
+    news.source_status_rows = [row]
+    app = _app(news)
+
+    with TestClient(app) as client, pytest.raises(ValueError, match=error):
+        client.get("/api/news/sources/status", headers={"Authorization": "Bearer secret"})
+
+
 def test_news_item_detail_hides_retired_brief_fields() -> None:
     news = FakeNewsRepository()
     news.item_detail = {
@@ -350,7 +411,13 @@ def test_news_item_detail_hides_retired_brief_fields() -> None:
 
     assert response.status_code == 200
     agent_brief = response.json()["data"]["agent_brief"]
-    assert agent_brief == {"status": "pending"}
+    assert agent_brief == {
+        "status": "ready",
+        "direction": "bullish",
+        "decision_class": "driver",
+        "computed_at_ms": 123,
+    }
+    assert "summary_zh" not in agent_brief
     assert "retrieval_notes_zh" not in agent_brief
     assert "source_consensus_zh" not in agent_brief
     assert "confirmation_state" not in agent_brief
@@ -360,6 +427,9 @@ def test_news_item_detail_hides_retired_brief_fields() -> None:
     assert "watch_items_zh" not in agent_brief
     assert "research_todos_zh" not in agent_brief
     assert "confidence" not in agent_brief
+    assert "prompt_version" not in agent_brief
+    assert "schema_version" not in agent_brief
+    assert "validator_version" not in agent_brief
     data = response.json()["data"]
     assert data["representative_news_item_id"] == "news-1"
     assert data["story_key"] == "news-story:subject:btc-detail:t412000"
@@ -372,6 +442,130 @@ def test_news_item_detail_hides_retired_brief_fields() -> None:
     _assert_no_legacy_admission_fields(data)
 
 
+def test_news_public_agent_brief_requires_status_without_pending_default() -> None:
+    with pytest.raises(ValueError, match="news_public_agent_brief_status_required"):
+        _public_agent_brief_payload({"summary_zh": "Projected story current without status."})
+
+
+@pytest.mark.parametrize("field_name", ["direction", "decision_class"])
+def test_news_public_ready_agent_brief_requires_signal_fields_without_projection_repair(field_name: str) -> None:
+    payload = {
+        "status": "ready",
+        "direction": "bullish",
+        "decision_class": "driver",
+        "summary_zh": "Projected ready row.",
+        "brief_json": {
+            "direction": "bullish",
+            "decision_class": "driver",
+            "summary_zh": "Nested fields must not repair ready public fields.",
+        },
+    }
+    payload.pop(field_name)
+
+    with pytest.raises(ValueError, match=f"news_public_agent_brief_{field_name}_required"):
+        _public_agent_brief_payload(payload)
+
+
+def test_news_public_agent_brief_ignores_present_brief_json_without_scalar_repair() -> None:
+    assert _public_agent_brief_payload(
+        {
+            "status": "ready",
+            "direction": "bullish",
+            "decision_class": "driver",
+            "brief_json": {
+                "summary_zh": "Nested summary must not repair public payload.",
+                "data_gaps": [{"kind": "missing"}],
+            },
+        }
+    ) == {
+        "status": "ready",
+        "direction": "bullish",
+        "decision_class": "driver",
+    }
+
+
+def test_news_public_agent_brief_rejects_malformed_scalar_list_fields() -> None:
+    with pytest.raises(ValueError, match="news_public_agent_brief_data_gaps_required"):
+        _public_agent_brief_payload(
+            {
+                "status": "ready",
+                "direction": "bullish",
+                "decision_class": "driver",
+                "data_gaps": {"kind": "missing"},
+            }
+        )
+
+
+@pytest.mark.parametrize("field_name", ["label", "symbol", "name", "entity_type", "reason_zh"])
+def test_news_public_agent_brief_rejects_malformed_affected_entity_text_fields(field_name: str) -> None:
+    payload = {
+        "status": "ready",
+        "direction": "bullish",
+        "decision_class": "driver",
+        "affected_entities": [
+            {
+                "label": "BTC",
+                "symbol": "BTC",
+                field_name: 123,
+            }
+        ],
+    }
+
+    with pytest.raises(ValueError, match=f"news_public_agent_brief_affected_entities_{field_name}_required"):
+        _public_agent_brief_payload(payload)
+
+
+def test_news_public_agent_brief_rejects_malformed_affected_entity_evidence_refs() -> None:
+    payload = {
+        "status": "ready",
+        "direction": "bullish",
+        "decision_class": "driver",
+        "affected_entities": [{"symbol": "BTC", "evidence_refs": ["news:item", 123]}],
+    }
+
+    with pytest.raises(ValueError, match="news_public_agent_brief_affected_entities_evidence_refs_required"):
+        _public_agent_brief_payload(payload)
+
+
+@pytest.mark.parametrize("field_name", ["title_zh", "summary_zh", "market_read_zh", "event_type"])
+def test_news_public_agent_brief_rejects_malformed_optional_text_fields(field_name: str) -> None:
+    payload = {
+        "status": "ready",
+        "direction": "bullish",
+        "decision_class": "driver",
+        field_name: 123,
+    }
+
+    with pytest.raises(ValueError, match=f"news_public_agent_brief_{field_name}_required"):
+        _public_agent_brief_payload(payload)
+
+
+@pytest.mark.parametrize("field_name", ["bull_view", "bear_view"])
+def test_news_public_agent_brief_rejects_malformed_optional_mapping_fields(field_name: str) -> None:
+    payload = {
+        "status": "ready",
+        "direction": "bullish",
+        "decision_class": "driver",
+        field_name: ["bad"],
+    }
+
+    with pytest.raises(ValueError, match=f"news_public_agent_brief_{field_name}_required"):
+        _public_agent_brief_payload(payload)
+
+
+@pytest.mark.parametrize("field_name", ["computed_at_ms", "data_gap_count"])
+def test_news_public_agent_brief_rejects_malformed_optional_nonnegative_int_fields(field_name: str) -> None:
+    payload = {
+        "status": "ready",
+        "direction": "bullish",
+        "decision_class": "driver",
+        field_name: True,
+    }
+
+    with pytest.raises(ValueError, match=f"news_public_agent_brief_{field_name}_required"):
+        _public_agent_brief_payload(payload)
+
+
 def test_news_item_detail_hides_agent_runtime_audit_fields() -> None:
     news = FakeNewsRepository()
     news.item_detail = {
@@ -381,6 +575,12 @@ def test_news_item_detail_hides_agent_runtime_audit_fields() -> None:
             "status": "ready",
             "direction": "bullish",
             "decision_class": "driver",
+            "summary_zh": "当前简报",
+            "market_read_zh": "市场解读",
+            "bull_view": {"strength": "strong", "thesis_zh": "多头", "evidence_refs": []},
+            "bear_view": {"strength": "weak", "thesis_zh": "空头", "evidence_refs": []},
+            "data_gaps": [],
+            "evidence_refs": ["news:item"],
             "agent_run_id": "run-news-1",
             "artifact_version_hash": "artifact-hash",
             "input_hash": "input-hash",
