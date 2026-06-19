@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import re
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -274,7 +273,9 @@ def _scope_evidence(content_class: str, fallback: str) -> str:
 
 
 def _item_text(item: Mapping[str, Any]) -> str:
-    coverage_tags = " ".join(str(tag) for tag in _json_list(item.get("coverage_tags_json")))
+    coverage_tags = " ".join(
+        str(tag) for tag in _optional_scope_list(item.get("coverage_tags_json"), "coverage_tags_json")
+    )
     return " ".join(
         str(part)
         for part in (
@@ -291,17 +292,17 @@ def _item_text(item: Mapping[str, Any]) -> str:
 
 def _current_reason_codes(mention: Mapping[str, Any]) -> list[Any]:
     if "reason_codes" in mention:
-        return _json_list(mention.get("reason_codes"))
+        return _optional_scope_list(mention.get("reason_codes"), "reason_codes")
     if "reason_codes_json" in mention:
-        return _json_list(mention.get("reason_codes_json"))
+        return _optional_scope_list(mention.get("reason_codes_json"), "reason_codes_json")
     return []
 
 
 def _current_affected_targets(candidate: Mapping[str, Any]) -> list[Any]:
     if "affected_targets" in candidate:
-        return _json_list(candidate.get("affected_targets"))
+        return _optional_scope_list(candidate.get("affected_targets"), "affected_targets")
     if "affected_targets_json" in candidate:
-        return _json_list(candidate.get("affected_targets_json"))
+        return _optional_scope_list(candidate.get("affected_targets_json"), "affected_targets_json")
     return []
 
 
@@ -310,38 +311,14 @@ def _target_evidence(kind: str, symbol: str, target_id: str) -> str:
     return f"{kind}:{suffix}" if suffix else kind
 
 
-def _optional_int(value: Any) -> int | None:
+def _optional_scope_list(value: Any, field_name: str) -> list[Any]:
     if value is None:
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _json_object(value: Any) -> dict[str, Any]:
-    if isinstance(value, Mapping):
-        return dict(value)
-    if isinstance(value, str) and value.strip():
-        try:
-            loaded = json.loads(value)
-        except json.JSONDecodeError:
-            return {}
-        return dict(loaded) if isinstance(loaded, Mapping) else {}
-    return {}
-
-
-def _json_list(value: Any) -> list[Any]:
+        return []
     if isinstance(value, list):
         return value
     if isinstance(value, tuple):
         return list(value)
-    if isinstance(value, str) and value.strip():
-        try:
-            loaded = json.loads(value)
-        except json.JSONDecodeError:
-            return []
-        return loaded if isinstance(loaded, list) else []
+    raise ValueError(f"news_market_scope_{field_name}_required")
     return []
 
 

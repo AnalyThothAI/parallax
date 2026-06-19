@@ -70,7 +70,7 @@ def build_source_quality_row(
         "status": quality_status(score),
     }
     if window_ms is not None:
-        diagnostics["window_ms"] = int(window_ms)
+        diagnostics["window_ms"] = _required_positive_int(window_ms, "window_ms")
     return {
         "row_id": f"news-source-quality:{source_id}:{window}",
         "source_id": str(source_id),
@@ -85,7 +85,7 @@ def build_source_quality_row(
         "attention_rate": normalized_metrics.get("attention_rate"),
         "accepted_fact_rate": normalized_metrics.get("accepted_fact_rate"),
         "brief_ready_rate": normalized_metrics.get("brief_ready_rate"),
-        "median_lag_ms": _optional_int((counts or {}).get("median_lag_ms")),
+        "median_lag_ms": _optional_nonnegative_int(counts or {}, "median_lag_ms"),
         "quality_score": score,
         "diagnostics_json": diagnostics,
         "projection_version": SOURCE_QUALITY_PROJECTION_VERSION,
@@ -121,7 +121,7 @@ def _metrics_from_input(
     item_count = _count(row, "item_count")
     fact_count = _count(row, "fact_count")
     useful_item_count = min(item_count, _count(row, "useful_item_count"))
-    latest_item_published_at_ms = _optional_int(row.get("latest_item_published_at_ms"))
+    latest_item_published_at_ms = _optional_nonnegative_int(row, "latest_item_published_at_ms")
     return _normalized_metrics(
         {
             "fetch_success_rate": _rate(_count(row, "fetch_success_count"), _count(row, "fetch_run_count")),
@@ -194,18 +194,29 @@ def _normalized_freshness(
 ) -> float | None:
     if latest_item_published_at_ms is None or window_ms <= 0:
         return None
-    age_ms = max(0, int(computed_at_ms) - int(latest_item_published_at_ms))
-    return round(max(0.0, min(1.0, 1 - age_ms / int(window_ms))), 4)
+    age_ms = max(0, computed_at_ms - latest_item_published_at_ms)
+    return round(max(0.0, min(1.0, 1 - age_ms / window_ms)), 4)
 
 
 def _count(row: Mapping[str, Any], key: str) -> int:
     value = row.get(key)
     if value is None:
         return 0
-    return max(0, int(value))
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError(f"news_source_quality_projection_count_{key}_required")
+    return value
 
 
-def _optional_int(value: Any) -> int | None:
+def _optional_nonnegative_int(row: Mapping[str, Any], key: str) -> int | None:
+    value = row.get(key)
     if value is None:
         return None
-    return int(value)
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError(f"news_source_quality_projection_{key}_required")
+    return value
+
+
+def _required_positive_int(value: Any, key: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise ValueError(f"news_source_quality_projection_{key}_required")
+    return value

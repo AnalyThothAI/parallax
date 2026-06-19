@@ -6,11 +6,20 @@ from parallax.domains.news_intel.services.news_item_brief_stage import (
     build_news_item_brief_stage,
     news_item_brief_prompt_text_hash,
 )
+from parallax.domains.news_intel.services.news_story_brief_stage import (
+    build_news_story_brief_stage,
+    news_story_brief_prompt_text_hash,
+)
 from parallax.domains.news_intel.types.news_item_brief import (
     NEWS_ITEM_BRIEF_PROMPT_VERSION,
     NEWS_ITEM_BRIEF_SCHEMA_VERSION,
     NewsItemBriefInputPacket,
     NewsItemBriefPayload,
+)
+from parallax.domains.news_intel.types.news_story_brief import (
+    NEWS_STORY_BRIEF_PROMPT_VERSION,
+    NEWS_STORY_BRIEF_SCHEMA_VERSION,
+    NewsStoryBriefInputPacket,
 )
 from parallax.integrations.model_execution.output_schema import StrictJsonOutputSchema
 from parallax.platform.agent_execution import (
@@ -47,11 +56,30 @@ class LiteLLMNewsItemBriefClient:
             prompt_text_hash=news_item_brief_prompt_text_hash(),
         )
 
+    @property
+    def story_model(self) -> str:
+        return self._agent_gateway.model_for_lane("news.story_brief")
+
+    @property
+    def story_artifact_version_hash(self) -> str:
+        return artifact_hash_for(
+            model=self.story_model,
+            prompt_version=NEWS_STORY_BRIEF_PROMPT_VERSION,
+            schema_version=NEWS_STORY_BRIEF_SCHEMA_VERSION,
+            runtime_version=RUNTIME_VERSION,
+            output_schema_hash=json_sha256(StrictJsonOutputSchema(NewsItemBriefPayload).json_schema()),
+            prompt_text_hash=news_story_brief_prompt_text_hash(),
+        )
+
     def try_reserve_execution(self, lane: str, *, rate_units: int = 1) -> AgentCapacityReservation:
         return self._agent_gateway.try_reserve(lane, rate_units=rate_units)
 
     def request_audit(self, *, run_id: str, packet: NewsItemBriefInputPacket) -> dict[str, Any]:
         stage = build_news_item_brief_stage(packet=packet, run_id=run_id)
+        return self._agent_gateway.request_audit(stage).model_dump(mode="json")
+
+    def request_story_audit(self, *, run_id: str, packet: NewsStoryBriefInputPacket) -> dict[str, Any]:
+        stage = build_news_story_brief_stage(packet=packet, run_id=run_id)
         return self._agent_gateway.request_audit(stage).model_dump(mode="json")
 
     async def brief_item(
@@ -62,6 +90,21 @@ class LiteLLMNewsItemBriefClient:
         reservation: AgentCapacityReservation | None = None,
     ) -> dict[str, Any]:
         stage = build_news_item_brief_stage(packet=packet, run_id=run_id)
+        execution = await self._agent_gateway.execute(stage, reservation=reservation)
+        payload = _coerce_news_item_brief_payload(execution.final_output)
+        return {
+            "payload": payload.model_dump(mode="json"),
+            "agent_run_audit": execution.audit.model_dump(mode="json"),
+        }
+
+    async def brief_story(
+        self,
+        *,
+        run_id: str,
+        packet: NewsStoryBriefInputPacket,
+        reservation: AgentCapacityReservation | None = None,
+    ) -> dict[str, Any]:
+        stage = build_news_story_brief_stage(packet=packet, run_id=run_id)
         execution = await self._agent_gateway.execute(stage, reservation=reservation)
         payload = _coerce_news_item_brief_payload(execution.final_output)
         return {

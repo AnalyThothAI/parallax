@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from typing import Any
 
@@ -49,17 +48,15 @@ def news_item_agent_brief_priority(
     admission: Any | None = None,
 ) -> int:
     admission_payload = _admission_payload(item=item, admission=admission)
-    status = _text(admission_payload.get("status") or item.get("agent_admission_status"))
+    status = _text(admission_payload.get("status"))
     if status not in {"eligible", "eligible_refresh"}:
         return 100
     if status == "eligible_refresh":
         return 10
 
-    basis = _object(admission_payload.get("basis"))
+    basis = _optional_policy_mapping(admission_payload.get("basis"), "basis")
     priority = 55
-    if _has_material_delta(
-        admission_payload.get("material_delta") or basis.get("material_delta") or item.get("material_delta_json")
-    ):
+    if _has_material_delta(basis.get("material_delta")):
         priority = min(priority, 18)
 
     scopes = _market_scopes(item=item, basis=basis)
@@ -82,66 +79,78 @@ def _admission_payload(*, item: Mapping[str, Any], admission: Any | None) -> dic
         return {
             "status": _text(getattr(admission, "status", "")),
             "reason": _text(getattr(admission, "reason", "")),
-            "basis": _object(getattr(admission, "basis", {})),
+            "basis": _optional_policy_mapping(getattr(admission, "basis", None), "basis"),
         }
-    return _object(item.get("agent_admission_json"))
+    return _optional_policy_mapping(item.get("agent_admission_json"), "agent_admission_json")
 
 
 def _has_material_delta(value: Any) -> bool:
-    payload = _object(value)
+    payload = _optional_policy_mapping(value, "material_delta")
+    changed_fields = _optional_policy_list(payload.get("changed_fields"), "material_delta_changed_fields")
+    reasons = _optional_policy_list(payload.get("reasons"), "material_delta_reasons")
     if bool(payload.get("has_delta")):
         return True
     if _text(payload.get("status")) == "material":
         return True
-    return bool(_list(payload.get("changed_fields")) or _list(payload.get("reasons")))
+    return bool(changed_fields or reasons)
 
 
 def _market_scopes(*, item: Mapping[str, Any], basis: Mapping[str, Any]) -> set[str]:
     scopes: set[str] = set()
-    for value in (basis.get("market_scope"), item.get("market_scope_json"), item.get("market_scope")):
-        scopes.update(_scope_names(value))
+    scopes.update(_scope_names(basis.get("market_scope"), field_name="admission_basis_market_scope"))
+    scopes.update(_scope_names(item.get("market_scope_json"), field_name="market_scope_json"))
     return {scope for scope in scopes if scope and scope != "unknown"}
 
 
-def _scope_names(value: Any) -> set[str]:
-    payload = _object(value)
-    if payload:
-        names = set(_text_list(payload.get("scope") or payload.get("market_scope")))
-        primary = _text(payload.get("primary") or payload.get("market_scope_primary"))
+def _scope_names(value: Any, *, field_name: str) -> set[str]:
+    if value is None:
+        return set()
+    if isinstance(value, Mapping):
+        names: set[str] = set()
+        if "scope" in value:
+            names.update(_text_list(value.get("scope"), field_name=f"{field_name}_scope"))
+        primary = _optional_policy_text(value.get("primary"), f"{field_name}_primary")
         if primary:
             names.add(primary)
         return names
-    return set(_text_list(value))
+    return set(_text_list(value, field_name=field_name))
 
 
-def _object(value: Any) -> dict[str, Any]:
+def _optional_policy_mapping(value: Any, field_name: str) -> dict[str, Any]:
+    if value is None:
+        return {}
     if isinstance(value, Mapping):
         return dict(value)
-    if isinstance(value, str) and value.strip():
-        try:
-            parsed = json.loads(value)
-        except json.JSONDecodeError:
-            return {}
-        return dict(parsed) if isinstance(parsed, Mapping) else {}
-    return {}
+    raise ValueError(f"news_item_agent_policy_{field_name}_required")
 
 
-def _list(value: Any) -> list[Any]:
+def _optional_policy_list(value: Any, field_name: str) -> list[Any]:
+    if value is None:
+        return []
     if isinstance(value, list):
         return value
     if isinstance(value, tuple):
         return list(value)
-    if isinstance(value, str) and value.strip():
-        try:
-            parsed = json.loads(value)
-        except json.JSONDecodeError:
-            return []
-        return parsed if isinstance(parsed, list) else []
-    return []
+    raise ValueError(f"news_item_agent_policy_{field_name}_required")
 
 
-def _text_list(value: Any) -> list[str]:
-    return [_text(item) for item in _list(value) if _text(item)]
+def _optional_policy_text(value: Any, field_name: str) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return _text(value)
+    raise ValueError(f"news_item_agent_policy_{field_name}_required")
+
+
+def _text_list(value: Any, *, field_name: str) -> list[str]:
+    text_values: list[str] = []
+    for item in _optional_policy_list(value, field_name):
+        if not isinstance(item, str):
+            raise ValueError(f"news_item_agent_policy_{field_name}_required")
+        text = _text(item)
+        if text:
+            text_values.append(text)
+    return text_values
 
 
 def _text(value: Any) -> str:

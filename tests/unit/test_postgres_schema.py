@@ -260,6 +260,9 @@ NEWS_AGENT_ADMISSION_RETIRED_POLICY_REPROCESS_MIGRATION = Path(
 NEWS_PAGE_ROWS_REQUIRE_STORY_IDENTITY_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260609_0171_news_page_rows_require_story_identity.py"
 )
+NEWS_STORY_AGENT_HARD_CUT_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260618_0181_news_story_agent_hard_cut.py"
+)
 NEWS_PAGE_ROWS_REQUIRE_AGENT_ELIGIBLE_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260609_0172_news_page_rows_require_agent_eligible.py"
 )
@@ -323,6 +326,35 @@ def test_alembic_revision_graph_has_single_head() -> None:
     script = ScriptDirectory.from_config(alembic_config())
 
     assert script.get_heads() == [script.get_current_head()]
+
+
+def test_news_story_agent_hard_cut_migration_adds_story_current_without_retired_membership() -> None:
+    text = _migration_text(NEWS_STORY_AGENT_HARD_CUT_MIGRATION)
+
+    assert 'revision = "20260618_0181"' in text
+    assert 'down_revision = "20260616_0180"' in text
+    assert "CREATE TABLE IF NOT EXISTS news_story_agent_runs" in text
+    assert "CREATE TABLE IF NOT EXISTS news_story_agent_briefs" in text
+    assert "story_brief_key TEXT PRIMARY KEY" in text
+    assert "story_key TEXT NOT NULL" in text
+    assert "story_identity_version TEXT NOT NULL" in text
+    assert "REFERENCES news_story_agent_runs(run_id)" in text
+    assert "news_projection_dirty_targets_projection_name_check" in text
+    assert "DROP CONSTRAINT IF EXISTS news_projection_dirty_targets_target_kind_check" in text
+    assert "'story_brief'" in text
+    assert "target_kind = 'story'" in text
+    assert "news_story_groups" not in text
+    assert "news_story_members" not in text
+    assert "projection_name = 'story'" not in text
+
+
+def test_news_story_agent_hard_cut_migration_requires_explicit_story_agent_payloads() -> None:
+    text = _migration_text(NEWS_STORY_AGENT_HARD_CUT_MIGRATION)
+    run_table = _create_table_block(text, "news_story_agent_runs")
+    brief_table = _create_table_block(text, "news_story_agent_briefs")
+
+    assert " DEFAULT " not in run_table
+    assert " DEFAULT " not in brief_table
 
 
 def test_drop_retired_product_migration_removes_all_tables() -> None:

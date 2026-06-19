@@ -193,12 +193,8 @@ def _source_fetch_policy(source: Mapping[str, Any]) -> dict[str, Any]:
     raw = source.get("fetch_policy_json")
     if isinstance(raw, Mapping):
         return dict(raw)
-    if isinstance(raw, str) and raw.strip():
-        try:
-            decoded = json.loads(raw)
-        except json.JSONDecodeError:
-            return {}
-        return dict(decoded) if isinstance(decoded, Mapping) else {}
+    if raw is not None:
+        raise ValueError("OpenNews fetch_policy_json must be a mapping")
     return {}
 
 

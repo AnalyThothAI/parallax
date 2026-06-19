@@ -33,6 +33,7 @@ def test_source_quality_repository_aggregates_and_replaces_rows(tmp_path) -> Non
             finished_at_ms=NOW_MS - 8_000,
             fetched_count=2,
             inserted_count=1,
+            updated_count=0,
             duplicate_count=1,
         )
         provider_item = repo.upsert_provider_item(

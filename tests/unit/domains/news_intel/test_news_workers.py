@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import json
 from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import asdict, is_dataclass
@@ -180,6 +181,47 @@ def test_news_fetch_worker_reads_formal_settings_for_session_claim_and_fetch_lim
     assert result.processed == 0
     assert repo.claim_due_calls == [{"now_ms": NOW_MS, "limit": 7, "claim_lease_ms": 45_000, "commit": False}]
     assert feed.calls[0]["limit"] == 7
+
+
+def test_news_fetch_worker_metadata_dirty_uses_persisted_item_watermarks_not_worker_now() -> None:
+    source = {
+        "source_id": "example-rss",
+        "provider_type": "rss",
+        "feed_url": "https://example.com/rss.xml",
+        "source_domain": "example.com",
+        "source_name": "Example",
+    }
+    repo = FakeNewsRepository([])
+    repo.reconciled_result = [{"source_id": "example-rss", "status": "updated"}]
+    repo.item_source_watermarks_by_source = {
+        "example-rss": {
+            "news-1": NOW_MS - 5_000,
+            "news-2": NOW_MS - 3_000,
+        }
+    }
+    db = FakeDB(repo)
+    feed = FakeNewsSourceProvider(db, NewsProviderFetchResult(status_code=304, observations=[]))
+    worker = _worker(db=db, feed_client=feed, wake_bus=FakeWakeBus(), sources=[source])
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.processed == 0
+    assert feed.calls == []
+    metadata_dirty = next(batch for batch in db.dirty.enqueued if batch["reason"] == "source_metadata_changed")
+    assert metadata_dirty["rows"] == [
+        {
+            "projection_name": "page",
+            "target_kind": "news_item",
+            "target_id": "news-1",
+            "source_watermark_ms": NOW_MS - 5_000,
+        },
+        {
+            "projection_name": "page",
+            "target_kind": "news_item",
+            "target_id": "news-2",
+            "source_watermark_ms": NOW_MS - 3_000,
+        },
+    ]
 
 
 def test_news_fetch_worker_requires_repository_session_transaction_before_reconciling_sources() -> None:
@@ -382,6 +424,85 @@ def test_opennews_first_fetch_since_uses_optional_fetch_policy_catchup_only() ->
     )
 
 
+def test_opennews_fetch_since_requires_formal_fetch_policy_json_mapping_without_alias_or_string_repair() -> None:
+    assert (
+        _source_fetch_since_ms(
+            source={"provider_type": "opennews", "fetch_policy": {"max_initial_fetch_age_ms": 3_600_000}},
+            source_cursor={},
+            now_ms=20_000_000,
+        )
+        is None
+    )
+    for malformed_policy in (
+        '{"max_initial_fetch_age_ms": 3600000}',
+        "not-json",
+        ["not", "a", "mapping"],
+    ):
+        with pytest.raises(ValueError, match="news_fetch_fetch_policy_json_required"):
+            _source_fetch_since_ms(
+                source={"provider_type": "opennews", "fetch_policy_json": malformed_policy},
+                source_cursor={},
+                now_ms=20_000_000,
+            )
+
+
+@pytest.mark.parametrize(
+    ("source_cursor", "error"),
+    [
+        pytest.param(
+            {"high_watermark_ms": None, "overlap_ms": 0},
+            "news_fetch_cursor_high_watermark_ms_required",
+            id="missing_high_watermark",
+        ),
+        pytest.param(
+            {"high_watermark_ms": True, "overlap_ms": 0},
+            "news_fetch_cursor_high_watermark_ms_required",
+            id="bool_high_watermark",
+        ),
+        pytest.param(
+            {"high_watermark_ms": "1000", "overlap_ms": 0},
+            "news_fetch_cursor_high_watermark_ms_required",
+            id="string_high_watermark",
+        ),
+        pytest.param(
+            {"high_watermark_ms": -1, "overlap_ms": 0},
+            "news_fetch_cursor_high_watermark_ms_required",
+            id="negative_high_watermark",
+        ),
+        pytest.param(
+            {"high_watermark_ms": 10_000_000, "overlap_ms": None},
+            "news_fetch_cursor_overlap_ms_required",
+            id="missing_overlap",
+        ),
+        pytest.param(
+            {"high_watermark_ms": 10_000_000, "overlap_ms": False},
+            "news_fetch_cursor_overlap_ms_required",
+            id="bool_overlap",
+        ),
+        pytest.param(
+            {"high_watermark_ms": 10_000_000, "overlap_ms": "0"},
+            "news_fetch_cursor_overlap_ms_required",
+            id="string_overlap",
+        ),
+        pytest.param(
+            {"high_watermark_ms": 10_000_000, "overlap_ms": -1},
+            "news_fetch_cursor_overlap_ms_required",
+            id="negative_overlap",
+        ),
+    ],
+)
+def test_opennews_fetch_since_rejects_malformed_present_cursor_scalars(
+    source_cursor: dict[str, object],
+    error: str,
+) -> None:
+    with pytest.raises(ValueError, match=error):
+        _source_fetch_since_ms(
+            source={"provider_type": "opennews", "fetch_policy_json": {}},
+            source_cursor=source_cursor,
+            now_ms=20_000_000,
+        )
+
+
 def test_news_fetch_worker_enqueues_dirty_targets_for_all_affected_news_items() -> None:
     source = {
         "source_id": "example-rss",
@@ -390,14 +511,19 @@ def test_news_fetch_worker_enqueues_dirty_targets_for_all_affected_news_items() 
         "source_domain": "example.com",
         "source_name": "Example",
     }
-    db = FakeDB(FakeNewsRepository([source]))
-    db.repo.news_results = [
+    repo = FakeNewsRepository([source])
+    repo.news_results = [
         {
             "news_item_id": "news-new",
             "status": "updated",
             "affected_news_item_ids": ["news-old", "news-new"],
         }
     ]
+    repo.item_source_watermarks_by_item = {
+        "news-old": NOW_MS - 12_000,
+        "news-new": NOW_MS - 3_000,
+    }
+    db = FakeDB(repo)
     feed = FakeNewsSourceProvider(
         db,
         NewsProviderFetchResult(
@@ -426,13 +552,13 @@ def test_news_fetch_worker_enqueues_dirty_targets_for_all_affected_news_items() 
             "projection_name": "page",
             "target_kind": "news_item",
             "target_id": "news-old",
-            "source_watermark_ms": NOW_MS,
+            "source_watermark_ms": NOW_MS - 12_000,
         },
         {
             "projection_name": "page",
             "target_kind": "news_item",
             "target_id": "news-new",
-            "source_watermark_ms": NOW_MS,
+            "source_watermark_ms": NOW_MS - 3_000,
         },
     ]
 
@@ -843,7 +969,7 @@ def test_news_item_process_worker_passes_authority_scope_to_fact_candidates() ->
     assert "event_type_out_of_authority_scope" in candidate.rejection_reasons
 
 
-def test_news_item_process_provider_only_non_crypto_row_enqueues_page_and_brief() -> None:
+def test_news_item_process_provider_only_non_crypto_row_enqueues_page_and_story_brief() -> None:
     item = {
         "news_item_id": "news-spacex",
         "source_id": "opennews-realtime",
@@ -885,6 +1011,7 @@ def test_news_item_process_provider_only_non_crypto_row_enqueues_page_and_brief(
     assert db.repo.mentions["news-spacex"] == []
     assert db.repo.market_scope_story_updates[0]["market_scope"].primary == "private_company"
     assert db.repo.agent_admission_updates[0]["admission"].status == "eligible"
+    story_key = db.repo.market_scope_story_updates[0]["story_identity"].story_key
     assert db.dirty.enqueued == [
         {
             "rows": [
@@ -902,9 +1029,9 @@ def test_news_item_process_provider_only_non_crypto_row_enqueues_page_and_brief(
         {
             "rows": [
                 {
-                    "projection_name": "brief_input",
-                    "target_kind": "news_item",
-                    "target_id": "news-spacex",
+                    "projection_name": "story_brief",
+                    "target_kind": "story",
+                    "target_id": story_key,
                     "source_watermark_ms": NOW_MS - 1_000,
                     "priority": 35,
                 }
@@ -916,7 +1043,7 @@ def test_news_item_process_provider_only_non_crypto_row_enqueues_page_and_brief(
     ]
 
 
-def test_news_item_process_admitted_crypto_row_enqueues_page_and_brief_with_story_key() -> None:
+def test_news_item_process_admitted_crypto_row_enqueues_page_and_story_brief_with_story_key() -> None:
     item = {
         "news_item_id": "news-zec",
         "source_id": "opennews-realtime",
@@ -966,6 +1093,7 @@ def test_news_item_process_admitted_crypto_row_enqueues_page_and_brief_with_stor
         "news-story:event:exchange-listing:coinbase:zec:spot:t"
     )
     assert db.repo.agent_admission_updates[0]["admission"].status == "eligible"
+    story_key = db.repo.market_scope_story_updates[0]["story_identity"].story_key
     assert db.dirty.enqueued == [
         {
             "rows": [
@@ -983,9 +1111,9 @@ def test_news_item_process_admitted_crypto_row_enqueues_page_and_brief_with_stor
         {
             "rows": [
                 {
-                    "projection_name": "brief_input",
-                    "target_kind": "news_item",
-                    "target_id": "news-zec",
+                    "projection_name": "story_brief",
+                    "target_kind": "story",
+                    "target_id": story_key,
                     "source_watermark_ms": NOW_MS - 1_000,
                     "priority": 34,
                 }
@@ -995,6 +1123,160 @@ def test_news_item_process_admitted_crypto_row_enqueues_page_and_brief_with_stor
             "commit": False,
         },
     ]
+
+
+def test_news_item_process_similar_story_without_material_delta_enqueues_page_only() -> None:
+    item = {
+        "news_item_id": "news-hormuz",
+        "source_id": "opennews-realtime",
+        "provider_type": "opennews",
+        "source_role": "news",
+        "source_domain": "example.com",
+        "source_name": "Example News",
+        "coverage_tags_json": ["macro", "crypto"],
+        "authority_scope_json": {},
+        "title": "Iran shipping risk remains elevated near Hormuz",
+        "summary": "No new official statement or material market fact was reported.",
+        "body_text": "",
+        "published_at_ms": NOW_MS - 1_000,
+        "provider_signal_json": {
+            "source": "provider",
+            "provider": "opennews",
+            "status": "ready",
+            "direction": "neutral",
+            "score": 95,
+        },
+        "processing_attempts": 1,
+        "processing_lease_owner": "news_item_process",
+    }
+    agent_context_rows = [
+        {
+            "item": {
+                **item,
+                "lifecycle_status": "processed",
+                "story_key": "story:hormuz",
+                "content_classification_json": {"policy_version": "news_content_classification_v1"},
+            },
+            "entities": [{"normalized_value": "iran", "entity_type": "country"}],
+            "token_mentions": [],
+            "fact_candidates": [{"event_type": "geopolitical_risk", "validation_status": "accepted"}],
+            "current_brief": None,
+            "exact_duplicate_candidates": [],
+            "story_candidates": [
+                {
+                    "news_item_id": "news-rep",
+                    "story_key": "story:hormuz",
+                    "source_role": "news",
+                    "provider_signal_json": {"score": 96},
+                    "current_brief": {"status": "ready"},
+                    "entities": [{"normalized_value": "iran", "entity_type": "country"}],
+                    "fact_candidates": [{"event_type": "geopolitical_risk", "validation_status": "accepted"}],
+                }
+            ],
+        }
+    ]
+    db = FakeItemProcessDB(FakeItemProcessRepository([item], agent_context_rows=agent_context_rows))
+    worker = NewsItemProcessWorker(
+        name="news_item_process",
+        settings=_news_item_process_settings(),
+        db=db,
+        telemetry=object(),
+        identity_lookup=FakeItemProcessLookup(db),
+        wake_emitter=FakeItemProcessWakeBus(),
+    )
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.processed == 1
+    assert db.repo.agent_admission_updates[0]["admission"].status == "similar_story_covered"
+    assert db.dirty.enqueued == [
+        {
+            "rows": [
+                {
+                    "projection_name": "page",
+                    "target_kind": "news_item",
+                    "target_id": "news-hormuz",
+                    "source_watermark_ms": NOW_MS - 1_000,
+                }
+            ],
+            "reason": "news_item_processed",
+            "now_ms": NOW_MS,
+            "commit": False,
+        }
+    ]
+
+
+def test_news_item_process_material_story_delta_enqueues_one_story_brief_refresh() -> None:
+    item = {
+        "news_item_id": "news-hormuz-official",
+        "source_id": "opennews-realtime",
+        "provider_type": "opennews",
+        "source_role": "official_exchange",
+        "source_domain": "example-exchange.com",
+        "source_name": "Example Exchange",
+        "coverage_tags_json": ["crypto"],
+        "authority_scope_json": {},
+        "title": "Exchange issues official Hormuz market risk update",
+        "summary": "The exchange confirms updated margin monitoring for regional risk.",
+        "body_text": "",
+        "published_at_ms": NOW_MS - 1_000,
+        "provider_signal_json": {
+            "source": "provider",
+            "provider": "opennews",
+            "status": "ready",
+            "direction": "neutral",
+            "score": 95,
+        },
+        "processing_attempts": 1,
+        "processing_lease_owner": "news_item_process",
+    }
+    agent_context_rows = [
+        {
+            "item": {
+                **item,
+                "lifecycle_status": "processed",
+                "story_key": "story:hormuz",
+                "content_classification_json": {"policy_version": "news_content_classification_v1"},
+            },
+            "entities": [],
+            "token_mentions": [],
+            "fact_candidates": [],
+            "current_brief": None,
+            "exact_duplicate_candidates": [],
+            "story_candidates": [
+                {
+                    "news_item_id": "news-rep",
+                    "story_key": "story:hormuz",
+                    "source_role": "specialist_media",
+                    "current_brief": {"status": "ready"},
+                }
+            ],
+        }
+    ]
+    db = FakeItemProcessDB(FakeItemProcessRepository([item], agent_context_rows=agent_context_rows))
+    worker = NewsItemProcessWorker(
+        name="news_item_process",
+        settings=_news_item_process_settings(),
+        db=db,
+        telemetry=object(),
+        identity_lookup=FakeItemProcessLookup(db),
+        wake_emitter=FakeItemProcessWakeBus(),
+    )
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.processed == 1
+    assert db.repo.agent_admission_updates[0]["admission"].status == "eligible_refresh"
+    story_brief_rows = [
+        row
+        for enqueue_call in db.dirty.enqueued
+        for row in enqueue_call["rows"]
+        if row["projection_name"] == "story_brief"
+    ]
+    assert len(story_brief_rows) == 1
+    assert story_brief_rows[0]["target_kind"] == "story"
+    assert story_brief_rows[0]["target_id"] == "story:hormuz"
+    assert story_brief_rows[0]["source_watermark_ms"] == NOW_MS - 1_000
 
 
 def test_news_item_process_worker_fails_when_agent_admission_context_missing() -> None:
@@ -1044,6 +1326,62 @@ def test_news_item_process_worker_fails_when_agent_admission_context_missing() -
     assert repo.agent_admission_updates == []
     assert repo.retryable_items[0]["news_item_id"] == "news-zec"
     assert "agent admission context" in repo.retryable_items[0]["error"]
+
+
+@pytest.mark.parametrize(
+    ("field", "malformed_value"),
+    (
+        ("item", "json_object"),
+        ("entities", '[{"entity_type": "symbol", "normalized_value": "ZEC"}]'),
+        ("token_mentions", '[{"observed_symbol": "ZEC", "resolution_status": "known_symbol"}]'),
+        ("fact_candidates", '[{"event_type": "exchange_listing", "validation_status": "accepted"}]'),
+    ),
+)
+def test_news_item_process_worker_rejects_malformed_agent_admission_context_fields(
+    field: str,
+    malformed_value: str,
+) -> None:
+    item = _crypto_process_item() | {
+        "processing_attempts": 1,
+        "processing_lease_owner": "news_item_process",
+    }
+    context_item = {
+        **item,
+        "lifecycle_status": "processed",
+        "story_key": "news-story:event:exchange-listing:coinbase:zec:spot:t20260619",
+        "content_class": "exchange_listing",
+        "content_tags_json": ["exchange_listing"],
+        "content_classification_json": {"policy_version": "news_content_classification_v1"},
+        "market_scope_json": {"scope": ["crypto"], "primary": "crypto", "status": "in_scope"},
+    }
+    agent_context = {
+        "item": context_item,
+        "entities": [{"entity_type": "symbol", "normalized_value": "ZEC"}],
+        "token_mentions": [{"observed_symbol": "ZEC", "resolution_status": "known_symbol"}],
+        "fact_candidates": [{"event_type": "exchange_listing", "validation_status": "accepted"}],
+        "current_brief": None,
+        "exact_duplicate_candidates": [],
+        "story_candidates": [],
+    }
+    agent_context[field] = json.dumps(context_item) if malformed_value == "json_object" else malformed_value
+    repo = FakeItemProcessRepository([item], agent_context_rows=[agent_context])
+    db = FakeItemProcessDB(repo)
+    worker = NewsItemProcessWorker(
+        name="news_item_process",
+        settings=_news_item_process_settings(),
+        db=db,
+        telemetry=object(),
+        identity_lookup=FakeItemProcessLookup(db),
+        wake_emitter=FakeItemProcessWakeBus(),
+    )
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.processed == 0
+    assert result.failed == 1
+    assert repo.agent_admission_updates == []
+    assert repo.retryable_items[0]["news_item_id"] == "news-zec"
+    assert f"news_item_process_agent_admission_context_{field}_required" in repo.retryable_items[0]["error"]
 
 
 def test_news_item_process_worker_marks_retryable_failure_with_next_due_at_ms() -> None:
@@ -1412,7 +1750,7 @@ def test_news_page_projection_worker_replaces_rows_without_emitting_wake() -> No
     assert db.sessions == ["news_page_projection"]
     assert repo.story_load_news_item_ids == ["news-1"]
     assert repo.replaced_story_news_item_ids == ["news-1"]
-    assert repo.replaced_story_keys == []
+    assert repo.replaced_story_keys == ["story:news-1"]
     assert repo.replaced_story_rows[0]["news_item_id"] == "news-1"
     assert repo.replaced_story_rows[0]["lifecycle_status"] == "attention"
     assert repo.replaced_story_rows[0]["agent_status"] == "ready"
@@ -1681,8 +2019,27 @@ def _page_projection_payload(
         "canonical_url": "https://example.test/a",
         "published_at_ms": 1000,
         "lifecycle_status": "processed",
+        "source_quality_status": "healthy",
     }
     payload_item.update(item or {})
+    news_item_id = str(payload_item["news_item_id"])
+    payload_item.setdefault("market_scope_json", _market_scope_fixture(primary="crypto", scope=["crypto"]))
+    payload_item.setdefault("content_class", "crypto_market")
+    payload_item.setdefault("content_tags_json", ["crypto"])
+    payload_item.setdefault("content_classification_json", {"policy_version": "news_content_classification_v1"})
+    payload_item.setdefault("agent_admission_status", "eligible")
+    payload_item.setdefault("agent_admission_reason", "eligible")
+    payload_item.setdefault(
+        "agent_admission_json", _agent_admission_fixture(news_item_id=news_item_id, market_scope=["crypto"])
+    )
+    payload_item.setdefault("agent_representative_news_item_id", news_item_id)
+    story_payload = story or {
+        "story_key": str(payload_item.get("story_key") or f"story:{news_item_id}"),
+        "representative_news_item_id": news_item_id,
+        "member_news_item_ids": [news_item_id],
+        "member_count": 1,
+        "source_domains": [str(payload_item.get("source_domain") or "example.test")],
+    }
     return {
         "item": payload_item,
         "token_mentions": [
@@ -1705,7 +2062,7 @@ def _page_projection_payload(
             "schema_version": "schema-v1",
             "computed_at_ms": NOW_MS - 1,
         },
-        "story": story,
+        "story": story_payload,
         "member_items": member_items or [dict(payload_item)],
     }
 
@@ -1924,9 +2281,13 @@ class AwaitableCloseNewsSourceProvider(FakeNewsSourceProvider):
 class FakeWakeBus:
     def __init__(self) -> None:
         self.notifications: list[dict[str, int | str]] = []
+        self.page_notifications: list[dict[str, int | str]] = []
 
     def notify_news_item_written(self, *, source_id: str, count: int) -> None:
         self.notifications.append({"source_id": source_id, "count": count})
+
+    def notify_news_page_dirty(self, *, count: int, reason: str) -> None:
+        self.page_notifications.append({"count": count, "reason": reason})
 
 
 class FakeItemProcessWakeBus:
@@ -1969,13 +2330,16 @@ class FakeNewsRepository:
         self.finished_runs: list[dict[str, object]] = []
         self.cache_updates: list[dict[str, object]] = []
         self.news_results: list[dict[str, object]] = []
+        self.reconciled_result: list[dict[str, object]] = []
+        self.item_source_watermarks_by_item: dict[str, int] = {}
+        self.item_source_watermarks_by_source: dict[str, dict[str, int]] = {}
         self.sync_cursors: dict[str, dict[str, object]] = {}
         self.sync_updates: list[dict[str, object]] = []
         self.events: list[str] = []
 
     def reconcile_configured_sources(self, sources, *, now_ms: int, commit: bool = True):
         self.reconciled_sources = list(sources)
-        return []
+        return [dict(row) for row in self.reconciled_result]
 
     def news_source_provider_constraint_values(self):
         return NEWS_SOURCE_PROVIDER_SCHEMA_TYPES
@@ -1987,7 +2351,28 @@ class FakeNewsRepository:
         return self.due_sources[:limit]
 
     def list_news_item_ids_for_sources(self, *, source_ids):
-        return []
+        return [
+            news_item_id
+            for source_id in source_ids
+            for news_item_id in self.item_source_watermarks_by_source.get(str(source_id), {})
+        ]
+
+    def list_news_item_source_watermarks_for_sources(self, *, source_ids):
+        return [
+            {"news_item_id": news_item_id, "source_watermark_ms": watermark}
+            for source_id in source_ids
+            for news_item_id, watermark in self.item_source_watermarks_by_source.get(str(source_id), {}).items()
+        ]
+
+    def list_news_item_source_watermarks(self, *, news_item_ids):
+        return [
+            {
+                "news_item_id": news_item_id,
+                "source_watermark_ms": self.item_source_watermarks_by_item[str(news_item_id)],
+            }
+            for news_item_id in news_item_ids
+            if str(news_item_id) in self.item_source_watermarks_by_item
+        ]
 
     def servable_news_item_ids(self, news_item_ids):
         return [str(news_item_id) for news_item_id in news_item_ids if str(news_item_id)]
@@ -2034,9 +2419,25 @@ class FakeNewsRepository:
     def upsert_canonical_news_item(self, **payload):
         self.news_items.append(payload)
         if self.news_results:
-            return dict(self.news_results.pop(0))
+            result = dict(self.news_results.pop(0))
+            self._record_item_source_watermarks(result, payload)
+            return result
         news_item_id = f"news-{len(self.news_items)}"
-        return {"news_item_id": news_item_id, "status": "inserted", "affected_news_item_ids": [news_item_id]}
+        result = {"news_item_id": news_item_id, "status": "inserted", "affected_news_item_ids": [news_item_id]}
+        self._record_item_source_watermarks(result, payload)
+        return result
+
+    def _record_item_source_watermarks(self, result: dict[str, object], payload: dict[str, object]) -> None:
+        status = str(result.get("status") or "")
+        if status not in {"inserted", "updated"}:
+            return
+        published_at_ms = payload.get("published_at_ms")
+        fetched_at_ms = payload.get("fetched_at_ms")
+        source_watermark_ms = int(published_at_ms if published_at_ms is not None else fetched_at_ms)
+        for news_item_id in result.get("affected_news_item_ids") or [result.get("news_item_id")]:
+            item_id = str(news_item_id or "")
+            if item_id and item_id not in self.item_source_watermarks_by_item:
+                self.item_source_watermarks_by_item[item_id] = source_watermark_ms
 
     def finish_fetch_run(self, **payload):
         self.events.append("finish_fetch_run")
@@ -2193,6 +2594,7 @@ class FakeItemProcessRepository:
                 {
                     "lifecycle_status": "processed",
                     "content_class": classification.get("content_class") or item.get("content_class") or "",
+                    "content_tags_json": classification.get("content_tags") or item.get("content_tags_json") or [],
                     "content_classification_json": classification.get("classification_payload") or {},
                     "market_scope_json": (
                         market_scope.to_payload()

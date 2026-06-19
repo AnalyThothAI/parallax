@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -68,7 +67,7 @@ def decide_news_item_agent_admission(
             similarity.representative_news_item_id,
             context.story_candidates,
         )
-        material_delta = _mapping(context.material_delta)
+        material_delta = _optional_admission_mapping(context.material_delta, "material_delta")
         delta = (
             _material_delta_from_context(material_delta)
             if material_delta
@@ -76,9 +75,15 @@ def decide_news_item_agent_admission(
                 item=item,
                 representative_item=representative,
                 entities=entities,
-                representative_entities=_list_of_mappings((representative or {}).get("entities")),
+                representative_entities=_optional_admission_mapping_list(
+                    (representative or {}).get("entities"),
+                    "representative_entities",
+                ),
                 fact_candidates=fact_candidates,
-                representative_fact_candidates=_list_of_mappings((representative or {}).get("fact_candidates")),
+                representative_fact_candidates=_optional_admission_mapping_list(
+                    (representative or {}).get("fact_candidates"),
+                    "representative_fact_candidates",
+                ),
             )
         )
         base_basis["material_delta"] = {
@@ -123,7 +128,7 @@ def _base_gate(
     news_item_id = str(item.get("news_item_id") or "")
     if str(item.get("lifecycle_status") or "").strip().lower() != "processed":
         return _skip("needs_review", "item_not_processed", news_item_id, basis)
-    if not _mapping(item.get("content_classification_json")):
+    if not _optional_admission_mapping(item.get("content_classification_json"), "content_classification_json"):
         return _skip("needs_review", "classification_missing", news_item_id, basis)
     if _is_source_suppressed(item):
         return _skip("source_suppressed", "source_suppressed", news_item_id, basis)
@@ -148,14 +153,14 @@ def _provider_rating_gate(
     score = rating.get("score")
     if score is None:
         return _skip("needs_review", "provider_rating_missing", news_item_id, basis)
-    if int(score) < _PROVIDER_RATING_AGENT_MIN_SCORE:
+    if score < _PROVIDER_RATING_AGENT_MIN_SCORE:
         return _skip("needs_review", "provider_rating_below_threshold", news_item_id, basis)
     return None
 
 
 def _provider_rating(item: Mapping[str, Any]) -> dict[str, Any]:
-    signal = _mapping(item.get("provider_signal_json"))
-    score = _optional_int(signal.get("score"))
+    signal = _optional_admission_mapping(item.get("provider_signal_json"), "provider_signal_json")
+    score = _provider_rating_score(signal.get("score"))
     return {
         "score": score,
         "min_score": _PROVIDER_RATING_AGENT_MIN_SCORE,
@@ -163,6 +168,14 @@ def _provider_rating(item: Mapping[str, Any]) -> dict[str, Any]:
         "status": str(signal.get("status") or "").strip() or None,
         "method": str(signal.get("method") or "").strip() or None,
     }
+
+
+def _provider_rating_score(value: Any) -> int | None:
+    if value is None:
+        return None
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError("news_item_agent_admission_provider_rating_score_required")
+    return value
 
 
 def _skip(
@@ -222,61 +235,53 @@ def _is_source_suppressed(item: Mapping[str, Any]) -> bool:
     policy_status = str(item.get("source_policy_status") or "").strip().lower()
     if policy_status in {"disabled", "suppressed", "blocked"}:
         return True
-    policy = _mapping(item.get("source_policy_json"))
+    policy = _optional_admission_mapping(item.get("source_policy_json"), "source_policy_json")
     return str(policy.get("status") or "").strip().lower() in {"disabled", "suppressed", "blocked"}
-
-
-def _mapping(value: Any) -> dict[str, Any]:
-    if isinstance(value, Mapping):
-        return dict(value)
-    if isinstance(value, str) and value.strip():
-        try:
-            parsed = json.loads(value)
-        except json.JSONDecodeError:
-            return {}
-        return dict(parsed) if isinstance(parsed, Mapping) else {}
-    return {}
 
 
 def _optional_mapping(value: Any) -> Mapping[str, Any] | None:
     if value is None:
         return None
-    return _mapping(value)
+    return _optional_admission_mapping(value, "current_brief")
 
 
-def _list_of_mappings(value: Any) -> list[dict[str, Any]]:
-    if isinstance(value, list | tuple):
-        return [dict(row) for row in value if isinstance(row, Mapping)]
-    if isinstance(value, str) and value.strip():
-        try:
-            parsed = json.loads(value)
-        except json.JSONDecodeError:
-            return []
-        if isinstance(parsed, list):
-            return [dict(row) for row in parsed if isinstance(row, Mapping)]
-    return []
+def _optional_admission_mapping(value: Any, field_name: str) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, Mapping):
+        return dict(value)
+    raise ValueError(f"news_item_agent_admission_{field_name}_required")
+
+
+def _optional_admission_mapping_list(value: Any, field_name: str) -> list[dict[str, Any]]:
+    if value is None:
+        return []
+    if not isinstance(value, list | tuple):
+        raise ValueError(f"news_item_agent_admission_{field_name}_required")
+    rows: list[dict[str, Any]] = []
+    for row in value:
+        if not isinstance(row, Mapping):
+            raise ValueError(f"news_item_agent_admission_{field_name}_required")
+        rows.append(dict(row))
+    return rows
 
 
 def _material_delta_from_context(value: Mapping[str, Any]) -> NewsMaterialDelta:
     return NewsMaterialDelta(
         has_delta=bool(value.get("has_delta")),
-        reasons=[str(reason) for reason in _json_list(value.get("reasons"))],
-        evidence=_mapping(value.get("evidence")),
+        reasons=[str(reason) for reason in _optional_admission_list(value.get("reasons"), "material_delta_reasons")],
+        evidence=_optional_admission_mapping(value.get("evidence"), "material_delta_evidence"),
     )
 
 
-def _json_list(value: Any) -> list[Any]:
+def _optional_admission_list(value: Any, field_name: str) -> list[Any]:
+    if value is None:
+        return []
     if isinstance(value, list):
         return value
     if isinstance(value, tuple):
         return list(value)
-    if isinstance(value, str) and value.strip():
-        try:
-            parsed = json.loads(value)
-        except json.JSONDecodeError:
-            return []
-        return parsed if isinstance(parsed, list) else []
-    return []
+    raise ValueError(f"news_item_agent_admission_{field_name}_required")
 
 
 def _optional_int(value: Any) -> int | None:

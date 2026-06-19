@@ -9,6 +9,7 @@ import pytest
 from parallax.app.runtime.ops_cli_queries import token_profile_image_repair_targets
 from parallax.app.runtime.projection_dirty_targets import enqueue_projection_dirty_targets
 from parallax.app.surfaces.cli.parser import build_parser
+from parallax.domains.news_intel._constants import NEWS_STORY_IDENTITY_VERSION
 
 NOW_MS = 1_779_000_000_000
 
@@ -69,16 +70,16 @@ def test_enqueue_projection_dirty_targets_execute_enqueues_only_dirty_targets() 
     ]
     assert repos.news_dirty.enqueued[1]["rows"] == [
         {
-            "projection_name": "brief_input",
-            "target_kind": "news_item",
-            "target_id": "news-2",
+            "projection_name": "story_brief",
+            "target_kind": "story",
+            "target_id": "story-sol",
             "source_watermark_ms": NOW_MS - 2_000,
             "priority": 10,
         },
         {
-            "projection_name": "brief_input",
-            "target_kind": "news_item",
-            "target_id": "news-3",
+            "projection_name": "story_brief",
+            "target_kind": "story",
+            "target_id": "story-eth",
             "source_watermark_ms": NOW_MS - 3_000,
             "priority": 55,
         },
@@ -113,7 +114,7 @@ def test_enqueue_projection_dirty_targets_parser_requires_explicit_mode() -> Non
             "--domain",
             "news",
             "--projection",
-            "brief_input",
+            "story_brief",
             "--since-hours",
             "24",
             "--dry-run",
@@ -123,7 +124,7 @@ def test_enqueue_projection_dirty_targets_parser_requires_explicit_mode() -> Non
     assert args.command == "ops"
     assert args.ops_command == "enqueue-projection-dirty-targets"
     assert args.domain == "news"
-    assert args.projection == "brief_input"
+    assert args.projection == "story_brief"
     assert args.since_hours == 24
     assert args.dry_run is True
     assert args.execute is False
@@ -143,7 +144,7 @@ def test_enqueue_projection_dirty_targets_execute_requires_bounded_brief_repair(
     except ValueError as exc:
         assert "--since-hours" in str(exc)
     else:
-        raise AssertionError("expected unbounded brief_input repair to fail")
+        raise AssertionError("expected unbounded story_brief repair to fail")
 
 
 def test_enqueue_projection_dirty_targets_page_repair_can_run_unbounded_for_page_only_rows() -> None:
@@ -235,7 +236,7 @@ def test_enqueue_projection_dirty_targets_source_quality_only_does_not_scan_news
     assert all("FROM news_items" not in sql for sql, _params in repos.conn.statements)
 
 
-def test_enqueue_projection_dirty_targets_can_scope_brief_input_repair() -> None:
+def test_enqueue_projection_dirty_targets_can_scope_story_brief_repair() -> None:
     repos = FakeRepos()
 
     result = enqueue_projection_dirty_targets(
@@ -243,24 +244,24 @@ def test_enqueue_projection_dirty_targets_can_scope_brief_input_repair() -> None
         domain="news",
         execute=True,
         now_ms=NOW_MS,
-        projection="brief_input",
+        projection="story_brief",
         since_ms=NOW_MS - 24 * 60 * 60 * 1000,
     )
 
-    assert result["projection"] == "brief_input"
+    assert result["projection"] == "story_brief"
     assert result["news"]["news_item_targets"] == 2
     assert repos.news_dirty.enqueued[0]["rows"] == [
         {
-            "projection_name": "brief_input",
-            "target_kind": "news_item",
-            "target_id": "news-2",
+            "projection_name": "story_brief",
+            "target_kind": "story",
+            "target_id": "story-sol",
             "source_watermark_ms": NOW_MS - 2_000,
             "priority": 10,
         },
         {
-            "projection_name": "brief_input",
-            "target_kind": "news_item",
-            "target_id": "news-3",
+            "projection_name": "story_brief",
+            "target_kind": "story",
+            "target_id": "story-eth",
             "source_watermark_ms": NOW_MS - 3_000,
             "priority": 55,
         },
@@ -297,30 +298,39 @@ class FakeConn:
     def execute(self, sql: str, _params: dict[str, Any] | None = None) -> FakeCursor:
         self.statements.append((sql, _params))
         if "FROM news_items" in sql:
-            assert "items.agent_admission_status" in sql
-            assert "items.agent_admission_json" not in sql
+            assert "items.agent_admission_json" in sql
+            assert "items.story_key" in sql
+            assert "items.lifecycle_status = 'processed'" in sql
+            assert "items.story_key <> ''" in sql
+            assert "items.story_identity_version = %(story_identity_version)s" in sql
+            assert "items.agent_admission_status" not in sql
             assert "JOIN news_sources" not in sql
             assert "news_token_mentions" not in sql
             assert "news_fact_candidates" not in sql
+            assert _params is not None
+            assert _params["story_identity_version"] == NEWS_STORY_IDENTITY_VERSION
             return FakeCursor(
                 [
                     {
                         "news_item_id": "news-1",
+                        "story_key": "story-sol",
                         "published_at_ms": NOW_MS - 1_000,
                         "source_watermark_ms": NOW_MS - 1_000,
-                        "agent_admission_status": "needs_review",
+                        "agent_admission_json": {"status": "needs_review"},
                     },
                     {
                         "news_item_id": "news-2",
+                        "story_key": "story-sol",
                         "published_at_ms": NOW_MS - 2_000,
                         "source_watermark_ms": NOW_MS - 2_000,
-                        "agent_admission_status": "eligible_refresh",
+                        "agent_admission_json": {"status": "eligible_refresh"},
                     },
                     {
                         "news_item_id": "news-3",
+                        "story_key": "story-eth",
                         "published_at_ms": NOW_MS - 3_000,
                         "source_watermark_ms": NOW_MS - 3_000,
-                        "agent_admission_status": "eligible",
+                        "agent_admission_json": {"status": "eligible"},
                     },
                 ]
             )

@@ -156,6 +156,10 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.notification_delivery.batch_size == 1
     assert settings.notification_delivery.max_attempts == 5
     assert settings.notification_delivery.statement_timeout_seconds == 30
+    assert settings.news_item_brief.enabled is False
+    assert settings.news_item_brief.wakes_on == ()
+    assert settings.news_story_brief.enabled is True
+    assert settings.news_story_brief.wakes_on == ("news_item_processed",)
 
 
 def test_worker_settings_schema_matches_manifest_worker_names() -> None:
@@ -291,6 +295,9 @@ def test_agent_runtime_settings_default_lanes() -> None:
     assert settings.agent_runtime.lanes["news.item_brief"].priority == "low"
     assert settings.agent_runtime.lanes["news.item_brief"].max_concurrency == 1
     assert settings.agent_runtime.lanes["news.item_brief"].timeout_seconds == 180
+    assert settings.agent_runtime.lanes["news.story_brief"].priority == "low"
+    assert settings.agent_runtime.lanes["news.story_brief"].max_concurrency == 1
+    assert settings.agent_runtime.lanes["news.story_brief"].timeout_seconds == 180
 
 
 def test_agent_runtime_settings_partial_lane_override_preserves_default_lanes() -> None:
@@ -324,6 +331,7 @@ def test_agent_runtime_settings_partial_lane_override_preserves_default_lanes() 
     assert lane.circuit_breaker.failure_threshold == 3
     assert "narrative.mention_semantics" not in settings.agent_runtime.lanes
     assert settings.agent_runtime.lanes["news.item_brief"].timeout_seconds == 180
+    assert settings.agent_runtime.lanes["news.story_brief"].timeout_seconds == 180
 
 
 def test_agent_runtime_settings_accepts_news_item_brief_lane_override() -> None:
@@ -345,6 +353,29 @@ def test_agent_runtime_settings_accepts_news_item_brief_lane_override() -> None:
     lane = settings.agent_runtime.lanes["news.item_brief"]
     assert lane.priority == "low"
     assert lane.model == "gpt-news"
+    assert lane.max_concurrency == 1
+    assert lane.timeout_seconds == 210
+
+
+def test_agent_runtime_settings_accepts_news_story_brief_lane_override() -> None:
+    from parallax.platform.config.settings import WorkersSettings
+
+    settings = WorkersSettings(
+        agent_runtime={
+            "lanes": {
+                "news.story_brief": {
+                    "priority": "low",
+                    "model": "gpt-story",
+                    "max_concurrency": 1,
+                    "timeout_seconds": 210,
+                }
+            }
+        }
+    )
+
+    lane = settings.agent_runtime.lanes["news.story_brief"]
+    assert lane.priority == "low"
+    assert lane.model == "gpt-story"
     assert lane.max_concurrency == 1
     assert lane.timeout_seconds == 210
 
@@ -488,7 +519,7 @@ def test_news_workers_have_defaults():
     assert settings.news_item_brief.statement_timeout_seconds == 30
     assert settings.news_item_brief.advisory_lock_key == 2026052001
     assert settings.news_item_brief.backpressure_cooldown_ms == 60_000
-    assert settings.news_item_brief.wakes_on == ("news_item_processed",)
+    assert settings.news_item_brief.wakes_on == ()
     assert settings.news_page_projection.batch_size == 100
     assert settings.news_page_projection.lease_ms == 120_000
     assert settings.news_page_projection.retry_ms == 30_000
@@ -497,7 +528,7 @@ def test_news_workers_have_defaults():
     assert settings.news_page_projection.wakes_on == (
         "news_item_written",
         "news_item_processed",
-        "news_item_brief_updated",
+        "news_story_brief_updated",
         "news_page_dirty",
     )
     assert settings.news_source_quality_projection.interval_seconds == 60
@@ -529,6 +560,7 @@ def test_agent_runtime_capability_fields_default_to_model_registry() -> None:
     assert settings.agent_runtime.defaults.max_tokens is None
     assert settings.agent_runtime.lanes["pulse.decision"].max_tokens is None
     assert settings.agent_runtime.lanes["news.item_brief"].max_tokens == 2200
+    assert settings.agent_runtime.lanes["news.story_brief"].max_tokens == 2200
 
 
 def test_agent_runtime_default_model_uses_registered_capability_profile() -> None:

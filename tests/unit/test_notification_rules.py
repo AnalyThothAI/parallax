@@ -1,6 +1,10 @@
 import pytest
 
-from parallax.domains.notifications.services.notification_rules import NotificationRuleEngine
+from parallax.domains.notifications.services.notification_rules import (
+    NotificationRuleEngine,
+    _news_display_title,
+    _news_external_push_signature,
+)
 from parallax.platform.config.settings import NotificationRuleConfig, NotificationsConfig, Settings
 
 NOW_MS = 1_700_000_300_000
@@ -85,7 +89,15 @@ class FakeNews:
 
 
 def _market_scoped_news_row(row: dict) -> dict:
+    representative_news_item_id = row.get("representative_news_item_id") or row.get("news_item_id") or ""
+    news_item_id = str(row.get("news_item_id") or "")
+    story_key = str(row.get("story_key") or f"news-story:unit:{news_item_id}")
     return {
+        "row_id": f"news-page-row:{news_item_id}",
+        "representative_news_item_id": representative_news_item_id,
+        "story_key": story_key,
+        "story": {"story_key": story_key, "member_count": 1},
+        "duplicate_count": 1,
         "market_scope": {
             "scope": ["crypto"],
             "primary": "crypto",
@@ -99,7 +111,7 @@ def _market_scoped_news_row(row: dict) -> dict:
         "agent_admission": {
             "status": "eligible",
             "reason": "test_agent_ready",
-            "representative_news_item_id": row.get("representative_news_item_id") or row.get("news_item_id") or "",
+            "representative_news_item_id": representative_news_item_id,
         },
         **row,
     }
@@ -1149,6 +1161,358 @@ def test_news_high_signal_uses_ready_agent_brief_for_display_and_builds_push_sig
     assert candidate.occurrence_at_ms == NOW_MS - 5_000
 
 
+def test_news_high_signal_requires_projected_representative_identity_without_item_fallback() -> None:
+    row = _market_scoped_news_row(
+        {
+            "news_item_id": "news-missing-representative",
+            "latest_at_ms": NOW_MS - 5_000,
+            "headline": "Missing representative identity",
+            "source_domain": "example.test",
+            "canonical_url": "https://example.test/missing-representative",
+            "signal": {
+                "direction": "bullish",
+                "alert_eligibility": {
+                    "in_app_eligible": True,
+                    "external_push_ready": True,
+                    "external_push_basis": "agent_brief",
+                    "decision_class": "driver",
+                },
+            },
+            "token_impacts": [{"symbol": "BOV"}],
+            "agent_brief": {
+                "status": "ready",
+                "direction": "bullish",
+                "decision_class": "driver",
+                "summary_zh": "Projected row is missing representative identity.",
+            },
+        }
+    )
+    row.pop("representative_news_item_id", None)
+
+    with pytest.raises(ValueError, match="news_high_signal_representative_news_item_id_required"):
+        engine(news=FakeNews([row])).evaluate(now_ms=NOW_MS)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "error"),
+    [
+        ("signal_scalar", "news_high_signal_signal_required"),
+        ("alert_eligibility_scalar", "news_high_signal_alert_eligibility_required"),
+        ("in_app_eligible_missing", "news_high_signal_alert_eligibility_in_app_eligible_required"),
+        ("in_app_eligible_false", "news_high_signal_alert_eligibility_in_app_eligible_required"),
+        ("in_app_eligible_non_bool", "news_high_signal_alert_eligibility_in_app_eligible_required"),
+        ("external_push_ready_non_bool", "news_high_signal_alert_eligibility_external_push_ready_required"),
+        ("external_push_basis_missing", "news_high_signal_alert_eligibility_external_push_basis_required"),
+        ("external_push_basis_blank", "news_high_signal_alert_eligibility_external_push_basis_required"),
+        ("external_push_basis_non_string", "news_high_signal_alert_eligibility_external_push_basis_required"),
+        ("external_push_basis_wrong", "news_high_signal_alert_eligibility_external_push_basis_required"),
+        (
+            "external_push_ready_block_reason_non_string",
+            "news_high_signal_alert_eligibility_external_push_block_reason_required",
+        ),
+        ("external_push_block_reason_blank", "news_high_signal_alert_eligibility_external_push_block_reason_required"),
+        (
+            "external_push_block_reason_non_string",
+            "news_high_signal_alert_eligibility_external_push_block_reason_required",
+        ),
+        ("agent_brief_scalar", "news_high_signal_agent_brief_required"),
+        ("agent_brief_affected_entities_object", "news_high_signal_agent_brief_affected_entities_required"),
+        ("agent_brief_affected_entities_member", "news_high_signal_agent_brief_affected_entities_required"),
+        ("news_item_id_missing", "news_high_signal_news_item_id_required"),
+        ("news_item_id_blank", "news_high_signal_news_item_id_required"),
+        ("representative_news_item_id_missing", "news_high_signal_representative_news_item_id_required"),
+        ("representative_news_item_id_blank", "news_high_signal_representative_news_item_id_required"),
+        ("token_impacts_object", "news_high_signal_token_impacts_required"),
+        ("token_impacts_member", "news_high_signal_token_impacts_required"),
+        ("token_impacts_symbol_non_string", "news_high_signal_token_impacts_symbol_required"),
+        ("token_impacts_market_type_non_string", "news_high_signal_token_impacts_market_type_required"),
+        ("story_missing", "news_high_signal_story_required"),
+        ("story_scalar", "news_high_signal_story_required"),
+        ("story_story_key_non_string", "news_high_signal_story_story_key_required"),
+        ("story_member_count_string", "news_high_signal_story_member_count_required"),
+        ("story_member_count_bool", "news_high_signal_story_member_count_required"),
+        ("story_member_count_negative", "news_high_signal_story_member_count_required"),
+        ("story_source_domains_member_non_string", "news_high_signal_story_source_domains_required"),
+        ("market_scope_scalar", "news_high_signal_market_scope_required"),
+        ("market_scope_scope_non_list", "news_high_signal_market_scope_scope_required"),
+        ("market_scope_scope_member_non_string", "news_high_signal_market_scope_scope_required"),
+        ("market_scope_primary_non_string", "news_high_signal_market_scope_primary_required"),
+        ("market_scope_status_non_string", "news_high_signal_market_scope_status_required"),
+        ("market_scope_reason_non_string", "news_high_signal_market_scope_reason_required"),
+        ("market_scope_basis_scalar", "news_high_signal_market_scope_basis_required"),
+        ("market_scope_version_non_string", "news_high_signal_market_scope_version_required"),
+        ("agent_admission_scalar", "news_high_signal_agent_admission_required"),
+        ("agent_admission_payload_status_non_string", "news_high_signal_agent_admission_status_required"),
+        ("agent_admission_payload_reason_non_string", "news_high_signal_agent_admission_reason_required"),
+        (
+            "agent_admission_payload_representative_non_string",
+            "news_high_signal_agent_admission_representative_news_item_id_required",
+        ),
+        ("agent_admission_payload_basis_scalar", "news_high_signal_agent_admission_basis_required"),
+        ("agent_admission_payload_version_non_string", "news_high_signal_agent_admission_version_required"),
+        ("agent_admission_payload_eligible_non_bool", "news_high_signal_agent_admission_eligible_required"),
+        ("latest_at_ms_missing", "news_high_signal_latest_at_ms_required"),
+        ("latest_at_ms_string", "news_high_signal_latest_at_ms_required"),
+        ("row_id_missing", "news_high_signal_row_id_required"),
+        ("row_id_blank", "news_high_signal_row_id_required"),
+        ("story_key_missing", "news_high_signal_story_key_required"),
+        ("story_key_blank", "news_high_signal_story_key_required"),
+        ("duplicate_count_missing", "news_high_signal_duplicate_count_required"),
+        ("duplicate_count_string", "news_high_signal_duplicate_count_required"),
+        ("duplicate_count_bool", "news_high_signal_duplicate_count_required"),
+        ("duplicate_count_negative", "news_high_signal_duplicate_count_required"),
+        ("source_domain_missing", "news_high_signal_source_domain_required"),
+        ("source_domain_blank", "news_high_signal_source_domain_required"),
+        ("source_domain_non_string", "news_high_signal_source_domain_required"),
+        ("canonical_url_blank", "news_high_signal_canonical_url_required"),
+        ("canonical_url_non_string", "news_high_signal_canonical_url_required"),
+        ("agent_admission_status_missing", "news_high_signal_agent_admission_status_required"),
+        ("agent_admission_status_blank", "news_high_signal_agent_admission_status_required"),
+        ("agent_admission_status_non_string", "news_high_signal_agent_admission_status_required"),
+        ("agent_admission_reason_missing", "news_high_signal_agent_admission_reason_required"),
+        ("agent_admission_reason_blank", "news_high_signal_agent_admission_reason_required"),
+        ("agent_admission_reason_non_string", "news_high_signal_agent_admission_reason_required"),
+    ],
+)
+def test_news_high_signal_rejects_malformed_projected_payload_sections(
+    mutation: str,
+    error: str,
+) -> None:
+    row = _market_scoped_news_row(
+        {
+            "news_item_id": "news-malformed-projection",
+            "representative_news_item_id": "news-malformed-projection",
+            "story_key": "news-story:subject:malformed-projection:t412000",
+            "latest_at_ms": NOW_MS - 5_000,
+            "headline": "Malformed projected payload",
+            "source_domain": "example.test",
+            "canonical_url": "https://example.test/malformed-projection",
+            "duplicate_count": 1,
+            "signal": {
+                "direction": "bullish",
+                "alert_eligibility": {
+                    "in_app_eligible": True,
+                    "external_push_ready": True,
+                    "external_push_basis": "agent_brief",
+                    "decision_class": "driver",
+                },
+            },
+            "token_impacts": [{"symbol": "BTC", "score": 90}],
+            "agent_brief": {
+                "status": "ready",
+                "direction": "bullish",
+                "decision_class": "driver",
+                "summary_zh": "Malformed projected payload must fail visibly.",
+                "affected_entities": [{"symbol": "BTC"}],
+            },
+        }
+    )
+    if mutation == "signal_scalar":
+        row["signal"] = "bullish"
+    elif mutation == "alert_eligibility_scalar":
+        row["signal"]["alert_eligibility"] = "ready"
+    elif mutation == "in_app_eligible_missing":
+        row["signal"]["alert_eligibility"].pop("in_app_eligible")
+    elif mutation == "in_app_eligible_false":
+        row["signal"]["alert_eligibility"]["in_app_eligible"] = False
+    elif mutation == "in_app_eligible_non_bool":
+        row["signal"]["alert_eligibility"]["in_app_eligible"] = "true"
+    elif mutation == "external_push_ready_non_bool":
+        row["signal"]["alert_eligibility"]["external_push_ready"] = "yes"
+    elif mutation == "external_push_basis_missing":
+        row["signal"]["alert_eligibility"].pop("external_push_basis")
+    elif mutation == "external_push_basis_blank":
+        row["signal"]["alert_eligibility"]["external_push_basis"] = " "
+    elif mutation == "external_push_basis_non_string":
+        row["signal"]["alert_eligibility"]["external_push_basis"] = 123
+    elif mutation == "external_push_basis_wrong":
+        row["signal"]["alert_eligibility"]["external_push_basis"] = "legacy_signal"
+    elif mutation == "external_push_ready_block_reason_non_string":
+        row["signal"]["alert_eligibility"]["external_push_block_reason"] = 123
+    elif mutation == "external_push_block_reason_blank":
+        row["signal"]["alert_eligibility"]["external_push_ready"] = False
+        row["signal"]["alert_eligibility"]["external_push_block_reason"] = " "
+    elif mutation == "external_push_block_reason_non_string":
+        row["signal"]["alert_eligibility"]["external_push_ready"] = False
+        row["signal"]["alert_eligibility"]["external_push_block_reason"] = 123
+    elif mutation == "agent_brief_scalar":
+        row["agent_brief"] = "ready"
+    elif mutation == "agent_brief_affected_entities_object":
+        row["agent_brief"]["affected_entities"] = {"symbol": "BTC"}
+    elif mutation == "agent_brief_affected_entities_member":
+        row["agent_brief"]["affected_entities"] = ["BTC"]
+    elif mutation == "news_item_id_missing":
+        row.pop("news_item_id")
+    elif mutation == "news_item_id_blank":
+        row["news_item_id"] = " "
+    elif mutation == "representative_news_item_id_missing":
+        row.pop("representative_news_item_id")
+    elif mutation == "representative_news_item_id_blank":
+        row["representative_news_item_id"] = " "
+    elif mutation == "token_impacts_object":
+        row["token_impacts"] = {"symbol": "BTC"}
+    elif mutation == "token_impacts_member":
+        row["token_impacts"] = ["BTC"]
+    elif mutation == "token_impacts_symbol_non_string":
+        row["token_impacts"] = [{"symbol": 123}]
+    elif mutation == "token_impacts_market_type_non_string":
+        row["token_impacts"] = [{"symbol": "BTC", "market_type": 123}]
+    elif mutation == "story_missing":
+        row.pop("story")
+    elif mutation == "story_scalar":
+        row["story"] = "story"
+    elif mutation == "story_story_key_non_string":
+        row["story"]["story_key"] = 123
+    elif mutation == "story_member_count_string":
+        row["story"]["member_count"] = "1"
+    elif mutation == "story_member_count_bool":
+        row["story"]["member_count"] = True
+    elif mutation == "story_member_count_negative":
+        row["story"]["member_count"] = -1
+    elif mutation == "story_source_domains_member_non_string":
+        row["story"]["source_domains"] = ["example.test", 123]
+    elif mutation == "market_scope_scalar":
+        row["market_scope"] = ["crypto"]
+    elif mutation == "market_scope_scope_non_list":
+        row["market_scope"]["scope"] = "crypto"
+    elif mutation == "market_scope_scope_member_non_string":
+        row["market_scope"]["scope"] = ["crypto", 123]
+    elif mutation == "market_scope_primary_non_string":
+        row["market_scope"]["primary"] = 123
+    elif mutation == "market_scope_status_non_string":
+        row["market_scope"]["status"] = 123
+    elif mutation == "market_scope_reason_non_string":
+        row["market_scope"]["reason"] = 123
+    elif mutation == "market_scope_basis_scalar":
+        row["market_scope"]["basis"] = "crypto"
+    elif mutation == "market_scope_version_non_string":
+        row["market_scope"]["version"] = 123
+    elif mutation == "agent_admission_scalar":
+        row["agent_admission"] = "eligible"
+    elif mutation == "agent_admission_payload_status_non_string":
+        row["agent_admission"]["status"] = 123
+    elif mutation == "agent_admission_payload_reason_non_string":
+        row["agent_admission"]["reason"] = 123
+    elif mutation == "agent_admission_payload_representative_non_string":
+        row["agent_admission"]["representative_news_item_id"] = 123
+    elif mutation == "agent_admission_payload_basis_scalar":
+        row["agent_admission"]["basis"] = "test"
+    elif mutation == "agent_admission_payload_version_non_string":
+        row["agent_admission"]["version"] = 123
+    elif mutation == "agent_admission_payload_eligible_non_bool":
+        row["agent_admission"]["eligible"] = 1
+    elif mutation == "latest_at_ms_missing":
+        row.pop("latest_at_ms")
+    elif mutation == "latest_at_ms_string":
+        row["latest_at_ms"] = "recent"
+    elif mutation == "row_id_missing":
+        row.pop("row_id")
+    elif mutation == "row_id_blank":
+        row["row_id"] = " "
+    elif mutation == "story_key_missing":
+        row.pop("story_key")
+    elif mutation == "story_key_blank":
+        row["story_key"] = " "
+    elif mutation == "duplicate_count_missing":
+        row.pop("duplicate_count", None)
+    elif mutation == "duplicate_count_string":
+        row["duplicate_count"] = "1"
+    elif mutation == "duplicate_count_bool":
+        row["duplicate_count"] = True
+    elif mutation == "duplicate_count_negative":
+        row["duplicate_count"] = -1
+    elif mutation == "source_domain_missing":
+        row.pop("source_domain", None)
+    elif mutation == "source_domain_blank":
+        row["source_domain"] = " "
+    elif mutation == "source_domain_non_string":
+        row["source_domain"] = 123
+    elif mutation == "canonical_url_blank":
+        row["canonical_url"] = " "
+    elif mutation == "canonical_url_non_string":
+        row["canonical_url"] = {"url": "https://example.test/malformed-projection"}
+    elif mutation == "agent_admission_status_missing":
+        row.pop("agent_admission_status", None)
+    elif mutation == "agent_admission_status_blank":
+        row["agent_admission_status"] = " "
+    elif mutation == "agent_admission_status_non_string":
+        row["agent_admission_status"] = 123
+    elif mutation == "agent_admission_reason_missing":
+        row.pop("agent_admission_reason", None)
+    elif mutation == "agent_admission_reason_blank":
+        row["agent_admission_reason"] = " "
+    elif mutation == "agent_admission_reason_non_string":
+        row["agent_admission_reason"] = 123
+    else:  # pragma: no cover - keeps parametrization explicit.
+        raise AssertionError(mutation)
+
+    with pytest.raises(ValueError, match=error):
+        engine(news=FakeNews([row])).evaluate(now_ms=NOW_MS)
+
+
+def test_news_high_signal_public_mapping_payloads_drop_unknown_fields_without_passthrough() -> None:
+    row = _market_scoped_news_row(
+        {
+            "news_item_id": "news-public-mapping-allowlist",
+            "representative_news_item_id": "news-public-mapping-allowlist",
+            "story_key": "news-story:subject:public-mapping-allowlist:t412000",
+            "story": {
+                "story_key": "news-story:subject:public-mapping-allowlist:t412000",
+                "member_count": 1,
+                "source_domains": ["example.test"],
+                "legacy_story_passthrough": {"bad": True},
+            },
+            "market_scope": {
+                "scope": ["crypto"],
+                "primary": "crypto",
+                "status": "classified",
+                "reason": "test_crypto_subject",
+                "basis": {},
+                "version": "test_news_market_scope_v1",
+                "legacy_scope_passthrough": "bad",
+            },
+            "agent_admission": {
+                "status": "eligible",
+                "reason": "test_agent_ready",
+                "representative_news_item_id": "news-public-mapping-allowlist",
+                "legacy_admission_passthrough": "bad",
+            },
+            "latest_at_ms": NOW_MS - 5_000,
+            "headline": "Unknown nested mapping fields should not publish",
+            "source_domain": "example.test",
+            "canonical_url": "https://example.test/public-mapping-allowlist",
+            "duplicate_count": 1,
+            "signal": {
+                "direction": "bullish",
+                "alert_eligibility": {
+                    "in_app_eligible": True,
+                    "external_push_ready": True,
+                    "external_push_basis": "agent_brief",
+                    "decision_class": "driver",
+                },
+            },
+            "token_impacts": [{"symbol": "BTC", "score": 90}],
+            "agent_brief": {
+                "status": "ready",
+                "direction": "bullish",
+                "decision_class": "driver",
+                "summary_zh": "Unknown nested fields must not pass through.",
+                "affected_entities": [{"symbol": "BTC"}],
+            },
+        }
+    )
+
+    candidate = engine(news=FakeNews([row])).evaluate(now_ms=NOW_MS)[0]
+
+    assert candidate.payload["story"] == {
+        "story_key": "news-story:subject:public-mapping-allowlist:t412000",
+        "member_count": 1,
+        "source_domains": ["example.test"],
+    }
+    assert "legacy_scope_passthrough" not in candidate.payload["market_scope"]
+    assert "legacy_admission_passthrough" not in candidate.payload["agent_admission"]
+
+
 def test_news_high_signal_allows_market_wide_ready_watch_candidate():
     market_scope = {
         "scope": ["us_equity"],
@@ -1161,7 +1525,11 @@ def test_news_high_signal_allows_market_wide_ready_watch_candidate():
     news = FakeNews(
         [
             {
+                "row_id": "news-page-row:news-market-watch",
                 "news_item_id": "news-market-watch",
+                "representative_news_item_id": "news-market-watch",
+                "story_key": "news-story:subject:spacex-valuation:t412000",
+                "story": {"story_key": "news-story:subject:spacex-valuation:t412000", "member_count": 1},
                 "latest_at_ms": NOW_MS - 5_000,
                 "headline": "SpaceX valuation reset lifts private-market risk appetite",
                 "source_domain": "example.test",
@@ -1286,6 +1654,363 @@ def test_news_high_signal_uses_projection_external_push_readiness() -> None:
     assert candidate.payload["external_push_suppression_reason"] == "agent_brief_missing_summary"
 
 
+def test_news_high_signal_external_push_requires_current_summary_without_market_read_fallback() -> None:
+    news = FakeNews(
+        [
+            _market_scoped_news_row(
+                {
+                    "news_item_id": "news-ready-market-read-only",
+                    "latest_at_ms": NOW_MS - 5_000,
+                    "agent_brief_computed_at_ms": NOW_MS - 1_000,
+                    "headline": "Ready status with legacy market read only",
+                    "source_domain": "example.test",
+                    "canonical_url": "https://example.test/ready-market-read-only",
+                    "signal": {
+                        "direction": "bullish",
+                        "alert_eligibility": {
+                            "in_app_eligible": True,
+                            "external_push_ready": True,
+                            "external_push_basis": "agent_brief",
+                            "decision_class": "driver",
+                        },
+                    },
+                    "token_impacts": [{"symbol": "BTC", "score": 90}],
+                    "agent_brief": {
+                        "status": "ready",
+                        "direction": "bullish",
+                        "decision_class": "driver",
+                        "title_zh": "AI 标题但缺少当前摘要",
+                        "market_read_zh": "旧 market_read 不应让外部推送通过。",
+                    },
+                }
+            )
+        ]
+    )
+    notifications = NotificationsConfig(
+        rules={
+            "news_high_signal": {
+                "enabled": True,
+                "channels": ["in_app", "pushdeer"],
+                "cooldown_seconds": 3600,
+            }
+        }
+    )
+
+    candidates = [
+        item
+        for item in engine(news=news, notifications=notifications).evaluate(now_ms=NOW_MS)
+        if item.rule_id == "news_high_signal"
+    ]
+
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate.channels == ("in_app",)
+    assert "旧 market_read 不应让外部推送通过。" not in candidate.body
+    assert candidate.payload["external_push_eligible"] is False
+    assert candidate.payload["external_push_signature"] is None
+    assert candidate.payload["external_push_suppression_reason"] == "agent_brief_missing_summary"
+
+
+def test_news_high_signal_rejects_malformed_ready_summary_without_string_repair() -> None:
+    news = FakeNews(
+        [
+            _market_scoped_news_row(
+                {
+                    "news_item_id": "news-ready-malformed-summary",
+                    "latest_at_ms": NOW_MS - 5_000,
+                    "agent_brief_computed_at_ms": NOW_MS - 1_000,
+                    "headline": "Ready status with malformed summary",
+                    "source_domain": "example.test",
+                    "canonical_url": "https://example.test/ready-malformed-summary",
+                    "signal": {
+                        "direction": "bullish",
+                        "alert_eligibility": {
+                            "in_app_eligible": True,
+                            "external_push_ready": True,
+                            "external_push_basis": "agent_brief",
+                            "decision_class": "driver",
+                        },
+                    },
+                    "token_impacts": [{"symbol": "BTC", "score": 90}],
+                    "agent_brief": {
+                        "status": "ready",
+                        "direction": "bullish",
+                        "decision_class": "driver",
+                        "title_zh": "AI 标题但摘要类型错误",
+                        "summary_zh": 123,
+                    },
+                }
+            )
+        ]
+    )
+
+    with pytest.raises(ValueError, match="news_high_signal_agent_brief_summary_zh_required"):
+        engine(news=news).evaluate(now_ms=NOW_MS)
+
+
+def test_news_display_title_rejects_malformed_agent_title_without_string_repair() -> None:
+    row = _market_scoped_news_row(
+        {
+            "news_item_id": "news-malformed-title",
+            "headline": "Headline fallback remains available",
+            "signal": {"display_signal": {"title_zh": "Projected display fallback"}},
+        }
+    )
+
+    with pytest.raises(ValueError, match="news_high_signal_agent_brief_title_zh_required"):
+        _news_display_title(row, agent_brief={"title_zh": 123})
+
+
+def test_news_display_title_rejects_malformed_projected_title_without_string_repair() -> None:
+    row = _market_scoped_news_row(
+        {
+            "news_item_id": "news-malformed-projected-title",
+            "headline": "Headline fallback remains available",
+            "signal": {"display_signal": {"title_zh": 123}},
+        }
+    )
+
+    with pytest.raises(ValueError, match="news_high_signal_display_signal_title_zh_required"):
+        _news_display_title(row, agent_brief={})
+
+
+def test_news_display_title_rejects_malformed_headline_without_string_repair() -> None:
+    row = _market_scoped_news_row(
+        {
+            "news_item_id": "news-malformed-headline",
+            "headline": 123,
+            "signal": {"display_signal": {}},
+        }
+    )
+
+    with pytest.raises(ValueError, match="news_high_signal_headline_required"):
+        _news_display_title(row, agent_brief={})
+
+
+def test_news_display_title_falls_back_when_agent_title_is_absent() -> None:
+    row = _market_scoped_news_row(
+        {
+            "news_item_id": "news-title-fallback",
+            "headline": "Headline fallback remains available",
+            "signal": {"display_signal": {"title_zh": "Projected display fallback"}},
+        }
+    )
+
+    assert _news_display_title(row, agent_brief={}) == "Projected display fallback"
+
+
+@pytest.mark.parametrize("field_name", ["direction", "decision_class", "title_zh", "summary_zh", "market_read_zh"])
+def test_news_high_signal_public_agent_brief_rejects_malformed_optional_text_without_payload_passthrough(
+    field_name: str,
+) -> None:
+    news = FakeNews(
+        [
+            _market_scoped_news_row(
+                {
+                    "news_item_id": f"news-pending-malformed-{field_name}",
+                    "latest_at_ms": NOW_MS - 5_000,
+                    "headline": "Pending brief with malformed public field",
+                    "source_domain": "example.test",
+                    "canonical_url": f"https://example.test/pending-malformed-{field_name}",
+                    "signal": {
+                        "direction": "bullish",
+                        "alert_eligibility": {
+                            "in_app_eligible": True,
+                            "external_push_ready": False,
+                            "external_push_block_reason": "agent_brief_not_ready",
+                            "decision_class": "driver",
+                        },
+                    },
+                    "token_impacts": [{"symbol": "BTC", "score": 90}],
+                    "agent_brief": {
+                        "status": "pending",
+                        field_name: 123,
+                    },
+                }
+            )
+        ]
+    )
+
+    with pytest.raises(ValueError, match=f"news_high_signal_agent_brief_{field_name}_required"):
+        engine(news=news).evaluate(now_ms=NOW_MS)
+
+
+@pytest.mark.parametrize("field_name", ["label", "symbol", "name", "entity_type", "reason_zh"])
+def test_news_high_signal_public_agent_brief_rejects_malformed_affected_entity_text_fields(
+    field_name: str,
+) -> None:
+    news = FakeNews(
+        [
+            _market_scoped_news_row(
+                {
+                    "news_item_id": f"news-malformed-affected-{field_name}",
+                    "latest_at_ms": NOW_MS - 5_000,
+                    "headline": "Malformed public affected entity",
+                    "source_domain": "example.test",
+                    "canonical_url": f"https://example.test/malformed-affected-{field_name}",
+                    "signal": {
+                        "direction": "bullish",
+                        "alert_eligibility": {
+                            "in_app_eligible": True,
+                            "external_push_ready": False,
+                            "external_push_block_reason": "agent_brief_not_ready",
+                            "decision_class": "driver",
+                        },
+                    },
+                    "token_impacts": [{"symbol": "BTC", "score": 90}],
+                    "agent_brief": {
+                        "status": "pending",
+                        "affected_entities": [
+                            {
+                                "symbol": "BTC",
+                                "label": "BTC",
+                                field_name: 123,
+                            }
+                        ],
+                    },
+                }
+            )
+        ]
+    )
+
+    with pytest.raises(ValueError, match=f"news_high_signal_agent_brief_affected_entities_{field_name}_required"):
+        engine(news=news).evaluate(now_ms=NOW_MS)
+
+
+def test_news_high_signal_public_agent_brief_rejects_malformed_affected_entity_evidence_refs() -> None:
+    news = FakeNews(
+        [
+            _market_scoped_news_row(
+                {
+                    "news_item_id": "news-malformed-affected-evidence",
+                    "latest_at_ms": NOW_MS - 5_000,
+                    "headline": "Malformed public affected entity evidence",
+                    "source_domain": "example.test",
+                    "canonical_url": "https://example.test/malformed-affected-evidence",
+                    "signal": {
+                        "direction": "bullish",
+                        "alert_eligibility": {
+                            "in_app_eligible": True,
+                            "external_push_ready": False,
+                            "external_push_block_reason": "agent_brief_not_ready",
+                            "decision_class": "driver",
+                        },
+                    },
+                    "token_impacts": [{"symbol": "BTC", "score": 90}],
+                    "agent_brief": {
+                        "status": "pending",
+                        "affected_entities": [{"symbol": "BTC", "evidence_refs": ["news:item", 123]}],
+                    },
+                }
+            )
+        ]
+    )
+
+    with pytest.raises(ValueError, match="news_high_signal_agent_brief_affected_entities_evidence_refs_required"):
+        engine(news=news).evaluate(now_ms=NOW_MS)
+
+
+@pytest.mark.parametrize(
+    ("missing_field", "suppression_reason"),
+    [
+        ("direction", "agent_brief_missing_direction"),
+        ("decision_class", "agent_brief_missing_decision_class"),
+    ],
+)
+def test_news_high_signal_external_push_and_payload_require_ready_brief_signal_fields_without_display_signal_fallback(
+    missing_field: str,
+    suppression_reason: str,
+) -> None:
+    agent_brief = {
+        "status": "ready",
+        "direction": "bullish",
+        "decision_class": "driver",
+        "title_zh": "AI 标题",
+        "summary_zh": "当前摘要可推送。",
+    }
+    agent_brief.pop(missing_field)
+    news = FakeNews(
+        [
+            _market_scoped_news_row(
+                {
+                    "news_item_id": f"news-ready-missing-{missing_field}",
+                    "latest_at_ms": NOW_MS - 5_000,
+                    "agent_brief_computed_at_ms": NOW_MS - 1_000,
+                    "headline": "Ready status with signal fallback temptation",
+                    "source_domain": "example.test",
+                    "canonical_url": f"https://example.test/ready-missing-{missing_field}",
+                    "signal": {
+                        "direction": "bullish",
+                        "display_signal": {"direction": "bullish"},
+                        "alert_eligibility": {
+                            "in_app_eligible": True,
+                            "external_push_ready": True,
+                            "external_push_basis": "agent_brief",
+                            "decision_class": "driver",
+                        },
+                    },
+                    "token_impacts": [{"symbol": "BTC", "score": 90}],
+                    "agent_brief": agent_brief,
+                }
+            )
+        ]
+    )
+    notifications = NotificationsConfig(
+        rules={
+            "news_high_signal": {
+                "enabled": True,
+                "channels": ["in_app", "pushdeer"],
+                "cooldown_seconds": 3600,
+            }
+        }
+    )
+
+    candidates = [
+        item
+        for item in engine(news=news, notifications=notifications).evaluate(now_ms=NOW_MS)
+        if item.rule_id == "news_high_signal"
+    ]
+
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate.channels == ("in_app",)
+    assert candidate.payload["external_push_eligible"] is False
+    assert candidate.payload["external_push_signature"] is None
+    assert candidate.payload["external_push_suppression_reason"] == suppression_reason
+    assert candidate.payload[missing_field] == ""
+
+
+def test_news_external_push_signature_requires_ready_brief_direction_without_none_signature() -> None:
+    row = _market_scoped_news_row(
+        {
+            "news_item_id": "news-signature-missing-direction",
+            "latest_at_ms": NOW_MS - 5_000,
+            "headline": "Signature should fail closed",
+            "source_domain": "example.test",
+            "canonical_url": "https://example.test/signature-missing-direction",
+            "signal": {
+                "direction": "bullish",
+                "display_signal": {"direction": "bullish"},
+                "alert_eligibility": {
+                    "in_app_eligible": True,
+                    "external_push_ready": True,
+                    "external_push_basis": "agent_brief",
+                    "decision_class": "driver",
+                },
+            },
+            "token_impacts": [{"symbol": "BTC"}],
+            "agent_brief": {
+                "status": "ready",
+                "decision_class": "driver",
+                "summary_zh": "Ready brief is missing direction.",
+            },
+        }
+    )
+
+    with pytest.raises(ValueError, match="news_high_signal_agent_brief_direction_required"):
+        _news_external_push_signature(row, occurrence_at_ms=NOW_MS, cooldown_seconds=3600)
+
+
 def test_news_high_signal_ignores_legacy_brief_json_for_display_payload_and_push():
     news = FakeNews(
         [
@@ -1351,6 +2076,107 @@ def test_news_high_signal_ignores_legacy_brief_json_for_display_payload_and_push
         "decision_class": "driver",
     }
     assert candidate.payload["external_push_suppression_reason"] == "agent_brief_missing_summary"
+
+
+def test_news_high_signal_affected_entities_ignore_legacy_symbol_aliases():
+    news = FakeNews(
+        [
+            _market_scoped_news_row(
+                {
+                    "news_item_id": "news-legacy-entity-alias",
+                    "latest_at_ms": NOW_MS - 5_000,
+                    "headline": "Legacy affected entity alias",
+                    "source_domain": "example.test",
+                    "canonical_url": "https://example.test/legacy-entity-alias",
+                    "signal": {
+                        "direction": "bullish",
+                        "alert_eligibility": {
+                            "in_app_eligible": True,
+                            "external_push_ready": True,
+                            "external_push_basis": "agent_brief",
+                            "decision_class": "driver",
+                        },
+                    },
+                    "token_impacts": [{"market_type": "spot"}],
+                    "agent_brief": {
+                        "status": "ready",
+                        "direction": "bullish",
+                        "decision_class": "driver",
+                        "summary_zh": "Legacy entity aliases must not drive notification asset identity.",
+                        "affected_entities": [{"ticker": "LEGACY"}],
+                    },
+                }
+            )
+        ]
+    )
+
+    candidate = next(item for item in engine(news=news).evaluate(now_ms=NOW_MS) if item.rule_id == "news_high_signal")
+
+    assert candidate.symbol is None
+    assert candidate.payload["affected_entities"] == []
+    assert "affected_entities" not in candidate.payload["agent_brief"]
+    assert candidate.payload["token_impacts"] == []
+
+
+def test_news_high_signal_rejects_malformed_agent_brief_status_without_pending_repair():
+    news = FakeNews(
+        [
+            _market_scoped_news_row(
+                {
+                    "news_item_id": "news-bad-status",
+                    "latest_at_ms": NOW_MS - 1_000,
+                    "headline": "Malformed agent status",
+                    "source_domain": "example.test",
+                    "canonical_url": "https://example.test/bad-status",
+                    "signal": {
+                        "direction": "bullish",
+                        "display_signal": {"direction": "bullish", "title_zh": "Fallback title"},
+                        "alert_eligibility": {
+                            "in_app_eligible": True,
+                            "external_push_ready": False,
+                            "external_push_block_reason": "agent_brief_not_ready",
+                            "decision_class": "driver",
+                        },
+                    },
+                    "token_impacts": [{"symbol": "BAD"}],
+                    "agent_brief": {"status": True},
+                }
+            )
+        ]
+    )
+
+    with pytest.raises(ValueError, match="news_high_signal_agent_brief_status_required"):
+        engine(news=news).evaluate(now_ms=NOW_MS)
+
+
+def test_news_high_signal_rejects_malformed_pending_signal_direction_without_string_repair():
+    news = FakeNews(
+        [
+            _market_scoped_news_row(
+                {
+                    "news_item_id": "news-bad-direction",
+                    "latest_at_ms": NOW_MS - 1_000,
+                    "headline": "Malformed signal direction",
+                    "source_domain": "example.test",
+                    "canonical_url": "https://example.test/bad-direction",
+                    "signal": {
+                        "direction": True,
+                        "alert_eligibility": {
+                            "in_app_eligible": True,
+                            "external_push_ready": False,
+                            "external_push_block_reason": "agent_brief_not_ready",
+                            "decision_class": "driver",
+                        },
+                    },
+                    "token_impacts": [{"symbol": "BAD"}],
+                    "agent_brief": {"status": "pending"},
+                }
+            )
+        ]
+    )
+
+    with pytest.raises(ValueError, match="news_high_signal_signal_direction_required"):
+        engine(news=news).evaluate(now_ms=NOW_MS)
 
 
 def test_news_high_signal_skips_stale_source_items_even_when_agent_finished_now():
@@ -1596,7 +2422,7 @@ def test_news_high_signal_external_push_signature_keeps_distinct_stories_push_el
     assert candidates[1].payload["external_push_suppression_reason"] is None
 
 
-def test_news_high_signal_external_push_signature_uses_asset_cooldown_not_item_identity():
+def test_news_high_signal_same_story_variants_emit_one_candidate_without_item_identity():
     base_row = _market_scoped_news_row(
         {
             "news_item_id": "news-1",
@@ -1664,13 +2490,13 @@ def test_news_high_signal_external_push_signature_uses_asset_cooldown_not_item_i
         if item.rule_id == "news_high_signal"
     ]
 
-    assert len(candidates) == 2
-    assert candidates[0].payload["semantic_signature"] != candidates[1].payload["semantic_signature"]
-    assert candidates[0].dedup_key != candidates[1].dedup_key
-    assert candidates[0].payload["external_push_signature"] == candidates[1].payload["external_push_signature"]
+    assert len(candidates) == 1
+    assert candidates[0].entity_type == "news_story"
+    assert candidates[0].entity_key == f"news_story:{base_row['story_key']}"
+    assert candidates[0].payload["story_key"] == base_row["story_key"]
+    assert candidates[0].payload["external_push_signature"].startswith("sha256:")
     assert candidates[0].channels == ("in_app", "pushdeer")
-    assert candidates[1].channels == ("in_app",)
-    assert candidates[1].payload["external_push_suppression_reason"] == "external_signature_duplicate"
+    assert candidates[0].payload["external_push_suppression_reason"] is None
 
 
 def _only_pulse_notification(row: dict, *, notifications: NotificationsConfig | None = None):

@@ -57,8 +57,8 @@ order:
 `token_capture_tier`, `live_price_gateway`, `resolution_refresh`,
 `asset_profile_refresh`, `token_image_mirror`, `token_profile_current`,
 `token_radar_projection`, `narrative_admission`, `news_fetch`, `news_item_process`,
-`news_item_brief`, `news_page_projection`, `news_source_quality_projection`,
-`cex_oi_radar_board`,
+`news_item_brief`, `news_story_brief`, `news_page_projection`,
+`news_source_quality_projection`, `cex_oi_radar_board`,
 `macro_sync`, `macro_view_projection`, `macro_daily_brief_projection`,
 `pulse_candidate`, `notification_rule`, and `notification_delivery`.
 
@@ -68,8 +68,8 @@ startup instead of being ignored or aliased.
 
 `workers.agent_runtime` configures the shared agent execution plane. It
 contains the global default model, global concurrency/RPM limits, and default
-lane policies. Default lane keys are `pulse.decision` and `news.item_brief`.
-Each lane may override `model`; otherwise it inherits
+lane policies. Default lane keys are `pulse.decision`, `news.item_brief`, and
+`news.story_brief`. Each lane may override `model`; otherwise it inherits
 `agent_runtime.defaults.model`.
 
 Agent runtime uses one structured-output path: provider JSON object mode
@@ -193,9 +193,10 @@ News Intel contract:
   rebuild projections, or fall back to raw `news_items`.
 - `/api/news/items/{news_item_id}` is the read-only item detail companion for the
   current News page projection. It requires a current-version `news_page_rows`
-  row for the item; raw `news_items`, provider observations, agent briefs, and
-  agent run audit rows are detail evidence only and must not synthesize a
-  public detail when the projection row is absent.
+  row for the item; raw `news_items` and provider observations are detail
+  evidence only and must not synthesize a public detail when the projection row
+  is absent. Public agent current state comes from projected story-current
+  `agent_brief_json`, not old item brief rows or item run audit rows.
 - `/api/news` accepts optional product filters for the current page surface:
   `signal=bullish|bearish|neutral`, `status`, and `q`.
   News rows default to the full projected tape regardless of whether token
@@ -220,7 +221,7 @@ News Intel contract:
   provider/source metadata. `market_scope` describes likely market
   transmission (`crypto`, `us_equity`, `macro_rates`, `commodities`, `fx`,
   `ai_semiconductors`, `private_company`, `broad_risk`, or `unknown`); it is
-  metadata, not a rejection state. Processed market news becomes item-brief
+  metadata, not a rejection state. Processed market news becomes story-brief
   agent-eligible only when its provider rating has a ready score of at least 80
   and deterministic duplicate, similar-story, source, or operational gates do
   not block it. Provider rating is an LLM budget/freshness gate, not product
@@ -240,12 +241,16 @@ News Intel contract:
   `affected_entities`, `transmission_paths`, bull/bear strengths,
   and evidence/data-gap metadata. Agent run ids, prompt/schema/validator
   versions, hashes, raw requests, raw responses, tool traces, and usage
-metadata are audit storage, not public News API fields. `news_item_agent_runs`
-inserts and `news_item_agent_briefs` current upserts must have rowcount=1 with
-a returned row before the projected page row can depend on that audit/current
-brief state. Schema-version cleanup of current `news_item_agent_briefs` rows
-through `DELETE ... RETURNING news_item_id` must validate cursor rowcount
-against returned ids before stale-brief cleanup accounting is reported. OpenNews provider
+metadata are audit storage, not public News API fields. `news_story_agent_runs`
+inserts and `news_story_agent_briefs` current upserts must have rowcount=1 with
+a returned row before the projected page row can depend on story-current brief
+state. Item brief rows and item run ledgers are audit/supporting state only and
+are not a public story-current fallback; story agents use the read-only
+`news.story_current_briefs` registry entry over `news_story_agent_briefs`, never
+the retired `news.current_briefs` item-current name. Schema-version cleanup of current
+`news_item_agent_briefs` rows through `DELETE ... RETURNING news_item_id` must
+validate cursor rowcount against returned ids before stale-brief cleanup
+accounting is reported. OpenNews provider
 rows can carry provider signal and token impact facts without requiring an
   agent brief. OpenNews ingestion is
   REST-only through
@@ -272,11 +277,15 @@ rows can carry provider signal and token impact facts without requiring an
   behavior. Provider tokens are not exposed through this status route.
 - `/api/news/items/{news_item_id}` returns deterministic extraction facts plus
   canonical signal/token-impact facts, story membership, market scope, current
-  agent admission, the full current item brief when one exists, and a sanitized
-  latest run summary. If only retired brief artifacts exist, the current brief
-  is absent or pending; retired agent fields and old research-tool payloads are
-  never exposed through the public item-detail contract. The route excludes raw
-  provider request/response payloads from the public item-detail contract.
+  agent admission, and the projected story-current agent brief. The route reads
+  `news_page_rows.agent_brief_json` for public current state and does not expose
+  old item brief rows or item run summaries as item-detail current
+  intelligence. If the projected story brief is pending, the public brief is
+  pending; retired agent fields and old research-tool payloads are never exposed
+  through the public item-detail contract. Projected agent brief payloads are
+  shaped by an explicit public field allowlist, not downgraded through the old
+  item-brief schema gate. The route excludes raw provider request/response
+  payloads from the public item-detail contract.
 - `news_high_signal` notifications read story-level `news_page_rows` and use
   the projected market-wide `signal.alert_eligibility` envelope. In-app dedup
   and entity identity prefer `news_story:{story_key}`; fallback item identity is

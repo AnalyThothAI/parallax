@@ -522,6 +522,7 @@ def test_agent_runtime_lane_model_can_override_default_model(tmp_path, monkeypat
     workers["agent_runtime"]["defaults"]["model"] = "gpt-base"
     workers["agent_runtime"]["lanes"]["pulse.decision"]["model"] = "gpt-pulse"
     workers["agent_runtime"]["lanes"]["news.item_brief"]["model"] = "gpt-news"
+    workers["agent_runtime"]["lanes"]["news.story_brief"]["model"] = "gpt-story"
     write_workers_config(tmp_path, workers)
 
     settings = load_settings()
@@ -529,8 +530,10 @@ def test_agent_runtime_lane_model_can_override_default_model(tmp_path, monkeypat
     assert settings.agent_runtime_default_model == "gpt-base"
     assert settings.agent_runtime_model_for_lane("pulse.decision") == "gpt-pulse"
     assert settings.agent_runtime_model_for_lane("news.item_brief") == "gpt-news"
+    assert settings.agent_runtime_model_for_lane("news.story_brief") == "gpt-story"
     assert settings.pulse_agent_configured is True
     assert settings.news_item_brief_configured is True
+    assert settings.news_story_brief_configured is True
 
 
 def test_load_settings_rejects_legacy_llm_model_fields(tmp_path, monkeypatch):

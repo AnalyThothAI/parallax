@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+import pytest
+
 from parallax.domains.news_intel._constants import NEWS_MARKET_SCOPE_VERSION
 from parallax.domains.news_intel.services.news_market_scope import (
     NewsMarketScope,
@@ -99,6 +101,62 @@ def test_crypto_scope_uses_token_mentions_and_accepted_facts() -> None:
         "basis": market_scope.basis,
         "version": NEWS_MARKET_SCOPE_VERSION,
     }
+
+
+@pytest.mark.parametrize(
+    ("item_overrides", "token_mentions", "fact_candidates", "match"),
+    [
+        pytest.param(
+            {"coverage_tags_json": '["crypto"]'},
+            [],
+            [],
+            "news_market_scope_coverage_tags_json_required",
+            id="coverage_tags_string",
+        ),
+        pytest.param(
+            {},
+            [
+                {
+                    "observed_symbol": "BTC",
+                    "display_symbol": "BTC",
+                    "target_type": "CexToken",
+                    "target_id": "cex:BTC",
+                    "resolution_status": "known_symbol",
+                    "reason_codes": "COMMON_WORD",
+                    "market_type": "crypto",
+                }
+            ],
+            [],
+            "news_market_scope_reason_codes_required",
+            id="reason_codes_string",
+        ),
+        pytest.param(
+            {},
+            [],
+            [
+                {
+                    "event_type": "exchange_listing",
+                    "validation_status": "accepted",
+                    "affected_targets": '[{"target_type":"CexToken","target_id":"cex:BTC"}]',
+                }
+            ],
+            "news_market_scope_affected_targets_required",
+            id="affected_targets_string",
+        ),
+    ],
+)
+def test_market_scope_rejects_malformed_present_json_arrays(
+    item_overrides: dict[str, object],
+    token_mentions: list[Mapping[str, Any]],
+    fact_candidates: list[Mapping[str, Any]],
+    match: str,
+) -> None:
+    with pytest.raises(ValueError, match=match):
+        _classify(
+            item={**_item(title="Market scope test", summary="", content_class="low_signal"), **item_overrides},
+            token_mentions=token_mentions,
+            fact_candidates=fact_candidates,
+        )
 
 
 def _classify(

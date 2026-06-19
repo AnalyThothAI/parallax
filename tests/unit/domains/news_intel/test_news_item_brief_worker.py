@@ -7,12 +7,14 @@ from typing import Any
 
 import pytest
 
+from parallax.domains.news_intel.runtime import news_item_brief_worker as worker_module
 from parallax.domains.news_intel.runtime.news_item_brief_worker import (
     NewsItemBriefWorker,
     _agent_admission_payload,
     _audit_dict,
     _provider_error_audit,
 )
+from parallax.domains.news_intel.services.news_item_brief_validation import NewsItemBriefValidationResult
 from parallax.domains.news_intel.types.news_item_agent_admission import NewsItemAgentAdmission
 from parallax.domains.news_intel.types.news_item_brief import NEWS_ITEM_BRIEF_LANE, NewsItemBriefPayload
 from parallax.platform.agent_execution import (
@@ -54,12 +56,66 @@ def test_worker_processes_provider_signal_target_without_provider_context_in_pac
     asyncio.run(_test_worker_processes_provider_signal_target_without_provider_context_in_packet())
 
 
+def test_worker_does_not_restore_packet_context_from_admission_basis() -> None:
+    asyncio.run(_test_worker_does_not_restore_packet_context_from_admission_basis())
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "error"),
+    (
+        ("entities", "[]", "news_item_brief_candidate_entities_array_required"),
+        ("token_mentions", {"mention_id": "bad"}, "news_item_brief_candidate_token_mentions_array_required"),
+        ("fact_candidates", ["bad"], "news_item_brief_candidate_fact_candidates_row_object_required"),
+    ),
+)
+def test_news_item_brief_worker_packet_rejects_malformed_candidate_arrays(
+    field: str,
+    value: object,
+    error: str,
+) -> None:
+    candidate = _candidate()
+    candidate[field] = value
+    from parallax.domains.news_intel.runtime.news_item_brief_worker import _packet_from_candidate
+
+    with pytest.raises(RuntimeError, match=error):
+        _packet_from_candidate(candidate, agent_config=FakeBriefProvider().agent_config())
+
+
 def test_worker_skips_fresh_current_even_when_source_updated_is_noisy() -> None:
     asyncio.run(_test_worker_skips_fresh_current_even_when_source_updated_is_noisy())
 
 
+def test_worker_preserves_item_current_from_target_loader_when_admission_context_has_no_current_brief() -> None:
+    asyncio.run(_test_worker_preserves_item_current_from_target_loader_when_admission_context_has_no_current_brief())
+
+
+@pytest.mark.parametrize(
+    ("field_name", "expected_error"),
+    [
+        ("status", "news_item_brief_current_status_required"),
+        ("input_hash", "news_item_brief_current_input_hash_required"),
+        ("artifact_version_hash", "news_item_brief_current_artifact_version_hash_required"),
+        ("prompt_version", "news_item_brief_current_prompt_version_required"),
+        ("schema_version", "news_item_brief_current_schema_version_required"),
+        ("validator_version", "news_item_brief_current_validator_version_required"),
+    ],
+)
+def test_worker_rejects_current_brief_missing_identity_before_second_model_call(
+    field_name: str,
+    expected_error: str,
+) -> None:
+    asyncio.run(
+        _test_worker_rejects_current_brief_missing_identity_before_second_model_call(field_name, expected_error)
+    )
+
+
 def test_worker_restores_current_from_completed_run_without_second_model_call() -> None:
     asyncio.run(_test_worker_restores_current_from_completed_run_without_second_model_call())
+
+
+@pytest.mark.parametrize("finished_at_ms", [True, "1778999970000", 1_778_999_970_000.5, 0])
+def test_worker_rejects_completed_run_malformed_finished_at_without_clock_fallback(finished_at_ms: object) -> None:
+    asyncio.run(_test_worker_rejects_completed_run_malformed_finished_at_without_clock_fallback(finished_at_ms))
 
 
 def test_worker_skips_failed_current_when_input_hash_matches() -> None:
@@ -86,6 +142,29 @@ def test_worker_policy_skip_exact_duplicate_does_not_call_model() -> None:
     asyncio.run(_test_worker_policy_skip_exact_duplicate_does_not_call_model())
 
 
+def test_worker_rejects_claim_missing_target_id_without_marking_done() -> None:
+    asyncio.run(_test_worker_rejects_claim_missing_target_id_without_marking_done())
+
+
+def test_worker_rejects_loaded_candidate_missing_item_identity_without_marking_target_done() -> None:
+    asyncio.run(_test_worker_rejects_loaded_candidate_missing_item_identity_without_marking_target_done())
+
+
+def test_worker_rejects_malformed_admission_context_evidence_without_candidate_fallback() -> None:
+    asyncio.run(_test_worker_rejects_malformed_admission_context_evidence_without_candidate_fallback())
+
+
+def test_worker_rejects_publishable_validation_missing_payload_without_empty_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        worker_module,
+        "validate_news_item_brief_output",
+        lambda **_: NewsItemBriefValidationResult(publishable=True, status="ready"),
+    )
+    asyncio.run(_test_worker_rejects_publishable_validation_missing_payload_without_empty_default())
+
+
 async def _test_worker_writes_ready_brief_and_emits_wake() -> None:
     db = FakeDB([_candidate()])
     provider = FakeBriefProvider(payload=_ready_payload())
@@ -103,6 +182,7 @@ async def _test_worker_writes_ready_brief_and_emits_wake() -> None:
     assert db.news.runs[0]["execution_started"] is True
     assert db.news.briefs[0]["status"] == "ready"
     assert db.news.briefs[0]["brief_json"]["summary_zh"] == "SOL ETF filing boosts attention."
+    assert db.dirty.enqueued == []
     assert wake_bus.brief_updates == [1]
     assert result.processed == 1
     assert result.failed == 0
@@ -171,6 +251,128 @@ async def _test_worker_processes_provider_signal_target_without_provider_context
     assert "provider_signal_skip" not in result.notes
 
 
+async def _test_worker_does_not_restore_packet_context_from_admission_basis() -> None:
+    candidate = _candidate()
+    candidate["item"]["story_key"] = "story:sol-etf"
+    candidate["story_candidates"] = [
+        {
+            **candidate["item"],
+            "news_item_id": "news-item-representative",
+            "story_key": "story:sol-etf",
+            "entities": [],
+            "fact_candidates": [],
+        }
+    ]
+    db = FakeDB([candidate])
+
+    def load_agent_admission_contexts(*, news_item_ids: list[str], now_ms: int) -> list[dict[str, Any]]:
+        del now_ms
+        assert news_item_ids == ["news-item-1"]
+        context = _agent_admission_context_for_candidate(candidate)
+        context["material_delta"] = {
+            "has_delta": True,
+            "reasons": ["new_fact"],
+            "evidence": {"fact_candidate_ids": ["fact-new"]},
+        }
+        return [context]
+
+    db.news.load_agent_admission_contexts = load_agent_admission_contexts  # type: ignore[method-assign]
+    provider = FakeBriefProvider(payload=_ready_payload())
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert result.processed == 1
+    assert provider.execution_calls == 1
+    assert provider.seen_packets[0].similarity == {}
+    assert provider.seen_packets[0].material_delta == {}
+
+
+async def _test_worker_rejects_publishable_validation_missing_payload_without_empty_default() -> None:
+    db = FakeDB([_candidate()])
+    provider = FakeBriefProvider(payload=_ready_payload())
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert provider.execution_calls == 1
+    assert db.news.runs == []
+    assert db.news.briefs == []
+    assert db.dirty.done == []
+    assert len(db.dirty.errors) == 1
+    assert db.dirty.error_kwargs[0]["error"] == "news_item_brief_validation_payload_required"
+    assert result.failed == 1
+
+
+async def _test_worker_rejects_loaded_candidate_missing_item_identity_without_marking_target_done() -> None:
+    target = {
+        "projection_name": "brief_input",
+        "target_kind": "news_item",
+        "target_id": "news-item-1",
+        "window": "",
+        "payload_hash": "payload:news-item-1",
+        "lease_owner": "news_item_brief",
+        "attempt_count": 1,
+    }
+    db = FakeDB([], targets=[target])
+
+    def load_items_for_brief_targets(*, news_item_ids: list[str]) -> list[dict[str, Any]]:
+        db.news.loaded_target_ids.append(list(news_item_ids))
+        return [{"item": {"news_item_id": ""}}]
+
+    def load_agent_admission_contexts(*, news_item_ids: list[str], now_ms: int) -> list[dict[str, Any]]:
+        del now_ms
+        db.news.loaded_admission_target_ids.append(list(news_item_ids))
+        return []
+
+    db.news.load_items_for_brief_targets = load_items_for_brief_targets  # type: ignore[method-assign]
+    db.news.load_agent_admission_contexts = load_agent_admission_contexts  # type: ignore[method-assign]
+    provider = FakeBriefProvider(payload=_ready_payload())
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert provider.request_audit_calls == []
+    assert provider.execution_calls == 0
+    assert db.news.runs == []
+    assert db.news.briefs == []
+    assert db.dirty.done == []
+    assert len(db.dirty.errors) == 1
+    assert db.dirty.error_kwargs[0]["error"] == "news_item_brief_candidate_news_item_id_required:load_candidate"
+    assert result.failed == 1
+    assert result.notes["load_failed"] == 1
+
+
+async def _test_worker_rejects_malformed_admission_context_evidence_without_candidate_fallback() -> None:
+    candidate = _candidate()
+    db = FakeDB([candidate])
+
+    def load_agent_admission_contexts(*, news_item_ids: list[str], now_ms: int) -> list[dict[str, Any]]:
+        del now_ms
+        db.news.loaded_admission_target_ids.append(list(news_item_ids))
+        context = _agent_admission_context_for_candidate(candidate)
+        context["token_mentions"] = "not-a-formal-list"
+        return [context]
+
+    db.news.load_agent_admission_contexts = load_agent_admission_contexts  # type: ignore[method-assign]
+    provider = FakeBriefProvider(payload=_ready_payload())
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert provider.request_audit_calls == []
+    assert provider.execution_calls == 0
+    assert db.news.runs == []
+    assert db.news.briefs == []
+    assert db.dirty.done == []
+    assert len(db.dirty.errors) == 1
+    assert db.dirty.error_kwargs[0]["error"] == (
+        "news_item_brief_admission_context_token_mentions_required:load_candidate"
+    )
+    assert result.failed == 1
+    assert result.notes["load_failed"] == 1
+
+
 async def _test_worker_skips_fresh_current_even_when_source_updated_is_noisy() -> None:
     candidate = _candidate()
     provider = FakeBriefProvider(payload=_ready_payload())
@@ -200,6 +402,78 @@ async def _test_worker_skips_fresh_current_even_when_source_updated_is_noisy() -
     assert db.news.briefs == []
     assert len(db.dirty.done) == 1
     assert result.skipped == 1
+
+
+async def _test_worker_preserves_item_current_from_target_loader_when_admission_context_has_no_current_brief() -> None:
+    candidate = _candidate()
+    provider = FakeBriefProvider(payload=_ready_payload())
+    packet = provider.packet_for_candidate(candidate)
+    agent_config = provider.agent_config()
+    candidate["current_brief"] = {
+        "news_item_id": candidate["item"]["news_item_id"],
+        "status": "ready",
+        "input_hash": packet.input_hash,
+        "artifact_version_hash": provider.artifact_version_hash,
+        "prompt_version": packet.prompt_version,
+        "schema_version": packet.schema_version,
+        "validator_version": agent_config.validator_version,
+        "computed_at_ms": NOW_MS - 60_000,
+        "brief_json": _ready_payload(),
+    }
+    db = FakeDB([candidate])
+
+    def load_agent_admission_contexts(*, news_item_ids: list[str], now_ms: int) -> list[dict[str, Any]]:
+        del now_ms
+        db.news.loaded_admission_target_ids.append(list(news_item_ids))
+        context = _agent_admission_context_for_candidate(candidate)
+        return [context]
+
+    db.news.load_agent_admission_contexts = load_agent_admission_contexts  # type: ignore[method-assign]
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert provider.request_audit_calls == []
+    assert provider.execution_calls == 0
+    assert db.news.runs == []
+    assert db.news.briefs == []
+    assert len(db.dirty.done) == 1
+    assert result.skipped == 1
+
+
+async def _test_worker_rejects_current_brief_missing_identity_before_second_model_call(
+    field_name: str,
+    expected_error: str,
+) -> None:
+    candidate = _candidate()
+    provider = FakeBriefProvider(payload=_ready_payload())
+    packet = provider.packet_for_candidate(candidate)
+    agent_config = provider.agent_config()
+    candidate["current_brief"] = {
+        "news_item_id": candidate["item"]["news_item_id"],
+        "status": "ready",
+        "input_hash": packet.input_hash,
+        "artifact_version_hash": provider.artifact_version_hash,
+        "prompt_version": packet.prompt_version,
+        "schema_version": packet.schema_version,
+        "validator_version": agent_config.validator_version,
+        "computed_at_ms": NOW_MS - 60_000,
+        "brief_json": _ready_payload(),
+    }
+    candidate["current_brief"].pop(field_name)
+    db = FakeDB([candidate])
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert provider.request_audit_calls == []
+    assert provider.execution_calls == 0
+    assert db.news.runs == []
+    assert db.news.briefs == []
+    assert db.dirty.done == []
+    assert len(db.dirty.errors) == 1
+    assert db.dirty.error_kwargs[0]["error"] == expected_error
+    assert result.failed == 1
 
 
 async def _test_worker_restores_current_from_completed_run_without_second_model_call() -> None:
@@ -280,6 +554,33 @@ def test_worker_rejects_completed_run_missing_run_id_before_restore_or_model_cal
     asyncio.run(_test_worker_rejects_completed_run_missing_run_id_before_restore_or_model_call())
 
 
+def test_worker_rejects_completed_run_missing_outcome_before_restore_or_model_call() -> None:
+    asyncio.run(_test_worker_rejects_completed_run_missing_outcome_before_restore_or_model_call())
+
+
+def test_worker_rejects_completed_run_missing_finished_at_without_clock_fallback() -> None:
+    asyncio.run(_test_worker_rejects_completed_run_missing_finished_at_without_clock_fallback())
+
+
+@pytest.mark.parametrize(
+    ("field_name", "expected_error"),
+    [
+        ("provider", "news_item_brief_run_provider_required:invalid_completed_source_run"),
+        ("model", "news_item_brief_run_model_required:invalid_completed_source_run"),
+    ],
+)
+def test_worker_rejects_invalid_completed_run_missing_source_identity_before_audit_repair(
+    field_name: str,
+    expected_error: str,
+) -> None:
+    asyncio.run(
+        _test_worker_rejects_invalid_completed_run_missing_source_identity_before_audit_repair(
+            field_name,
+            expected_error,
+        )
+    )
+
+
 async def _test_worker_revalidates_completed_run_before_restoring_current() -> None:
     candidate = _candidate()
     provider = FakeBriefProvider(payload=_ready_payload())
@@ -293,6 +594,8 @@ async def _test_worker_revalidates_completed_run_before_restoring_current() -> N
         "news_item_id": candidate["item"]["news_item_id"],
         "status": "completed",
         "outcome": "ready",
+        "provider": "openai",
+        "model": "gpt-test",
         "execution_started": True,
         "input_hash": packet.input_hash,
         "artifact_version_hash": provider.artifact_version_hash,
@@ -352,12 +655,181 @@ async def _test_worker_rejects_completed_run_missing_run_id_before_restore_or_mo
     assert result.failed == 1
 
 
+async def _test_worker_rejects_completed_run_missing_outcome_before_restore_or_model_call() -> None:
+    candidate = _candidate()
+    provider = FakeBriefProvider(payload=_ready_payload())
+    packet = provider.packet_for_candidate(candidate)
+    agent_config = provider.agent_config()
+    candidate["latest_run"] = {
+        "run_id": "run-existing-ready",
+        "news_item_id": candidate["item"]["news_item_id"],
+        "status": "completed",
+        "execution_started": True,
+        "input_hash": packet.input_hash,
+        "artifact_version_hash": provider.artifact_version_hash,
+        "prompt_version": packet.prompt_version,
+        "schema_version": packet.schema_version,
+        "validator_version": agent_config.validator_version,
+        "finished_at_ms": NOW_MS - 30_000,
+        "response_json": _ready_payload(),
+    }
+    db = FakeDB([candidate])
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert provider.request_audit_calls == []
+    assert provider.execution_calls == 0
+    assert db.news.runs == []
+    assert db.news.briefs == []
+    assert db.dirty.done == []
+    assert len(db.dirty.errors) == 1
+    assert db.dirty.error_kwargs[0]["error"] == "news_item_brief_run_outcome_required:completed_run"
+    assert result.failed == 1
+
+
+async def _test_worker_rejects_completed_run_missing_finished_at_without_clock_fallback() -> None:
+    candidate = _candidate()
+    provider = FakeBriefProvider(payload=_ready_payload())
+    packet = provider.packet_for_candidate(candidate)
+    agent_config = provider.agent_config()
+    candidate["latest_run"] = {
+        "run_id": "run-existing-ready",
+        "news_item_id": candidate["item"]["news_item_id"],
+        "status": "completed",
+        "outcome": "ready",
+        "execution_started": True,
+        "input_hash": packet.input_hash,
+        "artifact_version_hash": provider.artifact_version_hash,
+        "prompt_version": packet.prompt_version,
+        "schema_version": packet.schema_version,
+        "validator_version": agent_config.validator_version,
+        "response_json": _ready_payload(),
+    }
+    db = FakeDB([candidate])
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert provider.request_audit_calls == []
+    assert provider.execution_calls == 0
+    assert db.news.runs == []
+    assert db.news.briefs == []
+    assert db.dirty.done == []
+    assert len(db.dirty.errors) == 1
+    assert db.dirty.error_kwargs[0]["error"] == "news_item_brief_run_finished_at_ms_required:completed_run"
+    assert result.failed == 1
+
+
+async def _test_worker_rejects_completed_run_malformed_finished_at_without_clock_fallback(
+    finished_at_ms: object,
+) -> None:
+    candidate = _candidate()
+    provider = FakeBriefProvider(payload=_ready_payload())
+    packet = provider.packet_for_candidate(candidate)
+    agent_config = provider.agent_config()
+    candidate["latest_run"] = {
+        "run_id": "run-existing-ready",
+        "news_item_id": candidate["item"]["news_item_id"],
+        "status": "completed",
+        "outcome": "ready",
+        "execution_started": True,
+        "input_hash": packet.input_hash,
+        "artifact_version_hash": provider.artifact_version_hash,
+        "prompt_version": packet.prompt_version,
+        "schema_version": packet.schema_version,
+        "validator_version": agent_config.validator_version,
+        "finished_at_ms": finished_at_ms,
+        "response_json": _ready_payload(),
+    }
+    db = FakeDB([candidate])
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert provider.request_audit_calls == []
+    assert provider.execution_calls == 0
+    assert db.news.runs == []
+    assert db.news.briefs == []
+    assert db.dirty.done == []
+    assert len(db.dirty.errors) == 1
+    assert db.dirty.error_kwargs[0]["error"] == "news_item_brief_run_finished_at_ms_required:completed_run"
+    assert result.failed == 1
+
+
+async def _test_worker_rejects_invalid_completed_run_missing_source_identity_before_audit_repair(
+    field_name: str,
+    expected_error: str,
+) -> None:
+    candidate = _candidate()
+    provider = FakeBriefProvider(payload=_ready_payload())
+    packet = provider.packet_for_candidate(candidate)
+    agent_config = provider.agent_config()
+    invalid_ready_payload = _ready_payload()
+    invalid_ready_payload["summary_zh"] = ""
+    invalid_ready_payload["market_read_zh"] = ""
+    candidate["latest_run"] = {
+        "run_id": "run-existing-invalid-ready",
+        "news_item_id": candidate["item"]["news_item_id"],
+        "status": "completed",
+        "outcome": "ready",
+        "provider": "openai",
+        "model": "gpt-test",
+        "execution_started": True,
+        "input_hash": packet.input_hash,
+        "artifact_version_hash": provider.artifact_version_hash,
+        "prompt_version": packet.prompt_version,
+        "schema_version": packet.schema_version,
+        "validator_version": agent_config.validator_version,
+        "finished_at_ms": NOW_MS - 30_000,
+        "response_json": invalid_ready_payload,
+    }
+    candidate["latest_run"].pop(field_name)
+    db = FakeDB([candidate])
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert provider.request_audit_calls == []
+    assert provider.execution_calls == 0
+    assert db.news.runs == []
+    assert db.news.briefs == []
+    assert db.dirty.done == []
+    assert len(db.dirty.errors) == 1
+    assert db.dirty.error_kwargs[0]["error"] == expected_error
+    assert result.failed == 1
+
+
 def test_worker_restores_failed_current_from_started_failed_run_without_second_model_call() -> None:
     asyncio.run(_test_worker_restores_failed_current_from_started_failed_run_without_second_model_call())
 
 
 def test_worker_rejects_failed_run_missing_run_id_before_restore_or_model_call() -> None:
     asyncio.run(_test_worker_rejects_failed_run_missing_run_id_before_restore_or_model_call())
+
+
+@pytest.mark.parametrize(
+    ("field_name", "expected_error"),
+    [
+        ("status", "news_item_brief_run_status_required:latest_run"),
+        ("outcome", "news_item_brief_run_outcome_required:failed_run"),
+        ("execution_started", "news_item_brief_run_execution_started_required:failed_run"),
+        ("input_hash", "news_item_brief_run_input_hash_required:failed_run"),
+        ("artifact_version_hash", "news_item_brief_run_artifact_version_hash_required:failed_run"),
+        ("prompt_version", "news_item_brief_run_prompt_version_required:failed_run"),
+        ("schema_version", "news_item_brief_run_schema_version_required:failed_run"),
+        ("validator_version", "news_item_brief_run_validator_version_required:failed_run"),
+        ("error_class", "news_item_brief_run_error_class_required:failed_run"),
+        ("error", "news_item_brief_run_error_required:failed_run"),
+    ],
+)
+def test_worker_rejects_failed_run_missing_identity_before_restore_or_model_call(
+    field_name: str,
+    expected_error: str,
+) -> None:
+    asyncio.run(
+        _test_worker_rejects_failed_run_missing_identity_before_restore_or_model_call(field_name, expected_error)
+    )
 
 
 async def _test_worker_restores_failed_current_from_started_failed_run_without_second_model_call() -> None:
@@ -429,6 +901,45 @@ async def _test_worker_rejects_failed_run_missing_run_id_before_restore_or_model
     assert db.dirty.done == []
     assert len(db.dirty.errors) == 1
     assert db.dirty.error_kwargs[0]["error"] == "news_item_brief_run_id_required:failed_run"
+    assert result.failed == 1
+
+
+async def _test_worker_rejects_failed_run_missing_identity_before_restore_or_model_call(
+    field_name: str,
+    expected_error: str,
+) -> None:
+    candidate = _candidate()
+    provider = FakeBriefProvider(payload=_ready_payload())
+    packet = provider.packet_for_candidate(candidate)
+    agent_config = provider.agent_config()
+    candidate["latest_run"] = {
+        "run_id": "run-existing-timeout",
+        "news_item_id": candidate["item"]["news_item_id"],
+        "status": "failed",
+        "outcome": "failed",
+        "error_class": "timeout",
+        "error": "model timed out",
+        "execution_started": True,
+        "input_hash": packet.input_hash,
+        "artifact_version_hash": provider.artifact_version_hash,
+        "prompt_version": packet.prompt_version,
+        "schema_version": packet.schema_version,
+        "validator_version": agent_config.validator_version,
+        "finished_at_ms": NOW_MS - 30_000,
+    }
+    candidate["latest_run"].pop(field_name)
+    db = FakeDB([candidate])
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert provider.request_audit_calls == []
+    assert provider.execution_calls == 0
+    assert db.news.runs == []
+    assert db.news.briefs == []
+    assert db.dirty.done == []
+    assert len(db.dirty.errors) == 1
+    assert db.dirty.error_kwargs[0]["error"] == expected_error
     assert result.failed == 1
 
 
@@ -561,6 +1072,28 @@ async def _test_worker_policy_skip_exact_duplicate_does_not_call_model() -> None
     assert result.processed == 0
     assert result.skipped == 1
     assert result.notes["policy_skipped"] == 1
+
+
+async def _test_worker_rejects_claim_missing_target_id_without_marking_done() -> None:
+    db = FakeDB([_candidate()])
+    db.dirty.targets[0].pop("target_id")
+    provider = FakeBriefProvider(payload=_ready_payload())
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert provider.request_audit_calls == []
+    assert provider.execution_calls == 0
+    assert db.news.loaded_target_ids == []
+    assert db.news.loaded_admission_target_ids == []
+    assert db.news.runs == []
+    assert db.news.briefs == []
+    assert db.dirty.done == []
+    assert len(db.dirty.errors) == 1
+    assert db.dirty.error_kwargs[0]["error"] == "news_item_brief_claim_target_id_required"
+    assert db.dirty.error_kwargs[0]["count_attempt"] is True
+    assert result.failed == 1
+    assert result.notes["load_failed"] == 1
 
 
 def test_worker_claims_dirty_targets_off_event_loop_thread() -> None:
@@ -733,6 +1266,43 @@ def test_worker_provider_error_releases_acquired_reservation() -> None:
     asyncio.run(_test_worker_provider_error_releases_acquired_reservation())
 
 
+def test_worker_rejects_result_missing_latency_without_zero_default() -> None:
+    asyncio.run(_test_worker_rejects_result_missing_latency_without_zero_default())
+
+
+def test_worker_rejects_result_missing_usage_without_empty_default() -> None:
+    asyncio.run(_test_worker_rejects_result_missing_usage_without_empty_default())
+
+
+def test_worker_rejects_result_missing_trace_metadata_without_empty_default() -> None:
+    asyncio.run(_test_worker_rejects_result_missing_trace_metadata_without_empty_default())
+
+
+def test_worker_rejects_result_missing_agent_run_audit_without_request_audit_fallback() -> None:
+    asyncio.run(_test_worker_rejects_result_missing_agent_run_audit_without_request_audit_fallback())
+
+
+@pytest.mark.parametrize(
+    ("field_name", "expected_error"),
+    [
+        ("provider", "news_item_brief_audit_provider_required"),
+        ("model", "news_item_brief_audit_model_required"),
+        ("backend", "news_item_brief_audit_backend_required"),
+        ("workflow_name", "news_item_brief_audit_workflow_name_required"),
+        ("agent_name", "news_item_brief_audit_agent_name_required"),
+        ("lane", "news_item_brief_audit_lane_required"),
+        ("prompt_version", "news_item_brief_audit_prompt_version_required"),
+        ("schema_version", "news_item_brief_audit_schema_version_required"),
+        ("input_hash", "news_item_brief_audit_input_hash_required"),
+    ],
+)
+def test_worker_rejects_result_missing_audit_identity_without_defaults(
+    field_name: str,
+    expected_error: str,
+) -> None:
+    asyncio.run(_test_worker_rejects_result_missing_audit_identity_without_defaults(field_name, expected_error))
+
+
 async def _test_worker_provider_error_releases_acquired_reservation() -> None:
     release_calls = 0
 
@@ -752,6 +1322,94 @@ async def _test_worker_provider_error_releases_acquired_reservation() -> None:
     assert reservation.acquired is False
     assert db.news.runs[0]["status"] == "failed"
     assert db.news.runs[0]["execution_started"] is True
+    assert result.failed == 1
+
+
+async def _test_worker_rejects_result_missing_latency_without_zero_default() -> None:
+    db = FakeDB([_candidate()])
+    provider = FakeBriefProvider(payload=_ready_payload(), omit_result_latency=True)
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert provider.request_audit_calls
+    assert provider.execution_calls == 1
+    assert db.news.runs == []
+    assert db.news.briefs == []
+    assert db.dirty.done == []
+    assert len(db.dirty.errors) == 1
+    assert db.dirty.error_kwargs[0]["error"] == "news_item_brief_audit_latency_ms_required"
+    assert result.failed == 1
+
+
+async def _test_worker_rejects_result_missing_usage_without_empty_default() -> None:
+    db = FakeDB([_candidate()])
+    provider = FakeBriefProvider(payload=_ready_payload(), omit_result_usage=True)
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert provider.request_audit_calls
+    assert provider.execution_calls == 1
+    assert db.news.runs == []
+    assert db.news.briefs == []
+    assert db.dirty.done == []
+    assert len(db.dirty.errors) == 1
+    assert db.dirty.error_kwargs[0]["error"] == "news_item_brief_audit_usage_required"
+    assert result.failed == 1
+
+
+async def _test_worker_rejects_result_missing_trace_metadata_without_empty_default() -> None:
+    db = FakeDB([_candidate()])
+    provider = FakeBriefProvider(payload=_ready_payload(), omit_result_trace_metadata=True)
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert provider.request_audit_calls
+    assert provider.execution_calls == 1
+    assert db.news.runs == []
+    assert db.news.briefs == []
+    assert db.dirty.done == []
+    assert len(db.dirty.errors) == 1
+    assert db.dirty.error_kwargs[0]["error"] == "news_item_brief_audit_trace_metadata_required"
+    assert result.failed == 1
+
+
+async def _test_worker_rejects_result_missing_agent_run_audit_without_request_audit_fallback() -> None:
+    db = FakeDB([_candidate()])
+    provider = FakeBriefProvider(payload=_ready_payload(), omit_result_audit=True)
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert provider.request_audit_calls
+    assert provider.execution_calls == 1
+    assert db.news.runs == []
+    assert db.news.briefs == []
+    assert db.dirty.done == []
+    assert len(db.dirty.errors) == 1
+    assert db.dirty.error_kwargs[0]["error"] == "news_item_brief_agent_run_audit_contract_required"
+    assert result.failed == 1
+
+
+async def _test_worker_rejects_result_missing_audit_identity_without_defaults(
+    field_name: str,
+    expected_error: str,
+) -> None:
+    db = FakeDB([_candidate()])
+    provider = FakeBriefProvider(payload=_ready_payload(), omit_result_audit_fields={field_name})
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert provider.request_audit_calls
+    assert provider.execution_calls == 1
+    assert db.news.runs == []
+    assert db.news.briefs == []
+    assert db.dirty.done == []
+    assert len(db.dirty.errors) == 1
+    assert db.dirty.error_kwargs[0]["error"] == expected_error
     assert result.failed == 1
 
 
@@ -934,6 +1592,7 @@ def _candidate(*, provider_score: int = 88) -> dict[str, Any]:
                 "grade": "A",
             },
         },
+        "entities": [],
         "token_mentions": [
             {
                 "mention_id": "mention-news-item-1-sol",
@@ -1191,6 +1850,11 @@ class FakeBriefProvider:
         reserve_error: Exception | None = None,
         brief_error: Exception | None = None,
         audit_artifact_version_hash: str | None = None,
+        omit_result_latency: bool = False,
+        omit_result_usage: bool = False,
+        omit_result_trace_metadata: bool = False,
+        omit_result_audit: bool = False,
+        omit_result_audit_fields: set[str] | None = None,
     ) -> None:
         self.payload = payload or _ready_payload()
         self.reservation = reservation or AgentCapacityReservation(lane=NEWS_ITEM_BRIEF_LANE, acquired=True)
@@ -1198,6 +1862,11 @@ class FakeBriefProvider:
         self.reserve_error = reserve_error
         self.brief_error = brief_error
         self.audit_artifact_version_hash = audit_artifact_version_hash or self.artifact_version_hash
+        self.omit_result_latency = omit_result_latency
+        self.omit_result_usage = omit_result_usage
+        self.omit_result_trace_metadata = omit_result_trace_metadata
+        self.omit_result_audit = omit_result_audit
+        self.omit_result_audit_fields = omit_result_audit_fields or set()
         self.reserve_calls: list[str] = []
         self.reserve_rate_units: list[int] = []
         self.request_audit_calls: list[str] = []
@@ -1235,14 +1904,25 @@ class FakeBriefProvider:
         assert self.saw_db_session_during_execution is False
         if self.brief_error is not None:
             raise self.brief_error
+        if self.omit_result_audit:
+            return {"payload": self.payload}
+        agent_run_audit = _audit(
+            run_id=run_id,
+            packet=packet,
+            execution_started=True,
+            artifact_version_hash=self.audit_artifact_version_hash,
+        )
+        if self.omit_result_latency:
+            agent_run_audit.pop("latency_ms")
+        if self.omit_result_usage:
+            agent_run_audit.pop("usage")
+        if self.omit_result_trace_metadata:
+            agent_run_audit.pop("trace_metadata")
+        for field_name in self.omit_result_audit_fields:
+            agent_run_audit.pop(field_name)
         return {
             "payload": self.payload,
-            "agent_run_audit": _audit(
-                run_id=run_id,
-                packet=packet,
-                execution_started=True,
-                artifact_version_hash=self.audit_artifact_version_hash,
-            ),
+            "agent_run_audit": agent_run_audit,
         }
 
     def packet_for_candidate(self, candidate: dict[str, Any]) -> Any:
@@ -1476,7 +2156,6 @@ def _agent_admission_context_for_candidate(candidate: dict[str, Any]) -> dict[st
         "entities": [dict(row) for row in candidate.get("entities", [])],
         "token_mentions": [dict(row) for row in candidate.get("token_mentions", [])],
         "fact_candidates": [dict(row) for row in candidate.get("fact_candidates", [])],
-        "current_brief": candidate.get("current_brief"),
         "exact_duplicate_candidates": [dict(row) for row in candidate.get("exact_duplicate_candidates", [])],
         "story_candidates": [dict(row) for row in candidate.get("story_candidates", [])],
     }

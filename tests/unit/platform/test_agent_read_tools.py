@@ -14,13 +14,13 @@ def test_default_agent_read_tool_registry_exposes_only_read_models() -> None:
     manifest = registry.manifest()
 
     assert set(manifest) == {
-        "news.current_briefs",
+        "news.story_current_briefs",
         "pulse.current_candidates",
         "token_radar.current_rows",
     }
     assert all(entry["read_only"] is True for entry in manifest.values())
     assert manifest["token_radar.current_rows"]["source_tables"] == ("token_radar_current_rows",)
-    assert manifest["news.current_briefs"]["source_tables"] == ("news_item_agent_briefs",)
+    assert manifest["news.story_current_briefs"]["source_tables"] == ("news_story_agent_briefs",)
     assert manifest["pulse.current_candidates"]["source_tables"] == ("pulse_candidates",)
 
 
@@ -59,11 +59,15 @@ def test_agent_read_tool_manifest_is_serializable_and_hides_sql() -> None:
     assert entry["parameters_schema"]["type"] == "object"
 
 
-def test_news_current_briefs_tool_reads_brief_json_fields_not_retired_columns() -> None:
+def test_news_story_current_briefs_tool_reads_story_brief_json_fields_not_item_current() -> None:
     registry = build_default_agent_read_tool_registry()
 
-    sql = registry.get("news.current_briefs").sql
+    sql = registry.get("news.story_current_briefs").sql
 
+    assert "news_item_agent_briefs" not in sql
+    assert "FROM news_story_agent_briefs" in sql
+    assert "story_brief_key" in sql
+    assert "story_key" in sql
     assert "headline_zh" not in sql
     assert "brief_json ->> 'title_zh'" in sql
     assert "brief_json ->> 'summary_zh'" in sql

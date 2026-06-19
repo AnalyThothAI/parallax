@@ -102,6 +102,102 @@ def test_dirty_target_repository_rejects_retired_story_projection_name() -> None
         )
 
 
+def test_dirty_target_repository_accepts_story_brief_story_targets() -> None:
+    conn = TransactionalScriptedConnection([[]], rowcount=1)
+    repo = NewsProjectionDirtyTargetRepository(conn)
+
+    changed = repo.enqueue_targets(
+        [
+            {
+                "projection_name": "story_brief",
+                "target_kind": "story",
+                "target_id": "story:v2:listing:binance:foo",
+                "source_watermark_ms": NOW_MS - 1_000,
+            }
+        ],
+        reason="news_story_brief_input_changed",
+        now_ms=NOW_MS,
+    )
+
+    assert changed == 1
+    params = conn.params[-1]
+    assert params["projection_names"] == ["story_brief"]
+    assert params["target_kinds"] == ["story"]
+    assert params["target_ids"] == ["story:v2:listing:binance:foo"]
+    assert params["windows"] == [""]
+    assert params["source_watermark_ms_values"] == [NOW_MS - 1_000]
+
+
+def test_dirty_target_repository_rejects_story_brief_item_targets() -> None:
+    repo = NewsProjectionDirtyTargetRepository(object())
+
+    with pytest.raises(ValueError, match="unsupported news projection target: story_brief/news_item"):
+        repo.enqueue_targets(
+            [
+                {
+                    "projection_name": "story_brief",
+                    "target_kind": "news_item",
+                    "target_id": "news-1",
+                    "source_watermark_ms": NOW_MS - 1_000,
+                }
+            ],
+            reason="news_story_brief_input_changed",
+            now_ms=NOW_MS,
+        )
+
+
+@pytest.mark.parametrize("field", ["projection_name", "target_kind", "target_id"])
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param(_MISSING, id="missing"),
+        pytest.param("", id="blank"),
+        pytest.param(None, id="none"),
+        pytest.param(1, id="non_string"),
+    ],
+)
+def test_news_projection_dirty_enqueue_requires_target_identity_before_sql(field: str, value: object) -> None:
+    conn = TransactionalScriptedConnection([])
+    repo = NewsProjectionDirtyTargetRepository(conn)
+    target: dict[str, Any] = {
+        "projection_name": "page",
+        "target_kind": "news_item",
+        "target_id": "news-1",
+        "source_watermark_ms": NOW_MS - 1_000,
+    }
+    if value is _MISSING:
+        target.pop(field)
+    else:
+        target[field] = value
+
+    with pytest.raises(ValueError, match=f"news_projection_dirty_target_{field}_required"):
+        repo.enqueue_targets([target], reason="unit", now_ms=NOW_MS)
+
+    assert conn.sql == []
+
+
+def test_news_projection_dirty_enqueue_rejects_window_for_windowless_targets_before_sql() -> None:
+    conn = TransactionalScriptedConnection([])
+    repo = NewsProjectionDirtyTargetRepository(conn)
+
+    with pytest.raises(ValueError, match="news_projection_dirty_target_window_empty_required"):
+        repo.enqueue_targets(
+            [
+                {
+                    "projection_name": "story_brief",
+                    "target_kind": "story",
+                    "target_id": "story:v2:listing:binance:foo",
+                    "window": "24h",
+                    "source_watermark_ms": NOW_MS - 1_000,
+                }
+            ],
+            reason="unit",
+            now_ms=NOW_MS,
+        )
+
+    assert conn.sql == []
+
+
 def test_dirty_target_terminalize_requires_connection_transaction_before_delete_or_ledger_sql() -> None:
     conn = MissingTransactionConnection()
     repo = NewsProjectionDirtyTargetRepository(conn)
@@ -204,6 +300,96 @@ def test_news_projection_dirty_target_completion_requires_claim_attempt_contract
 
     with pytest.raises(ValueError, match="news projection dirty target completion requires attempt_count"):
         mutation(repo, token)
+
+    assert conn.sql == []
+    assert conn.transaction_enter_count == 0
+    assert conn.commits == 0
+
+
+@pytest.mark.parametrize("field", ["projection_name", "target_kind", "target_id"])
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param(_MISSING, id="missing"),
+        pytest.param("", id="blank"),
+        pytest.param(None, id="none"),
+        pytest.param(1, id="non_string"),
+    ],
+)
+def test_news_projection_dirty_target_completion_requires_claim_identity_before_sql(
+    field: str,
+    value: object,
+) -> None:
+    conn = TransactionalScriptedConnection([])
+    repo = NewsProjectionDirtyTargetRepository(conn)
+    token = _claim("news-1", payload_hash="hash-1", attempt_count=2)
+    if value is _MISSING:
+        token.pop(field)
+    else:
+        token[field] = value
+
+    with pytest.raises(ValueError, match="news projection dirty target completion requires full target key"):
+        repo.mark_done([token], now_ms=NOW_MS)
+
+    assert conn.sql == []
+    assert conn.transaction_enter_count == 0
+    assert conn.commits == 0
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param(_MISSING, id="missing"),
+        pytest.param(None, id="none"),
+        pytest.param(1, id="non_string"),
+        pytest.param("24h", id="non_empty"),
+    ],
+)
+def test_news_projection_dirty_target_completion_requires_windowless_claim_window_before_sql(
+    value: object,
+) -> None:
+    conn = TransactionalScriptedConnection([])
+    repo = NewsProjectionDirtyTargetRepository(conn)
+    token = _claim("news-1", payload_hash="hash-1", attempt_count=2)
+    if value is _MISSING:
+        token.pop("window")
+    else:
+        token["window"] = value
+
+    with pytest.raises(
+        ValueError,
+        match=r"news projection dirty target completion requires (?:empty )?window from claim_due",
+    ):
+        repo.mark_done([token], now_ms=NOW_MS)
+
+    assert conn.sql == []
+    assert conn.transaction_enter_count == 0
+    assert conn.commits == 0
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param(_MISSING, id="missing"),
+        pytest.param("", id="blank"),
+        pytest.param(" ", id="whitespace"),
+        pytest.param(None, id="none"),
+        pytest.param(1, id="non_string"),
+    ],
+)
+def test_news_projection_dirty_target_completion_requires_source_quality_claim_window_before_sql(
+    value: object,
+) -> None:
+    conn = TransactionalScriptedConnection([])
+    repo = NewsProjectionDirtyTargetRepository(conn)
+    token = _source_quality_claim("source-1", payload_hash="hash-1", attempt_count=2)
+    if value is _MISSING:
+        token.pop("window")
+    else:
+        token["window"] = value
+
+    with pytest.raises(ValueError, match="requires window from claim_due"):
+        repo.mark_done([token], now_ms=NOW_MS)
 
     assert conn.sql == []
     assert conn.transaction_enter_count == 0
@@ -446,6 +632,75 @@ def test_news_source_quality_window_dirty_enqueue_requires_positive_source_water
     assert conn.sql == []
 
 
+@pytest.mark.parametrize("priority", [True, "7", 7.5, ""])
+def test_news_projection_dirty_enqueue_rejects_malformed_priority_without_int_repair(priority: object) -> None:
+    conn = TransactionalScriptedConnection([[]], rowcount=0)
+    repo = NewsProjectionDirtyTargetRepository(conn)
+
+    with pytest.raises(ValueError, match="news_projection_dirty_target_priority_required"):
+        repo.enqueue_targets(
+            [
+                {
+                    "projection_name": "page",
+                    "target_kind": "news_item",
+                    "target_id": "news-1",
+                    "source_watermark_ms": NOW_MS - 1_000,
+                    "priority": priority,
+                }
+            ],
+            reason="unit",
+            now_ms=NOW_MS,
+        )
+
+    assert conn.sql == []
+
+
+@pytest.mark.parametrize("due_at_ms", [True, "1800000", 1_800_000.5, 0])
+def test_news_projection_dirty_enqueue_rejects_malformed_row_due_at_without_int_repair(due_at_ms: object) -> None:
+    conn = TransactionalScriptedConnection([[]], rowcount=0)
+    repo = NewsProjectionDirtyTargetRepository(conn)
+
+    with pytest.raises(ValueError, match="news_projection_dirty_target_due_at_ms_required"):
+        repo.enqueue_targets(
+            [
+                {
+                    "projection_name": "page",
+                    "target_kind": "news_item",
+                    "target_id": "news-1",
+                    "source_watermark_ms": NOW_MS - 1_000,
+                    "due_at_ms": due_at_ms,
+                }
+            ],
+            reason="unit",
+            now_ms=NOW_MS,
+        )
+
+    assert conn.sql == []
+
+
+@pytest.mark.parametrize("due_at_ms", [True, "1800000", 1_800_000.5, 0])
+def test_news_projection_dirty_enqueue_rejects_malformed_default_due_at_without_int_repair(due_at_ms: object) -> None:
+    conn = TransactionalScriptedConnection([[]], rowcount=0)
+    repo = NewsProjectionDirtyTargetRepository(conn)
+
+    with pytest.raises(ValueError, match="news_projection_dirty_target_due_at_ms_required"):
+        repo.enqueue_targets(
+            [
+                {
+                    "projection_name": "page",
+                    "target_kind": "news_item",
+                    "target_id": "news-1",
+                    "source_watermark_ms": NOW_MS - 1_000,
+                }
+            ],
+            reason="unit",
+            now_ms=NOW_MS,
+            due_at_ms=due_at_ms,  # type: ignore[arg-type]
+        )
+
+    assert conn.sql == []
+
+
 def test_news_projection_dirty_claim_due_returning_rows_require_cursor_rowcount() -> None:
     conn = TransactionalScriptedConnection([[_claim("news-1")]], omit_rowcount=True)
     repo = NewsProjectionDirtyTargetRepository(conn)
@@ -565,6 +820,57 @@ def test_page_projection_worker_marks_error_with_full_claim_token_when_projectio
     assert repos.dirty.marked_error == [[token]]
 
 
+def test_page_projection_worker_rejects_member_item_missing_identity_without_partial_projection() -> None:
+    token = _claim("news-1", payload_hash="hash-1", attempt_count=3)
+    repos = FakePageRepos(claimed=[token])
+    payload = _page_payload("news-1")
+    payload["member_items"].append({"title": "missing identity"})
+    repos.news.payloads = [payload]
+    worker = _page_worker(repos)
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.failed == 1
+    assert result.notes["claimed"] == 1
+    assert result.notes["marked_error"] == 1
+    assert repos.news.replacements == []
+    assert repos.dirty.marked_done == []
+    assert repos.dirty.marked_error == [[token]]
+    assert repos.dirty.mark_error_calls == [
+        {
+            "error": "news_page_projection_member_item_news_item_id_required:news-1",
+            "retry_ms": 30_000,
+            "now_ms": NOW_MS,
+            "commit": False,
+        }
+    ]
+
+
+def test_page_projection_worker_rejects_claim_missing_target_id_without_marking_done() -> None:
+    token = _claim("news-1", payload_hash="hash-1", attempt_count=3)
+    token.pop("target_id")
+    repos = FakePageRepos(claimed=[token])
+    worker = _page_worker(repos)
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.failed == 1
+    assert result.notes["claimed"] == 1
+    assert result.notes["marked_error"] == 1
+    assert repos.news.loaded_ids == []
+    assert repos.news.replacements == []
+    assert repos.dirty.marked_done == []
+    assert repos.dirty.marked_error == [[token]]
+    assert repos.dirty.mark_error_calls == [
+        {
+            "error": "news_page_projection_claim_target_id_required",
+            "retry_ms": 30_000,
+            "now_ms": NOW_MS,
+            "commit": False,
+        }
+    ]
+
+
 def test_page_projection_worker_reads_formal_settings_for_claim_session_and_retry() -> None:
     token = _claim("news-1", payload_hash="hash-1", attempt_count=3)
     repos = FakePageRepos(claimed=[token])
@@ -663,10 +969,58 @@ def test_load_items_for_page_projection_filters_target_items_before_projection_j
     assert "FROM target_items AS items" in sql
     assert "news_story_members" not in sql
     assert "news_story_groups" not in sql
+    assert "news_item_agent_briefs" not in sql
+    assert "current_brief" not in sql
     assert "page.computed_at_ms" not in sql
     assert "page.projection_version" not in sql
     assert "HAVING page.row_id IS NULL" not in sql
     assert conn.params[-1] == (["news-1", "news-2"],)
+
+
+@pytest.mark.parametrize(
+    ("method_name", "kwargs", "row"),
+    [
+        pytest.param(
+            "list_news_item_source_watermarks_for_sources",
+            {"source_ids": ["source-1"]},
+            {"news_item_id": "news-1"},
+            id="source_metadata_changed",
+        ),
+        pytest.param(
+            "list_news_item_source_watermarks",
+            {"news_item_ids": ["news-1"]},
+            {"news_item_id": "news-1"},
+            id="written_news_item",
+        ),
+        pytest.param(
+            "list_news_items_for_canonical_rebuild",
+            {"limit": 10},
+            {"news_item_id": "news-1", "story_key": "story:v2:listing:binance:foo"},
+            id="canonical_rebuild",
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    "source_watermark_ms",
+    [
+        pytest.param(None, id="none"),
+        pytest.param(0, id="zero"),
+        pytest.param(-1, id="negative"),
+        pytest.param(True, id="bool"),
+        pytest.param("10", id="string"),
+    ],
+)
+def test_news_item_source_watermark_loaders_require_positive_int_before_dirty_enqueue(
+    method_name: str,
+    kwargs: dict[str, Any],
+    row: dict[str, Any],
+    source_watermark_ms: object,
+) -> None:
+    conn = ScriptedConnection([[{**row, "source_watermark_ms": source_watermark_ms}]])
+    method = getattr(NewsRepository(conn), method_name)
+
+    with pytest.raises(ValueError, match="news_item_source_watermark_required:source_watermark_ms"):
+        method(**kwargs)
 
 
 def test_fetch_worker_enqueues_news_item_and_source_quality_dirty_for_inserted_and_updated_news_items_only() -> None:
@@ -928,7 +1282,7 @@ def test_news_repository_caller_owned_writes_do_not_open_inner_transaction() -> 
     assert conn.sql_transaction_depths == [0, 0]
 
 
-def test_process_worker_enqueues_page_and_brief_dirty_in_same_transaction_after_writes() -> None:
+def test_process_worker_enqueues_page_and_story_brief_dirty_in_same_transaction_after_writes() -> None:
     repos = FakeProcessRepos()
     worker = NewsItemProcessWorker(
         name="news_item_process",
@@ -960,9 +1314,9 @@ def test_process_worker_enqueues_page_and_brief_dirty_in_same_transaction_after_
         {
             "rows": [
                 {
-                    "projection_name": "brief_input",
-                    "target_kind": "news_item",
-                    "target_id": "news-1",
+                    "projection_name": "story_brief",
+                    "target_kind": "story",
+                    "target_id": "news-story:item:news-1",
                     "source_watermark_ms": NOW_MS - 1_000,
                     "priority": 34,
                 }
@@ -980,7 +1334,7 @@ def test_process_worker_enqueues_page_and_brief_dirty_in_same_transaction_after_
     assert "autocommit:dirty:news_item_processed" not in repos.conn.events
 
 
-def test_ops_projection_repair_enqueues_provider_signal_brief_input_dirty_target() -> None:
+def test_ops_projection_repair_enqueues_provider_signal_story_brief_dirty_target() -> None:
     repos = FakeOpsProjectionRepos()
 
     result = enqueue_projection_dirty_targets(
@@ -988,7 +1342,7 @@ def test_ops_projection_repair_enqueues_provider_signal_brief_input_dirty_target
         domain="news",
         execute=True,
         now_ms=NOW_MS,
-        projection="brief_input",
+        projection="story_brief",
         since_ms=NOW_MS - 60_000,
     )
 
@@ -997,9 +1351,9 @@ def test_ops_projection_repair_enqueues_provider_signal_brief_input_dirty_target
         {
             "rows": [
                 {
-                    "projection_name": "brief_input",
-                    "target_kind": "news_item",
-                    "target_id": "news-provider",
+                    "projection_name": "story_brief",
+                    "target_kind": "story",
+                    "target_id": "story-provider",
                     "source_watermark_ms": NOW_MS - 1_000,
                     "priority": 48,
                 }
@@ -1011,7 +1365,7 @@ def test_ops_projection_repair_enqueues_provider_signal_brief_input_dirty_target
     ]
 
 
-def test_ops_projection_repair_enqueues_eligible_refresh_brief_input_dirty_target() -> None:
+def test_ops_projection_repair_enqueues_eligible_refresh_story_brief_dirty_target() -> None:
     repos = FakeOpsProjectionRepos(
         row_overrides={
             "agent_admission_status": "eligible_refresh",
@@ -1032,23 +1386,23 @@ def test_ops_projection_repair_enqueues_eligible_refresh_brief_input_dirty_targe
         domain="news",
         execute=True,
         now_ms=NOW_MS,
-        projection="brief_input",
+        projection="story_brief",
         since_ms=NOW_MS - 60_000,
     )
 
     assert result["news"]["news_item_targets"] == 1
     assert repos.dirty.enqueued[0]["rows"] == [
         {
-            "projection_name": "brief_input",
-            "target_kind": "news_item",
-            "target_id": "news-provider",
+            "projection_name": "story_brief",
+            "target_kind": "story",
+            "target_id": "story-provider",
             "source_watermark_ms": NOW_MS - 1_000,
             "priority": 10,
         }
     ]
 
 
-def test_brief_worker_enqueues_only_page_dirty_after_current_brief_write() -> None:
+def test_brief_worker_does_not_enqueue_page_dirty_after_current_brief_write() -> None:
     repos = FakeBriefRepos()
     worker = object.__new__(NewsItemBriefWorker)
     WorkerAttrs = {
@@ -1077,23 +1431,9 @@ def test_brief_worker_enqueues_only_page_dirty_after_current_brief_write() -> No
     )
 
     assert repos.news.brief_commits == [False]
-    assert repos.dirty.enqueued == [
-        {
-            "rows": [
-                {
-                    "projection_name": "page",
-                    "target_kind": "news_item",
-                    "target_id": "news-1",
-                    "source_watermark_ms": NOW_MS - 1_000,
-                }
-            ],
-            "reason": "news_item_brief_updated",
-            "now_ms": NOW_MS,
-            "commit": False,
-        }
-    ]
+    assert repos.dirty.enqueued == []
     assert "tx:upsert_news_item_agent_brief" in repos.conn.events
-    assert "tx:dirty:news_item_brief_updated" in repos.conn.events
+    assert "tx:dirty:news_item_brief_updated" not in repos.conn.events
     assert "autocommit:dirty:news_item_brief_updated" not in repos.conn.events
     assert "direct_commit" not in repos.conn.events
 
@@ -1123,7 +1463,7 @@ def test_source_quality_worker_enqueues_page_dirty_when_source_quality_status_ch
                     "projection_name": "page",
                     "target_kind": "news_item",
                     "target_id": "news-1",
-                    "source_watermark_ms": NOW_MS,
+                    "source_watermark_ms": NOW_MS - 1_000,
                 }
             ],
             "reason": "source_quality_status_changed",
@@ -1249,49 +1589,62 @@ def _source_quality_claim(
 
 
 def _page_payload(news_item_id: str) -> dict[str, Any]:
-    return {
-        "item": {
-            "news_item_id": news_item_id,
-            "title": f"Title {news_item_id}",
-            "summary": "",
-            "source_id": "source-1",
-            "provider_type": "rss",
-            "source_domain": "example.com",
-            "source_name": "Example",
-            "canonical_url": f"https://example.com/{news_item_id}",
-            "published_at_ms": 1000,
-            "lifecycle_status": "processed",
-            "market_scope_json": {
-                "scope": ["crypto"],
-                "primary": "crypto",
-                "status": "classified",
-                "reason": "crypto_evidence",
-                "basis": {"crypto_evidence": ["text:crypto_subject"]},
-                "version": "news_market_scope_v1",
-            },
-            "agent_admission_status": "eligible",
-            "agent_admission_reason": "eligible",
-            "agent_admission_json": {
-                "eligible": True,
-                "status": "eligible",
-                "reason": "eligible",
-                "representative_news_item_id": news_item_id,
-                "basis": {"market_scope": ["crypto"], "crypto_evidence": ["text:crypto_subject"]},
-                "version": "news_item_agent_admission_market_v2",
-            },
-            "agent_admission_version": "news_item_agent_admission_market_v2",
-            "story_key": f"news-story:{news_item_id}",
-            "story_identity_json": {
-                "story_key": f"news-story:{news_item_id}",
-                "confidence": "strong",
-                "basis": {"method": "unit_fixture"},
-                "version": "news_story_identity_v1",
-            },
-            "story_identity_version": "news_story_identity_v1",
+    story_key = f"news-story:{news_item_id}"
+    item = {
+        "news_item_id": news_item_id,
+        "title": f"Title {news_item_id}",
+        "summary": "",
+        "source_id": "source-1",
+        "provider_type": "rss",
+        "source_domain": "example.com",
+        "source_name": "Example",
+        "canonical_url": f"https://example.com/{news_item_id}",
+        "published_at_ms": 1000,
+        "lifecycle_status": "processed",
+        "source_quality_status": "healthy",
+        "content_class": "crypto_market",
+        "content_tags_json": ["crypto"],
+        "content_classification_json": {"policy_version": "news_content_classification_v1"},
+        "market_scope_json": {
+            "scope": ["crypto"],
+            "primary": "crypto",
+            "status": "classified",
+            "reason": "crypto_evidence",
+            "basis": {"crypto_evidence": ["text:crypto_subject"]},
+            "version": "news_market_scope_v1",
         },
+        "agent_admission_status": "eligible",
+        "agent_admission_reason": "eligible",
+        "agent_admission_json": {
+            "eligible": True,
+            "status": "eligible",
+            "reason": "eligible",
+            "representative_news_item_id": news_item_id,
+            "basis": {"market_scope": ["crypto"], "crypto_evidence": ["text:crypto_subject"]},
+            "version": "news_item_agent_admission_market_v2",
+        },
+        "agent_admission_version": "news_item_agent_admission_market_v2",
+        "agent_representative_news_item_id": news_item_id,
+        "story_key": story_key,
+        "story_identity_json": {
+            "story_key": story_key,
+            "confidence": "strong",
+            "basis": {"method": "unit_fixture"},
+            "version": "news_story_identity_v1",
+        },
+        "story_identity_version": "news_story_identity_v1",
+    }
+    return {
+        "item": item,
         "current_brief": None,
-        "story": None,
-        "member_items": [],
+        "story": {
+            "story_key": story_key,
+            "representative_news_item_id": news_item_id,
+            "member_news_item_ids": [news_item_id],
+            "member_count": 1,
+            "source_domains": ["example.com"],
+        },
+        "member_items": [dict(item)],
         "token_mentions": [],
         "fact_candidates": [],
     }
@@ -1327,10 +1680,12 @@ class FakeOpsProjectionConn:
         if "FROM news_items" in sql:
             row = {
                 "news_item_id": "news-provider",
+                "story_key": "story-provider",
                 "published_at_ms": NOW_MS - 1_000,
                 "source_watermark_ms": NOW_MS - 1_000,
                 "lifecycle_status": "processed",
                 "content_class": "crypto_market",
+                "content_tags_json": ["crypto"],
                 "content_classification_json": {"policy_version": "news_content_classification_v1"},
                 "market_scope_json": {
                     "scope": ["crypto"],
@@ -1526,12 +1881,14 @@ class FakeFetchRepos:
         news_statuses: list[dict[str, Any]] | None = None,
         reconcile_rows: list[dict[str, Any]] | None = None,
         existing_items_by_source: dict[str, list[str]] | None = None,
+        item_watermarks_by_item: dict[str, int] | None = None,
     ) -> None:
         self.conn = FakeConn()
         self.source = source
         self.news_statuses = list(news_statuses or [])
         self.reconcile_rows = list(reconcile_rows or [])
         self.existing_items_by_source = dict(existing_items_by_source or {})
+        self.item_watermarks_by_item = dict(item_watermarks_by_item or {})
         self.news_item_ids_requested_for_sources: list[list[str]] = []
         self.news = self
         self.dirty = FakeDirtyRepository()
@@ -1576,6 +1933,23 @@ class FakeFetchRepos:
             result.extend(self.existing_items_by_source.get(source_id, []))
         return result
 
+    def list_news_item_source_watermarks_for_sources(self, *, source_ids: list[str]) -> list[dict[str, Any]]:
+        self.news_item_ids_requested_for_sources.append(list(source_ids))
+        return [
+            {"news_item_id": news_item_id, "source_watermark_ms": NOW_MS}
+            for source_id in source_ids
+            for news_item_id in self.existing_items_by_source.get(source_id, [])
+        ]
+
+    def list_news_item_source_watermarks(self, *, news_item_ids: list[str]) -> list[dict[str, Any]]:
+        return [
+            {
+                "news_item_id": news_item_id,
+                "source_watermark_ms": self.item_watermarks_by_item.get(news_item_id, NOW_MS),
+            }
+            for news_item_id in news_item_ids
+        ]
+
     def servable_news_item_ids(self, news_item_ids: list[str]) -> list[str]:
         return [str(news_item_id) for news_item_id in news_item_ids if str(news_item_id)]
 
@@ -1614,7 +1988,21 @@ class FakeFetchRepos:
     def upsert_canonical_news_item(self, **payload: Any) -> dict[str, Any]:
         self.conn.record("upsert_canonical_news_item")
         assert payload["canonical_identity"].canonical_item_key.startswith("canonical-url:")
-        return dict(self.news_statuses.pop(0))
+        result = dict(self.news_statuses.pop(0))
+        self._record_item_source_watermarks(result, payload)
+        return result
+
+    def _record_item_source_watermarks(self, result: dict[str, Any], payload: dict[str, Any]) -> None:
+        status = str(result.get("status") or "")
+        if status not in {"inserted", "updated"}:
+            return
+        published_at_ms = payload.get("published_at_ms")
+        fetched_at_ms = payload.get("fetched_at_ms")
+        source_watermark_ms = int(published_at_ms if published_at_ms is not None else fetched_at_ms)
+        for news_item_id in result.get("affected_news_item_ids") or [result.get("news_item_id")]:
+            item_id = str(news_item_id or "")
+            if item_id and item_id not in self.item_watermarks_by_item:
+                self.item_watermarks_by_item[item_id] = source_watermark_ms
 
     def update_source_http_cache(self, **payload: Any) -> None:
         self.conn.record("update_source_http_cache")
@@ -1753,6 +2141,7 @@ class FakeProcessRepos:
                 {
                     "lifecycle_status": "processed",
                     "content_class": classification.get("content_class") or "",
+                    "content_tags_json": classification.get("content_tags") or [],
                     "content_classification_json": classification.get("classification_payload") or {},
                     "market_scope_json": (
                         market_scope.to_payload()

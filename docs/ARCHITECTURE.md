@@ -425,8 +425,10 @@ are wrong too.
    brief-updated wake emission read the formal
    `settings.workers.news_item_brief` contract directly. `news_item_agent_runs`
    inserts and `news_item_agent_briefs` current upserts require rowcount=1 with
-   a returned row before agent audit rows, current brief state, page dirty
-   fan-out, or high-signal publication state can advance. Schema-version cleanup
+   a returned row before audit current state can be reported. `NewsItemProcessWorker`
+   no longer enqueues item-brief dirty work after the story-current hard cut;
+   item-brief processing is explicit existing/manual audit work and is not
+   woken by `news_item_processed`. Schema-version cleanup
    of current `news_item_agent_briefs` rows through
    `DELETE ... RETURNING news_item_id` requires cursor rowcount to match returned
    ids before stale-brief cleanup accounting is reported. Restoring current
@@ -436,6 +438,17 @@ are wrong too.
    `agent_run_id`. Completed-run validation, provider failure audit, and
    market-wide agent admission consume formal domain/execution models directly;
    dict/object reflection is not a News item-brief runtime compatibility layer.
+   Admission duplicate and same-story representative current-state reads use
+   `news_story_agent_briefs`; old item-current brief rows are not representative
+   or story-current decision inputs after the hard cut.
+   `news_story_agent_runs` and `news_story_agent_briefs` are written only by
+   `NewsStoryBriefWorker`, whose current read model is keyed by stable
+   `story_brief_key` derived from story identity version plus story key. Page
+   rows read current story brief state; item brief rows are audit/supporting
+   state and are not a public story fallback. Story brief work uses
+   `projection_name = 'story_brief'` with target kind `story`; retired
+   `projection_name = 'story'`, `news_story_groups`, and `news_story_members`
+   remain outside the runtime schema.
    Item-brief entity support consumes the formal
    `NewsItemBriefInputPacket.entity_lanes` / `NewsItemBriefEntityLane`
    contract directly when deriving source-backed market domains; missing
@@ -473,9 +486,11 @@ are wrong too.
    Terminal delete rowcount must match returned deleted rows before terminal
    ledger writes.
    Explicit ops projection dirty repair is a bounded keyset enqueue path, not a
-   wide News projection input rebuild: page/brief repair reads only
-   `news_item_id`, source watermark, and persisted agent-admission status, and
-   source-quality-only repair does not scan `news_items`.
+   wide News projection input rebuild: page repair reads only `news_item_id`
+   plus source watermark, and story-brief repair reads only `story_key`, source
+   watermark, and formal `agent_admission_json` fields needed for story-brief
+   eligibility and priority; source-quality-only repair does not scan
+   `news_items`.
    News configured-source reconciliation follows the same PostgreSQL evidence
    contract: `INSERT INTO news_sources ... ON CONFLICT ... RETURNING *` must
    prove rowcount=1 with a returned source row before inserted/updated source

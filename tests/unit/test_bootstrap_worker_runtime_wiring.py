@@ -47,6 +47,7 @@ from parallax.domains.news_intel.runtime.news_page_projection_worker import News
 from parallax.domains.news_intel.runtime.news_source_quality_projection_worker import (
     NewsSourceQualityProjectionWorker,
 )
+from parallax.domains.news_intel.runtime.news_story_brief_worker import NewsStoryBriefWorker
 from parallax.domains.notifications.runtime.notification_delivery import NotificationDeliveryWorker
 from parallax.domains.notifications.runtime.notification_worker import NotificationWorker
 from parallax.domains.token_intel.runtime.token_radar_projection_worker import TokenRadarProjectionWorker
@@ -441,12 +442,14 @@ def test_worker_factory_wires_news_fetch_by_default() -> None:
     assert workers["news_item_process"].settings.statement_timeout_seconds == 30
     assert "news_story_projection" not in workers
     assert not isinstance(workers["news_item_brief"], NewsItemBriefWorker)
+    assert not isinstance(workers["news_story_brief"], NewsStoryBriefWorker)
+    assert workers["news_story_brief"].status_payload()["effective_status"] == "disabled"
     assert isinstance(workers["news_page_projection"], NewsPageProjectionWorker)
     assert not hasattr(workers["news_page_projection"], "wake_bus")
     assert workers["news_page_projection"].wake_waiter.channels == (
         "news_item_written",
         "news_item_processed",
-        "news_item_brief_updated",
+        "news_story_brief_updated",
         "news_page_dirty",
     )
     assert workers["news_page_projection"].settings.advisory_lock_key == 2026051904
@@ -686,13 +689,42 @@ def test_worker_factory_wires_news_item_brief_when_configured() -> None:
     assert workers["news_item_brief"].provider is providers.news_intel.brief_provider
     assert workers["news_item_brief"].wake_emitter is db.wake
     assert not hasattr(workers["news_item_brief"], "wake_bus")
-    assert workers["news_item_brief"].wake_waiter.channels == ("news_item_processed",)
+    assert workers["news_item_brief"].wake_waiter.channels == ()
     assert workers["news_item_brief"].settings.advisory_lock_key == 2026052001
     assert workers["news_item_brief"].settings.batch_size == 5
     assert workers["news_item_brief"].settings.lease_ms == 120_000
     assert workers["news_item_brief"].settings.retry_ms == 60_000
     assert workers["news_item_brief"].settings.statement_timeout_seconds == 30
     assert workers["news_item_brief"].settings.backpressure_cooldown_ms == 60_000
+
+
+def test_worker_factory_wires_news_story_brief_when_configured() -> None:
+    db = FakeDB()
+    providers = FakeProviders(brief_provider=object())
+
+    workers = construct_workers(
+        settings=_settings(news_story_brief_configured=True),
+        db=db,
+        telemetry=object(),
+        providers=providers,
+        hub=SimpleNamespace(publish=lambda payload: None),
+        collector=FakeCollector(name="collector", settings=SimpleNamespace(enabled=False), db=db, telemetry=object()),
+        collector_enabled=False,
+        wake_bus=db.wake,
+    )
+
+    assert not isinstance(workers["news_item_brief"], NewsItemBriefWorker)
+    assert isinstance(workers["news_story_brief"], NewsStoryBriefWorker)
+    assert workers["news_story_brief"].provider is providers.news_intel.brief_provider
+    assert workers["news_story_brief"].wake_emitter is db.wake
+    assert not hasattr(workers["news_story_brief"], "wake_bus")
+    assert workers["news_story_brief"].wake_waiter.channels == ("news_item_processed",)
+    assert workers["news_story_brief"].settings.advisory_lock_key == 2026061801
+    assert workers["news_story_brief"].settings.batch_size == 5
+    assert workers["news_story_brief"].settings.lease_ms == 120_000
+    assert workers["news_story_brief"].settings.retry_ms == 60_000
+    assert workers["news_story_brief"].settings.statement_timeout_seconds == 30
+    assert workers["news_story_brief"].settings.backpressure_cooldown_ms == 60_000
 
 
 def test_worker_factory_rejects_returned_key_outside_owned_keys(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -863,6 +895,7 @@ def _settings(
     notifications_enabled: bool = False,
     notification_log_channel_enabled: bool = True,
     news_item_brief_configured: bool = False,
+    news_story_brief_configured: bool = False,
     macro_view_projection_enabled: bool = True,
     macrodata_enabled: bool = True,
     token_radar_projection_enabled: bool = False,
@@ -879,6 +912,9 @@ def _settings(
     if news_item_brief_configured:
         llm = {**llm, "api_key": "secret"}
         agent_lanes["news.item_brief"] = {"model": "gpt-5-mini"}
+    if news_story_brief_configured:
+        llm = {**llm, "api_key": "secret"}
+        agent_lanes["news.story_brief"] = {"model": "gpt-5-mini"}
     return Settings(
         ws_token="secret",
         llm=llm,
@@ -916,6 +952,7 @@ def _settings(
             "pulse_candidate": {"enabled": False},
             "notification_rule": {"enabled": notifications_enabled},
             "notification_delivery": {"enabled": notifications_enabled},
+            "news_item_brief": {"enabled": news_item_brief_configured},
         },
     )
 

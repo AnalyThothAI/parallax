@@ -272,30 +272,34 @@ class NotificationRuleEngine:
         seen_semantic_signatures: set[str] = set()
         seen_external_push_signatures: set[str] = set()
         for row in rows:
-            news_item_id = str(row.get("news_item_id") or row.get("representative_news_item_id") or "")
-            if not news_item_id:
+            news_item_id = _required_news_text(row, "news_item_id")
+            representative_news_item_id = _required_news_text(row, "representative_news_item_id")
+            story_key = _required_news_text(row, "story_key")
+            source_domain = _required_news_text(row, "source_domain")
+            agent_admission_status = _required_news_text(row, "agent_admission_status")
+            agent_admission_reason = _required_news_text(row, "agent_admission_reason")
+            source_latest_at_ms = _required_news_positive_int(row, "latest_at_ms")
+            if source_latest_at_ms < now_ms - int(self.settings.notifications.news_high_signal_recency_window_ms):
                 continue
-            story_key = str(row.get("story_key") or "")
-            source_latest_at_ms = _int(row.get("latest_at_ms"))
-            if source_latest_at_ms and source_latest_at_ms < now_ms - int(
-                self.settings.notifications.news_high_signal_recency_window_ms
-            ):
-                continue
-            signal = _dict(row.get("signal"))
-            display_signal = _news_display_signal(row)
-            eligibility = _dict(signal.get("alert_eligibility"))
-            agent_brief = _dict(row.get("agent_brief"))
+            signal = _required_news_mapping(row.get("signal"), "signal")
+            eligibility = _required_news_mapping(signal.get("alert_eligibility"), "alert_eligibility")
+            _required_news_signal_true(eligibility, "in_app_eligible", section="alert_eligibility")
+            agent_brief = _required_news_mapping(row.get("agent_brief"), "agent_brief")
+            story = _news_story_payload(row.get("story"))
+            market_scope = _news_market_scope_payload(row.get("market_scope"))
+            agent_admission = _news_agent_admission_payload(row.get("agent_admission"))
+            token_impacts = _required_news_list(row.get("token_impacts"), "token_impacts")
             ready_agent_brief = _ready_news_agent_brief(agent_brief)
             external_push_ready, readiness_suppression_reason = _news_external_push_readiness(
                 eligibility=eligibility,
                 ready_agent_brief=ready_agent_brief,
             )
-            decision_class = str(eligibility.get("decision_class") or ready_agent_brief.get("decision_class") or "")
-            direction = str(
-                agent_brief.get("direction") or display_signal.get("direction") or signal.get("direction") or ""
+            decision_class, direction = _news_notification_signal_fields(
+                row,
+                ready_agent_brief=ready_agent_brief,
             )
-            affected_entities = _list(_news_agent_affected_entities(agent_brief))
-            occurrence_at_ms = _int(row.get("latest_at_ms") or row.get("agent_brief_computed_at_ms") or now_ms)
+            affected_entities = _news_public_affected_entities(agent_brief)
+            occurrence_at_ms = source_latest_at_ms
             semantic_signature = _news_semantic_signature(row, agent_brief=ready_agent_brief)
             if semantic_signature in seen_semantic_signatures:
                 continue
@@ -320,12 +324,10 @@ class NotificationRuleEngine:
             if external_push_eligible and external_push_signature:
                 seen_external_push_signatures.add(external_push_signature)
             channels = rule.channels if external_push_eligible else tuple(c for c in rule.channels if c == "in_app")
-            source_id = str(row.get("row_id") or news_item_id)
+            source_id = _required_news_text(row, "row_id")
             summary = _news_agent_summary(ready_agent_brief)
             title = _news_display_title(row, agent_brief=ready_agent_brief)
-            body = _news_body(row, summary=summary)
-            entity_type = "news_story" if story_key else "news_item"
-            entity_key = f"news_story:{story_key}" if story_key else f"news_item:{news_item_id}"
+            body = _news_body(row, summary=summary, source_domain=source_domain)
             candidates.append(
                 NotificationCandidate(
                     dedup_key=f"{NEWS_HIGH_SIGNAL_RULE_ID}:{semantic_signature}",
@@ -333,21 +335,21 @@ class NotificationRuleEngine:
                     severity="high",
                     title=title,
                     body=body,
-                    entity_type=entity_type,
-                    entity_key=entity_key,
+                    entity_type="news_story",
+                    entity_key=f"news_story:{story_key}",
                     symbol=_news_primary_symbol(row),
                     source_table="news_page_rows",
                     source_id=source_id,
                     occurrence_at_ms=occurrence_at_ms,
                     payload={
                         "news_item_id": news_item_id,
-                        "representative_news_item_id": row.get("representative_news_item_id") or news_item_id,
+                        "representative_news_item_id": representative_news_item_id,
                         "story_key": story_key,
-                        "story": _dict(row.get("story")),
-                        "market_scope": _dict(row.get("market_scope")),
-                        "agent_admission_status": row.get("agent_admission_status"),
-                        "agent_admission_reason": row.get("agent_admission_reason"),
-                        "agent_admission": _dict(row.get("agent_admission")),
+                        "story": story,
+                        "market_scope": market_scope,
+                        "agent_admission_status": agent_admission_status,
+                        "agent_admission_reason": agent_admission_reason,
+                        "agent_admission": agent_admission,
                         "decision_class": decision_class,
                         "direction": direction,
                         "affected_entities": affected_entities,
@@ -357,10 +359,10 @@ class NotificationRuleEngine:
                         "external_push_eligible": external_push_eligible,
                         "external_push_suppression_reason": suppression_reason,
                         "agent_brief": _public_news_agent_brief(agent_brief),
-                        "canonical_url": row.get("canonical_url"),
-                        "source_domain": row.get("source_domain"),
-                        "duplicate_count": _int(row.get("duplicate_count")),
-                        "token_impacts": _news_token_impacts_payload(row.get("token_impacts")),
+                        "canonical_url": _optional_news_text(row, "canonical_url"),
+                        "source_domain": source_domain,
+                        "duplicate_count": _required_news_nonnegative_int(row, "duplicate_count"),
+                        "token_impacts": _news_token_impacts_payload(token_impacts),
                     },
                     channels=channels,
                 )
@@ -697,18 +699,30 @@ def _safe_signature_list(value: Any) -> list[str]:
 
 def _news_token_impacts_payload(value: Any) -> list[dict[str, Any]]:
     impacts: list[dict[str, Any]] = []
-    for item in _list(value):
-        if not isinstance(item, dict):
-            continue
-        symbol = _symbol(item.get("symbol") or item.get("target_symbol"))
+    for item_value in _required_news_list(value, "token_impacts"):
+        item = _required_news_list_mapping(item_value, "token_impacts")
+        symbol_text = _news_token_impact_optional_text(item, "symbol")
+        if symbol_text is None:
+            symbol_text = _news_token_impact_optional_text(item, "target_symbol")
+        symbol = _symbol(symbol_text)
         if not symbol:
             continue
+        market_type = _news_token_impact_optional_text(item, "market_type")
         payload = {
             "symbol": symbol,
-            "market_type": item.get("market_type"),
+            "market_type": market_type,
         }
         impacts.append({key: value for key, value in payload.items() if value is not None})
     return impacts[:12]
+
+
+def _news_token_impact_optional_text(item: dict[str, Any], field_name: str) -> str | None:
+    if field_name not in item or item.get(field_name) is None:
+        return None
+    value = item.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"news_high_signal_token_impacts_{field_name}_required")
+    return value.strip()
 
 
 def _stable_hash(payload: Any) -> str:
@@ -756,16 +770,25 @@ def _has_external_channels(channels: tuple[str, ...]) -> bool:
 
 
 def _news_agent_summary(agent_brief: dict[str, Any]) -> str:
-    return _compact_text(
-        agent_brief.get("summary_zh") or agent_brief.get("market_read_zh") or "",
-        limit=360,
-    )
+    if not agent_brief or "summary_zh" not in agent_brief:
+        return ""
+    value = agent_brief.get("summary_zh")
+    if not isinstance(value, str):
+        raise ValueError("news_high_signal_agent_brief_summary_zh_required")
+    return _compact_text(value.strip(), limit=360)
 
 
 def _ready_news_agent_brief(agent_brief: dict[str, Any]) -> dict[str, Any]:
-    if str(agent_brief.get("status") or "") != "ready":
+    if _required_news_agent_status(agent_brief) != "ready":
         return {}
     return agent_brief
+
+
+def _required_news_agent_status(agent_brief: dict[str, Any]) -> str:
+    value = agent_brief.get("status")
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("news_high_signal_agent_brief_status_required")
+    return value.strip()
 
 
 def _news_external_push_readiness(
@@ -773,46 +796,300 @@ def _news_external_push_readiness(
     eligibility: dict[str, Any],
     ready_agent_brief: dict[str, Any],
 ) -> tuple[bool, str | None]:
-    if eligibility.get("external_push_ready") is not True:
-        return False, str(eligibility.get("external_push_block_reason") or "external_push_state_missing")
+    external_push_ready = _optional_news_signal_bool(
+        eligibility,
+        "external_push_ready",
+        section="alert_eligibility",
+    )
+    block_reason = _optional_news_signal_text(
+        eligibility,
+        "external_push_block_reason",
+        section="alert_eligibility",
+    )
+    if external_push_ready is not True:
+        return False, block_reason or "external_push_state_missing"
+    _required_news_external_push_basis(eligibility)
     if not ready_agent_brief:
         return False, "agent_brief_not_ready"
     if not _news_agent_summary(ready_agent_brief):
         return False, "agent_brief_missing_summary"
+    if not _news_agent_required_text(ready_agent_brief, "direction"):
+        return False, "agent_brief_missing_direction"
+    if not _news_agent_required_text(ready_agent_brief, "decision_class"):
+        return False, "agent_brief_missing_decision_class"
     return True, None
+
+
+def _news_agent_required_text(agent_brief: dict[str, Any], field_name: str) -> str:
+    value = agent_brief.get(field_name)
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _required_news_agent_text(agent_brief: dict[str, Any], field_name: str) -> str:
+    value = _news_agent_required_text(agent_brief, field_name)
+    if not value:
+        raise ValueError(f"news_high_signal_agent_brief_{field_name}_required")
+    return value
+
+
+def _required_news_mapping(value: Any, field_name: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValueError(f"news_high_signal_{field_name}_required")
+    return value
+
+
+def _optional_news_mapping(row: dict[str, Any], field_name: str) -> dict[str, Any]:
+    if field_name not in row:
+        return {}
+    return _required_news_mapping(row.get(field_name), field_name)
+
+
+def _required_news_list(value: Any, field_name: str) -> list[Any]:
+    if not isinstance(value, list):
+        raise ValueError(f"news_high_signal_{field_name}_required")
+    return value
+
+
+def _required_news_list_mapping(value: Any, field_name: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValueError(f"news_high_signal_{field_name}_required")
+    return value
+
+
+def _required_news_positive_int(row: dict[str, Any], field_name: str) -> int:
+    value = row.get(field_name)
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise ValueError(f"news_high_signal_{field_name}_required")
+    return value
+
+
+def _required_news_nonnegative_int(row: dict[str, Any], field_name: str) -> int:
+    value = row.get(field_name)
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError(f"news_high_signal_{field_name}_required")
+    return value
+
+
+def _required_news_text(row: dict[str, Any], field_name: str) -> str:
+    value = row.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"news_high_signal_{field_name}_required")
+    return value.strip()
+
+
+def _optional_news_text(row: dict[str, Any], field_name: str) -> str | None:
+    if field_name not in row or row.get(field_name) is None:
+        return None
+    return _required_news_text(row, field_name)
+
+
+def _news_story_payload(value: Any) -> dict[str, Any]:
+    payload = _required_news_mapping(value, "story")
+    public = {
+        "story_key": _required_news_nested_text(payload, "story", "story_key"),
+        "member_count": _required_news_nested_positive_int(payload, "story", "member_count"),
+    }
+    representative_news_item_id = _optional_news_nested_text(payload, "story", "representative_news_item_id")
+    if representative_news_item_id is not None:
+        public["representative_news_item_id"] = representative_news_item_id
+    for field_name in ("member_news_item_ids", "source_domains", "source_ids", "provider_article_keys"):
+        values = _optional_news_nested_string_list(payload, "story", field_name)
+        if values is not None:
+            public[field_name] = values
+    return public
+
+
+def _news_market_scope_payload(value: Any) -> dict[str, Any]:
+    payload = _required_news_mapping(value, "market_scope")
+    return {
+        "scope": _required_news_nested_string_list(payload, "market_scope", "scope"),
+        "primary": _required_news_nested_text(payload, "market_scope", "primary"),
+        "status": _required_news_nested_text(payload, "market_scope", "status"),
+        "reason": _required_news_nested_text(payload, "market_scope", "reason"),
+        "basis": _required_news_nested_mapping(payload, "market_scope", "basis"),
+        "version": _required_news_nested_text(payload, "market_scope", "version"),
+    }
+
+
+def _news_agent_admission_payload(value: Any) -> dict[str, Any]:
+    payload = _required_news_mapping(value, "agent_admission")
+    public: dict[str, Any] = {
+        "status": _required_news_nested_text(payload, "agent_admission", "status"),
+        "reason": _required_news_nested_text(payload, "agent_admission", "reason"),
+        "representative_news_item_id": _required_news_nested_text(
+            payload,
+            "agent_admission",
+            "representative_news_item_id",
+        ),
+    }
+    basis = _optional_news_nested_mapping(payload, "agent_admission", "basis")
+    if basis is not None:
+        public["basis"] = basis
+    version = _optional_news_nested_text(payload, "agent_admission", "version")
+    if version is not None:
+        public["version"] = version
+    eligible = _optional_news_nested_bool(payload, "agent_admission", "eligible")
+    if eligible is not None:
+        public["eligible"] = eligible
+    return public
+
+
+def _required_news_nested_text(payload: dict[str, Any], section: str, field_name: str) -> str:
+    value = payload.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"news_high_signal_{section}_{field_name}_required")
+    return value.strip()
+
+
+def _optional_news_nested_text(payload: dict[str, Any], section: str, field_name: str) -> str | None:
+    if field_name not in payload or payload.get(field_name) is None:
+        return None
+    return _required_news_nested_text(payload, section, field_name)
+
+
+def _required_news_nested_string_list(payload: dict[str, Any], section: str, field_name: str) -> list[str]:
+    values = payload.get(field_name)
+    if not isinstance(values, list):
+        raise ValueError(f"news_high_signal_{section}_{field_name}_required")
+    strings: list[str] = []
+    for value in values:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"news_high_signal_{section}_{field_name}_required")
+        strings.append(value.strip())
+    if not strings:
+        raise ValueError(f"news_high_signal_{section}_{field_name}_required")
+    return strings
+
+
+def _optional_news_nested_string_list(payload: dict[str, Any], section: str, field_name: str) -> list[str] | None:
+    if field_name not in payload or payload.get(field_name) is None:
+        return None
+    return _required_news_nested_string_list(payload, section, field_name)
+
+
+def _required_news_nested_mapping(payload: dict[str, Any], section: str, field_name: str) -> dict[str, Any]:
+    value = payload.get(field_name)
+    if not isinstance(value, dict):
+        raise ValueError(f"news_high_signal_{section}_{field_name}_required")
+    return value
+
+
+def _optional_news_nested_mapping(payload: dict[str, Any], section: str, field_name: str) -> dict[str, Any] | None:
+    if field_name not in payload or payload.get(field_name) is None:
+        return None
+    return _required_news_nested_mapping(payload, section, field_name)
+
+
+def _required_news_nested_positive_int(payload: dict[str, Any], section: str, field_name: str) -> int:
+    value = payload.get(field_name)
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise ValueError(f"news_high_signal_{section}_{field_name}_required")
+    return value
+
+
+def _optional_news_nested_bool(payload: dict[str, Any], section: str, field_name: str) -> bool | None:
+    if field_name not in payload or payload.get(field_name) is None:
+        return None
+    value = payload.get(field_name)
+    if not isinstance(value, bool):
+        raise ValueError(f"news_high_signal_{section}_{field_name}_required")
+    return value
 
 
 def _news_display_title(row: dict[str, Any], *, agent_brief: dict[str, Any]) -> str:
     display_signal = _news_display_signal(row)
-    return _compact_text(
-        agent_brief.get("title_zh") or display_signal.get("title_zh") or row.get("headline") or "News high signal",
-        limit=96,
-    )
+    title = _news_agent_optional_text(agent_brief, "title_zh")
+    if title is None:
+        title = _optional_news_signal_text(display_signal, "title_zh", section="display_signal")
+    if title is None:
+        title = _optional_news_text(row, "headline")
+    if title is None:
+        title = "News high signal"
+    return _compact_text(title, limit=96)
 
 
 def _news_display_signal(row: dict[str, Any]) -> dict[str, Any]:
-    return _dict(_dict(row.get("signal")).get("display_signal"))
+    signal = _required_news_mapping(row.get("signal"), "signal")
+    return _optional_news_mapping(signal, "display_signal")
+
+
+def _news_notification_signal_fields(
+    row: dict[str, Any],
+    *,
+    ready_agent_brief: dict[str, Any],
+) -> tuple[str, str]:
+    if ready_agent_brief:
+        return (
+            _news_agent_required_text(ready_agent_brief, "decision_class"),
+            _news_agent_required_text(ready_agent_brief, "direction"),
+        )
+
+    signal = _required_news_mapping(row.get("signal"), "signal")
+    display_signal = _news_display_signal(row)
+    eligibility = _required_news_mapping(signal.get("alert_eligibility"), "alert_eligibility")
+    return (
+        _required_news_signal_text(eligibility, "decision_class", section="alert_eligibility"),
+        _required_news_signal_direction(signal=signal, display_signal=display_signal),
+    )
+
+
+def _required_news_signal_direction(*, signal: dict[str, Any], display_signal: dict[str, Any]) -> str:
+    if "direction" in display_signal:
+        return _required_news_signal_text(display_signal, "direction", section="display_signal")
+    return _required_news_signal_text(signal, "direction", section="signal")
+
+
+def _required_news_signal_text(section_payload: dict[str, Any], field_name: str, *, section: str) -> str:
+    value = section_payload.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"news_high_signal_{section}_{field_name}_required")
+    return value.strip()
+
+
+def _required_news_external_push_basis(eligibility: dict[str, Any]) -> None:
+    basis = _required_news_signal_text(
+        eligibility,
+        "external_push_basis",
+        section="alert_eligibility",
+    )
+    if basis != "agent_brief":
+        raise ValueError("news_high_signal_alert_eligibility_external_push_basis_required")
+
+
+def _optional_news_signal_text(section_payload: dict[str, Any], field_name: str, *, section: str) -> str | None:
+    if field_name not in section_payload or section_payload.get(field_name) is None:
+        return None
+    return _required_news_signal_text(section_payload, field_name, section=section)
+
+
+def _required_news_signal_true(section_payload: dict[str, Any], field_name: str, *, section: str) -> None:
+    value = _required_news_signal_bool(section_payload, field_name, section=section)
+    if value is not True:
+        raise ValueError(f"news_high_signal_{section}_{field_name}_required")
+
+
+def _required_news_signal_bool(section_payload: dict[str, Any], field_name: str, *, section: str) -> bool:
+    value = section_payload.get(field_name)
+    if not isinstance(value, bool):
+        raise ValueError(f"news_high_signal_{section}_{field_name}_required")
+    return value
+
+
+def _optional_news_signal_bool(section_payload: dict[str, Any], field_name: str, *, section: str) -> bool | None:
+    if field_name not in section_payload or section_payload.get(field_name) is None:
+        return None
+    return _required_news_signal_bool(section_payload, field_name, section=section)
 
 
 def _news_semantic_signature(row: dict[str, Any], *, agent_brief: dict[str, Any]) -> str:
-    signal = _dict(row.get("signal"))
-    display_signal = _news_display_signal(row)
-    eligibility = _dict(signal.get("alert_eligibility"))
-    story_key = str(row.get("story_key") or "")
+    decision_class, direction = _news_notification_signal_fields(row, ready_agent_brief=agent_brief)
+    story_key = _required_news_text(row, "story_key")
     signature: dict[str, Any] = {
-        "story_key": story_key or None,
-        "decision_class": agent_brief.get("decision_class") or eligibility.get("decision_class"),
-        "direction": agent_brief.get("direction") or display_signal.get("direction") or signal.get("direction"),
+        "story_key": story_key,
+        "decision_class": decision_class,
+        "direction": direction,
         "affected_entities": _news_affected_entity_symbols(_news_agent_affected_entities(agent_brief)),
     }
-    if not story_key:
-        signature.update(
-            {
-                "asset_bucket": _news_external_asset_bucket(row),
-                "content_class": row.get("content_class"),
-                "content_tags": _safe_signature_list(row.get("content_tags")),
-            }
-        )
     return _stable_hash(signature)
 
 
@@ -822,29 +1099,30 @@ def _news_external_push_signature(
     occurrence_at_ms: int,
     cooldown_seconds: int,
 ) -> str:
-    display_signal = _news_display_signal(row)
-    agent_brief = _ready_news_agent_brief(_dict(row.get("agent_brief")))
+    agent_brief = _ready_news_agent_brief(_required_news_mapping(row.get("agent_brief"), "agent_brief"))
+    direction = _required_news_agent_text(agent_brief, "direction")
     signature = {
         "asset_bucket": _news_external_asset_bucket(row),
-        "direction": agent_brief.get("direction") or display_signal.get("direction"),
+        "direction": direction,
         "cooldown_bucket": _cooldown_bucket(occurrence_at_ms, cooldown_seconds),
+        "story_key": _required_news_text(row, "story_key"),
     }
-    story_key = str(row.get("story_key") or "")
-    if story_key:
-        signature["story_key"] = story_key
     return _stable_hash(signature)
 
 
 def _news_external_asset_bucket(row: dict[str, Any]) -> str:
     symbols: list[str] = []
-    for symbol in _news_affected_entity_symbols(_news_agent_affected_entities(_dict(row.get("agent_brief")))):
+    agent_brief = _required_news_mapping(row.get("agent_brief"), "agent_brief")
+    for symbol in _news_affected_entity_symbols(_news_agent_affected_entities(agent_brief)):
         normalized = _news_external_asset_symbol(symbol)
         if normalized and normalized not in symbols:
             symbols.append(normalized)
-    for impact in _list(row.get("token_impacts")):
-        if not isinstance(impact, dict):
-            continue
-        normalized = _news_external_asset_symbol(impact.get("symbol") or impact.get("target_symbol"))
+    for impact_value in _required_news_list(row.get("token_impacts"), "token_impacts"):
+        impact = _required_news_list_mapping(impact_value, "token_impacts")
+        symbol_text = _news_token_impact_optional_text(impact, "symbol")
+        if symbol_text is None:
+            symbol_text = _news_token_impact_optional_text(impact, "target_symbol")
+        normalized = _news_external_asset_symbol(symbol_text)
         if normalized and normalized not in symbols:
             symbols.append(normalized)
     if not symbols:
@@ -855,7 +1133,7 @@ def _news_external_asset_bucket(row: dict[str, Any]) -> str:
         return "CL"
     if symbols:
         return "|".join(symbols[:3])
-    return str(row.get("news_item_id") or "unknown")
+    return _required_news_text(row, "news_item_id")
 
 
 def _news_external_asset_symbol(value: Any) -> str | None:
@@ -868,78 +1146,122 @@ def _news_external_asset_symbol(value: Any) -> str | None:
 
 
 def _news_primary_symbol(row: dict[str, Any]) -> str | None:
-    for impact in _list(row.get("token_impacts")):
-        if isinstance(impact, dict):
-            symbol = _symbol(impact.get("symbol") or impact.get("target_symbol"))
-            if symbol:
-                return symbol
-    symbols = _news_affected_entity_symbols(_news_agent_affected_entities(_dict(row.get("agent_brief"))))
+    for impact_value in _required_news_list(row.get("token_impacts"), "token_impacts"):
+        impact = _required_news_list_mapping(impact_value, "token_impacts")
+        symbol_text = _news_token_impact_optional_text(impact, "symbol")
+        if symbol_text is None:
+            symbol_text = _news_token_impact_optional_text(impact, "target_symbol")
+        symbol = _symbol(symbol_text)
+        if symbol:
+            return symbol
+    agent_brief = _required_news_mapping(row.get("agent_brief"), "agent_brief")
+    symbols = _news_affected_entity_symbols(_news_agent_affected_entities(agent_brief))
     return symbols[0] if symbols else None
 
 
-def _news_agent_affected_entities(agent_brief: dict[str, Any]) -> list[Any]:
-    return _list(agent_brief.get("affected_entities"))
+def _news_agent_affected_entities(agent_brief: dict[str, Any]) -> list[dict[str, Any]]:
+    if "affected_entities" not in agent_brief:
+        return []
+    return [
+        _required_news_list_mapping(entity, "agent_brief_affected_entities")
+        for entity in _required_news_list(agent_brief.get("affected_entities"), "agent_brief_affected_entities")
+    ]
 
 
 def _public_news_agent_brief(agent_brief: dict[str, Any]) -> dict[str, Any]:
-    payload = {
-        key: agent_brief[key]
-        for key in (
-            "status",
-            "direction",
-            "decision_class",
-            "title_zh",
-            "summary_zh",
-            "market_read_zh",
-        )
-        if key in agent_brief and agent_brief.get(key) is not None
-    }
-    affected_entities = [_public_news_affected_entity(entity) for entity in _news_agent_affected_entities(agent_brief)]
-    affected_entities = [entity for entity in affected_entities if entity]
+    payload: dict[str, Any] = {"status": _required_news_agent_status(agent_brief)}
+    for key in (
+        "direction",
+        "decision_class",
+        "title_zh",
+        "summary_zh",
+        "market_read_zh",
+    ):
+        value = _news_agent_optional_text(agent_brief, key)
+        if value is not None:
+            payload[key] = value
+    affected_entities = _news_public_affected_entities(agent_brief)
     if affected_entities:
         payload["affected_entities"] = affected_entities
     return payload
 
 
+def _news_public_affected_entities(agent_brief: dict[str, Any]) -> list[dict[str, Any]]:
+    affected_entities = [_public_news_affected_entity(entity) for entity in _news_agent_affected_entities(agent_brief)]
+    return [entity for entity in affected_entities if entity]
+
+
+def _news_agent_optional_text(agent_brief: dict[str, Any], field_name: str) -> str | None:
+    if field_name not in agent_brief or agent_brief.get(field_name) is None:
+        return None
+    value = agent_brief.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"news_high_signal_agent_brief_{field_name}_required")
+    return value.strip()
+
+
 def _public_news_affected_entity(entity: Any) -> dict[str, Any]:
-    if not isinstance(entity, dict):
-        return {}
-    return {
-        key: entity[key]
-        for key in (
-            "label",
-            "symbol",
-            "name",
-            "entity_type",
-            "market_domain",
-            "resolution_status",
-            "target_type",
-            "target_id",
-            "impact_direction",
-            "reason_zh",
-            "evidence_refs",
-        )
-        if key in entity and entity.get(key) is not None
-    }
+    entity = _required_news_list_mapping(entity, "agent_brief_affected_entities")
+    payload: dict[str, Any] = {}
+    for key in (
+        "label",
+        "symbol",
+        "name",
+        "entity_type",
+        "market_domain",
+        "resolution_status",
+        "target_type",
+        "target_id",
+        "impact_direction",
+        "reason_zh",
+    ):
+        value = _news_affected_entity_optional_text(entity, key)
+        if value is not None:
+            payload[key] = value
+    evidence_refs = _news_affected_entity_optional_string_list(entity, "evidence_refs")
+    if evidence_refs is not None:
+        payload["evidence_refs"] = evidence_refs
+    return payload
+
+
+def _news_affected_entity_optional_text(entity: dict[str, Any], field_name: str) -> str | None:
+    if field_name not in entity or entity.get(field_name) is None:
+        return None
+    value = entity.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"news_high_signal_agent_brief_affected_entities_{field_name}_required")
+    return value.strip()
+
+
+def _news_affected_entity_optional_string_list(entity: dict[str, Any], field_name: str) -> list[str] | None:
+    if field_name not in entity or entity.get(field_name) is None:
+        return None
+    values = _required_news_list(entity.get(field_name), f"agent_brief_affected_entities_{field_name}")
+    refs: list[str] = []
+    for value in values:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"news_high_signal_agent_brief_affected_entities_{field_name}_required")
+        refs.append(value.strip())
+    return refs
 
 
 def _news_affected_entity_symbols(value: Any) -> list[str]:
     symbols: list[str] = []
-    for item in _list(value):
-        if isinstance(item, dict):
-            symbol = _symbol(item.get("symbol") or item.get("ticker") or item.get("asset"))
-            if symbol and symbol not in symbols:
-                symbols.append(symbol)
+    for item in _required_news_list(value, "agent_brief_affected_entities"):
+        entity = _required_news_list_mapping(item, "agent_brief_affected_entities")
+        symbol = _symbol(_news_affected_entity_optional_text(entity, "symbol"))
+        if symbol and symbol not in symbols:
+            symbols.append(symbol)
     return symbols[:12]
 
 
-def _news_body(row: dict[str, Any], *, summary: str) -> str:
+def _news_body(row: dict[str, Any], *, summary: str, source_domain: str) -> str:
     lines = [
-        f"Source: {_compact_text(row.get('source_domain') or 'unknown', limit=80)}",
+        f"Source: {_compact_text(source_domain, limit=80)}",
     ]
     if summary:
         lines.append(summary)
-    url = str(row.get("canonical_url") or "").strip()
+    url = _optional_news_text(row, "canonical_url")
     if url:
         lines.append(url)
     return "\n".join(lines)

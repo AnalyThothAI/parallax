@@ -840,6 +840,12 @@ def _default_agent_lanes() -> dict[str, AgentLaneSettings]:
             timeout_seconds=180.0,
             max_tokens=2200,
         ),
+        "news.story_brief": AgentLaneSettings(
+            priority="low",
+            max_concurrency=1,
+            timeout_seconds=180.0,
+            max_tokens=2200,
+        ),
     }
 
 
@@ -1280,6 +1286,7 @@ class NewsItemProcessWorkerSettings(PerWorkerSettings):
 
 
 class NewsItemBriefWorkerSettings(PerWorkerSettings):
+    enabled: bool = False
     interval_seconds: float = Field(default=10.0, ge=0)
     soft_timeout_seconds: float = Field(default=180.0, ge=0)
     hard_timeout_seconds: float = Field(default=240.0, ge=0)
@@ -1288,6 +1295,24 @@ class NewsItemBriefWorkerSettings(PerWorkerSettings):
     retry_ms: int = Field(default=60_000, ge=1)
     statement_timeout_seconds: float = Field(default=30.0, ge=0)
     advisory_lock_key: int = 2026052001
+    backpressure_cooldown_ms: int = Field(default=60_000, ge=1)
+    wakes_on: tuple[str, ...] = ()
+
+    @field_validator("wakes_on", mode="before")
+    @classmethod
+    def parse_tuple(cls, value: Any) -> tuple[str, ...]:
+        return tuple(_split_values(value))
+
+
+class NewsStoryBriefWorkerSettings(PerWorkerSettings):
+    interval_seconds: float = Field(default=10.0, ge=0)
+    soft_timeout_seconds: float = Field(default=180.0, ge=0)
+    hard_timeout_seconds: float = Field(default=240.0, ge=0)
+    batch_size: int = Field(default=5, ge=1)
+    lease_ms: int = Field(default=120_000, ge=1)
+    retry_ms: int = Field(default=60_000, ge=1)
+    statement_timeout_seconds: float = Field(default=30.0, ge=0)
+    advisory_lock_key: int = 2026061801
     backpressure_cooldown_ms: int = Field(default=60_000, ge=1)
     wakes_on: tuple[str, ...] = ("news_item_processed",)
 
@@ -1306,7 +1331,7 @@ class NewsPageProjectionWorkerSettings(PerWorkerSettings):
     wakes_on: tuple[str, ...] = (
         "news_item_written",
         "news_item_processed",
-        "news_item_brief_updated",
+        "news_story_brief_updated",
         "news_page_dirty",
     )
 
@@ -1380,6 +1405,7 @@ class WorkersSettings(BaseModel):
     news_fetch: NewsFetchWorkerSettings = Field(default_factory=NewsFetchWorkerSettings)
     news_item_process: NewsItemProcessWorkerSettings = Field(default_factory=NewsItemProcessWorkerSettings)
     news_item_brief: NewsItemBriefWorkerSettings = Field(default_factory=NewsItemBriefWorkerSettings)
+    news_story_brief: NewsStoryBriefWorkerSettings = Field(default_factory=NewsStoryBriefWorkerSettings)
     news_page_projection: NewsPageProjectionWorkerSettings = Field(default_factory=NewsPageProjectionWorkerSettings)
     news_source_quality_projection: NewsSourceQualityProjectionWorkerSettings = Field(
         default_factory=NewsSourceQualityProjectionWorkerSettings
@@ -1503,6 +1529,10 @@ class Settings(BaseModel):
 
     @property
     def news_item_brief_configured(self) -> bool:
+        return bool(self.llm_api_key and self.agent_runtime_default_model)
+
+    @property
+    def news_story_brief_configured(self) -> bool:
         return bool(self.llm_api_key and self.agent_runtime_default_model)
 
     @property
@@ -1876,6 +1906,11 @@ agent_runtime:
       max_concurrency: 1
       timeout_seconds: 180.0
       max_tokens: 2200
+    news.story_brief:
+      priority: "low"
+      max_concurrency: 1
+      timeout_seconds: 180.0
+      max_tokens: 2200
 collector:
   enabled: true
   mode: "continuous"
@@ -2053,7 +2088,7 @@ news_item_process:
   retry_delay_ms: 60000
   wakes_on: ["news_item_written"]
 news_item_brief:
-  enabled: true
+  enabled: false
   interval_seconds: 10.0
   soft_timeout_seconds: 180.0
   hard_timeout_seconds: 240.0
@@ -2062,6 +2097,18 @@ news_item_brief:
   retry_ms: 60000
   statement_timeout_seconds: 30.0
   advisory_lock_key: 2026052001
+  backpressure_cooldown_ms: 60000
+  wakes_on: []
+news_story_brief:
+  enabled: true
+  interval_seconds: 10.0
+  soft_timeout_seconds: 180.0
+  hard_timeout_seconds: 240.0
+  batch_size: 5
+  lease_ms: 120000
+  retry_ms: 60000
+  statement_timeout_seconds: 30.0
+  advisory_lock_key: 2026061801
   backpressure_cooldown_ms: 60000
   wakes_on: ["news_item_processed"]
 news_page_projection:
@@ -2072,7 +2119,12 @@ news_page_projection:
   statement_timeout_seconds: 30.0
   advisory_lock_key: 2026051904
   wakes_on:
-    ["news_item_written", "news_item_processed", "news_item_brief_updated", "news_page_dirty"]
+    [
+      "news_item_written",
+      "news_item_processed",
+      "news_story_brief_updated",
+      "news_page_dirty",
+    ]
 news_source_quality_projection:
   enabled: true
   interval_seconds: 60.0

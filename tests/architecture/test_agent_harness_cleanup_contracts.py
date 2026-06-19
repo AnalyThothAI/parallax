@@ -21,7 +21,7 @@ def test_narrative_llm_workers_are_hard_removed_from_runtime_contract() -> None:
     assert "token_discussion_digest" not in settings_fields
     assert "narrative.mention_semantics" not in lanes
     assert "narrative.discussion_digest" not in lanes
-    assert {"pulse.decision", "news.item_brief"}.issubset(lanes)
+    assert {"pulse.decision", "news.item_brief", "news.story_brief"}.issubset(lanes)
 
 
 def test_narrative_llm_provider_client_and_prompts_are_removed() -> None:
@@ -58,8 +58,8 @@ def test_agent_stage_spec_has_explicit_read_only_harness_context() -> None:
         workflow_name="news_item_brief",
         agent_name="NewsItemBriefAgent",
         knowledge_refs=("market_research_harness",),
-        read_only_tool_refs=("news.current_briefs",),
+        read_only_tool_refs=("news.story_current_briefs",),
     )
 
     assert stage.knowledge_refs == ("market_research_harness",)
-    assert stage.read_only_tool_refs == ("news.current_briefs",)
+    assert stage.read_only_tool_refs == ("news.story_current_briefs",)

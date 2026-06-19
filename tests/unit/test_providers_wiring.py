@@ -862,6 +862,7 @@ def _settings_with_all_llm_models() -> Settings:
                 "lanes": {
                     "pulse.decision": {"model": "gpt-pulse"},
                     "news.item_brief": {"model": "gpt-news"},
+                    "news.story_brief": {"model": "gpt-story"},
                 },
             },
         },

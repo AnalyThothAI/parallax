@@ -5,7 +5,7 @@
 Parallax uses the word "agent" in two different ways:
 
 - **development agents**: coding tools that read this repository, write specs/plans/code, run tests, and hand work to subagents.
-- **product LLM agents**: runtime workers that call models to produce bounded semantic outputs for product workflows such as Pulse, News item briefs, and Narrative Intelligence.
+- **product LLM agents**: runtime workers that call models to produce bounded semantic outputs for product workflows such as Pulse, News item/story briefs, and Narrative Intelligence.
 
 Do not mix these planes. Development agent traces, chat history, branch summaries, and subagent findings are engineering workflow evidence. They are not Parallax product truth.
 
@@ -50,8 +50,10 @@ Some product agents may prepare bounded input evidence before submitting an
 `AgentStageSpec`. The News item brief lane builds one deterministic packet from
 the current news item, token/entity evidence, fact lanes, provider signal
 evidence, market-scope metadata, and host-computed agent admission/similarity
-context. It does not run a News-local research tool loop or database retrieval
-tools at agent time.
+context. The News story brief lane builds one deterministic story packet from
+the representative item, bounded member evidence, and the same News-owned
+entity/fact context. Neither path runs a News-local research tool loop or
+database retrieval tools at agent time.
 
 Prompt text is part of the execution artefact. The shared gateway hashes
 `AgentStageSpec.instructions`, and the News item brief client includes the
@@ -70,24 +72,27 @@ only if the owning domain validation and writer path publishes a derived read
 model.
 
 `NewsItemBriefWorker` remains the only runtime writer for
-`news_item_agent_runs` and `news_item_agent_briefs`. It rechecks deterministic
-market-wide `agent_admission` state and `market_scope_json` after claiming work.
-Admission decides whether a brief may execute; item-brief dirty-target priority
-is only a deterministic scheduling hint from admission status, material delta,
-market scope, source role, trust tier, and content class. The bounded packet
-builder keeps item context intentionally narrow (source item excerpt, capped
-entity lanes, capped fact lanes) so repeated or low-value news does not consume
-the same model budget as fresh material changes.
+`news_item_agent_runs` and `news_item_agent_briefs`. `NewsStoryBriefWorker`
+remains the only runtime writer for `news_story_agent_runs` and
+`news_story_agent_briefs`. Item brief rows are audit/supporting state after the
+story-agent hard cut; public News rows and item detail consume projected
+story-current state. Both workers recheck deterministic market-wide
+`agent_admission` state and `market_scope_json` after claiming work. Admission
+decides whether a brief may execute; dirty-target priority is only a
+deterministic scheduling hint from admission status, material delta, market
+scope, source role, trust tier, and content class. Bounded packet builders keep
+context intentionally narrow so repeated or low-value news does not consume the
+same model budget as fresh material changes.
 Model output budgets live in `workers.agent_runtime` lane policy; the default
-`news.item_brief` lane caps generated tokens while still using the shared
-gateway audit hash for all request options.
+`news.item_brief` and `news.story_brief` lanes cap generated tokens while still
+using the shared gateway audit hash for all request options.
 
 ## Read-Only Context Registry
 
 Parallax borrows the useful part of agent harness tool catalogs without adding
 a model-driven tool loop. `src/parallax/platform/agent_read_tools.py` declares
 read-only `ReadOnlySqlAgentTool` metadata over current read models such as
-`news_item_agent_briefs`, `pulse_candidates`, and `token_radar_current_rows`.
+`news_story_agent_briefs`, `pulse_candidates`, and `token_radar_current_rows`.
 These tools are not passed to models as callable tools. They are a typed
 catalog for deterministic host-side context assembly, operator inspection, and
 future reviewed retrieval code.

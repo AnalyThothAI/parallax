@@ -96,7 +96,7 @@ def _signal(value: str) -> str | None:
 
 def _provider_capabilities(sources: list[dict[str, Any]], *, supported_types: tuple[str, ...]) -> dict[str, Any]:
     supported = set(supported_types)
-    configured = sorted({str(source.get("provider_type") or "") for source in sources if source.get("provider_type")})
+    configured = sorted({_required_source_text(source, "provider_type") for source in sources})
     unsupported = [provider_type for provider_type in configured if provider_type not in supported]
     return {
         "supported_provider_types": list(supported_types),
@@ -112,18 +112,17 @@ def _source_hygiene(sources: list[dict[str, Any]], *, supported_types: tuple[str
     degraded_sources: list[dict[str, str]] = []
     warnings: list[dict[str, str]] = []
     for source in sources:
-        source_id = str(source.get("source_id") or "")
-        if not source_id:
-            continue
-        provider_type = str(source.get("provider_type") or "")
-        if provider_type and provider_type not in supported:
+        source_id = _required_source_text(source, "source_id")
+        provider_type = _required_source_text(source, "provider_type")
+        if provider_type not in supported:
             unsupported_sources.append({"source_id": source_id, "provider_type": provider_type})
             warnings.append({"source_id": source_id, "reason": "unsupported_provider_type"})
-        if bool(source.get("enabled")) and not source.get("coverage_tags"):
+        coverage_tags = _required_source_text_list(source, "coverage_tags")
+        if bool(source.get("enabled")) and not coverage_tags:
             sources_missing_coverage_tags.append(source_id)
             warnings.append({"source_id": source_id, "reason": "missing_coverage_tags"})
-        health = source.get("provider_health") if isinstance(source.get("provider_health"), dict) else {}
-        health_status = str(health.get("status") or source.get("source_quality_status") or "")
+        health = _required_source_mapping(source, "provider_health")
+        health_status = _required_source_text(health, "status", label="provider_health_status")
         if health_status in {"degraded", "poor", "failing"}:
             degraded_sources.append({"source_id": source_id, "status": health_status})
             warnings.append({"source_id": source_id, "reason": f"provider_health_{health_status}"})
@@ -133,3 +132,32 @@ def _source_hygiene(sources: list[dict[str, Any]], *, supported_types: tuple[str
         "degraded_sources": degraded_sources,
         "warnings": warnings,
     }
+
+
+def _required_source_mapping(source: dict[str, Any], field_name: str) -> dict[str, Any]:
+    value = source.get(field_name)
+    if not isinstance(value, dict):
+        raise ValueError(f"news_source_status_{field_name}_required")
+    return value
+
+
+def _required_source_text(source: dict[str, Any], field_name: str, *, label: str | None = None) -> str:
+    value = source.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        error_label = label or field_name
+        raise ValueError(f"news_source_status_{error_label}_required")
+    return value.strip()
+
+
+def _required_source_text_list(source: dict[str, Any], field_name: str) -> list[str]:
+    value = source.get(field_name)
+    if not isinstance(value, list):
+        raise ValueError(f"news_source_status_{field_name}_required")
+    result: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            raise ValueError(f"news_source_status_{field_name}_required")
+        text = item.strip()
+        if text:
+            result.append(text)
+    return result

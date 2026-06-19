@@ -10,6 +10,7 @@ from typing import Any, cast
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.news_intel.runtime.news_projection_work import (
+    ITEM_BRIEF_INPUT,
     claim_item_brief_work,
     enqueue_page_reprojection,
     item_brief_news_item_ids,
@@ -121,6 +122,7 @@ class NewsItemBriefWorker(WorkerBase):
                 return WorkerResult(skipped=1, notes={"reason": "no_due_brief_targets", "claimed": 0})
             try:
                 candidates = await asyncio.to_thread(self._load_candidates, claimed=claimed, now_ms=now)
+                candidates_by_id = _candidates_by_news_item_id(candidates, reason="load_candidate")
             except Exception as exc:
                 await asyncio.to_thread(
                     self._mark_targets_error,
@@ -130,12 +132,6 @@ class NewsItemBriefWorker(WorkerBase):
                     now_ms=now,
                 )
                 return WorkerResult(failed=len(claimed), notes={"claimed": len(claimed), "load_failed": 1})
-
-            candidates_by_id = {
-                str(candidate.get("item", {}).get("news_item_id") or ""): candidate
-                for candidate in candidates
-                if isinstance(candidate.get("item"), Mapping)
-            }
 
             notes = {
                 "claimed": len(claimed),
@@ -151,7 +147,18 @@ class NewsItemBriefWorker(WorkerBase):
             current_updates = 0
 
             for target in claimed:
-                target_id = str(target.get("target_id") or "")
+                try:
+                    target_id = _required_item_brief_target_news_item_id(target)
+                except Exception as exc:
+                    notes["failed"] += 1
+                    await asyncio.to_thread(
+                        self._mark_targets_error,
+                        [target],
+                        error=exc,
+                        retry_ms=self._retry_ms(),
+                        now_ms=now,
+                    )
+                    continue
                 candidate = candidates_by_id.get(target_id)
                 if candidate is None:
                     notes["missing_target"] += 1
@@ -190,7 +197,7 @@ class NewsItemBriefWorker(WorkerBase):
                             agent_config=agent_config,
                             now_ms=now,
                         )
-                        status = str(completed_run.get("outcome") or "ready")
+                        status = str(completed_run["outcome"])
                         outcome = _CandidateOutcome(
                             notes={status: 1, "restored_from_completed_run": 1},
                             current_updates=1,
@@ -294,7 +301,7 @@ class NewsItemBriefWorker(WorkerBase):
             )
 
         payload = result.get("payload") if isinstance(result, Mapping) else None
-        audit = _audit_dict(result.get("agent_run_audit") if isinstance(result, Mapping) else None) or request_audit
+        audit = _audit_dict(result.get("agent_run_audit") if isinstance(result, Mapping) else None)
         validation = validate_news_item_brief_output(payload=payload, packet=packet, audit=audit)
         finished_at_ms = self.clock_ms()
         if not validation.publishable:
@@ -324,7 +331,7 @@ class NewsItemBriefWorker(WorkerBase):
                 failed_current_errors=validation.errors,
             )
 
-        payload_dict = validation.payload or {}
+        payload_dict = _required_validation_payload(validation)
         await asyncio.to_thread(
             self._insert_run,
             run_id=run_id,
@@ -418,11 +425,14 @@ class NewsItemBriefWorker(WorkerBase):
     ) -> _CandidateOutcome:
         if self.provider is None:
             raise RuntimeError("news item brief provider is not configured")
-        audit = _provider_error_audit(error) or dict(request_audit)
         resolved_execution_started = (
             bool(execution_started) if execution_started is not None else _provider_execution_started(error)
         )
         finished_at_ms = self.clock_ms()
+        audit = _provider_error_audit(error)
+        if audit is None:
+            audit = dict(request_audit)
+            audit["latency_ms"] = max(0, int(finished_at_ms) - int(started_at_ms))
         await asyncio.to_thread(
             self._insert_run,
             run_id=run_id,
@@ -460,7 +470,7 @@ class NewsItemBriefWorker(WorkerBase):
         started_at_ms: int,
     ) -> _CandidateOutcome:
         del run_id, packet, agent_config, request_audit, started_at_ms
-        outcome = _backpressure_outcome_for_reason(getattr(error, "error_class", None))
+        outcome = _backpressure_outcome_for_error(error)
         return _CandidateOutcome(
             notes={"backpressure": 1, outcome: 1},
             current_updates=0,
@@ -507,28 +517,25 @@ class NewsItemBriefWorker(WorkerBase):
                 list[dict[str, Any]],
                 repos.news.load_agent_admission_contexts(news_item_ids=news_item_ids, now_ms=int(now_ms)),
             )
-        contexts_by_id = {
-            str(context.get("item", {}).get("news_item_id") or ""): context
-            for context in contexts
-            if isinstance(context.get("item"), Mapping)
-        }
+        contexts_by_id = _candidates_by_news_item_id(contexts, reason="admission_context")
         merged: list[dict[str, Any]] = []
         for candidate in candidates:
-            news_item_id = str(candidate.get("item", {}).get("news_item_id") or "")
-            context = contexts_by_id.get(news_item_id, {})
-            if context:
-                merged_candidate = {
-                    **candidate,
-                    "entities": _list_of_dicts(context.get("entities")) or _list_of_dicts(candidate.get("entities")),
-                    "token_mentions": _list_of_dicts(context.get("token_mentions"))
-                    or _list_of_dicts(candidate.get("token_mentions")),
-                    "fact_candidates": _list_of_dicts(context.get("fact_candidates"))
-                    or _list_of_dicts(candidate.get("fact_candidates")),
-                    "current_brief": context.get("current_brief") or candidate.get("current_brief"),
-                    "agent_admission_context": context,
-                }
-            else:
-                merged_candidate = dict(candidate)
+            item = _required_candidate_item(candidate, reason="load_candidate")
+            news_item_id = _required_candidate_news_item_id(item, reason="load_candidate")
+            context = contexts_by_id.get(news_item_id)
+            if context is None:
+                raise RuntimeError("news_item_brief_admission_context_required:load_candidate")
+            merged_candidate = {
+                **candidate,
+                "entities": _required_admission_context_list(context, "entities", reason="load_candidate"),
+                "token_mentions": _required_admission_context_list(context, "token_mentions", reason="load_candidate"),
+                "fact_candidates": _required_admission_context_list(
+                    context,
+                    "fact_candidates",
+                    reason="load_candidate",
+                ),
+                "agent_admission_context": context,
+            }
             merged.append(merged_candidate)
         return merged
 
@@ -540,10 +547,8 @@ class NewsItemBriefWorker(WorkerBase):
         admission: NewsItemAgentAdmission,
         now_ms: int,
     ) -> None:
-        item = _dict(candidate.get("item") or candidate)
-        news_item_id = str(item.get("news_item_id") or target.get("target_id") or "")
-        if not news_item_id:
-            return
+        item = _required_candidate_item(candidate, reason="policy_skip")
+        news_item_id = _required_candidate_news_item_id(item, reason="policy_skip")
         with self._repository_session() as repos, repos.transaction():
             repos.news.update_item_agent_admission(
                 news_item_id=news_item_id,
@@ -638,20 +643,20 @@ class NewsItemBriefWorker(WorkerBase):
             repos.news.insert_news_item_agent_run(
                 run_id=run_id,
                 news_item_id=packet.news_item.news_item_id,
-                provider=str(audit.get("provider") or self.provider.provider),
-                model=str(audit.get("model") or agent_config.model),
-                backend=str(audit.get("backend") or "litellm_sdk"),
+                provider=_required_audit_text(audit, "provider"),
+                model=_required_audit_text(audit, "model"),
+                backend=_required_audit_text(audit, "backend"),
                 execution_trace_id=audit.get("execution_trace_id"),
-                workflow_name=str(audit.get("workflow_name") or agent_config.workflow_name),
-                agent_name=str(audit.get("agent_name") or agent_config.agent_name),
-                lane=str(audit.get("lane") or agent_config.lane),
+                workflow_name=_required_audit_text(audit, "workflow_name"),
+                agent_name=_required_audit_text(audit, "agent_name"),
+                lane=_required_audit_text(audit, "lane"),
                 artifact_version_hash=agent_config.artifact_version_hash,
-                prompt_version=str(audit.get("prompt_version") or agent_config.prompt_version),
-                schema_version=str(audit.get("schema_version") or agent_config.schema_version),
+                prompt_version=_required_audit_text(audit, "prompt_version"),
+                schema_version=_required_audit_text(audit, "schema_version"),
                 validator_version=agent_config.validator_version,
                 guardrail_version=agent_config.guardrail_version,
-                input_hash=str(audit.get("input_hash") or packet.input_hash),
-                output_hash=output_hash or audit.get("output_hash"),
+                input_hash=_required_audit_text(audit, "input_hash"),
+                output_hash=output_hash,
                 execution_started=bool(execution_started),
                 status=status,
                 outcome=outcome,
@@ -660,9 +665,9 @@ class NewsItemBriefWorker(WorkerBase):
                 request_json=dict(request_json),
                 response_json=response_json,
                 validation_errors_json=validation_errors,
-                trace_metadata_json=_dict(audit.get("trace_metadata")),
-                usage_json=_dict(audit.get("usage")),
-                latency_ms=int(float(audit.get("latency_ms") or 0)),
+                trace_metadata_json=_required_audit_mapping(audit, "trace_metadata"),
+                usage_json=_required_audit_mapping(audit, "usage"),
+                latency_ms=_required_audit_latency_ms(audit),
                 started_at_ms=int(started_at_ms),
                 finished_at_ms=int(finished_at_ms),
                 created_at_ms=int(started_at_ms),
@@ -695,19 +700,6 @@ class NewsItemBriefWorker(WorkerBase):
                 updated_at_ms=int(computed_at_ms),
                 commit=False,
             )
-            enqueue_page_reprojection(
-                repos,
-                news_item_ids=[packet.news_item.news_item_id],
-                reason="news_item_brief_updated",
-                now_ms=int(computed_at_ms),
-                source_watermark_ms_by_news_item_id={
-                    packet.news_item.news_item_id: _page_dirty_source_watermark_ms(
-                        {},
-                        published_at_ms=getattr(packet.news_item, "published_at_ms", None),
-                    )
-                },
-                commit=False,
-            )
 
     def _restore_current_from_completed_run(
         self,
@@ -718,7 +710,8 @@ class NewsItemBriefWorker(WorkerBase):
         now_ms: int,
     ) -> None:
         payload = _dict(run.get("response_json"))
-        computed_at_ms = int(run.get("finished_at_ms") or now_ms)
+        del now_ms
+        computed_at_ms = _required_run_finished_at_ms(run, reason="completed_run")
         self._upsert_current(
             run_id=_required_run_id(run, reason="completed_run"),
             packet=packet,
@@ -791,10 +784,10 @@ def _packet_from_candidate(
     agent_config: NewsItemBriefAgentConfig,
 ) -> NewsItemBriefInputPacket:
     return build_news_item_brief_input_packet(
-        item=_dict(candidate.get("item") or candidate),
-        entities=_list_of_dicts(candidate.get("entities")),
-        token_mentions=_list_of_dicts(candidate.get("token_mentions")),
-        fact_candidates=_list_of_dicts(candidate.get("fact_candidates")),
+        item=_required_candidate_item(candidate, reason="packet"),
+        entities=_candidate_list_of_dicts(candidate.get("entities"), field="entities"),
+        token_mentions=_candidate_list_of_dicts(candidate.get("token_mentions"), field="token_mentions"),
+        fact_candidates=_candidate_list_of_dicts(candidate.get("fact_candidates"), field="fact_candidates"),
         agent_config=agent_config,
     )
 
@@ -808,18 +801,16 @@ def _current_brief_is_fresh(
     current = _optional_dict(candidate.get("current_brief"))
     if current is None:
         return False
-    status = str(current.get("status") or "")
-    if status not in {"ready", "insufficient", "failed"}:
+    _required_current_status(current)
+    if _required_current_text(current, "input_hash") != packet.input_hash:
         return False
-    if str(current.get("input_hash") or "") != packet.input_hash:
+    if _required_current_text(current, "artifact_version_hash") != agent_config.artifact_version_hash:
         return False
-    if str(current.get("artifact_version_hash") or "") != agent_config.artifact_version_hash:
+    if _required_current_text(current, "prompt_version") != agent_config.prompt_version:
         return False
-    if str(current.get("prompt_version") or "") != agent_config.prompt_version:
+    if _required_current_text(current, "schema_version") != agent_config.schema_version:
         return False
-    if str(current.get("schema_version") or "") != agent_config.schema_version:
-        return False
-    return str(current.get("validator_version") or "") == agent_config.validator_version
+    return _required_current_text(current, "validator_version") == agent_config.validator_version
 
 
 def _fresh_completed_run(
@@ -833,7 +824,7 @@ def _fresh_completed_run(
         return None
     run = completed.run
     validation = completed.validation
-    outcome = str(run.get("outcome") or "")
+    outcome = _required_run_outcome(run, reason="completed_run", allowed={"ready", "insufficient"})
     if validation.publishable and validation.status == outcome:
         return run
     return None
@@ -850,7 +841,7 @@ def _invalid_completed_run(
         return None
     run = completed.run
     validation = completed.validation
-    outcome = str(run.get("outcome") or "")
+    outcome = _required_run_outcome(run, reason="completed_run", allowed={"ready", "insufficient"})
     if validation.publishable and validation.status == outcome:
         return None
     errors = list(validation.errors)
@@ -873,27 +864,28 @@ def _fresh_failed_run(
     run = _optional_dict(candidate.get("latest_run"))
     if run is None:
         return None
-    if str(run.get("status") or "") != "failed" or str(run.get("outcome") or "") != "failed":
+    if _required_run_status(run) != "failed":
         return None
-    if not bool(run.get("execution_started")):
+    _required_run_outcome(run, reason="failed_run", allowed={"failed"})
+    if not _required_run_execution_started(run, reason="failed_run"):
         return None
-    if str(run.get("input_hash") or "") != packet.input_hash:
+    if _required_run_text(run, "input_hash", reason="failed_run") != packet.input_hash:
         return None
-    if str(run.get("artifact_version_hash") or "") != agent_config.artifact_version_hash:
+    if _required_run_text(run, "artifact_version_hash", reason="failed_run") != agent_config.artifact_version_hash:
         return None
-    if str(run.get("prompt_version") or "") != agent_config.prompt_version:
+    if _required_run_text(run, "prompt_version", reason="failed_run") != agent_config.prompt_version:
         return None
-    if str(run.get("schema_version") or "") != agent_config.schema_version:
+    if _required_run_text(run, "schema_version", reason="failed_run") != agent_config.schema_version:
         return None
-    if str(run.get("validator_version") or "") != agent_config.validator_version:
+    if _required_run_text(run, "validator_version", reason="failed_run") != agent_config.validator_version:
         return None
     _required_run_id(run, reason="failed_run")
     return run
 
 
 def _failed_run_outcome(run: Mapping[str, Any]) -> _CandidateOutcome:
-    error_class = str(run.get("error_class") or "agent_brief_failed")
-    error = str(run.get("error") or error_class)
+    error_class = _required_failed_run_error_class(run)
+    error = _required_failed_run_error(run)
     return _CandidateOutcome(
         notes={"restored_from_failed_run": 1},
         current_updates=0,
@@ -918,20 +910,18 @@ def _completed_run_validation(
     run = _optional_dict(candidate.get("latest_run"))
     if run is None:
         return None
-    if str(run.get("status") or "") != "completed":
+    if _required_run_status(run) != "completed":
         return None
-    outcome = str(run.get("outcome") or "")
-    if outcome not in {"ready", "insufficient"}:
+    _required_run_outcome(run, reason="completed_run", allowed={"ready", "insufficient"})
+    if _required_run_text(run, "input_hash", reason="completed_run") != packet.input_hash:
         return None
-    if str(run.get("input_hash") or "") != packet.input_hash:
+    if _required_run_text(run, "artifact_version_hash", reason="completed_run") != agent_config.artifact_version_hash:
         return None
-    if str(run.get("artifact_version_hash") or "") != agent_config.artifact_version_hash:
+    if _required_run_text(run, "prompt_version", reason="completed_run") != agent_config.prompt_version:
         return None
-    if str(run.get("prompt_version") or "") != agent_config.prompt_version:
+    if _required_run_text(run, "schema_version", reason="completed_run") != agent_config.schema_version:
         return None
-    if str(run.get("schema_version") or "") != agent_config.schema_version:
-        return None
-    if str(run.get("validator_version") or "") != agent_config.validator_version:
+    if _required_run_text(run, "validator_version", reason="completed_run") != agent_config.validator_version:
         return None
     payload = _optional_dict(run.get("response_json"))
     if payload is None:
@@ -952,15 +942,154 @@ def _required_run_id(run: Mapping[str, Any], *, reason: str) -> str:
     return run_id
 
 
+def _required_validation_payload(validation: NewsItemBriefValidationResult) -> dict[str, Any]:
+    payload = validation.payload
+    if not isinstance(payload, Mapping):
+        raise RuntimeError("news_item_brief_validation_payload_required")
+    return dict(payload)
+
+
+def _required_run_status(run: Mapping[str, Any]) -> str:
+    try:
+        value = run["status"]
+    except KeyError as exc:
+        raise RuntimeError("news_item_brief_run_status_required:latest_run") from exc
+    status = str(value).strip()
+    if status not in {"completed", "failed"}:
+        raise RuntimeError("news_item_brief_run_status_required:latest_run")
+    return status
+
+
+def _required_run_text(run: Mapping[str, Any], field: str, *, reason: str) -> str:
+    try:
+        value = run[field]
+    except KeyError as exc:
+        raise RuntimeError(f"news_item_brief_run_{field}_required:{reason}") from exc
+    text = str(value).strip()
+    if not text:
+        raise RuntimeError(f"news_item_brief_run_{field}_required:{reason}")
+    return text
+
+
+def _required_run_execution_started(run: Mapping[str, Any], *, reason: str) -> bool:
+    try:
+        value = run["execution_started"]
+    except KeyError as exc:
+        raise RuntimeError(f"news_item_brief_run_execution_started_required:{reason}") from exc
+    if not isinstance(value, bool):
+        raise RuntimeError(f"news_item_brief_run_execution_started_required:{reason}")
+    return value
+
+
+def _required_run_finished_at_ms(run: Mapping[str, Any], *, reason: str) -> int:
+    try:
+        value = run["finished_at_ms"]
+    except KeyError as exc:
+        raise RuntimeError(f"news_item_brief_run_finished_at_ms_required:{reason}") from exc
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise RuntimeError(f"news_item_brief_run_finished_at_ms_required:{reason}")
+    if value <= 0:
+        raise RuntimeError(f"news_item_brief_run_finished_at_ms_required:{reason}")
+    return value
+
+
+def _required_failed_run_error_class(run: Mapping[str, Any]) -> str:
+    try:
+        value = run["error_class"]
+    except KeyError as exc:
+        raise RuntimeError("news_item_brief_run_error_class_required:failed_run") from exc
+    error_class = str(value).strip()
+    if not error_class:
+        raise RuntimeError("news_item_brief_run_error_class_required:failed_run")
+    return error_class
+
+
+def _required_failed_run_error(run: Mapping[str, Any]) -> str:
+    try:
+        value = run["error"]
+    except KeyError as exc:
+        raise RuntimeError("news_item_brief_run_error_required:failed_run") from exc
+    error = str(value).strip()
+    if not error:
+        raise RuntimeError("news_item_brief_run_error_required:failed_run")
+    return error
+
+
+def _required_current_text(current: Mapping[str, Any], field: str) -> str:
+    try:
+        value = current[field]
+    except KeyError as exc:
+        raise RuntimeError(f"news_item_brief_current_{field}_required") from exc
+    text = str(value).strip()
+    if not text:
+        raise RuntimeError(f"news_item_brief_current_{field}_required")
+    return text
+
+
+def _required_current_status(current: Mapping[str, Any]) -> str:
+    status = _required_current_text(current, "status")
+    if status not in {"ready", "insufficient", "failed"}:
+        raise RuntimeError("news_item_brief_current_status_required")
+    return status
+
+
+def _required_run_outcome(run: Mapping[str, Any], *, reason: str, allowed: set[str]) -> str:
+    try:
+        value = run["outcome"]
+    except KeyError as exc:
+        raise RuntimeError(f"news_item_brief_run_outcome_required:{reason}") from exc
+    outcome = str(value).strip()
+    if outcome not in allowed:
+        raise RuntimeError(f"news_item_brief_run_outcome_required:{reason}")
+    return outcome
+
+
+def _required_audit_latency_ms(audit: Mapping[str, Any]) -> int:
+    try:
+        value = audit["latency_ms"]
+    except KeyError as exc:
+        raise RuntimeError("news_item_brief_audit_latency_ms_required") from exc
+    if isinstance(value, bool):
+        raise RuntimeError("news_item_brief_audit_latency_ms_required")
+    try:
+        latency_ms = int(float(value))
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError("news_item_brief_audit_latency_ms_required") from exc
+    if latency_ms < 0:
+        raise RuntimeError("news_item_brief_audit_latency_ms_required")
+    return latency_ms
+
+
+def _required_audit_mapping(audit: Mapping[str, Any], field_name: str) -> dict[str, Any]:
+    try:
+        value = audit[field_name]
+    except KeyError as exc:
+        raise RuntimeError(f"news_item_brief_audit_{field_name}_required") from exc
+    if not isinstance(value, Mapping):
+        raise RuntimeError(f"news_item_brief_audit_{field_name}_required")
+    return dict(value)
+
+
+def _required_audit_text(audit: Mapping[str, Any], field_name: str) -> str:
+    try:
+        value = audit[field_name]
+    except KeyError as exc:
+        raise RuntimeError(f"news_item_brief_audit_{field_name}_required") from exc
+    text = str(value).strip()
+    if not text:
+        raise RuntimeError(f"news_item_brief_audit_{field_name}_required")
+    return text
+
+
 def _admission_from_candidate(candidate: Mapping[str, Any], *, now_ms: int) -> NewsItemAgentAdmission:
     context = _dict(candidate.get("agent_admission_context"))
     if not context:
         raise ValueError("news item brief candidate is missing repository admission context")
     return decide_news_item_agent_admission(
-        item=_dict(candidate.get("item") or candidate),
-        entities=_list_of_dicts(candidate.get("entities")),
-        token_mentions=_list_of_dicts(candidate.get("token_mentions")),
-        fact_candidates=_list_of_dicts(candidate.get("fact_candidates")),
+        item=_required_candidate_item(candidate, reason="admission"),
+        entities=_candidate_list_of_dicts(candidate.get("entities"), field="entities"),
+        token_mentions=_candidate_list_of_dicts(candidate.get("token_mentions"), field="token_mentions"),
+        fact_candidates=_candidate_list_of_dicts(candidate.get("fact_candidates"), field="fact_candidates"),
         context=NewsItemAgentAdmissionContext.from_repository_context(context),
         now_ms=now_ms,
     )
@@ -971,23 +1100,105 @@ def _candidate_with_agent_admission(
     admission: NewsItemAgentAdmission,
 ) -> dict[str, Any]:
     result = dict(candidate)
-    item = _dict(result.get("item") or result)
+    item = _required_candidate_item(result, reason="agent_admission")
     admission_payload = _agent_admission_payload(admission)
     item["agent_admission_status"] = admission.status
     item["agent_admission_reason"] = admission.reason
     item["agent_admission_json"] = admission_payload
     item["agent_representative_news_item_id"] = admission.representative_news_item_id
-    basis = _dict(admission_payload.get("basis"))
-    if "similarity" in basis:
-        item["similarity_json"] = basis["similarity"]
-    if "material_delta" in basis:
-        item["material_delta_json"] = basis["material_delta"]
     result["item"] = item
     return result
 
 
 def _target_ids(rows: Iterable[Mapping[str, Any]]) -> list[str]:
     return item_brief_news_item_ids(rows)
+
+
+def _candidates_by_news_item_id(
+    candidates: Iterable[Mapping[str, Any]],
+    *,
+    reason: str,
+) -> dict[str, Mapping[str, Any]]:
+    indexed: dict[str, Mapping[str, Any]] = {}
+    for candidate in candidates:
+        item = _required_candidate_item(candidate, reason=reason)
+        news_item_id = _required_candidate_news_item_id(item, reason=reason)
+        indexed[news_item_id] = candidate
+    return indexed
+
+
+def _required_candidate_item(candidate: Mapping[str, Any], *, reason: str) -> dict[str, Any]:
+    try:
+        value = candidate["item"]
+    except KeyError as exc:
+        raise RuntimeError(f"news_item_brief_candidate_item_required:{reason}") from exc
+    if not isinstance(value, Mapping):
+        raise RuntimeError(f"news_item_brief_candidate_item_required:{reason}")
+    return dict(value)
+
+
+def _required_candidate_news_item_id(item: Mapping[str, Any], *, reason: str) -> str:
+    try:
+        value = item["news_item_id"]
+    except KeyError as exc:
+        raise RuntimeError(f"news_item_brief_candidate_news_item_id_required:{reason}") from exc
+    if not isinstance(value, str):
+        raise RuntimeError(f"news_item_brief_candidate_news_item_id_required:{reason}")
+    news_item_id = value.strip()
+    if not news_item_id:
+        raise RuntimeError(f"news_item_brief_candidate_news_item_id_required:{reason}")
+    return news_item_id
+
+
+def _required_admission_context_list(
+    context: Mapping[str, Any],
+    field_name: str,
+    *,
+    reason: str,
+) -> list[dict[str, Any]]:
+    try:
+        value = context[field_name]
+    except KeyError as exc:
+        raise RuntimeError(f"news_item_brief_admission_context_{field_name}_required:{reason}") from exc
+    if not isinstance(value, list):
+        raise RuntimeError(f"news_item_brief_admission_context_{field_name}_required:{reason}")
+    rows: list[dict[str, Any]] = []
+    for row in value:
+        if not isinstance(row, Mapping):
+            raise RuntimeError(f"news_item_brief_admission_context_{field_name}_required:{reason}")
+        rows.append(dict(row))
+    return rows
+
+
+def _required_item_brief_target_news_item_id(target: Mapping[str, Any]) -> str:
+    _require_claim_text(target, field="projection_name", expected=ITEM_BRIEF_INPUT)
+    _require_claim_text(target, field="target_kind", expected="news_item")
+    _require_claim_empty_window(target)
+    return _require_claim_text(target, field="target_id")
+
+
+def _require_claim_text(target: Mapping[str, Any], *, field: str, expected: str | None = None) -> str:
+    try:
+        value = target[field]
+    except KeyError as exc:
+        raise RuntimeError(f"news_item_brief_claim_{field}_required") from exc
+    if not isinstance(value, str):
+        raise RuntimeError(f"news_item_brief_claim_{field}_required")
+    text = value.strip()
+    if not text:
+        raise RuntimeError(f"news_item_brief_claim_{field}_required")
+    if expected is not None and text != expected:
+        raise RuntimeError(f"news_item_brief_claim_{field}_required")
+    return text
+
+
+def _require_claim_empty_window(target: Mapping[str, Any]) -> None:
+    try:
+        value = target["window"]
+    except KeyError as exc:
+        raise RuntimeError("news_item_brief_claim_window_empty_required") from exc
+    if value != "":
+        raise RuntimeError("news_item_brief_claim_window_empty_required")
 
 
 def _backpressure_outcome(reservation: AgentCapacityReservation) -> str:
@@ -1002,6 +1213,12 @@ def _backpressure_outcome_for_reason(reason: Any) -> str:
     if reason == AgentExecutionErrorClass.QUOTA_EXHAUSTED:
         return "backpressure_quota_exhausted"
     return "backpressure_capacity_denied"
+
+
+def _backpressure_outcome_for_error(error: Exception) -> str:
+    if not isinstance(error, AgentExecutionError):
+        raise RuntimeError("news_item_brief_agent_backpressure_error_contract_required")
+    return _backpressure_outcome_for_reason(error.error_class)
 
 
 def _request_json(*, packet: NewsItemBriefInputPacket, audit: Mapping[str, Any]) -> dict[str, Any]:
@@ -1020,9 +1237,9 @@ def _invalid_completed_run_audit(
     agent_config: NewsItemBriefAgentConfig,
 ) -> dict[str, Any]:
     return {
-        "provider": str(source_run.get("provider") or "deterministic"),
+        "provider": _required_run_text(source_run, "provider", reason="invalid_completed_source_run"),
         "backend": "deterministic_validation",
-        "model": str(source_run.get("model") or agent_config.model),
+        "model": _required_run_text(source_run, "model", reason="invalid_completed_source_run"),
         "lane": agent_config.lane,
         "workflow_name": agent_config.workflow_name,
         "agent_name": agent_config.agent_name,
@@ -1130,8 +1347,6 @@ async def _release_reservation(reservation: AgentCapacityReservation) -> None:
 
 
 def _audit_dict(value: Any) -> dict[str, Any]:
-    if value is None:
-        return {}
     if not isinstance(value, Mapping):
         raise RuntimeError("news_item_brief_agent_run_audit_contract_required")
     return {str(key): child for key, child in value.items()}
@@ -1186,10 +1401,15 @@ def _agent_admission_payload(value: NewsItemAgentAdmission) -> dict[str, Any]:
     }
 
 
-def _list_of_dicts(value: Any) -> list[dict[str, Any]]:
+def _candidate_list_of_dicts(value: Any, *, field: str) -> list[dict[str, Any]]:
     if not isinstance(value, list | tuple):
-        return []
-    return [_dict(row) for row in value]
+        raise RuntimeError(f"news_item_brief_candidate_{field}_array_required")
+    rows: list[dict[str, Any]] = []
+    for row in value:
+        if not isinstance(row, Mapping):
+            raise RuntimeError(f"news_item_brief_candidate_{field}_row_object_required")
+        rows.append(dict(row))
+    return rows
 
 
 def _now_ms() -> int:

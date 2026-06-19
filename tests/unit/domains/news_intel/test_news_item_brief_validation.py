@@ -514,10 +514,10 @@ def test_valid_ready_payload_is_publishable_and_hashes_normalized_output() -> No
     assert result.output_hash == json_sha256(result.payload)
 
 
-def test_validation_rejects_ready_without_publishable_summary_or_market_read() -> None:
+def test_validation_rejects_ready_without_publishable_summary() -> None:
     packet = _crypto_packet()
     result = validate_news_item_brief_output(
-        payload=_ready_payload(summary_zh="", market_read_zh=""),
+        payload=_ready_payload(summary_zh="", market_read_zh="Market read alone is not publishable."),
         packet=packet,
         audit={},
     )
@@ -526,7 +526,7 @@ def test_validation_rejects_ready_without_publishable_summary_or_market_read() -
     assert result.status == "failed"
     assert {
         "code": "missing_publishable_text",
-        "message": "ready output requires summary_zh or market_read_zh",
+        "message": "ready output requires summary_zh",
     } in result.errors
 
 

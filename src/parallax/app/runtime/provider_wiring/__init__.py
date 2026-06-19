@@ -44,8 +44,8 @@ def wire_providers(
             )
             if (
                 settings.news_intel.enabled
-                and settings.workers.news_item_brief.enabled
-                and settings.news_item_brief_configured
+                and (settings.workers.news_item_brief.enabled or settings.workers.news_story_brief.enabled)
+                and (settings.news_item_brief_configured or settings.news_story_brief_configured)
             )
             else None,
         ),
