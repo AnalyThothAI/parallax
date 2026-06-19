@@ -23,6 +23,7 @@ def build_news_page_row(
     computed_at_ms: int,
 ) -> dict[str, Any]:
     news_item_id = str(item["news_item_id"])
+    canonical_item_key = _required_item_text(item, "canonical_item_key", news_item_id=news_item_id)
     story_payload = _story_payload(story=story, news_item_id=news_item_id)
     story_key = str(story_payload["story_key"])
     representative_news_item_id = str(story_payload["representative_news_item_id"])
@@ -80,6 +81,7 @@ def build_news_page_row(
         "summary": str(item.get("summary") or ""),
         "source_domain": str(item.get("source_domain") or ""),
         "canonical_url": _public_url(item.get("canonical_url")),
+        "canonical_item_key": canonical_item_key,
         "token_lanes": token_lanes,
         "fact_lanes": fact_lanes,
         "signal": _page_signal(

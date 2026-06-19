@@ -103,6 +103,7 @@ def _with_required_projection_context(item: dict[str, Any]) -> dict[str, Any]:
     projection_item.setdefault("content_tags_json", [])
     projection_item.setdefault("content_classification_json", {})
     projection_item.setdefault("source_quality_status", "healthy")
+    projection_item.setdefault("canonical_item_key", f"canonical-url:https://example.test/{news_item_id}")
     projection_item.setdefault(
         "agent_admission_json",
         {
@@ -133,6 +134,25 @@ def test_build_news_page_row_uses_persisted_published_time_for_latest_at() -> No
     )
 
     assert row["latest_at_ms"] == 1000
+
+
+def test_build_news_page_row_copies_canonical_item_key() -> None:
+    row = build_news_page_row(
+        item={
+            "news_item_id": "news-1",
+            "title": "Coinbase lists NEWX",
+            "summary": "Trading starts today",
+            "source_domain": "example.test",
+            "canonical_url": "https://example.test/a",
+            "canonical_item_key": "canonical-url:https://example.test/a",
+            "published_at_ms": 1000,
+        },
+        token_mentions=[],
+        fact_candidates=[],
+        computed_at_ms=5000,
+    )
+
+    assert row["canonical_item_key"] == "canonical-url:https://example.test/a"
 
 
 @pytest.mark.parametrize("published_at_ms", [True, "1000", 1000.5, 0])
@@ -268,6 +288,7 @@ def test_news_page_search_text_rejects_malformed_present_projection_fields(
     ("field_name", "error"),
     [
         ("market_scope_json", "news_page_projection_item_market_scope_json_required:news-1"),
+        ("canonical_item_key", "news_page_projection_item_canonical_item_key_required:news-1"),
         ("agent_admission_json", "news_page_projection_item_agent_admission_json_required:news-1"),
         ("agent_admission_status", "news_page_projection_item_agent_admission_status_required:news-1"),
         ("agent_admission_reason", "news_page_projection_item_agent_admission_reason_required:news-1"),
@@ -383,6 +404,7 @@ def test_build_news_page_row_requires_story_payload_after_story_agent_hard_cut()
                 "title": "Coinbase lists NEWX",
                 "summary": "Trading starts today",
                 "source_domain": "example.test",
+                "canonical_item_key": "canonical-url:https://example.test/news-1",
                 "published_at_ms": 1000,
             },
             token_mentions=[],

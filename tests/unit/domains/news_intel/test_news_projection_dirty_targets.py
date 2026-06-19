@@ -1599,6 +1599,7 @@ def _page_payload(news_item_id: str) -> dict[str, Any]:
         "source_domain": "example.com",
         "source_name": "Example",
         "canonical_url": f"https://example.com/{news_item_id}",
+        "canonical_item_key": f"canonical-url:https://example.com/{news_item_id}",
         "published_at_ms": 1000,
         "lifecycle_status": "processed",
         "source_quality_status": "healthy",

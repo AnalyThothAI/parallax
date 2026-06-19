@@ -2023,6 +2023,7 @@ def _page_projection_payload(
     }
     payload_item.update(item or {})
     news_item_id = str(payload_item["news_item_id"])
+    payload_item.setdefault("canonical_item_key", f"canonical-url:https://example.test/{news_item_id}")
     payload_item.setdefault("market_scope_json", _market_scope_fixture(primary="crypto", scope=["crypto"]))
     payload_item.setdefault("content_class", "crypto_market")
     payload_item.setdefault("content_tags_json", ["crypto"])
