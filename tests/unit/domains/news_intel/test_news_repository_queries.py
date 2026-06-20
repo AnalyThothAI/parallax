@@ -154,6 +154,19 @@ def test_brief_target_loaders_require_positive_source_updated_at(
         method(**kwargs)
 
 
+def test_story_brief_target_loader_emits_formal_story_identity_json_without_alias() -> None:
+    row = _valid_story_brief_target_row()
+    conn = StoryBriefTargetsConnection(rows=[row])
+    repo = NewsRepository(conn)
+
+    targets = repo.load_story_brief_targets(story_keys=["story:news-1"])
+
+    assert len(targets) == 1
+    story = targets[0]["story"]
+    assert story["story_identity_json"] == _valid_story_identity_payload()
+    assert "story_identity" not in story
+
+
 def test_news_item_source_watermarks_for_sources_reads_persisted_item_times() -> None:
     conn = CapturingConnection()
     repo = NewsRepository(conn)

@@ -5876,7 +5876,7 @@ def _story_projection_payload(*, story_key: str, member_payloads: Sequence[Mappi
         "provider_article_keys": provider_article_keys,
         "latest_at_ms": latest_at_ms,
         "earliest_at_ms": earliest_at_ms,
-        "story_identity": story_identity,
+        "story_identity_json": story_identity,
     }
 
 
