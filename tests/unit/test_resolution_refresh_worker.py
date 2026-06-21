@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from parallax.domains.asset_market.providers import DexTokenCandidate
+from parallax.domains.asset_market.providers import DexProviderTemporarilyUnavailable, DexTokenCandidate
 from parallax.domains.asset_market.runtime import resolution_refresh_worker as module
 from parallax.domains.asset_market.runtime.resolution_refresh_worker import (
     FOUND_ADDRESS_REFRESH_MS,
@@ -150,6 +150,69 @@ def test_resolution_refresh_terminalizes_provider_error_after_retry_budget(monke
             "final_status": "error",
             "final_reason": "provider_error_retry_budget_exhausted",
             "now_ms": 1_778_200_000_000,
+            "commit": False,
+        }
+    ]
+
+
+def test_resolution_refresh_provider_unavailable_reschedules_batch_without_failed_result(monkeypatch):
+    repos = FakeRefreshRepos()
+    db = FakeDB(repos)
+    claims = [
+        {
+            "lookup_key": "symbol:ABC",
+            "lookup_type": "dex_symbol_lookup",
+            "error_count": 0,
+            "payload_hash": "hash-abc",
+            "lease_owner": "resolution_refresh",
+            "attempt_count": 3,
+            "latest_seen_ms": 1_778_200_000_000,
+        },
+        {
+            "lookup_key": "symbol:DEF",
+            "lookup_type": "dex_symbol_lookup",
+            "error_count": 0,
+            "payload_hash": "hash-def",
+            "lease_owner": "resolution_refresh",
+            "attempt_count": 3,
+            "latest_seen_ms": 1_778_200_000_000,
+        },
+    ]
+
+    def claim_due_lookup_keys(**kwargs):
+        repos.discovery.claim_calls.append(kwargs)
+        return list(claims)
+
+    def raise_provider_unavailable(**_kwargs):
+        raise DexProviderTemporarilyUnavailable("OKX token search returned x402 payment required")
+
+    repos.discovery.claim_due_lookup_keys = claim_due_lookup_keys
+    monkeypatch.setattr(module, "_fetch_lookup_provider_result", raise_provider_unavailable)
+
+    worker = module.ResolutionRefreshWorker(
+        name="resolution_refresh",
+        settings=worker_settings(max_attempts=1),
+        db=db,
+        telemetry=object(),
+        dex_discovery_market=object(),
+    )
+
+    worker_result = asyncio.run(worker.run_once(now_ms=1_778_200_000_000))
+    result = worker_result.notes["result"]
+
+    assert worker_result.failed == 0
+    assert worker_result.notes["status"] == "degraded"
+    assert worker_result.notes["degraded"] is True
+    assert result["provider_unavailable"] == 2
+    assert result["lookups_failed"] == 0
+    assert result["lookups_terminalized"] == 0
+    assert repos.discovery.terminalized == []
+    assert repos.discovery.rescheduled == [
+        {
+            "claims": claims,
+            "due_at_ms": 1_778_200_030_000,
+            "now_ms": 1_778_200_000_000,
+            "last_error": "provider_unavailable: OKX token search returned x402 payment required",
             "commit": False,
         }
     ]

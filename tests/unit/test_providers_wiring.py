@@ -25,6 +25,7 @@ from parallax.domains.asset_market.providers import (
 )
 from parallax.integrations.gmgn.openapi_client import GmgnOpenApiClient
 from parallax.integrations.gmgn.openapi_gateway import GmgnOpenApiGateway
+from parallax.integrations.okx.http_utils import OkxPaymentRequiredError
 from parallax.integrations.okx.models import OkxDexTokenCandidate, OkxDexTokenPrice
 from parallax.platform.config.settings import Settings
 
@@ -510,6 +511,17 @@ def test_unknown_numeric_okx_dex_chain_indexes_round_trip_through_discovery_prov
 
     assert chain_ids == ("137",)
     assert client.search_requests == [{"query": "POL", "chain_indexes": ("137",)}]
+
+
+def test_okx_dex_discovery_maps_x402_to_provider_unavailable() -> None:
+    class PaymentRequiredOkxClient(FakeOkxDexClient):
+        def search_tokens(self, *, query: str, chain_indexes: tuple[str, ...]):
+            raise OkxPaymentRequiredError("OKX /api/v6/dex/market/token/search returned x402 payment required")
+
+    provider = OkxDexDiscoveryProvider(PaymentRequiredOkxClient())
+
+    with pytest.raises(DexProviderTemporarilyUnavailable, match="x402 payment required"):
+        provider.search_tokens(query="POL", chain_ids=("eip155:137",))
 
 
 def test_okx_dex_quote_provider_maps_token_price_batch_to_quotes() -> None:

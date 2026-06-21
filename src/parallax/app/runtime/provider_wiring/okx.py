@@ -7,6 +7,7 @@ from parallax.app.runtime.provider_wiring.types import OkxProviderBundle
 from parallax.domains.asset_market.providers import (
     DexMarketFactUpdate,
     DexMarketStreamProvider,
+    DexProviderTemporarilyUnavailable,
     DexTokenCandidate,
     DexTokenDiscoveryProvider,
     DexTokenQuote,
@@ -18,6 +19,7 @@ from parallax.domains.asset_market.providers import (
 from parallax.integrations.okx.chains import OKX_CHAIN_INDEX_TO_CHAIN, OKX_CHAIN_TO_CHAIN_INDEX
 from parallax.integrations.okx.dex_client import EVM_ADDRESS_RE, OkxDexClient
 from parallax.integrations.okx.dex_ws_client import OkxDexWebSocketMarketProvider
+from parallax.integrations.okx.http_utils import OkxPaymentRequiredError
 from parallax.platform.config.settings import Settings
 
 
@@ -33,9 +35,13 @@ class OkxDexDiscoveryProvider:
         chain_indexes = tuple(index for chain_id in chain_ids if (index := okx_chain_index(chain_id)))
         if not chain_indexes:
             return []
+        try:
+            candidates = self._client.search_tokens(query=query, chain_indexes=chain_indexes)
+        except OkxPaymentRequiredError as exc:
+            raise DexProviderTemporarilyUnavailable(str(exc)) from exc
         return [
             _dex_token_candidate(candidate)
-            for candidate in self._client.search_tokens(query=query, chain_indexes=chain_indexes)
+            for candidate in candidates
         ]
 
     def close(self) -> None:
@@ -60,6 +66,10 @@ class OkxDexQuoteProvider:
             )
         if not request_items:
             return []
+        try:
+            prices = self._client.token_prices(request_items)
+        except OkxPaymentRequiredError as exc:
+            raise DexProviderTemporarilyUnavailable(str(exc)) from exc
         return [
             DexTokenQuote(
                 chain_id=okx_index_to_chain_id(price.chain_index) or str(price.chain_index),
@@ -72,7 +82,7 @@ class OkxDexQuoteProvider:
                 volume_24h_usd=None,
                 holders=None,
             )
-            for price in self._client.token_prices(request_items)
+            for price in prices
         ]
 
     def close(self) -> None:

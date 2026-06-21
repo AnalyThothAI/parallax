@@ -10,6 +10,7 @@ from typing import Any, cast
 
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_result import WorkerResult
+from parallax.domains.asset_market.providers import DexProviderTemporarilyUnavailable
 from parallax.domains.token_intel.interfaces import (
     TOKEN_REPROCESS_WINDOW,
     WINDOW_MS,
@@ -66,10 +67,14 @@ class ResolutionRefreshWorker(WorkerBase):
         if result.get("resolution_wake_lookup_keys") and self.wake_emitter is not None:
             self.wake_emitter.notify_resolution_updated(lookup_keys=result["resolution_wake_lookup_keys"])
         result.pop("resolution_wake_lookup_keys", None)
+        notes: dict[str, Any] = {"result": result}
+        if int(result.get("provider_unavailable") or 0) > 0:
+            notes["status"] = "degraded"
+            notes["degraded"] = True
         return WorkerResult(
             processed=int(result.get("lookups_done") or 0) + int(result.get("reprocessed_intents") or 0),
             failed=int(result.get("lookups_failed") or 0),
-            notes={"result": result},
+            notes=notes,
         )
 
     def _run_refresh_once(self, now_ms: int) -> dict[str, Any]:
@@ -88,7 +93,7 @@ class ResolutionRefreshWorker(WorkerBase):
         affected_lookup_keys: set[str] = set()
         processed_claims: list[dict[str, Any]] = []
         queue_due_by_lookup_key: dict[str, int] = {}
-        for lookup in lookups:
+        for index, lookup in enumerate(lookups):
             lookup_key = str(lookup.get("lookup_key") or "")
             lookup_type = str(lookup.get("lookup_type") or "")
             try:
@@ -135,6 +140,34 @@ class ResolutionRefreshWorker(WorkerBase):
                 result["lookups_done"] += 1
                 if lookup_result["affected_lookup_keys"]:
                     affected_lookup_keys.update(lookup_result["affected_lookup_keys"])
+            except DexProviderTemporarilyUnavailable as exc:
+                provider_unavailable_claims = [dict(item) for item in lookups[index:]]
+                retry_due_at_ms = now_ms + _refresh_ms(
+                    lookup_key=lookup_key,
+                    status="error",
+                    error_count=int(lookup.get("error_count") or 0),
+                )
+                last_error = _provider_unavailable_error(exc)
+                with self.db.worker_session(self.name) as repos, _session_transaction(repos):
+                    repos.discovery.fail_lookup(
+                        provider=DISCOVERY_PROVIDER,
+                        lookup_key=lookup_key,
+                        lookup_type=lookup_type or _lookup_type(lookup_key),
+                        last_error=last_error,
+                        next_refresh_at_ms=retry_due_at_ms,
+                        now_ms=now_ms,
+                        commit=False,
+                    )
+                    repos.discovery.reschedule_lookup_claims(
+                        provider_unavailable_claims,
+                        due_at_ms=retry_due_at_ms,
+                        now_ms=now_ms,
+                        last_error=last_error,
+                        commit=False,
+                    )
+                result["provider_unavailable"] += len(provider_unavailable_claims)
+                result["errors"].append({"lookup_key": lookup_key, "error": last_error})
+                break
             except Exception as exc:
                 retry_due_at_ms = now_ms + _refresh_ms(
                     lookup_key=lookup_key,
@@ -390,6 +423,7 @@ def _empty_result(now_ms: int) -> dict[str, Any]:
         "lookups_failed": 0,
         "lookups_terminalized": 0,
         "provider_errors": 0,
+        "provider_unavailable": 0,
         "search_requests": 0,
         "search_hits": 0,
         "search_candidates_seen": 0,
@@ -403,6 +437,13 @@ def _empty_result(now_ms: int) -> dict[str, Any]:
         "discovery_result_counts": {},
         "errors": [],
     }
+
+
+def _provider_unavailable_error(exc: Exception) -> str:
+    message = str(exc).strip()
+    if not message:
+        return "provider_unavailable"
+    return f"provider_unavailable: {message}"
 
 
 def _complete_lookup_claims(

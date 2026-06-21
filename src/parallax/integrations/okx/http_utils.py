@@ -9,7 +9,13 @@ class OkxClientError(RuntimeError):
     pass
 
 
+class OkxPaymentRequiredError(OkxClientError):
+    pass
+
+
 def items_from_response(response: httpx.Response, *, endpoint: str) -> list[Any]:
+    if response.status_code == 402 and _is_x402_payment_required(response):
+        raise OkxPaymentRequiredError(f"OKX {endpoint} returned x402 payment required")
     if response.status_code >= 400:
         raise OkxClientError(f"OKX {endpoint} returned HTTP {response.status_code}")
     try:
@@ -35,4 +41,16 @@ def rows_from_response(response: httpx.Response, *, endpoint: str) -> list[dict[
     return [row for row in items_from_response(response, endpoint=endpoint) if isinstance(row, dict)]
 
 
-__all__ = ["OkxClientError", "items_from_response", "rows_from_response"]
+def _is_x402_payment_required(response: httpx.Response) -> bool:
+    try:
+        payload = response.json()
+    except ValueError:
+        return False
+    if not isinstance(payload, dict):
+        return False
+    accepts = payload.get("accepts")
+    resource = payload.get("resource")
+    return payload.get("x402Version") is not None and isinstance(accepts, list) and isinstance(resource, dict)
+
+
+__all__ = ["OkxClientError", "OkxPaymentRequiredError", "items_from_response", "rows_from_response"]

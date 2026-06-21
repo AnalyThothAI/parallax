@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import httpx
+import pytest
 
 from parallax.integrations.okx.dex_client import OkxDexClient
+from parallax.integrations.okx.http_utils import OkxPaymentRequiredError
 
 
 def test_okx_dex_client_normalizes_token_search_candidates():
@@ -173,5 +175,30 @@ def test_okx_dex_client_signs_web3_requests_when_credentials_are_configured():
     )
     try:
         assert client.search_tokens(query="mirror", chain_indexes=["501"]) == []
+    finally:
+        client.close()
+
+
+def test_okx_dex_client_classifies_x402_payment_required_response():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            402,
+            json={
+                "x402Version": 2,
+                "resource": {"url": "https://web3.okx.com/api/v6/dex/market/token/search"},
+                "accepts": [{"scheme": "exact", "network": "eip155:196"}],
+            },
+        )
+
+    client = OkxDexClient(
+        base_url="https://web3.okx.com",
+        api_key="api-key",
+        secret_key="secret-key",
+        passphrase="passphrase",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        with pytest.raises(OkxPaymentRequiredError, match="x402 payment required"):
+            client.search_tokens(query="mirror", chain_indexes=["501"])
     finally:
         client.close()
