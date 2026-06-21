@@ -1860,10 +1860,18 @@ class NewsRepository:
               SELECT 1
                 FROM news_item_agent_briefs AS briefs
                WHERE briefs.news_item_id = %s
+              UNION ALL
+              SELECT 1
+                FROM news_story_agent_runs AS story_runs
+               WHERE story_runs.representative_news_item_id = %s
+              UNION ALL
+              SELECT 1
+                FROM news_story_agent_briefs AS story_briefs
+               WHERE story_briefs.representative_news_item_id = %s
               LIMIT 1
             ) AS has_agent_outputs
             """,
-            (news_item_id, news_item_id),
+            (news_item_id, news_item_id, news_item_id, news_item_id),
         ).fetchone()
         return bool(row and row["has_agent_outputs"])
 
@@ -7152,7 +7160,11 @@ def _public_agent_brief_payload(value: Any) -> dict[str, Any]:
         "bear_strength",
     ):
         if field_name in public_payload:
-            public_payload[field_name] = _validate_public_agent_brief_text_field(public_payload, field_name)
+            text_value = _optional_public_agent_brief_text_field(public_payload, field_name)
+            if text_value is None:
+                public_payload.pop(field_name, None)
+            else:
+                public_payload[field_name] = text_value
     for field_name in ("bull_view", "bear_view"):
         if field_name in public_payload:
             public_payload[field_name] = _validate_public_agent_brief_mapping_field(public_payload, field_name)
@@ -7178,8 +7190,16 @@ def _public_agent_brief_payload(value: Any) -> dict[str, Any]:
     return public_payload
 
 
-def _validate_public_agent_brief_text_field(payload: Mapping[str, Any], field_name: str) -> str:
-    return _required_public_agent_brief_text(payload, field_name)
+def _optional_public_agent_brief_text_field(payload: Mapping[str, Any], field_name: str) -> str | None:
+    value = payload.get(field_name)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"news_public_agent_brief_{field_name}_required")
+    text = value.strip()
+    if not text:
+        return None
+    return text
 
 
 def _validate_public_agent_brief_mapping_field(payload: Mapping[str, Any], field_name: str) -> dict[str, Any]:

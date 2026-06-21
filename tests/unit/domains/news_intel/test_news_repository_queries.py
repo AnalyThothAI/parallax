@@ -805,6 +805,44 @@ def test_list_news_page_rows_requires_formal_projected_sections_without_public_d
         repo.list_news_page_rows(limit=1)
 
 
+def test_list_news_page_rows_omits_blank_optional_text_from_failed_agent_brief() -> None:
+    page_row = _valid_news_page_read_row()
+    page_row["agent_status"] = "failed"
+    page_row["agent_brief"] = {
+        "status": "failed",
+        "direction": "neutral",
+        "decision_class": "discard",
+        "title_zh": "",
+        "summary_zh": "",
+        "market_read_zh": "",
+        "event_type": "",
+        "bull_strength": "absent",
+        "bear_strength": "absent",
+        "computed_at_ms": 1_779_000_000_600,
+        "data_gap_count": 1,
+        "market_impacts": [],
+        "bull_view": {"strength": "absent", "thesis_zh": "", "evidence_refs": []},
+        "bear_view": {"strength": "absent", "thesis_zh": "", "evidence_refs": []},
+    }
+    conn = NewsPageRowsConnection(rows=[page_row])
+    repo = NewsRepository(conn)
+
+    rows = repo.list_news_page_rows(limit=1)
+
+    agent_brief = rows[0]["agent_brief"]
+    assert agent_brief["status"] == "failed"
+    assert agent_brief["direction"] == "neutral"
+    assert agent_brief["decision_class"] == "discard"
+    assert agent_brief["bull_strength"] == "absent"
+    assert agent_brief["bear_strength"] == "absent"
+    assert agent_brief["computed_at_ms"] == 1_779_000_000_600
+    assert agent_brief["data_gap_count"] == 1
+    assert "title_zh" not in agent_brief
+    assert "summary_zh" not in agent_brief
+    assert "market_read_zh" not in agent_brief
+    assert "event_type" not in agent_brief
+
+
 def test_high_signal_notification_candidates_require_projected_agent_brief_without_pending_fallback() -> None:
     page_row = _valid_news_page_read_row()
     page_row["agent_brief"] = None
@@ -2187,6 +2225,19 @@ def test_edge_remap_cleanup_locks_old_news_item_row_before_delete() -> None:
     assert "WHERE news_item_id = %s" in conn.sql
     assert "FOR UPDATE" in conn.sql
     assert conn.params == ("news-old",)
+
+
+def test_edge_remap_agent_output_guard_includes_story_agent_outputs() -> None:
+    conn = SourceSyncCursorConnection(row={"has_agent_outputs": False})
+    repo = NewsRepository(conn)
+
+    assert repo._news_item_has_agent_outputs(news_item_id="news-old") is False
+
+    assert "news_item_agent_runs" in conn.sql
+    assert "news_item_agent_briefs" in conn.sql
+    assert "news_story_agent_runs" in conn.sql
+    assert "news_story_agent_briefs" in conn.sql
+    assert conn.params == ("news-old", "news-old", "news-old", "news-old")
 
 
 def test_delete_zero_edge_news_item_returning_requires_cursor_rowcount() -> None:
