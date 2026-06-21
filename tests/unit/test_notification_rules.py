@@ -1161,6 +1161,60 @@ def test_news_high_signal_uses_ready_agent_brief_for_display_and_builds_push_sig
     assert candidate.occurrence_at_ms == NOW_MS - 5_000
 
 
+def test_news_high_signal_allows_blank_public_url_without_batch_abort() -> None:
+    news = FakeNews(
+        [
+            _market_scoped_news_row(
+                {
+                    "news_item_id": "news-live-page",
+                    "latest_at_ms": NOW_MS - 5_000,
+                    "agent_brief_computed_at_ms": NOW_MS - 1_000,
+                    "headline": "Live page alert without public canonical URL",
+                    "source_domain": "6551.io",
+                    "canonical_url": "",
+                    "duplicate_count": 1,
+                    "signal": {
+                        "direction": "mixed",
+                        "alert_eligibility": {
+                            "in_app_eligible": True,
+                            "external_push_ready": True,
+                            "external_push_basis": "agent_brief",
+                            "decision_class": "watch",
+                        },
+                    },
+                    "token_impacts": [{"symbol": "CL"}],
+                    "agent_brief": {
+                        "status": "ready",
+                        "direction": "mixed",
+                        "decision_class": "watch",
+                        "title_zh": "霍尔木兹海峡声明分歧",
+                        "summary_zh": "公开 URL 不可作为硬身份时，通知仍应可发布。",
+                        "brief_json": {
+                            "title_zh": "霍尔木兹海峡声明分歧",
+                            "summary_zh": "公开 URL 不可作为硬身份时，通知仍应可发布。",
+                            "affected_entities": [{"symbol": "CL"}],
+                        },
+                    },
+                }
+            )
+        ]
+    )
+
+    candidates = [
+        item
+        for item in engine(news=news).evaluate(now_ms=NOW_MS)
+        if item.rule_id == "news_high_signal"
+    ]
+
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate.channels == ("in_app", "pushdeer")
+    assert candidate.payload["canonical_url"] is None
+    assert "公开 URL 不可作为硬身份" in candidate.body
+    assert "http://" not in candidate.body
+    assert "https://" not in candidate.body
+
+
 def test_news_high_signal_requires_projected_representative_identity_without_item_fallback() -> None:
     row = _market_scoped_news_row(
         {
@@ -1264,7 +1318,6 @@ def test_news_high_signal_requires_projected_representative_identity_without_ite
         ("source_domain_missing", "news_high_signal_source_domain_required"),
         ("source_domain_blank", "news_high_signal_source_domain_required"),
         ("source_domain_non_string", "news_high_signal_source_domain_required"),
-        ("canonical_url_blank", "news_high_signal_canonical_url_required"),
         ("canonical_url_non_string", "news_high_signal_canonical_url_required"),
         ("agent_admission_status_missing", "news_high_signal_agent_admission_status_required"),
         ("agent_admission_status_blank", "news_high_signal_agent_admission_status_required"),

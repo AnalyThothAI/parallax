@@ -880,7 +880,11 @@ def _required_news_text(row: dict[str, Any], field_name: str) -> str:
 def _optional_news_text(row: dict[str, Any], field_name: str) -> str | None:
     if field_name not in row or row.get(field_name) is None:
         return None
-    return _required_news_text(row, field_name)
+    value = row.get(field_name)
+    if not isinstance(value, str):
+        raise ValueError(f"news_high_signal_{field_name}_required")
+    text = value.strip()
+    return text or None
 
 
 def _news_story_payload(value: Any) -> dict[str, Any]:
