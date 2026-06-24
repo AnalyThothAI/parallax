@@ -28,8 +28,12 @@ export function MacroRatesModulePage({
     [module, ratesModuleId],
   );
 
+  if (!view.title) {
+    return null;
+  }
+
   return (
-    <MacroPageScaffold label={`${view.title}利率工作台`} pageKind="leaf">
+    <MacroPageScaffold label={`${view.title}模块页面`} pageKind="leaf">
       <MacroRatesSubnav activeModuleId={ratesModuleId} />
       <RatesMarketRead view={view} />
       <RatesFactStrip facts={view.facts} />

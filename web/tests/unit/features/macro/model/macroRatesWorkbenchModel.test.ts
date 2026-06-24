@@ -1,6 +1,5 @@
 import {
   buildRatesWorkbenchView,
-  humanizeRatesConceptKey,
   isRatesModuleId,
 } from "@features/macro/model/macroRatesWorkbenchModel";
 import {
@@ -29,6 +28,93 @@ describe("macroRatesWorkbenchModel", () => {
     expect(view.marketHeadline).toBeNull();
     expect(primaryWorkbenchText(view)).not.toContain("政策利率走廊：");
     expect(primaryWorkbenchText(view)).not.toContain("部分可用");
+  });
+
+  it("does not infer rates readiness from snapshot status when data-health status is absent", () => {
+    const module = macroFedFundsModuleFixture();
+    module.data_health = {
+      ...module.data_health,
+      summary_status: "",
+    };
+    module.snapshot = {
+      ...module.snapshot,
+      status: "ok",
+    };
+
+    const view = buildRatesWorkbenchView(module, "rates/fed-funds");
+
+    expect(view.readiness).toBe("missing");
+    expect(view.readinessLabel).toBe("走廊数据部分可用");
+    expect(view.readinessLabel).not.toBe("缺失");
+  });
+
+  it("requires explicit rates readiness labels instead of translating data-health statuses", () => {
+    const module = macroFedFundsModuleFixture();
+    module.data_health = {
+      ...module.data_health,
+      summary_label: "",
+      summary_status: "stale",
+    };
+    module.snapshot = {
+      ...module.snapshot,
+      status: "ok",
+      status_label: "正常",
+    };
+
+    const view = buildRatesWorkbenchView(module, "rates/fed-funds");
+
+    expect(view.readiness).toBe("stale");
+    expect(view.readinessLabel).toBeNull();
+    expect(view.diagnostics.moduleHealthLabel).toBeNull();
+    expect(view.diagnostics.moduleHealthLabel).not.toBe("正常");
+    expect(primaryWorkbenchText(view)).not.toContain("已过期");
+  });
+
+  it("does not expose rates decision descriptions without evidence labels", () => {
+    const module = macroFedFundsModuleFixture();
+    module.module_evidence = {
+      confirmations: [
+        {
+          label: "描述型确认",
+          description: "raw rates decision description",
+        },
+        {
+          label: "显式确认",
+          description: "description remains structured",
+          evidence_label: "backend rates evidence",
+        },
+      ],
+      contradictions: [],
+      watch_triggers: [],
+      invalidations: [],
+    };
+
+    const view = buildRatesWorkbenchView(module, "rates/fed-funds");
+
+    expect(view.decisionGroups[0]?.items).toEqual([
+      {
+        detail: null,
+        label: "描述型确认",
+      },
+      {
+        detail: "backend rates evidence",
+        label: "显式确认",
+      },
+    ]);
+    expect(primaryWorkbenchText(view)).not.toContain("raw rates decision description");
+  });
+
+  it("requires explicit rates snapshot titles instead of page-copy fallbacks", () => {
+    const module = macroFedFundsModuleFixture();
+    module.snapshot = {
+      ...module.snapshot,
+      title: "",
+    };
+
+    const view = buildRatesWorkbenchView(module, "rates/fed-funds");
+
+    expect(view.title).toBeNull();
+    expect(primaryWorkbenchText(view)).not.toContain("联邦基金与走廊");
   });
 
   it("formats yield curve diagnostics from backend payload", () => {
@@ -192,10 +278,20 @@ describe("macroRatesWorkbenchModel", () => {
         latest_bp: 20,
       },
       {
+        key: "history_without_summary_metadata",
+        label: "缺摘要元数据",
+        points: [
+          { observed_at: "2026-05-19", value_bp: 60 },
+          { observed_at: "2026-05-20", value_bp: 70 },
+        ],
+      },
+      {
         key: "5s30s",
         label: "5s30s",
         points: [{ observed_at: "2026-05-20", value_bp: 70 }],
         latest_bp: 70,
+        min_bp: 70,
+        max_bp: 70,
       },
     ];
     diagnostics.tenor_comparison = [
@@ -228,12 +324,15 @@ describe("macroRatesWorkbenchModel", () => {
       { key: "5s30s:2026-05-20", label: "2026-05-20：70bp", value: 70 },
     ]);
     expect(view.curveDiagnostics?.tenorComparison.map((row) => row.label)).toEqual(["30Y"]);
+    expect(view.curveDiagnostics?.tenorComparison[0]?.change).toBeNull();
+    expect(JSON.stringify(view.curveDiagnostics)).not.toContain("1w：");
     expect(JSON.stringify(view.curveDiagnostics)).not.toContain("curve-row");
     expect(JSON.stringify(view.curveDiagnostics)).not.toContain("curve-history");
     expect(JSON.stringify(view.curveDiagnostics)).not.toContain("曲线 2");
     expect(JSON.stringify(view.curveDiagnostics)).not.toContain("利差历史");
     expect(JSON.stringify(view.curveDiagnostics)).not.toContain("期限 2");
     expect(JSON.stringify(view.curveDiagnostics)).not.toContain("点 1");
+    expect(JSON.stringify(view.curveDiagnostics)).not.toContain("缺摘要元数据");
   });
 
   it("drops curve diagnostics without backend label instead of using default copy", () => {
@@ -293,12 +392,10 @@ describe("macroRatesWorkbenchModel", () => {
     expect(primaryWorkbenchText(view)).not.toContain("实际利率诊断");
   });
 
-  it("humanizes rates keys and builds neutral ready module facts", () => {
+  it("builds neutral ready module facts from backend labels", () => {
     const fedFunds = buildRatesWorkbenchView(macroFedFundsModuleFixture(), "rates/fed-funds");
     const realRates = buildRatesWorkbenchView(macroRealRatesModuleFixture(), "rates/real-rates");
 
-    expect(humanizeRatesConceptKey("rates:dgs10")).toBe("10年期美债收益率");
-    expect(humanizeRatesConceptKey("rates:not_mapped")).toBeNull();
     expect(fedFunds.facts.map((fact) => fact.label)).toContain("EFFR");
     expect(realRates.marketHeadline).toContain("实际利率");
     expect(primaryWorkbenchText(fedFunds)).not.toContain("fed:effr");
@@ -332,8 +429,13 @@ describe("macroRatesWorkbenchModel", () => {
     expect(JSON.stringify(view.facts)).not.toContain("缺 concept key 的事实");
   });
 
-  it("drops unknown missing concept ids instead of humanizing raw concept fragments", () => {
+  it("does not infer missing primary labels from rates concept ids", () => {
     const module = macroYieldCurveModuleFixture();
+    module.data_health = {
+      ...module.data_health,
+      module_gaps: [],
+      chart_gaps: [],
+    };
     module.primary_chart = {
       ...module.primary_chart,
       missing_concept_keys: ["rates:dgs10", "rates:not_mapped"],
@@ -341,9 +443,24 @@ describe("macroRatesWorkbenchModel", () => {
 
     const view = buildRatesWorkbenchView(module, "rates/yield-curve");
 
-    expect(view.missingPrimaryItems).toContain("10年期美债收益率");
+    expect(view.missingPrimaryItems).toEqual([]);
+    expect(view.missingPrimaryItems.join("\n")).not.toContain("10年期美债收益率");
     expect(view.missingPrimaryItems.join("\n")).not.toContain("NOT MAPPED");
     expect(view.missingPrimaryItems.join("\n")).not.toContain("rates:not_mapped");
+  });
+
+  it("does not expose rates chart status labels as chart notes", () => {
+    const module = macroFedFundsModuleFixture();
+    module.primary_chart = {
+      ...module.primary_chart,
+      status_label: "Raw chart status must stay internal.",
+      subtitle: undefined,
+    };
+
+    const view = buildRatesWorkbenchView(module, "rates/fed-funds");
+
+    expect(view.chartNote).toBeNull();
+    expect(primaryWorkbenchText(view)).not.toContain("Raw chart status must stay internal.");
   });
 
   it("drops rates facts whose value formats to empty", () => {
@@ -359,7 +476,7 @@ describe("macroRatesWorkbenchModel", () => {
           {
             concept_key: "rates:empty",
             label: "空利率事实",
-            display_value: "暂无",
+            display_value: "",
           },
         ],
       },
@@ -371,6 +488,110 @@ describe("macroRatesWorkbenchModel", () => {
     expect(primaryWorkbenchText(view)).not.toContain("暂无");
   });
 
+  it("does not expose raw rates fact values without backend display values", () => {
+    const view = buildRatesWorkbenchView(
+      {
+        ...macroFedFundsModuleFixture(),
+        tiles: [
+          {
+            concept_key: "fed:effr",
+            label: "EFFR",
+            value: 99.99,
+          },
+          {
+            concept_key: "fed:iorb",
+            label: "IORB",
+            display_value: "4.40%",
+            value: 4.4,
+          },
+        ],
+      },
+      "rates/fed-funds",
+    );
+
+    expect(view.facts).toEqual([
+      {
+        key: "fed:iorb",
+        label: "IORB",
+        value: "4.40%",
+        observedAtLabel: null,
+        sourceLabel: null,
+        statusLabel: null,
+        interpretation: null,
+      },
+    ]);
+    expect(JSON.stringify(view.facts)).not.toContain("99.99");
+  });
+
+  it("does not expose raw rates fact quality codes without backend quality labels", () => {
+    const view = buildRatesWorkbenchView(
+      {
+        ...macroFedFundsModuleFixture(),
+        tiles: [
+          {
+            concept_key: "fed:effr",
+            label: "EFFR",
+            display_value: "4.55%",
+            quality: "partial",
+          },
+        ],
+      },
+      "rates/fed-funds",
+    );
+
+    expect(view.facts).toHaveLength(1);
+    expect(view.facts[0]?.statusLabel).toBeNull();
+    expect(primaryWorkbenchText(view)).not.toContain("partial");
+  });
+
+  it("does not expose raw rates fact observed dates without backend labels", () => {
+    const view = buildRatesWorkbenchView(
+      {
+        ...macroFedFundsModuleFixture(),
+        tiles: [
+          {
+            concept_key: "fed:effr",
+            label: "EFFR",
+            display_value: "4.55%",
+            observed_at: "2026-06-10",
+          },
+        ],
+      },
+      "rates/fed-funds",
+    );
+
+    expect(view.facts).toHaveLength(1);
+    expect(view.facts[0]?.observedAtLabel).toBeNull();
+    expect(primaryWorkbenchText(view)).not.toContain("2026-06-10");
+  });
+
+  it("does not expose rates fact delta labels as interpretation copy", () => {
+    const view = buildRatesWorkbenchView(
+      {
+        ...macroFedFundsModuleFixture(),
+        tiles: [
+          {
+            concept_key: "fed:effr",
+            label: "EFFR",
+            display_value: "4.55%",
+            delta_label: "fact delta fallback copy",
+          },
+          {
+            concept_key: "fed:iorb",
+            label: "IORB",
+            display_value: "4.40%",
+            description: "backend interpretation",
+            delta_label: "ignored explicit-description delta",
+          },
+        ],
+      },
+      "rates/fed-funds",
+    );
+
+    expect(view.facts.map((fact) => fact.interpretation)).toEqual([null, "backend interpretation"]);
+    expect(JSON.stringify(view.facts)).not.toContain("fact delta fallback copy");
+  });
+
   it("drops rates gap summaries without backend code or label instead of humanizing codes", () => {
     const module = macroFedFundsModuleFixture();
     module.data_health = {
@@ -378,7 +599,15 @@ describe("macroRatesWorkbenchModel", () => {
       module_gaps: [
         { label: "缺 code 的缺口", severity: "warning" },
         { code: "rates:not_mapped_gap", severity: "warning" },
+        {
+          code: "display_value_gap",
+          display_value: "display value gap label",
+          severity: "warning",
+        },
+        { code: "sofr_30d_missing", label: "sofr_30d_missing", severity: "info" },
         { code: "sofr_30d_missing", label: "SOFR 30D 尚未入库", severity: "info" },
+        { code: "missing_severity_gap", label: "缺 severity 的缺口" },
+        { code: "unknown_severity_gap", label: "未知 severity 的缺口", severity: "unknown" },
       ],
       chart_gaps: [{ code: "chart_gap_without_label", severity: "warning" }],
     };
@@ -393,16 +622,22 @@ describe("macroRatesWorkbenchModel", () => {
       },
     ]);
     expect(view.missingPrimaryItems).toContain("SOFR 30D 尚未入库");
+    expect(view.missingPrimaryItems.join("\n")).not.toContain("sofr_30d_missing");
     expect(view.missingPrimaryItems.join("\n")).not.toContain("NOT MAPPED GAP");
     expect(JSON.stringify(view.diagnostics.coverage)).not.toContain("gap:");
+    expect(view.diagnostics.coverage.map((item) => item.label).join("\n")).not.toContain(
+      "sofr_30d_missing",
+    );
     expect(JSON.stringify(view.diagnostics.coverage)).not.toContain("not_mapped_gap");
+    expect(JSON.stringify(view.diagnostics.coverage)).not.toContain("display value gap label");
+    expect(JSON.stringify(view.diagnostics.coverage)).not.toContain("missing_severity_gap");
+    expect(JSON.stringify(view.diagnostics.coverage)).not.toContain("unknown_severity_gap");
     expect(JSON.stringify(view.diagnostics.coverage)).not.toContain("chart_gap_without_label");
   });
 });
 
 function primaryWorkbenchText(view: {
-  title: string;
-  question: string;
+  title: string | null;
   marketHeadline: string | null;
   facts: Array<{
     interpretation: string | null;
@@ -413,7 +648,6 @@ function primaryWorkbenchText(view: {
     value: string;
   }>;
   missingPrimaryItems: string[];
-  proxyNote: string | null;
   chartTitle: string | null;
   chartNote: string | null;
   decisionGroups: Array<{ items: Array<{ detail: string | null; label: string }>; label: string }>;
@@ -442,9 +676,7 @@ function primaryWorkbenchText(view: {
 }): string {
   return [
     view.title,
-    view.question,
     view.marketHeadline,
-    view.proxyNote,
     view.chartTitle,
     view.chartNote,
     view.curveDiagnostics?.headline,

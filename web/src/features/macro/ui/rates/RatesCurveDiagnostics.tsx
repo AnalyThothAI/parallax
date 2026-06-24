@@ -121,7 +121,7 @@ function TenorComparisonSection({ diagnostics }: { diagnostics: RatesCurveDiagno
               {row.driverLabel ? <span>{row.driverLabel}</span> : null}
             </header>
             <strong>{row.value}</strong>
-            <p>{row.change}</p>
+            {row.change ? <p>{row.change}</p> : null}
             {row.residual ? <small>{row.residual}</small> : null}
           </article>
         ))}

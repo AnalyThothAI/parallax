@@ -17,18 +17,21 @@ def _runtime(request: Request) -> Any:
     return request.app.state.service
 
 
-def _authenticated_runtime(request: Request) -> Any:
+def _authenticated_runtime(request: Request, *, allow_query_token: bool = True) -> Any:
     runtime = _runtime(request)
-    if not runtime.settings.ws_token or _request_token(request) != runtime.settings.ws_token:
+    request_token = _request_token(request, allow_query_token=allow_query_token)
+    if not runtime.settings.ws_token or request_token != runtime.settings.ws_token:
         raise ApiUnauthorized()
     return runtime
 
 
-def _request_token(request: Request) -> str | None:
+def _request_token(request: Request, *, allow_query_token: bool = True) -> str | None:
     authorization = request.headers.get("authorization", "")
     scheme, _, value = authorization.partition(" ")
     if scheme.lower() == "bearer" and value.strip():
         return value.strip()
+    if not allow_query_token:
+        return None
     token = request.query_params.get("token")
     return token.strip() if token else None
 

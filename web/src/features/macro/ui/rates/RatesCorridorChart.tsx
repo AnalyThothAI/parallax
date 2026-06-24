@@ -110,10 +110,11 @@ export function RatesCorridorChart({ model }: { model: RatesCorridorModel }) {
 }
 
 function LegendChip({ series, tone }: { series: RatesCorridorSeries; tone: string }) {
+  const latestLabel = series.latest === null ? null : formatValue(series.latest, series.unit);
   return (
     <span className="macro-rates-corridor-chip" data-tone={tone}>
       <b>{series.label}</b>
-      <strong>{formatValue(series.latest, series.unit)}</strong>
+      {latestLabel ? <strong>{latestLabel}</strong> : null}
     </span>
   );
 }
@@ -221,10 +222,7 @@ function uniqueStrings(values: string[]): string[] {
   return [...new Set(values)].sort((left, right) => left.localeCompare(right));
 }
 
-function formatValue(value: number | null, unit: string | null): string {
-  if (value === null || value === undefined) {
-    return "n/a";
-  }
+function formatValue(value: number, unit: string | null): string {
   const formatted = new Intl.NumberFormat("zh-CN", {
     maximumFractionDigits: 2,
     minimumFractionDigits: 0,

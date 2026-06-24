@@ -52,6 +52,8 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
     if (path.startsWith("/api/token-images/")) return fulfillTokenImage(route);
     if (path === "/api/search/inspect") return fulfill(route, searchInspectData(url));
     if (path === "/api/signal-lab/pulse") return fulfill(route, signalPulseData(url));
+    if (path.startsWith("/api/signal-lab/pulse/")) return fulfill(route, pulseItem());
+    if (path === "/api/events/by-ids") return fulfill(route, socialEventsByIds(url));
     if (path === "/api/target-social-timeline") return fulfill(route, timelineData());
     if (path === "/api/target-posts") return fulfill(route, targetPostsData(url));
     if (path === "/api/account-quality") return fulfill(route, accountQualityData());
@@ -696,6 +698,18 @@ function signalPulseData(url: URL) {
   };
 }
 
+function socialEventsByIds(url: URL) {
+  const ids = (url.searchParams.get("ids") ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+  const byId = new Map(postsData().items.map((item) => [item.event_id, sourceEvent(item)]));
+  return {
+    events: ids.map((id) => byId.get(id)).filter(Boolean),
+    not_found: ids.filter((id) => !byId.has(id)),
+  };
+}
+
 function pulseItem() {
   const row = assetFlowRow();
   return {
@@ -781,6 +795,22 @@ function pulseItem() {
     created_at_ms: NOW,
     updated_at_ms: NOW,
     playbooks: [],
+  };
+}
+
+function sourceEvent(item: ReturnType<typeof post>) {
+  return {
+    event_id: item.event_id,
+    timestamp_ms: item.received_at_ms,
+    source_provider: "gmgn",
+    channel: "twitter_monitor_basic",
+    action: item.reference?.type ?? "tweet",
+    author_handle: item.author_handle,
+    author_name: item.author_handle,
+    author_followers: item.post_quality.score >= 80 ? 168_905 : 220,
+    author_watched: item.is_watched,
+    text_clean: item.text,
+    canonical_url: item.url,
   };
 }
 
@@ -1306,9 +1336,22 @@ function macroData() {
       trade_map: [
         {
           expression: "risk_down_credit_sensitive",
+          label: "风险降档 / 信用敏感",
           time_window: "1w",
-          confirms_on: ["sofr_above_iorb"],
-          invalidates_on: ["sofr_iorb_normalizes"],
+          action_checklist: [
+            {
+              kind: "confirm",
+              kind_label: "确认",
+              label: "SOFR 高于 IORB",
+              description: "观察 SOFR 高于 IORB 是否继续确认。",
+            },
+            {
+              kind: "invalidate",
+              kind_label: "失效",
+              label: "SOFR 回到 IORB 附近",
+              description: "若 SOFR 回到 IORB 附近，则撤销该映射。",
+            },
+          ],
         },
       ],
     },

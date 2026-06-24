@@ -69,7 +69,7 @@ describe("Macro module pages", () => {
       { route: "/macro" },
     );
 
-    expect(screen.getByRole("region", { name: "总览模块页面" })).toHaveAttribute(
+    expect(screen.getByRole("region", { name: "宏观总览模块页面" })).toHaveAttribute(
       "data-page-kind",
       "overview",
     );
@@ -104,7 +104,12 @@ describe("Macro module pages", () => {
       name: "3 个最重要变化",
     });
     expect(within(decisionConsole).getByText("SOFR 高于 IORB")).toBeInTheDocument();
-    expect(within(topChanges).getByText("资金面 · 高")).toBeInTheDocument();
+    expect(
+      within(topChanges).getByText(
+        "SOFR-IORB +7bp · 最新 7bp · NY Fed / Federal Reserve · 2026-05-20 · 高",
+      ),
+    ).toBeInTheDocument();
+    expect(within(topChanges).queryByText("资金面 · 高")).not.toBeInTheDocument();
     expect(
       within(topChanges).getByText(
         "SOFR-IORB +7bp · 最新 7bp · source=NY Fed / Federal Reserve · as-of=2026-05-20",
@@ -248,7 +253,13 @@ describe("Macro module pages", () => {
     expect(
       within(decisionConsole).queryByRole("region", { name: "观察触发 / 失效条件" }),
     ).not.toBeInTheDocument();
-    expect(decisionConsole).toHaveTextContent("确认：SOFR 高于 IORB / HY OAS 5日走阔");
+    expect(decisionConsole).toHaveTextContent(
+      "确认 · SOFR 高于 IORB · 观察 SOFR 高于 IORB 是否继续确认。",
+    );
+    expect(decisionConsole).toHaveTextContent(
+      "确认 · HY OAS 5日走阔 · 观察 HY OAS 5日走阔 是否继续确认。",
+    );
+    expect(decisionConsole).not.toHaveTextContent("确认：SOFR 高于 IORB / HY OAS 5日走阔");
     expect(decisionConsole).not.toHaveTextContent("60日历史补齐");
     expect(decisionConsole).not.toHaveTextContent("观察 · 24h · 高");
     expect(decisionConsole).not.toHaveTextContent("SPX 跌破趋势");
@@ -321,28 +332,28 @@ describe("Macro module pages", () => {
       within(marketEventFlow).getByText("中东震荡下，日本追加预算预期升温"),
     ).toBeInTheDocument();
     expect(
-      within(marketEventFlow).getByText("bloomberg.com · 美联储 · 不改主线 · recent"),
+      within(marketEventFlow).getByText("bloomberg.com · 美联储 · 不改主线 · 近期"),
     ).toBeInTheDocument();
     expect(within(marketEventFlow).getByText("油价与美元走强，风险资产低开。")).toBeInTheDocument();
     expect(within(marketEventFlow).getByText("SPX · 美元 · 美联储")).toBeInTheDocument();
     expect(within(marketEventFlow).getByText("FOMC 决议")).toBeInTheDocument();
     expect(
-      within(marketEventFlow).getByText("官方日历 · 政策 · 政策路径 · 0-3d"),
+      within(marketEventFlow).getByText("官方日历 · 政策 · 政策路径 · 0-3天"),
     ).toBeInTheDocument();
     expect(within(marketEventFlow).getByText("2Y 国债拍卖日历")).toBeInTheDocument();
     expect(
-      within(marketEventFlow).getByText("US Treasury · 国债供给 · 拍卖/交割 · 4-7d"),
+      within(marketEventFlow).getByText("US Treasury · 国债供给 · 拍卖/交割 · 4-7天"),
     ).toBeInTheDocument();
     expect(within(marketEventFlow).getByText("10Y 国债拍卖 Bid/Cover")).toBeInTheDocument();
     expect(
-      within(marketEventFlow).getByText("US Treasury · 国债供给 · 拍卖结果 · recent"),
+      within(marketEventFlow).getByText("US Treasury · 国债供给 · 拍卖结果 · 近期"),
     ).toBeInTheDocument();
     expect(
       within(marketEventFlow).getByText("拍卖结果作为国债需求和期限溢价压力证据。"),
     ).toBeInTheDocument();
     expect(within(marketEventFlow).getByText("Fed 官员讲话")).toBeInTheDocument();
     expect(
-      within(marketEventFlow).getByText("Federal Reserve · 政策 · Fed 沟通 · recent"),
+      within(marketEventFlow).getByText("Federal Reserve · 政策 · Fed 沟通 · 近期"),
     ).toBeInTheDocument();
     expect(
       within(marketEventFlow).getByText("跟踪措辞、投票分歧和政策路径信号。"),
@@ -354,6 +365,8 @@ describe("Macro module pages", () => {
         }),
       ]),
     );
+    const transmission = screen.getByRole("region", { name: "传导链" });
+    expect(within(transmission).getByText("宏观总览")).toBeInTheDocument();
     const drivers = screen.getByRole("region", { name: "跨域市场板" });
     expect(within(drivers).getByRole("table", { name: "美股代理快照" })).toBeInTheDocument();
     const dataHealth = screen.getByRole("region", { name: "数据诊断" });
@@ -686,7 +699,7 @@ describe("Macro module pages", () => {
       { route: "/macro/assets/equities" },
     );
 
-    expect(screen.getByRole("region", { name: "美股模块页面" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "美股风险模块页面" })).toBeInTheDocument();
     expectRegionsInOrder(["模块简报", "主市场证据", "美股风险诊断", "驱动与反证", "数据诊断"]);
     expect(screen.getByRole("region", { name: "主市场证据" })).toBeInTheDocument();
     const diagnostics = screen.getByRole("region", { name: "美股风险诊断" });
@@ -706,7 +719,9 @@ describe("Macro module pages", () => {
       ),
     ).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "模块简报" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "驱动与反证" })).toBeInTheDocument();
+    const drivers = screen.getByRole("region", { name: "驱动与反证" });
+    expect(drivers).toBeInTheDocument();
+    expect(within(drivers).getByText("美股风险")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "数据诊断" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "关键指标" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "模块判断" })).not.toBeInTheDocument();
@@ -773,7 +788,7 @@ describe("Macro module pages", () => {
       { route: "/macro/assets/bonds" },
     );
 
-    expect(screen.getByRole("region", { name: "债券模块页面" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "债券资产模块页面" })).toBeInTheDocument();
     expectRegionsInOrder(["模块简报", "主市场证据", "债券风险诊断", "驱动与反证", "数据诊断"]);
     const diagnostics = screen.getByRole("region", { name: "债券风险诊断" });
     expect(within(diagnostics).getByText("债券风险诊断 · 信用久期双压")).toBeInTheDocument();
@@ -835,7 +850,7 @@ describe("Macro module pages", () => {
       { route: "/macro/assets/commodities" },
     );
 
-    expect(screen.getByRole("region", { name: "商品模块页面" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "商品冲击模块页面" })).toBeInTheDocument();
     expectRegionsInOrder(["模块简报", "主市场证据", "商品冲击诊断", "驱动与反证", "数据诊断"]);
     const diagnostics = screen.getByRole("region", { name: "商品冲击诊断" });
     expect(within(diagnostics).getByText("商品冲击诊断 · 能源通胀冲击")).toBeInTheDocument();
@@ -898,7 +913,7 @@ describe("Macro module pages", () => {
       { route: "/macro/assets/fx" },
     );
 
-    expect(screen.getByRole("region", { name: "外汇模块页面" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "美元压力模块页面" })).toBeInTheDocument();
     expectRegionsInOrder(["模块简报", "主市场证据", "美元压力诊断", "驱动与反证", "数据诊断"]);
     const diagnostics = screen.getByRole("region", { name: "美元压力诊断" });
     expect(within(diagnostics).getByText("美元压力诊断 · 美元挤压")).toBeInTheDocument();
@@ -983,7 +998,7 @@ describe("Macro module pages", () => {
       { route: "/macro/credit/stress" },
     );
 
-    expect(screen.getByRole("region", { name: "压力模块页面" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "信用压力分解模块页面" })).toBeInTheDocument();
     expectRegionsInOrder(["模块简报", "主市场证据", "信用压力诊断", "驱动与反证", "数据诊断"]);
 
     const diagnostics = screen.getByRole("region", { name: "信用压力诊断" });
@@ -1065,7 +1080,7 @@ describe("Macro module pages", () => {
       { route: "/macro/economy/inflation" },
     );
 
-    expect(screen.getByRole("region", { name: "通胀模块页面" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "通胀仪表盘模块页面" })).toBeInTheDocument();
     expectRegionsInOrder(["模块简报", "主市场证据", "通胀诊断", "驱动与反证", "数据诊断"]);
 
     const diagnostics = screen.getByRole("region", { name: "通胀诊断" });
@@ -1108,7 +1123,7 @@ describe("Macro module pages", () => {
       { route: "/macro/economy/employment" },
     );
 
-    expect(screen.getByRole("region", { name: "就业模块页面" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "就业市场模块页面" })).toBeInTheDocument();
     expectRegionsInOrder(["模块简报", "主市场证据", "就业诊断", "驱动与反证", "数据诊断"]);
 
     const diagnostics = screen.getByRole("region", { name: "就业诊断" });
@@ -1150,7 +1165,7 @@ describe("Macro module pages", () => {
       { route: "/macro/economy/gdp" },
     );
 
-    expect(screen.getByRole("region", { name: "GDP模块页面" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "GDP 增长模块页面" })).toBeInTheDocument();
     expectRegionsInOrder(["模块简报", "主市场证据", "增长诊断", "驱动与反证", "数据诊断"]);
 
     const diagnostics = screen.getByRole("region", { name: "增长诊断" });
@@ -1193,7 +1208,7 @@ describe("Macro module pages", () => {
       { route: "/macro/volatility/vix" },
     );
 
-    expect(screen.getByRole("region", { name: "VIX模块页面" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "VIX 结构模块页面" })).toBeInTheDocument();
     expectRegionsInOrder(["模块简报", "主市场证据", "波动率诊断", "驱动与反证", "数据诊断"]);
 
     const diagnostics = screen.getByRole("region", { name: "波动率诊断" });
@@ -1232,6 +1247,10 @@ describe("Macro module pages", () => {
     renderWithProviders(
       <MacroModulePageRenderer
         module={macroAssetsModuleFixture({
+          snapshot: {
+            ...macroAssetsModuleFixture().snapshot,
+            title: "资产总览后端标题",
+          },
           tables: [assetDashboardTable()],
         })}
         moduleId="assets"
@@ -1241,7 +1260,7 @@ describe("Macro module pages", () => {
       { route: "/macro/assets" },
     );
 
-    expect(screen.getByRole("region", { name: "大类资产模块页面" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "资产总览后端标题模块页面" })).toBeInTheDocument();
     expectRegionsInOrder(["核心资产行情", "跨资产诊断", "今日判断", "数据诊断", "60日相关性"]);
     expect(screen.queryByRole("region", { name: "关键指标" })).not.toBeInTheDocument();
 
@@ -1275,7 +1294,11 @@ describe("Macro module pages", () => {
       within(dashboard)
         .getAllByRole("columnheader")
         .map((header) => header.textContent),
-    ).toEqual(expect.arrayContaining(["代码", "名称", "最新", "20日变化", "日期"]));
+    ).toEqual(expect.arrayContaining(["代码", "名称", "最新", "日涨跌幅", "日期"]));
+    expect(
+      within(dashboard).queryByRole("columnheader", { name: "20日变化" }),
+    ).not.toBeInTheDocument();
+    expect(within(dashboard).queryByText("fixture")).not.toBeInTheDocument();
     expect(within(dashboard).queryByText("暂无")).not.toBeInTheDocument();
     expect(within(dashboard).getByRole("link", { name: "美股详情" })).toHaveAttribute(
       "href",
@@ -1415,8 +1438,48 @@ describe("Macro module pages", () => {
     const dashboard = screen.getByRole("region", { name: "核心资产行情" });
     expect(within(dashboard).queryByText("截至")).not.toBeInTheDocument();
     const judgment = screen.getByRole("region", { name: "今日判断" });
-    const quality = within(judgment).getByLabelText("今日判断数据质量");
-    expect(within(quality).getAllByText("样本不足")).toHaveLength(3);
+    expect(within(judgment).queryByLabelText("今日判断数据质量")).not.toBeInTheDocument();
+    expect(within(judgment).queryByText("最新覆盖")).not.toBeInTheDocument();
+    expect(within(judgment).queryByText("历史覆盖")).not.toBeInTheDocument();
+  });
+
+  it("does not expose raw asset snapshot or correlation dates without backend labels", async () => {
+    apiMock.getApiImpl = async (path) => {
+      if (path === "/api/macro/assets/correlation") {
+        return ok({
+          ...macroCorrelationFixture(),
+          asof_date: "2026-06-11",
+          window: "60d",
+        });
+      }
+      throw new Error(`unexpected path ${path}`);
+    };
+
+    renderWithProviders(
+      <MacroModulePageRenderer
+        module={macroAssetsModuleFixture({
+          snapshot: {
+            ...macroAssetsModuleFixture().snapshot,
+            asof_date: "2026-06-10",
+            asof_label: null,
+          },
+          tables: [assetDashboardTable({ includeDate: false })],
+        })}
+        moduleId="assets"
+        pageKind="leaf"
+        token="test-token"
+      />,
+      { route: "/macro/assets" },
+    );
+
+    const dashboard = screen.getByRole("region", { name: "核心资产行情" });
+    expect(within(dashboard).queryByText("截至")).not.toBeInTheDocument();
+    expect(within(dashboard).queryByText("2026-06-10")).not.toBeInTheDocument();
+
+    const correlation = await screen.findByRole("region", { name: "60日相关性" });
+    await waitFor(() => expect(within(correlation).getByText("SPY / QQQ")).toBeInTheDocument());
+    expect(correlation).not.toHaveTextContent("截至 2026-06-11");
+    expect(correlation).not.toHaveTextContent("60d");
   });
 
   it("drops asset market rows without current price evidence and omits missing optional cells", () => {
@@ -1572,7 +1635,7 @@ describe("Macro module pages", () => {
               {
                 row_id: "asset:empty",
                 cells: {
-                  item: { display_value: "暂无", sort_value: "empty" },
+                  item: { display_value: "", sort_value: "empty" },
                   status: { display_value: "", sort_value: "" },
                 },
               },
@@ -1738,6 +1801,7 @@ function assetDashboardTable({
       { key: "latest", label: "最新" },
       { key: "delta_1d", label: "日涨跌幅" },
       { key: "observed_at", label: "日期" },
+      ...(includeSource ? [{ key: "source", label: "来源" }] : []),
     ],
     rows: [
       row("asset:spx", "^GSPC", "标普500", "5,312.40", "+0.30"),

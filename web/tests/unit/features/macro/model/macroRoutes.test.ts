@@ -77,6 +77,13 @@ describe("macroRoutes", () => {
     ]);
   });
 
+  it("rejects unknown helper ids instead of falling back to overview", () => {
+    expect(() => macroModuleHref("rates/expectations" as never)).toThrow(
+      "macro_route_required:rates/expectations",
+    );
+    expect(() => macroRouteLabel("not-real" as never)).toThrow("macro_route_required:not-real");
+  });
+
   it("derives navigation paths from the macro navigation tree", () => {
     expect(macroNavigationPath("assets").map((node) => node.label)).toEqual(["宏观", "大类资产"]);
     expect(macroNavigationPath("assets/equities").map((node) => node.label)).toEqual([

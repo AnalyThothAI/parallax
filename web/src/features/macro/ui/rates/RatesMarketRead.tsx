@@ -7,8 +7,6 @@ export function RatesMarketRead({ view }: { view: RatesWorkbenchView }) {
   }
   const asOf = compactAsOfLabel(view.asOfLabel);
   const gapCount = view.missingPrimaryItems.length;
-  const proxyNote =
-    view.proxyNote && view.proxyNote !== view.marketHeadline ? view.proxyNote : null;
 
   return (
     <MacroPanel
@@ -21,14 +19,15 @@ export function RatesMarketRead({ view }: { view: RatesWorkbenchView }) {
       <div className="macro-rates-market-read">
         <div className="macro-rates-market-read-head">
           <div>
-            <p className="macro-rates-eyebrow">{view.title}</p>
             <h3>{view.marketHeadline}</h3>
           </div>
           <dl className="macro-rates-read-state" aria-label="利率模块状态">
-            <div>
-              <dt>状态</dt>
-              <dd>{view.readinessLabel}</dd>
-            </div>
+            {view.readinessLabel ? (
+              <div>
+                <dt>状态</dt>
+                <dd>{view.readinessLabel}</dd>
+              </div>
+            ) : null}
             {asOf ? (
               <div>
                 <dt>截至</dt>
@@ -41,7 +40,6 @@ export function RatesMarketRead({ view }: { view: RatesWorkbenchView }) {
             </div>
           </dl>
         </div>
-        {proxyNote ? <p className="macro-rates-proxy-note">{proxyNote}</p> : null}
         {view.missingPrimaryItems.length > 0 ? (
           <div className="macro-rates-missing-primary">
             <span>明细</span>

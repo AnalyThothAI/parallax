@@ -93,11 +93,17 @@ export type MacroScenarioSignal = {
   delta_5d?: number | null;
 };
 
+export type MacroTradeMapAction = {
+  kind?: string | null;
+  label?: string | null;
+  description?: string | null;
+};
+
 export type MacroTradeMapEntry = {
   expression?: string | null;
+  label?: string | null;
   time_window?: string | null;
-  confirms_on?: string[];
-  invalidates_on?: string[];
+  action_checklist?: MacroTradeMapAction[];
 };
 
 export type MacroScenarioQualityBlocker = {

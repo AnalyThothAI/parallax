@@ -24,7 +24,7 @@ def test_macrodata_cli_is_packaged_from_versioned_git_source():
     assert "macrodata-cli" in dependencies
     assert sources["macrodata-cli"] == {
         "git": "https://github.com/AnalyThothAI/macrodata-cli.git",
-        "rev": "dd86aa8bcd234e8fb427ba9d058e9b478e2a0e6c",
+        "rev": "c7e0627580cbf770b091f1731236990c5d98e0c4",
     }
     assert "path" not in sources["macrodata-cli"]
     assert "editable" not in sources["macrodata-cli"]

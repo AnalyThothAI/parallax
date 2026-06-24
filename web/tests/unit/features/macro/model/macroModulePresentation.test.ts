@@ -62,6 +62,12 @@ describe("macroModulePresentation", () => {
           code: "term_premium_up",
           label: "期限溢价上行",
           description: "10Y real yield pushes higher.",
+          evidence_label: "10Y real yield pushes higher.",
+        },
+        {
+          key: "legacy_key_confirmation",
+          label: "旧证据",
+          evidence_label: "Legacy key-only evidence must stay internal.",
         },
         { label: "缺少 identity", description: "no code" },
         { label: "空详情证据" },
@@ -80,6 +86,94 @@ describe("macroModulePresentation", () => {
       },
     ]);
     expect(JSON.stringify({ groups, metrics })).not.toContain("暂无");
+    expect(JSON.stringify(groups)).not.toContain("legacy_key_confirmation");
+    expect(JSON.stringify(groups)).not.toContain("旧证据");
+  });
+
+  it("does not expose module evidence descriptions without evidence labels", () => {
+    const groups = buildMacroEvidenceGroups({
+      confirmations: [
+        {
+          code: "description_only_confirmation",
+          label: "描述型确认",
+          description: "raw module evidence description",
+        },
+        {
+          code: "labeled_confirmation",
+          label: "显式确认",
+          description: "description remains structured",
+          evidence_label: "backend display evidence",
+        },
+      ],
+      contradictions: [],
+      watch_triggers: [],
+      invalidations: [],
+    });
+
+    expect(groups[0]?.items).toEqual([
+      {
+        detail: "backend display evidence",
+        key: "labeled_confirmation",
+        label: "显式确认",
+      },
+    ]);
+    expect(JSON.stringify(groups)).not.toContain("raw module evidence description");
+  });
+
+  it("does not expose raw metric tile values without backend display values", () => {
+    const metrics = buildMacroMetrics({
+      tiles: [
+        {
+          concept_key: "asset:spx",
+          label: "标普500",
+          value: 6500,
+        },
+        {
+          concept_key: "rates:us10y",
+          label: "10Y",
+          display_value: "4.25%",
+          value: 4.25,
+        },
+      ],
+    });
+
+    expect(metrics).toEqual([
+      {
+        key: "rates:us10y",
+        label: "10Y",
+        observedAtLabel: null,
+        quality: null,
+        qualityLabel: null,
+        shortLabel: null,
+        unitLabel: null,
+        value: "4.25%",
+      },
+    ]);
+    expect(JSON.stringify(metrics)).not.toContain("6500");
+  });
+
+  it("does not expose metric quality or delta labels as observed-at labels", () => {
+    const metrics = buildMacroMetrics({
+      tiles: [
+        {
+          concept_key: "asset:spx",
+          label: "标普500",
+          display_value: "7473.47",
+          quality_label: "可用",
+          delta_label: "1w +2%",
+        },
+        {
+          concept_key: "rates:us10y",
+          label: "10Y",
+          display_value: "4.25%",
+          observed_at_label: "观测于 2026-06-21",
+          quality_label: "可用",
+        },
+      ],
+    });
+
+    expect(metrics.map((metric) => metric.observedAtLabel)).toEqual([null, "观测于 2026-06-21"]);
+    expect(JSON.stringify(metrics)).not.toContain("1w +2%");
   });
 
   it("builds read, evidence, and health from v3 fields only", () => {
@@ -110,6 +204,16 @@ describe("macroModulePresentation", () => {
     expect(macroReadSummary(module)).toBeNull();
   });
 
+  it("does not use module regime labels as read summaries", () => {
+    const module = macroOverviewModuleFixture({
+      module_read: {
+        regime_label: "状态标签不能替代摘要",
+      },
+    });
+
+    expect(macroReadSummary(module)).toBeNull();
+  });
+
   it("preserves actionable data-health gap remediation instead of flattening gaps to strings", () => {
     const module = macroModuleFixture();
 
@@ -122,6 +226,63 @@ describe("macroModulePresentation", () => {
         scope: null,
       },
     ]);
+  });
+
+  it("does not expose generic data-health detail fields as actionable remediation", () => {
+    const buckets = buildMacroDataHealthBuckets(
+      {
+        summary_status: "partial",
+        summary_label: "部分可用",
+        module_gaps: [
+          {
+            code: "description_only_gap",
+            label: "描述型缺口",
+            description: "raw descriptive gap copy",
+          },
+          {
+            code: "explicit_detail_gap",
+            label: "显式缺口",
+            detail: "同步缺失序列后重新投影。",
+          },
+          {
+            code: "explicit_remediation_gap",
+            label: "可操作缺口",
+            detail: "generic detail stays internal",
+            remediation_hint: "补齐缺失序列后重新投影。",
+          },
+        ],
+        chart_gaps: [],
+        global_gaps: [],
+      },
+      "leaf",
+    );
+
+    expect(buckets[0]?.items).toEqual([
+      {
+        detail: null,
+        key: "description_only_gap",
+        label: "描述型缺口",
+        scope: null,
+        severity: null,
+      },
+      {
+        detail: null,
+        key: "explicit_detail_gap",
+        label: "显式缺口",
+        scope: null,
+        severity: null,
+      },
+      {
+        detail: "补齐缺失序列后重新投影。",
+        key: "explicit_remediation_gap",
+        label: "可操作缺口",
+        scope: null,
+        severity: null,
+      },
+    ]);
+    expect(JSON.stringify(buckets)).not.toContain("raw descriptive gap copy");
+    expect(JSON.stringify(buckets)).not.toContain("同步缺失序列后重新投影。");
+    expect(JSON.stringify(buckets)).not.toContain("generic detail stays internal");
   });
 
   it("drops code-only data-health gaps instead of manufacturing labels", () => {
@@ -180,7 +341,12 @@ describe("macroModulePresentation", () => {
       },
       module_evidence: {
         confirmations: [
-          { code: "v3_confirmation", label: "v3 confirmation", description: "v3 detail" },
+          {
+            code: "v3_confirmation",
+            label: "v3 confirmation",
+            description: "legacy detail",
+            evidence_label: "v3 detail",
+          },
         ],
         contradictions: [],
         watch_triggers: [],

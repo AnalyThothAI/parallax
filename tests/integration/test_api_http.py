@@ -444,7 +444,58 @@ def rebuild_token_radar(client: TestClient, *, now_ms: int | None = None) -> Non
     worker_entry = client.app.state.service.workers["token_radar_projection"]
     worker = getattr(worker_entry, "worker", worker_entry)
     assert worker is not None
-    worker.rebuild_once(now_ms=now_ms if now_ms is not None else int(time.time() * 1000))
+    deadline = time.monotonic() + 10.0
+    drained_once = False
+    base_now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
+    interval_ms = (
+        int(
+            max(
+                float(getattr(worker.settings, "interval_seconds", 1.0)),
+                float(getattr(worker.settings, "cold_interval_seconds", 1.0)),
+            )
+            * 1000
+        )
+        + 1
+    )
+    attempt = 0
+    while True:
+        worker.rebuild_once(now_ms=base_now_ms + attempt * interval_ms)
+        attempt += 1
+        pending, leased = _token_radar_dirty_queue_counts(client)
+        while leased:
+            if time.monotonic() >= deadline:
+                raise AssertionError("token radar projection dirty leases did not drain")
+            time.sleep(0.05)
+            pending, leased = _token_radar_dirty_queue_counts(client)
+        if pending == 0:
+            if drained_once:
+                return
+            drained_once = True
+            continue
+        if time.monotonic() >= deadline:
+            raise AssertionError("token radar projection dirty queues did not drain")
+        time.sleep(0.05)
+
+
+def _token_radar_dirty_queue_counts(client: TestClient) -> tuple[int, int]:
+    runtime = client.app.state.service
+    with runtime.db.api_pool.connection() as conn:
+        row = conn.execute(
+            """
+            SELECT
+              (
+                SELECT COUNT(*) FROM token_radar_source_dirty_events
+              ) + (
+                SELECT COUNT(*) FROM token_radar_dirty_targets
+              ) AS pending,
+              (
+                SELECT COUNT(*) FROM token_radar_source_dirty_events WHERE lease_owner IS NOT NULL
+              ) + (
+                SELECT COUNT(*) FROM token_radar_dirty_targets WHERE lease_owner IS NOT NULL
+              ) AS leased
+            """
+        ).fetchone()
+    return int(row["pending"] or 0), int(row["leased"] or 0)
 
 
 def seed_resolved_asset_with_event(
@@ -691,10 +742,10 @@ def test_token_radar_uses_live_market_endpoint_without_legacy_overlay(tmp_path):
         def status_payload(self) -> dict[str, object]:
             return {"enabled": True, "running": True}
 
-        def stop(self) -> None:
+        async def stop(self) -> None:
             return None
 
-        def close(self) -> None:
+        async def aclose(self) -> None:
             return None
 
         def snapshot(self, *, target_type: str, target_id: str, now_ms: int | None = None):

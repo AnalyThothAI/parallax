@@ -40,9 +40,10 @@ describe("macroCorrelationModel", () => {
     expect(assetLabel("asset:spy", titleByKey)).toBe("SPY");
     expect(assetLabel("missing", titleByKey)).toBeNull();
     expect(matrixCorrelationLabel(0.923)).toBe("0.92");
-    expect(matrixCorrelationLabel(null)).toBe("-");
+    expect(matrixCorrelationLabel(null)).toBeNull();
     expect(signedCorrelationLabel(0.923)).toBe("+0.92");
     expect(signedCorrelationLabel(-0.4)).toBe("-0.40");
+    expect(signedCorrelationLabel(null)).toBeNull();
     expect(correlationTone(0.55)).toBe("constructive");
     expect(correlationTone(-0.35)).toBe("stress");
     expect(correlationTone(null)).toBe("gap");

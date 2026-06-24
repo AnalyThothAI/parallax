@@ -58,9 +58,14 @@ def _secret_leaks(value: Any, *, path: str = "data") -> list[str]:
         for key, child in value.items():
             lowered = str(key).lower()
             child_path = f"{path}.{key}"
-            secret_like_key = any(term in lowered for term in ("secret", "api_key", "passphrase")) or (
-                "token" in lowered and not lowered.endswith("_configured")
-            )
+            secret_like_key = (
+                "secret" in lowered
+                or "passphrase" in lowered
+                or lowered == "api_key"
+                or lowered.endswith("_api_key")
+                or lowered == "token"
+                or lowered.endswith("_token")
+            ) and not lowered.endswith("_configured")
             if secret_like_key and not isinstance(child, bool):
                 leaks.append(f"{child_path} should be redacted to a boolean or omitted")
             leaks.extend(_secret_leaks(child, path=child_path))

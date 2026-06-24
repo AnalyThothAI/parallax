@@ -20,6 +20,17 @@ from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import test_postgres_dsn as postgres_test_dsn
 
 
+def _worker_pool_bundle(pool: Any) -> DBPoolBundle:
+    return DBPoolBundle(
+        api_pool=None,
+        worker_pool=pool,
+        wake_pool=None,
+        pulse_job_running_timeout_ms=300_000,
+        notification_delivery_running_timeout_ms=300_000,
+        notification_delivery_stale_running_terminalization_batch_size=100,
+    )
+
+
 def test_worker_transaction_rolls_back_all_statements() -> None:
     setup_conn = connect_postgres_test(read_only=False)
     pool = create_pool(
@@ -41,7 +52,7 @@ def test_worker_transaction_rolls_back_all_statements() -> None:
             """
         )
         setup_conn.commit()
-        bundle = DBPoolBundle(api_pool=None, worker_pool=pool, wake_pool=None)
+        bundle = _worker_pool_bundle(pool)
 
         with pytest.raises(RuntimeError, match="boom"), bundle.worker_transaction("atomicity_probe") as repos:
             repos.conn.execute(
@@ -124,7 +135,7 @@ def test_market_tick_persistence_rolls_back_tick_and_dirty_target_after_enqueue(
         )
         setup_conn.commit()
 
-        bundle = DBPoolBundle(api_pool=None, worker_pool=pool, wake_pool=None)
+        bundle = _worker_pool_bundle(pool)
         with (
             pytest.raises(RuntimeError, match="fail_after_ticks_for_test"),
             bundle.worker_transaction("market_tick_atomicity") as repos,

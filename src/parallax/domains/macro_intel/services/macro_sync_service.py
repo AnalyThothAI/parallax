@@ -587,7 +587,9 @@ def _sync_state_observed_at(import_summary: Mapping[str, Any], window: Mapping[s
 
 
 def _sync_success_status(status: object) -> str:
-    raw_status = str(status or "ok").strip().lower()
+    if not isinstance(status, str) or not status.strip():
+        raise ValueError("macro_sync_import_status_required")
+    raw_status = status.strip().lower()
     if raw_status in {"ok", "partial"}:
         return raw_status
     return "partial"

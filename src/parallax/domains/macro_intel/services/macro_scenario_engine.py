@@ -23,18 +23,6 @@ SOURCE_LABELS = {
     "yahoo": "Yahoo Finance",
 }
 
-TRIGGER_INDICATORS = {
-    "sofr_above_iorb": ["sofr_iorb_spread_bps"],
-    "repo_corridor_pressure": ["sofr_iorb_spread_bps"],
-    "rrp_buffer_low": ["net_liquidity_usd_millions"],
-    "tga_high": ["net_liquidity_usd_millions"],
-    "term_premium_pressure": ["ust_10y_yield_pct", "ust_10y_2y_curve_pct"],
-    "deep_curve_inversion": ["ust_10y_2y_curve_pct"],
-    "vix_elevated": ["vix"],
-    "hy_oas_stress": ["hy_oas_pct"],
-    "hy_oas_distress": ["hy_oas_pct"],
-}
-
 
 def build_macro_scenario(
     *,
@@ -106,38 +94,30 @@ def _confirmations(
 ) -> list[dict[str, Any]]:
     confirmations: list[dict[str, Any]] = []
     for trigger in triggers:
-        code = _text(trigger.get("code"))
-        if not code:
+        payload = _trigger_payload(trigger)
+        if payload is None:
             continue
-        label = _text(trigger.get("label")) or _code_label(code)
-        if not label:
-            continue
-        confirmations.append(
-            {
-                "code": code,
-                "description": _text(trigger.get("description")),
-                "indicator_keys": TRIGGER_INDICATORS.get(code, []),
-                "value": _number(trigger.get("value")),
-            }
-        )
+        confirmations.append(payload)
 
     chain_confirmations = (
-        ("liquidity", {"funding_stress", "tightening"}, "liquidity_tightening"),
-        ("fed_corridor", {"corridor_pressure"}, "fed_corridor_pressure"),
-        ("rates", {"term_premium_pressure", "policy_tight_growth_scare"}, "rates_pressure"),
-        ("volatility", {"near_term_stress", "panic"}, "volatility_stress"),
-        ("credit", {"low_quality_stress", "credit_led_derisking"}, "credit_stress"),
-        ("cross_asset", {"risk_off_confirmation"}, "cross_asset_risk_off"),
-        ("positioning", {"crowded_risk_long", "defensive_short"}, "positioning_extreme"),
+        ("liquidity", {"funding_stress", "tightening"}, "liquidity_tightening", "流动性收紧"),
+        ("fed_corridor", {"corridor_pressure"}, "fed_corridor_pressure", "政策走廊压力"),
+        ("rates", {"term_premium_pressure", "policy_tight_growth_scare"}, "rates_pressure", "利率压力"),
+        ("volatility", {"near_term_stress", "panic"}, "volatility_stress", "波动率压力"),
+        ("credit", {"low_quality_stress", "credit_led_derisking"}, "credit_stress", "信用压力"),
+        ("cross_asset", {"risk_off_confirmation"}, "cross_asset_risk_off", "跨资产 risk-off 确认"),
+        ("positioning", {"crowded_risk_long", "defensive_short"}, "positioning_extreme", "仓位极端"),
     )
-    for node_key, regimes, code in chain_confirmations:
+    for node_key, regimes, code, label in chain_confirmations:
         node_regime = _regime(chain, node_key)
         if node_regime in regimes:
             confirmations.append(
                 {
                     "code": code,
+                    "label": label,
                     "node": node_key,
                     "regime": node_regime,
+                    "kind": "chain_confirmation",
                     "evidence": _evidence(chain, node_key)[:3],
                 }
             )
@@ -149,8 +129,10 @@ def _confirmations(
         confirmations.append(
             {
                 "code": "credit_stress",
+                "label": "信用压力",
                 "node": "credit",
                 "regime": _panel_regime(panels, "credit"),
+                "kind": "chain_confirmation",
                 "evidence": _panel_evidence(panels, "credit")[:3],
             }
         )
@@ -171,21 +153,23 @@ def _contradictions(
 
     if current_regime in {"funding_stress", "tightening"}:
         if volatility == "carry":
-            contradictions.append({"code": "volatility_carry", "node": "volatility"})
+            contradictions.append({"code": "volatility_carry", "label": "波动率 carry", "node": "volatility"})
         if credit == "confirmed_risk_on":
-            contradictions.append({"code": "credit_spreads_benign", "node": "credit"})
+            contradictions.append({"code": "credit_spreads_benign", "label": "信用利差温和", "node": "credit"})
         if cross_asset == "risk_on_confirmation":
-            contradictions.append({"code": "risk_assets_confirm_risk_on", "node": "cross_asset"})
+            contradictions.append(
+                {"code": "risk_assets_confirm_risk_on", "label": "风险资产确认 risk-on", "node": "cross_asset"}
+            )
     elif current_regime == "term_premium_pressure":
         if liquidity == "easing":
-            contradictions.append({"code": "liquidity_easing", "node": "liquidity"})
+            contradictions.append({"code": "liquidity_easing", "label": "流动性宽松", "node": "liquidity"})
         if volatility == "carry":
-            contradictions.append({"code": "volatility_unconcerned", "node": "volatility"})
+            contradictions.append({"code": "volatility_unconcerned", "label": "波动率未确认压力", "node": "volatility"})
     elif current_regime == "risk_on_liquidity":
         if credit in {"low_quality_stress", "credit_led_derisking"}:
-            contradictions.append({"code": "credit_stress", "node": "credit"})
+            contradictions.append({"code": "credit_stress", "label": "信用压力", "node": "credit"})
         if volatility == "panic":
-            contradictions.append({"code": "volatility_panic", "node": "volatility"})
+            contradictions.append({"code": "volatility_panic", "label": "波动率恐慌", "node": "volatility"})
     return contradictions
 
 
@@ -199,10 +183,13 @@ def _watch_triggers(
         return [
             {
                 "code": "macro_core_coverage_recovers",
-                "description": "Required macro-core observations arrive for the missing chain nodes.",
+                "label": "宏观核心覆盖恢复",
+                "detail": "Required macro-core observations arrive for the missing chain nodes.",
                 "data_gap_count": len([gap for gap in data_gaps if gap]),
                 "time_window": "24h",
+                "time_window_label": _time_window_label("24h"),
                 "severity": "high",
+                "severity_label": _severity_label("high"),
             }
         ]
 
@@ -210,22 +197,31 @@ def _watch_triggers(
         watch: list[dict[str, Any]] = [
             {
                 "code": "repo_pressure_persists_3d",
-                "description": "SOFR remains above IORB across multiple observations.",
+                "label": "回购压力持续三日",
+                "detail": "SOFR remains above IORB across multiple observations.",
                 "time_window": "24h",
+                "time_window_label": _time_window_label("24h"),
                 "severity": "high",
+                "severity_label": _severity_label("high"),
             },
             {
                 "code": "hy_oas_widening_5d",
-                "description": "HY OAS widens over five trading days.",
+                "label": "HY OAS 5日走阔",
+                "detail": "HY OAS widens over five trading days.",
                 "delta_5d": _feature_delta(features, "credit:hy_oas", "5d"),
                 "time_window": "72h",
+                "time_window_label": _time_window_label("72h"),
                 "severity": "high",
+                "severity_label": _severity_label("high"),
             },
             {
                 "code": "vix_breaks_30",
-                "description": "VIX moves from stress into panic territory.",
+                "label": "VIX 突破 30",
+                "detail": "VIX moves from stress into panic territory.",
                 "time_window": "72h",
+                "time_window_label": _time_window_label("72h"),
                 "severity": "medium",
+                "severity_label": _severity_label("medium"),
             },
         ]
         missing_equity_history = (
@@ -236,9 +232,12 @@ def _watch_triggers(
             watch.append(
                 {
                     "code": "risk_asset_confirmation_missing",
-                    "description": "Equity proxy history is missing for risk-asset confirmation.",
+                    "label": "风险资产确认缺失",
+                    "detail": "Equity proxy history is missing for risk-asset confirmation.",
                     "time_window": "72h",
+                    "time_window_label": _time_window_label("72h"),
                     "severity": "medium",
+                    "severity_label": _severity_label("medium"),
                 }
             )
         return watch
@@ -247,53 +246,74 @@ def _watch_triggers(
         return [
             {
                 "code": "real_yield_breakout",
-                "description": "10Y real yield keeps rising.",
+                "label": "实际利率突破",
+                "detail": "10Y real yield keeps rising.",
                 "time_window": "24h",
+                "time_window_label": _time_window_label("24h"),
                 "severity": "high",
+                "severity_label": _severity_label("high"),
             },
             {
                 "code": "breakevens_accelerate",
-                "description": "Inflation compensation confirms the rates move.",
+                "label": "通胀补偿加速",
+                "detail": "Inflation compensation confirms the rates move.",
                 "time_window": "72h",
+                "time_window_label": _time_window_label("72h"),
                 "severity": "medium",
+                "severity_label": _severity_label("medium"),
             },
         ]
     if current_regime == "credit_stress":
         return [
             {
                 "code": "hy_oas_distress",
-                "description": "HY OAS crosses distress thresholds.",
+                "label": "高收益债利差进入困境区",
+                "detail": "HY OAS crosses distress thresholds.",
                 "time_window": "24h",
+                "time_window_label": _time_window_label("24h"),
                 "severity": "high",
+                "severity_label": _severity_label("high"),
             },
             {
                 "code": "hyg_underperforms_lqd",
-                "description": "Credit beta underperforms quality credit.",
+                "label": "HYG 跑输 LQD",
+                "detail": "Credit beta underperforms quality credit.",
                 "time_window": "72h",
+                "time_window_label": _time_window_label("72h"),
                 "severity": "medium",
+                "severity_label": _severity_label("medium"),
             },
         ]
     if current_regime == "risk_on_liquidity":
         return [
             {
                 "code": "liquidity_impulse_fades",
-                "description": "Net liquidity stops improving.",
+                "label": "流动性脉冲减弱",
+                "detail": "Net liquidity stops improving.",
                 "time_window": "72h",
+                "time_window_label": _time_window_label("72h"),
                 "severity": "medium",
+                "severity_label": _severity_label("medium"),
             },
             {
                 "code": "vix_reprices_higher",
-                "description": "VIX rises back above carry regime.",
+                "label": "VIX 重新上行定价",
+                "detail": "VIX rises back above carry regime.",
                 "time_window": "72h",
+                "time_window_label": _time_window_label("72h"),
                 "severity": "medium",
+                "severity_label": _severity_label("medium"),
             },
         ]
     return [
         {
             "code": "macro_regime_breakout",
-            "description": "A chain node leaves neutral regime.",
+            "label": "宏观状态突破",
+            "detail": "A chain node leaves neutral regime.",
             "time_window": "72h",
+            "time_window_label": _time_window_label("72h"),
             "severity": "medium",
+            "severity_label": _severity_label("medium"),
         }
     ]
 
@@ -301,19 +321,43 @@ def _watch_triggers(
 def _invalidations(current_regime: str) -> list[dict[str, Any]]:
     if current_regime in {"funding_stress", "tightening"}:
         return [
-            {"code": "sofr_iorb_normalizes", "description": "SOFR trades back below or in line with IORB."},
-            {"code": "hy_oas_tightens", "description": "HY OAS tightens enough to reject credit stress."},
-            {"code": "vix_returns_to_carry", "description": "VIX falls back below 20."},
+            {
+                "code": "sofr_iorb_normalizes",
+                "label": "SOFR/IORB 回归正常",
+                "detail": "SOFR trades back below or in line with IORB.",
+            },
+            {
+                "code": "hy_oas_tightens",
+                "label": "HY OAS 收窄",
+                "detail": "HY OAS tightens enough to reject credit stress.",
+            },
+            {"code": "vix_returns_to_carry", "label": "VIX 回到 carry 区间", "detail": "VIX falls back below 20."},
         ]
     if current_regime == "term_premium_pressure":
         return [
-            {"code": "ten_year_yield_reverses", "description": "10Y yield loses the pressure threshold."},
-            {"code": "real_yield_recedes", "description": "Real yield impulse fades."},
+            {
+                "code": "ten_year_yield_reverses",
+                "label": "10年期收益率回落",
+                "detail": "10Y yield loses the pressure threshold.",
+            },
+            {"code": "real_yield_recedes", "label": "实际利率回落", "detail": "Real yield impulse fades."},
         ]
     if current_regime == "credit_stress":
-        return [{"code": "credit_spreads_normalize", "description": "HY and IG OAS tighten together."}]
+        return [
+            {
+                "code": "credit_spreads_normalize",
+                "label": "信用利差正常化",
+                "detail": "HY and IG OAS tighten together.",
+            }
+        ]
     if current_regime == "risk_on_liquidity":
-        return [{"code": "liquidity_tightens", "description": "Liquidity node turns tightening or funding stress."}]
+        return [
+            {
+                "code": "liquidity_tightens",
+                "label": "流动性转紧",
+                "detail": "Liquidity node turns tightening or funding stress.",
+            }
+        ]
     return []
 
 
@@ -322,9 +366,17 @@ def _trade_map(current_regime: str) -> list[dict[str, Any]]:
         return [
             {
                 "expression": "risk_down_credit_sensitive",
+                "label": "风险降档 / 信用敏感",
                 "time_window": "1w",
-                "confirms_on": ["sofr_above_iorb", "hy_oas_widening_5d", "vix_breaks_30"],
-                "invalidates_on": ["sofr_iorb_normalizes", "hy_oas_tightens", "vix_returns_to_carry"],
+                "time_window_label": "1周",
+                "action_checklist": [
+                    _trade_map_confirm_action("SOFR 高于 IORB"),
+                    _trade_map_confirm_action("HY OAS 5日走阔"),
+                    _trade_map_confirm_action("VIX 突破 30"),
+                    _trade_map_invalidate_action("SOFR 回到 IORB 附近"),
+                    _trade_map_invalidate_action("HY OAS 收窄"),
+                    _trade_map_invalidate_action("VIX 回到 carry 区间"),
+                ],
                 "legs": _trade_legs("risk_down_credit_sensitive"),
             }
         ]
@@ -332,9 +384,15 @@ def _trade_map(current_regime: str) -> list[dict[str, Any]]:
         return [
             {
                 "expression": "duration_pressure_quality_over_growth",
+                "label": "久期承压 / 质量优于成长",
                 "time_window": "2w",
-                "confirms_on": ["real_yield_breakout", "breakevens_accelerate"],
-                "invalidates_on": ["ten_year_yield_reverses", "real_yield_recedes"],
+                "time_window_label": "2周",
+                "action_checklist": [
+                    _trade_map_confirm_action("实际利率突破"),
+                    _trade_map_confirm_action("通胀补偿加速"),
+                    _trade_map_invalidate_action("10年期收益率回落"),
+                    _trade_map_invalidate_action("实际利率回落"),
+                ],
                 "legs": _trade_legs("duration_pressure_quality_over_growth"),
             }
         ]
@@ -342,9 +400,14 @@ def _trade_map(current_regime: str) -> list[dict[str, Any]]:
         return [
             {
                 "expression": "credit_beta_underweight",
+                "label": "低配信用 beta",
                 "time_window": "1w",
-                "confirms_on": ["hy_oas_distress", "hyg_underperforms_lqd"],
-                "invalidates_on": ["credit_spreads_normalize"],
+                "time_window_label": "1周",
+                "action_checklist": [
+                    _trade_map_confirm_action("高收益债利差进入困境区"),
+                    _trade_map_confirm_action("HYG 跑输 LQD"),
+                    _trade_map_invalidate_action("信用利差正常化"),
+                ],
                 "legs": _trade_legs("credit_beta_underweight"),
             }
         ]
@@ -352,13 +415,36 @@ def _trade_map(current_regime: str) -> list[dict[str, Any]]:
         return [
             {
                 "expression": "risk_on_liquidity_beta",
+                "label": "流动性 risk-on beta",
                 "time_window": "2w",
-                "confirms_on": ["liquidity_impulse_persists"],
-                "invalidates_on": ["liquidity_tightens", "vix_reprices_higher"],
+                "time_window_label": "2周",
+                "action_checklist": [
+                    _trade_map_confirm_action("流动性脉冲延续"),
+                    _trade_map_invalidate_action("流动性转紧"),
+                    _trade_map_invalidate_action("VIX 重新定价上行"),
+                ],
                 "legs": _trade_legs("risk_on_liquidity_beta"),
             }
         ]
     return []
+
+
+def _trade_map_confirm_action(label: str) -> dict[str, str]:
+    return {
+        "kind": "confirm",
+        "kind_label": "确认",
+        "label": label,
+        "description": f"观察 {label} 是否继续确认。",
+    }
+
+
+def _trade_map_invalidate_action(label: str) -> dict[str, str]:
+    return {
+        "kind": "invalidate",
+        "kind_label": "失效",
+        "label": label,
+        "description": f"若 {label}，则撤销该映射。",
+    }
 
 
 def _trade_legs(expression: str) -> list[dict[str, str]]:
@@ -533,6 +619,7 @@ def _scenario_case(case: str, label: str, probability: float, body: Mapping[str,
         "probability": probability,
         "probability_label": f"{probability:.0%}",
         "time_window": "未来 2 周",
+        "time_window_label": "未来 2 周",
         "thesis": body["thesis"],
         "trade": body["trade"],
         "entry_condition": body["entry_condition"],
@@ -548,19 +635,13 @@ def _top_changes(
 ) -> list[dict[str, Any]]:
     changes: list[dict[str, Any]] = []
     for trigger in triggers:
-        code = _text(trigger.get("code"))
-        if not code:
-            continue
-        label = _text(trigger.get("label")) or _code_label(code)
-        if not label:
+        payload = _trigger_payload(trigger)
+        if payload is None:
             continue
         changes.append(
             {
-                "code": code,
-                "label": label,
-                "description": _text(trigger.get("description")),
-                "node": _trigger_node(code),
-                "kind": "trigger",
+                **payload,
+                "kind": _text(payload.get("kind")),
             }
         )
     changes.extend(_feature_top_changes(features))
@@ -578,11 +659,13 @@ def _feature_top_changes(features: Mapping[str, Any]) -> list[dict[str, Any]]:
         if horizon is None or delta is None:
             continue
         latest = _mapping(feature.get("latest"))
-        source_label = _source_label(_mapping(feature.get("source")))
-        change_label = _feature_change_label(horizon=horizon, delta=delta, unit=_text(latest.get("unit")))
-        value_label = _feature_latest_label(latest)
-        observed_at = _text(latest.get("observed_at"))
-        severity = _feature_change_severity(delta=delta, unit=_text(latest.get("unit")))
+        latest_value = _required_latest_number(concept_key, latest, "value")
+        latest_unit = _required_latest_text(concept_key, latest, "unit")
+        observed_at = _required_latest_text(concept_key, latest, "observed_at")
+        source_label = _source_label(concept_key, _mapping(feature.get("source")))
+        change_label = _feature_change_label(horizon=horizon, delta=delta, unit=latest_unit)
+        value_label = _feature_latest_label(value=latest_value, unit=latest_unit)
+        severity = _feature_change_severity(delta=delta, unit=latest_unit)
         changes.append(
             {
                 "code": f"feature_change:{concept_key}:{horizon}",
@@ -590,8 +673,10 @@ def _feature_top_changes(features: Mapping[str, Any]) -> list[dict[str, Any]]:
                 "description": _feature_change_description(
                     horizon=horizon,
                     delta=delta,
-                    latest=latest,
-                    source=_mapping(feature.get("source")),
+                    latest_value=latest_value,
+                    unit=latest_unit,
+                    observed_at=observed_at,
+                    source_label=source_label,
                 ),
                 "change_label": change_label,
                 "value_label": value_label,
@@ -627,32 +712,27 @@ def _feature_change_description(
     *,
     horizon: str,
     delta: float,
-    latest: Mapping[str, Any],
-    source: Mapping[str, Any],
+    latest_value: float,
+    unit: str,
+    observed_at: str,
+    source_label: str,
 ) -> str:
-    value = _number(latest.get("value"))
-    unit = _text(latest.get("unit"))
-    observed_at = _text(latest.get("observed_at"))
-    source_name = _source_label(source)
-    parts = [f"{horizon.replace('d', '日')}变化 {_format_delta(delta, unit)}"]
-    if value is not None:
-        parts.append(f"最新 {_format_latest(value, unit)}")
-    if observed_at:
-        parts.append(f"as-of {observed_at}")
-    if source_name:
-        parts.append(f"source={source_name}")
-    return "，".join(parts)
+    return "，".join(
+        [
+            f"{horizon.replace('d', '日')}变化 {_format_delta(delta, unit)}",
+            f"最新 {_format_latest(latest_value, unit)}",
+            f"as-of {observed_at}",
+            f"source={source_label}",
+        ]
+    )
 
 
 def _feature_change_label(*, horizon: str, delta: float, unit: str) -> str:
     return f"{horizon.replace('d', '日')}变化 {_format_delta(delta, unit)}"
 
 
-def _feature_latest_label(latest: Mapping[str, Any]) -> str:
-    value = _number(latest.get("value"))
-    if value is None:
-        return ""
-    return f"最新 {_format_latest(value, _text(latest.get('unit')))}"
+def _feature_latest_label(*, value: float, unit: str) -> str:
+    return f"最新 {_format_latest(value, unit)}"
 
 
 def _feature_change_evidence_label(
@@ -662,13 +742,7 @@ def _feature_change_evidence_label(
     source_label: str,
     observed_at: str,
 ) -> str:
-    parts = [
-        change_label,
-        value_label,
-        f"source={source_label}" if source_label else "",
-        f"as-of={observed_at}" if observed_at else "",
-    ]
-    return " · ".join(part for part in parts if part)
+    return " · ".join([change_label, value_label, f"source={source_label}", f"as-of={observed_at}"])
 
 
 def _feature_change_severity(*, delta: float, unit: str) -> str:
@@ -683,7 +757,19 @@ def _feature_change_severity(*, delta: float, unit: str) -> str:
 
 
 def _severity_label(severity: str) -> str:
-    return {"high": "高", "medium": "中", "low": "低"}.get(severity, "中")
+    labels = {"error": "阻断", "warning": "预警", "high": "高", "medium": "中", "low": "低"}
+    label = labels.get(severity)
+    if label is None:
+        raise ValueError(f"Missing macro scenario severity label metadata: {severity or '<missing>'}")
+    return label
+
+
+def _time_window_label(time_window: str) -> str:
+    labels = {"24h": "24小时", "72h": "72小时"}
+    label = labels.get(time_window)
+    if label is None:
+        raise ValueError(f"Missing macro scenario time window label metadata: {time_window or '<missing>'}")
+    return label
 
 
 def _format_delta(value: float, unit: str) -> str:
@@ -700,71 +786,66 @@ def _format_latest(value: float, unit: str) -> str:
     return f"{value:.2f}{suffix}"
 
 
-def _source_label(source: Mapping[str, Any]) -> str:
-    source_name = _text(source.get("source_name") or source.get("source"))
+def _required_latest_number(concept_key: str, latest: Mapping[str, Any], field_name: str) -> float:
+    value = _number(latest.get(field_name))
+    if value is None:
+        raise ValueError(f"macro_scenario_feature_latest_{field_name}_required:{concept_key}")
+    return value
+
+
+def _required_latest_text(concept_key: str, latest: Mapping[str, Any], field_name: str) -> str:
+    value = _text(latest.get(field_name))
+    if not value:
+        raise ValueError(f"macro_scenario_feature_latest_{field_name}_required:{concept_key}")
+    return value
+
+
+def _source_label(concept_key: str, source: Mapping[str, Any]) -> str:
+    source_name = _text(source.get("name"))
     if not source_name:
-        return ""
-    return SOURCE_LABELS.get(source_name, source_name)
+        raise ValueError(f"macro_scenario_feature_source_required:{concept_key}")
+    label = SOURCE_LABELS.get(source_name)
+    if label is None:
+        raise ValueError(f"macro_scenario_source_label_required:{concept_key}:{source_name}")
+    return label
 
 
 def _quality_blockers(data_gaps: Sequence[str]) -> list[dict[str, Any]]:
     blockers: list[dict[str, Any]] = []
     for gap in build_macro_data_gaps(data_gaps):
         code = _text(gap.get("code"))
-        if not code:
+        label = _text(gap.get("label"))
+        severity = _text(gap.get("severity"))
+        if not code or not label or not severity:
             continue
         blockers.append(
             {
                 "code": code,
-                "label": _text(gap.get("label")),
-                "description": _text(gap.get("remediation_hint")),
-                "severity": _text(gap.get("severity") or "warning"),
+                "label": label,
+                "evidence_label": _text(gap.get("remediation_hint")),
+                "severity": severity,
+                "severity_label": _severity_label(severity),
             }
         )
     return _unique_items(blockers, key_name="code")[:5]
 
 
-def _trigger_node(code: str) -> str:
-    if code.startswith(("sofr_", "repo_", "rrp_", "tga_")):
-        return "funding"
-    if code.startswith(("hy_", "credit_", "hyg_", "loan_")):
-        return "credit"
-    if code.startswith(("vix", "volatility", "options")):
-        return "volatility"
-    if code.startswith(("real_yield", "ten_year", "term_", "deep_curve", "breakevens")):
-        return "rates"
-    if code.startswith(("risk_", "cross_asset")):
-        return "cross_asset"
-    return "macro"
-
-
-def _contains_cjk(value: str) -> bool:
-    return any("\u3400" <= char <= "\u9fff" for char in value)
-
-
-def _code_label(code: str) -> str | None:
-    if not code:
+def _trigger_payload(trigger: Mapping[str, Any]) -> dict[str, Any] | None:
+    code = _text(trigger.get("code"))
+    label = _text(trigger.get("label"))
+    node = _text(trigger.get("node"))
+    kind = _text(trigger.get("kind"))
+    if not code or not label or not node or not kind:
         return None
-    if _contains_cjk(code):
-        return code
     return {
-        "breakevens_accelerate": "通胀补偿加速",
-        "credit_stress": "信用压力",
-        "deep_curve_inversion": "曲线深度倒挂",
-        "fed_corridor_pressure": "政策走廊压力",
-        "higher_real_rates": "实际利率上行",
-        "hyg_underperforms_lqd": "HYG 跑输 LQD",
-        "hy_oas_distress": "高收益债利差进入困境区",
-        "hy_oas_stress": "高收益债利差压力",
-        "liquidity_tightening": "流动性收紧",
-        "repo_corridor_pressure": "回购走廊压力",
-        "rrp_buffer_low": "RRP 缓冲偏低",
-        "sofr_above_iorb": "SOFR 高于 IORB",
-        "term_premium_pressure": "期限溢价压力",
-        "tga_high": "TGA 偏高",
-        "vix_elevated": "VIX 偏高",
-        "volatility_stress": "波动率压力",
-    }.get(code)
+        "code": code,
+        "label": label,
+        "description": _text(trigger.get("description")),
+        "node": node,
+        "kind": kind,
+        "indicator_keys": _string_list(trigger.get("indicator_keys")),
+        "value": _number(trigger.get("value")),
+    }
 
 
 def _confidence(
@@ -776,15 +857,19 @@ def _confidence(
 ) -> float:
     if current_regime == "data_gap":
         return 0.0
-    observed_nodes = [
-        node
-        for node in chain.values()
-        if isinstance(node, Mapping) and _text(node.get("regime")) not in {"", "data_gap"}
-    ]
-    if not observed_nodes:
+    scores: list[float] = []
+    for node_key, node in chain.items():
+        if not isinstance(node, Mapping):
+            continue
+        if _text(node.get("regime")) in {"", "data_gap"}:
+            continue
+        score = _number(node.get("score"))
+        if score is None:
+            raise ValueError(f"Missing macro scenario node score metadata: {node_key}")
+        scores.append(score)
+    if not scores:
         return 0.0
-    scores = [_number(node.get("score")) or 0.0 for node in observed_nodes]
-    coverage = min(1.0, len(observed_nodes) / CHAIN_NODE_COUNT)
+    coverage = min(1.0, len(scores) / CHAIN_NODE_COUNT)
     score_strength = min(1.0, (sum(scores) / len(scores)) / 10.0)
     confidence = 0.15 + 0.45 * coverage + 0.25 * score_strength
     confidence += min(0.2, len(confirmations) * 0.035)
@@ -850,6 +935,12 @@ def _feature_delta(features: Mapping[str, Any], series_key: str, horizon: str) -
     if not isinstance(deltas, Mapping):
         return None
     return _number(deltas.get(horizon))
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, Sequence) or isinstance(value, str):
+        return []
+    return [_text(item) for item in value if _text(item)]
 
 
 def _mapping(value: Any) -> Mapping[str, Any]:

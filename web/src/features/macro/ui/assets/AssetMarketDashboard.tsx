@@ -36,7 +36,7 @@ export function AssetMarketDashboard({ groups }: { groups: AssetMarketGroup[] })
                   <th scope="col">代码</th>
                   <th scope="col">名称</th>
                   <th scope="col">最新</th>
-                  <th scope="col">20日变化</th>
+                  <th scope="col">日涨跌幅</th>
                   <th scope="col">日期</th>
                 </tr>
               </thead>

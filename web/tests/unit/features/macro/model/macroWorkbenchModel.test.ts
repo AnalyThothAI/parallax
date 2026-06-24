@@ -61,18 +61,66 @@ describe("macroWorkbenchModel", () => {
     expect(JSON.stringify(brief)).not.toContain("provider_not_configured");
   });
 
+  it("does not expose raw snapshot as-of dates as workbench brief labels", () => {
+    const brief = buildMacroWorkbenchBrief(
+      macroOverviewModuleFixture({
+        module_read: {},
+        snapshot: {
+          ...macroOverviewModuleFixture().snapshot,
+          asof_date: "2026-06-10",
+          asof_label: null,
+        },
+      }),
+    );
+
+    expect(brief.asOfLabel).toBeNull();
+    expect(JSON.stringify(brief)).not.toContain("2026-06-10");
+  });
+
+  it("does not expose raw module-read regimes as workbench brief labels", () => {
+    const brief = buildMacroWorkbenchBrief(
+      macroOverviewModuleFixture({
+        module_read: {
+          confidence_label: "真实覆盖说明",
+          regime: "raw_regime_code",
+        },
+      }),
+    );
+
+    expect(brief.rows).toEqual([
+      { key: "confidence_label", label: "规则覆盖", value: "真实覆盖说明" },
+    ]);
+    expect(JSON.stringify(brief)).not.toContain("raw_regime_code");
+  });
+
   it("drops module-read rows whose formatted scalar value is empty", () => {
     const brief = buildMacroWorkbenchBrief(
       macroOverviewModuleFixture({
         module_read: {
           regime_label: { raw: true },
-          confidence_label: "暂无",
+          confidence_label: "",
         },
       }),
     );
 
     expect(brief.rows).toEqual([]);
     expect(JSON.stringify(brief)).not.toContain("暂无");
+    expect(hasMacroWorkbenchBrief(brief)).toBe(false);
+  });
+
+  it("does not expose boolean module-read fields as workbench brief labels", () => {
+    const brief = buildMacroWorkbenchBrief(
+      macroOverviewModuleFixture({
+        module_read: {
+          confidence_label: false,
+          regime_label: true,
+        },
+      }),
+    );
+
+    expect(brief.rows).toEqual([]);
+    expect(JSON.stringify(brief)).not.toContain("是");
+    expect(JSON.stringify(brief)).not.toContain("否");
     expect(hasMacroWorkbenchBrief(brief)).toBe(false);
   });
 
@@ -279,8 +327,9 @@ describe("macroWorkbenchModel", () => {
       detail: "SOFR-IORB +7bp · 最新 7bp · source=NY Fed / Federal Reserve · as-of=2026-05-20",
       key: "sofr_above_iorb",
       label: "SOFR 高于 IORB",
-      meta: "资金面 · 高",
+      meta: "SOFR-IORB +7bp · 最新 7bp · NY Fed / Federal Reserve · 2026-05-20 · 高",
     });
+    expect(JSON.stringify(consoleModel.topChanges[0])).not.toContain("资金面");
   });
 
   it("formats overview future 24/72h catalysts from backend payload", () => {
@@ -323,7 +372,17 @@ describe("macroWorkbenchModel", () => {
             label: "未来 24/72h 催化剂",
             rows: [
               { label: "无身份催化剂", description: "Should not keep a synthetic key." },
-              { code: "real_catalyst", label: "真实催化剂", description: "Uses backend identity." },
+              {
+                key: "legacy_description_catalyst",
+                label: "旧正文催化剂",
+                description: "Legacy future catalyst description must stay internal.",
+              },
+              {
+                code: "legacy_code_catalyst",
+                label: "旧催化剂",
+                description: "Legacy code-only identity must stay internal.",
+              },
+              { key: "real_catalyst", label: "真实催化剂", detail: "Uses backend detail." },
             ],
           },
         },
@@ -335,6 +394,52 @@ describe("macroWorkbenchModel", () => {
     expect(consoleModel.futureCatalysts.map((item) => item.key)).toEqual(["real_catalyst"]);
     expect(JSON.stringify(consoleModel)).not.toContain("future-catalyst:0");
     expect(JSON.stringify(consoleModel)).not.toContain("无身份催化剂");
+    expect(JSON.stringify(consoleModel)).not.toContain("legacy_description_catalyst");
+    expect(JSON.stringify(consoleModel)).not.toContain(
+      "Legacy future catalyst description must stay internal",
+    );
+    expect(JSON.stringify(consoleModel)).not.toContain("legacy_code_catalyst");
+    expect(JSON.stringify(consoleModel)).not.toContain("旧催化剂");
+  });
+
+  it("does not expose raw future catalyst windows without backend labels", () => {
+    const baseModule = macroOverviewModuleFixture();
+    const decisionConsole = baseModule.module_read.decision_console as Record<string, unknown>;
+    const module = macroOverviewModuleFixture({
+      module_read: {
+        ...baseModule.module_read,
+        decision_console: {
+          ...decisionConsole,
+          future_catalysts: {
+            key: "future_catalysts",
+            label: "未来 24/72h 催化剂",
+            rows: [
+              {
+                key: "watch:raw_window",
+                label: "裸窗口催化剂",
+                detail: "Raw window must stay internal.",
+                window: "raw-window-24h",
+                severity_label: "高",
+                source: "情景触发",
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    const consoleModel = buildMacroDecisionConsole(module);
+
+    expect(consoleModel.futureCatalysts).toEqual([
+      {
+        detail: "Raw window must stay internal.",
+        key: "watch:raw_window",
+        label: "裸窗口催化剂",
+        meta: "高 · 情景触发",
+        sourceUrl: null,
+      },
+    ]);
+    expect(JSON.stringify(consoleModel.futureCatalysts)).not.toContain("raw-window-24h");
   });
 
   it("formats overview judgement review from backend holding-period evidence", () => {
@@ -483,6 +588,40 @@ describe("macroWorkbenchModel", () => {
       ],
     });
     expect(JSON.stringify(consoleModel.dataCredibility)).not.toContain("series_key");
+  });
+
+  it("does not expose raw data credibility observed dates without backend labels", () => {
+    const baseModule = macroOverviewModuleFixture();
+    const decisionConsole = baseModule.module_read.decision_console as Record<string, unknown>;
+    const module = macroOverviewModuleFixture({
+      module_read: {
+        ...baseModule.module_read,
+        decision_console: {
+          ...decisionConsole,
+          data_credibility: {
+            key: "data_credibility",
+            label: "数据可信度层",
+            rows: [
+              {
+                concept_key: "asset:spx",
+                display_value: "5312.40",
+                label: "SPX",
+                observed_at: "2026-06-10",
+                quality_label: "可用",
+                source_label: "FRED",
+                unit_label: "点",
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    const consoleModel = buildMacroDecisionConsole(module);
+
+    expect(consoleModel.dataCredibility?.rows).toHaveLength(1);
+    expect(consoleModel.dataCredibility?.rows[0]?.asOf).toBeNull();
+    expect(JSON.stringify(consoleModel.dataCredibility)).not.toContain("2026-06-10");
   });
 
   it("drops data credibility sections and rows without backend identity", () => {
@@ -756,7 +895,7 @@ describe("macroWorkbenchModel", () => {
     ]);
   });
 
-  it("preserves backend display labels for decision-console sections", () => {
+  it("uses source-backed top-change metadata instead of section labels", () => {
     const baseModule = macroOverviewModuleFixture();
     const decisionConsole = baseModule.module_read.decision_console as Record<string, unknown>;
     const module = macroOverviewModuleFixture({
@@ -769,14 +908,23 @@ describe("macroWorkbenchModel", () => {
               code: "rrp_buffer_low",
               label: "RRP 缓冲偏低",
               description: "ON RRP buffer is below 300bn USD",
-              node: "资金面",
+              evidence_label: "ON RRP buffer is below 300bn USD",
+              change_label: "ON RRP -$40B",
+              value_label: "最新 $280B",
+              source_label: "NY Fed",
+              observed_at: "2026-06-16",
+              node: "funding",
+              node_label: "资金面",
+              severity_label: "高",
               kind: "trigger",
             },
             {
               code: "feature_change",
               label: "跨资产变化",
               description: "Cross-asset confirmation shifted",
-              node: "跨资产确认",
+              evidence_label: "Cross-asset confirmation shifted",
+              node: "cross_asset",
+              node_label: "跨资产确认",
               kind: "trigger",
             },
           ],
@@ -786,7 +934,98 @@ describe("macroWorkbenchModel", () => {
 
     const consoleModel = buildMacroDecisionConsole(module);
 
-    expect(consoleModel.topChanges.map((item) => item.meta)).toEqual(["资金面", "跨资产确认"]);
+    expect(consoleModel.topChanges.map((item) => item.meta)).toEqual([
+      "ON RRP -$40B · 最新 $280B · NY Fed · 2026-06-16 · 高",
+      null,
+    ]);
+    expect(JSON.stringify(consoleModel.topChanges)).not.toContain("资金面");
+    expect(JSON.stringify(consoleModel.topChanges)).not.toContain("跨资产确认");
+  });
+
+  it("does not infer decision-console section labels from node or kind codes", () => {
+    const baseModule = macroOverviewModuleFixture();
+    const decisionConsole = baseModule.module_read.decision_console as Record<string, unknown>;
+    const module = macroOverviewModuleFixture({
+      module_evidence: {
+        confirmations: [
+          {
+            code: "node_code_without_label",
+            label: "缺 node label 的确认",
+            description: "Known node code must not become display text.",
+            evidence_label: "Known node code must not become display text.",
+            node: "funding",
+          },
+        ],
+        contradictions: [],
+        watch_triggers: [],
+        invalidations: [],
+      },
+      module_read: {
+        ...baseModule.module_read,
+        decision_console: {
+          ...decisionConsole,
+          top_changes: [
+            {
+              code: "node_label_present",
+              label: "显式 section label",
+              description: "Explicit backend node label is displayable.",
+              evidence_label: "Explicit backend node label is displayable.",
+              node: "funding",
+              node_label: "资金面",
+              kind: "trigger",
+            },
+            {
+              code: "node_code_without_label",
+              label: "缺 node label 的变化",
+              description: "Known node and kind codes must not become display text.",
+              evidence_label: "Known node and kind codes must not become display text.",
+              node: "funding",
+              kind: "trigger",
+            },
+          ],
+        },
+      },
+    });
+
+    const consoleModel = buildMacroDecisionConsole(module);
+
+    expect(consoleModel.confirmations[0].meta).toBeNull();
+    expect(consoleModel.topChanges.map((item) => item.meta)).toEqual([null, null]);
+    expect(JSON.stringify(consoleModel.confirmations)).not.toContain("资金面");
+    expect(JSON.stringify(consoleModel.topChanges)).not.toContain("资金面");
+    expect(JSON.stringify(consoleModel.topChanges[1])).not.toContain("资金面");
+    expect(JSON.stringify(consoleModel.topChanges[1])).not.toContain("funding");
+    expect(JSON.stringify(consoleModel.topChanges[1])).not.toContain("触发");
+  });
+
+  it("does not use module evidence node labels as meta fallbacks", () => {
+    const module = macroOverviewModuleFixture({
+      module_evidence: {
+        confirmations: [
+          {
+            code: "confirmation_with_explicit_meta",
+            label: "显式元信息确认",
+            evidence_label: "确认细节",
+            meta: "后端显式 meta",
+            node_label: "资金面",
+          },
+          {
+            code: "confirmation_with_node_label_only",
+            label: "只有节点标签的确认",
+            evidence_label: "确认细节",
+            node_label: "跨资产确认",
+          },
+        ],
+        contradictions: [],
+        watch_triggers: [],
+        invalidations: [],
+      },
+    });
+
+    const consoleModel = buildMacroDecisionConsole(module);
+
+    expect(consoleModel.confirmations.map((item) => item.meta)).toEqual(["后端显式 meta", null]);
+    expect(JSON.stringify(consoleModel.confirmations[1])).not.toContain("跨资产确认");
   });
 
   it("drops sparse decision-console items instead of creating placeholder details", () => {
@@ -795,7 +1034,12 @@ describe("macroWorkbenchModel", () => {
     const module = macroOverviewModuleFixture({
       module_evidence: {
         confirmations: [
-          { code: "real_confirmation", label: "真实确认", description: "资金面确认风险偏好。" },
+          {
+            code: "real_confirmation",
+            label: "真实确认",
+            description: "资金面确认风险偏好。",
+            evidence_label: "资金面确认风险偏好。",
+          },
           { label: "空确认" },
         ],
         contradictions: [{ label: "空反证" }],
@@ -807,11 +1051,26 @@ describe("macroWorkbenchModel", () => {
         decision_console: {
           ...decisionConsole,
           top_changes: [
-            { code: "rrp_down", label: "真实变化", description: "RRP 继续下行。" },
+            {
+              code: "rrp_down",
+              label: "真实变化",
+              description: "RRP 继续下行。",
+              evidence_label: "RRP 继续下行。",
+            },
             { code: "empty_change", label: "空变化" },
           ],
           quality_blockers: [
-            { code: "missing_stfm", label: "真实阻断", description: "缺少 OFR STFM 确认。" },
+            {
+              code: "missing_stfm",
+              label: "真实阻断",
+              description: "legacy quality description must stay internal.",
+              evidence_label: "缺少 OFR STFM 确认。",
+            },
+            {
+              code: "description_only_blocker",
+              label: "旧阻断",
+              description: "Legacy quality-only description must stay internal.",
+            },
             { code: "empty_blocker", label: "空阻断" },
           ],
           watchlist_alerts: {
@@ -821,7 +1080,7 @@ describe("macroWorkbenchModel", () => {
               {
                 key: "watch:spx_breaks_prior_low",
                 label: "真实规则",
-                description: "SPX 跌破上周低点。",
+                detail: "SPX 跌破上周低点。",
               },
               { label: "空规则" },
             ],
@@ -838,6 +1097,61 @@ describe("macroWorkbenchModel", () => {
     expect(consoleModel.qualityBlockers.map((item) => item.label)).toEqual(["真实阻断"]);
     expect(consoleModel.watchlistAlerts?.rules.map((item) => item.label)).toEqual(["真实规则"]);
     expect(JSON.stringify(consoleModel)).not.toContain("暂无");
+    expect(JSON.stringify(consoleModel)).not.toContain(
+      "legacy quality description must stay internal",
+    );
+    expect(JSON.stringify(consoleModel)).not.toContain(
+      "Legacy quality-only description must stay internal",
+    );
+  });
+
+  it("does not expose decision evidence descriptions without evidence labels", () => {
+    const baseModule = macroOverviewModuleFixture();
+    const decisionConsole = baseModule.module_read.decision_console as Record<string, unknown>;
+    const module = macroOverviewModuleFixture({
+      module_evidence: {
+        confirmations: [
+          {
+            code: "legacy_confirmation",
+            label: "旧确认",
+            description: "legacy confirmation description",
+          },
+        ],
+        contradictions: [
+          {
+            code: "legacy_contradiction",
+            label: "旧反证",
+            description: "legacy contradiction description",
+          },
+        ],
+        watch_triggers: [],
+        invalidations: [],
+      },
+      module_read: {
+        ...baseModule.module_read,
+        decision_console: {
+          ...decisionConsole,
+          top_changes: [
+            {
+              code: "legacy_top_change",
+              label: "旧变化",
+              description: "legacy top-change description",
+              kind: "trigger",
+              node_label: "资金面",
+            },
+          ],
+        },
+      },
+    });
+
+    const consoleModel = buildMacroDecisionConsole(module);
+
+    expect(consoleModel.confirmations).toEqual([]);
+    expect(consoleModel.contradictions).toEqual([]);
+    expect(consoleModel.topChanges).toEqual([]);
+    expect(JSON.stringify(consoleModel)).not.toContain("legacy confirmation description");
+    expect(JSON.stringify(consoleModel)).not.toContain("legacy contradiction description");
+    expect(JSON.stringify(consoleModel)).not.toContain("legacy top-change description");
   });
 
   it("drops decision-console top changes and blockers without backend codes", () => {
@@ -850,11 +1164,21 @@ describe("macroWorkbenchModel", () => {
           ...decisionConsole,
           top_changes: [
             { label: "无代码变化", description: "Should not keep a synthetic key." },
-            { code: "real_change", label: "真实变化", description: "Uses backend identity." },
+            {
+              code: "real_change",
+              label: "真实变化",
+              description: "Uses backend identity.",
+              evidence_label: "Uses backend identity.",
+            },
           ],
           quality_blockers: [
             { label: "无代码阻断", description: "Should not keep a synthetic key." },
-            { code: "real_blocker", label: "真实阻断", description: "Uses backend identity." },
+            {
+              code: "real_blocker",
+              label: "真实阻断",
+              description: "legacy blocker description must stay internal.",
+              evidence_label: "Uses backend identity.",
+            },
           ],
         },
       },
@@ -867,6 +1191,9 @@ describe("macroWorkbenchModel", () => {
     expect(JSON.stringify(consoleModel)).not.toContain("top:0");
     expect(JSON.stringify(consoleModel)).not.toContain("quality:0");
     expect(JSON.stringify(consoleModel)).not.toContain("无代码");
+    expect(JSON.stringify(consoleModel)).not.toContain(
+      "legacy blocker description must stay internal",
+    );
   });
 
   it("drops decision-console confirmations and contradictions without backend codes", () => {
@@ -874,11 +1201,21 @@ describe("macroWorkbenchModel", () => {
       module_evidence: {
         confirmations: [
           { label: "无代码确认", description: "Should not keep a synthetic key." },
-          { code: "real_confirmation", label: "真实确认", description: "Uses backend identity." },
+          {
+            code: "real_confirmation",
+            label: "真实确认",
+            description: "Uses backend identity.",
+            evidence_label: "Uses backend identity.",
+          },
         ],
         contradictions: [
           { label: "无代码反证", description: "Should not keep a synthetic key." },
-          { code: "real_contradiction", label: "真实反证", description: "Uses backend identity." },
+          {
+            code: "real_contradiction",
+            label: "真实反证",
+            description: "Uses backend identity.",
+            evidence_label: "Uses backend identity.",
+          },
         ],
         watch_triggers: [],
         invalidations: [],
@@ -908,7 +1245,7 @@ describe("macroWorkbenchModel", () => {
           impactLabel: "不改主线",
           key: "news:news-row-1",
           label: "中东震荡下，日本追加预算预期升温",
-          meta: "bloomberg.com · 美联储 · 不改主线 · recent",
+          meta: "bloomberg.com · 美联储 · 不改主线 · 近期",
           severityLabel: "低",
           sourceUrl: "https://news.google.com/articles/macro-1",
           watch: "SPX · 美元 · 美联储",
@@ -920,7 +1257,7 @@ describe("macroWorkbenchModel", () => {
           impactLabel: "政策路径",
           key: "official_calendar:fomc_decision_next",
           label: "FOMC 决议",
-          meta: "官方日历 · 政策 · 政策路径 · 0-3d",
+          meta: "官方日历 · 政策 · 政策路径 · 0-3天",
           severityLabel: "高",
           sourceUrl: "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
           watch: "利率路径和流动性定价。",
@@ -932,7 +1269,7 @@ describe("macroWorkbenchModel", () => {
           impactLabel: "拍卖/交割",
           key: "treasury_auction:2y_next_auction_days",
           label: "2Y 国债拍卖日历",
-          meta: "US Treasury · 国债供给 · 拍卖/交割 · 4-7d",
+          meta: "US Treasury · 国债供给 · 拍卖/交割 · 4-7天",
           severityLabel: "中",
           sourceUrl: "https://home.treasury.gov/system/files/221/Tentative-Auction-Schedule.xml",
           watch: "关注拍卖需求、公告规模和交割日资金占用。",
@@ -944,7 +1281,7 @@ describe("macroWorkbenchModel", () => {
           impactLabel: "拍卖结果",
           key: "treasury_auction:10y_bid_to_cover",
           label: "10Y 国债拍卖 Bid/Cover",
-          meta: "US Treasury · 国债供给 · 拍卖结果 · recent",
+          meta: "US Treasury · 国债供给 · 拍卖结果 · 近期",
           severityLabel: "中",
           sourceUrl:
             "https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v1/accounting/od/auctions_query",
@@ -957,7 +1294,7 @@ describe("macroWorkbenchModel", () => {
           impactLabel: "Fed 沟通",
           key: "official_fed_text:speech_latest",
           label: "Fed 官员讲话",
-          meta: "Federal Reserve · 政策 · Fed 沟通 · recent",
+          meta: "Federal Reserve · 政策 · Fed 沟通 · 近期",
           severityLabel: "中",
           sourceUrl: "https://www.federalreserve.gov/newsevents/speech/waller20260508a.htm",
           watch: "跟踪措辞、投票分歧和政策路径信号。",
@@ -986,6 +1323,50 @@ describe("macroWorkbenchModel", () => {
         module_read: { ...baseModule.module_read, market_event_flow: flowWithoutKey },
       }),
     ).toBeNull();
+  });
+
+  it("does not expose raw market event flow windows without backend labels", () => {
+    const baseModule = macroOverviewModuleFixture();
+    const marketEventFlow = baseModule.module_read.market_event_flow as Record<string, unknown>;
+    const eventFlow = buildMacroMarketEventFlow({
+      ...baseModule,
+      module_read: {
+        ...baseModule.module_read,
+        market_event_flow: {
+          ...marketEventFlow,
+          rows: [
+            {
+              key: "event:raw_window",
+              label: "裸窗口事件",
+              date: "2026-06-22",
+              detail: "Raw market event windows must stay internal.",
+              watch: "Track explicit labels only.",
+              source: "官方日历",
+              category_label: "政策",
+              impact_label: "政策路径",
+              window: "raw-window-0-3d",
+              severity_label: "高",
+            },
+          ],
+        },
+      },
+    });
+
+    expect(eventFlow?.rows).toEqual([
+      {
+        categoryLabel: "政策",
+        date: "2026-06-22",
+        detail: "Raw market event windows must stay internal.",
+        impactLabel: "政策路径",
+        key: "event:raw_window",
+        label: "裸窗口事件",
+        meta: "官方日历 · 政策 · 政策路径",
+        severityLabel: "高",
+        sourceUrl: null,
+        watch: "Track explicit labels only.",
+      },
+    ]);
+    expect(JSON.stringify(eventFlow?.rows)).not.toContain("raw-window-0-3d");
   });
 
   it("drops market event flow rows with missing backend keys instead of synthetic row ids", () => {
@@ -1044,13 +1425,49 @@ describe("macroWorkbenchModel", () => {
     });
   });
 
+  it("does not expose watchlist asset symbols as labels without backend labels", () => {
+    const baseModule = macroOverviewModuleFixture();
+    const decisionConsole = baseModule.module_read.decision_console as Record<string, unknown>;
+    const module = macroOverviewModuleFixture({
+      module_read: {
+        ...baseModule.module_read,
+        decision_console: {
+          ...decisionConsole,
+          watchlist_alerts: {
+            key: "watchlist_alerts",
+            label: "Watchlist 与触发提醒",
+            assets: [
+              {
+                action: "Do not show symbol-only rows",
+                key: "symbol_only_asset",
+                symbol: "RAW_SYMBOL_ONLY",
+              },
+              { action: "做多/防守", key: "BIL", label: "现金/短债", symbol: "BIL" },
+            ],
+            rules: [],
+          },
+        },
+      },
+    });
+
+    const consoleModel = buildMacroDecisionConsole(module);
+
+    expect(consoleModel.watchlistAlerts?.assets).toEqual([
+      { action: "做多/防守", key: "BIL", label: "现金/短债", symbol: "BIL" },
+    ]);
+    expect(JSON.stringify(consoleModel.watchlistAlerts?.assets)).not.toContain("RAW_SYMBOL_ONLY");
+    expect(JSON.stringify(consoleModel.watchlistAlerts?.assets)).not.toContain(
+      "Do not show symbol-only rows",
+    );
+  });
+
   it("drops watchlist alert sections and rows without backend identity", () => {
     const baseModule = macroOverviewModuleFixture();
     const decisionConsole = baseModule.module_read.decision_console as Record<string, unknown>;
     const asset = { symbol: "BIL", label: "现金/短债", action: "做多/防守" };
     const rule = {
       label: "实际利率突破",
-      description: "10Y real yield keeps rising.",
+      detail: "10Y real yield keeps rising.",
       kind: "watch",
       kind_label: "触发",
       window: "24h",
@@ -1079,7 +1496,22 @@ describe("macroWorkbenchModel", () => {
             key: "watchlist_alerts",
             label: "Watchlist 与触发提醒",
             assets: [asset, { ...asset, key: "BIL", label: "现金/短债" }],
-            rules: [rule, { ...rule, key: "watch:real_yield_breakout" }],
+            rules: [
+              rule,
+              {
+                key: "legacy_description_watch_rule",
+                label: "旧正文规则",
+                description: "Legacy watchlist rule description must stay internal.",
+                kind_label: "触发",
+              },
+              {
+                ...rule,
+                code: "legacy_code_watch_rule",
+                label: "旧规则",
+                detail: "Legacy code-only rule must stay internal.",
+              },
+              { ...rule, key: "watch:real_yield_breakout" },
+            ],
           },
         },
       },
@@ -1094,6 +1526,144 @@ describe("macroWorkbenchModel", () => {
     ]);
     expect(JSON.stringify(consoleModel)).not.toContain("watchlist-asset:0");
     expect(JSON.stringify(consoleModel)).not.toContain("watchlist-rule:0");
+    expect(JSON.stringify(consoleModel.watchlistAlerts?.rules)).not.toContain(
+      "legacy_description_watch_rule",
+    );
+    expect(JSON.stringify(consoleModel.watchlistAlerts?.rules)).not.toContain(
+      "Legacy watchlist rule description must stay internal",
+    );
+    expect(JSON.stringify(consoleModel.watchlistAlerts?.rules)).not.toContain(
+      "legacy_code_watch_rule",
+    );
+    expect(JSON.stringify(consoleModel.watchlistAlerts?.rules)).not.toContain("旧规则");
+  });
+
+  it("does not infer watchlist rule kind labels from kind", () => {
+    const baseModule = macroOverviewModuleFixture();
+    const decisionConsole = baseModule.module_read.decision_console as Record<string, unknown>;
+    const module = macroOverviewModuleFixture({
+      module_read: {
+        ...baseModule.module_read,
+        decision_console: {
+          ...decisionConsole,
+          watchlist_alerts: {
+            key: "watchlist_alerts",
+            label: "Watchlist 与触发提醒",
+            rules: [
+              {
+                key: "watch:real_yield_breakout",
+                label: "实际利率突破",
+                detail: "10Y real yield keeps rising.",
+                kind: "watch",
+                window: "24h",
+                severity_label: "高",
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    const consoleModel = buildMacroDecisionConsole(module);
+
+    expect(consoleModel.watchlistAlerts?.rules[0].meta).toBe("高");
+    expect(JSON.stringify(consoleModel.watchlistAlerts?.rules)).not.toContain("触发");
+  });
+
+  it("does not expose raw watchlist rule windows without backend labels", () => {
+    const baseModule = macroOverviewModuleFixture();
+    const decisionConsole = baseModule.module_read.decision_console as Record<string, unknown>;
+    const module = macroOverviewModuleFixture({
+      module_read: {
+        ...baseModule.module_read,
+        decision_console: {
+          ...decisionConsole,
+          watchlist_alerts: {
+            key: "watchlist_alerts",
+            label: "Watchlist 与触发提醒",
+            assets: [],
+            rules: [
+              {
+                key: "watch:raw_window",
+                label: "裸窗口规则",
+                detail: "Raw watchlist windows must stay internal.",
+                kind_label: "触发",
+                window: "raw-window-24h",
+                severity_label: "高",
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    const consoleModel = buildMacroDecisionConsole(module);
+
+    expect(consoleModel.watchlistAlerts?.rules).toEqual([
+      {
+        detail: "Raw watchlist windows must stay internal.",
+        key: "watch:raw_window",
+        label: "裸窗口规则",
+        meta: "触发 · 高",
+      },
+    ]);
+    expect(JSON.stringify(consoleModel.watchlistAlerts?.rules)).not.toContain("raw-window-24h");
+  });
+
+  it("does not expose raw decision-console time windows without backend labels", () => {
+    const baseModule = macroOverviewModuleFixture();
+    const decisionConsole = baseModule.module_read.decision_console as Record<string, unknown>;
+    const module = macroOverviewModuleFixture({
+      module_evidence: {
+        confirmations: [
+          {
+            code: "raw_window_confirmation",
+            label: "裸窗口确认",
+            evidence_label: "确认细节",
+            time_window: "raw-window-confirmation",
+            severity_label: "高",
+          },
+        ],
+        contradictions: [],
+        watch_triggers: [],
+        invalidations: [],
+      },
+      module_read: {
+        ...baseModule.module_read,
+        decision_console: {
+          ...decisionConsole,
+          scenario_cases: [
+            {
+              case: "base",
+              label: "基准情景",
+              probability_label: "50%",
+              time_window: "raw-window-scenario",
+              thesis: "资金压力维持，信用 beta 继续承压。",
+              trade: "防守：做多/持有 BIL，低配 QQQ 与 HYG。",
+              entry_condition: "SOFR-IORB 仍为正且 HY OAS 5日继续走阔。",
+              stop: "SOFR 回到 IORB 附近且 HY OAS 明显收窄。",
+              invalidation: "若 VIX 回到 carry 区且信用利差同步收窄，资金压力情景降级。",
+            },
+          ],
+          trade_map: [
+            {
+              expression: "risk_down_credit_sensitive",
+              label: "风险降档 / 信用敏感",
+              time_window: "raw-window-trade",
+            },
+          ],
+        },
+      },
+    });
+
+    const consoleModel = buildMacroDecisionConsole(module);
+
+    expect(consoleModel.confirmations[0]?.meta).toBe("高");
+    expect(consoleModel.scenarioCases[0]?.meta).toBe("50%");
+    expect(consoleModel.tradeMap[0]?.window).toBeNull();
+    expect(JSON.stringify(consoleModel)).not.toContain("raw-window-confirmation");
+    expect(JSON.stringify(consoleModel)).not.toContain("raw-window-scenario");
+    expect(JSON.stringify(consoleModel)).not.toContain("raw-window-trade");
   });
 
   it("formats scenario cases from backend decision-console payload", () => {
@@ -1110,6 +1680,7 @@ describe("macroWorkbenchModel", () => {
               label: "基准情景",
               probability_label: "50%",
               time_window: "未来 2 周",
+              time_window_label: "未来 2 周",
               thesis: "资金压力维持，信用 beta 继续承压。",
               trade: "防守：做多/持有 BIL，低配 QQQ 与 HYG。",
               entry_condition: "SOFR-IORB 仍为正且 HY OAS 5日继续走阔。",
@@ -1150,8 +1721,6 @@ describe("macroWorkbenchModel", () => {
     };
     const tradeMap = {
       label: "无表达式交易映射",
-      confirms_on: ["sofr_above_iorb"],
-      invalidates_on: [],
       legs: [{ symbol: "BIL", label: "现金/短债", action: "做多/防守" }],
     };
     const module = macroOverviewModuleFixture({
@@ -1219,13 +1788,10 @@ describe("macroWorkbenchModel", () => {
             {
               expression: "risk_down_credit_sensitive",
               label: "风险降档 / 信用敏感",
-              confirms_on: ["unmapped_signal_code"],
-              invalidates_on: [],
               legs: [{ symbol: "BIL", label: "现金/短债", action: "做多/防守" }],
             },
             {
               expression: "unmapped_trade_expression",
-              confirms_on: ["sofr_above_iorb"],
               legs: [{ symbol: "QQQ", label: "纳斯达克", action: "回避" }],
             },
           ],
@@ -1239,14 +1805,178 @@ describe("macroWorkbenchModel", () => {
     expect(consoleModel.topChanges).toEqual([]);
     expect(consoleModel.tradeMap).toHaveLength(1);
     expect(consoleModel.tradeMap[0]).toMatchObject({
-      confirms: null,
-      invalidates: null,
       label: "风险降档 / 信用敏感",
       window: null,
     });
+    expect(consoleModel.tradeMap[0]).not.toHaveProperty("confirms");
+    expect(consoleModel.tradeMap[0]).not.toHaveProperty("invalidates");
     expect(JSON.stringify(consoleModel)).not.toContain("待确认");
     expect(JSON.stringify(consoleModel)).not.toContain("unmapped_signal_code");
     expect(JSON.stringify(consoleModel)).not.toContain("unmapped_trade_expression");
+  });
+
+  it("drops known scenario signals without backend display labels", () => {
+    const baseModule = macroOverviewModuleFixture();
+    const decisionConsole = baseModule.module_read.decision_console as Record<string, unknown>;
+    const module = macroOverviewModuleFixture({
+      module_evidence: {
+        ...baseModule.module_evidence,
+        confirmations: [
+          {
+            code: "sofr_above_iorb",
+            description: "Known code without backend label must be dropped.",
+          },
+        ],
+      },
+      module_read: {
+        ...baseModule.module_read,
+        decision_console: {
+          ...decisionConsole,
+          top_changes: [
+            {
+              code: "hy_oas_stress",
+              description: "Known code without backend label must be dropped.",
+              kind: "trigger",
+            },
+          ],
+        },
+      },
+    });
+
+    const consoleModel = buildMacroDecisionConsole(module);
+
+    expect(consoleModel.confirmations).toEqual([]);
+    expect(consoleModel.topChanges).toEqual([]);
+    expect(JSON.stringify(consoleModel.confirmations)).not.toContain("SOFR 高于 IORB");
+    expect(JSON.stringify(consoleModel.topChanges)).not.toContain("高收益债利差压力");
+  });
+
+  it("drops trade-map rows without backend display labels", () => {
+    const baseModule = macroOverviewModuleFixture();
+    const decisionConsole = baseModule.module_read.decision_console as Record<string, unknown>;
+    const module = macroOverviewModuleFixture({
+      module_read: {
+        ...baseModule.module_read,
+        decision_console: {
+          ...decisionConsole,
+          trade_map: [
+            {
+              expression: "risk_down_credit_sensitive",
+              legs: [{ symbol: "BIL", label: "现金/短债", action: "做多/防守" }],
+            },
+          ],
+        },
+      },
+    });
+
+    const consoleModel = buildMacroDecisionConsole(module);
+
+    expect(consoleModel.tradeMap).toEqual([]);
+    expect(JSON.stringify(consoleModel.tradeMap)).not.toContain("风险降档 / 信用敏感");
+  });
+
+  it("drops trade-map checklist rows without backend kind labels", () => {
+    const baseModule = macroOverviewModuleFixture();
+    const decisionConsole = baseModule.module_read.decision_console as Record<string, unknown>;
+    const module = macroOverviewModuleFixture({
+      module_read: {
+        ...baseModule.module_read,
+        decision_console: {
+          ...decisionConsole,
+          trade_map: [
+            {
+              expression: "risk_down_credit_sensitive",
+              label: "风险降档 / 信用敏感",
+              action_checklist: [
+                {
+                  kind: "confirm",
+                  label: "信用压力确认",
+                  description: "缺少 kind_label 时不展示。",
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+
+    const consoleModel = buildMacroDecisionConsole(module);
+
+    expect(consoleModel.tradeMap[0].checklist).toEqual([]);
+    expect(JSON.stringify(consoleModel.tradeMap[0].checklist)).not.toContain("确认");
+  });
+
+  it("drops trade-map historical rows without backend outcome labels", () => {
+    const baseModule = macroOverviewModuleFixture();
+    const decisionConsole = baseModule.module_read.decision_console as Record<string, unknown>;
+    const module = macroOverviewModuleFixture({
+      module_read: {
+        ...baseModule.module_read,
+        decision_console: {
+          ...decisionConsole,
+          trade_map: [
+            {
+              expression: "risk_down_credit_sensitive",
+              label: "风险降档 / 信用敏感",
+              historical_review: {
+                label: "五资产 60日验证",
+                win_rate_label: "1/1",
+                average_return_pct: -6,
+                max_adverse_excursion_pct: 0,
+                rows: [
+                  {
+                    asset: "NDX",
+                    label: "纳斯达克",
+                    return_pct: -6,
+                    outcome: "hit",
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    });
+
+    const consoleModel = buildMacroDecisionConsole(module);
+
+    expect(consoleModel.tradeMap[0].history).toEqual([
+      "五资产 60日验证 · 胜率 1/1 · 均值 -6.00% · 最大逆风 0.00%",
+    ]);
+    expect(JSON.stringify(consoleModel.tradeMap[0].history)).not.toContain("命中");
+    expect(JSON.stringify(consoleModel.tradeMap[0].history)).not.toContain("未中");
+  });
+
+  it("does not infer future catalyst source labels from event kind", () => {
+    const baseModule = macroOverviewModuleFixture();
+    const decisionConsole = baseModule.module_read.decision_console as Record<string, unknown>;
+    const module = macroOverviewModuleFixture({
+      module_read: {
+        ...baseModule.module_read,
+        decision_console: {
+          ...decisionConsole,
+          future_catalysts: {
+            key: "future_catalysts",
+            label: "未来 24/72h 催化剂",
+            rows: [
+              {
+                key: "event:calendar_without_source",
+                label: "缺来源日历事件",
+                detail: "Missing source must stay missing.",
+                kind: "calendar",
+                window_label: "24h",
+                severity_label: "高",
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    const consoleModel = buildMacroDecisionConsole(module);
+
+    expect(consoleModel.futureCatalysts[0].meta).toBe("24h · 高");
+    expect(JSON.stringify(consoleModel.futureCatalysts)).not.toContain("官方日历");
   });
 
   it("formats trade-map historical review from backend evidence", () => {
@@ -1260,9 +1990,9 @@ describe("macroWorkbenchModel", () => {
           trade_map: [
             {
               expression: "risk_down_credit_sensitive",
+              label: "风险降档 / 信用敏感",
               time_window: "1w",
-              confirms_on: ["hy_oas_widening_5d"],
-              invalidates_on: ["vix_returns_to_carry"],
+              time_window_label: "1周",
               historical_review: {
                 label: "五资产 60日验证",
                 window: "60d",
@@ -1278,12 +2008,14 @@ describe("macroWorkbenchModel", () => {
                     label: "纳斯达克",
                     return_pct: -6,
                     outcome: "hit",
+                    outcome_label: "命中",
                   },
                   {
                     asset: "TLT",
                     label: "长债",
                     return_pct: 1,
                     outcome: "hit",
+                    outcome_label: "命中",
                   },
                 ],
               },
@@ -1300,11 +2032,13 @@ describe("macroWorkbenchModel", () => {
               action_checklist: [
                 {
                   kind: "confirm",
+                  kind_label: "确认",
                   label: "HY OAS 5日走阔",
                   description: "观察 HY OAS 5日走阔 是否继续确认。",
                 },
                 {
                   kind: "position_review",
+                  kind_label: "纸面仓位",
                   label: "纸面仓位复盘",
                   description: "$10,000 · P&L +$460 · 胜率 4/5",
                 },
@@ -1354,9 +2088,9 @@ describe("macroWorkbenchModel", () => {
 
     const consoleModel = buildMacroDecisionConsole(module);
 
-    expect(consoleModel.tradeMap[0].confirms).toBe("HY OAS 5日走阔");
-    expect(consoleModel.tradeMap[0].invalidates).toBe("VIX 回到 carry 区间");
-    expect(consoleModel.tradeMap[0].window).toBe("1w");
+    expect(consoleModel.tradeMap[0].window).toBe("1周");
+    expect(consoleModel.tradeMap[0]).not.toHaveProperty("confirms");
+    expect(consoleModel.tradeMap[0]).not.toHaveProperty("invalidates");
     expect(consoleModel.tradeMap[0].history).toEqual([
       "五资产 60日验证 · 胜率 4/5 · 均值 -2.60% · 最大逆风 -4.00%",
       "NDX 纳斯达克 -6.00% 命中",
@@ -1375,6 +2109,46 @@ describe("macroWorkbenchModel", () => {
       "5D 已完成 · 4/5 · P&L +$220 · 均值 +2.20%",
       "20D 观察中 · 2/5 · P&L -$80 · 均值 -0.80%",
     ]);
+  });
+
+  it("does not expose retired trade-map confirm and invalidation code lists", () => {
+    const baseModule = macroOverviewModuleFixture();
+    const decisionConsole = baseModule.module_read.decision_console as Record<string, unknown>;
+    const module = macroOverviewModuleFixture({
+      module_read: {
+        ...baseModule.module_read,
+        decision_console: {
+          ...decisionConsole,
+          trade_map: [
+            {
+              expression: "risk_down_credit_sensitive",
+              label: "风险降档 / 信用敏感",
+              confirms_on: ["hy_oas_widening_5d"],
+              invalidates_on: ["vix_returns_to_carry"],
+              action_checklist: [
+                {
+                  kind: "confirm",
+                  kind_label: "确认",
+                  label: "显式信用压力确认",
+                  description: "只消费 action_checklist 展示契约。",
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+
+    const consoleModel = buildMacroDecisionConsole(module);
+    const tradeMap = consoleModel.tradeMap[0] as Record<string, unknown>;
+
+    expect(tradeMap).not.toHaveProperty("confirms");
+    expect(tradeMap).not.toHaveProperty("invalidates");
+    expect(tradeMap.checklist).toEqual([
+      "确认 · 显式信用压力确认 · 只消费 action_checklist 展示契约。",
+    ]);
+    expect(JSON.stringify(tradeMap)).not.toContain("HY OAS 5日走阔");
+    expect(JSON.stringify(tradeMap)).not.toContain("VIX 回到 carry 区间");
   });
 
   it("drops trade-map review sections without backend labels", () => {
@@ -1428,7 +2202,7 @@ describe("macroWorkbenchModel", () => {
               {
                 key: "watch:unknown_kind",
                 label: "未知类型催化剂",
-                description: "Should not get generic event/severity labels.",
+                detail: "Should not get generic event/severity labels.",
                 kind: "unknown_kind",
                 severity: "unknown_severity",
                 window: "24h",
@@ -1440,6 +2214,7 @@ describe("macroWorkbenchModel", () => {
               code: "mapped_change",
               label: "已映射变化",
               description: "Should not get generic section/severity labels.",
+              evidence_label: "Should not get generic section/severity labels.",
               kind: "unknown_kind",
               severity: "unknown_severity",
             },
@@ -1456,6 +2231,7 @@ describe("macroWorkbenchModel", () => {
                 },
                 {
                   kind: "confirm",
+                  kind_label: "确认",
                   label: "确认动作",
                   description: "保留已映射动作。",
                 },
@@ -1468,7 +2244,7 @@ describe("macroWorkbenchModel", () => {
 
     const consoleModel = buildMacroDecisionConsole(module);
 
-    expect(consoleModel.futureCatalysts[0].meta).toBe("24h");
+    expect(consoleModel.futureCatalysts[0].meta).toBeNull();
     expect(consoleModel.topChanges[0].meta).toBeNull();
     expect(consoleModel.tradeMap[0].checklist).toEqual(["确认 · 确认动作 · 保留已映射动作。"]);
     expect(JSON.stringify(consoleModel)).not.toContain("事件");
@@ -1476,5 +2252,76 @@ describe("macroWorkbenchModel", () => {
     expect(JSON.stringify(consoleModel)).not.toContain("宏观");
     expect(JSON.stringify(consoleModel)).not.toContain("行动");
     expect(JSON.stringify(consoleModel)).not.toContain("未知动作");
+  });
+
+  it("does not infer decision-console severity labels from severity codes", () => {
+    const baseModule = macroOverviewModuleFixture();
+    const decisionConsole = baseModule.module_read.decision_console as Record<string, unknown>;
+    const module = macroOverviewModuleFixture({
+      module_evidence: {
+        confirmations: [
+          {
+            code: "severity_without_label",
+            label: "缺 severity label 的确认",
+            description: "Known severity code must not become display text.",
+            evidence_label: "Known severity code must not become display text.",
+            severity: "high",
+          },
+        ],
+        contradictions: [],
+        watch_triggers: [],
+        invalidations: [],
+      },
+      module_read: {
+        ...baseModule.module_read,
+        decision_console: {
+          ...decisionConsole,
+          future_catalysts: {
+            key: "future_catalysts",
+            label: "未来 24/72h 催化剂",
+            rows: [
+              {
+                key: "watch:severity_without_label",
+                label: "缺 severity label 的催化剂",
+                detail: "Known severity code must not become display text.",
+                window_label: "24h",
+                severity: "high",
+              },
+            ],
+          },
+          top_changes: [
+            {
+              code: "top_change_without_severity_label",
+              label: "缺 severity label 的变化",
+              description: "Known severity code must not become display text.",
+              evidence_label: "Known severity code must not become display text.",
+              kind: "trigger",
+              severity: "high",
+            },
+          ],
+          quality_blockers: [
+            {
+              code: "quality_without_severity_label",
+              label: "缺 severity label 的质量问题",
+              description: "Known severity code must not become display text.",
+              evidence_label: "Known severity code must not become display text.",
+              severity: "error",
+            },
+          ],
+        },
+      },
+    });
+
+    const consoleModel = buildMacroDecisionConsole(module);
+
+    expect(consoleModel.confirmations[0].meta).toBeNull();
+    expect(consoleModel.futureCatalysts[0].meta).toBe("24h");
+    expect(consoleModel.topChanges[0].meta).toBeNull();
+    expect(consoleModel.qualityBlockers[0].meta).toBeNull();
+    expect(JSON.stringify(consoleModel.confirmations)).not.toContain("高");
+    expect(JSON.stringify(consoleModel.futureCatalysts)).not.toContain("高");
+    expect(JSON.stringify(consoleModel.topChanges)).not.toContain("高");
+    expect(JSON.stringify(consoleModel.topChanges)).not.toContain("触发");
+    expect(JSON.stringify(consoleModel.qualityBlockers)).not.toContain("阻断");
   });
 });

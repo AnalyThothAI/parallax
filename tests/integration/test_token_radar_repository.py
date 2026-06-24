@@ -108,6 +108,8 @@ def test_publish_and_latest_current_rows_persist_factor_snapshot_json(tmp_path):
         "rank": 1,
         "intent_id": "intent-1",
         "event_id": "event-1",
+        "target_type_key": "Asset",
+        "identity_id": "asset-1",
         "target_type": "Asset",
         "target_id": "asset-1",
         "pricefeed_id": "feed-1",
@@ -613,12 +615,14 @@ def test_publish_current_generation_removes_exited_current_rows(tmp_path):
     second["rank"] = 2
     second["intent_id"] = "intent-2"
     second["event_id"] = "event-2"
+    second["identity_id"] = "asset-2"
     second["target_id"] = "asset-2"
     entrant = _valid_factor_row()
     entrant["row_id"] = "row-asset-3"
     entrant["rank"] = 1
     entrant["intent_id"] = "intent-3"
     entrant["event_id"] = "event-3"
+    entrant["identity_id"] = "asset-3"
     entrant["target_id"] = "asset-3"
     entrant["factor_snapshot_json"] = _valid_factor_snapshot(rank_score=99)
     entrant["rank_score"] = 99
@@ -671,6 +675,7 @@ def test_publish_current_generation_can_replace_rank_swaps(tmp_path):
     second["rank"] = 2
     second["intent_id"] = "intent-2"
     second["event_id"] = "event-2"
+    second["identity_id"] = "asset-2"
     second["target_id"] = "asset-2"
     try:
         migrate(conn)
@@ -796,6 +801,8 @@ def _valid_factor_row() -> dict[str, object]:
         "rank": 1,
         "intent_id": "intent-1",
         "event_id": "event-1",
+        "target_type_key": "Asset",
+        "identity_id": "asset-1",
         "target_type": "Asset",
         "target_id": "asset-1",
         "pricefeed_id": "feed-1",

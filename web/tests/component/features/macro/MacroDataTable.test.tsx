@@ -98,7 +98,7 @@ describe("Macro table primitives", () => {
             {
               row_id: "credit:empty",
               cells: {
-                instrument: { display_value: "暂无", sort_value: "empty" },
+                instrument: { display_value: "", sort_value: "empty" },
                 spread: { display_value: null, sort_value: null },
               },
             },
@@ -153,7 +153,79 @@ describe("Macro table primitives", () => {
     expect(table).not.toHaveTextContent("provider_timeout");
   });
 
-  it("maps known provider ids to display names in source metadata", () => {
+  it("does not format raw source observed timestamps as latest-observation labels", () => {
+    render(
+      <MacroSourceTable
+        caption="宏观时间戳数据源"
+        source={{
+          rows: [
+            {
+              row_id: "source:FRED",
+              source_label: "FRED",
+              status_label: "降级",
+              observed_at_ms: Date.UTC(2026, 5, 10),
+            },
+          ],
+        }}
+      />,
+    );
+
+    const table = screen.getByRole("table", { name: "宏观时间戳数据源" });
+    expect(within(table).getByText("FRED")).toBeInTheDocument();
+    expect(within(table).getByText("降级")).toBeInTheDocument();
+    expect(within(table).queryByRole("columnheader", { name: "最新观测" })).not.toBeInTheDocument();
+    expect(table).not.toHaveTextContent("2026-06-10");
+  });
+
+  it("does not use raw source messages as notes", () => {
+    render(
+      <MacroSourceTable
+        caption="宏观消息数据源"
+        source={{
+          rows: [
+            {
+              row_id: "source:FRED",
+              source_label: "FRED",
+              status_label: "降级",
+              message: "FRED public CSV timed out",
+            },
+          ],
+        }}
+      />,
+    );
+
+    const table = screen.getByRole("table", { name: "宏观消息数据源" });
+    expect(within(table).getByText("FRED")).toBeInTheDocument();
+    expect(within(table).getByText("降级")).toBeInTheDocument();
+    expect(within(table).queryByRole("columnheader", { name: "备注" })).not.toBeInTheDocument();
+    expect(table).not.toHaveTextContent("FRED public CSV timed out");
+  });
+
+  it("does not use source degraded reasons as notes without backend note text", () => {
+    render(
+      <MacroSourceTable
+        caption="宏观降级原因数据源"
+        source={{
+          rows: [
+            {
+              row_id: "source:FRED",
+              source_label: "FRED",
+              status_label: "降级",
+              degraded_reasons: ["FRED public CSV timed out"],
+            },
+          ],
+        }}
+      />,
+    );
+
+    const table = screen.getByRole("table", { name: "宏观降级原因数据源" });
+    expect(within(table).getByText("FRED")).toBeInTheDocument();
+    expect(within(table).getByText("降级")).toBeInTheDocument();
+    expect(within(table).queryByRole("columnheader", { name: "备注" })).not.toBeInTheDocument();
+    expect(table).not.toHaveTextContent("FRED public CSV timed out");
+  });
+
+  it("does not translate score-participation booleans into source-table labels", () => {
     render(
       <MacroSourceTable
         caption="宏观数据源"
@@ -183,10 +255,33 @@ describe("Macro table primitives", () => {
     const table = screen.getByRole("table", { name: "宏观数据源" });
     expect(within(table).getByText("FRED")).toBeInTheDocument();
     expect(within(table).getByText("Yahoo")).toBeInTheDocument();
-    expect(within(table).getByText("参与计分")).toBeInTheDocument();
-    expect(within(table).getByText("计分排除")).toBeInTheDocument();
+    expect(within(table).queryByRole("columnheader", { name: "计分" })).not.toBeInTheDocument();
+    expect(within(table).queryByText("参与计分")).not.toBeInTheDocument();
+    expect(within(table).queryByText("计分排除")).not.toBeInTheDocument();
     expect(table).not.toHaveTextContent("fred");
     expect(table).not.toHaveTextContent("yahoo");
+  });
+
+  it("drops source provider codes instead of translating them to display labels", () => {
+    const { container } = render(
+      <MacroSourceTable
+        caption="provider code 数据源"
+        source={{
+          rows: [
+            {
+              row_id: "source:fred",
+              source_label: "fred",
+              latest_observed_at: "2026-05-20",
+              concept_count: 3,
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.queryByRole("table", { name: "provider code 数据源" })).not.toBeInTheDocument();
+    expect(container).not.toHaveTextContent("FRED");
+    expect(container).not.toHaveTextContent("fred");
   });
 
   it("drops source rows without a real provider label and omits sparse fallback cells", () => {
@@ -274,6 +369,21 @@ describe("Macro table primitives", () => {
     expect(screen.queryByRole("table", { name: "异常状态数据源" })).not.toBeInTheDocument();
     expect(container).not.toHaveTextContent("未知状态");
     expect(container).not.toHaveTextContent("provider_not_configured");
+  });
+
+  it("requires explicit source status labels instead of translating source status codes", () => {
+    const { container } = render(
+      <MacroSourceTable
+        caption="状态码数据源"
+        source={{
+          rows: [{ row_id: "source:FRED", source_label: "FRED", status: "ok" }],
+        }}
+      />,
+    );
+
+    expect(screen.queryByRole("table", { name: "状态码数据源" })).not.toBeInTheDocument();
+    expect(container).not.toHaveTextContent("可用");
+    expect(container).not.toHaveTextContent("ok");
   });
 
   it("drops coded source degradation reasons instead of manufacturing note copy", () => {

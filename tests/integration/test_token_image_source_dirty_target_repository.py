@@ -146,5 +146,6 @@ def _target_row(target_type: str, target_id: str) -> dict[str, object]:
         "source_kind": "asset_profile.logo_url",
         "target_type": target_type,
         "target_id": target_id,
+        "source_watermark_ms": NOW_MS,
         "raw_ref_json": {"source": "test"},
     }

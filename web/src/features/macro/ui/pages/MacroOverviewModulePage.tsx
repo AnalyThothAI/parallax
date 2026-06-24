@@ -1,4 +1,5 @@
 import { primarySupportingTable } from "../../model/macroModulePresentation";
+import { macroModuleTitle } from "../../model/macroPageViewModel";
 import {
   buildMacroDecisionConsole,
   buildMacroMarketEventFlow,
@@ -30,9 +31,13 @@ export function MacroOverviewModulePage({ module, moduleId, token }: MacroModule
   const drivers = buildMacroWorkbenchDrivers(module);
   const supportingTable = primarySupportingTable(module);
   const series = useMacroPrimarySeries({ chart: module.primary_chart, token });
+  const title = macroModuleTitle(module);
+  if (!title) {
+    return null;
+  }
 
   return (
-    <MacroPageScaffold label="总览模块页面" pageKind="overview">
+    <MacroPageScaffold label={`${title}模块页面`} pageKind="overview">
       {hasMacroWorkbenchBrief(brief) ? (
         <MacroInsightBrief ariaLabel="宏观简报" brief={brief} title="宏观简报" />
       ) : null}
@@ -52,7 +57,7 @@ export function MacroOverviewModulePage({ module, moduleId, token }: MacroModule
         <MacroDriverBoard
           ariaLabel="传导链"
           drivers={drivers}
-          meta="总览"
+          meta={title}
           title="传导链"
           transmission={module.transmission}
         />

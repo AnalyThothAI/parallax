@@ -29,7 +29,7 @@ export function MacroMarketBoard({
   seriesLoading,
   supportingTable,
   supportingTables = [],
-  title = "市场板",
+  title,
 }: {
   ariaLabel?: string;
   chart: MacroModuleChart;
@@ -48,7 +48,7 @@ export function MacroMarketBoard({
     seriesLoading,
   });
 
-  if (!hasChartEvidence && tables.length === 0) {
+  if (!title || (!hasChartEvidence && tables.length === 0)) {
     return null;
   }
 
@@ -94,7 +94,7 @@ function TableBlock({ table }: { table: MacroModuleTable }) {
 }
 
 function TableSourceNote({ source }: { source: MacroModuleTable["source"] }) {
-  const note = source?.notes ?? source?.description ?? null;
+  const note = source?.notes ?? null;
   if (!note) {
     return null;
   }
@@ -170,8 +170,7 @@ function hasRenderablePrimaryChart({
 }
 
 function chartStatusLabel(chart: MacroModuleChart): string | null {
-  return (
-    chart.status_label ??
-    (typeof chart.status === "string" && chart.status.trim() ? chart.status : null)
-  );
+  return typeof chart.status_label === "string" && chart.status_label.trim()
+    ? chart.status_label
+    : null;
 }

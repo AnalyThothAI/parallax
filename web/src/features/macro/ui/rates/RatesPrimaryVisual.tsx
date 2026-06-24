@@ -51,14 +51,13 @@ export function RatesPrimaryVisual({
     <MacroPanel
       ariaLabel="利率主图"
       className="macro-rates-primary-visual"
-      meta={view.chartNote ?? view.readinessLabel}
+      meta={view.chartNote}
       span="full"
       title="利率主图"
     >
       <div className="macro-rates-chart-copy">
         <h3>{view.chartTitle}</h3>
         {view.chartNote ? <p>{view.chartNote}</p> : null}
-        {view.proxyNote ? <p>{view.proxyNote}</p> : null}
       </div>
       {moduleId === "rates/fed-funds" ? (
         series.isLoading ? (

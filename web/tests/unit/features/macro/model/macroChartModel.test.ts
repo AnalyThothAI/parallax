@@ -1,6 +1,5 @@
 import {
   MACRO_MIN_CHART_POINTS,
-  buildMacroHeatmapMatrix,
   buildMacroNormalizedReturnModel,
   buildMacroTimeSeriesModel,
   buildMacroYieldCurveModel,
@@ -52,7 +51,7 @@ describe("macroChartModel", () => {
       conceptKey: "rates:dgs10",
       label: "10Y",
       points: [],
-      status: "insufficient_history",
+      status: null,
     });
     expect(model.series[0]?.points).toEqual([
       { time: "2026-05-18", value: 100, sourceName: null, dataQuality: null },
@@ -60,9 +59,10 @@ describe("macroChartModel", () => {
     ]);
     expect(model.series[0]?.points.length).toBeGreaterThanOrEqual(MACRO_MIN_CHART_POINTS);
     expect(model.series.map((series) => series.label)).not.toContain("rates:dgs10");
+    expect(JSON.stringify(model.series[1])).not.toContain("insufficient_history");
   });
 
-  it("drops unlabeled chart series and heatmap rows instead of naming placeholders", () => {
+  it("drops unlabeled chart series instead of naming placeholders", () => {
     const model = buildMacroTimeSeriesModel(
       {
         id: "equity_proxy_performance",
@@ -84,23 +84,42 @@ describe("macroChartModel", () => {
     );
 
     expect(model.series).toEqual([]);
-
-    const matrix = buildMacroHeatmapMatrix([
-      {
-        concept_key: "asset:spy",
-        correlations: { "asset:spy": 1, "asset:qqq": 0.92 },
-      },
-      {
-        concept_key: "asset:qqq",
-        label: "QQQ",
-        correlations: { "asset:spy": 0.92, "asset:qqq": 1 },
-      },
-    ]);
-
-    expect(matrix.columns.map((column) => column.key)).toEqual(["asset:qqq"]);
-    expect(matrix.rows.map((row) => row.label)).toEqual(["QQQ"]);
-    expect(JSON.stringify(matrix)).not.toContain("未命名指标");
     expect(JSON.stringify(model)).not.toContain("asset:spx");
+  });
+
+  it("does not expose chart series titles as series labels", () => {
+    const model = buildMacroTimeSeriesModel(
+      {
+        id: "equity_proxy_performance",
+        series: [
+          { concept_key: "asset:spx", title: "Raw chart title", latest: 110, unit: "index" },
+          { concept_key: "rates:dgs10", short_label: "10Y", latest: 4.1, unit: "percent" },
+        ],
+      },
+      {
+        window: "60d",
+        data_gaps: [],
+        series: {
+          "asset:spx": {
+            concept_key: "asset:spx",
+            points: [
+              { observed_at: "2026-05-18", value: 100 },
+              { observed_at: "2026-05-19", value: 110 },
+            ],
+          },
+          "rates:dgs10": {
+            concept_key: "rates:dgs10",
+            points: [
+              { observed_at: "2026-05-18", value: 4 },
+              { observed_at: "2026-05-19", value: 4.1 },
+            ],
+          },
+        },
+      },
+    );
+
+    expect(model.series.map((series) => series.label)).toEqual(["10Y"]);
+    expect(JSON.stringify(model)).not.toContain("Raw chart title");
   });
 
   it("drops chart models with missing chart ids instead of assigning unknown ids", () => {
@@ -168,6 +187,64 @@ describe("macroChartModel", () => {
     expect(JSON.stringify(model.series[0])).not.toContain('"ok"');
   });
 
+  it("does not use hydrated series payload status or unit as chart display metadata", () => {
+    const model = buildMacroTimeSeriesModel(
+      {
+        id: "equity_proxy_performance",
+        series: [{ concept_key: "rates:dgs10", label: "10Y", latest: 4.1 }],
+      },
+      {
+        window: "60d",
+        data_gaps: [],
+        series: {
+          "rates:dgs10": {
+            concept_key: "rates:dgs10",
+            points: [
+              { observed_at: "2026-05-18", value: 4 },
+              { observed_at: "2026-05-19", value: 4.1 },
+            ],
+            status: "insufficient_history",
+            status_label: "payload status must stay hidden",
+            unit: "percent",
+          },
+        },
+      },
+    );
+
+    expect(model.series[0]).toMatchObject({
+      status: null,
+      statusLabel: null,
+      unit: null,
+    });
+    expect(JSON.stringify(model)).not.toContain("payload status must stay hidden");
+    expect(JSON.stringify(model)).not.toContain("insufficient_history");
+  });
+
+  it("does not infer chart point counts from hydrated series payload length", () => {
+    const model = buildMacroTimeSeriesModel(
+      {
+        id: "equity_proxy_performance",
+        series: [{ concept_key: "asset:spx", label: "S&P 500", latest: 110 }],
+      },
+      {
+        window: "60d",
+        data_gaps: [],
+        series: {
+          "asset:spx": {
+            concept_key: "asset:spx",
+            points: [
+              { observed_at: "2026-05-18", value: 100 },
+              { observed_at: "2026-05-19", value: 110 },
+            ],
+          },
+        },
+      },
+    );
+
+    expect(model.series[0]?.pointCount).toBeNull();
+    expect(JSON.stringify(model.series[0])).not.toContain('"pointCount":2');
+  });
+
   it("normalizes returns from the first numeric backend observation", () => {
     const chart: MacroModuleChart = {
       id: "asset_proxy_performance",
@@ -194,7 +271,7 @@ describe("macroChartModel", () => {
     expect(model.series[0]?.points.map((point) => point.value)).toEqual([0, 10, 4]);
   });
 
-  it("falls back to v2 inline chart points when hydrated series data is unavailable", () => {
+  it("does not fall back to v2 inline chart points when hydrated series data is unavailable", () => {
     const model = buildMacroTimeSeriesModel({
       id: "equity_proxy_performance",
       series: [
@@ -210,7 +287,9 @@ describe("macroChartModel", () => {
       ],
     });
 
-    expect(model.series[0]?.points.map((point) => point.value)).toEqual([100, 110]);
+    expect(model.series[0]?.points).toEqual([]);
+    expect(JSON.stringify(model)).not.toContain("2026-05-18");
+    expect(JSON.stringify(model)).not.toContain("2026-05-19");
   });
 
   it("sorts yield curve points by semantic tenor concept keys", () => {
@@ -249,7 +328,7 @@ describe("macroChartModel", () => {
     expect(JSON.stringify(model)).not.toContain("10Y");
   });
 
-  it("uses the latest inline point when a yield curve series omits latest", () => {
+  it("does not infer yield-curve latest values from v2 inline chart points", () => {
     const chart: MacroModuleChart = {
       id: "yield_curve",
       series: [
@@ -266,6 +345,7 @@ describe("macroChartModel", () => {
           concept_key: "rates:dgs2",
           label: "2Y",
           unit: "percent",
+          latest: 3.8,
           points: [{ observed_at: "2026-05-20", value: 3.8 }],
         },
         {
@@ -279,27 +359,41 @@ describe("macroChartModel", () => {
 
     const model = buildMacroYieldCurveModel(chart);
 
-    expect(model.points.map((point) => point.conceptKey)).toEqual(["rates:dgs2", "rates:dgs10"]);
-    expect(model.points.map((point) => point.value)).toEqual([3.8, 4.2]);
+    expect(model.points.map((point) => point.conceptKey)).toEqual(["rates:dgs2"]);
+    expect(model.points.map((point) => point.value)).toEqual([3.8]);
+    expect(JSON.stringify(model)).not.toContain("rates:dgs10");
   });
 
-  it("coerces heatmap matrix rows to raw numeric labels using row keys as columns", () => {
-    const matrix = buildMacroHeatmapMatrix([
-      {
-        concept_key: "asset:spy",
-        label: "SPY",
-        correlations: { "asset:spy": 1, "asset:qqq": "0.92", "fred:DGS10": 0.1 },
-      },
-      {
-        concept_key: "asset:qqq",
-        label: "QQQ",
-        correlations: { "asset:spy": 0.92, "asset:qqq": 1, "asset:tlt": null },
-      },
-    ]);
+  it("does not infer yield-curve latest values from legacy value fields", () => {
+    const chart: MacroModuleChart = {
+      id: "yield_curve",
+      series: [
+        {
+          concept_key: "rates:dgs10",
+          label: "10Y",
+          unit: "percent",
+          latest_value: 4.2,
+        },
+        {
+          concept_key: "rates:dgs2",
+          label: "2Y",
+          unit: "percent",
+          value: 3.8,
+        },
+        {
+          concept_key: "rates:dgs5",
+          label: "5Y",
+          unit: "percent",
+          latest: 4,
+        },
+      ],
+    };
 
-    expect(matrix.columns.map((column) => column.key)).toEqual(["asset:spy", "asset:qqq"]);
-    expect(matrix.rows.map((row) => row.label)).toEqual(["SPY", "QQQ"]);
-    expect(matrix.rows[0]?.cells.map((cell) => cell.rawValue)).toEqual([1, 0.92]);
-    expect(matrix.rows[0]?.cells.map((cell) => cell.label)).toEqual(["1", "0.92"]);
+    const model = buildMacroYieldCurveModel(chart);
+
+    expect(model.points.map((point) => point.conceptKey)).toEqual(["rates:dgs5"]);
+    expect(model.points.map((point) => point.value)).toEqual([4]);
+    expect(JSON.stringify(model)).not.toContain("rates:dgs10");
+    expect(JSON.stringify(model)).not.toContain("rates:dgs2");
   });
 });

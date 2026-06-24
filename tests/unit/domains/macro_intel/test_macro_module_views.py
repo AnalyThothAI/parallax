@@ -82,7 +82,8 @@ def test_build_macro_module_view_projects_v3_display_contract() -> None:
     assert "rates:dgs5" in view["primary_chart"]["missing_concept_keys"]
     assert "rates:dgs30" in view["primary_chart"]["missing_concept_keys"]
     assert view["primary_chart"]["series"][0]["label"] == "2年期美债收益率"
-    assert view["primary_chart"]["series"][0]["point_count"] == 1
+    assert view["primary_chart"]["series"][0]["point_count"] == 0
+    assert view["primary_chart"]["series"][0]["points"] == []
     assert view["tables"][0]["columns"] == [
         {"key": "indicator", "label": "指标"},
         {"key": "latest", "label": "最新值"},
@@ -138,6 +139,208 @@ def test_build_macro_module_view_projects_v3_display_contract() -> None:
     assert "section_boards" not in view
 
 
+def test_availability_table_does_not_emit_placeholder_gap_cells_or_empty_rows() -> None:
+    config = next(item for item in list_macro_module_configs() if item.module_id == "rates/yield-curve")
+
+    empty_table = macro_module_views._availability_table(
+        config=config,
+        feature_map={},
+        concept_keys=[],
+        data_gaps=[],
+    )
+    assert empty_table["rows"] == []
+    assert "无显式缺口" not in str(empty_table)
+    assert "当前模块没有配置级缺口" not in str(empty_table)
+
+    gap_table = macro_module_views._availability_table(
+        config=config,
+        feature_map={},
+        concept_keys=[],
+        data_gaps=[
+            {
+                "code": "missing_rates_dgs5",
+                "label": "缺少当前数据：5Y",
+                "severity": "error",
+                "remediation_hint": "同步 macro-core 利率源后重新投影。",
+            }
+        ],
+    )
+
+    assert gap_table["rows"] == [
+        {
+            "row_id": "gap:missing_rates_dgs5",
+            "row_quality": "error",
+            "source_state": {"label": "数据可用性", "status": "error"},
+            "cells": {
+                "item": {"display_value": "缺少当前数据：5Y", "sort_value": "missing_rates_dgs5"},
+                "status": {"display_value": "error", "sort_value": "error"},
+                "notes": {
+                    "display_value": "同步 macro-core 利率源后重新投影。",
+                    "sort_value": "同步 macro-core 利率源后重新投影。",
+                },
+            },
+        }
+    ]
+    assert "n/a" not in str(gap_table)
+    assert "计分排除" not in str(gap_table)
+
+
+def test_availability_note_requires_feature_source_without_none_label_fallback() -> None:
+    feature = _feature("rates:dgs10", 4.7, unit="percent", source_name="fred")
+    del feature["source"]
+
+    with pytest.raises(ValueError, match="macro_availability_source_required:rates:dgs10"):
+        macro_module_views._availability_note("rates:dgs10", feature)
+
+
+@pytest.mark.parametrize("builder_name", ("_tile", "_table_row"))
+def test_feature_surfaces_require_source_label_without_none_fallback(builder_name: str) -> None:
+    feature = _feature("rates:dgs10", 4.7, unit="percent", source_name="fred")
+    del feature["source"]
+
+    with pytest.raises(ValueError, match="macro_module_view_feature_source_required:rates:dgs10"):
+        getattr(macro_module_views, builder_name)("rates:dgs10", feature)
+
+
+@pytest.mark.parametrize("builder_name", ("_tile", "_table_row"))
+@pytest.mark.parametrize(
+    ("missing_field", "message"),
+    (
+        ("latest", "macro_module_view_feature_latest_required:rates:dgs10"),
+        ("value", "macro_module_view_feature_latest_value_required:rates:dgs10"),
+        ("observed_at", "macro_module_view_feature_latest_observed_at_required:rates:dgs10"),
+    ),
+)
+def test_feature_surfaces_require_latest_value_and_observed_at_without_placeholders(
+    builder_name: str,
+    missing_field: str,
+    message: str,
+) -> None:
+    feature = _feature("rates:dgs10", 4.7, unit="percent", source_name="fred")
+    if missing_field == "latest":
+        del feature["latest"]
+    else:
+        latest = feature["latest"]
+        assert isinstance(latest, dict)
+        del latest[missing_field]
+
+    with pytest.raises(ValueError, match=message):
+        getattr(macro_module_views, builder_name)("rates:dgs10", feature)
+
+
+@pytest.mark.parametrize("builder_name", ("_tile", "_table_row", "_chart_series"))
+def test_feature_surfaces_require_latest_unit_without_catalog_label_mask(builder_name: str) -> None:
+    feature = _feature("rates:dgs10", 4.7, unit="percent", source_name="fred")
+    latest = feature["latest"]
+    assert isinstance(latest, dict)
+    del latest["unit"]
+
+    with pytest.raises(ValueError, match="macro_module_view_feature_latest_unit_required:rates:dgs10"):
+        getattr(macro_module_views, builder_name)("rates:dgs10", feature)
+
+
+@pytest.mark.parametrize("builder_name", ("_tile", "_table_row"))
+def test_feature_surfaces_require_history_points_without_optional_gap(builder_name: str) -> None:
+    feature = _feature("rates:dgs10", 4.7, unit="percent", source_name="fred")
+    del feature["history_points"]
+
+    with pytest.raises(ValueError, match="macro_module_view_feature_history_points_required:rates:dgs10"):
+        getattr(macro_module_views, builder_name)("rates:dgs10", feature)
+
+
+def test_availability_table_requires_present_feature_history_points_without_history_missing_label() -> None:
+    feature = _feature("rates:dgs10", 4.7, unit="percent", source_name="fred")
+    del feature["history_points"]
+    config = next(config for config in list_macro_module_configs() if config.module_id == "rates/yield-curve")
+
+    with pytest.raises(ValueError, match="macro_module_view_feature_history_points_required:rates:dgs10"):
+        macro_module_views._availability_table(
+            config=config,
+            feature_map={"rates:dgs10": feature},
+            concept_keys=("rates:dgs10",),
+            data_gaps=(),
+        )
+
+
+@pytest.mark.parametrize(
+    ("missing_field", "message"),
+    (
+        ("latest", "macro_module_view_feature_latest_required:rates:dgs10"),
+        ("value", "macro_module_view_feature_latest_value_required:rates:dgs10"),
+        ("observed_at", "macro_module_view_feature_latest_observed_at_required:rates:dgs10"),
+    ),
+)
+def test_availability_table_requires_present_feature_latest_without_observed_at_placeholder(
+    missing_field: str,
+    message: str,
+) -> None:
+    feature = _feature("rates:dgs10", 4.7, unit="percent", source_name="fred")
+    config = next(config for config in list_macro_module_configs() if config.module_id == "rates/yield-curve")
+    if missing_field == "latest":
+        del feature["latest"]
+    else:
+        latest = feature["latest"]
+        assert isinstance(latest, dict)
+        del latest[missing_field]
+
+    with pytest.raises(ValueError, match=message):
+        macro_module_views._availability_table(
+            config=config,
+            feature_map={"rates:dgs10": feature},
+            concept_keys=("rates:dgs10",),
+            data_gaps=(),
+        )
+
+
+def test_availability_table_requires_present_feature_latest_unit_without_catalog_label_mask() -> None:
+    feature = _feature("rates:dgs10", 4.7, unit="percent", source_name="fred")
+    latest = feature["latest"]
+    assert isinstance(latest, dict)
+    del latest["unit"]
+    config = next(config for config in list_macro_module_configs() if config.module_id == "rates/yield-curve")
+
+    with pytest.raises(ValueError, match="macro_module_view_feature_latest_unit_required:rates:dgs10"):
+        macro_module_views._availability_table(
+            config=config,
+            feature_map={"rates:dgs10": feature},
+            concept_keys=("rates:dgs10",),
+            data_gaps=(),
+        )
+
+
+def test_chart_series_does_not_repair_missing_history_from_latest() -> None:
+    feature = _feature("rates:dgs10", 4.7, unit="percent", source_name="fred")
+
+    series = macro_module_views._chart_series("rates:dgs10", feature)
+
+    assert series["point_count"] == 0
+    assert series["status"] == "insufficient_history"
+    assert series["points"] == []
+
+
+@pytest.mark.parametrize(
+    ("history", "message"),
+    (
+        (["bad-row"], "macro_chart_series_history_row_required:rates:dgs10"),
+        ([{"value": 4.7}], "macro_chart_series_history_observed_at_required:rates:dgs10"),
+        ([{"observed_at": "2026-05-20"}], "macro_chart_series_history_value_required:rates:dgs10"),
+        (
+            [{"observed_at": "2026-05-20", "value": "not-a-number"}],
+            "macro_chart_series_history_value_required:rates:dgs10",
+        ),
+    ),
+)
+def test_chart_series_requires_complete_history_points_without_silent_drop(
+    history: list[object],
+    message: str,
+) -> None:
+    feature = _feature("rates:dgs10", 4.7, unit="percent", source_name="fred")
+    feature["history"] = history
+
+    with pytest.raises(ValueError, match=message):
+        macro_module_views._chart_series("rates:dgs10", feature)
+
+
 @pytest.mark.parametrize(
     "field_name",
     (
@@ -181,6 +384,24 @@ def test_build_macro_module_view_rejects_misshaped_snapshot_json_sections(
     snapshot[field_name] = invalid_value
 
     with pytest.raises(ValueError, match=f"macro_module_view_snapshot_section_invalid:{field_name}"):
+        build_macro_module_view("rates/yield-curve", snapshot=snapshot, observations=[])
+
+
+@pytest.mark.parametrize(
+    ("field_name", "message"),
+    (
+        ("asof_date", "macro_module_view_snapshot_asof_date_required"),
+        ("computed_at_ms", "macro_module_view_snapshot_computed_at_required"),
+    ),
+)
+def test_build_macro_module_view_requires_snapshot_header_time_metadata_without_placeholders(
+    field_name: str,
+    message: str,
+) -> None:
+    snapshot = _snapshot()
+    del snapshot[field_name]
+
+    with pytest.raises(ValueError, match=message):
         build_macro_module_view("rates/yield-curve", snapshot=snapshot, observations=[])
 
 
@@ -365,6 +586,57 @@ def test_yield_curve_module_read_adds_curve_diagnostics_from_history() -> None:
             "driver_label": "实际利率驱动",
         },
     ]
+
+
+def test_yield_curve_spreads_require_change_history_without_stable_fallback() -> None:
+    snapshot = _snapshot()
+    features = snapshot["features_json"]
+    features["rates:dgs2"] = _feature_with_history(
+        "rates:dgs2",
+        [("2026-05-20", 3.8)],
+    )
+    features["rates:dgs10"] = _feature_with_history(
+        "rates:dgs10",
+        [
+            ("2026-05-13", 4.0),
+            ("2026-05-20", 4.2),
+        ],
+    )
+    features["rates:dgs3mo"] = _feature_with_history(
+        "rates:dgs3mo",
+        [
+            ("2026-05-13", 4.35),
+            ("2026-05-20", 4.3),
+        ],
+    )
+    features["rates:dgs5"] = _feature_with_history(
+        "rates:dgs5",
+        [("2026-05-20", 4.0)],
+    )
+    features["rates:dgs30"] = _feature_with_history(
+        "rates:dgs30",
+        [("2026-05-20", 4.7)],
+    )
+
+    view = build_macro_module_view("rates/yield-curve", snapshot=snapshot, observations=[])
+
+    rows_by_key = {str(row["key"]): row for row in view["module_read"]["curve_diagnostics"]["rows"]}
+    assert rows_by_key["2s10s"]["current_bp"] == 40.0
+    assert rows_by_key["2s10s"]["change_1w_bp"] is None
+    assert rows_by_key["2s10s"]["status"] == "insufficient_history"
+    assert rows_by_key["2s10s"]["status_label"] == "样本不足"
+    assert rows_by_key["3m10y"]["current_bp"] == -10.0
+    assert rows_by_key["3m10y"]["change_1w_bp"] == 25.0
+    assert rows_by_key["3m10y"]["status"] == "less_inverted"
+    assert rows_by_key["3m10y"]["status_label"] == "倒挂缓和"
+    assert macro_module_views._yield_curve_spread_status(
+        current_bp=40.0,
+        change_1w_bp=None,
+    ) == ("insufficient_history", "样本不足")
+    assert macro_module_views._yield_curve_spread_status(
+        current_bp=-10.0,
+        change_1w_bp=None,
+    ) == ("inverted", "倒挂")
 
 
 def test_yield_curve_data_health_marks_missing_implemented_depth_sources() -> None:
@@ -751,6 +1023,115 @@ def test_real_rates_module_read_adds_real_rate_diagnostics_from_history() -> Non
     ]
 
 
+def test_real_rate_rows_require_change_history_without_stable_fallback() -> None:
+    snapshot = _snapshot()
+    features = snapshot["features_json"]
+    features["rates:real_5y"] = _feature_with_history(
+        "rates:real_5y",
+        [("2026-05-20", 1.70)],
+    )
+    features["rates:real_10y"] = _feature_with_history(
+        "rates:real_10y",
+        [
+            ("2026-05-13", 1.70),
+            ("2026-05-20", 1.80),
+        ],
+    )
+    features["inflation:5y_breakeven"] = _feature_with_history(
+        "inflation:5y_breakeven",
+        [("2026-05-20", 2.10)],
+    )
+
+    view = build_macro_module_view("rates/real-rates", snapshot=snapshot, observations=[])
+
+    real_rows_by_key = {str(row["key"]): row for row in view["module_read"]["real_rate_diagnostics"]["real_yield_rows"]}
+    inflation_rows_by_key = {
+        str(row["key"]): row for row in view["module_read"]["real_rate_diagnostics"]["inflation_rows"]
+    }
+    assert real_rows_by_key["real_5y"] == {
+        "key": "real_5y",
+        "label": "5Y Real",
+        "current_pct": 1.7,
+        "change_1w_bp": None,
+        "change_1m_bp": None,
+        "change_3m_bp": None,
+        "status": "insufficient_history",
+        "status_label": "样本不足",
+    }
+    assert inflation_rows_by_key["breakeven_5y"] == {
+        "key": "breakeven_5y",
+        "label": "5Y Breakeven",
+        "current_pct": 2.1,
+        "change_1w_bp": None,
+        "change_1m_bp": None,
+        "change_3m_bp": None,
+        "status": "insufficient_history",
+        "status_label": "样本不足",
+    }
+    assert macro_module_views._real_rate_real_status(
+        current_pct=1.7,
+        change_1w_bp=None,
+    ) == ("insufficient_history", "样本不足")
+    assert macro_module_views._real_rate_real_status(
+        current_pct=2.1,
+        change_1w_bp=None,
+    ) == ("valuation_pressure", "估值压力")
+    assert macro_module_views._real_rate_inflation_status(
+        current_pct=2.1,
+        change_1w_bp=None,
+    ) == ("insufficient_history", "样本不足")
+
+
+def test_real_rate_regime_does_not_convert_missing_breakeven_to_real_rate_pressure_zero() -> None:
+    regime, regime_label, summary = macro_module_views._real_rate_regime(
+        real_yield_rows=[
+            {
+                "key": "real_10y",
+                "label": "10Y Real",
+                "current_pct": 2.1,
+                "status": "valuation_pressure",
+                "status_label": "估值压力",
+            }
+        ],
+        inflation_rows=[],
+    )
+
+    assert (regime, regime_label, summary) == (
+        "stable",
+        "实际利率稳定",
+        "实际利率与通胀补偿未出现强方向：等待 10Y real、breakeven 和风险资产同步确认。",
+    )
+
+
+def test_real_rate_regime_does_not_convert_missing_real_change_to_inflation_compensation_zero() -> None:
+    regime, regime_label, summary = macro_module_views._real_rate_regime(
+        real_yield_rows=[
+            {
+                "key": "real_10y",
+                "label": "10Y Real",
+                "current_pct": 1.8,
+                "status": "stable",
+                "status_label": "稳定",
+            }
+        ],
+        inflation_rows=[
+            {
+                "key": "breakeven_10y",
+                "label": "10Y Breakeven",
+                "change_1w_bp": 12.0,
+                "status": "rising",
+                "status_label": "补偿走阔",
+            }
+        ],
+    )
+
+    assert (regime, regime_label, summary) == (
+        "stable",
+        "实际利率稳定",
+        "实际利率与通胀补偿未出现强方向：等待 10Y real、breakeven 和风险资产同步确认。",
+    )
+
+
 def test_real_rates_data_health_marks_missing_implemented_depth_sources() -> None:
     snapshot = _snapshot()
     snapshot["status"] = "ready"
@@ -1044,6 +1425,51 @@ def test_credit_stress_module_read_promotes_nfci_tightening_when_spreads_lag() -
     assert diagnostics["invalidations"] == ["若 NFCI 回落且 HY/IG OAS 未继续走阔，金融条件收紧读法降级。"]
 
 
+def test_credit_financial_conditions_status_requires_change_history_without_zero_default() -> None:
+    assert macro_module_views._credit_financial_conditions_status(
+        current_index=0.1,
+        change_1w_index=None,
+        change_1m_index=None,
+    ) == ("insufficient_history", "样本不足")
+
+
+def test_credit_etf_relative_status_requires_actual_changes_without_zero_default() -> None:
+    assert macro_module_views._credit_etf_relative_status(
+        hyg_1w_pct=None,
+        relative_1w_pct=-1.5,
+    ) == ("insufficient_history", "样本不足")
+    assert macro_module_views._credit_etf_relative_status(
+        hyg_1w_pct=0.2,
+        relative_1w_pct=None,
+    ) == ("insufficient_history", "样本不足")
+
+
+def test_credit_spread_statuses_require_change_history_without_stable_fallback() -> None:
+    assert macro_module_views._credit_oas_status(None) == ("insufficient_history", "样本不足")
+    assert macro_module_views._credit_tail_status(None) == ("insufficient_history", "样本不足")
+
+
+def test_credit_regime_does_not_convert_missing_tail_spread_to_credit_relief_zero() -> None:
+    regime, regime_label, summary = macro_module_views._credit_regime(
+        [
+            {
+                "key": "hy_oas",
+                "label": "HY OAS",
+                "current_bp": 420.0,
+                "change_1m_bp": -30.0,
+                "status": "tightening",
+                "status_label": "收窄",
+            }
+        ]
+    )
+
+    assert (regime, regime_label, summary) == (
+        "contained",
+        "压力可控",
+        "信用压力可控：利差和银行信贷暂未给出强方向，等待尾部确认。",
+    )
+
+
 def test_credit_stress_data_health_marks_missing_implemented_depth_sources() -> None:
     snapshot = _snapshot()
     snapshot["status"] = "ready"
@@ -1324,6 +1750,36 @@ def test_volatility_vix_module_merges_module_observation_history_for_existing_fe
     }
 
 
+def test_observation_feature_merge_requires_existing_history_points_without_history_length_fallback() -> None:
+    existing = {
+        "latest": {"observed_at": "2026-05-20"},
+        "history": [{"observed_at": "2026-05-20", "value": 16.9}],
+    }
+    observation_feature = {
+        "latest": {"observed_at": "2026-05-21"},
+        "history": [{"observed_at": "2026-05-21", "value": 17.2}],
+        "history_points": 1,
+    }
+
+    with pytest.raises(ValueError, match="macro_module_view_feature_history_points_required:existing"):
+        macro_module_views._observation_feature_is_newer_or_deeper(existing, observation_feature)
+
+
+def test_observation_feature_merge_requires_observation_history_points_without_history_length_fallback() -> None:
+    existing = {
+        "latest": {"observed_at": "2026-05-20"},
+        "history": [{"observed_at": "2026-05-20", "value": 16.9}],
+        "history_points": 1,
+    }
+    observation_feature = {
+        "latest": {"observed_at": "2026-05-21"},
+        "history": [{"observed_at": "2026-05-21", "value": 17.2}],
+    }
+
+    with pytest.raises(ValueError, match="macro_module_view_feature_history_points_required:observation"):
+        macro_module_views._observation_feature_is_newer_or_deeper(existing, observation_feature)
+
+
 def test_volatility_diagnostics_marks_single_point_front_etf_as_insufficient_history() -> None:
     snapshot = _snapshot()
     features = snapshot["features_json"]
@@ -1343,6 +1799,27 @@ def test_volatility_diagnostics_marks_single_point_front_etf_as_insufficient_his
     assert rows_by_key["vixy_vixm"]["status"] == "insufficient_history"
     assert rows_by_key["vixy_vixm"]["status_label"] == "样本不足"
     assert "待确认" not in str(diagnostics)
+
+
+def test_volatility_regime_does_not_convert_missing_vix_spot_to_carry_zero() -> None:
+    regime, regime_label, summary = macro_module_views._volatility_regime(
+        [
+            {
+                "key": "vix3m_vix",
+                "label": "VIX3M-VIX",
+                "current_points": 3.2,
+                "change_1w_points": 0.4,
+                "status": "contango",
+                "status_label": "Contango",
+            }
+        ]
+    )
+
+    assert (regime, regime_label, summary) == (
+        "neutral",
+        "中性",
+        "波动率信号中性：等待 VIX、MOVE、期限结构和期货代理同向确认。",
+    )
 
 
 def test_volatility_vix_data_health_marks_missing_implemented_depth_sources() -> None:
@@ -1504,6 +1981,25 @@ def test_liquidity_rrp_tga_module_read_adds_liquidity_diagnostics_from_history()
     assert diagnostics["invalidations"] == ["若 SOFR-IORB 回落至 0bp 附近且净流动性 1w 转正，抽水读法降级。"]
 
 
+def test_liquidity_regime_does_not_convert_missing_rrp_and_net_liquidity_to_buffer_low_zeroes() -> None:
+    regime, regime_label, summary = macro_module_views._liquidity_regime(
+        [
+            {
+                "key": "on_rrp",
+                "label": "RRP 缓冲",
+                "status": "insufficient_history",
+                "status_label": "样本不足",
+            }
+        ]
+    )
+
+    assert (regime, regime_label, summary) == (
+        "neutral",
+        "中性",
+        "流动性信号中性：等待 SOFR-IORB、RRP、TGA 和净流动性同向确认。",
+    )
+
+
 def test_liquidity_rrp_tga_data_health_marks_missing_implemented_depth_sources() -> None:
     snapshot = _snapshot()
     snapshot["status"] = "ready"
@@ -1563,6 +2059,38 @@ def test_liquidity_diagnostics_marks_single_point_volume_as_insufficient_history
     assert rows_by_key["sofr_volume"]["status"] == "insufficient_history"
     assert rows_by_key["sofr_volume"]["status_label"] == "样本不足"
     assert "待确认" not in str(diagnostics)
+
+
+def test_liquidity_tga_requires_change_history_without_stable_fallback() -> None:
+    snapshot = _snapshot()
+    _add_liquidity_pressure_features(snapshot["features_json"])
+    snapshot["features_json"]["liquidity:tga"] = _feature(
+        "liquidity:tga",
+        760_000.0,
+        unit="million_usd",
+        source_name="treasury",
+    )
+
+    view = build_macro_module_view("liquidity/rrp-tga", snapshot=snapshot, observations=[])
+
+    rows_by_key = {str(row["key"]): row for row in view["module_read"]["liquidity_diagnostics"]["rows"]}
+    assert rows_by_key["tga"] == {
+        "key": "tga",
+        "label": "TGA 财政现金",
+        "current_bn": 760.0,
+        "change_1w_bn": None,
+        "change_1m_bn": None,
+        "status": "insufficient_history",
+        "status_label": "样本不足",
+    }
+    assert macro_module_views._liquidity_tga_status(
+        current_bn=760.0,
+        change_1w_bn=None,
+    ) == ("insufficient_history", "样本不足")
+    assert macro_module_views._liquidity_tga_status(
+        current_bn=950.0,
+        change_1w_bn=None,
+    ) == ("treasury_high", "TGA 偏高")
 
 
 def test_liquidity_rrp_tga_module_uses_module_observations_for_repo_depth_optional_series() -> None:
@@ -1726,6 +2254,61 @@ def test_inflation_module_read_adds_inflation_diagnostics_from_history() -> None
     assert diagnostics["invalidations"] == ["若核心 CPI 同比回落且 10Y 通胀补偿 1m 收窄超过 10bp，再加速读法降级。"]
 
 
+def test_inflation_breakeven_requires_change_history_without_stable_fallback() -> None:
+    snapshot = _snapshot()
+    features = snapshot["features_json"]
+    features["inflation:cpi"] = _feature_with_history(
+        "inflation:cpi",
+        [
+            ("2025-04-20", 300.0),
+            ("2025-05-20", 302.0),
+            ("2026-04-20", 312.0),
+            ("2026-05-20", 318.0),
+        ],
+        unit="index",
+    )
+    features["inflation:10y_breakeven"] = _feature_with_history(
+        "inflation:10y_breakeven",
+        [("2026-05-20", 2.10)],
+    )
+
+    view = build_macro_module_view("economy/inflation", snapshot=snapshot, observations=[])
+
+    rows_by_key = {str(row["key"]): row for row in view["module_read"]["inflation_diagnostics"]["rows"]}
+    assert rows_by_key["breakeven_10y"] == {
+        "key": "breakeven_10y",
+        "label": "10Y 通胀补偿",
+        "current_pct": 2.1,
+        "change_1w_bp": None,
+        "change_1m_bp": None,
+        "status": "insufficient_history",
+        "status_label": "样本不足",
+    }
+    assert macro_module_views._inflation_breakeven_status(
+        current_pct=2.1,
+        change_1m_bp=None,
+    ) == ("insufficient_history", "样本不足")
+    assert macro_module_views._inflation_breakeven_status(
+        current_pct=2.6,
+        change_1m_bp=None,
+    ) == ("expectation_pressure", "预期升温")
+
+
+def test_inflation_regime_does_not_convert_missing_core_level_to_disinflation_zero() -> None:
+    regime, regime_label, summary = macro_module_views._inflation_regime(
+        [
+            {"key": "cpi_yoy", "label": "CPI 同比", "change_1m_pct": -0.5},
+            {"key": "core_cpi_yoy", "label": "核心 CPI 同比", "change_1m_pct": -0.5},
+        ]
+    )
+
+    assert (regime, regime_label, summary) == (
+        "neutral",
+        "中性",
+        "通胀信号中性：等待 CPI、PCE 与通胀补偿同向确认。",
+    )
+
+
 def test_inflation_data_health_marks_missing_implemented_depth_sources() -> None:
     snapshot = _snapshot()
     snapshot["status"] = "ready"
@@ -1880,6 +2463,91 @@ def test_employment_module_read_adds_employment_diagnostics_from_history() -> No
     ]
     assert diagnostics["implications"] == ["就业降温：降低盈利周期和高 beta 置信度，降息交易需等待通胀同步配合。"]
     assert diagnostics["invalidations"] == ["若非农新增重新高于 180k 且初请 1m 回落超过 20k，就业降温读法降级。"]
+
+
+def test_employment_regime_does_not_convert_missing_claims_to_resilient_zero_change() -> None:
+    regime, regime_label, summary = macro_module_views._employment_regime(
+        [
+            {
+                "key": "payroll_gain",
+                "label": "非农新增",
+                "current_k": 220.0,
+                "change_1m_k": 40.0,
+                "status": "strong",
+                "status_label": "强劲",
+            }
+        ]
+    )
+
+    assert (regime, regime_label, summary) == (
+        "neutral",
+        "中性",
+        "就业信号中性：等待非农、失业率、初请和工资同向确认。",
+    )
+
+
+def test_employment_rows_require_change_history_without_stable_fallback() -> None:
+    snapshot = _snapshot()
+    features = snapshot["features_json"]
+    features["labor:unemployment"] = _feature_with_history(
+        "labor:unemployment",
+        [("2026-05-20", 4.2)],
+    )
+    features["labor:payrolls"] = _feature_with_history(
+        "labor:payrolls",
+        [
+            ("2026-03-20", 158_000.0),
+            ("2026-04-20", 158_150.0),
+            ("2026-05-20", 158_300.0),
+        ],
+        unit="thousand_persons",
+    )
+    features["labor:initial_claims"] = _feature_with_history(
+        "labor:initial_claims",
+        [("2026-05-20", 250_000.0)],
+        unit="persons",
+    )
+    features["labor:job_openings"] = _feature_with_history(
+        "labor:job_openings",
+        [("2026-05-20", 8_000.0)],
+        unit="thousand_persons",
+    )
+    features["labor:avg_hourly_earnings"] = _feature_with_history(
+        "labor:avg_hourly_earnings",
+        [
+            ("2025-05-20", 35.0),
+            ("2026-05-20", 36.2),
+        ],
+        unit="usd_per_hour",
+    )
+
+    view = build_macro_module_view("economy/employment", snapshot=snapshot, observations=[])
+
+    rows_by_key = {str(row["key"]): row for row in view["module_read"]["employment_diagnostics"]["rows"]}
+    assert rows_by_key["unemployment_rate"]["change_1m_pct"] is None
+    assert rows_by_key["unemployment_rate"]["status"] == "insufficient_history"
+    assert rows_by_key["unemployment_rate"]["status_label"] == "样本不足"
+    assert rows_by_key["initial_claims"]["change_1m_k"] is None
+    assert rows_by_key["initial_claims"]["status"] == "insufficient_history"
+    assert rows_by_key["initial_claims"]["status_label"] == "样本不足"
+    assert rows_by_key["job_openings"]["change_1m_m"] is None
+    assert rows_by_key["job_openings"]["status"] == "insufficient_history"
+    assert rows_by_key["job_openings"]["status_label"] == "样本不足"
+    assert rows_by_key["wage_yoy"]["change_1m_pct"] is None
+    assert rows_by_key["wage_yoy"]["status"] == "insufficient_history"
+    assert rows_by_key["wage_yoy"]["status_label"] == "样本不足"
+    assert macro_module_views._employment_payroll_status(
+        current_k=150.0,
+        change_1m_k=None,
+    ) == ("insufficient_history", "样本不足")
+    assert macro_module_views._employment_payroll_status(
+        current_k=220.0,
+        change_1m_k=None,
+    ) == ("strong", "强劲")
+    assert macro_module_views._employment_wage_status(
+        current_yoy_pct=4.6,
+        change_1m_pct=None,
+    ) == ("wage_pressure", "工资压力")
 
 
 def test_employment_data_health_marks_missing_implemented_depth_sources() -> None:
@@ -2050,6 +2718,126 @@ def test_gdp_module_read_adds_growth_diagnostics_from_history() -> None:
     ]
     assert diagnostics["implications"] == ["增长降温：降低盈利周期和高 beta 暴露，等待就业或消费重新确认。"]
     assert diagnostics["invalidations"] == ["若实际 PCE 与工业生产同比回升且住房开工 1m 转正，增长降温读法降级。"]
+
+
+def test_growth_regime_does_not_convert_missing_gdp_or_consumption_to_recession_zeroes() -> None:
+    regime, regime_label, summary = macro_module_views._growth_regime(
+        [
+            {
+                "key": "housing_starts",
+                "label": "住房开工",
+                "current_m": 1.6,
+                "change_1m_k": -25.0,
+                "status": "stable",
+                "status_label": "稳定",
+            }
+        ]
+    )
+
+    assert (regime, regime_label, summary) == (
+        "neutral",
+        "中性",
+        "增长信号中性：等待 GDP、工业生产、消费和地产同向确认。",
+    )
+
+
+def test_growth_rows_require_change_history_without_stable_fallback() -> None:
+    snapshot = _snapshot()
+    features = snapshot["features_json"]
+    features["economy:gdp_real"] = _feature_with_history(
+        "economy:gdp_real",
+        [
+            ("2025-06-30", 100.0),
+            ("2026-06-30", 102.3),
+        ],
+        unit="billion_usd",
+    )
+    features["economy:gdp_nowcast"] = _feature_with_history(
+        "economy:gdp_nowcast",
+        [
+            ("2026-05-20", 2.0),
+            ("2026-06-20", 2.1),
+        ],
+        unit="percent_saar",
+    )
+    features["economy:industrial_production"] = _feature_with_history(
+        "economy:industrial_production",
+        [
+            ("2025-05-20", 100.0),
+            ("2026-05-20", 101.0),
+        ],
+        unit="index",
+    )
+    features["economy:housing_starts"] = _feature_with_history(
+        "economy:housing_starts",
+        [("2026-05-20", 1_400.0)],
+        unit="thousand_units",
+    )
+    features["consumer:pce_real"] = _feature_with_history(
+        "consumer:pce_real",
+        [
+            ("2025-05-20", 100.0),
+            ("2026-05-20", 102.2),
+        ],
+        unit="index",
+    )
+    features["consumer:retail_sales"] = _feature_with_history(
+        "consumer:retail_sales",
+        [
+            ("2025-05-20", 100.0),
+            ("2026-05-20", 102.2),
+        ],
+        unit="index",
+    )
+
+    view = build_macro_module_view("economy/gdp", snapshot=snapshot, observations=[])
+
+    rows_by_key = {str(row["key"]): row for row in view["module_read"]["growth_diagnostics"]["rows"]}
+    assert rows_by_key["real_gdp_yoy"]["change_1q_pct"] is None
+    assert rows_by_key["real_gdp_yoy"]["status"] == "insufficient_history"
+    assert rows_by_key["real_gdp_yoy"]["status_label"] == "样本不足"
+    assert rows_by_key["industrial_production_yoy"]["change_1m_pct"] is None
+    assert rows_by_key["industrial_production_yoy"]["status"] == "insufficient_history"
+    assert rows_by_key["industrial_production_yoy"]["status_label"] == "样本不足"
+    assert rows_by_key["housing_starts"]["change_1m_k"] is None
+    assert rows_by_key["housing_starts"]["status"] == "insufficient_history"
+    assert rows_by_key["housing_starts"]["status_label"] == "样本不足"
+    assert rows_by_key["real_pce_yoy"]["change_1m_pct"] is None
+    assert rows_by_key["real_pce_yoy"]["status"] == "insufficient_history"
+    assert rows_by_key["real_pce_yoy"]["status_label"] == "样本不足"
+    assert rows_by_key["retail_sales_yoy"]["change_1m_pct"] is None
+    assert rows_by_key["retail_sales_yoy"]["status"] == "insufficient_history"
+    assert rows_by_key["retail_sales_yoy"]["status_label"] == "样本不足"
+    assert macro_module_views._growth_gdp_status(
+        current_yoy_pct=2.3,
+        change_1q_pct=None,
+    ) == ("insufficient_history", "样本不足")
+    assert macro_module_views._growth_gdp_status(
+        current_yoy_pct=2.6,
+        change_1q_pct=None,
+    ) == ("resilient", "韧性")
+    assert macro_module_views._growth_gdpnow_status(
+        current_pct=2.0,
+        change_1m_pct=None,
+    ) == ("insufficient_history", "样本不足")
+    assert macro_module_views._growth_industrial_status(
+        current_yoy_pct=1.0,
+        change_1m_pct=None,
+    ) == ("insufficient_history", "样本不足")
+    assert macro_module_views._growth_housing_status(
+        current_m=1.4,
+        change_1m_k=None,
+    ) == ("insufficient_history", "样本不足")
+    assert macro_module_views._growth_consumption_status(
+        current_yoy_pct=2.2,
+        change_1m_pct=None,
+        retail=False,
+    ) == ("insufficient_history", "样本不足")
+    assert macro_module_views._growth_consumption_status(
+        current_yoy_pct=2.2,
+        change_1m_pct=None,
+        retail=True,
+    ) == ("insufficient_history", "样本不足")
 
 
 def test_gdp_data_health_marks_missing_implemented_depth_sources() -> None:
@@ -2292,6 +3080,21 @@ def test_assets_landing_module_read_adds_cross_asset_diagnostics_from_history() 
     assert diagnostics["invalidations"] == ["若 SPX/BTC 修复且 DXY、WTI、VIX 同步回落，滞胀冲击读法降级。"]
 
 
+def test_asset_regime_does_not_convert_missing_dollar_or_credit_to_risk_on_zeroes() -> None:
+    regime, regime_label, summary = macro_module_views._asset_regime(
+        [
+            {"key": "spx", "label": "SPX", "change_1w_pct": 2.0, "status": "risk_on"},
+            {"key": "btc", "label": "BTC", "change_1w_pct": 4.0, "status": "risk_on"},
+        ]
+    )
+
+    assert (regime, regime_label, summary) == (
+        "mixed",
+        "分化",
+        "跨资产信号分化：权益、久期、美元、能源、信用和波动率尚未形成同向主线。",
+    )
+
+
 def test_asset_diagnostics_marks_single_point_rows_as_insufficient_history() -> None:
     snapshot = _snapshot()
     snapshot["features_json"]["asset:spx"] = _feature_with_history(
@@ -2300,15 +3103,21 @@ def test_asset_diagnostics_marks_single_point_rows_as_insufficient_history() -> 
         unit="index",
         source_name="yahoo",
     )
+    snapshot["features_json"]["vol:vix"] = _feature("vol:vix", 18.0, unit="index", source_name="fred")
+    snapshot["features_json"]["credit:hy_oas"] = _feature("credit:hy_oas", 3.4, unit="percent", source_name="fred")
 
     view = build_macro_module_view("assets", snapshot=snapshot, observations=[])
 
     diagnostics = view["module_read"]["asset_diagnostics"]
     rows_by_key = {row["key"]: row for row in diagnostics["rows"]}
+    assert rows_by_key["vix"]["status"] == "insufficient_history"
+    assert rows_by_key["vix"]["status_label"] == "样本不足"
     assert rows_by_key["tlt"]["status"] == "insufficient_history"
     assert rows_by_key["tlt"]["status_label"] == "样本不足"
     assert rows_by_key["btc"]["status"] == "insufficient_history"
     assert rows_by_key["btc"]["status_label"] == "样本不足"
+    assert rows_by_key["hy_oas"]["status"] == "insufficient_history"
+    assert rows_by_key["hy_oas"]["status_label"] == "样本不足"
     assert "待确认" not in str(diagnostics)
 
 
@@ -2570,6 +3379,21 @@ def test_bonds_module_read_adds_asset_class_diagnostics_from_module_history() ->
     assert diagnostics["invalidations"] == ["若 TLT/IEF 1w 转正且 HYG 不再跑输 LQD，信用久期双压读法降级。"]
 
 
+def test_bond_regime_does_not_convert_missing_credit_spread_to_duration_bid() -> None:
+    regime, regime_label, summary = macro_module_views._bond_regime(
+        [
+            {"key": "tlt", "label": "TLT", "change_1w_pct": 1.5, "status": "duration_bid"},
+            {"key": "ief", "label": "IEF", "change_1w_pct": 0.8, "status": "duration_bid"},
+        ]
+    )
+
+    assert (regime, regime_label, summary) == (
+        "bond_mixed",
+        "债券分化",
+        "债券横截面分化：等待 TLT/IEF、LQD/HYG 与 HY/IG OAS 给出同向确认。",
+    )
+
+
 def test_bonds_data_health_marks_missing_implemented_depth_sources() -> None:
     snapshot = _snapshot()
     snapshot["status"] = "ready"
@@ -2672,6 +3496,18 @@ def test_commodities_module_read_adds_asset_class_diagnostics_from_module_histor
     ]
     assert diagnostics["implications"] == ["能源通胀冲击：保留能源/美元受益表达，降低长久期和高估值风险资产。"]
     assert diagnostics["invalidations"] == ["若 WTI/Brent 1w 转负且 NatGas 回落，能源通胀冲击读法降级。"]
+
+
+def test_commodity_regime_does_not_convert_missing_energy_to_cyclical_bid() -> None:
+    regime, regime_label, summary = macro_module_views._commodity_regime(
+        [{"key": "copper", "label": "Copper", "change_1w_pct": 4.0, "status": "industrial_bid"}]
+    )
+
+    assert (regime, regime_label, summary) == (
+        "commodity_mixed",
+        "商品分化",
+        "商品信号分化：能源、贵金属和工业金属尚未形成一致的通胀或增长主线。",
+    )
 
 
 def test_commodities_data_health_marks_missing_implemented_depth_sources() -> None:
@@ -2791,6 +3627,18 @@ def test_fx_module_read_adds_asset_class_diagnostics_from_module_history() -> No
     assert diagnostics["invalidations"] == ["若 DXY/Broad USD 1w 转负且 EURUSD 修复，美元挤压读法降级。"]
 
 
+def test_fx_regime_does_not_convert_missing_pairs_to_dollar_divergence() -> None:
+    regime, regime_label, summary = macro_module_views._fx_regime(
+        [{"key": "dxy", "label": "DXY", "change_1w_pct": 1.4, "status": "dollar_up"}]
+    )
+
+    assert (regime, regime_label, summary) == (
+        "fx_mixed",
+        "外汇分化",
+        "美元与主要货币对分化：等待 DXY、广义美元、EURUSD、USDJPY 与 USDCNY 同向确认。",
+    )
+
+
 def test_fx_data_health_marks_missing_implemented_depth_sources() -> None:
     snapshot = _snapshot()
     snapshot["status"] = "ready"
@@ -2861,6 +3709,18 @@ def test_crypto_module_read_adds_asset_class_diagnostics_from_module_history() -
         "加密 beta 降温：降低 BTC/ETH 和高 beta 风险资产暴露，等待 BTC 稳定与 ETH 不再跑输。"
     ]
     assert diagnostics["invalidations"] == ["若 BTC/ETH 1w 转正且 ETH 不再跑输 BTC，加密降温读法降级。"]
+
+
+def test_crypto_regime_does_not_convert_missing_eth_to_btc_defensive_bid() -> None:
+    regime, regime_label, summary = macro_module_views._crypto_regime(
+        [{"key": "btc", "label": "BTC", "change_1w_pct": 4.0, "status": "crypto_beta_up"}]
+    )
+
+    assert (regime, regime_label, summary) == (
+        "crypto_mixed",
+        "加密分化",
+        "BTC 与 ETH 信号分化：等待双币种同向确认后再把加密当作宏观 beta 放大器。",
+    )
 
 
 def test_crypto_module_read_adds_derivatives_diagnostics_without_restoring_page() -> None:
@@ -3057,6 +3917,67 @@ def test_crypto_module_read_adds_derivatives_diagnostics_without_restoring_page(
         "杠杆追涨：保留 BTC/ETH beta 要降低杠杆和追价，优先等待 funding、basis 或 DVOL 降温后再加仓。"
     ]
     assert diagnostics["invalidations"] == ["若 OI 收缩且 funding/basis 回落，加密杠杆追涨读法降级。"]
+
+
+def test_crypto_derivatives_require_change_history_without_stable_or_relief_fallback() -> None:
+    view = build_macro_module_view(
+        "assets/crypto",
+        snapshot=_snapshot(),
+        observations=[
+            _obs("crypto:btc", "2026-05-13", 100.0, unit="usd", source_name="yahoo"),
+            _obs("crypto:btc", "2026-05-20", 104.0, unit="usd", source_name="yahoo"),
+            _obs("crypto:eth", "2026-05-13", 100.0, unit="usd", source_name="yahoo"),
+            _obs("crypto:eth", "2026-05-20", 105.0, unit="usd", source_name="yahoo"),
+            _obs(
+                "crypto_derivatives:okx_btc_oi_usd",
+                "2026-05-20",
+                11_000_000_000.0,
+                unit="usd",
+                source_name="okx",
+            ),
+            _obs(
+                "crypto_derivatives:deribit_btc_oi_usd",
+                "2026-05-20",
+                5_500_000_000.0,
+                unit="usd",
+                source_name="deribit",
+            ),
+            _obs(
+                "crypto_derivatives:deribit_btc_vol_index",
+                "2026-05-20",
+                40.0,
+                unit="index",
+                source_name="deribit",
+            ),
+        ],
+    )
+
+    rows_by_key = {str(row["key"]): row for row in view["module_read"]["asset_class_diagnostics"]["rows"]}
+    assert rows_by_key["btc_perp_oi"] == {
+        "key": "btc_perp_oi",
+        "label": "BTC 永续 OI",
+        "current_bn": 16.5,
+        "change_1w_pct": None,
+        "status": "insufficient_history",
+        "status_label": "样本不足",
+    }
+    assert rows_by_key["btc_dvol"] == {
+        "key": "btc_dvol",
+        "label": "BTC DVOL",
+        "current_index": 40.0,
+        "change_1w_index": None,
+        "status": "insufficient_history",
+        "status_label": "样本不足",
+    }
+    assert macro_module_views._crypto_oi_status(None) == ("insufficient_history", "样本不足")
+    assert macro_module_views._crypto_vol_status(
+        current_index=40.0,
+        change_1w_index=None,
+    ) == ("insufficient_history", "样本不足")
+    assert macro_module_views._crypto_vol_status(
+        current_index=70.0,
+        change_1w_index=None,
+    ) == ("vol_hot", "波动升温")
 
 
 def test_crypto_module_data_health_marks_missing_derivatives_as_reference_gap() -> None:
@@ -3256,46 +4177,52 @@ def test_gap_payloads_do_not_preserve_labels_for_implemented_source_gaps() -> No
     assert all(gap["remediation_hint"] == "补齐数据源后重新投影。" for gap in gaps)
 
 
-def test_gap_payloads_do_not_emit_unnamed_indicator_for_unmapped_missing_codes() -> None:
-    gaps = build_macro_data_gaps(["missing:rates:unmapped"])
+def test_gap_payloads_require_registered_concept_metadata_for_missing_codes() -> None:
+    with pytest.raises(ValueError, match="macro_gap_concept_metadata_required:rates:unmapped"):
+        build_macro_data_gaps(["missing:rates:unmapped"])
+
+
+def test_gap_payloads_require_named_subjects_without_humanizing_missing_codes() -> None:
+    with pytest.raises(ValueError, match="macro_gap_subject_required:narrative_magic_missing"):
+        build_macro_data_gaps(["narrative_magic_missing"])
+
+
+def test_gap_payloads_name_snapshot_missing_without_humanized_code_fallback() -> None:
+    gaps = build_macro_data_gaps(["macro_view_snapshot_missing"])
 
     assert gaps == [
         {
-            "code": "missing_rates_unmapped",
-            "label": "数据质量缺口：missing_rates_unmapped",
-            "severity": "error",
+            "code": "macro_view_snapshot_missing",
+            "label": "宏观快照缺失",
+            "severity": "warning",
             "score_participation": False,
-            "remediation_hint": "检查对应 provider 导入与最新观测。",
+            "remediation_hint": "补齐数据源后重新投影。",
         }
     ]
-    assert "未命名指标" not in str(gaps)
 
 
-def test_feature_label_and_unit_fallback_use_metadata_not_raw_keys_or_units() -> None:
-    snapshot = _snapshot()
-    feature = snapshot["features_json"]["rates:dgs2"]
-    for key in ("label", "short_label", "description", "unit_label"):
-        feature.pop(key)
+@pytest.mark.parametrize("builder_name", ("_tile", "_table_row", "_chart_series"))
+@pytest.mark.parametrize("missing_field", ("label", "short_label", "description", "unit_label"))
+def test_feature_surfaces_require_display_metadata_without_catalog_fallback(
+    builder_name: str,
+    missing_field: str,
+) -> None:
+    feature = _feature("rates:dgs10", 4.7, unit="percent", source_name="fred")
+    del feature[missing_field]
 
-    view = build_macro_module_view("rates/yield-curve", snapshot=snapshot, observations=[])
-
-    tile = view["tiles"][0]
-    assert tile["label"] == "2年期美债收益率"
-    assert tile["short_label"] == "2Y"
-    assert tile["unit_label"] == "%"
-    assert tile["label"] != "rates:dgs2"
-    assert tile["unit_label"] != "percent"
+    with pytest.raises(
+        ValueError,
+        match=f"macro_module_view_feature_{missing_field}_required:rates:dgs10",
+    ):
+        getattr(macro_module_views, builder_name)("rates:dgs10", feature)
 
 
-def test_feature_unit_label_requires_feature_or_metadata_unit(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_feature_unit_label_requires_feature_metadata_without_catalog_unit() -> None:
     snapshot = _snapshot()
     feature = snapshot["features_json"]["rates:dgs2"]
     feature.pop("unit_label")
-    metadata = dict(macro_module_views.MACRO_CONCEPT_METADATA["rates:dgs2"])
-    metadata.pop("unit_label")
-    monkeypatch.setitem(macro_module_views.MACRO_CONCEPT_METADATA, "rates:dgs2", metadata)
 
-    with pytest.raises(ValueError, match="Missing macro concept unit metadata: rates:dgs2"):
+    with pytest.raises(ValueError, match="macro_module_view_feature_unit_label_required:rates:dgs2"):
         build_macro_module_view("rates/yield-curve", snapshot=snapshot, observations=[])
 
 
@@ -3325,6 +4252,39 @@ def test_observation_supplements_require_catalog_unit_metadata(monkeypatch: pyte
         )
 
 
+def test_observation_supplements_require_quality_field() -> None:
+    observation = _obs("rates:dgs5", "2026-05-20", 4.1, unit="percent", source_name="fred")
+    del observation["data_quality"]
+
+    with pytest.raises(ValueError, match="macro_module_view_observation_quality_required:rates:dgs5"):
+        build_macro_module_view("rates/yield-curve", snapshot=_snapshot(), observations=[observation])
+
+
+def test_module_view_provenance_requires_observation_quality_field() -> None:
+    observation = _obs("asset:spx", "2026-05-20", 5312.4, unit="index", source_name="fred")
+    del observation["data_quality"]
+
+    with pytest.raises(ValueError, match="macro_module_view_observation_quality_required:asset:spx"):
+        build_macro_module_view("rates/yield-curve", snapshot=_snapshot(), observations=[observation])
+
+
+def test_module_view_provenance_requires_source_name_without_silent_drop() -> None:
+    observation = _obs("asset:spx", "2026-05-20", 5312.4, unit="index", source_name="fred")
+    del observation["source_name"]
+
+    with pytest.raises(ValueError, match="macro_module_view_observation_source_name_required:asset:spx"):
+        build_macro_module_view("rates/yield-curve", snapshot=_snapshot(), observations=[observation])
+
+
+def test_observation_supplements_require_source_name_without_provider_or_series_fallback() -> None:
+    observation = _obs("rates:dgs10", "2026-05-20", 4.7, unit="percent", source_name="fred")
+    observation["provider"] = "fred"
+    del observation["source_name"]
+
+    with pytest.raises(ValueError, match="macro_module_view_observation_source_name_required:rates:dgs10"):
+        build_macro_module_view("rates/yield-curve", snapshot=_snapshot(), observations=[observation])
+
+
 def test_module_view_provenance_requires_public_provider_metadata() -> None:
     with pytest.raises(ValueError, match="Missing macro provider label metadata: internal_feed"):
         build_macro_module_view(
@@ -3351,11 +4311,27 @@ def test_module_view_requires_known_snapshot_status_metadata() -> None:
         build_macro_module_view("rates/yield-curve", snapshot=snapshot, observations=[])
 
 
+def test_module_view_requires_snapshot_status_field() -> None:
+    snapshot = _snapshot()
+    del snapshot["status"]
+
+    with pytest.raises(ValueError, match="macro_module_view_snapshot_status_required"):
+        build_macro_module_view("rates/yield-curve", snapshot=snapshot, observations=[])
+
+
 def test_module_view_requires_known_feature_quality_metadata() -> None:
     snapshot = _snapshot()
     snapshot["features_json"]["rates:dgs2"]["data_quality"] = "provider_not_configured"
 
     with pytest.raises(ValueError, match="Missing macro quality label metadata: provider_not_configured"):
+        build_macro_module_view("rates/yield-curve", snapshot=snapshot, observations=[])
+
+
+def test_module_view_requires_feature_quality_field() -> None:
+    snapshot = _snapshot()
+    del snapshot["features_json"]["rates:dgs2"]["data_quality"]
+
+    with pytest.raises(ValueError, match="macro_module_view_feature_quality_required:rates:dgs2"):
         build_macro_module_view("rates/yield-curve", snapshot=snapshot, observations=[])
 
 
@@ -3394,6 +4370,23 @@ def test_overview_transmission_requires_known_regime_metadata() -> None:
         build_macro_module_view("overview", snapshot=snapshot, observations=[])
 
 
+def test_overview_transmission_requires_chain_node_regime_field() -> None:
+    snapshot = _snapshot()
+    snapshot["chain_json"] = {"liquidity": {}}
+
+    with pytest.raises(ValueError, match="macro_transmission_regime_required:liquidity"):
+        build_macro_module_view("overview", snapshot=snapshot, observations=[])
+
+
+def test_chart_status_requires_explicit_series_point_count_without_zero_default() -> None:
+    with pytest.raises(ValueError, match="macro_chart_series_point_count_required"):
+        macro_module_views._chart_status(
+            concept_keys=("rates:dgs2",),
+            missing_concept_keys=[],
+            series=[{"concept_key": "rates:dgs2"}],
+        )
+
+
 def test_decision_console_requires_labeled_quality_blockers() -> None:
     snapshot = _snapshot()
     snapshot["scenario_json"] = {
@@ -3422,6 +4415,16 @@ def test_decision_console_requires_labeled_quality_blocker_severity() -> None:
         build_macro_module_view("overview", snapshot=snapshot, observations=[])
 
 
+def test_decision_console_requires_scenario_quality_blockers_without_data_health_fallback() -> None:
+    snapshot = _snapshot()
+    snapshot["scenario_json"] = {
+        key: value for key, value in snapshot["scenario_json"].items() if key != "quality_blockers"
+    }
+
+    with pytest.raises(ValueError, match="Missing macro scenario quality_blockers metadata"):
+        build_macro_module_view("overview", snapshot=snapshot, observations=[])
+
+
 def test_decision_console_requires_known_top_change_section_metadata() -> None:
     snapshot = _snapshot()
     snapshot["scenario_json"] = {
@@ -3431,6 +4434,7 @@ def test_decision_console_requires_known_top_change_section_metadata() -> None:
                 "code": "higher_real_rates",
                 "label": "实际利率上行",
                 "description": "10Y real yield broke higher",
+                "evidence_label": "10Y real yield broke higher",
                 "node": "shadow_macro",
                 "kind": "trigger",
             }
@@ -3450,6 +4454,7 @@ def test_decision_console_requires_top_change_section_metadata() -> None:
                 "code": "higher_real_rates",
                 "label": "实际利率上行",
                 "description": "10Y real yield broke higher",
+                "evidence_label": "10Y real yield broke higher",
                 "kind": "trigger",
             }
         ],
@@ -3459,21 +4464,625 @@ def test_decision_console_requires_top_change_section_metadata() -> None:
         build_macro_module_view("overview", snapshot=snapshot, observations=[])
 
 
-def test_decision_console_requires_known_watchlist_severity_metadata() -> None:
+def test_compact_signal_emits_stable_node_code_and_explicit_node_label() -> None:
+    row = macro_module_views._compact_signal(
+        {
+            "code": "rrp_buffer_low",
+            "label": "RRP 缓冲偏低",
+            "description": "ON RRP buffer is below 300bn USD",
+            "evidence_label": "ON RRP buffer is below 300bn USD",
+            "node": "funding",
+            "kind": "trigger",
+        }
+    )
+
+    assert row == {
+        "code": "rrp_buffer_low",
+        "label": "RRP 缓冲偏低",
+        "evidence_label": "ON RRP buffer is below 300bn USD",
+        "node": "funding",
+        "node_label": "资金面",
+        "kind": "trigger",
+    }
+
+
+def test_compact_signal_requires_evidence_label_without_silent_drop() -> None:
+    with pytest.raises(ValueError, match="macro_compact_signal_evidence_label_required"):
+        macro_module_views._compact_signal(
+            {
+                "code": "rrp_buffer_low",
+                "label": "RRP 缓冲偏低",
+                "description": "ON RRP buffer is below 300bn USD",
+                "node": "funding",
+                "kind": "trigger",
+            }
+        )
+
+
+def test_compact_signal_requires_severity_label_without_module_side_derivation() -> None:
+    with pytest.raises(ValueError, match="macro_compact_signal_severity_label_required"):
+        macro_module_views._compact_signal(
+            {
+                "code": "rrp_buffer_low",
+                "label": "RRP 缓冲偏低",
+                "evidence_label": "ON RRP buffer is below 300bn USD",
+                "node": "funding",
+                "kind": "trigger",
+                "severity": "high",
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    ("signal", "message"),
+    (
+        (
+            {
+                "label": "RRP 缓冲偏低",
+                "evidence_label": "ON RRP buffer is below 300bn USD",
+                "node": "funding",
+                "kind": "trigger",
+            },
+            "macro_compact_signal_code_required",
+        ),
+        (
+            {
+                "code": "rrp_buffer_low",
+                "evidence_label": "ON RRP buffer is below 300bn USD",
+                "node": "funding",
+                "kind": "trigger",
+            },
+            "macro_compact_signal_label_required",
+        ),
+        (
+            {
+                "code": "rrp_buffer_low",
+                "label": "RRP 缓冲偏低",
+                "evidence_label": "ON RRP buffer is below 300bn USD",
+                "node": "funding",
+            },
+            "macro_compact_signal_kind_required",
+        ),
+    ),
+)
+def test_compact_signal_requires_identity_and_display_fields_without_silent_drop(
+    signal: dict[str, str], message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        macro_module_views._compact_signal(signal)
+
+
+def test_evidence_item_requires_evidence_label_without_silent_drop() -> None:
+    with pytest.raises(ValueError, match="macro_evidence_item_evidence_label_required"):
+        macro_module_views._evidence_item(
+            {
+                "code": "rrp_buffer_low",
+                "label": "RRP 缓冲偏低",
+                "description": "ON RRP buffer is below 300bn USD",
+            }
+        )
+
+
+def test_evidence_item_requires_identity_and_label_without_silent_drop() -> None:
+    with pytest.raises(ValueError, match="macro_evidence_item_code_required"):
+        macro_module_views._evidence_item(
+            {
+                "label": "RRP 缓冲偏低",
+                "evidence_label": "ON RRP buffer is below 300bn USD",
+            }
+        )
+    with pytest.raises(ValueError, match="macro_evidence_item_label_required"):
+        macro_module_views._evidence_item(
+            {
+                "code": "rrp_buffer_low",
+                "evidence_label": "ON RRP buffer is below 300bn USD",
+            }
+        )
+
+
+def test_compact_quality_blocker_requires_evidence_label_without_remediation_fallback() -> None:
+    with pytest.raises(ValueError, match="macro_quality_blocker_evidence_required"):
+        macro_module_views._compact_quality_blocker(
+            {
+                "code": "missing_liquidity_srf",
+                "label": "缺少 SRF",
+                "description": "Legacy quality description.",
+                "severity": "error",
+                "severity_label": "阻断",
+            }
+        )
+    with pytest.raises(ValueError, match="macro_quality_blocker_evidence_required"):
+        macro_module_views._compact_quality_blocker(
+            {
+                "code": "missing_liquidity_srf",
+                "label": "缺少 SRF",
+                "remediation_hint": "同步 macro-core 流动性深度源后重新投影。",
+                "severity": "error",
+                "severity_label": "阻断",
+            }
+        )
+    assert macro_module_views._compact_quality_blocker(
+        {
+            "code": "missing_liquidity_srf",
+            "label": "缺少 SRF",
+            "evidence_label": "同步 macro-core 流动性深度源后重新投影。",
+            "severity": "error",
+            "severity_label": "阻断",
+        }
+    ) == {
+        "code": "missing_liquidity_srf",
+        "label": "缺少 SRF",
+        "evidence_label": "同步 macro-core 流动性深度源后重新投影。",
+        "severity": "error",
+        "severity_label": "阻断",
+    }
+
+
+def test_compact_quality_blocker_requires_severity_label_without_module_side_derivation() -> None:
+    with pytest.raises(ValueError, match="macro_quality_blocker_severity_label_required"):
+        macro_module_views._compact_quality_blocker(
+            {
+                "code": "missing_liquidity_srf",
+                "label": "缺少 SRF",
+                "evidence_label": "同步 macro-core 流动性深度源后重新投影。",
+                "severity": "error",
+            }
+        )
+
+    assert macro_module_views._compact_quality_blocker(
+        {
+            "code": "missing_liquidity_srf",
+            "label": "缺少 SRF",
+            "evidence_label": "同步 macro-core 流动性深度源后重新投影。",
+            "severity": "warning",
+            "severity_label": "警告",
+        }
+    ) == {
+        "code": "missing_liquidity_srf",
+        "label": "缺少 SRF",
+        "evidence_label": "同步 macro-core 流动性深度源后重新投影。",
+        "severity": "warning",
+        "severity_label": "警告",
+    }
+
+
+def test_watchlist_quality_rule_requires_detail_or_evidence_without_remediation_fallback() -> None:
+    with pytest.raises(ValueError, match="macro_watchlist_rule_detail_required"):
+        macro_module_views._watchlist_rule(
+            {
+                "code": "missing_liquidity_srf",
+                "label": "缺少 SRF",
+                "description": "Legacy quality description.",
+                "severity": "error",
+            },
+            kind="quality",
+            kind_label="质量",
+        )
+    with pytest.raises(ValueError, match="macro_watchlist_rule_detail_required"):
+        macro_module_views._watchlist_rule(
+            {
+                "code": "missing_liquidity_srf",
+                "label": "缺少 SRF",
+                "remediation_hint": "同步 macro-core 流动性深度源后重新投影。",
+                "severity": "error",
+            },
+            kind="quality",
+            kind_label="质量",
+        )
+    assert macro_module_views._watchlist_rule(
+        {
+            "code": "missing_liquidity_srf",
+            "label": "缺少 SRF",
+            "evidence_label": "同步 macro-core 流动性深度源后重新投影。",
+            "severity": "error",
+            "severity_label": "阻断",
+        },
+        kind="quality",
+        kind_label="质量",
+    ) == {
+        "key": "quality:missing_liquidity_srf",
+        "label": "缺少 SRF",
+        "detail": "同步 macro-core 流动性深度源后重新投影。",
+        "kind": "quality",
+        "kind_label": "质量",
+        "severity": "error",
+        "severity_label": "阻断",
+    }
+
+
+def test_watchlist_rule_requires_severity_label_without_module_side_derivation() -> None:
+    with pytest.raises(ValueError, match="macro_watchlist_rule_severity_label_required"):
+        macro_module_views._watchlist_rule(
+            {
+                "code": "real_yield_breakout",
+                "label": "实际利率突破",
+                "detail": "10Y real yield keeps rising.",
+                "severity": "high",
+            },
+            kind="watch",
+            kind_label="触发",
+        )
+
+    assert macro_module_views._watchlist_rule(
+        {
+            "code": "real_yield_breakout",
+            "label": "实际利率突破",
+            "detail": "10Y real yield keeps rising.",
+            "severity": "high",
+            "severity_label": "高",
+        },
+        kind="watch",
+        kind_label="触发",
+    ) == {
+        "key": "watch:real_yield_breakout",
+        "label": "实际利率突破",
+        "detail": "10Y real yield keeps rising.",
+        "kind": "watch",
+        "kind_label": "触发",
+        "severity": "high",
+        "severity_label": "高",
+    }
+
+
+def test_watchlist_rule_requires_window_label_without_raw_window_fallback() -> None:
+    with pytest.raises(ValueError, match="macro_watchlist_rule_window_label_required"):
+        macro_module_views._watchlist_rule(
+            {
+                "code": "real_yield_breakout",
+                "label": "实际利率突破",
+                "detail": "10Y real yield keeps rising.",
+                "time_window": "24h",
+            },
+            kind="watch",
+            kind_label="触发",
+        )
+
+    assert macro_module_views._watchlist_rule(
+        {
+            "code": "real_yield_breakout",
+            "label": "实际利率突破",
+            "detail": "10Y real yield keeps rising.",
+            "time_window": "24h",
+            "time_window_label": "24小时",
+        },
+        kind="watch",
+        kind_label="触发",
+    ) == {
+        "key": "watch:real_yield_breakout",
+        "label": "实际利率突破",
+        "detail": "10Y real yield keeps rising.",
+        "kind": "watch",
+        "kind_label": "触发",
+        "window": "24h",
+        "window_label": "24小时",
+    }
+
+
+def test_watchlist_rule_requires_explicit_code_without_label_key_fallback() -> None:
+    with pytest.raises(ValueError, match="macro_watchlist_rule_code_required"):
+        macro_module_views._watchlist_rule(
+            {
+                "label": "实际利率突破",
+                "detail": "10Y real yield keeps rising.",
+            },
+            kind="watch",
+            kind_label="触发",
+        )
+
+
+def test_watchlist_rule_requires_label_without_silent_drop() -> None:
+    with pytest.raises(ValueError, match="macro_watchlist_rule_label_required"):
+        macro_module_views._watchlist_rule(
+            {
+                "code": "real_yield_breakout",
+                "detail": "10Y real yield keeps rising.",
+            },
+            kind="watch",
+            kind_label="触发",
+        )
+
+
+def test_watchlist_rule_requires_detail_without_silent_drop() -> None:
+    with pytest.raises(ValueError, match="macro_watchlist_rule_detail_required"):
+        macro_module_views._watchlist_rule(
+            {
+                "code": "real_yield_breakout",
+                "label": "实际利率突破",
+            },
+            kind="watch",
+            kind_label="触发",
+        )
+
+
+@pytest.mark.parametrize(
+    ("leg", "message"),
+    (
+        ({"symbol": "QQQ", "action": "回避"}, "macro_watchlist_asset_label_required"),
+        ({"label": "纳斯达克", "action": "回避"}, "macro_watchlist_asset_symbol_required"),
+        ({"symbol": "QQQ", "label": "纳斯达克"}, "macro_watchlist_asset_action_required"),
+    ),
+)
+def test_watchlist_assets_require_explicit_trade_leg_display_fields_without_fallback(
+    leg: dict[str, str], message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        macro_module_views._watchlist_assets([{"legs": [leg]}])
+
+
+def test_future_watch_catalyst_requires_explicit_code_without_label_key_fallback() -> None:
+    with pytest.raises(ValueError, match="macro_future_watch_catalyst_code_required"):
+        macro_module_views._future_watch_catalyst(
+            {
+                "label": "实际利率突破",
+                "detail": "10Y real yield keeps rising.",
+                "time_window": "24h",
+                "time_window_label": "24小时",
+                "severity": "high",
+            }
+        )
+
+
+def test_future_watch_catalyst_requires_window_label_without_raw_window_fallback() -> None:
+    with pytest.raises(ValueError, match="macro_future_watch_catalyst_window_label_required"):
+        macro_module_views._future_watch_catalyst(
+            {
+                "code": "real_yield_breakout",
+                "label": "实际利率突破",
+                "detail": "10Y real yield keeps rising.",
+                "time_window": "24h",
+                "severity": "high",
+            }
+        )
+
+    assert macro_module_views._future_watch_catalyst(
+        {
+            "code": "real_yield_breakout",
+            "label": "实际利率突破",
+            "detail": "10Y real yield keeps rising.",
+            "time_window": "24h",
+            "time_window_label": "24小时",
+            "severity": "high",
+            "severity_label": "高",
+        }
+    ) == {
+        "key": "watch:real_yield_breakout",
+        "label": "实际利率突破",
+        "detail": "10Y real yield keeps rising.",
+        "window": "24h",
+        "window_label": "24小时",
+        "severity": "high",
+        "severity_label": "高",
+        "source": "情景触发",
+        "kind": "watch_trigger",
+    }
+
+
+def test_future_watch_catalyst_requires_severity_label_without_module_side_derivation() -> None:
+    with pytest.raises(ValueError, match="macro_future_watch_catalyst_severity_label_required"):
+        macro_module_views._future_watch_catalyst(
+            {
+                "code": "real_yield_breakout",
+                "label": "实际利率突破",
+                "detail": "10Y real yield keeps rising.",
+                "time_window": "24h",
+                "time_window_label": "24小时",
+                "severity": "high",
+            }
+        )
+
+    assert macro_module_views._future_watch_catalyst(
+        {
+            "code": "hy_oas_distress",
+            "label": "高收益债利差进入困境区",
+            "detail": "HY OAS crosses distress thresholds.",
+            "time_window": "72h",
+            "time_window_label": "72小时",
+            "severity": "medium",
+            "severity_label": "中",
+        }
+    ) == {
+        "key": "watch:hy_oas_distress",
+        "label": "高收益债利差进入困境区",
+        "detail": "HY OAS crosses distress thresholds.",
+        "window": "72h",
+        "window_label": "72小时",
+        "severity": "medium",
+        "severity_label": "中",
+        "source": "情景触发",
+        "kind": "watch_trigger",
+    }
+
+
+@pytest.mark.parametrize(
+    ("trigger", "message"),
+    (
+        (
+            {
+                "code": "real_yield_breakout",
+                "detail": "10Y real yield keeps rising.",
+                "time_window": "24h",
+                "severity": "high",
+            },
+            "macro_future_watch_catalyst_label_required",
+        ),
+        (
+            {
+                "code": "real_yield_breakout",
+                "label": "实际利率突破",
+                "time_window": "24h",
+                "severity": "high",
+            },
+            "macro_future_watch_catalyst_detail_required",
+        ),
+        (
+            {
+                "code": "real_yield_breakout",
+                "label": "实际利率突破",
+                "detail": "10Y real yield keeps rising.",
+                "severity": "high",
+            },
+            "macro_future_watch_catalyst_time_window_required",
+        ),
+    ),
+)
+def test_future_watch_catalyst_requires_display_fields_without_silent_drop(
+    trigger: dict[str, str], message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        macro_module_views._future_watch_catalyst(trigger)
+
+
+def test_structured_market_thesis_requires_explicit_evidence_without_silent_drop() -> None:
+    scenario = {
+        "current_regime": "term_premium_pressure",
+        "top_changes": [],
+        "confirmations": [],
+        "trade_map": [],
+        "scenario_cases": [
+            {
+                "case": "base",
+                "thesis": "长端利率维持压力。",
+                "trade": "低配长久期资产。",
+                "invalidation": "实际利率压力消退。",
+            }
+        ],
+    }
+
+    with pytest.raises(ValueError, match="macro_structured_market_thesis_evidence_required"):
+        macro_module_views._structured_market_thesis_row(scenario)
+
+
+@pytest.mark.parametrize(
+    ("trade_map", "message"),
+    (
+        ([{"label": "久期承压 / 质量优于成长"}], "macro_trade_map_expression_required"),
+        ([{"expression": "duration_pressure_quality_over_growth"}], "macro_trade_map_label_required"),
+    ),
+)
+def test_structured_market_trade_requires_explicit_trade_map_fields_without_filter_drop(
+    trade_map: list[dict[str, str]], message: str
+) -> None:
+    scenario = {
+        "current_regime": "term_premium_pressure",
+        "top_changes": [
+            {
+                "code": "higher_real_rates",
+                "label": "实际利率上行",
+                "evidence_label": "10Y real yield broke higher",
+                "node": "rates",
+                "kind": "trigger",
+            }
+        ],
+        "confirmations": [],
+        "trade_map": trade_map,
+        "scenario_cases": [
+            {
+                "case": "base",
+                "thesis": "长端利率维持压力。",
+                "trade": "低配长久期资产。",
+                "invalidation": "实际利率压力消退。",
+            }
+        ],
+    }
+
+    with pytest.raises(ValueError, match=message):
+        macro_module_views._structured_market_thesis_row(scenario)
+
+
+def test_evidence_item_preserves_time_window_label_without_raw_window_fallback() -> None:
+    row = macro_module_views._evidence_item(
+        {
+            "code": "rrp_buffer_low",
+            "label": "RRP 缓冲偏低",
+            "evidence_label": "RRP buffer below desk threshold",
+            "time_window": "raw-window-24h",
+            "time_window_label": "24小时",
+        }
+    )
+
+    assert row == {
+        "code": "rrp_buffer_low",
+        "label": "RRP 缓冲偏低",
+        "evidence_label": "RRP buffer below desk threshold",
+        "time_window": "raw-window-24h",
+        "time_window_label": "24小时",
+    }
+
+    with pytest.raises(ValueError, match="macro_evidence_item_time_window_label_required"):
+        macro_module_views._evidence_item(
+            {
+                "code": "real_yield_breakout",
+                "label": "实际利率突破",
+                "evidence_label": "Real yield above trigger band",
+                "time_window": "raw-window-72h",
+            }
+        )
+
+
+def test_evidence_item_requires_severity_label_without_module_side_derivation() -> None:
+    with pytest.raises(ValueError, match="macro_evidence_item_severity_label_required"):
+        macro_module_views._evidence_item(
+            {
+                "code": "real_yield_breakout",
+                "label": "实际利率突破",
+                "evidence_label": "Real yield above trigger band",
+                "severity": "high",
+            }
+        )
+
+    assert macro_module_views._evidence_item(
+        {
+            "code": "real_yield_breakout",
+            "label": "实际利率突破",
+            "evidence_label": "Real yield above trigger band",
+            "severity": "high",
+            "severity_label": "高",
+        }
+    ) == {
+        "code": "real_yield_breakout",
+        "label": "实际利率突破",
+        "evidence_label": "Real yield above trigger band",
+        "severity": "high",
+        "severity_label": "高",
+    }
+
+
+def test_structured_signal_line_requires_evidence_label_without_partial_fallback() -> None:
+    with pytest.raises(ValueError, match="macro_structured_signal_line_evidence_label_required"):
+        macro_module_views._structured_signal_line(
+            {
+                "label": "RRP 缓冲偏低",
+                "change_label": "RRP 1w -60B",
+                "value_label": "最新 $302B",
+            }
+        )
+
+    with pytest.raises(ValueError, match="macro_structured_signal_line_evidence_label_required"):
+        macro_module_views._structured_signal_line({"label": "裸信号"})
+
+
+def test_structured_signal_line_requires_label_without_silent_drop() -> None:
+    with pytest.raises(ValueError, match="macro_structured_signal_line_label_required"):
+        macro_module_views._structured_signal_line({"evidence_label": "RRP buffer below desk threshold"})
+
+
+def test_decision_console_requires_watchlist_severity_label_without_module_side_derivation() -> None:
     snapshot = _snapshot()
     snapshot["scenario_json"] = {
         **snapshot["scenario_json"],
         "watch_triggers": [
             {
                 "code": "real_yield_breakout",
-                "description": "10Y real yield keeps rising.",
+                "label": "实际利率突破",
+                "detail": "10Y real yield keeps rising.",
                 "time_window": "24h",
-                "severity": "urgent",
+                "time_window_label": "24小时",
+                "severity": "high",
             }
         ],
     }
 
-    with pytest.raises(ValueError, match="Missing macro severity label metadata: urgent"):
+    with pytest.raises(ValueError, match="macro_watchlist_rule_severity_label_required"):
         build_macro_module_view("overview", snapshot=snapshot, observations=[])
 
 
@@ -3534,15 +5143,17 @@ def test_overview_module_view_surfaces_global_scenario_and_data_health() -> None
             {
                 "code": "higher_real_rates",
                 "label": "实际利率上行",
-                "description": "10Y real yield broke higher",
-                "node": "利率定价",
+                "evidence_label": "10Y real yield broke higher",
+                "node": "rates",
+                "node_label": "利率定价",
                 "kind": "trigger",
             },
             {
                 "code": "rrp_buffer_low",
                 "label": "RRP 缓冲偏低",
-                "description": "ON RRP buffer is below 300bn USD",
-                "node": "资金面",
+                "evidence_label": "ON RRP buffer is below 300bn USD",
+                "node": "funding",
+                "node_label": "资金面",
                 "kind": "trigger",
             },
         ],
@@ -3550,11 +5161,17 @@ def test_overview_module_view_surfaces_global_scenario_and_data_health() -> None
             {
                 "code": "missing_liquidity_srf",
                 "label": "缺少 SRF",
-                "description": "缺少 SRF",
+                "evidence_label": "同步 macro-core 流动性深度源后重新投影。",
                 "severity": "error",
+                "severity_label": "阻断",
             }
         ],
-        "trade_map": [{"expression": "duration_pressure_quality_over_growth"}],
+        "trade_map": [
+            {
+                "expression": "duration_pressure_quality_over_growth",
+                "label": "久期承压 / 质量优于成长",
+            }
+        ],
         "watchlist_alerts": {
             "key": "watchlist_alerts",
             "label": "Watchlist 与触发提醒",
@@ -3563,7 +5180,7 @@ def test_overview_module_view_surfaces_global_scenario_and_data_health() -> None
                 {
                     "key": "quality:missing_liquidity_srf",
                     "label": "缺少 SRF",
-                    "description": "缺少 SRF",
+                    "detail": "同步 macro-core 流动性深度源后重新投影。",
                     "kind": "quality",
                     "kind_label": "质量",
                     "severity": "error",
@@ -3590,30 +5207,98 @@ def test_overview_module_view_surfaces_global_scenario_and_data_health() -> None
     assert view["data_health"]["summary_status"] == "missing"
 
 
+def test_overview_module_read_requires_scenario_confidence_without_zero_default() -> None:
+    snapshot = _snapshot_with_global_scenario()
+    snapshot["scenario_json"] = {key: value for key, value in snapshot["scenario_json"].items() if key != "confidence"}
+
+    with pytest.raises(ValueError, match="Missing macro scenario confidence metadata"):
+        build_macro_module_view("overview", snapshot=snapshot, observations=[])
+
+
+def test_overview_module_read_requires_scenario_current_regime_without_snapshot_fallback() -> None:
+    snapshot = _snapshot_with_global_scenario()
+    snapshot["scenario_json"] = {
+        key: value for key, value in snapshot["scenario_json"].items() if key != "current_regime"
+    }
+    snapshot["regime"] = "funding_stress"
+
+    with pytest.raises(ValueError, match="Missing macro scenario current_regime metadata"):
+        build_macro_module_view("overview", snapshot=snapshot, observations=[])
+
+
+def test_overview_module_read_requires_scenario_cases_without_empty_fallback() -> None:
+    snapshot = _snapshot_with_global_scenario()
+    snapshot["scenario_json"] = {
+        key: value for key, value in snapshot["scenario_json"].items() if key != "scenario_cases"
+    }
+
+    with pytest.raises(ValueError, match="Missing macro scenario scenario_cases metadata"):
+        build_macro_module_view("overview", snapshot=snapshot, observations=[])
+
+
+def test_overview_module_read_requires_base_scenario_case_without_first_case_fallback() -> None:
+    snapshot = _snapshot_with_global_scenario()
+    snapshot["scenario_json"] = {
+        **snapshot["scenario_json"],
+        "scenario_cases": [
+            {
+                "case": "upside",
+                "label": "乐观情景",
+                "thesis": "风险偏好修复。",
+                "trade": "增配 beta。",
+                "invalidation": "信用压力重启。",
+            }
+        ],
+    }
+
+    with pytest.raises(ValueError, match="Missing macro scenario base case metadata"):
+        build_macro_module_view("overview", snapshot=snapshot, observations=[])
+
+
+@pytest.mark.parametrize("field_name", ("thesis", "trade", "invalidation"))
+def test_overview_module_read_requires_base_scenario_fields_without_cross_field_fallback(field_name: str) -> None:
+    snapshot = _snapshot_with_global_scenario()
+    base_case = {
+        key: value for key, value in snapshot["scenario_json"]["scenario_cases"][0].items() if key != field_name
+    }
+    snapshot["scenario_json"] = {
+        **snapshot["scenario_json"],
+        "scenario_cases": [base_case],
+    }
+
+    with pytest.raises(ValueError, match=f"Missing macro scenario base case {field_name} metadata"):
+        build_macro_module_view("overview", snapshot=snapshot, observations=[])
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    ("top_changes", "trade_map", "watch_triggers", "invalidations", "confirmations", "contradictions"),
+)
+def test_overview_module_read_requires_scenario_signal_lists_without_empty_fallback(field_name: str) -> None:
+    snapshot = _snapshot()
+    snapshot["scenario_json"] = {key: value for key, value in snapshot["scenario_json"].items() if key != field_name}
+
+    with pytest.raises(ValueError, match=f"Missing macro scenario {field_name} metadata"):
+        build_macro_module_view("overview", snapshot=snapshot, observations=[])
+
+
 def test_overview_module_view_omits_unmapped_signal_and_trade_placeholder_copy() -> None:
     snapshot = _snapshot()
     snapshot["scenario_json"] = {
-        "current_regime": "",
-        "confirmations": [{"code": "unmapped_confirmation", "description": "Unknown confirmation."}],
-        "contradictions": [{"code": "unmapped_contradiction", "description": "Unknown contradiction."}],
-        "watch_triggers": [
+        "current_regime": "neutral",
+        "confidence": 0.12,
+        "confirmations": [],
+        "contradictions": [],
+        "watch_triggers": [],
+        "invalidations": [],
+        "top_changes": [],
+        "quality_blockers": [],
+        "trade_map": [
             {
-                "code": "unmapped_watch_trigger",
-                "description": "Unknown watch trigger.",
-                "time_window": "24h",
-                "severity": "high",
+                "expression": "unmapped_trade_expression",
+                "label": "未映射交易表达",
             }
         ],
-        "invalidations": [{"code": "unmapped_invalidation", "description": "Unknown invalidation."}],
-        "top_changes": [
-            {
-                "code": "unmapped_top_change",
-                "description": "Unknown top change.",
-                "node": "macro",
-                "kind": "trigger",
-            }
-        ],
-        "trade_map": [{"expression": "unmapped_trade_expression"}],
         "scenario_cases": [
             {
                 "case": "base",
@@ -3643,25 +5328,143 @@ def test_overview_module_view_omits_unmapped_signal_and_trade_placeholder_copy()
     assert "待确认" not in str(view["module_read"].get("structured_analysis", ""))
 
 
+@pytest.mark.parametrize(
+    ("trade_map_item", "message"),
+    (
+        ({"label": "风险降档 / 信用敏感"}, "macro_trade_map_expression_required"),
+        ({"expression": "risk_down_credit_sensitive"}, "macro_trade_map_label_required"),
+    ),
+)
+def test_trade_map_item_requires_expression_and_label_without_silent_drop(
+    trade_map_item: dict[str, str], message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        macro_module_views._trade_map_item(trade_map_item, [])
+
+
+def test_overview_decision_console_requires_trade_map_display_contract_without_silent_drop() -> None:
+    snapshot = _snapshot()
+    snapshot["scenario_json"] = {
+        **snapshot["scenario_json"],
+        "trade_map": [{"expression": "risk_down_credit_sensitive"}],
+    }
+
+    with pytest.raises(ValueError, match="macro_trade_map_label_required"):
+        build_macro_module_view("overview", snapshot=snapshot, observations=[])
+
+
+def test_overview_module_view_requires_top_change_display_contract_before_scenario_rules() -> None:
+    snapshot = _snapshot()
+    snapshot["data_gaps_json"] = []
+    snapshot["scenario_json"] = {
+        "current_regime": "neutral",
+        "confidence": 0.12,
+        "confirmations": [{"code": "term_premium_pressure", "description": "10Y yield pressure"}],
+        "contradictions": [{"code": "volatility_carry", "description": "VIX remains calm."}],
+        "watch_triggers": [
+            {
+                "code": "real_yield_breakout",
+                "description": "10Y real yield keeps rising.",
+                "time_window": "24h",
+                "severity": "high",
+            }
+        ],
+        "invalidations": [
+            {
+                "code": "ten_year_yield_reverses",
+                "description": "10Y yield loses pressure.",
+            }
+        ],
+        "top_changes": [
+            {
+                "code": "term_premium_pressure",
+                "description": "10Y yield pressure",
+                "node": "rates",
+                "kind": "trigger",
+            },
+            {
+                "code": "rrp_buffer_low",
+                "label": "RRP 缓冲偏低",
+                "description": "RRP buffer is low",
+                "node": "funding",
+            },
+        ],
+        "trade_map": [],
+        "quality_blockers": [],
+        "scenario_cases": [
+            {
+                "case": "base",
+                "label": "基准情景",
+                "thesis": "资金压力维持。",
+                "trade": "降低高 beta 暴露。",
+                "entry_condition": "SOFR-IORB 仍为正。",
+                "stop": "SOFR 回到 IORB 附近。",
+                "invalidation": "信用利差收窄。",
+            }
+        ],
+    }
+
+    with pytest.raises(ValueError, match="macro_compact_signal_label_required"):
+        build_macro_module_view("overview", snapshot=snapshot, observations=[])
+
+
+def test_structured_analysis_requires_explicit_regime_label_without_section_label_fallback() -> None:
+    with pytest.raises(ValueError, match="macro_structured_analysis_regime_label_required:test"):
+        macro_module_views._structured_analysis_row(
+            key="test",
+            label="测试",
+            diagnostics={
+                "label": "诊断区块标题",
+                "summary": "测试摘要",
+                "rows": [{"label": "测试行", "current_pct": 4.2, "status_label": "走强"}],
+                "implications": ["测试交易表达"],
+                "invalidations": ["测试失效条件"],
+            },
+        )
+
+
 def test_backend_status_fallbacks_use_specific_insufficient_history_labels() -> None:
-    assert macro_module_views._structured_regime_label({}) == "样本不足"
     assert macro_module_views._liquidity_net_status(None) == ("insufficient_history", "样本不足")
     assert macro_module_views._volatility_term_status(None) == ("insufficient_history", "样本不足")
     assert macro_module_views._volatility_front_premium_status(
         current_points=None,
         change_1w_points=None,
     ) == ("insufficient_history", "样本不足")
-    assert macro_module_views._judgement_review_window({"horizon": "1d", "label": "1D"}) == {
-        "horizon": "1d",
-        "label": "1D",
-        "status": "insufficient_history",
-        "status_label": "样本不足",
-        "sample_count": 0,
-        "hit_count": 0,
-        "win_rate_label": "0/0",
-        "pnl_usd": 0.0,
-        "average_signed_return_pct": 0.0,
+
+    with pytest.raises(ValueError, match="macro_judgement_review_window_status_required"):
+        macro_module_views._judgement_review_window({"horizon": "1d", "label": "1D"})
+
+
+def test_overview_judgement_review_requires_complete_windows_without_silent_drop() -> None:
+    snapshot = _snapshot()
+    snapshot["scenario_json"] = {
+        **snapshot["scenario_json"],
+        "trade_map": [
+            {
+                "expression": "risk_down_credit_sensitive",
+                "label": "风险降档 / 信用敏感",
+                "holding_period_review": {
+                    "rows": [
+                        {"horizon": "1d", "label": "1D"},
+                        {
+                            "horizon": "5d",
+                            "label": "5D",
+                            "status": "complete",
+                            "status_label": "已完成",
+                            "sample_count": 5,
+                            "hit_count": 4,
+                            "win_rate_label": "4/5",
+                            "pnl_usd": 220.0,
+                            "average_signed_return_pct": 2.2,
+                        },
+                    ],
+                },
+            }
+        ],
     }
+
+    with pytest.raises(ValueError, match="macro_judgement_review_window_status_required"):
+        build_macro_module_view("overview", snapshot=snapshot, observations=[])
 
 
 def test_overview_decision_console_adds_liquidity_pressure_from_retained_rrp_tga_diagnostics() -> None:
@@ -3907,6 +5710,7 @@ def test_overview_module_read_adds_structured_analysis_from_domain_diagnostics()
                 "code": "higher_real_rates",
                 "label": "实际利率上行",
                 "description": "10Y real yield broke higher",
+                "evidence_label": "10Y real yield broke higher",
                 "node": "rates",
                 "kind": "trigger",
             },
@@ -3914,11 +5718,17 @@ def test_overview_module_read_adds_structured_analysis_from_domain_diagnostics()
                 "code": "rrp_buffer_low",
                 "label": "RRP 缓冲偏低",
                 "description": "ON RRP buffer is below 300bn USD",
+                "evidence_label": "ON RRP buffer is below 300bn USD",
                 "node": "funding",
                 "kind": "trigger",
             },
         ],
-        "trade_map": [{"expression": "duration_pressure_quality_over_growth"}],
+        "trade_map": [
+            {
+                "expression": "duration_pressure_quality_over_growth",
+                "label": "久期承压 / 质量优于成长",
+            }
+        ],
         "scenario_cases": [
             {
                 "case": "base",
@@ -4032,6 +5842,7 @@ def test_overview_structured_analysis_adds_fed_communication_from_official_text(
                     "provenance": [
                         {
                             "document_type": "speech",
+                            "speaker": "Waller",
                             "document_title": "Waller, Update On Federal Reserve Bank Operations",
                             "published_at": "2026-06-16T18:30:00Z",
                             "source_url": "https://www.federalreserve.gov/newsevents/speech/waller20260616a.htm",
@@ -4254,6 +6065,7 @@ def test_overview_module_view_adds_official_events_to_market_event_flow() -> Non
                     "provenance": [
                         {
                             "document_type": "speech",
+                            "speaker": "Waller",
                             "document_title": "Waller, Update On Federal Reserve Bank Operations",
                             "published_at": "2026-05-08T23:30:00Z",
                             "source_url": "https://www.federalreserve.gov/newsevents/speech/waller20260508a.htm",
@@ -4279,6 +6091,7 @@ def test_overview_module_view_adds_official_events_to_market_event_flow() -> Non
                 "source_url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
                 "kind": "calendar",
                 "window": "0-3d",
+                "window_label": "0-3天",
                 "severity": "high",
                 "severity_label": "高",
                 "category": "policy",
@@ -4296,6 +6109,7 @@ def test_overview_module_view_adds_official_events_to_market_event_flow() -> Non
                 "source_url": "https://home.treasury.gov/system/files/221/Tentative-Auction-Schedule.xml",
                 "kind": "auction_calendar",
                 "window": "15-30d",
+                "window_label": "15-30天",
                 "severity": "low",
                 "severity_label": "低",
                 "category": "treasury_supply",
@@ -4313,6 +6127,7 @@ def test_overview_module_view_adds_official_events_to_market_event_flow() -> Non
                 "source_url": "https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v1/accounting/od/auctions_query",
                 "kind": "auction_result",
                 "window": "recent",
+                "window_label": "近期",
                 "severity": "medium",
                 "severity_label": "中",
                 "category": "treasury_supply",
@@ -4330,6 +6145,7 @@ def test_overview_module_view_adds_official_events_to_market_event_flow() -> Non
                 "source_url": "https://www.federalreserve.gov/newsevents/speech/waller20260508a.htm",
                 "kind": "fed_text",
                 "window": "recent",
+                "window_label": "近期",
                 "severity": "medium",
                 "severity_label": "中",
                 "category": "policy",
@@ -4340,6 +6156,774 @@ def test_overview_module_view_adds_official_events_to_market_event_flow() -> Non
             },
         ],
     }
+
+
+def test_event_catalyst_candidates_emit_detail_without_description() -> None:
+    candidates = macro_module_views._event_catalyst_candidates(
+        [
+            _event_obs(
+                "event:fomc_decision_next",
+                "official_calendar:fomc_decision_next",
+                "2026-06-17",
+                1,
+                provider="official_calendar",
+                raw_payload={
+                    "series_key": "official_calendar:fomc_decision_next",
+                    "provider": "official_calendar",
+                    "observed_at": "2026-06-17",
+                    "value": 1,
+                    "unit": "days",
+                    "frequency": "event",
+                    "provenance": [
+                        {
+                            "event_title": "FOMC decision",
+                            "event_time": "14:00 ET",
+                            "source_url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+                        }
+                    ],
+                },
+            )
+        ]
+    )
+
+    assert candidates == [
+        {
+            "code": "official_calendar:fomc_decision_next",
+            "label": "FOMC 决议",
+            "detail": "2026-06-17 · 还有 1 天 · 14:00 ET",
+            "source": "官方日历",
+            "kind": "calendar",
+            "observed_at": "2026-06-17",
+            "value": 1,
+            "event_flow_window": "0-3d",
+            "event_flow_window_label": "0-3天",
+            "event_flow_severity": "high",
+            "event_flow_severity_label": "高",
+            "event_flow_category": "policy",
+            "event_flow_category_label": "政策",
+            "event_flow_impact": "policy_path",
+            "event_flow_impact_label": "政策路径",
+            "event_flow_watch": "利率路径和流动性定价。",
+            "time_window": "24h",
+            "time_window_label": "24小时",
+            "severity": "high",
+            "severity_label": "高",
+            "source_url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+        }
+    ]
+
+
+def test_event_catalyst_consumers_require_detail_without_description_fallback() -> None:
+    legacy_catalyst = {
+        "code": "official_calendar:fomc_decision_next",
+        "label": "FOMC 决议",
+        "description": "Legacy event catalyst description.",
+        "source": "官方日历",
+        "kind": "calendar",
+        "observed_at": "2026-06-17",
+        "value": 1,
+    }
+
+    with pytest.raises(ValueError, match="macro_future_event_catalyst_detail_required"):
+        macro_module_views._future_event_catalyst(legacy_catalyst)
+    with pytest.raises(ValueError, match="macro_market_event_flow_detail_required"):
+        macro_module_views._market_event_flow([legacy_catalyst])
+
+
+def test_future_event_catalyst_requires_label_without_silent_drop() -> None:
+    with pytest.raises(ValueError, match="macro_future_event_catalyst_label_required"):
+        macro_module_views._future_event_catalyst(
+            {
+                "code": "official_calendar:fomc_decision_next",
+                "detail": "2026-06-17 · 还有 1 天",
+                "source": "官方日历",
+                "kind": "calendar",
+                "observed_at": "2026-06-17",
+                "value": 1,
+            }
+        )
+
+
+def test_market_event_flow_requires_label_without_silent_drop() -> None:
+    with pytest.raises(ValueError, match="macro_market_event_flow_label_required"):
+        macro_module_views._market_event_flow(
+            [
+                {
+                    "code": "official_calendar:fomc_decision_next",
+                    "detail": "2026-06-17 · 还有 1 天",
+                    "source": "官方日历",
+                    "kind": "calendar",
+                    "observed_at": "2026-06-17",
+                    "value": 1,
+                }
+            ]
+        )
+
+
+def test_market_event_flow_requires_observed_at_without_silent_drop() -> None:
+    with pytest.raises(ValueError, match="macro_market_event_flow_date_required"):
+        macro_module_views._market_event_flow(
+            [
+                {
+                    "code": "official_calendar:fomc_decision_next",
+                    "label": "FOMC 决议",
+                    "detail": "2026-06-17 · 还有 1 天",
+                    "source": "官方日历",
+                    "kind": "calendar",
+                    "value": 1,
+                }
+            ]
+        )
+
+
+def test_event_catalyst_requires_observed_at_without_placeholder_detail() -> None:
+    with pytest.raises(ValueError, match="macro_event_catalyst_observed_at_required"):
+        macro_module_views._event_catalyst(
+            {
+                "concept_key": "event:fed_speech",
+                "value_numeric": None,
+                "unit": "document",
+                "source_name": "official_fed_text",
+                "series_key": "official_fed_text:speech_latest#abc123",
+                "data_quality": "ok",
+                "raw_payload_json": {
+                    "series_key": "official_fed_text:speech_latest",
+                    "provider": "official_fed_text",
+                    "value": "Waller, Update On Federal Reserve Bank Operations",
+                    "unit": "document",
+                    "frequency": "event",
+                    "source_ts": "2026-06-16T18:30:00Z",
+                    "provenance": [
+                        {
+                            "document_type": "speech",
+                            "speaker": "Waller",
+                            "document_title": "Waller, Update On Federal Reserve Bank Operations",
+                            "published_at": "2026-06-16T18:30:00Z",
+                            "source_url": "https://www.federalreserve.gov/newsevents/speech/waller20260616a.htm",
+                        }
+                    ],
+                },
+            }
+        )
+
+
+def test_fed_text_event_catalyst_requires_title_without_description_fallback() -> None:
+    with pytest.raises(ValueError, match="macro_event_text_value_required"):
+        macro_module_views._event_catalyst(
+            _event_obs(
+                "event:fed_speech",
+                "official_fed_text:speech_latest#abc123",
+                "2026-06-16",
+                None,
+                provider="official_fed_text",
+                raw_payload={
+                    "series_key": "official_fed_text:speech_latest",
+                    "provider": "official_fed_text",
+                    "observed_at": "2026-06-16T18:30:00Z",
+                    "unit": "document",
+                    "frequency": "event",
+                    "source_ts": "2026-06-16T18:30:00Z",
+                    "provenance": [
+                        {
+                            "document_type": "speech",
+                            "speaker": "Waller",
+                            "description": "Legacy summary is not an event title.",
+                            "published_at": "2026-06-16T18:30:00Z",
+                            "source_url": "https://www.federalreserve.gov/newsevents/speech/waller20260616a.htm",
+                        }
+                    ],
+                },
+            )
+        )
+
+
+def test_event_catalyst_requires_source_name_without_raw_provider_fallback() -> None:
+    observation = _event_obs(
+        "event:fed_speech",
+        "official_fed_text:speech_latest#abc123",
+        "2026-06-16",
+        None,
+        provider="official_fed_text",
+        raw_payload={
+            "series_key": "official_fed_text:speech_latest",
+            "provider": "official_fed_text",
+            "observed_at": "2026-06-16T18:30:00Z",
+            "value": "Waller, Update On Federal Reserve Bank Operations",
+            "unit": "document",
+            "frequency": "event",
+            "source_ts": "2026-06-16T18:30:00Z",
+            "provenance": [
+                {
+                    "document_type": "speech",
+                    "speaker": "Waller",
+                    "document_title": "Waller, Update On Federal Reserve Bank Operations",
+                    "published_at": "2026-06-16T18:30:00Z",
+                    "source_url": "https://www.federalreserve.gov/newsevents/speech/waller20260616a.htm",
+                }
+            ],
+        },
+    )
+    del observation["source_name"]
+
+    with pytest.raises(ValueError, match="macro_event_catalyst_source_required"):
+        macro_module_views._event_catalyst(observation)
+
+
+def test_future_event_catalyst_requires_explicit_code_without_label_key_fallback() -> None:
+    with pytest.raises(ValueError, match="macro_future_event_catalyst_code_required"):
+        macro_module_views._future_event_catalyst(
+            {
+                "label": "FOMC 决议",
+                "detail": "2026-06-17 · 还有 1 天",
+                "source": "官方日历",
+                "kind": "calendar",
+                "observed_at": "2026-06-17",
+                "value": 1,
+            }
+        )
+
+
+def test_market_event_flow_requires_explicit_code_without_label_key_fallback() -> None:
+    with pytest.raises(ValueError, match="macro_market_event_flow_code_required"):
+        macro_module_views._market_event_flow(
+            [
+                {
+                    "label": "FOMC 决议",
+                    "detail": "2026-06-17 · 还有 1 天",
+                    "source": "官方日历",
+                    "kind": "calendar",
+                    "observed_at": "2026-06-17",
+                    "value": 1,
+                }
+            ]
+        )
+
+
+def test_future_event_catalyst_requires_explicit_source_without_empty_fallback() -> None:
+    with pytest.raises(ValueError, match="macro_future_event_catalyst_source_required"):
+        macro_module_views._future_event_catalyst(
+            {
+                "code": "official_calendar:fomc_decision_next",
+                "label": "FOMC 决议",
+                "detail": "2026-06-17 · 还有 1 天",
+                "kind": "calendar",
+                "observed_at": "2026-06-17",
+                "value": 1,
+            }
+        )
+
+
+def test_future_event_catalyst_requires_window_label_without_raw_window_fallback() -> None:
+    with pytest.raises(ValueError, match="macro_future_event_catalyst_window_label_required"):
+        macro_module_views._future_event_catalyst(
+            {
+                "code": "official_calendar:fomc_decision_next",
+                "label": "FOMC 决议",
+                "detail": "2026-06-17 · 还有 1 天",
+                "source": "官方日历",
+                "kind": "calendar",
+                "observed_at": "2026-06-17",
+                "value": 1,
+                "time_window": "24h",
+                "severity": "high",
+                "severity_label": "高",
+            }
+        )
+
+    assert macro_module_views._future_event_catalyst(
+        {
+            "code": "official_calendar:fomc_decision_next",
+            "label": "FOMC 决议",
+            "detail": "2026-06-17 · 还有 1 天",
+            "source": "官方日历",
+            "kind": "calendar",
+            "observed_at": "2026-06-17",
+            "value": 1,
+            "time_window": "24h",
+            "time_window_label": "24小时",
+            "severity": "high",
+            "severity_label": "高",
+        }
+    ) == {
+        "key": "event:official_calendar:fomc_decision_next",
+        "label": "FOMC 决议",
+        "detail": "2026-06-17 · 还有 1 天",
+        "window": "24h",
+        "window_label": "24小时",
+        "severity": "high",
+        "severity_label": "高",
+        "source": "官方日历",
+        "kind": "calendar",
+    }
+
+
+def test_future_event_catalyst_requires_severity_label_without_module_side_derivation() -> None:
+    with pytest.raises(ValueError, match="macro_future_event_catalyst_severity_label_required"):
+        macro_module_views._future_event_catalyst(
+            {
+                "code": "treasury_auction:2y_next_auction_days",
+                "label": "2Y 国债拍卖日历",
+                "detail": "2026-06-19 · 还有 3 天",
+                "source": "US Treasury",
+                "kind": "auction_calendar",
+                "observed_at": "2026-06-19",
+                "value": 3,
+                "time_window": "72h",
+                "time_window_label": "72小时",
+                "severity": "medium",
+            }
+        )
+
+    assert macro_module_views._future_event_catalyst(
+        {
+            "code": "treasury_auction:2y_next_auction_days",
+            "label": "2Y 国债拍卖日历",
+            "detail": "2026-06-19 · 还有 3 天",
+            "source": "US Treasury",
+            "kind": "auction_calendar",
+            "observed_at": "2026-06-19",
+            "value": 3,
+            "time_window": "72h",
+            "time_window_label": "72小时",
+            "severity": "medium",
+            "severity_label": "中",
+        }
+    ) == {
+        "key": "event:treasury_auction:2y_next_auction_days",
+        "label": "2Y 国债拍卖日历",
+        "detail": "2026-06-19 · 还有 3 天",
+        "window": "72h",
+        "window_label": "72小时",
+        "severity": "medium",
+        "severity_label": "中",
+        "source": "US Treasury",
+        "kind": "auction_calendar",
+    }
+
+
+def test_market_event_flow_requires_explicit_source_without_empty_fallback() -> None:
+    with pytest.raises(ValueError, match="macro_market_event_flow_source_required"):
+        macro_module_views._market_event_flow(
+            [
+                {
+                    "code": "official_calendar:fomc_decision_next",
+                    "label": "FOMC 决议",
+                    "detail": "2026-06-17 · 还有 1 天",
+                    "kind": "calendar",
+                    "observed_at": "2026-06-17",
+                    "value": 1,
+                }
+            ]
+        )
+
+
+def test_market_event_flow_requires_explicit_kind_without_empty_fallback() -> None:
+    with pytest.raises(ValueError, match="macro_market_event_flow_kind_required"):
+        macro_module_views._market_event_flow(
+            [
+                {
+                    "code": "official_calendar:fomc_decision_next",
+                    "label": "FOMC 决议",
+                    "detail": "2026-06-17 · 还有 1 天",
+                    "source": "官方日历",
+                    "observed_at": "2026-06-17",
+                    "value": 1,
+                }
+            ]
+        )
+
+
+def test_market_event_flow_requires_event_flow_display_labels_without_module_side_derivation() -> None:
+    catalyst = {
+        "code": "official_calendar:fomc_decision_next",
+        "label": "FOMC 决议",
+        "detail": "2026-06-17 · 还有 1 天",
+        "source": "官方日历",
+        "kind": "calendar",
+        "observed_at": "2026-06-17",
+        "value": 1,
+        "event_flow_window": "0-3d",
+        "event_flow_severity": "high",
+        "event_flow_severity_label": "政策高",
+        "event_flow_category": "policy",
+        "event_flow_category_label": "政策",
+        "event_flow_impact": "policy_path",
+        "event_flow_impact_label": "政策路径",
+        "event_flow_watch": "利率路径和流动性定价。",
+    }
+
+    with pytest.raises(ValueError, match="macro_market_event_flow_window_label_required"):
+        macro_module_views._market_event_flow([catalyst])
+
+    with pytest.raises(ValueError, match="macro_market_event_flow_severity_label_required"):
+        macro_module_views._market_event_flow(
+            [
+                {
+                    **catalyst,
+                    "event_flow_window_label": "政策窗口",
+                    "event_flow_severity_label": "",
+                }
+            ]
+        )
+
+    assert macro_module_views._market_event_flow(
+        [
+            {
+                **catalyst,
+                "event_flow_window_label": "政策窗口",
+            }
+        ]
+    ) == {
+        "key": "market_event_flow",
+        "label": "市场事件流",
+        "rows": [
+            {
+                "key": "official_calendar:fomc_decision_next",
+                "label": "FOMC 决议",
+                "date": "2026-06-17",
+                "detail": "2026-06-17 · 还有 1 天",
+                "source": "官方日历",
+                "source_url": None,
+                "kind": "calendar",
+                "window": "0-3d",
+                "window_label": "政策窗口",
+                "severity": "high",
+                "severity_label": "政策高",
+                "category": "policy",
+                "category_label": "政策",
+                "impact": "policy_path",
+                "impact_label": "政策路径",
+                "watch": "利率路径和流动性定价。",
+            }
+        ],
+    }
+
+
+def test_market_event_flow_requires_event_flow_classification_without_code_kind_derivation() -> None:
+    catalyst = {
+        "code": "official_calendar:fomc_decision_next",
+        "label": "FOMC 决议",
+        "detail": "2026-06-17 · 还有 1 天",
+        "source": "官方日历",
+        "kind": "calendar",
+        "observed_at": "2026-06-17",
+        "value": 1,
+        "event_flow_window": "0-3d",
+        "event_flow_window_label": "政策窗口",
+        "event_flow_severity": "high",
+        "event_flow_severity_label": "政策高",
+    }
+
+    with pytest.raises(ValueError, match="macro_market_event_flow_category_required"):
+        macro_module_views._market_event_flow([catalyst])
+
+    with pytest.raises(ValueError, match="macro_market_event_flow_impact_label_required"):
+        macro_module_views._market_event_flow(
+            [
+                {
+                    **catalyst,
+                    "event_flow_category": "policy_custom",
+                    "event_flow_category_label": "自定义政策",
+                    "event_flow_impact": "path_custom",
+                    "event_flow_impact_label": "",
+                    "event_flow_watch": "观察自定义政策路径。",
+                }
+            ]
+        )
+
+    assert macro_module_views._market_event_flow(
+        [
+            {
+                **catalyst,
+                "event_flow_category": "policy_custom",
+                "event_flow_category_label": "自定义政策",
+                "event_flow_impact": "path_custom",
+                "event_flow_impact_label": "自定义路径",
+                "event_flow_watch": "观察自定义政策路径。",
+            }
+        ]
+    ) == {
+        "key": "market_event_flow",
+        "label": "市场事件流",
+        "rows": [
+            {
+                "key": "official_calendar:fomc_decision_next",
+                "label": "FOMC 决议",
+                "date": "2026-06-17",
+                "detail": "2026-06-17 · 还有 1 天",
+                "source": "官方日历",
+                "source_url": None,
+                "kind": "calendar",
+                "window": "0-3d",
+                "window_label": "政策窗口",
+                "severity": "high",
+                "severity_label": "政策高",
+                "category": "policy_custom",
+                "category_label": "自定义政策",
+                "impact": "path_custom",
+                "impact_label": "自定义路径",
+                "watch": "观察自定义政策路径。",
+            }
+        ],
+    }
+
+
+def test_structured_fed_communication_uses_event_detail_without_description(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        macro_module_views,
+        "_event_catalyst_candidates",
+        lambda _observations: [
+            {
+                "code": "official_fed_text:speech_latest",
+                "label": "Fed 官员讲话",
+                "detail": "2026-06-16 · Waller, Update On Federal Reserve Bank Operations",
+                "source": "Federal Reserve",
+                "kind": "fed_text",
+                "observed_at": "2026-06-16",
+                "value": None,
+                "document_type": "speech",
+                "speaker": "Waller",
+                "event_flow_impact_label": "Fed 沟通",
+                "event_flow_watch": "跟踪措辞、投票分歧和政策路径信号。",
+            }
+        ],
+    )
+
+    assert macro_module_views._structured_fed_communication_row([]) == {
+        "key": "fed_communication",
+        "label": "美联储沟通",
+        "regime_label": "讲话",
+        "fact": "Fed 沟通：2026-06-16 · Waller, Update On Federal Reserve Bank Operations",
+        "evidence": [
+            "Fed 官员讲话 · Federal Reserve · Waller",
+            "Fed 沟通 · 跟踪措辞、投票分歧和政策路径信号。",
+        ],
+        "trade": "利率路径和流动性定价需跟随 Fed 沟通重新校准。",
+        "invalidation": "若后续 FOMC 声明、纪要或讲话与当前政策路径反向，Fed 沟通读法降级。",
+    }
+
+
+def test_structured_fed_communication_requires_event_flow_evidence_without_classification_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    catalyst = {
+        "code": "official_fed_text:speech_latest",
+        "label": "Fed 官员讲话",
+        "detail": "2026-06-16 · Waller, Update On Federal Reserve Bank Operations",
+        "source": "Federal Reserve",
+        "kind": "fed_text",
+        "observed_at": "2026-06-16",
+        "value": None,
+        "document_type": "speech",
+        "speaker": "Waller",
+    }
+    monkeypatch.setattr(macro_module_views, "_event_catalyst_candidates", lambda _observations: [catalyst])
+
+    with pytest.raises(ValueError, match="macro_structured_fed_communication_impact_label_required"):
+        macro_module_views._structured_fed_communication_row([])
+
+    monkeypatch.setattr(
+        macro_module_views,
+        "_event_catalyst_candidates",
+        lambda _observations: [
+            {
+                **catalyst,
+                "event_flow_impact_label": "自定义 Fed 路径",
+            }
+        ],
+    )
+    with pytest.raises(ValueError, match="macro_structured_fed_communication_watch_required"):
+        macro_module_views._structured_fed_communication_row([])
+
+    monkeypatch.setattr(
+        macro_module_views,
+        "_event_catalyst_candidates",
+        lambda _observations: [
+            {
+                **catalyst,
+                "event_flow_impact_label": "自定义 Fed 路径",
+                "event_flow_watch": "观察投票分歧与声明措辞。",
+            }
+        ],
+    )
+    assert macro_module_views._structured_fed_communication_row([])["evidence"] == [
+        "Fed 官员讲话 · Federal Reserve · Waller",
+        "自定义 Fed 路径 · 观察投票分歧与声明措辞。",
+    ]
+
+
+def test_structured_fed_communication_requires_label_without_generic_fed_doc_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        macro_module_views,
+        "_event_catalyst_candidates",
+        lambda _observations: [
+            {
+                "code": "official_fed_text:speech_latest",
+                "detail": "2026-06-16 · Waller, Update On Federal Reserve Bank Operations",
+                "source": "Federal Reserve",
+                "kind": "fed_text",
+                "observed_at": "2026-06-16",
+                "value": None,
+                "document_type": "speech",
+                "speaker": "Waller",
+            }
+        ],
+    )
+
+    with pytest.raises(ValueError, match="macro_structured_fed_communication_label_required"):
+        macro_module_views._structured_fed_communication_row([])
+
+
+def test_structured_fed_communication_requires_detail_without_silent_drop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        macro_module_views,
+        "_event_catalyst_candidates",
+        lambda _observations: [
+            {
+                "code": "official_fed_text:speech_latest",
+                "label": "Fed 官员讲话",
+                "source": "Federal Reserve",
+                "kind": "fed_text",
+                "observed_at": "2026-06-16",
+                "value": None,
+                "document_type": "speech",
+                "speaker": "Waller",
+            }
+        ],
+    )
+
+    with pytest.raises(ValueError, match="macro_structured_fed_communication_detail_required"):
+        macro_module_views._structured_fed_communication_row([])
+
+
+@pytest.mark.parametrize(
+    ("include_source", "source"),
+    (
+        (False, None),
+        (True, None),
+        (True, "   "),
+    ),
+)
+def test_structured_fed_communication_requires_source_without_silent_omission(
+    monkeypatch: pytest.MonkeyPatch,
+    include_source: bool,
+    source: str | None,
+) -> None:
+    catalyst = {
+        "code": "official_fed_text:speech_latest",
+        "label": "Fed 官员讲话",
+        "detail": "2026-06-16 · Waller, Update On Federal Reserve Bank Operations",
+        "kind": "fed_text",
+        "observed_at": "2026-06-16",
+        "value": None,
+        "document_type": "speech",
+        "speaker": "Waller",
+    }
+    if include_source:
+        catalyst["source"] = source
+    monkeypatch.setattr(macro_module_views, "_event_catalyst_candidates", lambda _observations: [catalyst])
+
+    with pytest.raises(ValueError, match="macro_structured_fed_communication_source_required"):
+        macro_module_views._structured_fed_communication_row([])
+
+
+@pytest.mark.parametrize(
+    ("include_speaker", "speaker"),
+    (
+        (False, None),
+        (True, None),
+        (True, "   "),
+    ),
+)
+def test_structured_fed_communication_requires_speech_speaker_without_title_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    include_speaker: bool,
+    speaker: str | None,
+) -> None:
+    catalyst = {
+        "code": "official_fed_text:speech_latest",
+        "label": "Fed 官员讲话",
+        "detail": "2026-06-16 · Waller, Update On Federal Reserve Bank Operations",
+        "source": "Federal Reserve",
+        "kind": "fed_text",
+        "observed_at": "2026-06-16",
+        "value": None,
+        "document_type": "speech",
+    }
+    if include_speaker:
+        catalyst["speaker"] = speaker
+    monkeypatch.setattr(macro_module_views, "_event_catalyst_candidates", lambda _observations: [catalyst])
+
+    with pytest.raises(ValueError, match="macro_structured_fed_communication_speaker_required"):
+        macro_module_views._structured_fed_communication_row([])
+
+
+@pytest.mark.parametrize(
+    ("document_type", "message"),
+    (
+        (None, "macro_structured_fed_communication_document_type_required"),
+        ("transcript", "macro_structured_fed_communication_document_type_unknown"),
+    ),
+)
+def test_structured_fed_communication_requires_known_document_type_without_generic_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    document_type: str | None,
+    message: str,
+) -> None:
+    catalyst = {
+        "code": "official_fed_text:speech_latest",
+        "label": "Fed 官员讲话",
+        "detail": "2026-06-16 · Waller, Update On Federal Reserve Bank Operations",
+        "source": "Federal Reserve",
+        "kind": "fed_text",
+        "observed_at": "2026-06-16",
+        "value": None,
+        "speaker": "Waller",
+    }
+    if document_type is not None:
+        catalyst["document_type"] = document_type
+    monkeypatch.setattr(macro_module_views, "_event_catalyst_candidates", lambda _observations: [catalyst])
+
+    with pytest.raises(ValueError, match=message):
+        macro_module_views._structured_fed_communication_row([])
+
+
+def test_event_catalyst_does_not_infer_fed_speech_speaker_from_title() -> None:
+    catalyst = macro_module_views._event_catalyst(
+        _event_obs(
+            "event:fed_speech",
+            "official_fed_text:speech_latest#abc123",
+            "2026-06-16",
+            None,
+            provider="official_fed_text",
+            raw_payload={
+                "series_key": "official_fed_text:speech_latest",
+                "provider": "official_fed_text",
+                "observed_at": "2026-06-16T18:30:00Z",
+                "value": "Waller, Update On Federal Reserve Bank Operations",
+                "unit": "document",
+                "frequency": "event",
+                "source_ts": "2026-06-16T18:30:00Z",
+                "provenance": [
+                    {
+                        "document_type": "speech",
+                        "document_title": "Waller, Update On Federal Reserve Bank Operations",
+                        "published_at": "2026-06-16T18:30:00Z",
+                        "source_url": "https://www.federalreserve.gov/newsevents/speech/waller20260616a.htm",
+                    }
+                ],
+            },
+        )
+    )
+
+    assert catalyst is not None
+    assert "speaker" not in catalyst
 
 
 def test_overview_event_flow_show_bls_release_time_and_reference_period() -> None:
@@ -4383,6 +6967,7 @@ def test_overview_event_flow_show_bls_release_time_and_reference_period() -> Non
             "source_url": "https://www.bls.gov/schedule/news_release/cpi.htm",
             "kind": "calendar",
             "window": "15-30d",
+            "window_label": "15-30天",
             "severity": "low",
             "severity_label": "低",
             "category": "economic_data",
@@ -4514,6 +7099,7 @@ def test_overview_market_event_flow_classifies_calendar_auction_and_fed_communic
                     "provenance": [
                         {
                             "document_type": "speech",
+                            "speaker": "Waller",
                             "document_title": "Waller, Update On Federal Reserve Bank Operations",
                             "published_at": "2026-06-16T18:30:00Z",
                             "source_url": "https://www.federalreserve.gov/newsevents/speech/waller20260616a.htm",
@@ -4534,6 +7120,7 @@ def test_overview_market_event_flow_classifies_calendar_auction_and_fed_communic
             "source_url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
             "kind": "calendar",
             "window": "0-3d",
+            "window_label": "0-3天",
             "severity": "high",
             "severity_label": "高",
             "category": "policy",
@@ -4551,6 +7138,7 @@ def test_overview_market_event_flow_classifies_calendar_auction_and_fed_communic
             "source_url": "https://home.treasury.gov/system/files/221/Tentative-Auction-Schedule.xml",
             "kind": "auction_calendar",
             "window": "4-7d",
+            "window_label": "4-7天",
             "severity": "medium",
             "severity_label": "中",
             "category": "treasury_supply",
@@ -4568,6 +7156,7 @@ def test_overview_market_event_flow_classifies_calendar_auction_and_fed_communic
             "source_url": None,
             "kind": "calendar",
             "window": "15-30d",
+            "window_label": "15-30天",
             "severity": "low",
             "severity_label": "低",
             "category": "economic_data",
@@ -4585,6 +7174,7 @@ def test_overview_market_event_flow_classifies_calendar_auction_and_fed_communic
             "source_url": "https://www.federalreserve.gov/newsevents/speech/waller20260616a.htm",
             "kind": "fed_text",
             "window": "recent",
+            "window_label": "近期",
             "severity": "medium",
             "severity_label": "中",
             "category": "policy",
@@ -4602,6 +7192,7 @@ def test_overview_market_event_flow_classifies_calendar_auction_and_fed_communic
             "source_url": None,
             "kind": "auction_result",
             "window": "recent",
+            "window_label": "近期",
             "severity": "medium",
             "severity_label": "中",
             "category": "treasury_supply",
@@ -4682,6 +7273,17 @@ def test_overview_market_event_flow_adds_source_backed_news_events() -> None:
                     "scope": ["macro_policy", "equities", "fx"],
                     "status": "classified",
                 },
+                "macro_event_flow": {
+                    "window": "recent",
+                    "window_label": "近期",
+                    "severity": "low",
+                    "severity_label": "低",
+                    "category": "macro_policy",
+                    "category_label": "美联储",
+                    "impact": "mainline_context",
+                    "impact_label": "不改主线",
+                    "watch": "SPX · 美元 · 美联储",
+                },
                 "signal": {
                     "agent_signal": {
                         "status": "ready",
@@ -4714,6 +7316,7 @@ def test_overview_market_event_flow_adds_source_backed_news_events() -> None:
                 "source_url": "https://news.google.com/articles/macro-1",
                 "kind": "news",
                 "window": "recent",
+                "window_label": "近期",
                 "severity": "low",
                 "severity_label": "低",
                 "category": "macro_policy",
@@ -4726,6 +7329,255 @@ def test_overview_market_event_flow_adds_source_backed_news_events() -> None:
     }
 
 
+def test_market_news_event_flow_requires_macro_event_flow_contract_without_row_field_derivation() -> None:
+    row = {
+        "row_id": "news-row-1",
+        "headline": "中东震荡下，日本追加预算预期升温",
+        "summary": "油价与美元走强，风险资产低开。",
+        "source_domain": "bloomberg.com",
+        "canonical_url": "https://news.google.com/articles/macro-1",
+        "latest_at_ms": 1_781_049_600_000,
+        "token_lanes": [{"symbol": "SPX"}, {"symbol": "美元"}],
+        "market_scope": {"primary": "macro_policy"},
+        "signal": {"agent_signal": {"status": "ready", "decision_class": "context"}},
+    }
+
+    with pytest.raises(ValueError, match="macro_market_news_event_flow_required"):
+        macro_module_views._market_news_event_flow_row(row)
+
+    assert macro_module_views._market_news_event_flow_row(
+        {
+            **row,
+            "macro_event_flow": {
+                "window": "fresh-news",
+                "window_label": "新闻窗口",
+                "severity": "medium",
+                "severity_label": "新闻中",
+                "category": "custom_macro",
+                "category_label": "自定义宏观",
+                "impact": "custom_impact",
+                "impact_label": "自定义影响",
+                "watch": "观察自定义新闻触发。",
+            },
+        }
+    ) == {
+        "key": "news:news-row-1",
+        "label": "中东震荡下，日本追加预算预期升温",
+        "date": "2026-06-10",
+        "detail": "油价与美元走强，风险资产低开。",
+        "source": "bloomberg.com",
+        "source_url": "https://news.google.com/articles/macro-1",
+        "kind": "news",
+        "window": "fresh-news",
+        "window_label": "新闻窗口",
+        "severity": "medium",
+        "severity_label": "新闻中",
+        "category": "custom_macro",
+        "category_label": "自定义宏观",
+        "impact": "custom_impact",
+        "impact_label": "自定义影响",
+        "watch": "观察自定义新闻触发。",
+    }
+
+
+def test_market_news_event_flow_requires_row_id_without_news_item_or_headline_fallback() -> None:
+    with pytest.raises(ValueError, match="macro_market_news_event_row_id_required"):
+        macro_module_views._market_news_event_flow_row(
+            {
+                "news_item_id": "news-1",
+                "headline": "中东震荡下，日本追加预算预期升温",
+                "summary": "油价与美元走强，风险资产低开。",
+                "source_domain": "bloomberg.com",
+                "latest_at_ms": 1_781_049_600_000,
+                "market_scope": {"primary": "macro_policy"},
+            }
+        )
+
+
+def test_market_news_event_flow_requires_window_label_without_recent_fallback() -> None:
+    with pytest.raises(ValueError, match="macro_market_news_event_window_label_required"):
+        macro_module_views._market_news_event_flow_row(
+            {
+                "row_id": "news-row-1",
+                "headline": "中东震荡下，日本追加预算预期升温",
+                "summary": "油价与美元走强，风险资产低开。",
+                "source_domain": "bloomberg.com",
+                "latest_at_ms": 1_781_049_600_000,
+                "macro_event_flow": {
+                    "window": "recent",
+                    "severity": "low",
+                    "severity_label": "低",
+                    "category": "macro_policy",
+                    "category_label": "美联储",
+                    "impact": "mainline_context",
+                    "impact_label": "不改主线",
+                    "watch": "SPX · 美元 · 美联储",
+                },
+            }
+        )
+
+
+def test_market_news_event_flow_requires_category_label_without_market_scope_fallback() -> None:
+    with pytest.raises(ValueError, match="macro_market_news_event_category_label_required"):
+        macro_module_views._market_news_event_flow_row(
+            {
+                "row_id": "news-row-1",
+                "headline": "中东震荡下，日本追加预算预期升温",
+                "summary": "油价与美元走强，风险资产低开。",
+                "source_domain": "bloomberg.com",
+                "latest_at_ms": 1_781_049_600_000,
+                "market_scope": {"primary": "macro_policy"},
+                "macro_event_flow": {
+                    "window": "recent",
+                    "window_label": "近期",
+                    "severity": "low",
+                    "severity_label": "低",
+                    "category": "macro_policy",
+                    "impact": "mainline_context",
+                    "impact_label": "不改主线",
+                    "watch": "SPX · 美元 · 美联储",
+                },
+            }
+        )
+
+
+def test_market_news_event_flow_requires_impact_label_without_agent_signal_fallback() -> None:
+    with pytest.raises(ValueError, match="macro_market_news_event_impact_label_required"):
+        macro_module_views._market_news_event_flow_row(
+            {
+                "row_id": "news-row-1",
+                "headline": "中东震荡下，日本追加预算预期升温",
+                "summary": "油价与美元走强，风险资产低开。",
+                "source_domain": "bloomberg.com",
+                "latest_at_ms": 1_781_049_600_000,
+                "market_scope": {"primary": "macro_policy"},
+                "macro_event_flow": {
+                    "window": "recent",
+                    "window_label": "近期",
+                    "severity": "low",
+                    "severity_label": "低",
+                    "category": "macro_policy",
+                    "category_label": "美联储",
+                    "impact": "mainline_context",
+                    "watch": "SPX · 美元 · 美联储",
+                },
+                "signal": {
+                    "agent_signal": {"status": "ready"},
+                    "alert_eligibility": {"decision_class": "context"},
+                },
+            }
+        )
+
+
+def test_market_news_event_flow_requires_watch_without_token_lane_fallback() -> None:
+    with pytest.raises(ValueError, match="macro_market_news_event_watch_required"):
+        macro_module_views._market_news_event_flow_row(
+            {
+                "row_id": "news-row-1",
+                "headline": "中东震荡下，日本追加预算预期升温",
+                "summary": "油价与美元走强，风险资产低开。",
+                "source_domain": "bloomberg.com",
+                "latest_at_ms": 1_781_049_600_000,
+                "token_lanes": [{"symbol": "SPX"}],
+                "market_scope": {"primary": "macro_policy"},
+                "macro_event_flow": {
+                    "window": "recent",
+                    "window_label": "近期",
+                    "severity": "low",
+                    "severity_label": "低",
+                    "category": "macro_policy",
+                    "category_label": "美联储",
+                    "impact": "mainline_context",
+                    "impact_label": "不改主线",
+                },
+                "signal": {
+                    "agent_signal": {
+                        "status": "ready",
+                        "decision_class": "ambiguous",
+                    },
+                },
+            }
+        )
+
+
+def test_market_news_event_flow_requires_latest_at_without_published_or_observed_fallback() -> None:
+    with pytest.raises(ValueError, match="macro_market_news_event_latest_at_required"):
+        macro_module_views._market_news_event_flow_row(
+            {
+                "row_id": "news-row-1",
+                "headline": "中东震荡下，日本追加预算预期升温",
+                "summary": "油价与美元走强，风险资产低开。",
+                "source_domain": "bloomberg.com",
+                "published_at": "2026-06-10",
+                "observed_at": "2026-06-11",
+                "market_scope": {"primary": "macro_policy"},
+                "signal": {
+                    "agent_signal": {
+                        "status": "ready",
+                        "decision_class": "context",
+                    },
+                },
+            }
+        )
+
+
+def test_market_news_event_flow_requires_headline_without_silent_drop() -> None:
+    with pytest.raises(ValueError, match="macro_market_news_event_headline_required"):
+        macro_module_views._market_news_event_flow_row(
+            {
+                "row_id": "news-row-1",
+                "summary": "油价与美元走强，风险资产低开。",
+                "source_domain": "bloomberg.com",
+                "latest_at_ms": 1_781_049_600_000,
+                "market_scope": {"primary": "macro_policy"},
+                "signal": {
+                    "agent_signal": {
+                        "status": "ready",
+                        "decision_class": "context",
+                    },
+                },
+            }
+        )
+
+
+def test_market_news_event_flow_requires_summary_without_silent_drop() -> None:
+    with pytest.raises(ValueError, match="macro_market_news_event_summary_required"):
+        macro_module_views._market_news_event_flow_row(
+            {
+                "row_id": "news-row-1",
+                "headline": "中东震荡下，日本追加预算预期升温",
+                "source_domain": "bloomberg.com",
+                "latest_at_ms": 1_781_049_600_000,
+                "market_scope": {"primary": "macro_policy"},
+                "signal": {
+                    "agent_signal": {
+                        "status": "ready",
+                        "decision_class": "context",
+                    },
+                },
+            }
+        )
+
+
+def test_market_news_event_flow_requires_source_domain_without_silent_drop() -> None:
+    with pytest.raises(ValueError, match="macro_market_news_event_source_domain_required"):
+        macro_module_views._market_news_event_flow_row(
+            {
+                "row_id": "news-row-1",
+                "headline": "中东震荡下，日本追加预算预期升温",
+                "summary": "油价与美元走强，风险资产低开。",
+                "latest_at_ms": 1_781_049_600_000,
+                "market_scope": {"primary": "macro_policy"},
+                "signal": {
+                    "agent_signal": {
+                        "status": "ready",
+                        "decision_class": "context",
+                    },
+                },
+            }
+        )
+
+
 def test_overview_decision_console_adds_future_24_72h_catalysts() -> None:
     snapshot = _snapshot()
     snapshot["scenario_json"] = {
@@ -4733,15 +7585,23 @@ def test_overview_decision_console_adds_future_24_72h_catalysts() -> None:
         "watch_triggers": [
             {
                 "code": "real_yield_breakout",
-                "description": "10Y real yield keeps rising.",
+                "label": "实际利率突破",
+                "detail": "10Y real yield keeps rising.",
+                "evidence_label": "10Y real yield keeps rising.",
                 "time_window": "24h",
+                "time_window_label": "24小时",
                 "severity": "high",
+                "severity_label": "高",
             },
             {
                 "code": "hy_oas_distress",
-                "description": "HY OAS crosses distress thresholds.",
+                "label": "高收益债利差进入困境区",
+                "detail": "HY OAS crosses distress thresholds.",
+                "evidence_label": "HY OAS crosses distress thresholds.",
                 "time_window": "72h",
+                "time_window_label": "72小时",
                 "severity": "medium",
+                "severity_label": "中",
             },
         ],
     }
@@ -4796,9 +7656,9 @@ def test_overview_decision_console_adds_future_24_72h_catalysts() -> None:
             {
                 "key": "watch:real_yield_breakout",
                 "label": "实际利率突破",
-                "description": "10Y real yield keeps rising.",
+                "detail": "10Y real yield keeps rising.",
                 "window": "24h",
-                "window_label": "24h",
+                "window_label": "24小时",
                 "severity": "high",
                 "severity_label": "高",
                 "source": "情景触发",
@@ -4807,9 +7667,9 @@ def test_overview_decision_console_adds_future_24_72h_catalysts() -> None:
             {
                 "key": "event:official_calendar:fomc_decision_next",
                 "label": "FOMC 决议",
-                "description": "2026-06-17 · 还有 1 天 · 14:00 ET",
+                "detail": "2026-06-17 · 还有 1 天 · 14:00 ET",
                 "window": "24h",
-                "window_label": "24h",
+                "window_label": "24小时",
                 "severity": "high",
                 "severity_label": "高",
                 "source": "官方日历",
@@ -4819,9 +7679,9 @@ def test_overview_decision_console_adds_future_24_72h_catalysts() -> None:
             {
                 "key": "watch:hy_oas_distress",
                 "label": "高收益债利差进入困境区",
-                "description": "HY OAS crosses distress thresholds.",
+                "detail": "HY OAS crosses distress thresholds.",
                 "window": "72h",
-                "window_label": "72h",
+                "window_label": "72小时",
                 "severity": "medium",
                 "severity_label": "中",
                 "source": "情景触发",
@@ -4830,9 +7690,9 @@ def test_overview_decision_console_adds_future_24_72h_catalysts() -> None:
             {
                 "key": "event:treasury_auction:2y_next_auction_days",
                 "label": "2Y 国债拍卖日历",
-                "description": "2026-06-19 · 还有 3 天 · 2026-06-18 公告 · 2026-06-30 交割",
+                "detail": "2026-06-19 · 还有 3 天 · 2026-06-18 公告 · 2026-06-30 交割",
                 "window": "72h",
-                "window_label": "72h",
+                "window_label": "72小时",
                 "severity": "medium",
                 "severity_label": "中",
                 "source": "US Treasury",
@@ -4852,26 +7712,51 @@ def test_overview_decision_console_adds_watchlist_alerts_from_trade_map_and_rule
         "watch_triggers": [
             {
                 "code": "real_yield_breakout",
-                "description": "10Y real yield keeps rising.",
+                "label": "实际利率突破",
+                "detail": "10Y real yield keeps rising.",
+                "evidence_label": "10Y real yield keeps rising.",
                 "time_window": "24h",
+                "time_window_label": "24小时",
                 "severity": "high",
+                "severity_label": "高",
             }
         ],
-        "invalidations": [{"code": "ten_year_yield_reverses", "description": "10Y yield loses pressure."}],
+        "invalidations": [
+            {
+                "code": "ten_year_yield_reverses",
+                "label": "10年期收益率回落",
+                "detail": "10Y yield loses pressure.",
+                "evidence_label": "10Y yield loses pressure.",
+            }
+        ],
         "quality_blockers": [
             {
                 "code": "missing_asset_spy",
                 "label": "缺少当前数据：SPY",
-                "description": "检查对应 provider 导入与最新观测。",
+                "evidence_label": "检查对应 provider 导入与最新观测。",
                 "severity": "error",
+                "severity_label": "阻断",
             }
         ],
         "trade_map": [
             {
                 "expression": "risk_down_credit_sensitive",
+                "label": "风险降档 / 信用敏感",
                 "time_window": "1w",
-                "confirms_on": ["hy_oas_widening_5d"],
-                "invalidates_on": ["vix_returns_to_carry"],
+                "action_checklist": [
+                    {
+                        "kind": "confirm",
+                        "kind_label": "确认",
+                        "label": "HY OAS 5日走阔",
+                        "description": "观察 HY OAS 5日走阔 是否继续确认。",
+                    },
+                    {
+                        "kind": "invalidate",
+                        "kind_label": "失效",
+                        "label": "VIX 回到 carry 区间",
+                        "description": "若 VIX 回到 carry 区间，则撤销该映射。",
+                    },
+                ],
                 "legs": [
                     {"symbol": "BIL", "label": "现金/短债", "action": "做多/防守"},
                     {"symbol": "QQQ", "label": "纳斯达克", "action": "回避/做空代理"},
@@ -4895,24 +7780,25 @@ def test_overview_decision_console_adds_watchlist_alerts_from_trade_map_and_rule
             {
                 "key": "watch:real_yield_breakout",
                 "label": "实际利率突破",
-                "description": "10Y real yield keeps rising.",
+                "detail": "10Y real yield keeps rising.",
                 "kind": "watch",
                 "kind_label": "触发",
                 "window": "24h",
+                "window_label": "24小时",
                 "severity": "high",
                 "severity_label": "高",
             },
             {
                 "key": "invalidation:ten_year_yield_reverses",
                 "label": "10年期收益率回落",
-                "description": "10Y yield loses pressure.",
+                "detail": "10Y yield loses pressure.",
                 "kind": "invalidation",
                 "kind_label": "失效",
             },
             {
                 "key": "quality:missing_asset_spy",
                 "label": "缺少当前数据：SPY",
-                "description": "检查对应 provider 导入与最新观测。",
+                "detail": "检查对应 provider 导入与最新观测。",
                 "kind": "quality",
                 "kind_label": "质量",
                 "severity": "error",
@@ -4929,9 +7815,22 @@ def test_overview_trade_map_adds_five_asset_historical_review() -> None:
         "trade_map": [
             {
                 "expression": "risk_down_credit_sensitive",
+                "label": "风险降档 / 信用敏感",
                 "time_window": "1w",
-                "confirms_on": ["hy_oas_widening_5d"],
-                "invalidates_on": ["vix_returns_to_carry"],
+                "action_checklist": [
+                    {
+                        "kind": "confirm",
+                        "kind_label": "确认",
+                        "label": "HY OAS 5日走阔",
+                        "description": "观察 HY OAS 5日走阔 是否继续确认。",
+                    },
+                    {
+                        "kind": "invalidate",
+                        "kind_label": "失效",
+                        "label": "VIX 回到 carry 区间",
+                        "description": "若 VIX 回到 carry 区间，则撤销该映射。",
+                    },
+                ],
                 "legs": [],
             }
         ],
@@ -4992,6 +7891,7 @@ def test_overview_trade_map_adds_five_asset_historical_review() -> None:
                 "mfe_pct": 6.0,
                 "mae_pct": 0.0,
                 "outcome": "hit",
+                "outcome_label": "命中",
             },
             {
                 "asset": "BTC",
@@ -5003,6 +7903,7 @@ def test_overview_trade_map_adds_five_asset_historical_review() -> None:
                 "mfe_pct": 10.0,
                 "mae_pct": 0.0,
                 "outcome": "hit",
+                "outcome_label": "命中",
             },
             {
                 "asset": "GOLD",
@@ -5014,6 +7915,7 @@ def test_overview_trade_map_adds_five_asset_historical_review() -> None:
                 "mfe_pct": 4.0,
                 "mae_pct": 0.0,
                 "outcome": "hit",
+                "outcome_label": "命中",
             },
             {
                 "asset": "SPX",
@@ -5025,6 +7927,7 @@ def test_overview_trade_map_adds_five_asset_historical_review() -> None:
                 "mfe_pct": 2.0,
                 "mae_pct": 0.0,
                 "outcome": "hit",
+                "outcome_label": "命中",
             },
             {
                 "asset": "TLT",
@@ -5036,6 +7939,7 @@ def test_overview_trade_map_adds_five_asset_historical_review() -> None:
                 "mfe_pct": 1.0,
                 "mae_pct": -4.0,
                 "outcome": "hit",
+                "outcome_label": "命中",
             },
         ],
     }
@@ -5052,16 +7956,19 @@ def test_overview_trade_map_adds_five_asset_historical_review() -> None:
     assert trade["action_checklist"] == [
         {
             "kind": "confirm",
+            "kind_label": "确认",
             "label": "HY OAS 5日走阔",
             "description": "观察 HY OAS 5日走阔 是否继续确认。",
         },
         {
             "kind": "invalidate",
+            "kind_label": "失效",
             "label": "VIX 回到 carry 区间",
             "description": "若 VIX 回到 carry 区间，则撤销该映射。",
         },
         {
             "kind": "position_review",
+            "kind_label": "纸面仓位",
             "label": "纸面仓位复盘",
             "description": "$10,000 · P&L +$460 · 胜率 5/5",
         },
@@ -5117,6 +8024,88 @@ def test_overview_trade_map_adds_five_asset_historical_review() -> None:
     }
 
 
+def test_trade_map_action_checklist_uses_only_explicit_display_contract() -> None:
+    checklist = macro_module_views._trade_map_action_checklist(
+        {
+            "confirms_on": ["hy_oas_widening_5d"],
+            "invalidates_on": ["vix_returns_to_carry"],
+            "action_checklist": [
+                {
+                    "kind": "confirm",
+                    "kind_label": "确认",
+                    "label": "显式信用压力确认",
+                    "description": "只消费 scenario 输出的展示契约。",
+                }
+            ],
+        },
+        {"summary": "$10,000 · P&L +$460 · 胜率 5/5"},
+    )
+
+    assert checklist == [
+        {
+            "kind": "confirm",
+            "kind_label": "确认",
+            "label": "显式信用压力确认",
+            "description": "只消费 scenario 输出的展示契约。",
+        },
+        {
+            "kind": "position_review",
+            "kind_label": "纸面仓位",
+            "label": "纸面仓位复盘",
+            "description": "$10,000 · P&L +$460 · 胜率 5/5",
+        },
+    ]
+    assert "HY OAS 5日走阔" not in str(checklist)
+    assert "VIX 回到 carry 区间" not in str(checklist)
+
+
+@pytest.mark.parametrize(
+    ("field_name", "message"),
+    [
+        ("kind", "macro_trade_map_action_checklist_kind_required"),
+        ("kind_label", "macro_trade_map_action_checklist_kind_label_required"),
+        ("label", "macro_trade_map_action_checklist_label_required"),
+        ("description", "macro_trade_map_action_checklist_description_required"),
+    ],
+)
+def test_trade_map_action_checklist_requires_complete_rows_without_silent_drop(
+    field_name: str,
+    message: str,
+) -> None:
+    checklist_row = {
+        "kind": "confirm",
+        "kind_label": "确认",
+        "label": "显式信用压力确认",
+        "description": "只消费 scenario 输出的展示契约。",
+    }
+    del checklist_row[field_name]
+
+    with pytest.raises(ValueError, match=message):
+        macro_module_views._trade_map_action_checklist(
+            {"action_checklist": [checklist_row]},
+            {"summary": "$10,000 · P&L +$460 · 胜率 5/5"},
+        )
+
+
+@pytest.mark.parametrize("action_checklist", ("not-a-list", {"kind": "confirm"}, 42))
+def test_trade_map_action_checklist_requires_list_shape_without_silent_drop(
+    action_checklist: object,
+) -> None:
+    with pytest.raises(ValueError, match="macro_trade_map_action_checklist_rows_required"):
+        macro_module_views._trade_map_action_checklist(
+            {"action_checklist": action_checklist},
+            {"summary": "$10,000 · P&L +$460 · 胜率 5/5"},
+        )
+
+
+def test_trade_map_action_checklist_requires_mapping_rows_without_silent_drop() -> None:
+    with pytest.raises(ValueError, match="macro_trade_map_action_checklist_row_required"):
+        macro_module_views._trade_map_action_checklist(
+            {"action_checklist": ["not-a-row"]},
+            {"summary": "$10,000 · P&L +$460 · 胜率 5/5"},
+        )
+
+
 def test_overview_decision_console_summarizes_judgement_review_across_holding_windows() -> None:
     snapshot = _snapshot()
     snapshot["scenario_json"] = {
@@ -5124,9 +8113,22 @@ def test_overview_decision_console_summarizes_judgement_review_across_holding_wi
         "trade_map": [
             {
                 "expression": "risk_down_credit_sensitive",
+                "label": "风险降档 / 信用敏感",
                 "time_window": "1w",
-                "confirms_on": ["hy_oas_widening_5d"],
-                "invalidates_on": ["vix_returns_to_carry"],
+                "action_checklist": [
+                    {
+                        "kind": "confirm",
+                        "kind_label": "确认",
+                        "label": "HY OAS 5日走阔",
+                        "description": "观察 HY OAS 5日走阔 是否继续确认。",
+                    },
+                    {
+                        "kind": "invalidate",
+                        "kind_label": "失效",
+                        "label": "VIX 回到 carry 区间",
+                        "description": "若 VIX 回到 carry 区间，则撤销该映射。",
+                    },
+                ],
                 "legs": [],
             }
         ],
@@ -5215,6 +8217,182 @@ def test_overview_decision_console_summarizes_judgement_review_across_holding_wi
     }
 
 
+def test_trade_map_portfolio_review_requires_row_return_without_zero_default() -> None:
+    review = {
+        "rows": [{"expected_direction": "up", "mae_pct": -1.0}],
+        "hit_count": 1,
+        "sample_count": 1,
+        "win_rate_label": "1/1",
+    }
+
+    with pytest.raises(ValueError, match="macro_trade_map_review_row_return_pct_required"):
+        macro_module_views._trade_map_portfolio_review(review)
+
+
+def test_trade_map_portfolio_review_requires_row_mae_without_zero_default() -> None:
+    review = {
+        "rows": [{"expected_direction": "up", "return_pct": 1.0}],
+        "hit_count": 1,
+        "sample_count": 1,
+        "win_rate_label": "1/1",
+    }
+
+    with pytest.raises(ValueError, match="macro_trade_map_review_row_mae_pct_required"):
+        macro_module_views._trade_map_portfolio_review(review)
+
+
+def test_trade_map_portfolio_review_requires_explicit_counts_and_win_rate_label() -> None:
+    review = {
+        "rows": [{"expected_direction": "up", "return_pct": 1.0, "mae_pct": -1.0}],
+        "sample_count": 1,
+        "win_rate_label": "1/1",
+    }
+
+    with pytest.raises(ValueError, match="macro_trade_map_review_hit_count_required"):
+        macro_module_views._trade_map_portfolio_review(review)
+
+    review = {
+        "rows": [{"expected_direction": "up", "return_pct": 1.0, "mae_pct": -1.0}],
+        "hit_count": 1,
+        "win_rate_label": "1/1",
+    }
+
+    with pytest.raises(ValueError, match="macro_trade_map_review_sample_count_required"):
+        macro_module_views._trade_map_portfolio_review(review)
+
+    review = {
+        "rows": [{"expected_direction": "up", "return_pct": 1.0, "mae_pct": -1.0}],
+        "hit_count": 1,
+        "sample_count": 1,
+    }
+
+    with pytest.raises(ValueError, match="macro_trade_map_review_win_rate_label_required"):
+        macro_module_views._trade_map_portfolio_review(review)
+
+
+def test_trade_map_holding_period_row_requires_signed_return_without_zero_default() -> None:
+    with pytest.raises(ValueError, match="macro_trade_map_holding_signed_return_pct_required"):
+        macro_module_views._trade_map_holding_period_row(
+            "1d",
+            "1D",
+            [{"outcome": "hit"}],
+        )
+
+
+def test_trade_map_holding_period_row_requires_samples_without_zero_default() -> None:
+    with pytest.raises(ValueError, match="macro_trade_map_holding_rows_required"):
+        macro_module_views._trade_map_holding_period_row("20d", "20D", [])
+
+
+def test_trade_map_holding_period_review_omits_unsampled_windows_without_zero_stats() -> None:
+    review = macro_module_views._trade_map_holding_period_review(
+        "risk_down_credit_sensitive",
+        [
+            _obs("asset:ndx", "2026-05-01", 100.0, unit="index", source_name="yahoo"),
+            _obs("asset:ndx", "2026-05-02", 99.0, unit="index", source_name="yahoo"),
+            _obs("asset:ndx", "2026-05-06", 96.0, unit="index", source_name="yahoo"),
+            _obs("asset:ndx", "2026-05-20", 94.0, unit="index", source_name="yahoo"),
+        ],
+    )
+
+    assert review is not None
+    assert [row["horizon"] for row in review["rows"]] == ["1d", "5d"]
+    assert "0/0" not in str(review)
+
+
+@pytest.mark.parametrize(
+    ("field_name", "message"),
+    (
+        ("horizon", "macro_judgement_review_window_horizon_required"),
+        ("label", "macro_judgement_review_window_label_required"),
+        ("status", "macro_judgement_review_window_status_required"),
+        ("status_label", "macro_judgement_review_window_status_label_required"),
+        ("sample_count", "macro_judgement_review_window_sample_count_required"),
+        ("hit_count", "macro_judgement_review_window_hit_count_required"),
+        ("win_rate_label", "macro_judgement_review_window_win_rate_label_required"),
+        ("pnl_usd", "macro_judgement_review_window_pnl_usd_required"),
+        (
+            "average_signed_return_pct",
+            "macro_judgement_review_window_average_signed_return_pct_required",
+        ),
+    ),
+)
+def test_judgement_review_window_requires_explicit_fields_without_silent_drop(field_name: str, message: str) -> None:
+    row = {
+        "horizon": "1d",
+        "label": "1D",
+        "status": "complete",
+        "status_label": "已完成",
+        "sample_count": 5,
+        "hit_count": 4,
+        "win_rate_label": "4/5",
+        "pnl_usd": 220.0,
+        "average_signed_return_pct": 2.2,
+    }
+    row.pop(field_name)
+
+    with pytest.raises(ValueError, match=message):
+        macro_module_views._judgement_review_window(row)
+
+
+def test_judgement_review_window_requires_positive_sample_count_without_silent_drop() -> None:
+    row = {
+        "horizon": "1d",
+        "label": "1D",
+        "status": "complete",
+        "status_label": "已完成",
+        "sample_count": 0,
+        "hit_count": 0,
+        "win_rate_label": "0/0",
+        "pnl_usd": 0.0,
+        "average_signed_return_pct": 0.0,
+    }
+
+    with pytest.raises(ValueError, match="macro_judgement_review_window_sample_count_required"):
+        macro_module_views._judgement_review_window(row)
+
+
+@pytest.mark.parametrize(
+    ("field_name", "message"),
+    (
+        ("expression", "macro_trade_map_expression_required"),
+        ("label", "macro_trade_map_label_required"),
+    ),
+)
+def test_judgement_review_row_requires_identity_fields_without_silent_drop(field_name: str, message: str) -> None:
+    item = {
+        "expression": "risk_down_credit_sensitive",
+        "label": "风险降档 / 信用敏感",
+        "holding_period_review": {
+            "rows": [
+                {
+                    "horizon": "1d",
+                    "label": "1D",
+                    "status": "complete",
+                    "status_label": "已完成",
+                    "sample_count": 5,
+                    "hit_count": 4,
+                    "win_rate_label": "4/5",
+                    "pnl_usd": 220.0,
+                    "average_signed_return_pct": 2.2,
+                }
+            ],
+        },
+    }
+    item.pop(field_name)
+
+    with pytest.raises(ValueError, match=message):
+        macro_module_views._judgement_review_row(item)
+
+
+def test_trade_map_historical_trust_requires_explicit_counts_without_zero_default() -> None:
+    with pytest.raises(ValueError, match="macro_trade_map_historical_trust_sample_count_required"):
+        macro_module_views._trade_map_historical_trust({"rows": [{"hit_count": 1}]})
+
+    with pytest.raises(ValueError, match="macro_trade_map_historical_trust_hit_count_required"):
+        macro_module_views._trade_map_historical_trust({"rows": [{"sample_count": 1}]})
+
+
 def test_overview_module_view_preserves_watch_trigger_horizon_and_priority() -> None:
     view = build_macro_module_view(
         "overview",
@@ -5225,9 +8403,11 @@ def test_overview_module_view_preserves_watch_trigger_horizon_and_priority() -> 
     assert view["module_evidence"]["watch_triggers"][0] == {
         "code": "real_yield_breakout",
         "label": "实际利率突破",
-        "description": "10Y real yield keeps rising.",
+        "evidence_label": "10Y real yield keeps rising.",
         "time_window": "24h",
+        "time_window_label": "24小时",
         "severity": "high",
+        "severity_label": "高",
     }
 
 
@@ -5235,9 +8415,27 @@ def test_overview_module_view_labels_hy_oas_watch_and_invalidation_codes() -> No
     snapshot = _snapshot()
     snapshot["scenario_json"] = {
         **snapshot["scenario_json"],
-        "watch_triggers": [{"code": "hy_oas_widening", "description": "HY OAS widens over five trading days."}],
+        "watch_triggers": [
+            {
+                "code": "hy_oas_widening",
+                "label": "HY OAS 走阔",
+                "detail": "HY OAS widens over five trading days.",
+                "description": "HY OAS widens over five trading days.",
+                "evidence_label": "HY OAS widens over five trading days.",
+                "time_window": "72h",
+                "time_window_label": "72小时",
+                "severity": "medium",
+                "severity_label": "中",
+            }
+        ],
         "invalidations": [
-            {"code": "hy_oas_tightens", "description": "HY OAS tightens enough to reject credit stress."}
+            {
+                "code": "hy_oas_tightens",
+                "label": "HY OAS 收窄",
+                "detail": "HY OAS tightens enough to reject credit stress.",
+                "description": "HY OAS tightens enough to reject credit stress.",
+                "evidence_label": "HY OAS tightens enough to reject credit stress.",
+            }
         ],
     }
 
@@ -5289,24 +8487,103 @@ def _snapshot() -> dict[str, object]:
             "current_regime": "tightening",
             "confidence": 0.64,
             "confirmations": [
-                {"code": "term_premium_pressure", "description": "10Y yield pressure"},
-                {"code": "rrp_buffer_low", "description": "RRP buffer is low"},
+                {
+                    "code": "term_premium_pressure",
+                    "label": "期限溢价压力",
+                    "description": "10Y yield pressure",
+                    "evidence_label": "10Y yield pressure",
+                    "node": "rates",
+                    "kind": "trigger",
+                },
+                {
+                    "code": "rrp_buffer_low",
+                    "label": "RRP 缓冲偏低",
+                    "description": "RRP buffer is low",
+                    "evidence_label": "RRP buffer is low",
+                    "node": "funding",
+                    "kind": "trigger",
+                },
+            ],
+            "top_changes": [
+                {
+                    "code": "term_premium_pressure",
+                    "label": "期限溢价压力",
+                    "description": "10Y yield pressure",
+                    "evidence_label": "10Y yield pressure",
+                    "node": "rates",
+                    "kind": "trigger",
+                }
             ],
             "contradictions": [],
             "watch_triggers": [
                 {
                     "code": "real_yield_breakout",
+                    "label": "实际利率突破",
+                    "detail": "10Y real yield keeps rising.",
                     "description": "10Y real yield keeps rising.",
+                    "evidence_label": "10Y real yield keeps rising.",
                     "time_window": "24h",
+                    "time_window_label": "24小时",
                     "severity": "high",
+                    "severity_label": "高",
                 },
-                {"code": "hy_oas_distress", "description": "HY OAS crosses distress thresholds."},
+                {
+                    "code": "hy_oas_distress",
+                    "label": "高收益债利差进入困境区",
+                    "detail": "HY OAS crosses distress thresholds.",
+                    "description": "HY OAS crosses distress thresholds.",
+                    "evidence_label": "HY OAS crosses distress thresholds.",
+                    "time_window": "72h",
+                    "time_window_label": "72小时",
+                    "severity": "medium",
+                    "severity_label": "中",
+                },
             ],
             "invalidations": [
-                {"code": "ten_year_yield_reverses", "description": "10Y yield loses pressure."},
-                {"code": "credit_spreads_normalize", "description": "HY and IG OAS tighten together."},
+                {
+                    "code": "ten_year_yield_reverses",
+                    "label": "10年期收益率回落",
+                    "detail": "10Y yield loses pressure.",
+                    "description": "10Y yield loses pressure.",
+                    "evidence_label": "10Y yield loses pressure.",
+                },
+                {
+                    "code": "credit_spreads_normalize",
+                    "label": "信用利差正常化",
+                    "detail": "HY and IG OAS tighten together.",
+                    "description": "HY and IG OAS tighten together.",
+                    "evidence_label": "HY and IG OAS tighten together.",
+                },
             ],
-            "trade_map": [{"expression": "duration_pressure_quality_over_growth"}],
+            "quality_blockers": [
+                {
+                    "code": "missing_rates_dgs5",
+                    "label": "缺少当前数据：5Y",
+                    "evidence_label": "检查 FRED 5Y 国债收益率导入与最新观测。",
+                    "severity": "error",
+                    "severity_label": "阻断",
+                }
+            ],
+            "trade_map": [
+                {
+                    "expression": "duration_pressure_quality_over_growth",
+                    "label": "久期承压 / 质量优于成长",
+                }
+            ],
+            "scenario_cases": [
+                {
+                    "case": "base",
+                    "label": "基准情景",
+                    "probability": 0.5,
+                    "probability_label": "50%",
+                    "time_window": "未来 2 周",
+                    "thesis": "长端利率维持压力。",
+                    "trade": "低配 TLT。",
+                    "entry_condition": "10Y 继续上行。",
+                    "stop": "10Y 回落。",
+                    "invalidation": "实际利率压力消退。",
+                }
+            ],
         },
         "panels_json": {"rates": {"regime": "term_premium_pressure", "score": 7.1}},
         "indicators_json": {"rates:dgs10": {"value": 4.7, "unit": "percent"}},
@@ -5330,12 +8607,21 @@ def _snapshot_with_global_scenario() -> dict[str, object]:
     snapshot["scenario_json"] = {
         "current_regime": "term_premium_pressure",
         "confidence": 0.79,
-        "confirmations": [{"code": "global_term_premium", "description": "global only"}],
+        "confirmations": [
+            {
+                "code": "global_term_premium",
+                "label": "期限溢价压力",
+                "description": "global only",
+                "evidence_label": "global only",
+            }
+        ],
+        "contradictions": [],
         "top_changes": [
             {
                 "code": "higher_real_rates",
                 "label": "实际利率上行",
                 "description": "10Y real yield broke higher",
+                "evidence_label": "10Y real yield broke higher",
                 "node": "rates",
                 "kind": "trigger",
             },
@@ -5343,20 +8629,30 @@ def _snapshot_with_global_scenario() -> dict[str, object]:
                 "code": "rrp_buffer_low",
                 "label": "RRP 缓冲偏低",
                 "description": "ON RRP buffer is below 300bn USD",
+                "evidence_label": "ON RRP buffer is below 300bn USD",
                 "node": "funding",
                 "kind": "trigger",
             },
         ],
+        "watch_triggers": [],
+        "invalidations": [],
         "quality_blockers": [
             {
                 "code": "missing_liquidity_srf",
                 "label": "缺少 SRF",
                 "description": "缺少 SRF",
+                "evidence_label": "同步 macro-core 流动性深度源后重新投影。",
                 "severity": "error",
+                "severity_label": "阻断",
                 "remediation_hint": "同步 macro-core 流动性深度源后重新投影。",
             }
         ],
-        "trade_map": [{"expression": "duration_pressure_quality_over_growth"}],
+        "trade_map": [
+            {
+                "expression": "duration_pressure_quality_over_growth",
+                "label": "久期承压 / 质量优于成长",
+            }
+        ],
         "scenario_cases": [
             {
                 "case": "base",
@@ -5567,12 +8863,21 @@ def _add_liquidity_pressure_features(features: dict[str, object]) -> None:
     )
 
 
-def _obs(concept_key: str, observed_at: str, value: float, *, unit: str, source_name: str) -> dict[str, object]:
+def _obs(
+    concept_key: str,
+    observed_at: str,
+    value: float,
+    *,
+    unit: str,
+    source_name: str,
+    frequency: str = "daily",
+) -> dict[str, object]:
     return {
         "concept_key": concept_key,
         "observed_at": observed_at,
         "value_numeric": value,
         "unit": unit,
+        "frequency": frequency,
         "source_name": source_name,
         "series_key": f"{source_name}:{concept_key}",
         "data_quality": "ok",

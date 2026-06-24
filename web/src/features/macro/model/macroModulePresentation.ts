@@ -65,7 +65,7 @@ export function extraTables(module: MacroModuleView): MacroModuleTable[] {
 
 export function macroReadSummary(module: MacroModuleView): string | null {
   const read = module.module_read;
-  for (const value of [read.headline, read.summary, read.regime_label]) {
+  for (const value of [read.headline, read.summary]) {
     const summary = summaryValue(value);
     if (summary) {
       return summary;
@@ -124,10 +124,7 @@ function gapItem(gap: unknown): MacroDataHealthBucketItem | null {
     return null;
   }
   return {
-    detail:
-      stringValue(record.remediation_hint) ??
-      stringValue(record.detail) ??
-      stringValue(record.description),
+    detail: stringValue(record.remediation_hint),
     key,
     label,
     scope: stringValue(record.scope),
@@ -159,17 +156,14 @@ function summaryValue(value: unknown): string | null {
 function metricDisplay(tile: MacroModuleTile): MacroMetricDisplay | null {
   const key = stringValue(tile.concept_key);
   const label = stringValue(tile.label);
-  const value = formattedScalarValue(tile.display_value ?? tile.value);
+  const value = formattedScalarValue(tile.display_value);
   if (!key || !label || !value) {
     return null;
   }
   return {
     key,
     label,
-    observedAtLabel:
-      stringValue(tile.observed_at_label) ??
-      stringValue(tile.quality_label) ??
-      stringValue(tile.delta_label),
+    observedAtLabel: stringValue(tile.observed_at_label),
     quality: stringValue(tile.quality),
     qualityLabel: stringValue(tile.quality_label),
     shortLabel: stringValue(tile.short_label),
@@ -181,9 +175,9 @@ function metricDisplay(tile: MacroModuleTile): MacroMetricDisplay | null {
 function evidenceItem(
   item: MacroSemanticRecord,
 ): { detail: string; key: string; label: string } | null {
-  const key = stringValue(item.code) ?? stringValue(item.key);
+  const key = stringValue(item.code);
   const label = formattedScalarValue(item.label);
-  const detail = formattedScalarValue(item.description);
+  const detail = formattedScalarValue(item.evidence_label);
   if (!key || !label || !detail) {
     return null;
   }

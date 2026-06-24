@@ -462,7 +462,7 @@
 | `concept_key` | `TEXT` | False | `None` |
 | `observed_at` | `DATE` | False | `None` |
 | `series_rank` | `INTEGER` | False | `None` |
-| `value_numeric` | `DOUBLE PRECISION` | False | `None` |
+| `value_numeric` | `DOUBLE PRECISION` | True | `None` |
 | `source_name` | `TEXT` | False | `None` |
 | `series_key` | `TEXT` | False | `None` |
 | `source_priority` | `INTEGER` | False | `None` |
@@ -1037,6 +1037,7 @@
 | `search_text` | `TEXT` | False | `''::text` |
 | `market_scope_json` | `JSONB` | False | `'{}'::jsonb` |
 | `provider_rating_json` | `JSONB` | False | `'{}'::jsonb` |
+| `macro_event_flow_json` | `JSONB` | True | `None` |
 
 ## `news_projection_dirty_targets`
 

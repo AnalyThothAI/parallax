@@ -18,6 +18,7 @@ from tests.postgres_test_utils import reset_postgres_schema as migrate
 
 def test_enqueue_coalesces_by_news_item_target_and_preserves_first_dirty_time() -> None:
     conn = _ScriptedConnection([])
+    conn.rowcount = 1
 
     count = NewsProjectionDirtyTargetRepository(conn).enqueue_targets(
         [
@@ -64,6 +65,7 @@ def test_enqueue_coalesces_by_news_item_target_and_preserves_first_dirty_time() 
 
 def test_news_source_quality_uniqueness_includes_window() -> None:
     conn = _ScriptedConnection([])
+    conn.rowcount = 2
 
     count = NewsProjectionDirtyTargetRepository(conn).enqueue_targets(
         [
@@ -816,9 +818,11 @@ class _ScriptedConnection:
 
     def fetchall(self) -> list[dict[str, Any]]:
         if not self.results:
+            self.rowcount = 0
             return []
         result = self.results.pop(0)
         assert isinstance(result, list)
+        self.rowcount = len(result)
         return result
 
     def fetchone(self) -> dict[str, Any] | None:

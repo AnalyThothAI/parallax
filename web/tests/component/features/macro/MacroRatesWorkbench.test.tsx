@@ -101,6 +101,7 @@ describe("Macro rates workbench", () => {
     expect(within(marketRead).queryByText("问题")).not.toBeInTheDocument();
     expect(marketRead).not.toHaveTextContent("政策走廊是否稳定");
     expect(marketRead).not.toHaveTextContent("本页只展示");
+    expect(within(marketRead).queryByText("联邦基金与走廊")).not.toBeInTheDocument();
   });
 
   it("removes the rates fact strip when no facts exist", () => {
@@ -110,6 +111,15 @@ describe("Macro rates workbench", () => {
 
     expect(screen.queryByRole("region", { name: "关键事实" })).not.toBeInTheDocument();
     expect(screen.queryByText("暂无关键事实")).not.toBeInTheDocument();
+  });
+
+  it("uses backend module title for the rates page scaffold label", () => {
+    renderRatesModule(macroFedFundsModuleFixture(), "rates/fed-funds", "/macro/rates/fed-funds");
+
+    expect(screen.getByRole("region", { name: "联邦基金与走廊模块页面" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "联邦基金与走廊利率工作台" }),
+    ).not.toBeInTheDocument();
   });
 
   it("omits missing rates fact metadata instead of placeholder copy", () => {
@@ -154,6 +164,24 @@ describe("Macro rates workbench", () => {
     expect(within(marketRead).queryByText("截至")).not.toBeInTheDocument();
   });
 
+  it("omits empty rates readiness status fields without frontend status labels", () => {
+    const base = macroFedFundsModuleFixture();
+    const module = {
+      ...base,
+      data_health: {
+        ...base.data_health,
+        summary_label: "",
+        summary_status: "stale",
+      },
+    };
+
+    renderRatesModule(module, "rates/fed-funds", "/macro/rates/fed-funds");
+
+    const marketRead = screen.getByRole("region", { name: "利率简报" });
+    expect(within(marketRead).queryByText("状态")).not.toBeInTheDocument();
+    expect(marketRead).not.toHaveTextContent("已过期");
+  });
+
   it("removes empty rates diagnostics buckets and source table", () => {
     const module = {
       ...macroFedFundsModuleFixture(),
@@ -176,6 +204,31 @@ describe("Macro rates workbench", () => {
       within(diagnostics).queryByRole("table", { name: "利率数据源" }),
     ).not.toBeInTheDocument();
     expect(within(diagnostics).queryByText("暂无数据源元信息")).not.toBeInTheDocument();
+  });
+
+  it("does not translate rates gap severity codes into diagnostics text", () => {
+    const base = macroFedFundsModuleFixture();
+    const module = {
+      ...base,
+      data_health: {
+        ...base.data_health,
+        module_gaps: [
+          {
+            code: "sofr_30d_missing",
+            label: "SOFR 30D 尚未入库",
+            severity: "warning",
+          },
+        ],
+        chart_gaps: [],
+        global_gaps: [],
+      },
+    };
+
+    renderRatesModule(module, "rates/fed-funds", "/macro/rates/fed-funds");
+
+    const diagnostics = screen.getByRole("region", { name: "数据诊断" });
+    expect(within(diagnostics).getByText("SOFR 30D 尚未入库")).toBeInTheDocument();
+    expect(within(diagnostics).queryByText("警告")).not.toBeInTheDocument();
   });
 
   it("does not manufacture rates source diagnostics labels from source counts", () => {
@@ -296,6 +349,25 @@ describe("Macro rates workbench", () => {
     expect(screen.queryByRole("region", { name: "利率主图" })).not.toBeInTheDocument();
     expect(screen.queryByText("暂无可绘制走廊数据")).not.toBeInTheDocument();
     expect(screen.queryByText("未知代理")).not.toBeInTheDocument();
+  });
+
+  it("does not use rates readiness as primary-chart meta when chart copy is absent", () => {
+    const base = macroFedFundsModuleFixture();
+    const module = {
+      ...base,
+      primary_chart: {
+        ...base.primary_chart,
+        subtitle: null,
+      },
+    };
+
+    renderRatesModule(module, "rates/fed-funds", "/macro/rates/fed-funds");
+
+    const primaryVisual = screen.getByRole("region", { name: "利率主图" });
+    expect(within(primaryVisual).queryByText("走廊数据部分可用")).not.toBeInTheDocument();
+    expect(
+      within(primaryVisual).queryByText("目标区间、EFFR、IORB 与 SOFR"),
+    ).not.toBeInTheDocument();
   });
 
   it("omits missing rates decision details instead of placeholder copy", () => {
@@ -432,7 +504,7 @@ describe("Macro rates workbench", () => {
     },
   );
 
-  it("uses a rates-specific route header without exposing projection version", async () => {
+  it("omits local rates shell eyebrow copy without exposing projection version", async () => {
     renderWithProviders(
       <MacroWorkbenchRoute
         moduleId="rates/fed-funds"
@@ -443,7 +515,8 @@ describe("Macro rates workbench", () => {
       { route: "/macro/rates/fed-funds" },
     );
 
-    expect(await screen.findByText("利率工作台")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "政策利率走廊" })).toBeInTheDocument();
+    expect(screen.queryByText("利率工作台")).not.toBeInTheDocument();
     const state = screen.getByLabelText("页面状态");
     expect(within(state).getByText("数据")).toBeInTheDocument();
     expect(within(state).getByText("截至")).toBeInTheDocument();

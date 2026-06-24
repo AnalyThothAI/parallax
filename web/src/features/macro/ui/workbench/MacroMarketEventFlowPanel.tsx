@@ -19,7 +19,7 @@ export function MacroMarketEventFlowPanel({ flow }: { flow: MacroMarketEventFlow
       <ul className="macro-workbench-event-flow-list">
         {flow.rows.map((row) => (
           <li key={row.key}>
-            <span>{row.meta ?? row.date}</span>
+            {row.meta ? <span>{row.meta}</span> : null}
             <b>{row.label}</b>
             <small>{row.detail}</small>
             {row.impactLabel ? <small>{row.impactLabel}</small> : null}

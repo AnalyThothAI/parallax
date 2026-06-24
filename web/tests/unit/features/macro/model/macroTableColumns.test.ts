@@ -178,7 +178,7 @@ describe("macroTableColumns", () => {
         {
           row_id: "credit:empty",
           cells: {
-            instrument: { display_value: "暂无", sort_value: "empty" },
+            instrument: { display_value: "", sort_value: "empty" },
             spread: { display_value: null, sort_value: null },
           },
         },
@@ -246,18 +246,103 @@ describe("macroTableColumns", () => {
     expect(JSON.stringify(model)).not.toContain("unknown_table");
   });
 
+  it("does not expose table object labels or titles without display values", () => {
+    expect(formatMacroTableValue({ label: "legacy object label" })).toBeNull();
+    expect(formatMacroTableValue({ title: "legacy object title" })).toBeNull();
+
+    const model = buildMacroTableModel({
+      id: "legacy_object_table",
+      columns: [
+        { key: "indicator", label: "指标" },
+        { key: "value", label: "值" },
+      ],
+      rows: [
+        {
+          row_id: "row:legacy",
+          cells: {
+            indicator: { label: "legacy object label" },
+            value: { title: "legacy object title" },
+          },
+        },
+        {
+          row_id: "row:display",
+          cells: {
+            indicator: { display_value: "显式指标", sort_value: "显式指标" },
+            value: { display_value: "显式值", sort_value: "显式值" },
+          },
+        },
+      ],
+    });
+
+    expect(model.rows.map((row) => row.id)).toEqual(["row:display"]);
+    expect(JSON.stringify(model)).not.toContain("legacy object label");
+    expect(JSON.stringify(model)).not.toContain("legacy object title");
+  });
+
   it("formats arrays and empty values without changing raw sort semantics", () => {
     expect(
       formatMacroTableValue([
         { code: "insufficient_history:60d", label: "历史样本不足：无法计算 60 日变化" },
       ]),
-    ).toBe("历史样本不足：无法计算 60 日变化");
+    ).toBeNull();
     expect(formatMacroTableValue({ raw: true })).toBeNull();
     expect(formatMacroTableValue({ display_value: "来源可用", sort_value: "ok" })).toBe("来源可用");
     expect(formatMacroTableValue(null)).toBeNull();
-    expect(formatMacroTableValue("暂无")).toBeNull();
-    expect(formatMacroTableValue("unknown")).toBeNull();
+    expect(formatMacroTableValue("unknown")).toBe("unknown");
     expect(compareMacroTableSortValues(2, 10)).toBeLessThan(0);
     expect(compareMacroTableSortValues("asset:qqq", "asset:spy")).toBeLessThan(0);
+  });
+
+  it("does not infer raw or sort values from display-cell text", () => {
+    const model = buildMacroTableModel({
+      id: "source_status_table",
+      columns: [
+        { key: "source", label: "来源" },
+        { key: "latest", label: "最新值" },
+      ],
+      rows: [
+        {
+          row_id: "source:FRED",
+          cells: {
+            source: { display_value: "FRED" },
+            latest: { display_value: "320.00" },
+          },
+        },
+      ],
+    });
+
+    expect(model.rows[0]?.cells.source).toMatchObject({
+      displayValue: "FRED",
+      rawValue: null,
+      sortValue: null,
+      isNumeric: false,
+    });
+    expect(model.rows[0]?.cells.latest).toMatchObject({
+      displayValue: "320.00",
+      rawValue: null,
+      sortValue: null,
+      isNumeric: false,
+    });
+  });
+
+  it("does not translate table scalar status codes into synthetic labels", () => {
+    expect(formatMacroTableValue("ok")).toBe("ok");
+    expect(formatMacroTableValue("partial")).toBe("partial");
+    expect(formatMacroTableValue("unavailable")).toBe("unavailable");
+
+    const model = buildMacroTableModel({
+      id: "source_status_table",
+      columns: [{ key: "status", label: "状态" }],
+      rows: [
+        {
+          row_id: "source:FRED",
+          cells: {
+            status: { display_value: "partial", sort_value: "partial" },
+          },
+        },
+      ],
+    });
+
+    expect(model.rows[0]?.cells.status?.displayValue).toBe("partial");
   });
 });

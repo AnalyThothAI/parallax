@@ -96,7 +96,11 @@ def test_pulse_evidence_source_reads_market_tick_for_asset_candidate(tmp_path) -
             },
         )
         with repository_session_for_connection(conn) as repos:
-            rows = repos.pulse_evidence_sources.list_market_facts(context, max_age_ms=10_000_000_000)
+            rows = repos.pulse_evidence_sources.list_market_facts(
+                context,
+                max_age_ms=10_000_000_000,
+                now_ms=1_800_000_000_001,
+            )
     finally:
         conn.close()
 
@@ -156,7 +160,11 @@ def test_pulse_evidence_source_reads_cex_market_tick_by_pricefeed_id(tmp_path) -
             },
         )
         with repository_session_for_connection(conn) as repos:
-            rows = repos.pulse_evidence_sources.list_market_facts(context, max_age_ms=10_000_000_000)
+            rows = repos.pulse_evidence_sources.list_market_facts(
+                context,
+                max_age_ms=10_000_000_000,
+                now_ms=1_800_000_000_001,
+            )
     finally:
         conn.close()
 

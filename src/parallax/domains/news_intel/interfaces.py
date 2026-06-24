@@ -13,6 +13,7 @@ class NewsReadModel(Protocol):
         lane: str | None = None,
         source: str | None = None,
         target: str | None = None,
+        macro_event_flow: bool = False,
         q: str | None = None,
     ) -> dict[str, Any]: ...
 

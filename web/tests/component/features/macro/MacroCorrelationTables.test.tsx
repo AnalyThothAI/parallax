@@ -2,8 +2,8 @@ import {
   MacroCorrelationMatrixTable,
   MacroCorrelationPairList,
 } from "@features/macro/ui/correlation/MacroCorrelationTables";
-import type { MacroAssetCorrelationData } from "@lib/types";
-import { render, screen } from "@testing-library/react";
+import type { MacroAssetCorrelationData, MacroAssetCorrelationPair } from "@lib/types";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 describe("Macro correlation tables", () => {
@@ -49,6 +49,46 @@ describe("Macro correlation tables", () => {
 
     expect(container).toBeEmptyDOMElement();
     expect(screen.queryByText("暂无可用配对")).not.toBeInTheDocument();
+  });
+
+  it("does not render placeholder dashes for missing correlation cells or date ranges", () => {
+    render(
+      <>
+        <MacroCorrelationMatrixTable
+          data={{
+            ...correlationFixture(),
+            matrix: [
+              {
+                concept_key: "asset:spy",
+                correlations: { "asset:spy": null },
+              },
+            ],
+          }}
+          label="60日资产相关性矩阵"
+          titleByKey={{ "asset:spy": "SPY" }}
+        />
+        <MacroCorrelationPairList
+          pairs={[
+            {
+              available: true,
+              correlation: 0.66,
+              end_date: null,
+              left: "asset:spy",
+              reason: null,
+              right: "asset:qqq",
+              sample_size: 60,
+              start_date: null,
+            } as MacroAssetCorrelationPair,
+          ]}
+          titleByKey={{ "asset:qqq": "QQQ", "asset:spy": "SPY" }}
+        />
+      </>,
+    );
+
+    const table = screen.getByRole("table", { name: "60日资产相关性矩阵" });
+    expect(within(table).queryByText("-")).not.toBeInTheDocument();
+    expect(screen.getByText("样本=60")).toBeInTheDocument();
+    expect(screen.queryByText("- 至 -")).not.toBeInTheDocument();
   });
 });
 

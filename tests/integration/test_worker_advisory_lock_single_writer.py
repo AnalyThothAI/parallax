@@ -56,6 +56,7 @@ def test_worker_base_single_writer_uses_real_postgres_advisory_lock(tmp_path) ->
             interval_seconds=0.01,
             soft_timeout_seconds=1,
             hard_timeout_seconds=2,
+            advisory_lock_key=LOCK_KEY,
         )
         first = _SingleWriterWorker(name="single_writer", settings=settings, db=db, telemetry=object())
         second = _SingleWriterWorker(name="single_writer", settings=settings, db=db, telemetry=object())

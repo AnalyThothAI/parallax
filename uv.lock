@@ -1197,7 +1197,7 @@ wheels = [
 [[package]]
 name = "macrodata-cli"
 version = "0.1.22"
-source = { git = "https://github.com/AnalyThothAI/macrodata-cli.git?rev=dd86aa8bcd234e8fb427ba9d058e9b478e2a0e6c#dd86aa8bcd234e8fb427ba9d058e9b478e2a0e6c" }
+source = { git = "https://github.com/AnalyThothAI/macrodata-cli.git?rev=c7e0627580cbf770b091f1731236990c5d98e0c4#c7e0627580cbf770b091f1731236990c5d98e0c4" }
 dependencies = [
     { name = "defusedxml" },
     { name = "httpx" },
@@ -1649,7 +1649,7 @@ requires-dist = [
     { name = "jsonref", specifier = ">=1.1.0" },
     { name = "litellm", specifier = ">=1.80.0" },
     { name = "loguru", specifier = ">=0.7.2" },
-    { name = "macrodata-cli", git = "https://github.com/AnalyThothAI/macrodata-cli.git?rev=dd86aa8bcd234e8fb427ba9d058e9b478e2a0e6c" },
+    { name = "macrodata-cli", git = "https://github.com/AnalyThothAI/macrodata-cli.git?rev=c7e0627580cbf770b091f1731236990c5d98e0c4" },
     { name = "prometheus-client", specifier = ">=0.22.0" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = ">=3.2.0" },
     { name = "pydantic", specifier = ">=2.8.0" },

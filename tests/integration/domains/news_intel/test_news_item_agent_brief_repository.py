@@ -14,6 +14,7 @@ from parallax.domains.news_intel.runtime.news_projection_work import enqueue_ite
 from parallax.domains.news_intel.services.news_item_brief_input import (
     build_news_item_brief_input_packet,
 )
+from parallax.domains.news_intel.types.news_extraction import NewsFactCandidate, NewsTokenMention
 from parallax.domains.news_intel.types.news_item_brief import (
     NEWS_ITEM_BRIEF_AGENT_NAME,
     NEWS_ITEM_BRIEF_LANE,
@@ -131,25 +132,25 @@ def test_load_items_for_brief_targets_returns_current_and_changed_fact_inputs(tm
         repo.replace_fact_candidates(
             news_item_id=changed_id,
             candidates=[
-                {
-                    "fact_candidate_id": "fact-changed",
-                    "news_item_id": changed_id,
-                    "event_type": "listing",
-                    "claim": "SOL spot ETF filing updated with official docket.",
-                    "realis": "reported_claim",
-                    "evidence_quote": "updated with official docket",
-                    "evidence_span_start": 0,
-                    "evidence_span_end": 28,
-                    "source_role": "observed_source",
-                    "required_slots_json": {"asset": True},
-                    "affected_targets_json": [{"target_type": "asset", "target_id": "asset:sol"}],
-                    "validation_status": "accepted",
-                    "rejection_reasons_json": [],
-                    "extraction_method": "test",
-                    "policy_version": "test",
-                    "created_at_ms": NOW_MS + 200,
-                    "updated_at_ms": NOW_MS + 200,
-                }
+                NewsFactCandidate(
+                    fact_candidate_id="fact-changed",
+                    news_item_id=changed_id,
+                    event_type="listing",
+                    claim="SOL spot ETF filing updated with official docket.",
+                    realis="reported_claim",
+                    evidence_quote="updated with official docket",
+                    evidence_span_start=0,
+                    evidence_span_end=28,
+                    source_role="observed_source",
+                    required_slots={"asset": True},
+                    affected_targets=[{"target_type": "asset", "target_id": "asset:sol"}],
+                    validation_status="accepted",
+                    rejection_reasons=[],
+                    extraction_method="test",
+                    policy_version="test",
+                    created_at_ms=NOW_MS + 200,
+                    updated_at_ms=NOW_MS + 200,
+                )
             ],
         )
 
@@ -235,24 +236,24 @@ def test_load_items_for_brief_targets_payload_contains_packet_inputs_and_audit_r
         repo.replace_token_mentions(
             news_item_id=news_item_id,
             mentions=[
-                {
-                    "mention_id": "mention-payload",
-                    "news_item_id": news_item_id,
-                    "entity_id": None,
-                    "observed_symbol": "SOL",
-                    "chain_id": None,
-                    "address": None,
-                    "resolution_status": "known_symbol",
-                    "target_type": "asset",
-                    "target_id": "asset:sol",
-                    "display_symbol": "SOL",
-                    "display_name": "Solana",
-                    "reason_codes_json": ["confirmed_symbol"],
-                    "candidate_targets_json": [],
-                    "evidence_strength": "strong",
-                    "confidence": 0.9,
-                    "created_at_ms": NOW_MS + 1,
-                }
+                NewsTokenMention(
+                    mention_id="mention-payload",
+                    news_item_id=news_item_id,
+                    entity_id=None,
+                    observed_symbol="SOL",
+                    chain_id=None,
+                    address=None,
+                    resolution_status="known_symbol",
+                    target_type="asset",
+                    target_id="asset:sol",
+                    display_symbol="SOL",
+                    display_name="Solana",
+                    reason_codes=["confirmed_symbol"],
+                    candidate_targets=[],
+                    evidence_strength="strong",
+                    confidence=0.9,
+                    created_at_ms=NOW_MS + 1,
+                )
             ],
         )
         row = _load_items_for_brief_targets(repo, news_item_ids=[news_item_id])[0]

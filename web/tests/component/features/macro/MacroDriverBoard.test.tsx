@@ -21,7 +21,7 @@ describe("MacroDriverBoard", () => {
         transmission={
           [
             { key: "flow:yahoo", label: "真实传导", value: "风险偏好" },
-            { key: "empty:value", label: "空值传导", value: "暂无" },
+            { key: "empty:value", label: "空值传导", value: "" },
             { key: "kind:fallback", kind: "flow", status_label: "部分可用" },
             { label: "缺少 key", value: "风险偏好" },
             { value: "缺少标签" },

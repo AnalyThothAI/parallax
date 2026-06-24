@@ -12,11 +12,11 @@ def build_macro_data_gaps(raw_codes: Sequence[str]) -> list[dict[str, Any]]:
 
 def _gap_payload(raw_code: str) -> dict[str, Any]:
     concept_key = _gap_concept_key(raw_code)
-    metadata = MACRO_CONCEPT_METADATA.get(concept_key or "", {})
+    concept_label = _gap_concept_label(concept_key) if concept_key is not None else ""
     public_code = _public_gap_code(raw_code)
     return {
         "code": public_code,
-        "label": _gap_label(raw_code, concept_label=_concept_label(metadata)),
+        "label": _gap_label(raw_code, concept_label=concept_label),
         "severity": _gap_severity(raw_code),
         "score_participation": False,
         "remediation_hint": _remediation_hint(public_code),
@@ -25,12 +25,21 @@ def _gap_payload(raw_code: str) -> dict[str, Any]:
 
 def _gap_concept_key(raw_code: str) -> str | None:
     if raw_code.startswith("missing:"):
-        return raw_code.split(":", 1)[1].split("|", 1)[0]
+        concept_key = raw_code.split(":", 1)[1].split("|", 1)[0].strip()
+        if not concept_key:
+            raise ValueError(f"macro_gap_concept_key_required:{_public_gap_code(raw_code)}")
+        return concept_key
     return None
 
 
-def _concept_label(metadata: Mapping[str, Any]) -> str:
-    return str(metadata.get("short_label") or metadata.get("label") or "")
+def _gap_concept_label(concept_key: str) -> str:
+    metadata = MACRO_CONCEPT_METADATA.get(concept_key)
+    if not isinstance(metadata, Mapping):
+        raise ValueError(f"macro_gap_concept_metadata_required:{concept_key}")
+    label = str(metadata.get("short_label") or metadata.get("label") or "").strip()
+    if not label:
+        raise ValueError(f"macro_gap_concept_label_required:{concept_key}")
+    return label
 
 
 def _public_gap_code(raw_code: str) -> str:
@@ -39,9 +48,7 @@ def _public_gap_code(raw_code: str) -> str:
 
 def _gap_label(raw_code: str, *, concept_label: str) -> str:
     if raw_code.startswith("missing:"):
-        if concept_label:
-            return f"缺少当前数据：{concept_label}"
-        return f"数据质量缺口：{_public_gap_code(raw_code)}"
+        return f"缺少当前数据：{concept_label}"
     if suffix := _suffix(raw_code, colon_prefix="insufficient_history:", underscore_prefix="insufficient_history_"):
         if suffix.endswith("d"):
             return f"历史样本不足：无法计算 {suffix[:-1]} 日变化"
@@ -97,16 +104,15 @@ def _missing_subject(public_code: str) -> str:
     if not public_code.endswith("_missing"):
         return ""
     body = public_code.removesuffix("_missing")
-    return _NAMED_GAP_SUBJECTS.get(body, _humanize_gap_code(body))
+    subject = _NAMED_GAP_SUBJECTS.get(body)
+    if not subject:
+        raise ValueError(f"macro_gap_subject_required:{public_code}")
+    return subject
 
 
 def _missing_label(subject: str) -> str:
     separator = " " if subject and subject[-1].isascii() and subject[-1].isalnum() else ""
     return f"{subject}{separator}缺失"
-
-
-def _humanize_gap_code(value: str) -> str:
-    return " ".join(part.upper() if len(part) <= 4 else part for part in value.split("_") if part)
 
 
 def _unique(values: Sequence[str]) -> list[str]:
@@ -131,6 +137,7 @@ _NAMED_GAP_SUBJECTS: dict[str, str] = {
     "fed_statement_text": "Fed 声明文本",
     "jolts": "JOLTS",
     "loan_quality": "贷款质量",
+    "macro_view_snapshot": "宏观快照",
     "personal_spending": "个人消费支出",
     "sloos": "SLOOS",
 }

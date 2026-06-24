@@ -101,9 +101,9 @@ function assetMarketRow(row: MacroTableRowModel): AssetMarketRow | null {
 function normalizeDailyBriefBlock(value: unknown): MacroDailyBriefBlock[] {
   if (!value || typeof value !== "object") return [];
   const record = value as Record<string, unknown>;
-  const id = String(record.id ?? "").trim();
-  const title = String(record.title ?? "").trim();
-  const body = String(record.body ?? "").trim();
+  const id = stringValue(record.id);
+  const title = stringValue(record.title);
+  const body = stringValue(record.body);
   const stance = stringValue(record.stance);
   if (!id || !title || !body || !stance) return [];
   return [
@@ -132,59 +132,43 @@ function normalizeDailyBriefQuality(value: unknown): MacroDailyBriefQuality | un
 }
 
 function rowKey(row: MacroTableRowModel): string {
-  return String(row.raw.row_id ?? row.raw.concept_key ?? row.id ?? "").toLowerCase();
+  return row.id.toLowerCase();
 }
 
 function displayCell(row: MacroTableRowModel, columnId: string): string | null {
   const value = row.cells[columnId]?.displayValue;
-  if (!value || value === "暂无") {
+  if (!value) {
     return null;
   }
   return value;
 }
 
 function assetSymbol(row: MacroTableRowModel): string | null {
-  const symbol = row.cells.symbol?.displayValue;
-  if (symbol && symbol !== "暂无") return symbol;
-  const rawSymbol = stringValue(row.raw.symbol) ?? stringValue(row.raw.ticker);
-  if (rawSymbol) return rawSymbol;
-  return null;
+  return displayCell(row, "symbol");
 }
 
 function dayDelta(row: MacroTableRowModel): string | null {
-  return displayCell(row, "delta_1d") ?? displayCell(row, "delta_20d");
+  return displayCell(row, "delta_1d");
 }
 
 function asOfLabel(row: MacroTableRowModel): string | null {
-  return (
-    firstDisplayCell(row, ["observed_at", "latest_observed_at", "date", "asof_date"]) ??
-    stringValue(row.raw.latest_observed_at) ??
-    stringValue(row.raw.observed_at) ??
-    stringValue(row.raw.date)
-  );
+  return firstDisplayCell(row, ["observed_at", "latest_observed_at"]);
 }
 
 function firstDisplayCell(row: MacroTableRowModel, columnIds: string[]): string | null {
   for (const columnId of columnIds) {
     const value = row.cells[columnId]?.displayValue;
-    if (value && value !== "暂无") return value;
+    if (value) return value;
   }
   return null;
 }
 
 function qualityLabel(row: MacroTableRowModel): string | null {
-  const quality = row.cells.quality?.displayValue;
-  const source = row.cells.source?.displayValue;
-  if (quality && quality !== "暂无" && source && source !== "暂无" && quality !== source) {
-    return `${quality} · ${source}`;
-  }
-  if (quality && quality !== "暂无") return quality;
-  if (source && source !== "暂无") return source;
-  return null;
+  return displayCell(row, "quality");
 }
 
 function deltaTone(row: MacroTableRowModel): "up" | "down" | "flat" {
-  const value = row.cells.delta_1d?.sortValue ?? row.cells.delta_20d?.sortValue;
+  const value = row.cells.delta_1d?.sortValue;
   if (typeof value !== "number") return "flat";
   if (value > 0) return "up";
   if (value < 0) return "down";

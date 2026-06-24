@@ -11,7 +11,11 @@
 
 The audit recorded that /stocks-radar constructed StocksRadarService during a request and passed runtime.stock_quote_provider into it (docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:7, docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:11). It also recorded that the service loaded rows from PostgreSQL and then called self.quote_provider.quote(symbol) per symbol (docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:12). The current target contract is documented as a DB-only stocks radar endpoint with an explicit unavailable quote state (docs/ARCHITECTURE.md:55, docs/CONTRACTS.md:349).
 
-Macro's CQRS boundary is likewise documented around macro observations, import runs, and projection dirty targets, with rowcount evidence required for writes (src/parallax/domains/macro_intel/ARCHITECTURE.md:14, src/parallax/domains/macro_intel/ARCHITECTURE.md:15, src/parallax/domains/macro_intel/ARCHITECTURE.md:18, src/parallax/domains/macro_intel/ARCHITECTURE.md:102). Current repository helpers _delete_exited_observation_series_rows, _insert_observation_series_rows_chunk, and _single_rowcount enforce that read-model writes and single-row accounting do not fall back to missing rowcount evidence (src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1479, src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1533, src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:2219).
+## Evidence Notes
+
+Macro's CQRS boundary is likewise documented around macro observations, import runs, and projection dirty targets, with rowcount evidence required for writes (`src/parallax/domains/macro_intel/ARCHITECTURE.md:14`, `src/parallax/domains/macro_intel/ARCHITECTURE.md:15`, `src/parallax/domains/macro_intel/ARCHITECTURE.md:18`, `src/parallax/domains/macro_intel/ARCHITECTURE.md:102`). Current repository helpers `_delete_exited_observation_series_rows`, `_insert_observation_series_rows_chunk`, and `_single_rowcount` enforce that read-model writes and single-row accounting do not fall back to missing rowcount evidence (`src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1479`, `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1533`, `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:2219`).
+
+The audit recorded that the `resolution_refresh` manifest was labeled `TARGET_SCOPED_EXPANSION` while already declaring `token_discovery_dirty_lookup_keys` and claiming lookup-key queue rows (`docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:28`, `docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:29`, `docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:30`, `docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:31`). The audit also recorded that `run_resolution_refresh_once` preserved an already-open repository helper path (`docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:47`, `docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:48`, `docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:49`).
 
 The audit recorded that the resolution_refresh manifest was labeled TARGET_SCOPED_EXPANSION while already declaring token_discovery_dirty_lookup_keys and claiming lookup-key queue rows (docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:28, docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:29, docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:30, docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:31). The audit also recorded that run_resolution_refresh_once preserved an already-open repository helper path (docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:47, docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:48, docs/reviews/kappa-cqrs-worker-sql-audit-2026-06-12.md:49).
 
@@ -443,18 +447,18 @@ rank-source work, source projection, or queue SQL. The current implementation
 routes projection claim keys through _claim_payload_hash(claim), and
 architecture coverage requires direct payload-hash readers while rejecting
 payload-hash default restoration tokens
-(tests/architecture/test_runtime_worker_constraint_hard_cut.py:2169,
-tests/architecture/test_runtime_worker_constraint_hard_cut.py:2190,
-tests/architecture/test_runtime_worker_constraint_hard_cut.py:2191,
-tests/architecture/test_runtime_worker_constraint_hard_cut.py:2192,
-tests/architecture/test_runtime_worker_constraint_hard_cut.py:2202,
-src/parallax/domains/token_intel/services/token_radar_projection.py:1289,
-src/parallax/domains/token_intel/services/token_radar_projection.py:1290,
-src/parallax/domains/token_intel/services/token_radar_projection.py:1291,
-src/parallax/domains/token_intel/services/token_radar_projection.py:1332,
-src/parallax/domains/token_intel/services/token_radar_projection.py:1387,
-src/parallax/domains/token_intel/services/token_radar_projection.py:1389,
-src/parallax/domains/token_intel/services/token_radar_projection.py:1394).
+(`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2169`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2190`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2191`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2192`,
+`tests/architecture/test_runtime_worker_constraint_hard_cut.py:2202`,
+`src/parallax/domains/token_intel/services/token_radar_projection.py:1289`,
+`src/parallax/domains/token_intel/services/token_radar_projection.py:1290`,
+`src/parallax/domains/token_intel/services/token_radar_projection.py:1291`,
+`src/parallax/domains/token_intel/services/token_radar_projection.py:1332`,
+`src/parallax/domains/token_intel/services/token_radar_projection.py:1387`,
+`src/parallax/domains/token_intel/services/token_radar_projection.py:1389`,
+`src/parallax/domains/token_intel/services/token_radar_projection.py:1394`).
 
 Follow-up review found Token Image Source dirty completion still had a target-key
 compatibility fallback after the shared CAS fields were hardened: missing
@@ -576,7 +580,7 @@ Follow-up review also found the same optional-contract pattern in Pulse dirty-tr
 
 Follow-up review found the same optional-session root in Notification Rule writes: NotificationWorker entered a nullcontext() when unit_of_work was absent and then manually committed through the notification repository connection (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:363). The target contract is that the notification rule worker writes notifications facts and notification_deliveries control rows inside the worker-session Unit of Work; missing UoW support fails before writes instead of becoming a compatibility commit path (docs/WORKERS.md:210, docs/WORKERS.md:301, docs/WORKERS.md:302, docs/WORKERS.md:303).
 
-Follow-up review found the same optional-session root in import_macrodata_bundle(...): the previous path used _unit_of_work(repos) and raw connection-transaction fallback for Macro offline replay/seed, while write_macrodata_bundle_import(...) hid missing require_transaction behind a helper (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:377). The target contract is now explicit: offline replay writes macro observations, import runs, and projection dirty targets through RepositorySession.unit_of_work and require_transaction, and must not fall back to raw conn.transaction or manual commits (src/parallax/domains/macro_intel/ARCHITECTURE.md:205, src/parallax/domains/macro_intel/ARCHITECTURE.md:206, src/parallax/domains/macro_intel/ARCHITECTURE.md:207, src/parallax/domains/macro_intel/ARCHITECTURE.md:208, src/parallax/domains/macro_intel/services/macrodata_bundle_importer.py:75, src/parallax/domains/macro_intel/services/macrodata_bundle_importer.py:146).
+Follow-up review found the same optional-session root in `import_macrodata_bundle(...)`: the previous path used `_unit_of_work(repos)` and raw connection-transaction fallback for Macro offline replay/seed, while `write_macrodata_bundle_import(...)` hid missing `require_transaction` behind a helper (`docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:377`). The target contract is now explicit: offline replay writes macro observations, import runs, and projection dirty targets through `RepositorySession.unit_of_work` and `require_transaction`, and must not fall back to raw `conn.transaction` or manual commits (`src/parallax/domains/macro_intel/ARCHITECTURE.md:205`, `src/parallax/domains/macro_intel/ARCHITECTURE.md:206`, `src/parallax/domains/macro_intel/ARCHITECTURE.md:207`, `src/parallax/domains/macro_intel/ARCHITECTURE.md:208`, `src/parallax/domains/macro_intel/services/macrodata_bundle_importer.py:75`, `src/parallax/domains/macro_intel/services/macrodata_bundle_importer.py:146`).
 
 Follow-up review found the same optional-session root in Pulse agent job writes: PulseCandidateJobService.run_job(...) previously wrapped write blocks in _transaction(repos.conn), which could use raw connection transactions or return nullcontext() when transaction support was absent (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:394, docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:403). The target contract is that Pulse agent run/step/eval/candidate/playbook/admission/job terminal writes use RepositorySession.transaction and fail before writes when session transaction support is missing (docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md:396, src/parallax/domains/pulse_lab/ARCHITECTURE.md:99, src/parallax/domains/pulse_lab/ARCHITECTURE.md:100, src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py:151).
 
@@ -1455,8 +1459,8 @@ src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1097,
 src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1150,
 src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1479,
 src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1533).
-The target contract is that _cursor_rowcount and _single_rowcount require
-real PostgreSQL cursor.rowcount evidence, while tests cover missing/invalid
+The target contract is that `_cursor_rowcount` and `_single_rowcount` require
+real PostgreSQL `cursor.rowcount` evidence, while tests cover missing/invalid
 rowcount and guard against default or length-based compatibility accounting
 (src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:2219,
 src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:2251,

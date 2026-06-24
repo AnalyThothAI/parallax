@@ -155,10 +155,8 @@ export type MacroDecisionScenarioCaseItem = {
 
 export type MacroDecisionTradeMapItem = {
   checklist: string[];
-  confirms: string | null;
   history: string[];
   holding: string[];
-  invalidates: string | null;
   key: string;
   label: string;
   legs: string[];
@@ -211,7 +209,7 @@ export function buildMacroWorkbenchBrief(module: MacroModuleView): MacroWorkbenc
   });
 
   return {
-    asOfLabel: stringValue(module.snapshot.asof_label) ?? stringValue(module.snapshot.asof_date),
+    asOfLabel: stringValue(module.snapshot.asof_label),
     rows: compactBriefRows(rows),
     statusLabel: macroStatusLabel(module),
     summary: macroReadSummary(module),
@@ -872,7 +870,7 @@ function formatUsdTrillions(value: number): string {
 }
 
 function hasMacroValue(value: unknown): boolean {
-  if (typeof value === "number" || typeof value === "boolean") {
+  if (typeof value === "number") {
     return true;
   }
   if (typeof value === "string") {
@@ -886,8 +884,8 @@ function hasMacroValue(value: unknown): boolean {
 
 function decisionItem(item: MacroSemanticRecord): MacroDecisionConsoleItem | null {
   const key = stringValue(item.code);
-  const label = stringValue(item.label) ?? signalLabel(stringValue(item.code));
-  const detail = formattedScalarValue(stringValue(item.evidence_label) ?? item.description);
+  const label = stringValue(item.label);
+  const detail = formattedScalarValue(item.evidence_label);
   if (!key || !label || !detail) {
     return null;
   }
@@ -901,8 +899,11 @@ function decisionItem(item: MacroSemanticRecord): MacroDecisionConsoleItem | nul
 
 function decisionItemMeta(item: MacroSemanticRecord): string | null {
   const parts = [
-    sectionLabel(stringValue(item.node) ?? stringValue(item.kind)),
-    stringValue(item.severity_label) ?? severityLabel(stringValue(item.severity)),
+    stringValue(item.change_label),
+    stringValue(item.value_label),
+    stringValue(item.source_label),
+    stringValue(item.observed_at),
+    stringValue(item.severity_label),
   ].filter((part): part is string => Boolean(part));
   return parts.length > 0 ? parts.join(" · ") : null;
 }
@@ -910,7 +911,7 @@ function decisionItemMeta(item: MacroSemanticRecord): string | null {
 function qualityItem(item: MacroSemanticRecord): MacroDecisionConsoleItem | null {
   const key = stringValue(item.code);
   const label = stringValue(item.label);
-  const detail = formattedScalarValue(item.description);
+  const detail = formattedScalarValue(item.evidence_label);
   if (!key || !label || !detail) {
     return null;
   }
@@ -918,7 +919,7 @@ function qualityItem(item: MacroSemanticRecord): MacroDecisionConsoleItem | null
     detail,
     key,
     label,
-    meta: severityLabel(stringValue(item.severity)),
+    meta: stringValue(item.severity_label),
   };
 }
 
@@ -959,7 +960,7 @@ function dataCredibilityRow(item: MacroSemanticRecord): MacroDecisionDataCredibi
     return null;
   }
   return {
-    asOf: stringValue(item.observed_at) ?? stringValue(item.observed_at_label),
+    asOf: stringValue(item.observed_at_label),
     key,
     label,
     qualityLabel: stringValue(item.quality_label),
@@ -982,8 +983,8 @@ function evidenceItem(item: MacroSemanticRecord): MacroDecisionConsoleItem | nul
   if (!key) {
     return null;
   }
-  const label = stringValue(item.label) ?? signalLabel(key);
-  const detail = formattedScalarValue(item.description);
+  const label = stringValue(item.label);
+  const detail = formattedScalarValue(item.evidence_label);
   if (!label || !detail) {
     return null;
   }
@@ -1140,10 +1141,10 @@ function marketEventFlowItem(item: MacroSemanticRecord): MacroMarketEventFlowIte
 
 function marketEventFlowMeta(item: MacroSemanticRecord): string | null {
   const parts = [
-    stringValue(item.source) ?? eventKindLabel(stringValue(item.kind)),
+    stringValue(item.source),
     stringValue(item.category_label),
     stringValue(item.impact_label),
-    stringValue(item.window),
+    stringValue(item.window_label),
   ].filter((part): part is string => Boolean(part));
   return parts.length > 0 ? parts.join(" · ") : null;
 }
@@ -1159,21 +1160,17 @@ function futureCatalystItems(item: MacroSemanticRecord | null): MacroDecisionFut
 }
 
 function futureCatalystItem(item: MacroSemanticRecord): MacroDecisionFutureCatalystItem | null {
-  const key = stringValue(item.key) ?? stringValue(item.code);
+  const key = stringValue(item.key);
   if (!key) {
     return null;
   }
   const label = stringValue(item.label);
-  const detail = stringValue(item.description);
+  const detail = formattedScalarValue(item.detail);
   if (!label || !detail) {
     return null;
   }
-  const detailLabel = formatMacroScalar(detail);
-  if (!detailLabel) {
-    return null;
-  }
   return {
-    detail: detailLabel,
+    detail,
     key,
     label,
     meta: futureCatalystMeta(item),
@@ -1183,9 +1180,9 @@ function futureCatalystItem(item: MacroSemanticRecord): MacroDecisionFutureCatal
 
 function futureCatalystMeta(item: MacroSemanticRecord): string | null {
   const parts = [
-    stringValue(item.window_label) ?? stringValue(item.window),
-    stringValue(item.severity_label) ?? severityLabel(stringValue(item.severity)),
-    stringValue(item.source) ?? eventKindLabel(stringValue(item.kind)),
+    stringValue(item.window_label),
+    stringValue(item.severity_label),
+    stringValue(item.source),
   ].filter((part): part is string => Boolean(part));
   return parts.length > 0 ? parts.join(" · ") : null;
 }
@@ -1227,24 +1224,24 @@ function watchlistAssetItem(item: MacroSemanticRecord): MacroDecisionWatchlistAs
   }
   const label = stringValue(item.label);
   const symbol = stringValue(item.symbol);
-  if (!label && !symbol) {
+  if (!label) {
     return null;
   }
   return {
     action: stringValue(item.action),
     key,
-    label: label ?? symbol ?? key,
+    label,
     symbol,
   };
 }
 
 function watchlistRuleItem(item: MacroSemanticRecord): MacroDecisionConsoleItem | null {
-  const key = stringValue(item.key) ?? stringValue(item.code);
+  const key = stringValue(item.key);
   if (!key) {
     return null;
   }
   const label = stringValue(item.label);
-  const detail = formattedScalarValue(item.description);
+  const detail = formattedScalarValue(item.detail);
   if (!label || !detail) {
     return null;
   }
@@ -1258,20 +1255,11 @@ function watchlistRuleItem(item: MacroSemanticRecord): MacroDecisionConsoleItem 
 
 function watchlistRuleMeta(item: MacroSemanticRecord): string | null {
   const parts = [
-    stringValue(item.kind_label) ?? watchlistKindLabel(stringValue(item.kind)),
-    stringValue(item.window),
-    stringValue(item.severity_label) ?? severityLabel(stringValue(item.severity)),
+    stringValue(item.kind_label),
+    stringValue(item.window_label),
+    stringValue(item.severity_label),
   ].filter((part): part is string => Boolean(part));
   return parts.length > 0 ? parts.join(" · ") : null;
-}
-
-function watchlistKindLabel(kind: string | null): string | null {
-  const labels: Record<string, string> = {
-    invalidation: "失效",
-    quality: "质量",
-    watch: "触发",
-  };
-  return labels[kind ?? ""] ?? null;
 }
 
 function scenarioCaseItem(item: MacroSemanticRecord): MacroDecisionScenarioCaseItem | null {
@@ -1288,7 +1276,7 @@ function scenarioCaseItem(item: MacroSemanticRecord): MacroDecisionScenarioCaseI
   if (!label || !detail || !trade || !entry || !stop || !invalidation) {
     return null;
   }
-  const meta = [stringValue(item.probability_label), stringValue(item.time_window)].filter(
+  const meta = [stringValue(item.probability_label), stringValue(item.time_window_label)].filter(
     (part): part is string => Boolean(part),
   );
   return {
@@ -1305,9 +1293,9 @@ function scenarioCaseItem(item: MacroSemanticRecord): MacroDecisionScenarioCaseI
 
 function evidenceMeta(item: MacroSemanticRecord): string | null {
   const parts = [
-    stringValue(item.time_window),
-    severityLabel(stringValue(item.severity)),
-    stringValue(item.meta) ?? sectionLabel(stringValue(item.node)),
+    stringValue(item.time_window_label),
+    stringValue(item.severity_label),
+    stringValue(item.meta),
   ].filter((part): part is string => Boolean(part));
   return parts.length > 0 ? parts.join(" · ") : null;
 }
@@ -1317,16 +1305,14 @@ function tradeMapItem(item: MacroSemanticRecord): MacroDecisionTradeMapItem | nu
   if (!expression) {
     return null;
   }
-  const label = stringValue(item.label) ?? tradeExpressionLabel(expression);
+  const label = stringValue(item.label);
   if (!label) {
     return null;
   }
   return {
     checklist: tradeMapChecklist(item),
-    confirms: codeList(item.confirms_on),
     history: tradeMapHistory(item),
     holding: tradeMapHolding(item),
-    invalidates: codeList(item.invalidates_on),
     key: expression,
     label,
     legs: recordList(item.legs)
@@ -1334,7 +1320,7 @@ function tradeMapItem(item: MacroSemanticRecord): MacroDecisionTradeMapItem | nu
       .filter((leg): leg is string => Boolean(leg)),
     portfolio: tradeMapPortfolio(item),
     trust: tradeMapTrust(item),
-    window: stringValue(item.time_window),
+    window: stringValue(item.time_window_label),
   };
 }
 
@@ -1374,12 +1360,11 @@ function tradeMapHistoryRow(item: MacroSemanticRecord): string | null {
   const asset = stringValue(item.asset);
   const label = stringValue(item.label);
   const returnPct = numberValue(item.return_pct);
-  if (!asset || !label || returnPct === null) {
+  const outcomeLabel = stringValue(item.outcome_label);
+  if (!asset || !label || returnPct === null || !outcomeLabel) {
     return null;
   }
-  return `${asset} ${label} ${formatSignedPercent(returnPct)} ${outcomeLabel(
-    stringValue(item.outcome),
-  )}`;
+  return `${asset} ${label} ${formatSignedPercent(returnPct)} ${outcomeLabel}`;
 }
 
 function tradeMapPortfolio(item: MacroSemanticRecord): string[] {
@@ -1402,13 +1387,10 @@ function tradeMapPortfolio(item: MacroSemanticRecord): string[] {
 function tradeMapChecklist(item: MacroSemanticRecord): string[] {
   return recordList(item.action_checklist)
     .map((entry) => {
-      const kindLabel = checklistKindLabel(stringValue(entry.kind));
-      if (!kindLabel) {
-        return null;
-      }
+      const kindLabel = stringValue(entry.kind_label);
       const label = stringValue(entry.label);
       const description = stringValue(entry.description);
-      if (!label || !description) {
+      if (!kindLabel || !label || !description) {
         return null;
       }
       return `${kindLabel} · ${label} · ${description}`;
@@ -1441,16 +1423,8 @@ function tradeMapHolding(item: MacroSemanticRecord): string[] {
     .filter((line): line is string => Boolean(line));
 }
 
-function checklistKindLabel(kind: string | null): string | null {
-  return CHECKLIST_KIND_LABELS[kind ?? ""] ?? null;
-}
-
 function percentPart(label: string, value: number | null): string | null {
   return value === null ? null : `${label} ${formatSignedPercent(value)}`;
-}
-
-function outcomeLabel(value: string | null): string {
-  return value === "hit" ? "命中" : "未中";
 }
 
 function formatSignedPercent(value: number): string {
@@ -1527,136 +1501,12 @@ function numberValue(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function codeList(value: unknown): string | null {
-  if (!Array.isArray(value)) {
-    return null;
-  }
-  const labels = value
-    .map((item) => signalLabel(stringValue(item)))
-    .filter((label): label is string => Boolean(label));
-  return labels.length > 0 ? labels.join(" / ") : null;
-}
-
-function signalLabel(code: string | null): string | null {
-  if (!code) return null;
-  if (/[\u3400-\u9fff]/u.test(code)) return code;
-  return SIGNAL_LABELS[code] ?? null;
-}
-
-function sectionLabel(value: string | null): string | null {
-  if (!value) return null;
-  if (/[\u3400-\u9fff]/u.test(value)) return value;
-  return (
-    {
-      credit: "信用",
-      cross_asset: "跨资产确认",
-      fed_corridor: "政策走廊",
-      funding: "资金面",
-      liquidity: "流动性",
-      macro: "宏观",
-      positioning: "仓位拥挤度",
-      rates: "利率",
-      trigger: "触发",
-      volatility: "波动率",
-    }[value] ?? null
-  );
-}
-
-function severityLabel(value: string | null): string | null {
-  if (!value) return null;
-  return (
-    {
-      error: "阻断",
-      high: "高",
-      info: "提示",
-      low: "低",
-      medium: "中",
-      warning: "警告",
-    }[value] ?? null
-  );
-}
-
-function tradeExpressionLabel(expression: string | null): string | null {
-  if (!expression) return null;
-  if (/[\u3400-\u9fff]/u.test(expression)) return expression;
-  return TRADE_EXPRESSION_LABELS[expression] ?? null;
-}
-
-function eventKindLabel(kind: string | null): string | null {
-  if (!kind) return null;
-  return (
-    {
-      auction_calendar: "国债拍卖日历",
-      auction_result: "拍卖结果",
-      calendar: "官方日历",
-      event: "事件",
-      fed_text: "Fed 文本",
-    }[kind] ?? null
-  );
-}
-
 const BRIEF_FIELDS = [
   { key: "regime_label", label: "状态" },
-  { key: "regime", label: "状态" },
   { key: "confidence_label", label: "规则覆盖" },
   { key: "crypto_read", label: "加密影响" },
   { key: "token_impact", label: "代币影响" },
 ] as const;
-
-const SIGNAL_LABELS: Record<string, string> = {
-  breakevens_accelerate: "通胀补偿加速",
-  credit_spreads_benign: "信用利差仍温和",
-  credit_spreads_normalize: "信用利差正常化",
-  credit_stress: "信用压力",
-  deep_curve_inversion: "曲线深度倒挂",
-  fed_corridor_pressure: "政策走廊压力",
-  higher_real_rates: "实际利率上行",
-  hyg_underperforms_lqd: "HYG 跑输 LQD",
-  hy_oas_distress: "高收益债利差进入困境区",
-  hy_oas_stress: "高收益债利差压力",
-  hy_oas_tightens: "HY OAS 收窄",
-  hy_oas_widening: "HY OAS 走阔",
-  hy_oas_widening_5d: "HY OAS 5日走阔",
-  liquidity_easing: "流动性宽松",
-  liquidity_impulse_fades: "流动性脉冲减弱",
-  liquidity_impulse_persists: "流动性脉冲延续",
-  liquidity_tightens: "流动性转紧",
-  liquidity_tightening: "流动性收紧",
-  macro_core_coverage_recovers: "宏观核心覆盖恢复",
-  macro_regime_breakout: "宏观状态突破",
-  real_yield_breakout: "实际利率突破",
-  real_yield_recedes: "实际利率回落",
-  repo_pressure_persists_3d: "回购压力延续 3 日",
-  repo_corridor_pressure: "回购走廊压力",
-  risk_asset_confirmation_missing: "风险资产确认缺失",
-  risk_assets_confirm_risk_on: "风险资产确认 risk-on",
-  rrp_buffer_low: "RRP 缓冲偏低",
-  sofr_above_iorb: "SOFR 高于 IORB",
-  sofr_iorb_normalizes: "SOFR/IORB 回归正常",
-  ten_year_yield_reverses: "10Y 收益率反转",
-  term_premium_pressure: "期限溢价压力",
-  tga_high: "TGA 偏高",
-  vix_elevated: "VIX 偏高",
-  vix_breaks_30: "VIX 突破 30",
-  vix_reprices_higher: "VIX 重新上行",
-  vix_returns_to_carry: "VIX 回到 carry 区间",
-  volatility_panic: "波动率恐慌",
-  volatility_stress: "波动率压力",
-  volatility_unconcerned: "波动率未确认压力",
-};
-
-const TRADE_EXPRESSION_LABELS: Record<string, string> = {
-  credit_beta_underweight: "低配信用 beta",
-  duration_pressure_quality_over_growth: "久期承压 / 质量优于成长",
-  risk_down_credit_sensitive: "风险降档 / 信用敏感",
-  risk_on_liquidity_beta: "流动性 risk-on beta",
-};
-
-const CHECKLIST_KIND_LABELS: Record<string, string> = {
-  confirm: "确认",
-  invalidate: "失效",
-  position_review: "纸面仓位",
-};
 
 function compactBriefRows(rows: MacroWorkbenchBriefRow[]): MacroWorkbenchBriefRow[] {
   const seen = new Set<string>();

@@ -96,7 +96,7 @@ def test_resolution_refresh_worker_resolves_recent_symbol_and_emits_resolution_w
 
         worker = ResolutionRefreshWorker(
             name="resolution_refresh",
-            settings=resolution_worker_settings(interval_seconds=60),
+            settings=resolution_worker_settings(interval_seconds=60, chain_ids=("eip155:1",)),
             db=FakeWorkerDB(conn),
             telemetry=object(),
             dex_discovery_market=FakeDexMarket(
@@ -115,8 +115,7 @@ def test_resolution_refresh_worker_resolves_recent_symbol_and_emits_resolution_w
                     )
                 ]
             ),
-            chain_ids=("eip155:1",),
-            wake_bus=wake_bus,
+            wake_emitter=wake_bus,
         )
 
         result = asyncio.run(worker.run_once(now_ms=now_ms + 60_000)).notes["result"]
@@ -189,7 +188,7 @@ def test_resolution_refresh_worker_skips_symbol_lookup_after_retained_candidate_
         ingest = _ingest_service_for_connection(conn)
         worker = ResolutionRefreshWorker(
             name="resolution_refresh",
-            settings=resolution_worker_settings(interval_seconds=60),
+            settings=resolution_worker_settings(interval_seconds=60, chain_ids=("eip155:1",)),
             db=FakeWorkerDB(conn),
             telemetry=object(),
             dex_discovery_market=FakeDexMarket(
@@ -208,7 +207,6 @@ def test_resolution_refresh_worker_skips_symbol_lookup_after_retained_candidate_
                     )
                 ]
             ),
-            chain_ids=("eip155:1",),
         )
 
         first_event = make_event(
@@ -258,12 +256,10 @@ def test_resolution_refresh_worker_retries_hot_not_found_before_default_ttl(tmp_
         ingest = _ingest_service_for_connection(conn)
         worker = ResolutionRefreshWorker(
             name="resolution_refresh",
-            settings=resolution_worker_settings(interval_seconds=60),
+            settings=resolution_worker_settings(interval_seconds=60, chain_ids=("eip155:1",)),
             db=FakeWorkerDB(conn),
             telemetry=object(),
             dex_discovery_market=dex_market,
-            dex_quote_market=dex_market,
-            chain_ids=("eip155:1",),
         )
         ingested = ingest.ingest_event(
             make_event(
@@ -321,7 +317,7 @@ def test_resolution_refresh_worker_retries_hot_not_found_before_default_ttl(tmp_
     assert after["target_id"] == f"asset:eip155:1:erc20:{address}"
 
 
-def test_discovery_terminalize_empty_payload_hash_deletes_active_row(tmp_path):
+def test_discovery_terminalize_claimed_payload_hash_deletes_active_row(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     now_ms = 1_778_145_100_000
     try:
@@ -340,7 +336,7 @@ def test_discovery_terminalize_empty_payload_hash_deletes_active_row(tmp_path):
               attempt_count, last_error, first_dirty_at_ms, updated_at_ms
             )
             VALUES (
-              'okx_dex_search', 'symbol:EMPTY', 'dex_symbol_lookup', 'test', '', %(now_ms)s,
+              'okx_dex_search', 'symbol:EMPTY', 'dex_symbol_lookup', 'test', 'sha256:test-claim', %(now_ms)s,
               %(now_ms)s, 1, 0, NULL, NULL, 0, NULL, %(now_ms)s, %(now_ms)s
             )
             """,
@@ -379,7 +375,7 @@ def test_discovery_terminalize_empty_payload_hash_deletes_active_row(tmp_path):
     assert terminal["worker_name"] == "resolution_refresh"
     assert terminal["source_table"] == "token_discovery_dirty_lookup_keys"
     assert terminal["target_key"] == "okx_dex_search:symbol:EMPTY"
-    assert terminal["payload_hash"] == ""
+    assert terminal["payload_hash"] == "sha256:test-claim"
     assert terminal["operator_action"] is None
 
 
@@ -395,7 +391,7 @@ def test_dex_symbol_discovery_retains_top_three_per_chain(tmp_path):
         )
         worker = ResolutionRefreshWorker(
             name="resolution_refresh",
-            settings=resolution_worker_settings(interval_seconds=60),
+            settings=resolution_worker_settings(interval_seconds=60, chain_ids=("solana", "eip155:56")),
             db=FakeWorkerDB(conn),
             telemetry=object(),
             dex_discovery_market=FakeDexMarket(
@@ -472,7 +468,6 @@ def test_dex_symbol_discovery_retains_top_three_per_chain(tmp_path):
                     ),
                 ]
             ),
-            chain_ids=("solana", "eip155:56"),
         )
 
         result = asyncio.run(worker.run_once(now_ms=now_ms + 60_000)).notes["result"]
@@ -575,7 +570,7 @@ def test_dex_symbol_discovery_excludes_stale_unretained_search_assets_from_resul
         conn.commit()
         worker = ResolutionRefreshWorker(
             name="resolution_refresh",
-            settings=resolution_worker_settings(interval_seconds=60),
+            settings=resolution_worker_settings(interval_seconds=60, chain_ids=("eip155:56",)),
             db=FakeWorkerDB(conn),
             telemetry=object(),
             dex_discovery_market=FakeDexMarket(
@@ -603,7 +598,6 @@ def test_dex_symbol_discovery_excludes_stale_unretained_search_assets_from_resul
                     ),
                 ]
             ),
-            chain_ids=("eip155:56",),
         )
 
         asyncio.run(worker.run_once(now_ms=now_ms + 60_000))
@@ -689,7 +683,10 @@ def resolution_worker_settings(**overrides):
         "interval_seconds": 30.0,
         "timeout_seconds": 120.0,
         "batch_size": 50,
+        "lease_ms": 300_000,
+        "hot_not_found_retry_ms": 60_000,
         "reprocess_limit": 500,
+        "max_attempts": 3,
         "chain_ids": ("solana", "eip155:1", "eip155:56", "eip155:8453", "ton"),
     }
     values.update(overrides)

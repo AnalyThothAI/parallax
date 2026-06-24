@@ -99,22 +99,35 @@ export function macroModuleFixture(overrides: Partial<MacroModuleView> = {}): Ma
           code: "spx_latest_available",
           label: "SPX 最新值可用",
           description: "Yahoo 最新观测存在",
+          evidence_label: "Yahoo 最新观测存在",
         },
       ],
       contradictions: [
-        { code: "iwm_sample_insufficient", label: "IWM 样本不足", description: "小盘确认不足" },
+        {
+          code: "iwm_sample_insufficient",
+          label: "IWM 样本不足",
+          description: "小盘确认不足",
+          evidence_label: "小盘确认不足",
+        },
       ],
       watch_triggers: [
         {
           code: "core_history_backfill_60d",
           label: "60日历史补齐",
           description: "核心代理达到最小样本",
+          evidence_label: "核心代理达到最小样本",
           time_window: "24h",
           severity: "high",
+          severity_label: "高",
         },
       ],
       invalidations: [
-        { code: "spx_breaks_trend", label: "SPX 跌破趋势", description: "风险偏好走弱" },
+        {
+          code: "spx_breaks_trend",
+          label: "SPX 跌破趋势",
+          description: "风险偏好走弱",
+          evidence_label: "风险偏好走弱",
+        },
       ],
     },
     transmission: [
@@ -210,13 +223,16 @@ export function macroOverviewModuleFixture(
             evidence_label:
               "SOFR-IORB +7bp · 最新 7bp · source=NY Fed / Federal Reserve · as-of=2026-05-20",
             node: "funding",
+            node_label: "资金面",
             kind: "trigger",
           },
           {
             code: "hy_oas_stress",
             label: "高收益债利差压力",
             description: "信用 beta 对风险偏好给出反证。",
+            evidence_label: "信用 beta 对风险偏好给出反证。",
             node: "credit",
+            node_label: "信用压力",
             kind: "trigger",
           },
         ],
@@ -225,7 +241,9 @@ export function macroOverviewModuleFixture(
             code: "missing_asset_spy",
             label: "缺少当前数据：SPY",
             description: "检查对应 provider 导入与最新观测。",
+            evidence_label: "检查对应 provider 导入与最新观测。",
             severity: "error",
+            severity_label: "阻断",
           },
         ],
         data_credibility: {
@@ -327,9 +345,35 @@ export function macroOverviewModuleFixture(
         trade_map: [
           {
             expression: "risk_down_credit_sensitive",
+            label: "风险降档 / 信用敏感",
             time_window: "1w",
-            confirms_on: ["sofr_above_iorb", "hy_oas_widening_5d"],
-            invalidates_on: ["sofr_iorb_normalizes"],
+            time_window_label: "1周",
+            action_checklist: [
+              {
+                kind: "confirm",
+                kind_label: "确认",
+                label: "SOFR 高于 IORB",
+                description: "观察 SOFR 高于 IORB 是否继续确认。",
+              },
+              {
+                kind: "confirm",
+                kind_label: "确认",
+                label: "HY OAS 5日走阔",
+                description: "观察 HY OAS 5日走阔 是否继续确认。",
+              },
+              {
+                kind: "invalidate",
+                kind_label: "失效",
+                label: "SOFR 回到 IORB 附近",
+                description: "若 SOFR 回到 IORB 附近，则撤销该映射。",
+              },
+              {
+                kind: "position_review",
+                kind_label: "纸面仓位",
+                label: "纸面仓位复盘",
+                description: "$10,000 · P&L +$460 · 胜率 4/5",
+              },
+            ],
             legs: [
               {
                 asset: "cash_short_bills",
@@ -368,6 +412,7 @@ export function macroOverviewModuleFixture(
                   action: "回避",
                   return_pct: -6,
                   outcome: "hit",
+                  outcome_label: "命中",
                 },
                 {
                   asset: "BTC",
@@ -377,6 +422,7 @@ export function macroOverviewModuleFixture(
                   action: "回避",
                   return_pct: 3,
                   outcome: "miss",
+                  outcome_label: "未中",
                 },
                 {
                   asset: "GOLD",
@@ -386,6 +432,7 @@ export function macroOverviewModuleFixture(
                   action: "防守",
                   return_pct: 4,
                   outcome: "hit",
+                  outcome_label: "命中",
                 },
               ],
             },
@@ -399,18 +446,6 @@ export function macroOverviewModuleFixture(
               risk_temperature: "低",
               summary: "$10,000 · P&L +$460 · 胜率 4/5",
             },
-            action_checklist: [
-              {
-                kind: "confirm",
-                label: "HY OAS 5日走阔",
-                description: "观察 HY OAS 5日走阔 是否继续确认。",
-              },
-              {
-                kind: "position_review",
-                label: "纸面仓位复盘",
-                description: "$10,000 · P&L +$460 · 胜率 4/5",
-              },
-            ],
             historical_trust: {
               label: "历史可信度",
               score_pct: 73.3,
@@ -536,7 +571,7 @@ export function macroOverviewModuleFixture(
             {
               key: "watch:real_yield_breakout",
               label: "实际利率突破",
-              description: "10Y real yield keeps rising.",
+              detail: "10Y real yield keeps rising.",
               window: "24h",
               window_label: "24h",
               severity: "high",
@@ -547,7 +582,7 @@ export function macroOverviewModuleFixture(
             {
               key: "event:official_calendar:fomc_decision_next",
               label: "FOMC 决议",
-              description: "2026-06-17 · 还有 1 天 · 14:00 ET",
+              detail: "2026-06-17 · 还有 1 天 · 14:00 ET",
               window: "24h",
               window_label: "24h",
               severity: "high",
@@ -559,7 +594,7 @@ export function macroOverviewModuleFixture(
             {
               key: "watch:hy_oas_distress",
               label: "高收益债利差进入困境区",
-              description: "HY OAS crosses distress thresholds.",
+              detail: "HY OAS crosses distress thresholds.",
               window: "72h",
               window_label: "72h",
               severity: "medium",
@@ -581,24 +616,25 @@ export function macroOverviewModuleFixture(
             {
               key: "watch:real_yield_breakout",
               label: "实际利率突破",
-              description: "10Y real yield keeps rising.",
+              detail: "10Y real yield keeps rising.",
               kind: "watch",
               kind_label: "触发",
               window: "24h",
+              window_label: "24h",
               severity: "high",
               severity_label: "高",
             },
             {
               key: "invalidation:ten_year_yield_reverses",
               label: "10年期收益率回落",
-              description: "10Y yield loses pressure.",
+              detail: "10Y yield loses pressure.",
               kind: "invalidation",
               kind_label: "失效",
             },
             {
               key: "quality:missing_asset_spy",
               label: "缺少当前数据：SPY",
-              description: "检查对应 provider 导入与最新观测。",
+              detail: "检查对应 provider 导入与最新观测。",
               kind: "quality",
               kind_label: "质量",
               severity: "error",
@@ -613,6 +649,7 @@ export function macroOverviewModuleFixture(
             probability: 0.5,
             probability_label: "50%",
             time_window: "未来 2 周",
+            time_window_label: "未来 2 周",
             thesis: "资金压力维持，信用 beta 继续承压，风险资产反弹先按减仓处理。",
             trade: "防守：做多/持有 BIL，低配 QQQ 与 HYG。",
             entry_condition: "SOFR-IORB 仍为正且 HY OAS 5日继续走阔。",
@@ -625,6 +662,7 @@ export function macroOverviewModuleFixture(
             probability: 0.25,
             probability_label: "25%",
             time_window: "未来 2 周",
+            time_window_label: "未来 2 周",
             thesis: "资金压力传导到信用与波动率，风险资产进入去杠杆。",
             trade: "提高现金/短债，继续低配 HYG 与 QQQ，可用 VIX 上行作为保护确认。",
             entry_condition: "HY OAS 进入困境区或 VIX 突破 30。",
@@ -646,6 +684,7 @@ export function macroOverviewModuleFixture(
             source_url: "https://news.google.com/articles/macro-1",
             kind: "news",
             window: "recent",
+            window_label: "近期",
             severity: "low",
             severity_label: "低",
             category: "macro_policy",
@@ -663,6 +702,7 @@ export function macroOverviewModuleFixture(
             source_url: "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
             kind: "calendar",
             window: "0-3d",
+            window_label: "0-3天",
             severity: "high",
             severity_label: "高",
             category: "policy",
@@ -680,6 +720,7 @@ export function macroOverviewModuleFixture(
             source_url: "https://home.treasury.gov/system/files/221/Tentative-Auction-Schedule.xml",
             kind: "auction_calendar",
             window: "4-7d",
+            window_label: "4-7天",
             severity: "medium",
             severity_label: "中",
             category: "treasury_supply",
@@ -698,6 +739,7 @@ export function macroOverviewModuleFixture(
               "https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v1/accounting/od/auctions_query",
             kind: "auction_result",
             window: "recent",
+            window_label: "近期",
             severity: "medium",
             severity_label: "中",
             category: "treasury_supply",
@@ -715,6 +757,7 @@ export function macroOverviewModuleFixture(
             source_url: "https://www.federalreserve.gov/newsevents/speech/waller20260508a.htm",
             kind: "fed_text",
             window: "recent",
+            window_label: "近期",
             severity: "medium",
             severity_label: "中",
             category: "policy",
@@ -876,22 +919,35 @@ export function macroOverviewModuleFixture(
           code: "equity_proxies_available",
           label: "美股代理可用",
           description: "SPX/QQQ 最新观测存在",
+          evidence_label: "SPX/QQQ 最新观测存在",
         },
       ],
       contradictions: [
-        { code: "iwm_sample_insufficient", label: "IWM 样本不足", description: "小盘确认不足" },
+        {
+          code: "iwm_sample_insufficient",
+          label: "IWM 样本不足",
+          description: "小盘确认不足",
+          evidence_label: "小盘确认不足",
+        },
       ],
       watch_triggers: [
         {
           code: "core_history_backfill_60d",
           label: "60日历史补齐",
           description: "核心代理达到最小样本",
+          evidence_label: "核心代理达到最小样本",
           time_window: "24h",
           severity: "high",
+          severity_label: "高",
         },
       ],
       invalidations: [
-        { code: "spx_breaks_trend", label: "SPX 跌破趋势", description: "风险偏好走弱" },
+        {
+          code: "spx_breaks_trend",
+          label: "SPX 跌破趋势",
+          description: "风险偏好走弱",
+          evidence_label: "风险偏好走弱",
+        },
       ],
     },
     transmission: [],
@@ -1360,13 +1416,19 @@ export function macroCreditStressModuleFixture(): MacroModuleView {
     },
     module_evidence: {
       confirmations: [
-        { code: "hy_oas_widening", label: "HY OAS 走阔", description: "高收益信用利差短期上行" },
+        {
+          code: "hy_oas_widening",
+          label: "HY OAS 走阔",
+          description: "高收益信用利差短期上行",
+          evidence_label: "高收益信用利差短期上行",
+        },
       ],
       contradictions: [
         {
           code: "ig_oas_mild_pressure",
           label: "IG 压力较温和",
           description: "投资级利差尚未进入压力区",
+          evidence_label: "投资级利差尚未进入压力区",
         },
       ],
       watch_triggers: [
@@ -1374,10 +1436,16 @@ export function macroCreditStressModuleFixture(): MacroModuleView {
           code: "ccc_hy_tail_widens",
           label: "CCC-HY 尾部继续走阔",
           description: "低质量信用扩散压力",
+          evidence_label: "低质量信用扩散压力",
         },
       ],
       invalidations: [
-        { code: "hy_oas_narrows", label: "HY OAS 收窄", description: "信用压力读法降级" },
+        {
+          code: "hy_oas_narrows",
+          label: "HY OAS 收窄",
+          description: "信用压力读法降级",
+          evidence_label: "信用压力读法降级",
+        },
       ],
     },
     data_health: {
@@ -1526,20 +1594,32 @@ export function macroVolatilityVixModuleFixture(): MacroModuleView {
           code: "vix_term_structure_contango",
           label: "VIX 期限结构 Contango",
           description: "VIX3M 高于 VIX",
+          evidence_label: "VIX3M 高于 VIX",
         },
       ],
       contradictions: [
-        { code: "vxn_still_elevated", label: "纳指波动率仍偏高", description: "VXN 仍高于 20" },
+        {
+          code: "vxn_still_elevated",
+          label: "纳指波动率仍偏高",
+          description: "VXN 仍高于 20",
+          evidence_label: "VXN 仍高于 20",
+        },
       ],
       watch_triggers: [
         {
           code: "vix3m_vix_turns_negative",
           label: "VIX3M-VIX 转负",
           description: "期限结构转入 backwardation",
+          evidence_label: "期限结构转入 backwardation",
         },
       ],
       invalidations: [
-        { code: "vix_weekly_rises", label: "VIX 单周上行", description: "短端波动率重新定价" },
+        {
+          code: "vix_weekly_rises",
+          label: "VIX 单周上行",
+          description: "短端波动率重新定价",
+          evidence_label: "短端波动率重新定价",
+        },
       ],
     },
     data_health: {
@@ -1663,13 +1743,19 @@ export function macroLiquidityRrpTgaModuleFixture(): MacroModuleView {
     },
     module_evidence: {
       confirmations: [
-        { code: "tga_rising", label: "TGA 上升", description: "财政现金账户吸收系统流动性" },
+        {
+          code: "tga_rising",
+          label: "TGA 上升",
+          description: "财政现金账户吸收系统流动性",
+          evidence_label: "财政现金账户吸收系统流动性",
+        },
       ],
       contradictions: [
         {
           code: "rrp_buffer_above_depletion_zone",
           label: "RRP 缓冲仍高于枯竭区",
           description: "隔夜逆回购余额仍可缓冲抽水",
+          evidence_label: "隔夜逆回购余额仍可缓冲抽水",
         },
       ],
       watch_triggers: [
@@ -1677,6 +1763,7 @@ export function macroLiquidityRrpTgaModuleFixture(): MacroModuleView {
           code: "sofr_iorb_widens",
           label: "SOFR-IORB 延续走阔",
           description: "回购压力继续向走廊扩散",
+          evidence_label: "回购压力继续向走廊扩散",
         },
       ],
       invalidations: [
@@ -1684,6 +1771,7 @@ export function macroLiquidityRrpTgaModuleFixture(): MacroModuleView {
           code: "net_liquidity_turns_positive",
           label: "净流动性转正",
           description: "抽水读法降级",
+          evidence_label: "抽水读法降级",
         },
       ],
     },
@@ -1792,6 +1880,7 @@ export function macroInflationModuleFixture(): MacroModuleView {
           code: "core_cpi_accelerating",
           label: "核心 CPI 加速",
           description: "核心通胀同比重新上行",
+          evidence_label: "核心通胀同比重新上行",
         },
       ],
       contradictions: [
@@ -1799,6 +1888,7 @@ export function macroInflationModuleFixture(): MacroModuleView {
           code: "pce_release_pending",
           label: "PCE 发布窗口",
           description: "下一次 BEA PCE 发布会验证 CPI 再加速是否扩散到 PCE。",
+          evidence_label: "下一次 BEA PCE 发布会验证 CPI 再加速是否扩散到 PCE。",
         },
       ],
       watch_triggers: [
@@ -1806,10 +1896,16 @@ export function macroInflationModuleFixture(): MacroModuleView {
           code: "breakevens_keep_widening",
           label: "通胀补偿继续走阔",
           description: "市场预期可能压制降息交易",
+          evidence_label: "市场预期可能压制降息交易",
         },
       ],
       invalidations: [
-        { code: "core_cpi_cools", label: "核心 CPI 回落", description: "通胀再加速读法降级" },
+        {
+          code: "core_cpi_cools",
+          label: "核心 CPI 回落",
+          description: "通胀再加速读法降级",
+          evidence_label: "通胀再加速读法降级",
+        },
       ],
     },
     data_health: {
@@ -1938,13 +2034,19 @@ export function macroEmploymentModuleFixture(): MacroModuleView {
     },
     module_evidence: {
       confirmations: [
-        { code: "initial_claims_rising", label: "初请上行", description: "劳动力市场边际走弱" },
+        {
+          code: "initial_claims_rising",
+          label: "初请上行",
+          description: "劳动力市场边际走弱",
+          evidence_label: "劳动力市场边际走弱",
+        },
       ],
       contradictions: [
         {
           code: "wages_still_supported",
           label: "工资仍有支撑",
           description: "平均时薪同比尚未快速下行",
+          evidence_label: "平均时薪同比尚未快速下行",
         },
       ],
       watch_triggers: [
@@ -1952,10 +2054,16 @@ export function macroEmploymentModuleFixture(): MacroModuleView {
           code: "payrolls_below_100k",
           label: "非农继续低于 100k",
           description: "增长风险会进一步升温",
+          evidence_label: "增长风险会进一步升温",
         },
       ],
       invalidations: [
-        { code: "payrolls_reaccelerate", label: "非农重新加速", description: "就业降温读法降级" },
+        {
+          code: "payrolls_reaccelerate",
+          label: "非农重新加速",
+          description: "就业降温读法降级",
+          evidence_label: "就业降温读法降级",
+        },
       ],
     },
     data_health: {
@@ -2086,6 +2194,7 @@ export function macroGdpModuleFixture(): MacroModuleView {
           code: "industrial_production_weakening",
           label: "工业生产转弱",
           description: "生产端开始拖累增长动能",
+          evidence_label: "生产端开始拖累增长动能",
         },
       ],
       contradictions: [
@@ -2093,6 +2202,7 @@ export function macroGdpModuleFixture(): MacroModuleView {
           code: "employment_still_neutral",
           label: "就业仍中性",
           description: "劳动力市场尚未确认硬着陆",
+          evidence_label: "劳动力市场尚未确认硬着陆",
         },
       ],
       watch_triggers: [
@@ -2100,6 +2210,7 @@ export function macroGdpModuleFixture(): MacroModuleView {
           code: "real_pce_weakens",
           label: "实际 PCE 继续走弱",
           description: "消费放缓会压低盈利预期",
+          evidence_label: "消费放缓会压低盈利预期",
         },
       ],
       invalidations: [
@@ -2107,6 +2218,7 @@ export function macroGdpModuleFixture(): MacroModuleView {
           code: "housing_starts_turn_positive",
           label: "住房开工转正",
           description: "增长降温读法降级",
+          evidence_label: "增长降温读法降级",
         },
       ],
     },
@@ -2307,6 +2419,7 @@ export function macroFedFundsModuleFixture(): MacroModuleView {
           code: "effr_inside_target_range",
           label: "EFFR 位于目标区间内",
           description: "隔夜政策利率未显示越界压力",
+          evidence_label: "隔夜政策利率未显示越界压力",
         },
       ],
       contradictions: [],
@@ -2315,6 +2428,7 @@ export function macroFedFundsModuleFixture(): MacroModuleView {
           code: "sofr_rises",
           label: "SOFR 上行",
           description: "若 SOFR 持续贴近区间上沿，需要关注融资压力",
+          evidence_label: "若 SOFR 持续贴近区间上沿，需要关注融资压力",
         },
       ],
       invalidations: [
@@ -2322,6 +2436,7 @@ export function macroFedFundsModuleFixture(): MacroModuleView {
           code: "effr_crosses_upper_bound",
           label: "EFFR 越过上限",
           description: "政策走廊稳定判断失效",
+          evidence_label: "政策走廊稳定判断失效",
         },
       ],
     },
@@ -2439,6 +2554,7 @@ export function macroRealRatesModuleFixture(): MacroModuleView {
           code: "tips_curve_available",
           label: "TIPS 曲线可用",
           description: "5年期和10年期实际利率最新值存在",
+          evidence_label: "5年期和10年期实际利率最新值存在",
         },
       ],
       contradictions: [],
@@ -2447,6 +2563,7 @@ export function macroRealRatesModuleFixture(): MacroModuleView {
           code: "real_rates_rise_fast",
           label: "实际利率快速上行",
           description: "估值压力需要重新评估",
+          evidence_label: "估值压力需要重新评估",
         },
       ],
       invalidations: [],

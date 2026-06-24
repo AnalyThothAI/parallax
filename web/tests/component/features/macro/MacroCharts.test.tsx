@@ -1,4 +1,3 @@
-import { MacroHeatmap } from "@features/macro/ui/charts/MacroHeatmap";
 import { MacroNormalizedReturnChart } from "@features/macro/ui/charts/MacroNormalizedReturnChart";
 import { MacroTimeSeriesChart } from "@features/macro/ui/charts/MacroTimeSeriesChart";
 import { MacroYieldCurveChart } from "@features/macro/ui/charts/MacroYieldCurveChart";
@@ -73,6 +72,7 @@ describe("Macro chart primitives", () => {
         chart={{
           id: "equity_proxy_performance",
           status: "insufficient_history",
+          status_label: "历史样本不足：无法计算 60 日变化",
           series: [{ concept_key: "asset:spx", label: "S&P 500", latest: 110, point_count: 1 }],
         }}
         seriesData={{
@@ -94,11 +94,136 @@ describe("Macro chart primitives", () => {
 
     const figure = screen.getByRole("figure", { name: "History check" });
     expect(within(figure).getByRole("status", { name: "History check state" })).toHaveTextContent(
-      "历史样本不足",
+      "历史样本不足：无法计算 60 日变化",
     );
     expect(figure).not.toHaveTextContent("insufficient_history:60d");
     expect(figure).not.toHaveTextContent("insufficient_history");
     expect(chartMocks.createChart).not.toHaveBeenCalled();
+  });
+
+  it("omits under-minimum series from the visible chart legend", () => {
+    render(
+      <MacroTimeSeriesChart
+        chart={{
+          id: "mixed_history_chart",
+          series: [
+            { concept_key: "asset:spx", label: "S&P 500", latest: 110, unit: "index" },
+            { concept_key: "rates:dgs10", label: "10Y", latest: 4.1, unit: "percent" },
+          ],
+        }}
+        seriesData={{
+          window: "60d",
+          data_gaps: [],
+          series: {
+            "asset:spx": {
+              concept_key: "asset:spx",
+              points: [
+                { observed_at: "2026-05-18", value: 100 },
+                { observed_at: "2026-05-19", value: 110 },
+              ],
+            },
+            "rates:dgs10": {
+              concept_key: "rates:dgs10",
+              points: [{ observed_at: "2026-05-19", value: 4.1 }],
+            },
+          },
+        }}
+        title="Mixed history"
+      />,
+    );
+
+    const figure = screen.getByRole("figure", { name: "Mixed history" });
+    expect(within(figure).getByText("S&P 500")).toBeInTheDocument();
+    expect(within(figure).queryByText("10Y")).not.toBeInTheDocument();
+    expect(figure).not.toHaveTextContent("n/a");
+  });
+
+  it("omits insufficient-history chart state without an explicit backend status label", () => {
+    const { container } = render(
+      <MacroTimeSeriesChart
+        chart={{
+          id: "equity_proxy_performance",
+          status: "insufficient_history",
+          series: [{ concept_key: "asset:spx", label: "S&P 500", latest: 110, point_count: 1 }],
+        }}
+        seriesData={{
+          window: "60d",
+          data_gaps: [{ code: "insufficient_history:60d" }],
+          series: {
+            "asset:spx": {
+              concept_key: "asset:spx",
+              status: "insufficient_history",
+              points: [{ observed_at: "2026-05-20", value: 110 }],
+            },
+          },
+        }}
+        title="Unlabeled history check"
+      />,
+    );
+
+    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByText("历史样本不足")).not.toBeInTheDocument();
+    expect(screen.queryByText("insufficient_history")).not.toBeInTheDocument();
+    expect(chartMocks.createChart).not.toHaveBeenCalled();
+  });
+
+  it("does not use series status labels as chart state fallbacks", () => {
+    const { container } = render(
+      <MacroTimeSeriesChart
+        chart={{
+          id: "equity_proxy_performance",
+          series: [
+            {
+              concept_key: "asset:spx",
+              label: "S&P 500",
+              latest: 110,
+              point_count: 1,
+              status: "insufficient_history",
+              status_label: "Series-level status must stay local.",
+            },
+          ],
+        }}
+        title="Series-only status"
+      />,
+    );
+
+    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByText("Series-level status must stay local.")).not.toBeInTheDocument();
+    expect(chartMocks.createChart).not.toHaveBeenCalled();
+  });
+
+  it("does not expose payload-only chart status labels or units", () => {
+    render(
+      <MacroTimeSeriesChart
+        chart={{
+          id: "payload_metadata_chart",
+          series: [{ concept_key: "rates:dgs10", label: "10Y", latest: 4.1 }],
+        }}
+        seriesData={{
+          window: "60d",
+          data_gaps: [],
+          series: {
+            "rates:dgs10": {
+              concept_key: "rates:dgs10",
+              points: [
+                { observed_at: "2026-05-18", value: 4 },
+                { observed_at: "2026-05-19", value: 4.1 },
+              ],
+              status: "insufficient_history",
+              status_label: "payload status must stay hidden",
+              unit: "percent",
+            },
+          },
+        }}
+        title="Payload metadata"
+      />,
+    );
+
+    const figure = screen.getByRole("figure", { name: "Payload metadata" });
+    expect(figure).not.toHaveTextContent("payload status must stay hidden");
+    expect(figure).not.toHaveTextContent("insufficient_history");
+    expect(within(figure).getByText("4.1")).toBeInTheDocument();
+    expect(figure).not.toHaveTextContent("4.1%");
   });
 
   it("uses backend chart min_points before drawing a sparse series", () => {
@@ -159,8 +284,8 @@ describe("Macro chart primitives", () => {
     ]);
   });
 
-  it("renders yield curve points from inline observations when latest is missing", () => {
-    render(
+  it("does not render yield curve points from v2 inline observations when latest is missing", () => {
+    const { container } = render(
       <MacroYieldCurveChart
         chart={{
           id: "yield_curve",
@@ -192,52 +317,20 @@ describe("Macro chart primitives", () => {
       />,
     );
 
-    const points = screen.getAllByTestId("macro-yield-curve-point");
-    expect(points.map((point) => point.textContent)).toEqual(["2Y3.8%", "10Y4.2%"]);
+    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByTestId("macro-yield-curve-point")).not.toBeInTheDocument();
+    expect(screen.queryByText("10Y")).not.toBeInTheDocument();
+    expect(screen.queryByText("4.2%")).not.toBeInTheDocument();
   });
 
-  it("returns no yield-curve or heatmap chrome when models have no drawable rows", () => {
-    const { container, rerender } = render(
+  it("returns no yield-curve chrome when models have no drawable rows", () => {
+    const { container } = render(
       <MacroYieldCurveChart chart={{ id: "yield_curve", series: [] }} title="Yield curve" />,
     );
 
     expect(container).toBeEmptyDOMElement();
     expect(screen.queryByText("暂无收益率曲线数据")).not.toBeInTheDocument();
     expect(screen.queryByText("yield_curve_points_missing")).not.toBeInTheDocument();
-
-    rerender(<MacroHeatmap caption="Asset correlation heatmap" rows={[]} />);
-
-    expect(container).toBeEmptyDOMElement();
-    expect(screen.queryByText("暂无相关性矩阵数据")).not.toBeInTheDocument();
-    expect(screen.queryByText("heatmap_rows_missing")).not.toBeInTheDocument();
-  });
-
-  it("renders a heatmap as an accessible table with raw numeric labels", () => {
-    render(
-      <MacroHeatmap
-        caption="Asset correlation heatmap"
-        rows={[
-          {
-            concept_key: "asset:spy",
-            label: "SPY",
-            correlations: { "asset:spy": 1, "asset:qqq": 0.92 },
-          },
-          {
-            concept_key: "asset:qqq",
-            label: "QQQ",
-            correlations: { "asset:spy": 0.92, "asset:qqq": 1 },
-          },
-        ]}
-      />,
-    );
-
-    const table = screen.getByRole("table", { name: "Asset correlation heatmap" });
-    expect(
-      within(table)
-        .getAllByRole("columnheader")
-        .map((header) => header.textContent),
-    ).toEqual(["", "SPY", "QQQ"]);
-    expect(within(table).getAllByText("0.92")).toHaveLength(2);
   });
 });
 

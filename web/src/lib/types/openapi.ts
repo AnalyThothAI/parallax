@@ -2966,7 +2966,6 @@ export interface operations {
             query: {
                 concept_keys: string;
                 window?: string;
-                token?: string | null;
             };
             header?: never;
             path?: never;

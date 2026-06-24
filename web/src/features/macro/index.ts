@@ -3,7 +3,6 @@ export { useMacroAssetCorrelationQuery } from "./api/useMacroAssetCorrelationQue
 export { useMacroModuleQuery } from "./api/useMacroModuleQuery";
 export { useMacroSeriesQuery } from "./api/useMacroSeriesQuery";
 export {
-  buildMacroHeatmapMatrix,
   buildMacroNormalizedReturnModel,
   buildMacroTimeSeriesModel,
   buildMacroYieldCurveModel,
@@ -24,7 +23,6 @@ export {
 } from "./model/macroCorrelationModel";
 export { MACRO_NAVIGATION_TREE } from "./model/macroNavigationTree";
 export { parseMacroRouteTail } from "./model/macroRoutes";
-export { MacroHeatmap } from "./ui/charts/MacroHeatmap";
 export { MacroNormalizedReturnChart } from "./ui/charts/MacroNormalizedReturnChart";
 export { MacroTimeSeriesChart } from "./ui/charts/MacroTimeSeriesChart";
 export { MacroYieldCurveChart } from "./ui/charts/MacroYieldCurveChart";
@@ -36,7 +34,6 @@ export { MacroSourceTable } from "./ui/tables/MacroSourceTable";
 export type {
   MacroChartPoint,
   MacroChartSeriesModel,
-  MacroHeatmapMatrix,
   MacroTimeSeriesModel,
   MacroYieldCurveModel,
 } from "./model/macroChartModel";

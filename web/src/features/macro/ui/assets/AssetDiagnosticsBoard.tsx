@@ -3,10 +3,7 @@ import { useMemo } from "react";
 
 import type { AssetDiagnosticsSummary } from "../../model/macroAssetOverviewModel";
 import { tableCaption } from "../../model/macroModulePageModel";
-import type {
-  MacroDataHealthBucket,
-  MacroDataHealthBucketItem,
-} from "../../model/macroModulePresentation";
+import type { MacroDataHealthBucket } from "../../model/macroModulePresentation";
 import { buildMacroTableModel, type MacroTableRowModel } from "../../model/macroTableColumns";
 import { MacroSourceTable } from "../tables/MacroSourceTable";
 import { MacroTableFrame } from "../tables/MacroTableFrame";
@@ -87,37 +84,10 @@ function GapList({ bucket }: { bucket: MacroDataHealthBucket }) {
       {bucket.items.map((item) => (
         <li data-severity={item.severity ?? undefined} key={`${bucket.key}:${item.key}`}>
           <b>{item.label}</b>
-          {gapMeta(item) ? <span>{gapMeta(item)}</span> : null}
           {item.detail ? <small>{item.detail}</small> : null}
         </li>
       ))}
     </ul>
-  );
-}
-
-function gapMeta(item: MacroDataHealthBucketItem): string | null {
-  return [severityLabel(item.severity), scopeLabel(item.scope)].filter(Boolean).join(" · ") || null;
-}
-
-function severityLabel(severity: string | null): string | null {
-  return (
-    {
-      critical: "严重",
-      error: "错误",
-      info: "提示",
-      warning: "警告",
-    }[severity ?? ""] ?? null
-  );
-}
-
-function scopeLabel(scope: string | null): string | null {
-  return (
-    {
-      chart_blocker: "图表阻断",
-      global_reference: "总览参考",
-      module_blocker: "模块阻断",
-      module_reference: "模块参考",
-    }[scope ?? ""] ?? null
   );
 }
 
@@ -210,7 +180,7 @@ function availabilityRows(rows: MacroTableRowModel[]): AvailabilityRow[] {
 
 function displayCell(row: MacroTableRowModel, columnId: string): string | null {
   const value = row.cells[columnId]?.displayValue;
-  if (!value || value === "暂无") {
+  if (!value) {
     return null;
   }
   return value;

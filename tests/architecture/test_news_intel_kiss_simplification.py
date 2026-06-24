@@ -507,7 +507,7 @@ def test_news_projection_dirty_target_terminal_paths_require_connection_transact
 
     assert "raise RuntimeError" in transaction_helper
     assert "news_projection_dirty_target_transaction_required" in transaction_helper
-    assert "with _transaction(self.conn):" in terminalize_source
+    assert "_run_repository_write(self.conn, commit, _terminalize_targets)" in terminalize_source
     assert [token for token in repository_forbidden if token in repository_text] == []
     assert [token for token in terminalize_forbidden if token in terminalize_source] == []
 

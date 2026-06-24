@@ -49,16 +49,20 @@ function MacroModuleWorkbenchRoute({
 }) {
   const query = useMacroModuleQuery({ moduleId, token });
   const module = query.data ?? null;
+  const header = module ? macroModuleHeader({ module, moduleId }) : null;
 
   return (
     <section className="macro-module-route" aria-label="宏观">
       {query.isLoading ? <PageState.Loading layout="route" label="加载宏观模块" /> : null}
       {query.isError ? <PageState.Error error={query.error} /> : null}
-      {module ? (
+      {module && !header ? (
+        <PageState.Error error={new Error("macro_module_title_missing")} />
+      ) : null}
+      {module && header ? (
         <PageState.Stale updating={query.isFetching && !query.isLoading}>
           <MacroShell
             freshnessAlert={macroFreshnessAlert(module)}
-            header={macroModuleHeader({ module, moduleId })}
+            header={header}
             pageKind={pageKind}
             productTier={productTier}
           >
@@ -81,40 +85,47 @@ function macroModuleHeader({
 }: {
   module: MacroModuleView;
   moduleId: MacroModuleId;
-}): MacroShellHeaderModel {
+}): MacroShellHeaderModel | null {
+  const title = macroModuleTitle(module);
+  if (!title) {
+    return null;
+  }
+
   if (moduleId === "assets") {
     return {
       breadcrumbs: buildMacroBreadcrumbs(moduleId),
-      eyebrow: "Assets",
-      question: null,
+      eyebrow: macroModuleSection(module),
       statusItems: compactStatusItems([statusItem("截至", macroAsOfLabel(module))]),
-      title: macroModuleTitle(moduleId, module),
+      title,
     };
   }
 
   if (isRatesModuleId(moduleId)) {
     return {
       breadcrumbs: buildMacroBreadcrumbs(moduleId),
-      eyebrow: "利率工作台",
-      question: module.snapshot.question ?? module.snapshot.subtitle ?? null,
+      eyebrow: macroModuleSection(module),
       statusItems: compactStatusItems([
         statusItem("数据", macroStatusLabel(module)),
         statusItem("截至", macroAsOfLabel(module)),
       ]),
-      title: macroModuleTitle(moduleId, module),
+      title,
     };
   }
 
   return {
     breadcrumbs: buildMacroBreadcrumbs(moduleId),
-    eyebrow: module.snapshot.section ?? "宏观工作台",
-    question: module.snapshot.question ?? module.snapshot.subtitle ?? null,
+    eyebrow: macroModuleSection(module),
     statusItems: compactStatusItems([
       statusItem("状态", macroStatusLabel(module)),
       statusItem("截至", macroAsOfLabel(module)),
     ]),
-    title: macroModuleTitle(moduleId, module),
+    title,
   };
+}
+
+function macroModuleSection(module: MacroModuleView): string | null {
+  const section = module.snapshot.section;
+  return typeof section === "string" && section.trim() ? section.trim() : null;
 }
 
 function statusItem(label: string, value: string | null): MacroShellStatusItem | null {

@@ -144,7 +144,7 @@ class MacroIntelRepository:
                 "value_numeric": observation.get("value_numeric"),
                 "unit": observation.get("unit"),
                 "frequency": observation.get("frequency"),
-                "data_quality": str(observation.get("data_quality") or "ok"),
+                "data_quality": _required_observation_text(observation, "data_quality"),
                 "source_ts": observation.get("source_ts"),
                 "raw_payload_json": Jsonb(raw_payload),
                 "ingested_at_ms": int(observation["ingested_at_ms"]),
@@ -2040,6 +2040,13 @@ def _required_snapshot_list(snapshot: Mapping[str, Any], field_name: str) -> lis
     if not isinstance(value, Sequence):
         raise RuntimeError(f"macro_view_snapshot_payload_invalid:{field_name}")
     return list(value)
+
+
+def _required_observation_text(observation: Mapping[str, Any], field_name: str) -> str:
+    value = observation.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"macro_observation_{field_name}_required")
+    return value.strip()
 
 
 def _macro_daily_brief_payload_hash(brief: Mapping[str, Any]) -> str:

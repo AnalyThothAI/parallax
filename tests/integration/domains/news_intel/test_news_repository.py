@@ -51,7 +51,7 @@ def test_source_fetch_provider_and_news_item_round_trip(tmp_path) -> None:
             refresh_interval_seconds=300,
             now_ms=NOW_MS,
         )
-        due = repo.claim_due_sources(now_ms=NOW_MS, limit=10)
+        due = repo.claim_due_sources(now_ms=NOW_MS, limit=10, claim_lease_ms=60_000)
         fetch_run_id = repo.start_fetch_run(source_id="coindesk-rss", started_at_ms=NOW_MS)
         provider = repo.upsert_provider_item(
             source_id="coindesk-rss",
@@ -100,13 +100,25 @@ def test_source_fetch_provider_and_news_item_round_trip(tmp_path) -> None:
                     "canonical_url": "https://www.coindesk.com/news/sol-etf",
                     "token_lanes": [],
                     "fact_lanes": [],
+                    "representative_news_item_id": news["news_item_id"],
+                    "story_key": f"news-story:fixture:{news['news_item_id']}",
+                    "story": {
+                        "story_key": f"news-story:fixture:{news['news_item_id']}",
+                        "representative_news_item_id": news["news_item_id"],
+                        "member_news_item_ids": [news["news_item_id"]],
+                        "member_count": 1,
+                        "source_domains": ["coindesk.com"],
+                    },
+                    "token_impacts": [],
+                    "content_class": "low_signal",
+                    "content_tags": [],
+                    "content_classification": {},
                     "signal": {
                         "source": "partial",
                         "status": "partial",
                         "direction": "neutral",
                         "label_zh": "中性",
                     },
-                    "token_impacts": [],
                     "source": {
                         "source_id": "coindesk-rss",
                         "provider_type": "rss",
@@ -117,6 +129,20 @@ def test_source_fetch_provider_and_news_item_round_trip(tmp_path) -> None:
                         "coverage_tags": [],
                         "source_quality_status": "unknown",
                     },
+                    "provider_rating": {},
+                    "agent_brief": {"status": "pending"},
+                    "market_scope": {},
+                    "macro_event_flow": None,
+                    "agent_admission": {
+                        "eligible": True,
+                        "status": "eligible",
+                        "reason": "integration_fixture",
+                        "representative_news_item_id": news["news_item_id"],
+                        "basis": {},
+                    },
+                    "agent_admission_status": "eligible",
+                    "agent_admission_reason": "integration_fixture",
+                    "agent_representative_news_item_id": news["news_item_id"],
                     "computed_at_ms": NOW_MS,
                     "projection_version": NEWS_PAGE_PROJECTION_VERSION,
                 }
@@ -140,8 +166,8 @@ def test_source_fetch_provider_and_news_item_round_trip(tmp_path) -> None:
     assert rows[0]["headline"] == "SOL ETF filing"
     assert rows[0]["latest_at_ms"] == NOW_MS - 60_000
     assert rows[0]["canonical_url"] == "https://www.coindesk.com/news/sol-etf"
-    assert rows[0]["story"] == {}
-    assert rows[0]["story_key"] == ""
+    assert rows[0]["story"]["member_count"] == 1
+    assert rows[0]["story_key"] == f"news-story:fixture:{news['news_item_id']}"
     assert rows[0]["market_scope"] == {}
     assert "story_id" not in rows[0]
     assert rows[0]["source"] == {
@@ -2726,34 +2752,16 @@ def test_replace_page_rows_for_items_removes_stale_rows_in_item_scope(tmp_path) 
             news_item_ids=[news_item_id, other_news_item_id],
             rows=[
                 {
-                    "row_id": "row-stale",
-                    "news_item_id": news_item_id,
-                    "latest_at_ms": NOW_MS,
-                    "source_domain": "example.com",
+                    **_page_row("row-stale", news_item_id, source_id="source-1", projection_version="test-v1"),
                     "headline": "Stale",
                     "summary": "Old summary",
                     "canonical_url": "https://example.com/stale",
-                    "lifecycle_status": "raw",
-                    "token_lanes": [],
-                    "fact_lanes": [],
-                    "source": {"source_id": "source-1"},
-                    "projection_version": "test-v1",
-                    "computed_at_ms": NOW_MS,
                 },
                 {
-                    "row_id": "row-other",
-                    "news_item_id": other_news_item_id,
-                    "latest_at_ms": NOW_MS,
-                    "source_domain": "example.com",
+                    **_page_row("row-other", other_news_item_id, source_id="source-1", projection_version="test-v1"),
                     "headline": "Other",
                     "summary": "Other summary",
                     "canonical_url": "https://example.com/other",
-                    "lifecycle_status": "raw",
-                    "token_lanes": [],
-                    "fact_lanes": [],
-                    "source": {"source_id": "source-1"},
-                    "projection_version": "test-v1",
-                    "computed_at_ms": NOW_MS,
                 },
             ],
         )
@@ -2762,19 +2770,19 @@ def test_replace_page_rows_for_items_removes_stale_rows_in_item_scope(tmp_path) 
             news_item_ids=[news_item_id],
             rows=[
                 {
-                    "row_id": "row-fresh",
-                    "news_item_id": news_item_id,
-                    "latest_at_ms": NOW_MS + 1,
-                    "source_domain": "example.com",
+                    **_page_row(
+                        "row-fresh",
+                        news_item_id,
+                        source_id="source-1",
+                        latest_at_ms=NOW_MS + 1,
+                        projection_version="test-v1",
+                        computed_at_ms=NOW_MS + 1,
+                    ),
                     "headline": "Fresh",
                     "summary": "New summary",
                     "canonical_url": "https://example.com/fresh",
                     "lifecycle_status": "processed",
                     "token_lanes": [{"lane": "resolved", "symbol": "SOL"}],
-                    "fact_lanes": [],
-                    "source": {"source_id": "source-1"},
-                    "projection_version": "test-v1",
-                    "computed_at_ms": NOW_MS + 1,
                 }
             ],
         )
@@ -4044,6 +4052,12 @@ def test_page_projection_loader_omits_item_current_brief_after_story_hard_cut(tm
         migrate(conn)
         repo = NewsRepository(conn)
         news_item_id = _insert_source_provider_and_item(repo)
+        _set_market_scope_story(
+            repo,
+            news_item_id,
+            primary_scope="crypto",
+            story_key=f"news-story:fixture:{news_item_id}",
+        )
         repo.replace_page_rows_for_items(
             news_item_ids=[news_item_id],
             rows=[
@@ -6327,6 +6341,7 @@ def _page_row(
     projection_version: str = NEWS_PAGE_PROJECTION_VERSION,
     computed_at_ms: int = NOW_MS,
 ) -> dict[str, object]:
+    story_key = f"news-story:fixture:{news_item_id}"
     return {
         "row_id": row_id,
         "news_item_id": news_item_id,
@@ -6338,9 +6353,35 @@ def _page_row(
         "lifecycle_status": "raw",
         "token_lanes": [],
         "fact_lanes": [],
+        "representative_news_item_id": news_item_id,
+        "story_key": story_key,
+        "story": {
+            "story_key": story_key,
+            "representative_news_item_id": news_item_id,
+            "member_news_item_ids": [news_item_id],
+            "member_count": 1,
+            "source_domains": ["example.com"],
+        },
+        "token_impacts": [],
+        "content_class": "low_signal",
+        "content_tags": [],
+        "content_classification": {},
         "source": {"source_id": source_id},
+        "provider_rating": {},
         "signal": {"display_signal": {"direction": "neutral", "status": "partial"}},
+        "agent_brief": {"status": "pending"},
         "market_scope": {},
+        "macro_event_flow": None,
+        "agent_admission": {
+            "eligible": True,
+            "status": "eligible",
+            "reason": "integration_fixture",
+            "representative_news_item_id": news_item_id,
+            "basis": {},
+        },
+        "agent_admission_status": "eligible",
+        "agent_admission_reason": "integration_fixture",
+        "agent_representative_news_item_id": news_item_id,
         "projection_version": projection_version,
         "computed_at_ms": computed_at_ms,
     }

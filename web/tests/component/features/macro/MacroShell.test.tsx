@@ -16,7 +16,6 @@ describe("MacroShell", () => {
         { label: "美股风险", href: "/macro/assets/equities" },
       ],
       eyebrow: "宏观工作台",
-      question: "美股风险偏好是否足以确认加密 beta？",
       statusItems: [
         { label: "状态", value: "部分可用" },
         { label: "截至", value: "2026-05-20" },
@@ -35,7 +34,6 @@ describe("MacroShell", () => {
     expect(screen.getByLabelText("宏观工作台")).toHaveAttribute("data-page-kind", "leaf");
     expect(screen.getByLabelText("宏观工作台")).toHaveAttribute("data-product-tier", "primary");
     expect(screen.getByRole("heading", { name: "美股风险" })).toBeInTheDocument();
-    expect(screen.queryByText("美股风险偏好是否足以确认加密 beta？")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "宏观" })).toHaveAttribute("href", "/macro");
     const breadcrumb = screen.getByRole("navigation", { name: "宏观面包屑" });
     expect(within(breadcrumb).getByRole("link", { name: "大类资产" })).toHaveAttribute(
@@ -73,7 +71,6 @@ describe("MacroShell", () => {
         { label: "大类资产", href: "/macro/assets" },
       ],
       eyebrow: "宏观工作台",
-      question: null,
       statusItems: [
         { label: "状态", value: "数据滞后" },
         { label: "截至", value: "截至 2026-01-16" },
@@ -113,7 +110,6 @@ describe("MacroShell", () => {
         { label: "概览", href: "/macro" },
       ],
       eyebrow: "Macro terminal",
-      question: null,
       statusItems: [{ label: "状态", value: "Ready" }],
       title: "Macro Overview",
     };

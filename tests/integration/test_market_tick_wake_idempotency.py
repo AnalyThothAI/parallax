@@ -44,8 +44,9 @@ def test_market_tick_poll_worker_persist_ticks_wakes_only_inserted_targets(tmp_p
         migrate(conn)
         wake = _RecordingWakeEmitter()
         worker = MarketTickPollWorker(
-            db=_DB(conn),
+            pool_bundle=_DB(conn),
             providers=SimpleNamespace(dex_quote_market=None, cex_market=None),
+            settings=_poll_settings(),
             wake_emitter=wake,
         )
         tick = _tick(source_provider="okx_dex_rest")
@@ -64,7 +65,13 @@ def test_market_tick_stream_worker_persist_ticks_wakes_only_inserted_targets(tmp
     try:
         migrate(conn)
         wake = _RecordingWakeEmitter()
-        worker = MarketTickStreamWorker(db=_DB(conn), stream_dex_market=None, wake_emitter=wake)
+        worker = MarketTickStreamWorker(
+            pool_bundle=_DB(conn),
+            stream_dex_market=object(),
+            settings=_stream_settings(),
+            telemetry=object(),
+            wake_emitter=wake,
+        )
         tick = _tick(source_provider="okx_dex_ws")
 
         assert worker._persist_ticks([tick, tick]) == 1
@@ -170,6 +177,28 @@ class _RecordingWakeEmitter:
 
     def notify_market_tick_written(self, *, target_type: str, target_id: str) -> None:
         self.market_tick_notifications.append({"target_type": target_type, "target_id": target_id})
+
+
+def _poll_settings() -> SimpleNamespace:
+    return SimpleNamespace(
+        enabled=True,
+        interval_seconds=5.0,
+        soft_timeout_seconds=120.0,
+        hard_timeout_seconds=180.0,
+        batch_size=100,
+        concurrency=4,
+    )
+
+
+def _stream_settings() -> SimpleNamespace:
+    return SimpleNamespace(
+        enabled=True,
+        interval_seconds=5.0,
+        soft_timeout_seconds=120.0,
+        hard_timeout_seconds=180.0,
+        subscription_limit=100,
+        stream_cycle_seconds=1.0,
+    )
 
 
 def _tick(*, source_provider: MarketTickSourceProvider) -> MarketTick:

@@ -65,6 +65,157 @@ describe("macroAssetOverviewModel", () => {
     expect(JSON.stringify(groups)).not.toContain("2026-05-20");
   });
 
+  it("requires asset symbols from display cells instead of raw row fields", () => {
+    const table: MacroModuleTable = {
+      id: "asset_group_snapshot",
+      columns: [
+        { key: "symbol", label: "代码" },
+        { key: "indicator", label: "名称" },
+        { key: "latest", label: "最新" },
+      ],
+      rows: [
+        {
+          row_id: "asset:spx",
+          symbol: "SPX",
+          ticker: "^GSPC",
+          cells: {
+            indicator: { display_value: "标普500", sort_value: "标普500" },
+            latest: { display_value: "5,312.40", sort_value: 5312.4 },
+          },
+        },
+      ],
+    };
+
+    const groups = buildAssetMarketGroups(table);
+
+    expect(groups).toEqual([]);
+    expect(JSON.stringify(groups)).not.toContain("SPX");
+    expect(JSON.stringify(groups)).not.toContain("^GSPC");
+  });
+
+  it("requires asset row dates from display cells instead of raw row fields", () => {
+    const table: MacroModuleTable = {
+      id: "asset_group_snapshot",
+      columns: [
+        { key: "symbol", label: "代码" },
+        { key: "indicator", label: "名称" },
+        { key: "latest", label: "最新" },
+        { key: "observed_at", label: "日期" },
+      ],
+      rows: [
+        {
+          row_id: "asset:spx",
+          observed_at: "2026-05-20",
+          latest_observed_at: "2026-05-21",
+          cells: {
+            symbol: { display_value: "SPX", sort_value: "SPX" },
+            indicator: { display_value: "标普500", sort_value: "标普500" },
+            latest: { display_value: "5,312.40", sort_value: 5312.4 },
+          },
+        },
+      ],
+    };
+
+    const groups = buildAssetMarketGroups(table);
+
+    expect(groups[0]?.rows[0]?.asOf).toBeNull();
+    expect(JSON.stringify(groups)).not.toContain("2026-05-20");
+    expect(JSON.stringify(groups)).not.toContain("2026-05-21");
+  });
+
+  it("does not use generic asset date cells as latest observation labels", () => {
+    const table: MacroModuleTable = {
+      id: "asset_group_snapshot",
+      columns: [
+        { key: "symbol", label: "代码" },
+        { key: "indicator", label: "名称" },
+        { key: "latest", label: "最新" },
+        { key: "date", label: "日期" },
+        { key: "asof_date", label: "截至日期" },
+      ],
+      rows: [
+        {
+          row_id: "asset:spx",
+          cells: {
+            symbol: { display_value: "SPX", sort_value: "SPX" },
+            indicator: { display_value: "标普500", sort_value: "标普500" },
+            latest: { display_value: "5,312.40", sort_value: 5312.4 },
+            date: { display_value: "2026-05-20", sort_value: "2026-05-20" },
+            asof_date: { display_value: "2026-05-21", sort_value: "2026-05-21" },
+          },
+        },
+      ],
+    };
+
+    const groups = buildAssetMarketGroups(table);
+
+    expect(groups[0]?.rows[0]?.asOf).toBeNull();
+    expect(JSON.stringify(groups)).not.toContain("2026-05-20");
+    expect(JSON.stringify(groups)).not.toContain("2026-05-21");
+  });
+
+  it("does not expose 20-day asset deltas as latest daily changes", () => {
+    const table: MacroModuleTable = {
+      id: "asset_group_snapshot",
+      columns: [
+        { key: "symbol", label: "代码" },
+        { key: "indicator", label: "名称" },
+        { key: "latest", label: "最新" },
+        { key: "delta_20d", label: "20日变化" },
+      ],
+      rows: [
+        {
+          row_id: "asset:spx",
+          cells: {
+            symbol: { display_value: "SPX", sort_value: "SPX" },
+            indicator: { display_value: "标普500", sort_value: "标普500" },
+            latest: { display_value: "5,312.40", sort_value: 5312.4 },
+            delta_20d: { display_value: "+8.40%", sort_value: 8.4 },
+          },
+        },
+      ],
+    };
+
+    const groups = buildAssetMarketGroups(table);
+
+    expect(groups[0]?.rows[0]).toMatchObject({
+      delta: null,
+      deltaTone: "flat",
+      latest: "5,312.40",
+      name: "标普500",
+      symbol: "SPX",
+    });
+    expect(JSON.stringify(groups)).not.toContain("+8.40%");
+  });
+
+  it("does not expose source cells as asset quality badges", () => {
+    const table: MacroModuleTable = {
+      id: "asset_group_snapshot",
+      columns: [
+        { key: "symbol", label: "代码" },
+        { key: "indicator", label: "名称" },
+        { key: "latest", label: "最新" },
+        { key: "source", label: "来源" },
+      ],
+      rows: [
+        {
+          row_id: "asset:spx",
+          cells: {
+            symbol: { display_value: "SPX", sort_value: "SPX" },
+            indicator: { display_value: "标普500", sort_value: "标普500" },
+            latest: { display_value: "5,312.40", sort_value: 5312.4 },
+            source: { display_value: "Yahoo", sort_value: "Yahoo" },
+          },
+        },
+      ],
+    };
+
+    const groups = buildAssetMarketGroups(table);
+
+    expect(groups[0]?.rows[0]?.quality).toBeNull();
+    expect(JSON.stringify(groups)).not.toContain("Yahoo");
+  });
+
   it("drops asset market rows without a name or latest value and keeps optional fields absent", () => {
     const table: MacroModuleTable = {
       id: "asset_group_snapshot",
@@ -159,5 +310,38 @@ describe("macroAssetOverviewModel", () => {
     expect(JSON.stringify(brief)).not.toContain("unknown");
     expect(JSON.stringify(brief)).not.toContain("neutral");
     expect(JSON.stringify(brief)).not.toContain("今日判断暂不可用");
+  });
+
+  it("drops daily brief blocks with non-string display fields instead of coercing them", () => {
+    const brief = normalizeDailyBrief({
+      blocks: [
+        {
+          body: 456,
+          id: 123,
+          stance: "supported",
+          title: true,
+        },
+        {
+          body: "真实正文",
+          id: "growth",
+          stance: "supported",
+          title: "增长",
+        },
+      ],
+      headline: "Risk on",
+      status: "supported",
+    });
+
+    expect(brief?.blocks).toEqual([
+      {
+        body: "真实正文",
+        id: "growth",
+        stance: "supported",
+        title: "增长",
+      },
+    ]);
+    expect(JSON.stringify(brief)).not.toContain("123");
+    expect(JSON.stringify(brief)).not.toContain("456");
+    expect(JSON.stringify(brief)).not.toContain("true");
   });
 });

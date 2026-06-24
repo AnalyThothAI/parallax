@@ -21,14 +21,14 @@ if TYPE_CHECKING:
 
 def parse_macrodata_bundle(envelope: Mapping[str, Any], *, now_ms: int) -> MacrodataBundleImport:
     snapshot = _snapshot(envelope)
-    bundle_name = str(snapshot.get("bundle") or "unknown")
+    bundle_name = _required_snapshot_text(snapshot, "bundle")
     asof = snapshot.get("asof")
     observations = _sequence(snapshot.get("observations"))
     coverage = _json_mapping(snapshot.get("coverage"))
     missing_series = list(_json_sequence(snapshot.get("missing_series")))
     series_errors = list(_json_sequence(snapshot.get("series_errors")))
     reason_codes = list(_json_sequence(snapshot.get("reason_codes")))
-    data_quality = str(snapshot.get("data_quality") or "ok")
+    data_quality = _required_snapshot_text(snapshot, "data_quality")
     normalized_observations = _observations(observations, now_ms=now_ms)
     max_observed_at = _max_observed_at(normalized_observations)
 
@@ -176,8 +176,10 @@ def _observation(raw_observation: Mapping[str, Any], *, now_ms: int) -> dict[str
     if concept_key is None:
         raise ValueError(f"unknown macrodata series_key: {series_key}")
     persisted_series_key = _persisted_series_key(series_key=series_key, raw_observation=raw_observation)
+    provider = _required_observation_text(raw_observation, "provider", series_key=series_key)
+    data_quality = _required_observation_text(raw_observation, "data_quality", series_key=series_key)
     return {
-        "source_name": str(raw_observation.get("provider") or _provider_prefix(series_key)),
+        "source_name": provider,
         "concept_key": concept_key,
         "series_key": persisted_series_key,
         "source_priority": MACRO_PROVIDER_SERIES_SOURCE_PRIORITY[series_key],
@@ -185,7 +187,7 @@ def _observation(raw_observation: Mapping[str, Any], *, now_ms: int) -> dict[str
         "value_numeric": _numeric_value(raw_observation.get("value")),
         "unit": raw_observation.get("unit"),
         "frequency": raw_observation.get("frequency"),
-        "data_quality": str(raw_observation.get("data_quality") or "ok"),
+        "data_quality": data_quality,
         "source_ts": raw_observation.get("source_ts"),
         "raw_payload": _json_mapping(raw_observation),
         "ingested_at_ms": int(now_ms),
@@ -237,9 +239,18 @@ def _document_source_url(raw_observation: Mapping[str, Any]) -> str:
     return str(source_url or "").strip()
 
 
-def _provider_prefix(series_key: str) -> str:
-    provider, _, _rest = series_key.partition(":")
-    return provider or "unknown"
+def _required_snapshot_text(snapshot: Mapping[str, Any], field_name: str) -> str:
+    value = snapshot.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"macrodata snapshot missing {field_name}")
+    return value.strip()
+
+
+def _required_observation_text(raw_observation: Mapping[str, Any], field_name: str, *, series_key: str) -> str:
+    value = raw_observation.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"macrodata observation missing {field_name}:{series_key}")
+    return value.strip()
 
 
 def _run_id(*, bundle_name: str, asof: object, now_ms: int, observations_count: int) -> str:

@@ -346,9 +346,9 @@ def factor_snapshot():
         },
         "gates": {
             "eligible_for_high_alert": True,
+            "max_decision": "high_alert",
             "blocked_reasons": [],
             "risk_reasons": [],
-            "max_decision": "high_alert",
         },
         "data_health": {"identity": "ready", "market": "ready", "social": "ready", "alpha": "ready"},
         "families": families,

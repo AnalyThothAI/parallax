@@ -18,8 +18,7 @@ export type MacroShellStatusItem = {
 export type MacroShellHeaderModel = {
   actions?: ReactNode;
   breadcrumbs: MacroBreadcrumbItem[];
-  eyebrow: string;
-  question?: string | null;
+  eyebrow?: string | null;
   statusItems: MacroShellStatusItem[];
   title: string;
 };

@@ -93,32 +93,43 @@ export function MacroCorrelationPairList({
     .map((pair) => {
       const leftLabel = assetLabel(pair.left, titleByKey);
       const rightLabel = assetLabel(pair.right, titleByKey);
-      return leftLabel && rightLabel ? { pair, leftLabel, rightLabel } : null;
+      const correlationLabel = signedCorrelationLabel(pair.correlation);
+      return leftLabel && rightLabel && correlationLabel
+        ? { correlationLabel, pair, leftLabel, rightLabel }
+        : null;
     })
     .filter(
-      (pair): pair is { pair: MacroAssetCorrelationPair; leftLabel: string; rightLabel: string } =>
-        pair !== null,
+      (
+        pair,
+      ): pair is {
+        correlationLabel: string;
+        pair: MacroAssetCorrelationPair;
+        leftLabel: string;
+        rightLabel: string;
+      } => pair !== null,
     );
   if (labelledPairs.length === 0) {
     return null;
   }
   return (
     <ul className="macro-correlation-pair-list" data-variant={variant}>
-      {labelledPairs.map(({ pair, leftLabel, rightLabel }) => (
+      {labelledPairs.map(({ correlationLabel, pair, leftLabel, rightLabel }) => (
         <li key={`${pair.left}:${pair.right}`}>
           <strong>
             {leftLabel} / {rightLabel}
           </strong>
-          <span data-tone={correlationTone(pair.correlation)}>
-            {signedCorrelationLabel(pair.correlation)}
-          </span>
-          {variant === "detail" ? (
-            <small>
-              样本={pair.sample_size} · {pair.start_date ?? "-"} 至 {pair.end_date ?? "-"}
-            </small>
-          ) : null}
+          <span data-tone={correlationTone(pair.correlation)}>{correlationLabel}</span>
+          {variant === "detail" ? <PairMeta pair={pair} /> : null}
         </li>
       ))}
     </ul>
   );
+}
+
+function PairMeta({ pair }: { pair: MacroAssetCorrelationPair }) {
+  const parts = [`样本=${pair.sample_size}`];
+  if (pair.start_date && pair.end_date) {
+    parts.push(`${pair.start_date}到${pair.end_date}`);
+  }
+  return <small>{parts.join(" · ")}</small>;
 }

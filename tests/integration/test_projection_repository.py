@@ -168,6 +168,7 @@ class FakeStartRunConn:
     def __init__(self):
         self.rows: dict[str, dict[str, object]] = {}
         self.selected_run_id = ""
+        self.rowcount = 0
 
     def execute(self, sql, params=None):
         sql_text = str(sql)
@@ -189,8 +190,11 @@ class FakeStartRunConn:
                 "dirty_ranges_written": 0,
                 "started_at_ms": params[6],
             }
+            self.selected_run_id = run_id
+            self.rowcount = 1
         elif "SELECT * FROM projection_runs" in sql_text:
             self.selected_run_id = str(params[0])
+            self.rowcount = 1 if self.selected_run_id in self.rows else 0
         return self
 
     def fetchone(self):

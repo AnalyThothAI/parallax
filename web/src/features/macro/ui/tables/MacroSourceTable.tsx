@@ -3,7 +3,7 @@ import type { MacroSemanticRecord } from "@lib/types";
 import { MacroTableFrame } from "./MacroTableFrame";
 import "./macroTables.css";
 
-type SourceColumnKey = "source" | "latest" | "quality" | "count" | "participation" | "notes";
+type SourceColumnKey = "source" | "latest" | "quality" | "count" | "notes";
 
 type SourceCell = {
   displayValue: string;
@@ -19,7 +19,6 @@ const SOURCE_COLUMNS: { key: SourceColumnKey; label: string }[] = [
   { key: "latest", label: "最新观测" },
   { key: "quality", label: "新鲜度/质量/状态" },
   { key: "count", label: "指标数" },
-  { key: "participation", label: "计分" },
   { key: "notes", label: "备注" },
 ];
 
@@ -76,9 +75,8 @@ function sourceRow(row: MacroSemanticRecord): SourceRow | null {
     return null;
   }
   const quality = qualityLabel(row);
-  const latest = stringValue(row.latest_observed_at) ?? observedAtLabel(row.observed_at_ms);
+  const latest = stringValue(row.latest_observed_at);
   const count = numberValue(row.concept_count);
-  const participation = scoreParticipationLabel(row.score_participation);
   const notes = notesLabel(row);
   const cells: SourceRow["cells"] = {
     source: sourceCell(source),
@@ -91,9 +89,6 @@ function sourceRow(row: MacroSemanticRecord): SourceRow | null {
   }
   if (count !== null) {
     cells.count = sourceCell(String(count));
-  }
-  if (participation) {
-    cells.participation = sourceCell(participation);
   }
   if (notes) {
     cells.notes = sourceCell(notes);
@@ -126,16 +121,11 @@ function sourceLabel(row: MacroSemanticRecord): string | null {
   if (!raw) {
     return null;
   }
-  return SOURCE_LABELS[raw] ?? (looksInternalCode(raw) ? null : raw);
+  return looksInternalCode(raw) ? null : raw;
 }
 
 function statusLabel(row: MacroSemanticRecord): string | null {
-  const label = stringValue(row.status_label);
-  if (label) {
-    return label;
-  }
-  const status = stringValue(row.status);
-  return status ? (STATUS_LABELS[status] ?? null) : null;
+  return stringValue(row.status_label);
 }
 
 function qualityLabel(row: MacroSemanticRecord): string | null {
@@ -145,35 +135,12 @@ function qualityLabel(row: MacroSemanticRecord): string | null {
   return [freshness, quality, status].filter(Boolean).join(" / ") || null;
 }
 
-function scoreParticipationLabel(value: unknown): string | null {
-  if (value === true) {
-    return "参与计分";
-  }
-  if (value === false) {
-    return "计分排除";
-  }
-  return null;
-}
-
 function notesLabel(row: MacroSemanticRecord): string | null {
-  const notes = stringValue(row.notes) ?? stringValue(row.message);
+  const notes = stringValue(row.notes);
   if (notes) {
     return displayText(notes);
   }
-  const degradedReasons = Array.isArray(row.degraded_reasons) ? row.degraded_reasons : [];
-  const labels = degradedReasons
-    .map((reason) => (typeof reason === "string" ? displayText(reason) : null))
-    .filter((reason): reason is string => Boolean(reason));
-  return labels.join(", ") || null;
-}
-
-function observedAtLabel(value: unknown): string | null {
-  const timestamp = numberValue(value);
-  if (timestamp === null) {
-    return null;
-  }
-  const date = new Date(timestamp);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10);
+  return null;
 }
 
 function isRecord(value: unknown): value is MacroSemanticRecord {
@@ -199,30 +166,9 @@ function displayText(value: string | null): string | null {
   if (!value) {
     return null;
   }
-  return SOURCE_LABELS[value] ?? (looksInternalCode(value) ? null : value);
+  return looksInternalCode(value) ? null : value;
 }
 
 function looksInternalCode(value: string): boolean {
   return /^[a-z][a-z0-9_:.-]*$/.test(value);
 }
-
-const SOURCE_LABELS: Record<string, string> = {
-  cboe: "Cboe",
-  cex_market_intel: "CEX OI Radar",
-  cex_oi_radar_board: "CEX OI Radar",
-  coinglass: "Coinglass",
-  cftc: "CFTC",
-  fred: "FRED",
-  nyfed: "NY Fed",
-  treasury_fiscal: "US Treasury",
-  yahoo: "Yahoo",
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  degraded: "降级",
-  missing: "缺失",
-  ok: "可用",
-  partial: "部分可用",
-  success: "可用",
-  unavailable: "不可用",
-};

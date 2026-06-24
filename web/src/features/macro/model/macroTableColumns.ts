@@ -109,10 +109,7 @@ export function formatMacroTableValue(value: unknown): string | null {
   }
   if (typeof value === "string") {
     const text = value.trim();
-    if (text === "暂无" || text === "unknown") {
-      return null;
-    }
-    return VALUE_LABELS[text] ?? text;
+    return text;
   }
   const display = displayValue(value);
   if (display !== null) {
@@ -128,7 +125,7 @@ function buildMacroTableCell(value: unknown): MacroTableCellModel | null {
       return null;
     }
     const sortValue = scalarValue(value.sort_value);
-    const rawValue = sortValue ?? scalarValue(value.display_value);
+    const rawValue = sortValue;
     return {
       displayValue,
       isNumeric: typeof sortValue === "number",
@@ -197,12 +194,7 @@ function displayValue(value: unknown): string | null {
     return null;
   }
   const record = value as Record<string, unknown>;
-  return (
-    stringValue(record.display_value) ??
-    stringValue(record.label) ??
-    stringValue(record.title) ??
-    null
-  );
+  return stringValue(record.display_value);
 }
 
 function isDisplayCell(value: unknown): value is { display_value?: unknown; sort_value?: unknown } {
@@ -210,14 +202,6 @@ function isDisplayCell(value: unknown): value is { display_value?: unknown; sort
     value && typeof value === "object" && !Array.isArray(value) && "display_value" in value,
   );
 }
-
-const VALUE_LABELS: Record<string, string> = {
-  degraded: "降级",
-  missing: "缺失",
-  ok: "正常",
-  partial: "部分可用",
-  unavailable: "不可用",
-};
 
 function numericValue(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) {

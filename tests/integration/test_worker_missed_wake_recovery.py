@@ -94,16 +94,7 @@ def test_pulse_candidate_worker_catches_up_from_persisted_token_radar_without_wa
 
         pulse_worker = PulseCandidateWorker(
             name="pulse_candidate",
-            settings=SimpleNamespace(
-                enabled=True,
-                interval_seconds=0,
-                soft_timeout_seconds=1,
-                hard_timeout_seconds=2,
-                windows=("1h",),
-                scopes=("all",),
-                batch_size=10,
-                max_attempts=3,
-            ),
+            settings=_pulse_settings(),
             db=_DB(conn),
             telemetry=object(),
             decision_client=_FakeDecisionClient(),
@@ -187,7 +178,51 @@ def _radar_settings(*, cold_interval_seconds: float = 0) -> SimpleNamespace:
         hot_windows=(),
         cold_interval_seconds=cold_interval_seconds,
         batch_size=10,
+        lease_ms=120_000,
+        retry_ms=30_000,
+        private_cache_retention_enabled=False,
+        private_cache_retention_ms=3_600_000,
+        advisory_lock_key=2026051501,
         statement_timeout_seconds=5,
+    )
+
+
+def _pulse_settings() -> SimpleNamespace:
+    return SimpleNamespace(
+        enabled=True,
+        interval_seconds=0,
+        soft_timeout_seconds=1,
+        hard_timeout_seconds=2,
+        windows=("1h",),
+        scopes=("all",),
+        batch_size=10,
+        max_agent_jobs_per_cycle=2,
+        max_attempts=3,
+        max_enqueues_per_cycle=10,
+        max_pending_jobs_global=100,
+        max_pending_jobs_per_window_scope=25,
+        job_running_timeout_ms=300_000,
+        stale_running_terminalization_batch_size=100,
+        trigger_lease_ms=60_000,
+        trigger_capacity_retry_ms=30_000,
+        trigger_error_retry_ms=60_000,
+        target_edge_budget_per_hour=3,
+        candidate_edge_budget_per_hour=3,
+        failure_circuit_per_hour=3,
+        failure_circuit_reasons=("schema_validation_failed", "unknown_evidence_id"),
+        timeline_debounce_seconds=600,
+        evidence_market_freshness_ms=3_600_000,
+        statement_timeout_seconds=30,
+        stale_job_ttl_by_window_seconds={"1h": 3600},
+        advisory_lock_key=2026051502,
+        wakes_on=("token_radar_updated",),
+        trigger_thresholds=SimpleNamespace(min_rank_score=45),
+        gate_thresholds=SimpleNamespace(
+            trade_candidate_min=72,
+            token_watch_min=45,
+            high_info_rejection_min=30,
+            high_conviction_min=78,
+        ),
     )
 
 

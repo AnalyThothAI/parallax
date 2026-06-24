@@ -159,6 +159,38 @@ def test_parse_macrodata_bundle_validates_all_observations_before_write() -> Non
         parse_macrodata_bundle(envelope, now_ms=NOW_MS)
 
 
+def test_parse_macrodata_bundle_requires_snapshot_bundle() -> None:
+    envelope = deepcopy(ENVELOPE)
+    del envelope["data"]["snapshot"]["bundle"]
+
+    with pytest.raises(ValueError, match="macrodata snapshot missing bundle"):
+        parse_macrodata_bundle(envelope, now_ms=NOW_MS)
+
+
+def test_parse_macrodata_bundle_requires_snapshot_data_quality() -> None:
+    envelope = deepcopy(ENVELOPE)
+    del envelope["data"]["snapshot"]["data_quality"]
+
+    with pytest.raises(ValueError, match="macrodata snapshot missing data_quality"):
+        parse_macrodata_bundle(envelope, now_ms=NOW_MS)
+
+
+def test_parse_macrodata_bundle_requires_observation_provider() -> None:
+    envelope = deepcopy(ENVELOPE)
+    del envelope["data"]["snapshot"]["observations"][0]["provider"]
+
+    with pytest.raises(ValueError, match="macrodata observation missing provider:nyfed:SOFR"):
+        parse_macrodata_bundle(envelope, now_ms=NOW_MS)
+
+
+def test_parse_macrodata_bundle_requires_observation_data_quality() -> None:
+    envelope = deepcopy(ENVELOPE)
+    del envelope["data"]["snapshot"]["observations"][0]["data_quality"]
+
+    with pytest.raises(ValueError, match="macrodata observation missing data_quality:nyfed:SOFR"):
+        parse_macrodata_bundle(envelope, now_ms=NOW_MS)
+
+
 def test_write_macrodata_bundle_import_does_not_open_its_own_transaction() -> None:
     repos = FakeRepositorySession()
     parsed = parse_macrodata_bundle(ENVELOPE, now_ms=NOW_MS)

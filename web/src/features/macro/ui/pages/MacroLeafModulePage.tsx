@@ -1,5 +1,5 @@
 import { extraTables, primarySupportingTable } from "../../model/macroModulePresentation";
-import { macroRouteLabel } from "../../model/macroRoutes";
+import { macroModuleTitle } from "../../model/macroPageViewModel";
 import {
   buildMacroAssetClassDiagnostics,
   buildMacroCreditDiagnostics,
@@ -39,9 +39,13 @@ export function MacroLeafModulePage({ module, moduleId, token }: MacroModulePage
   const supportingTable = primarySupportingTable(module);
   const remainingTables = extraTables(module);
   const series = useMacroPrimarySeries({ chart: module.primary_chart, token });
+  const title = macroModuleTitle(module);
+  if (!title) {
+    return null;
+  }
 
   return (
-    <MacroPageScaffold label={`${macroRouteLabel(moduleId)}模块页面`} pageKind="leaf">
+    <MacroPageScaffold label={`${title}模块页面`} pageKind="leaf">
       {hasMacroWorkbenchBrief(brief) ? (
         <MacroInsightBrief ariaLabel="模块简报" brief={brief} title="模块简报" />
       ) : null}
@@ -66,7 +70,7 @@ export function MacroLeafModulePage({ module, moduleId, token }: MacroModulePage
         <MacroDriverBoard
           ariaLabel="驱动与反证"
           drivers={drivers}
-          meta={macroRouteLabel(moduleId)}
+          meta={title}
           title="驱动与反证"
           transmission={module.transmission}
         />

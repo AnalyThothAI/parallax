@@ -126,7 +126,7 @@ describe("macro route", () => {
     expect(await screen.findByRole("heading", { name: "美股风险" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "宏观" })).not.toBeInTheDocument();
     expect(screen.getByText("美股风险：等待小盘确认")).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "美股模块页面" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "美股风险模块页面" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "模块简报" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "主市场证据" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "驱动与反证" })).toBeInTheDocument();
@@ -142,10 +142,56 @@ describe("macro route", () => {
     );
   });
 
+  it("surfaces missing module titles instead of falling back to route labels", async () => {
+    const baseGetApi = apiMock.getApiImpl;
+    apiMock.getApiImpl = async (path, options) => {
+      if (path === "/api/macro/modules/assets/equities") {
+        return ok(
+          macroModuleFixture({
+            snapshot: {
+              ...macroModuleFixture().snapshot,
+              title: "",
+            },
+          }),
+        );
+      }
+      return baseGetApi(path, options);
+    };
+
+    renderAppRoute("/macro/assets/equities");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("macro_module_title_missing");
+    expect(screen.queryByRole("heading", { name: "美股" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "美股风险" })).not.toBeInTheDocument();
+  });
+
+  it("omits macro shell eyebrow copy when backend section metadata is absent", async () => {
+    const baseGetApi = apiMock.getApiImpl;
+    apiMock.getApiImpl = async (path, options) => {
+      if (path === "/api/macro/modules/assets/equities") {
+        return ok(
+          macroModuleFixture({
+            snapshot: {
+              ...macroModuleFixture().snapshot,
+              section: null,
+            },
+          }),
+        );
+      }
+      return baseGetApi(path, options);
+    };
+
+    renderAppRoute("/macro/assets/equities");
+
+    expect(await screen.findByRole("heading", { name: "美股风险" })).toBeInTheDocument();
+    expect(screen.queryByText("宏观工作台")).not.toBeInTheDocument();
+  });
+
   it("opens the asset landing module without redirecting to equities", async () => {
     renderAppRoute("/macro/assets");
 
     expect(await screen.findByRole("heading", { name: "大类资产" })).toBeInTheDocument();
+    expect(screen.queryByText("Assets")).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "核心资产行情" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "今日判断" })).toBeInTheDocument();
     expect(screen.getByText("风险资产偏震荡")).toBeInTheDocument();

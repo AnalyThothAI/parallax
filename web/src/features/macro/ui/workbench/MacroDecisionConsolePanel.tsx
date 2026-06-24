@@ -331,8 +331,6 @@ function TradeSection({ items }: { items: MacroDecisionConsole["tradeMap"] }) {
             {item.checklist.length > 0 ? (
               <TradeDetailBlock lines={item.checklist} title="行动清单" variant="checklist" />
             ) : null}
-            {item.confirms ? <small>确认：{item.confirms}</small> : null}
-            {item.invalidates ? <small>失效：{item.invalidates}</small> : null}
           </li>
         ))}
       </ul>

@@ -531,11 +531,12 @@ Macro contract:
 - `/api/macro/series` is authenticated and read-only. It accepts
   `concept_keys=<comma-separated canonical macro concepts>` and
   `window=20d|60d|120d|1y|3y` and returns grouped observation points for chart
-  hydration. Query-token auth uses the shared `token` parameter. Provider-native
-  series keys such as `fred:DGS10` or `yahoo:SPY` are rejected; frontend clients
-  must request canonical concept keys only. Series with fewer than two usable
-  points return `status = "insufficient_history"` plus a structured data gap;
-  drawable multi-point series return `status = "ok"` with usable points.
+  hydration. Macro series does not accept query-token authentication or a
+  `token` query parameter; clients authenticate through the macro API request
+  auth path and send only canonical concept keys. Provider-native series keys
+  such as `fred:DGS10` or `yahoo:SPY` are rejected. Series with fewer than two
+  usable points return `status = "insufficient_history"` plus a structured data
+  gap; drawable multi-point series return `status = "ok"` with usable points.
 
 Watchlist handle intel contract:
 

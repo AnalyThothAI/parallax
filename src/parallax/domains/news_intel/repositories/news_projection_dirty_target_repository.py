@@ -395,7 +395,8 @@ class NewsProjectionDirtyTargetRepository:
         records = _key_records(keys)
         if not records:
             return 0
-        with _transaction(self.conn):
+
+        def _terminalize_targets() -> int:
             deleted_records, deleted_count = self._delete_claimed_target_rows(records)
             for record in deleted_records:
                 target_key = _terminal_target_key(record, semantic_payload_hash=semantic_payload_hash)
@@ -415,7 +416,9 @@ class NewsProjectionDirtyTargetRepository:
                     payload_hash=str(semantic_payload_hash or record["payload_hash"]),
                     commit=False,
                 )
-        return deleted_count
+            return deleted_count
+
+        return _run_repository_write(self.conn, commit, _terminalize_targets)
 
     def queue_depth(
         self,

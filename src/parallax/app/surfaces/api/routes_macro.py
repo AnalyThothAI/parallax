@@ -52,7 +52,7 @@ _MACRO_MARKET_EVENT_NEWS_LIMIT = 6
 
 @router.get("/macro")
 def macro(request: Request) -> JSONResponse:
-    runtime = _authenticated_runtime(request)
+    runtime = _authenticated_macro_runtime(request)
     with runtime.repositories() as repos:
         snapshot = repos.macro_intel.latest_snapshot(projection_version=MACRO_VIEW_PROJECTION_VERSION)
         publication_state = repos.macro_intel.macro_series_publication_state(MACRO_VIEW_PROJECTION_VERSION)
@@ -62,7 +62,7 @@ def macro(request: Request) -> JSONResponse:
 
 @router.get("/macro/assets/correlation")
 def macro_asset_correlation(request: Request) -> JSONResponse:
-    runtime = _authenticated_runtime(request)
+    runtime = _authenticated_macro_runtime(request)
     _validate_correlation_query_params(request)
     window = _correlation_window(request)
     assets, optional_assets = _correlation_assets(request)
@@ -91,9 +91,8 @@ def macro_series(
     request: Request,
     concept_keys: Annotated[str, Query()],
     window: Annotated[str, Query()] = "60d",
-    _token: Annotated[str | None, Query(alias="token")] = None,
 ) -> JSONResponse:
-    runtime = _authenticated_runtime(request)
+    runtime = _authenticated_macro_runtime(request)
     _validate_series_query_params(request)
     resolved_window = _series_window(window)
     resolved_concept_keys = _series_concept_keys(concept_keys)
@@ -118,7 +117,7 @@ def macro_series(
 
 @router.get("/macro/modules/{module_id:path}")
 def macro_module(request: Request, module_id: str) -> JSONResponse:
-    runtime = _authenticated_runtime(request)
+    runtime = _authenticated_macro_runtime(request)
     try:
         config = get_macro_module_config(module_id)
     except UnsupportedMacroModuleError as exc:
@@ -209,8 +208,15 @@ def _required_snapshot_list(snapshot: Mapping[str, Any], field_name: str) -> lis
     return list(value)
 
 
+def _authenticated_macro_runtime(request: Request) -> Any:
+    runtime = _authenticated_runtime(request, allow_query_token=False)
+    if "token" in request.query_params:
+        raise ApiBadRequest("unsupported_query_param", field="token")
+    return runtime
+
+
 def _validate_correlation_query_params(request: Request) -> None:
-    supported = {"assets", "token", "window"}
+    supported = {"assets", "window"}
     for name in request.query_params:
         if name not in supported:
             raise ApiBadRequest("unsupported_query_param", field=name)
@@ -240,7 +246,7 @@ def _correlation_assets(request: Request) -> tuple[tuple[str, ...], tuple[str, .
 
 
 def _validate_series_query_params(request: Request) -> None:
-    supported = {"concept_keys", "token", "window"}
+    supported = {"concept_keys", "window"}
     for name in request.query_params:
         if name not in supported:
             raise ApiBadRequest("unsupported_query_param", field=name)
@@ -286,7 +292,10 @@ def _module_observations(repos: Any, *, module_id: str, concept_keys: tuple[str,
 def _market_event_news_rows(repos: Any, *, module_id: str) -> list[dict[str, Any]]:
     if module_id != "overview":
         return []
-    data = NewsPageQuery(repository=repos.news).list_news(limit=_MACRO_MARKET_EVENT_NEWS_LIMIT)
+    data = NewsPageQuery(repository=repos.news).list_news(
+        limit=_MACRO_MARKET_EVENT_NEWS_LIMIT,
+        macro_event_flow=True,
+    )
     return [dict(row) for row in data["items"]]
 
 

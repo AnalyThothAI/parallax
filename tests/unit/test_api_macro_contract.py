@@ -85,7 +85,13 @@ def test_macro_api_returns_latest_snapshot_without_postgres() -> None:
                 "contradictions": [],
                 "watch_triggers": [{"code": "vix_breaks_30"}],
                 "invalidations": [{"code": "sofr_iorb_normalizes"}],
-                "trade_map": [{"expression": "risk_down_credit_sensitive", "time_window": "1w"}],
+                "trade_map": [
+                    {
+                        "expression": "risk_down_credit_sensitive",
+                        "label": "风险降档 / 信用敏感",
+                        "time_window": "1w",
+                    }
+                ],
                 "top_changes": [
                     {
                         "code": "sofr_above_iorb",
@@ -101,6 +107,15 @@ def test_macro_api_returns_latest_snapshot_without_postgres() -> None:
                         "label": "缺少当前数据：SPX",
                         "description": "检查对应 provider 导入与最新观测。",
                         "severity": "error",
+                    }
+                ],
+                "scenario_cases": [
+                    {
+                        "case": "base",
+                        "label": "基准情景",
+                        "thesis": "风险降档延续。",
+                        "trade": "降低信用敏感 beta。",
+                        "invalidation": "美元与信用压力同步回落。",
                     }
                 ],
             },
@@ -198,7 +213,13 @@ def test_macro_api_returns_latest_snapshot_without_postgres() -> None:
                 "contradictions": [],
                 "watch_triggers": [{"code": "vix_breaks_30"}],
                 "invalidations": [{"code": "sofr_iorb_normalizes"}],
-                "trade_map": [{"expression": "risk_down_credit_sensitive", "time_window": "1w"}],
+                "trade_map": [
+                    {
+                        "expression": "risk_down_credit_sensitive",
+                        "label": "风险降档 / 信用敏感",
+                        "time_window": "1w",
+                    }
+                ],
                 "top_changes": [
                     {
                         "code": "sofr_above_iorb",
@@ -214,6 +235,15 @@ def test_macro_api_returns_latest_snapshot_without_postgres() -> None:
                         "label": "缺少当前数据：SPX",
                         "description": "检查对应 provider 导入与最新观测。",
                         "severity": "error",
+                    }
+                ],
+                "scenario_cases": [
+                    {
+                        "case": "base",
+                        "label": "基准情景",
+                        "thesis": "风险降档延续。",
+                        "trade": "降低信用敏感 beta。",
+                        "invalidation": "美元与信用压力同步回落。",
                     }
                 ],
             },
@@ -407,6 +437,8 @@ def test_macro_module_api_returns_backend_module_view() -> None:
                 "rates:dgs2": {
                     "label": "2年期美债收益率",
                     "short_label": "2Y",
+                    "description": "政策预期敏感的短端美债收益率",
+                    "unit_label": "%",
                     "latest": {"value": 3.9, "observed_at": "2026-05-20", "unit": "percent"},
                     "freshness_days": 1,
                     "history_points": 1,
@@ -417,6 +449,8 @@ def test_macro_module_api_returns_backend_module_view() -> None:
                 "rates:dgs10": {
                     "label": "10年期美债收益率",
                     "short_label": "10Y",
+                    "description": "美国长期无风险利率基准",
+                    "unit_label": "%",
                     "latest": {"value": 4.7, "observed_at": "2026-05-20", "unit": "percent"},
                     "freshness_days": 1,
                     "history_points": 1,
@@ -426,7 +460,11 @@ def test_macro_module_api_returns_backend_module_view() -> None:
                 },
             },
             "chain_json": {"rates": {"regime": "tightening"}},
-            "scenario_json": {"current_regime": "tightening", "watch_triggers": [{"code": "higher_real_rates"}]},
+            "scenario_json": {
+                "current_regime": "tightening",
+                "confidence": 0.64,
+                "watch_triggers": [{"code": "higher_real_rates"}],
+            },
             "source_coverage_json": {"latest_coverage_ratio": 1.0, "history_coverage_ratio": 0.0},
             "data_gaps_json": build_macro_data_gaps(["insufficient_history:20d"]),
             "scorecard_json": {"projection_version": "macro_regime_v4", "chain_average": 7.1},
@@ -500,7 +538,29 @@ def test_macro_overview_module_api_loads_event_concepts_for_market_event_flow() 
     snapshot = _macro_snapshot()
     snapshot["scenario_json"] = {
         "current_regime": "funding_stress",
-        "trade_map": [{"expression": "risk_down_credit_sensitive", "time_window": "1w"}],
+        "confidence": 0.72,
+        "confirmations": [],
+        "contradictions": [],
+        "watch_triggers": [],
+        "invalidations": [],
+        "top_changes": [],
+        "quality_blockers": [],
+        "trade_map": [
+            {
+                "expression": "risk_down_credit_sensitive",
+                "label": "风险降档 / 信用敏感",
+                "time_window": "1w",
+            }
+        ],
+        "scenario_cases": [
+            {
+                "case": "base",
+                "label": "基准情景",
+                "thesis": "风险降档延续。",
+                "trade": "降低信用敏感 beta。",
+                "invalidation": "美元与信用压力同步回落。",
+            }
+        ],
     }
     repo = FakeMacroIntelRepository(
         snapshot=snapshot,
@@ -570,6 +630,7 @@ def test_macro_overview_module_api_loads_event_concepts_for_market_event_flow() 
             "source_url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
             "kind": "calendar",
             "window": "0-3d",
+            "window_label": "0-3天",
             "severity": "high",
             "severity_label": "高",
             "category": "policy",
@@ -603,6 +664,17 @@ def test_macro_overview_module_api_loads_news_rows_for_market_event_flow() -> No
                     "scope": ["macro_policy", "equities", "fx"],
                     "status": "classified",
                 },
+                "macro_event_flow": {
+                    "window": "recent",
+                    "window_label": "近期",
+                    "severity": "low",
+                    "severity_label": "低",
+                    "category": "macro_policy",
+                    "category_label": "美联储",
+                    "impact": "mainline_context",
+                    "impact_label": "不改主线",
+                    "watch": "SPX · 美元 · 美联储",
+                },
                 "signal": {
                     "agent_signal": {
                         "status": "ready",
@@ -625,7 +697,16 @@ def test_macro_overview_module_api_loads_news_rows_for_market_event_flow() -> No
         response = client.get("/api/macro/modules/overview", headers={"Authorization": "Bearer secret"})
 
     assert response.status_code == 200
-    assert news.calls == [{"cursor": None, "limit": 7, "q": None, "signal": None, "status": None}]
+    assert news.calls == [
+        {
+            "cursor": None,
+            "limit": 7,
+            "macro_event_flow": True,
+            "q": None,
+            "signal": None,
+            "status": None,
+        }
+    ]
     payload = response.json()
     assert payload["data"]["module_read"]["market_event_flow"]["rows"] == [
         {
@@ -637,6 +718,7 @@ def test_macro_overview_module_api_loads_news_rows_for_market_event_flow() -> No
             "source_url": "https://news.google.com/articles/macro-1",
             "kind": "news",
             "window": "recent",
+            "window_label": "近期",
             "severity": "low",
             "severity_label": "低",
             "category": "macro_policy",
@@ -719,7 +801,7 @@ def test_macro_series_api_returns_bounded_concept_series() -> None:
     ]
 
 
-def test_macro_series_api_accepts_query_token_auth() -> None:
+def test_macro_series_api_rejects_query_token_auth() -> None:
     repo = FakeMacroIntelRepository(
         snapshot=None,
         observations=[_macro_observation("rates:dgs10", "2026-05-20", 4.7)],
@@ -729,24 +811,22 @@ def test_macro_series_api_accepts_query_token_auth() -> None:
     with TestClient(app) as client:
         response = client.get("/api/macro/series?concept_keys=rates:dgs10&window=60d&token=secret")
 
-    assert response.status_code == 200
-    assert repo.observations_for_concepts_call == {
-        "concept_keys": ("rates:dgs10",),
-        "lookback_days": 90,
-        "limit_per_series": 90,
-    }
-    payload = response.json()
-    assert payload["data"]["series"]["rates:dgs10"]["status"] == "insufficient_history"
-    assert payload["data"]["series"]["rates:dgs10"]["data_gaps"] == [
-        {
-            "code": "insufficient_history_2_points",
-            "label": "历史样本不足：至少需要 2 个点才能绘图",
-            "severity": "warning",
-            "score_participation": False,
-            "concept_key": "rates:dgs10",
-        }
-    ]
-    assert payload["data"]["data_gaps"] == payload["data"]["series"]["rates:dgs10"]["data_gaps"]
+    assert response.status_code == 401
+    assert response.json() == {"ok": False, "error": "unauthorized"}
+    assert repo.observations_for_concepts_call is None
+
+
+def test_macro_series_api_rejects_token_query_param_even_with_bearer_auth() -> None:
+    app = _app(FakeMacroIntelRepository(snapshot=None))
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/macro/series?concept_keys=rates:dgs10&window=60d&token=secret",
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {"ok": False, "error": "unsupported_query_param", "field": "token"}
 
 
 def test_macro_series_api_rejects_provider_series_keys() -> None:
@@ -833,12 +913,14 @@ class FakeNewsRepository:
         cursor: str | None = None,
         status: str | None = None,
         signal: str | None = None,
+        macro_event_flow: bool = False,
         q: str | None = None,
     ):
         self.calls.append(
             {
                 "cursor": cursor,
                 "limit": limit,
+                "macro_event_flow": macro_event_flow,
                 "q": q,
                 "signal": signal,
                 "status": status,
@@ -887,6 +969,7 @@ def _macro_observation(concept_key: str, observed_at: str, value: float) -> dict
         "observed_at": observed_at,
         "value_numeric": value,
         "unit": "price",
+        "data_quality": "ok",
         "ingested_at_ms": 1_779_000_000_000,
     }
 
@@ -904,9 +987,49 @@ def _macro_snapshot() -> dict[str, object]:
         "triggers_json": [{"code": "sofr_above_iorb"}],
         "data_gaps_json": [],
         "source_coverage_json": {"latest_coverage_ratio": 1.0},
-        "features_json": {"rates:dgs10": {"history_points": 252, "data_quality": "ok"}},
+        "features_json": {
+            "rates:dgs10": {
+                "concept_key": "rates:dgs10",
+                "label": "10年期美债收益率",
+                "short_label": "10Y",
+                "description": "美国长期无风险利率基准",
+                "unit": "percent",
+                "unit_label": "%",
+                "latest": {"value": 4.7, "observed_at": "2026-05-20", "unit": "percent"},
+                "history_points": 252,
+                "data_quality": "ok",
+                "source": {"name": "fred", "series_key": "fred:DGS10"},
+            }
+        },
         "chain_json": {"liquidity": {"regime": "supportive"}},
-        "scenario_json": {"current_regime": "risk_on"},
+        "scenario_json": {
+            "current_regime": "risk_on",
+            "confidence": 0.68,
+            "confirmations": [],
+            "contradictions": [],
+            "watch_triggers": [],
+            "invalidations": [],
+            "top_changes": [
+                {
+                    "code": "liquidity_supports_risk",
+                    "label": "流动性支持风险偏好",
+                    "evidence_label": "SOFR-IORB pressure remains contained",
+                    "node": "liquidity",
+                    "kind": "confirmation",
+                }
+            ],
+            "quality_blockers": [],
+            "trade_map": [],
+            "scenario_cases": [
+                {
+                    "case": "base",
+                    "label": "基准情景",
+                    "thesis": "风险偏好维持。",
+                    "trade": "维持风险资产观察仓位。",
+                    "invalidation": "流动性压力重新抬头。",
+                }
+            ],
+        },
         "scorecard_json": {"projection_version": "macro_regime_v4"},
         "computed_at_ms": 1_779_000_000_000,
     }

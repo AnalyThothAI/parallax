@@ -49,7 +49,8 @@ class _ScriptedConnection:
     def execute(self, sql: str, params: dict[str, Any] | None = None) -> _ScriptedConnection:
         self.sql.append(str(sql))
         self.params.append(params or {})
-        self.rowcount = 1 if self.results and self.results[0] is not None else 0
+        next_result = self.results[0] if self.results else None
+        self.rowcount = 1 if next_result is not None else 0
         return self
 
     def fetchone(self) -> dict[str, Any] | None:

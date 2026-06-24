@@ -77,7 +77,7 @@ test.describe("macro terminal navigation hardening", () => {
     await expect(primaryNavigation.getByRole("link", { name: "大类资产" })).toBeVisible();
 
     await expect(page.getByRole("region", { name: "主市场证据" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "美股风险" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "美股风险", exact: true })).toBeVisible();
     await expectNoDocumentHorizontalOverflow(page);
     await expectNoUnhandledApiRequests(page);
   });

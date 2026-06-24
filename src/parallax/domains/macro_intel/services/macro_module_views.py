@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -22,8 +22,10 @@ TRADE_MAP_RELIABILITY_CONCEPTS = ("asset:ndx", "crypto:btc", "asset:gld", "asset
 TRADE_MAP_RELIABILITY_WINDOW_DAYS = 60
 TRADE_MAP_PAPER_NOTIONAL_USD = 10_000
 
+type _ReferenceGapRule = tuple[str, str, tuple[str, ...], str]
+type _ReferenceGapRules = tuple[_ReferenceGapRule, ...]
+
 _TRADE_MAP_HOLDING_PERIODS = (("1d", "1D", 1), ("5d", "5D", 5), ("20d", "20D", 20))
-_ReferenceGapGroup = tuple[str, str, tuple[str, ...], str]
 
 _ASSET_CHANGE_WINDOWS = (
     ("1w", "change_1w_pct", 7),
@@ -50,23 +52,6 @@ _DATA_CREDIBILITY_CONCEPTS = (
 )
 _DATA_CREDIBILITY_MIN_ROWS = 6
 _DATA_CREDIBILITY_OK_QUALITIES = {"ok", "ready"}
-
-_NEWS_MARKET_SCOPE_LABELS = {
-    "assets": "大类资产",
-    "commodities": "商品",
-    "credit": "信用市场",
-    "crypto": "加密货币",
-    "economy": "经济数据",
-    "employment": "就业",
-    "equities": "美股",
-    "fx": "外汇",
-    "inflation": "通胀",
-    "liquidity": "流动性",
-    "macro_policy": "美联储",
-    "macro_rates": "利率",
-    "rates": "利率",
-    "volatility": "波动率",
-}
 
 _EQUITY_DIAGNOSTIC_PRICE_ROWS = (
     {"key": "spx", "label": "SPX", "concept_key": "asset:spx", "kind": "risk"},
@@ -302,13 +287,6 @@ _TRADE_MAP_EXPECTATIONS = {
     },
 }
 
-_TRADE_MAP_EXPRESSION_LABELS = {
-    "credit_beta_underweight": "低配信用 beta",
-    "duration_pressure_quality_over_growth": "久期承压 / 质量优于成长",
-    "risk_down_credit_sensitive": "风险降档 / 信用敏感",
-    "risk_on_liquidity_beta": "流动性 risk-on beta",
-}
-
 
 def build_macro_module_view(
     module_id: str,
@@ -330,6 +308,7 @@ def build_macro_module_view(
         )
 
     snapshot_sections = _macro_module_view_snapshot_sections(snapshot)
+    snapshot_status = _required_snapshot_status(snapshot)
     concept_keys = _module_concept_keys(config)
     feature_map = _module_feature_map(
         snapshot_sections["features_json"],
@@ -344,7 +323,7 @@ def build_macro_module_view(
         feature_map=feature_map,
         concept_keys=concept_keys,
         primary_chart=primary_chart,
-        snapshot_status=str(snapshot.get("status") or ""),
+        snapshot_status=snapshot_status,
     )
 
     tables = [_table(spec, feature_map) for spec in config.table_specs]
@@ -366,7 +345,6 @@ def build_macro_module_view(
         module_read=_module_read(
             config=config,
             feature_map=feature_map,
-            primary_chart=primary_chart,
             data_health=data_health,
             snapshot=snapshot,
             scenario=snapshot_sections["scenario_json"],
@@ -471,11 +449,9 @@ def _feature_from_observations(
     latest_observation = observations[-1]
     latest = history[-1]
     unit = latest_observation.get("unit")
-    quality = str(latest_observation.get("data_quality") or "ok")
+    quality = _required_observation_quality(latest_observation)
     series_key = str(latest_observation.get("series_key") or "").strip()
-    source_name = str(
-        latest_observation.get("source_name") or latest_observation.get("provider") or _provider_from_series(series_key)
-    )
+    source_name = _required_observation_source_name(latest_observation)
     history_points = len(history)
     history_ready = history_points >= MACRO_MIN_CHART_POINTS
     return {
@@ -518,10 +494,8 @@ def _observation_feature_is_newer_or_deeper(
     existing: Mapping[str, Any],
     observation_feature: Mapping[str, Any],
 ) -> bool:
-    existing_points = _int_or_none(existing.get("history_points")) or len(_mapping_list(existing.get("history")))
-    observation_points = _int_or_none(observation_feature.get("history_points")) or len(
-        _mapping_list(observation_feature.get("history"))
-    )
+    existing_points = _required_feature_history_points(existing, context="existing")
+    observation_points = _required_feature_history_points(observation_feature, context="observation")
     if observation_points > existing_points:
         return True
     existing_latest = _parse_date(str(_mapping(existing.get("latest")).get("observed_at") or ""))
@@ -546,12 +520,6 @@ def _merge_observation_feature(existing: Mapping[str, Any], observation_feature:
     return merged
 
 
-def _provider_from_series(series_key: str) -> str:
-    if ":" not in series_key:
-        return ""
-    return series_key.split(":", 1)[0]
-
-
 def _required_snapshot_mapping(snapshot: Mapping[str, Any], field_name: str) -> dict[str, Any]:
     if field_name not in snapshot or snapshot.get(field_name) is None:
         raise ValueError(f"macro_module_view_snapshot_section_required:{field_name}")
@@ -570,6 +538,123 @@ def _required_snapshot_list(snapshot: Mapping[str, Any], field_name: str) -> lis
     if not isinstance(value, Sequence):
         raise ValueError(f"macro_module_view_snapshot_section_invalid:{field_name}")
     return list(value)
+
+
+def _required_snapshot_status(snapshot: Mapping[str, Any]) -> str:
+    if "status" not in snapshot or snapshot.get("status") is None:
+        raise ValueError("macro_module_view_snapshot_status_required")
+    status = str(snapshot.get("status")).strip()
+    if not status:
+        raise ValueError("macro_module_view_snapshot_status_required")
+    return _status_key(status)
+
+
+def _required_snapshot_asof_date(snapshot: Mapping[str, Any]) -> str:
+    if "asof_date" not in snapshot or snapshot.get("asof_date") is None:
+        raise ValueError("macro_module_view_snapshot_asof_date_required")
+    asof_date = str(snapshot.get("asof_date")).strip()
+    if not asof_date:
+        raise ValueError("macro_module_view_snapshot_asof_date_required")
+    return asof_date
+
+
+def _required_snapshot_computed_at_ms(snapshot: Mapping[str, Any]) -> int:
+    if "computed_at_ms" not in snapshot or snapshot.get("computed_at_ms") is None:
+        raise ValueError("macro_module_view_snapshot_computed_at_required")
+    computed_at_ms = _int_or_none(snapshot.get("computed_at_ms"))
+    if computed_at_ms is None:
+        raise ValueError("macro_module_view_snapshot_computed_at_required")
+    return computed_at_ms
+
+
+def _required_feature_quality(concept_key: str, feature: Mapping[str, Any]) -> str:
+    if "data_quality" not in feature or feature.get("data_quality") is None:
+        raise ValueError(f"macro_module_view_feature_quality_required:{concept_key}")
+    quality = str(feature.get("data_quality")).strip()
+    if not quality:
+        raise ValueError(f"macro_module_view_feature_quality_required:{concept_key}")
+    return quality
+
+
+def _required_feature_source_label(concept_key: str, feature: Mapping[str, Any]) -> str:
+    source_label = _source_label(_mapping(feature.get("source")))
+    if not source_label:
+        raise ValueError(f"macro_module_view_feature_source_required:{concept_key}")
+    return source_label
+
+
+def _required_feature_latest(concept_key: str, feature: Mapping[str, Any]) -> Mapping[str, Any]:
+    if "latest" not in feature or feature.get("latest") is None:
+        raise ValueError(f"macro_module_view_feature_latest_required:{concept_key}")
+    latest = feature.get("latest")
+    if not isinstance(latest, Mapping):
+        raise ValueError(f"macro_module_view_feature_latest_required:{concept_key}")
+    return latest
+
+
+def _required_feature_latest_value(concept_key: str, latest: Mapping[str, Any]) -> float:
+    if "value" not in latest or latest.get("value") is None:
+        raise ValueError(f"macro_module_view_feature_latest_value_required:{concept_key}")
+    value = _number(latest.get("value"))
+    if value is None:
+        raise ValueError(f"macro_module_view_feature_latest_value_required:{concept_key}")
+    return value
+
+
+def _required_feature_latest_observed_at(concept_key: str, latest: Mapping[str, Any]) -> str:
+    if "observed_at" not in latest or latest.get("observed_at") is None:
+        raise ValueError(f"macro_module_view_feature_latest_observed_at_required:{concept_key}")
+    observed_at = str(latest.get("observed_at")).strip()
+    if not observed_at:
+        raise ValueError(f"macro_module_view_feature_latest_observed_at_required:{concept_key}")
+    return observed_at
+
+
+def _required_feature_latest_unit(concept_key: str, latest: Mapping[str, Any]) -> str:
+    if "unit" not in latest or latest.get("unit") is None:
+        raise ValueError(f"macro_module_view_feature_latest_unit_required:{concept_key}")
+    unit = str(latest.get("unit")).strip()
+    if not unit:
+        raise ValueError(f"macro_module_view_feature_latest_unit_required:{concept_key}")
+    return unit
+
+
+def _required_feature_history_points(feature: Mapping[str, Any], *, context: str) -> int:
+    if "history_points" not in feature or feature.get("history_points") is None:
+        raise ValueError(f"macro_module_view_feature_history_points_required:{context}")
+    history_points = _int_or_none(feature.get("history_points"))
+    if history_points is None:
+        raise ValueError(f"macro_module_view_feature_history_points_required:{context}")
+    return history_points
+
+
+def _required_observation_quality(observation: Mapping[str, Any]) -> str:
+    concept_key = str(observation.get("concept_key") or "").strip() or "<missing>"
+    if "data_quality" not in observation or observation.get("data_quality") is None:
+        raise ValueError(f"macro_module_view_observation_quality_required:{concept_key}")
+    quality = str(observation.get("data_quality")).strip()
+    if not quality:
+        raise ValueError(f"macro_module_view_observation_quality_required:{concept_key}")
+    return quality
+
+
+def _required_observation_source_name(observation: Mapping[str, Any]) -> str:
+    concept_key = str(observation.get("concept_key") or "").strip() or "<missing>"
+    if "source_name" not in observation or observation.get("source_name") is None:
+        raise ValueError(f"macro_module_view_observation_source_name_required:{concept_key}")
+    source_name = str(observation.get("source_name")).strip()
+    if not source_name:
+        raise ValueError(f"macro_module_view_observation_source_name_required:{concept_key}")
+    return source_name
+
+
+def _required_data_health_status(data_health: Mapping[str, Any]) -> str:
+    if "summary_status" not in data_health or data_health.get("summary_status") is None:
+        raise ValueError("macro_module_view_data_health_status_required")
+    status = str(data_health.get("summary_status")).strip()
+    if not status:
+        raise ValueError("macro_module_view_data_health_status_required")
+    return _status_key(status)
 
 
 def _missing_view(
@@ -668,9 +753,9 @@ def _ordered_payload(
 
 
 def _snapshot_header(config: MacroModuleConfig, snapshot: Mapping[str, Any]) -> dict[str, Any]:
-    status = str(snapshot.get("status") or "unknown")
-    asof_date = snapshot.get("asof_date")
-    computed_at_ms = snapshot.get("computed_at_ms")
+    status = _required_snapshot_status(snapshot)
+    asof_date = _required_snapshot_asof_date(snapshot)
+    computed_at_ms = _required_snapshot_computed_at_ms(snapshot)
     return {
         "module_id": config.module_id,
         "route_path": config.route_path,
@@ -682,7 +767,7 @@ def _snapshot_header(config: MacroModuleConfig, snapshot: Mapping[str, Any]) -> 
         "status": status,
         "status_label": _status_label(status),
         "asof_date": asof_date,
-        "asof_label": f"截至 {asof_date}" if asof_date else "截至 --",
+        "asof_label": f"截至 {asof_date}",
         "computed_at_ms": computed_at_ms,
         "computed_at_label": _computed_at_label(computed_at_ms),
         "source_snapshot_id": snapshot.get("snapshot_id"),
@@ -691,28 +776,32 @@ def _snapshot_header(config: MacroModuleConfig, snapshot: Mapping[str, Any]) -> 
 
 
 def _tile(concept_key: str, feature: Mapping[str, Any]) -> dict[str, Any]:
-    latest = _mapping(feature.get("latest"))
-    source = _mapping(feature.get("source"))
-    value = _number(latest.get("value"))
+    display = _required_feature_display_metadata(concept_key, feature)
+    latest = _required_feature_latest(concept_key, feature)
+    value = _required_feature_latest_value(concept_key, latest)
+    observed_at = _required_feature_latest_observed_at(concept_key, latest)
+    unit = _required_feature_latest_unit(concept_key, latest)
     delta_20d = _number(_mapping(feature.get("delta")).get("20d"))
-    quality = str(feature.get("data_quality") or "unknown")
+    quality = _required_feature_quality(concept_key, feature)
+    source_label = _required_feature_source_label(concept_key, feature)
+    history_points = _required_feature_history_points(feature, context=concept_key)
     return {
         "concept_key": concept_key,
-        "label": _feature_label(concept_key, feature),
-        "short_label": _feature_short_label(concept_key, feature),
-        "description": _feature_description(concept_key, feature),
-        "value": latest.get("value"),
-        "display_value": _display_number(value),
-        "unit": latest.get("unit"),
-        "unit_label": _feature_unit_label(concept_key, feature, latest),
+        "label": display["label"],
+        "short_label": display["short_label"],
+        "description": display["description"],
+        "value": value,
+        "display_value": _display_required_number(value),
+        "unit": unit,
+        "unit_label": display["unit_label"],
         "delta_label": _delta_label(delta_20d),
-        "source_label": _source_label(source),
-        "observed_at": latest.get("observed_at"),
-        "observed_at_label": _observed_label(latest.get("observed_at")),
+        "source_label": source_label,
+        "observed_at": observed_at,
+        "observed_at_label": f"观测于 {observed_at}",
         "quality": quality,
         "quality_label": _quality_label(quality),
         "score_participation": bool(feature.get("score_participation")),
-        "history_points": _int_or_none(feature.get("history_points")),
+        "history_points": history_points,
     }
 
 
@@ -739,24 +828,40 @@ def _primary_chart(spec: MacroChartSpec, feature_map: Mapping[str, Any]) -> dict
 
 
 def _chart_series(concept_key: str, feature: Mapping[str, Any]) -> dict[str, Any]:
-    history = _sequence(feature.get("history"))
-    points = [
-        {"observed_at": point.get("observed_at"), "value": point.get("value")}
-        for point in history
-        if isinstance(point, Mapping)
-    ]
-    latest = _mapping(feature.get("latest"))
-    if not points and latest.get("value") is not None:
-        points = [{"observed_at": latest.get("observed_at"), "value": latest.get("value")}]
+    display = _required_feature_display_metadata(concept_key, feature)
+    points = _chart_history_points(concept_key, feature)
+    latest = _required_feature_latest(concept_key, feature)
+    _required_feature_latest_unit(concept_key, latest)
     return {
         "concept_key": concept_key,
-        "label": _feature_label(concept_key, feature),
-        "short_label": _feature_short_label(concept_key, feature),
-        "unit_label": _feature_unit_label(concept_key, feature, latest),
+        "label": display["label"],
+        "short_label": display["short_label"],
+        "unit_label": display["unit_label"],
         "point_count": len(points),
         "status": "ok" if len(points) >= MACRO_MIN_CHART_POINTS else "insufficient_history",
         "points": points,
     }
+
+
+def _chart_history_points(concept_key: str, feature: Mapping[str, Any]) -> list[dict[str, object]]:
+    if feature.get("history") is None:
+        return []
+    history = feature.get("history")
+    if not isinstance(history, Sequence) or isinstance(history, str):
+        raise ValueError(f"macro_chart_series_history_required:{concept_key}")
+
+    points: list[dict[str, object]] = []
+    for point in history:
+        if not isinstance(point, Mapping):
+            raise ValueError(f"macro_chart_series_history_row_required:{concept_key}")
+        observed_at = point.get("observed_at")
+        if not isinstance(observed_at, str) or not observed_at.strip():
+            raise ValueError(f"macro_chart_series_history_observed_at_required:{concept_key}")
+        value = _number(point.get("value"))
+        if value is None:
+            raise ValueError(f"macro_chart_series_history_value_required:{concept_key}")
+        points.append({"observed_at": observed_at, "value": value})
+    return points
 
 
 def _table(spec: MacroTableSpec, feature_map: Mapping[str, Any]) -> dict[str, Any]:
@@ -777,24 +882,28 @@ def _table(spec: MacroTableSpec, feature_map: Mapping[str, Any]) -> dict[str, An
 
 
 def _table_row(concept_key: str, feature: Mapping[str, Any]) -> dict[str, Any]:
-    latest = _mapping(feature.get("latest"))
-    source = _mapping(feature.get("source"))
-    value = _number(latest.get("value"))
+    display = _required_feature_display_metadata(concept_key, feature)
+    latest = _required_feature_latest(concept_key, feature)
+    value = _required_feature_latest_value(concept_key, latest)
+    _required_feature_latest_observed_at(concept_key, latest)
+    _required_feature_latest_unit(concept_key, latest)
+    _required_feature_history_points(feature, context=concept_key)
     delta_20d = _number(_mapping(feature.get("delta")).get("20d"))
-    quality = str(feature.get("data_quality") or "unknown")
+    quality = _required_feature_quality(concept_key, feature)
+    source_label = _required_feature_source_label(concept_key, feature)
     return {
         "row_id": concept_key,
         "row_quality": quality,
-        "source_state": {"label": _source_label(source), "status": quality},
+        "source_state": {"label": source_label, "status": quality},
         "cells": {
             "indicator": {
-                "display_value": _feature_label(concept_key, feature),
-                "sort_value": _feature_short_label(concept_key, feature),
+                "display_value": display["label"],
+                "sort_value": display["short_label"],
             },
-            "latest": {"display_value": _display_number(value), "sort_value": value},
+            "latest": {"display_value": _display_required_number(value), "sort_value": value},
             "delta_20d": {"display_value": _delta_label(delta_20d), "sort_value": delta_20d},
             "quality": {"display_value": _quality_label(quality), "sort_value": quality},
-            "source": {"display_value": _source_label(source), "sort_value": _source_label(source)},
+            "source": {"display_value": source_label, "sort_value": source_label},
         },
     }
 
@@ -810,9 +919,13 @@ def _availability_table(
     for concept_key in concept_keys:
         feature = _mapping(feature_map.get(concept_key))
         status = "ok" if feature else "missing"
-        latest = _mapping(feature.get("latest"))
+        latest = _required_feature_latest(concept_key, feature) if feature else {}
+        if feature:
+            _required_feature_latest_value(concept_key, latest)
+            _required_feature_latest_unit(concept_key, latest)
+        observed_at = _required_feature_latest_observed_at(concept_key, latest) if feature else None
         source = _mapping(feature.get("source"))
-        history_points = _int_or_none(feature.get("history_points"))
+        history_points = _required_feature_history_points(feature, context=concept_key) if feature else None
         required_points = _int_or_none(feature.get("required_history_points"))
         rows.append(
             {
@@ -829,8 +942,8 @@ def _availability_table(
                         "sort_value": status,
                     },
                     "latest": {
-                        "display_value": _observed_label(latest.get("observed_at")) if feature else "观测于 --",
-                        "sort_value": latest.get("observed_at"),
+                        "display_value": f"观测于 {observed_at}" if observed_at else "观测于 --",
+                        "sort_value": observed_at,
                     },
                     "coverage": {
                         "display_value": _history_coverage_label(history_points, required_points),
@@ -856,27 +969,10 @@ def _availability_table(
                 "cells": {
                     "item": {"display_value": label, "sort_value": code},
                     "status": {"display_value": severity, "sort_value": severity},
-                    "latest": {"display_value": "n/a", "sort_value": None},
-                    "coverage": {"display_value": "计分排除", "sort_value": 0},
                     "notes": {
                         "display_value": remediation_hint,
                         "sort_value": remediation_hint,
                     },
-                },
-            }
-        )
-    if not rows:
-        rows.append(
-            {
-                "row_id": f"{config.module_id}:available",
-                "row_quality": "ok",
-                "source_state": {"label": "数据可用性", "status": "ok"},
-                "cells": {
-                    "item": {"display_value": config.title, "sort_value": config.module_id},
-                    "status": {"display_value": "无显式缺口", "sort_value": "ok"},
-                    "latest": {"display_value": "n/a", "sort_value": None},
-                    "coverage": {"display_value": "可用", "sort_value": 1},
-                    "notes": {"display_value": "当前模块没有配置级缺口。", "sort_value": "ok"},
                 },
             }
         )
@@ -900,7 +996,6 @@ def _module_read(
     *,
     config: MacroModuleConfig,
     feature_map: Mapping[str, Any],
-    primary_chart: Mapping[str, Any],
     data_health: Mapping[str, Any],
     snapshot: Mapping[str, Any],
     scenario: Mapping[str, Any],
@@ -908,12 +1003,12 @@ def _module_read(
     news_rows: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
     if config.module_id == "overview":
-        regime = str(scenario.get("current_regime") or snapshot.get("regime") or "data_gap")
-        confidence = _number(scenario.get("confidence")) or 0.0
+        regime = _required_scenario_current_regime(scenario)
+        confidence = _required_scenario_confidence(scenario)
         headline_label = _regime_label(regime)
         confidence_label = _confidence_label(confidence)
     else:
-        status = str(data_health.get("summary_status") or primary_chart.get("status") or "unknown")
+        status = _required_data_health_status(data_health)
         headline_label = _status_label(status)
         present = len([concept_key for concept_key in _module_concept_keys(config) if concept_key in feature_map])
         total = len(_module_concept_keys(config))
@@ -928,7 +1023,6 @@ def _module_read(
     if config.module_id == "overview":
         read["decision_console"] = _decision_console(
             scenario=scenario,
-            data_health=data_health,
             feature_map=feature_map,
             observations=observations,
         )
@@ -987,6 +1081,45 @@ def _module_read(
         if inflation_diagnostics is not None:
             read["inflation_diagnostics"] = inflation_diagnostics
     return read
+
+
+def _required_scenario_current_regime(scenario: Mapping[str, Any]) -> str:
+    if "current_regime" not in scenario or scenario.get("current_regime") is None:
+        raise ValueError("Missing macro scenario current_regime metadata")
+    regime = str(scenario.get("current_regime")).strip()
+    if not regime:
+        raise ValueError("Missing macro scenario current_regime metadata")
+    return regime
+
+
+def _required_scenario_confidence(scenario: Mapping[str, Any]) -> float:
+    if "confidence" not in scenario or scenario.get("confidence") is None:
+        raise ValueError("Missing macro scenario confidence metadata")
+    confidence = _number(scenario.get("confidence"))
+    if confidence is None:
+        raise ValueError("Missing macro scenario confidence metadata")
+    return confidence
+
+
+def _required_scenario_mapping_list(
+    scenario: Mapping[str, Any],
+    field_name: str,
+    *,
+    allow_empty: bool = False,
+) -> list[Mapping[str, Any]]:
+    if field_name not in scenario or scenario.get(field_name) is None:
+        raise ValueError(f"Missing macro scenario {field_name} metadata")
+    value = scenario.get(field_name)
+    if isinstance(value, Mapping | str | bytes | bytearray) or not isinstance(value, Sequence):
+        raise ValueError(f"Missing macro scenario {field_name} metadata")
+    items: list[Mapping[str, Any]] = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            raise ValueError(f"Missing macro scenario {field_name} metadata")
+        items.append(item)
+    if not allow_empty and not items:
+        raise ValueError(f"Missing macro scenario {field_name} metadata")
+    return items
 
 
 def _structured_analysis(
@@ -1057,26 +1190,17 @@ def _structured_analysis(
     }
 
 
-def _structured_market_thesis_row(scenario: Mapping[str, Any]) -> dict[str, Any] | None:
+def _structured_market_thesis_row(scenario: Mapping[str, Any]) -> dict[str, Any]:
     regime = str(scenario.get("current_regime") or "").strip()
     regime_label = _regime_label(regime) if regime else None
     base_case = _structured_base_case(scenario)
-    thesis = str(base_case.get("thesis") or "").strip()
-    if thesis:
-        fact = f"市场主线：{thesis}"
-    elif regime_label:
-        fact = f"市场主线：{regime_label}。"
-    else:
-        return None
+    thesis = _required_base_case_text(base_case, "thesis")
+    fact = f"市场主线：{thesis}"
     evidence = _structured_market_evidence(scenario)
-    trade = str(base_case.get("trade") or "").strip()
-    if not trade:
-        trade = _structured_market_trade(scenario)
-    invalidation = str(base_case.get("invalidation") or "").strip()
-    if not invalidation:
-        invalidation = _structured_market_invalidation(scenario)
-    if not fact or not evidence or not trade or not invalidation:
-        return None
+    if not evidence:
+        raise ValueError("macro_structured_market_thesis_evidence_required")
+    trade = _required_base_case_text(base_case, "trade")
+    invalidation = _required_base_case_text(base_case, "invalidation")
     return {
         "key": "market_thesis",
         "label": "市场主线",
@@ -1089,70 +1213,56 @@ def _structured_market_thesis_row(scenario: Mapping[str, Any]) -> dict[str, Any]
 
 
 def _structured_base_case(scenario: Mapping[str, Any]) -> Mapping[str, Any]:
-    scenario_cases = _mapping_list(scenario.get("scenario_cases"))
-    return next(
-        (case for case in scenario_cases if str(case.get("case") or "") == "base"),
-        scenario_cases[0] if scenario_cases else {},
-    )
+    scenario_cases = _required_scenario_mapping_list(scenario, "scenario_cases")
+    base_case = next((case for case in scenario_cases if str(case.get("case") or "") == "base"), None)
+    if base_case is None:
+        raise ValueError("Missing macro scenario base case metadata")
+    return base_case
+
+
+def _required_base_case_text(base_case: Mapping[str, Any], field_name: str) -> str:
+    if field_name not in base_case or base_case.get(field_name) is None:
+        raise ValueError(f"Missing macro scenario base case {field_name} metadata")
+    value = str(base_case.get(field_name)).strip()
+    if not value:
+        raise ValueError(f"Missing macro scenario base case {field_name} metadata")
+    return value
 
 
 def _structured_market_evidence(scenario: Mapping[str, Any]) -> list[str]:
     evidence: list[str] = []
-    for item in _mapping_list(scenario.get("top_changes")):
-        line = _structured_signal_line(item)
-        if line:
-            evidence.append(line)
+    for item in _required_scenario_mapping_list(scenario, "top_changes", allow_empty=True):
+        evidence.append(_structured_signal_line(item))
         if len(evidence) >= 2:
             break
-    for item in _mapping_list(scenario.get("confirmations")):
+    for item in _required_scenario_mapping_list(scenario, "confirmations", allow_empty=True):
         if len(evidence) >= 2:
             break
-        line = _structured_signal_line(item)
-        if line:
-            evidence.append(line)
+        evidence.append(_structured_signal_line(item))
     trade = _structured_market_trade(scenario)
     if trade:
         evidence.append(f"Trade Map · {trade.removeprefix('当前表达：')}")
     return evidence
 
 
-def _structured_signal_line(item: Mapping[str, Any]) -> str | None:
-    code = str(item.get("code") or "").strip()
-    label = str(item.get("label") or _code_label(code) or "").strip()
+def _structured_signal_line(item: Mapping[str, Any]) -> str:
+    label = str(item.get("label") or "").strip()
     if not label:
-        return None
-    detail = str(
-        item.get("evidence_label")
-        or item.get("description")
-        or item.get("change_label")
-        or item.get("value_label")
-        or ""
-    ).strip()
-    return f"{label} · {detail}" if detail else label
+        raise ValueError("macro_structured_signal_line_label_required")
+    detail = str(item.get("evidence_label") or "").strip()
+    if not detail:
+        raise ValueError("macro_structured_signal_line_evidence_label_required")
+    return f"{label} · {detail}"
 
 
 def _structured_market_trade(scenario: Mapping[str, Any]) -> str:
-    labels = [
-        str(item.get("label") or _trade_map_expression_label(str(item.get("expression") or "")) or "").strip()
-        for item in _mapping_list(scenario.get("trade_map"))
-        if str(item.get("expression") or "").strip()
-    ]
-    labels = [label for label in labels if label]
+    labels: list[str] = []
+    for item in _required_scenario_mapping_list(scenario, "trade_map", allow_empty=True):
+        _required_trade_map_item_text(item, "expression")
+        labels.append(_required_trade_map_item_text(item, "label"))
     if not labels:
         return ""
     return f"当前表达：{' / '.join(labels[:2])}"
-
-
-def _structured_market_invalidation(scenario: Mapping[str, Any]) -> str:
-    first = next(iter(_mapping_list(scenario.get("invalidations"))), None)
-    if first is None:
-        return ""
-    code = str(first.get("code") or "").strip()
-    label = str(first.get("label") or _code_label(code) or "").strip()
-    description = str(first.get("description") or "").strip()
-    if label and description:
-        return f"{label}：{description}"
-    return label or description
 
 
 def _structured_fed_communication_row(observations: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
@@ -1162,14 +1272,12 @@ def _structured_fed_communication_row(observations: Sequence[Mapping[str, Any]])
     )
     if catalyst is None:
         return None
-    detail = str(catalyst.get("description") or "").strip()
+    detail = str(catalyst.get("detail") or "").strip()
     if not detail:
-        return None
+        raise ValueError("macro_structured_fed_communication_detail_required")
     document_type = str(catalyst.get("document_type") or "").strip()
     document_label = _fed_document_type_label(document_type)
     evidence = _structured_fed_communication_evidence(catalyst)
-    if not evidence:
-        return None
     return {
         "key": "fed_communication",
         "label": "美联储沟通",
@@ -1182,25 +1290,69 @@ def _structured_fed_communication_row(observations: Sequence[Mapping[str, Any]])
 
 
 def _structured_fed_communication_evidence(catalyst: Mapping[str, Any]) -> list[str]:
-    source = str(catalyst.get("source") or "").strip()
-    speaker = str(catalyst.get("speaker") or "").strip()
-    label = str(catalyst.get("label") or "Fed 文档").strip()
+    source = _required_structured_fed_communication_source(catalyst)
+    speaker = _required_structured_fed_communication_speaker(catalyst)
+    label = _required_structured_fed_communication_label(catalyst)
     primary_parts = [label, source, speaker]
     evidence = [" · ".join(part for part in primary_parts if part)]
-    _category, _category_label, _impact, impact_label, watch = _event_flow_classification(catalyst)
+    impact_label = _required_event_catalyst_text(
+        catalyst,
+        "event_flow_impact_label",
+        "macro_structured_fed_communication_impact_label_required",
+    )
+    watch = _required_event_catalyst_text(
+        catalyst,
+        "event_flow_watch",
+        "macro_structured_fed_communication_watch_required",
+    )
     secondary = " · ".join(part for part in (impact_label, watch) if part)
     if secondary:
         evidence.append(secondary)
     return [line for line in evidence if line][:3]
 
 
+def _required_structured_fed_communication_source(catalyst: Mapping[str, Any]) -> str:
+    if "source" not in catalyst or catalyst.get("source") is None:
+        raise ValueError("macro_structured_fed_communication_source_required")
+    source = str(catalyst.get("source")).strip()
+    if not source:
+        raise ValueError("macro_structured_fed_communication_source_required")
+    return source
+
+
+def _required_structured_fed_communication_speaker(catalyst: Mapping[str, Any]) -> str:
+    document_type = str(catalyst.get("document_type") or "").strip()
+    if document_type != "speech":
+        return ""
+    if "speaker" not in catalyst or catalyst.get("speaker") is None:
+        raise ValueError("macro_structured_fed_communication_speaker_required")
+    speaker = str(catalyst.get("speaker")).strip()
+    if not speaker:
+        raise ValueError("macro_structured_fed_communication_speaker_required")
+    return speaker
+
+
+def _required_structured_fed_communication_label(catalyst: Mapping[str, Any]) -> str:
+    if "label" not in catalyst or catalyst.get("label") is None:
+        raise ValueError("macro_structured_fed_communication_label_required")
+    label = str(catalyst.get("label")).strip()
+    if not label:
+        raise ValueError("macro_structured_fed_communication_label_required")
+    return label
+
+
 def _fed_document_type_label(document_type: str) -> str:
-    return {
+    if not document_type:
+        raise ValueError("macro_structured_fed_communication_document_type_required")
+    labels = {
         "minutes": "会议纪要",
         "press_release": "新闻稿",
         "speech": "讲话",
         "statement": "声明",
-    }.get(document_type, "Fed 文档")
+    }
+    if document_type not in labels:
+        raise ValueError(f"macro_structured_fed_communication_document_type_unknown:{document_type}")
+    return labels[document_type]
 
 
 def _structured_analysis_row(
@@ -1220,7 +1372,7 @@ def _structured_analysis_row(
     return {
         "key": key,
         "label": label,
-        "regime_label": _structured_regime_label(diagnostics),
+        "regime_label": _structured_regime_label(diagnostics, key=key),
         "fact": fact,
         "evidence": evidence[:3],
         "trade": trade,
@@ -1228,10 +1380,14 @@ def _structured_analysis_row(
     }
 
 
-def _structured_regime_label(diagnostics: Mapping[str, Any]) -> str:
-    return str(
-        diagnostics.get("regime_label") or diagnostics.get("shape_label") or diagnostics.get("label") or "样本不足"
-    )
+def _structured_regime_label(diagnostics: Mapping[str, Any], *, key: str) -> str:
+    for field_name in ("regime_label", "shape_label"):
+        if field_name not in diagnostics or diagnostics.get(field_name) is None:
+            continue
+        value = str(diagnostics.get(field_name)).strip()
+        if value:
+            return value
+    raise ValueError(f"macro_structured_analysis_regime_label_required:{key}")
 
 
 def _structured_analysis_evidence(diagnostics: Mapping[str, Any]) -> list[str]:
@@ -1536,6 +1692,8 @@ def _latest_feature_map_value(feature_map: Mapping[str, Any], concept_key: str) 
 
 
 def _crypto_oi_status(change_1w_pct: float | None) -> tuple[str, str]:
+    if change_1w_pct is None:
+        return "insufficient_history", "样本不足"
     if change_1w_pct is not None and change_1w_pct >= 8.0:
         return "leverage_expanding", "杠杆扩张"
     if change_1w_pct is not None and change_1w_pct <= -8.0:
@@ -1562,7 +1720,9 @@ def _crypto_basis_status(current_bp: float) -> tuple[str, str]:
 def _crypto_vol_status(*, current_index: float, change_1w_index: float | None) -> tuple[str, str]:
     if current_index >= 65.0 or (change_1w_index is not None and change_1w_index >= 8.0):
         return "vol_hot", "波动升温"
-    if current_index <= 45.0 and (change_1w_index is None or change_1w_index <= -5.0):
+    if change_1w_index is None:
+        return "insufficient_history", "样本不足"
+    if current_index <= 45.0 and change_1w_index <= -5.0:
         return "vol_relief", "波动回落"
     return "vol_neutral", "波动中性"
 
@@ -1660,16 +1820,17 @@ def _asset_vix_row(feature_map: Mapping[str, Any]) -> dict[str, Any] | None:
     if not points:
         return None
     current_date, current_value = points[-1]
+    current_index = _round_index(current_value)
     row: dict[str, Any] = {
         "key": "vix",
         "label": "VIX",
-        "current_index": _round_index(current_value),
+        "current_index": current_index,
     }
     for _window_label, field_name, days in _VOLATILITY_CHANGE_WINDOWS:
         prior_value = _point_value_at_or_before(points, current_date - timedelta(days=days))
         row[field_name] = _round_index(current_value - prior_value) if prior_value is not None else None
     status, status_label = _asset_vix_status(
-        current_index=_number(row.get("current_index")) or 0.0,
+        current_index=current_index,
         change_1w_index=_number(row.get("change_1w_index")),
     )
     row["status"] = status
@@ -1788,19 +1949,24 @@ def _fx_pair_status(*, usd_direction: str, change_1w_pct: float | None, change_1
 
 
 def _asset_vix_status(*, current_index: float, change_1w_index: float | None) -> tuple[str, str]:
-    change = change_1w_index if change_1w_index is not None else 0.0
-    if current_index >= 30.0 or change >= 5.0:
+    if current_index >= 30.0:
         return "vol_stress", "波动压力"
-    if current_index >= 20.0 or change >= 2.0:
+    if current_index >= 20.0:
         return "vol_up", "波动升温"
-    if change <= -2.0 and current_index < 20.0:
+    if change_1w_index is None:
+        return "insufficient_history", "样本不足"
+    if change_1w_index >= 5.0:
+        return "vol_stress", "波动压力"
+    if change_1w_index >= 2.0:
+        return "vol_up", "波动升温"
+    if change_1w_index <= -2.0 and current_index < 20.0:
         return "vol_down", "波动回落"
     return "vol_neutral", "波动中性"
 
 
 def _asset_hy_oas_status(change_1w_bp: float | None) -> tuple[str, str]:
     if change_1w_bp is None:
-        return "credit_stable", "信用稳定"
+        return "insufficient_history", "样本不足"
     if change_1w_bp >= 10.0:
         return "credit_widening", "信用走阔"
     if change_1w_bp <= -10.0:
@@ -1809,33 +1975,52 @@ def _asset_hy_oas_status(change_1w_bp: float | None) -> tuple[str, str]:
 
 
 def _asset_regime(rows: Sequence[Mapping[str, Any]]) -> tuple[str, str, str]:
-    spx = _asset_row(rows, "spx")
-    tlt = _asset_row(rows, "tlt")
-    dxy = _asset_row(rows, "dxy")
-    wti = _asset_row(rows, "wti")
-    btc = _asset_row(rows, "btc")
-    vix = _asset_row(rows, "vix")
-    hy_oas = _asset_row(rows, "hy_oas")
-    spx_1w = _number(spx.get("change_1w_pct")) or 0.0
-    tlt_1w = _number(tlt.get("change_1w_pct")) or 0.0
-    dxy_1w = _number(dxy.get("change_1w_pct")) or 0.0
-    wti_1w = _number(wti.get("change_1w_pct")) or 0.0
-    btc_1w = _number(btc.get("change_1w_pct")) or 0.0
-    vix_change_1w = _number(vix.get("change_1w_index")) or 0.0
-    hy_change_1w = _number(hy_oas.get("change_1w_bp")) or 0.0
-    if spx_1w <= -1.0 and tlt_1w <= -1.0 and dxy_1w >= 0.5 and wti_1w >= 2.0:
+    spx_1w = _asset_regime_number(rows, "spx", "change_1w_pct")
+    tlt_1w = _asset_regime_number(rows, "tlt", "change_1w_pct")
+    dxy_1w = _asset_regime_number(rows, "dxy", "change_1w_pct")
+    wti_1w = _asset_regime_number(rows, "wti", "change_1w_pct")
+    btc_1w = _asset_regime_number(rows, "btc", "change_1w_pct")
+    vix_change_1w = _asset_regime_number(rows, "vix", "change_1w_index")
+    hy_change_1w = _asset_regime_number(rows, "hy_oas", "change_1w_bp")
+    if (
+        spx_1w is not None
+        and tlt_1w is not None
+        and dxy_1w is not None
+        and wti_1w is not None
+        and spx_1w <= -1.0
+        and tlt_1w <= -1.0
+        and dxy_1w >= 0.5
+        and wti_1w >= 2.0
+    ):
         return (
             "stagflation_shock",
             "滞胀冲击",
             "跨资产主线偏滞胀冲击：股债双杀、美元与能源走强，风险资产需要降档。",
         )
-    if spx_1w <= -1.0 and (vix_change_1w >= 2.0 or hy_change_1w >= 10.0 or btc_1w <= -3.0):
+    if (
+        spx_1w is not None
+        and spx_1w <= -1.0
+        and (
+            (vix_change_1w is not None and vix_change_1w >= 2.0)
+            or (hy_change_1w is not None and hy_change_1w >= 10.0)
+            or (btc_1w is not None and btc_1w <= -3.0)
+        )
+    ):
         return (
             "risk_off",
             "Risk-off",
             "跨资产主线偏 risk-off：权益走弱并伴随波动、信用或加密 beta 降温。",
         )
-    if spx_1w >= 1.0 and btc_1w >= 2.0 and hy_change_1w < 10.0 and dxy_1w < 0.5:
+    if (
+        spx_1w is not None
+        and btc_1w is not None
+        and hy_change_1w is not None
+        and dxy_1w is not None
+        and spx_1w >= 1.0
+        and btc_1w >= 2.0
+        and hy_change_1w < 10.0
+        and dxy_1w < 0.5
+    ):
         return (
             "risk_on",
             "Risk-on",
@@ -1848,38 +2033,52 @@ def _asset_regime(rows: Sequence[Mapping[str, Any]]) -> tuple[str, str, str]:
     )
 
 
+def _asset_regime_number(rows: Sequence[Mapping[str, Any]], row_key: str, field_name: str) -> float | None:
+    row = _asset_row(rows, row_key)
+    return _number(row.get(field_name))
+
+
 def _equity_regime(rows: Sequence[Mapping[str, Any]]) -> tuple[str, str, str]:
-    spx = _asset_row(rows, "spx")
-    ndx = _asset_row(rows, "ndx")
-    rut = _asset_row(rows, "rut")
-    qqq = _asset_row(rows, "qqq")
-    iwm = _asset_row(rows, "iwm")
-    positioning = _asset_row(rows, "sp500_positioning")
-    spx_1w = _number(spx.get("change_1w_pct")) or 0.0
-    ndx_1w = _number(ndx.get("change_1w_pct")) or 0.0
-    rut_1w = _number(rut.get("change_1w_pct")) or 0.0
-    qqq_1w = _number(qqq.get("change_1w_pct")) or 0.0
-    iwm_1w = _number(iwm.get("change_1w_pct")) or 0.0
-    positioning_1w = _number(positioning.get("change_1w_k")) or 0.0
-    if spx_1w <= -2.0 and (ndx_1w <= -2.0 or qqq_1w <= -2.0) and (rut_1w <= -3.0 or iwm_1w <= -3.0):
+    spx_1w = _asset_regime_number(rows, "spx", "change_1w_pct")
+    ndx_1w = _asset_regime_number(rows, "ndx", "change_1w_pct")
+    rut_1w = _asset_regime_number(rows, "rut", "change_1w_pct")
+    qqq_1w = _asset_regime_number(rows, "qqq", "change_1w_pct")
+    iwm_1w = _asset_regime_number(rows, "iwm", "change_1w_pct")
+    positioning_1w = _asset_regime_number(rows, "sp500_positioning", "change_1w_k")
+    if (
+        spx_1w is not None
+        and spx_1w <= -2.0
+        and ((ndx_1w is not None and ndx_1w <= -2.0) or (qqq_1w is not None and qqq_1w <= -2.0))
+        and ((rut_1w is not None and rut_1w <= -3.0) or (iwm_1w is not None and iwm_1w <= -3.0))
+    ):
         return (
             "equity_risk_off",
             "美股降温",
             "美股风险偏好走弱：大盘和成长承压，小盘/高 beta 未确认，风险资产需要降档。",
         )
-    if spx_1w >= 2.0 and (ndx_1w >= 2.0 or qqq_1w >= 2.0) and (rut_1w >= 2.0 or iwm_1w >= 2.0):
+    if (
+        spx_1w is not None
+        and spx_1w >= 2.0
+        and ((ndx_1w is not None and ndx_1w >= 2.0) or (qqq_1w is not None and qqq_1w >= 2.0))
+        and ((rut_1w is not None and rut_1w >= 2.0) or (iwm_1w is not None and iwm_1w >= 2.0))
+    ):
         return (
             "equity_broad_risk_on",
             "广谱 risk-on",
             "美股风险偏好广谱修复：大盘、成长和小盘同步上行，风险资产 beta 获得确认。",
         )
-    if spx_1w >= 1.0 and (ndx_1w >= 1.0 or qqq_1w >= 1.0) and (rut_1w <= -1.0 or iwm_1w <= -1.0):
+    if (
+        spx_1w is not None
+        and spx_1w >= 1.0
+        and ((ndx_1w is not None and ndx_1w >= 1.0) or (qqq_1w is not None and qqq_1w >= 1.0))
+        and ((rut_1w is not None and rut_1w <= -1.0) or (iwm_1w is not None and iwm_1w <= -1.0))
+    ):
         return (
             "mega_cap_narrowing",
             "龙头收窄",
             "美股上涨集中在大盘/成长龙头，小盘未确认，risk-on 质量需要打折。",
         )
-    if positioning_1w <= -50.0:
+    if positioning_1w is not None and positioning_1w <= -50.0:
         return (
             "positioning_defensive",
             "仓位防守",
@@ -1893,38 +2092,52 @@ def _equity_regime(rows: Sequence[Mapping[str, Any]]) -> tuple[str, str, str]:
 
 
 def _bond_regime(rows: Sequence[Mapping[str, Any]]) -> tuple[str, str, str]:
-    tlt = _asset_row(rows, "tlt")
-    ief = _asset_row(rows, "ief")
-    lqd = _asset_row(rows, "lqd")
-    hyg = _asset_row(rows, "hyg")
-    hy_oas = _asset_row(rows, "hy_oas")
-    ig_oas = _asset_row(rows, "ig_oas")
-    tlt_1w = _number(tlt.get("change_1w_pct")) or 0.0
-    ief_1w = _number(ief.get("change_1w_pct")) or 0.0
-    lqd_1w = _number(lqd.get("change_1w_pct")) or 0.0
-    hyg_1w = _number(hyg.get("change_1w_pct")) or 0.0
-    hy_change_1w = _number(hy_oas.get("change_1w_bp")) or 0.0
-    ig_change_1w = _number(ig_oas.get("change_1w_bp")) or 0.0
-    hyg_underperforms_lqd = hyg_1w <= lqd_1w - 1.0
-    if tlt_1w <= -2.0 and (hyg_underperforms_lqd or hy_change_1w >= 10.0) and ig_change_1w >= 5.0:
+    tlt_1w = _asset_regime_number(rows, "tlt", "change_1w_pct")
+    ief_1w = _asset_regime_number(rows, "ief", "change_1w_pct")
+    lqd_1w = _asset_regime_number(rows, "lqd", "change_1w_pct")
+    hyg_1w = _asset_regime_number(rows, "hyg", "change_1w_pct")
+    hy_change_1w = _asset_regime_number(rows, "hy_oas", "change_1w_bp")
+    ig_change_1w = _asset_regime_number(rows, "ig_oas", "change_1w_bp")
+    hyg_underperforms_lqd = hyg_1w is not None and lqd_1w is not None and hyg_1w <= lqd_1w - 1.0
+    if (
+        tlt_1w is not None
+        and ig_change_1w is not None
+        and tlt_1w <= -2.0
+        and (hyg_underperforms_lqd or (hy_change_1w is not None and hy_change_1w >= 10.0))
+        and ig_change_1w >= 5.0
+    ):
         return (
             "bond_credit_pressure",
             "信用久期双压",
             "债券横截面偏防守：长久期回撤且 HYG 跑输 LQD，信用利差同步走阔。",
         )
-    if tlt_1w >= 1.0 and ief_1w >= 0.5 and hy_change_1w < 10.0:
+    if (
+        tlt_1w is not None
+        and ief_1w is not None
+        and hy_change_1w is not None
+        and tlt_1w >= 1.0
+        and ief_1w >= 0.5
+        and hy_change_1w < 10.0
+    ):
         return (
             "duration_bid",
             "久期修复",
             "债券横截面偏久期修复：TLT/IEF 同步走强，信用利差未明显背离。",
         )
-    if hyg_1w >= 1.0 and lqd_1w >= 0.5 and hy_change_1w <= -10.0:
+    if (
+        hyg_1w is not None
+        and lqd_1w is not None
+        and hy_change_1w is not None
+        and hyg_1w >= 1.0
+        and lqd_1w >= 0.5
+        and hy_change_1w <= -10.0
+    ):
         return (
             "credit_relief",
             "信用修复",
             "债券横截面偏信用修复：HYG/LQD 同步走强，HY OAS 收窄确认风险偏好。",
         )
-    if tlt_1w <= -2.0 and ief_1w <= -1.0:
+    if tlt_1w is not None and ief_1w is not None and tlt_1w <= -2.0 and ief_1w <= -1.0:
         return (
             "duration_pressure",
             "久期承压",
@@ -1938,35 +2151,44 @@ def _bond_regime(rows: Sequence[Mapping[str, Any]]) -> tuple[str, str, str]:
 
 
 def _commodity_regime(rows: Sequence[Mapping[str, Any]]) -> tuple[str, str, str]:
-    wti = _asset_row(rows, "wti")
-    brent = _asset_row(rows, "brent")
-    natgas = _asset_row(rows, "natgas")
-    gold = _asset_row(rows, "gold")
-    copper = _asset_row(rows, "copper")
-    wti_1w = _number(wti.get("change_1w_pct")) or 0.0
-    brent_1w = _number(brent.get("change_1w_pct")) or 0.0
-    natgas_1w = _number(natgas.get("change_1w_pct")) or 0.0
-    gold_1w = _number(gold.get("change_1w_pct")) or 0.0
-    copper_1w = _number(copper.get("change_1w_pct")) or 0.0
-    if wti_1w >= 5.0 and brent_1w >= 5.0 and natgas_1w >= 10.0:
+    wti_1w = _asset_regime_number(rows, "wti", "change_1w_pct")
+    brent_1w = _asset_regime_number(rows, "brent", "change_1w_pct")
+    natgas_1w = _asset_regime_number(rows, "natgas", "change_1w_pct")
+    gold_1w = _asset_regime_number(rows, "gold", "change_1w_pct")
+    copper_1w = _asset_regime_number(rows, "copper", "change_1w_pct")
+    if (
+        wti_1w is not None
+        and brent_1w is not None
+        and natgas_1w is not None
+        and wti_1w >= 5.0
+        and brent_1w >= 5.0
+        and natgas_1w >= 10.0
+    ):
         return (
             "energy_inflation_shock",
             "能源通胀冲击",
             "商品主线偏能源通胀冲击：原油和天然气同步上行，铜确认需求，贵金属未给防守确认。",
         )
-    if wti_1w <= -5.0 and brent_1w <= -5.0 and natgas_1w <= -10.0:
+    if (
+        wti_1w is not None
+        and brent_1w is not None
+        and natgas_1w is not None
+        and wti_1w <= -5.0
+        and brent_1w <= -5.0
+        and natgas_1w <= -10.0
+    ):
         return (
             "energy_deflation_relief",
             "能源通胀缓和",
             "商品主线偏能源通胀缓和：原油和天然气同步回落，通胀压力边际降温。",
         )
-    if gold_1w >= 2.0 and copper_1w <= -2.0:
+    if gold_1w is not None and copper_1w is not None and gold_1w >= 2.0 and copper_1w <= -2.0:
         return (
             "defensive_metal_bid",
             "防守金属",
             "商品主线偏防守：黄金走强但铜走弱，市场更像避险而非需求扩张。",
         )
-    if copper_1w >= 3.0 and wti_1w >= 0.0:
+    if copper_1w is not None and wti_1w is not None and copper_1w >= 3.0 and wti_1w >= 0.0:
         return (
             "cyclical_commodity_bid",
             "周期商品走强",
@@ -1980,37 +2202,55 @@ def _commodity_regime(rows: Sequence[Mapping[str, Any]]) -> tuple[str, str, str]
 
 
 def _fx_regime(rows: Sequence[Mapping[str, Any]]) -> tuple[str, str, str]:
-    dxy = _asset_row(rows, "dxy")
-    broad_dollar = _asset_row(rows, "broad_dollar")
-    eurusd = _asset_row(rows, "eurusd")
-    usdjpy = _asset_row(rows, "usdjpy")
-    usdcny = _asset_row(rows, "usdcny")
-    uup = _asset_row(rows, "uup")
-    dxy_1w = _number(dxy.get("change_1w_pct")) or 0.0
-    broad_1w = _number(broad_dollar.get("change_1w_pct")) or 0.0
-    eurusd_1w = _number(eurusd.get("change_1w_pct")) or 0.0
-    usdjpy_1w = _number(usdjpy.get("change_1w_pct")) or 0.0
-    usdcny_1w = _number(usdcny.get("change_1w_pct")) or 0.0
-    uup_1w = _number(uup.get("change_1w_pct")) or 0.0
-    if dxy_1w >= 1.0 and broad_1w >= 0.5 and eurusd_1w <= -1.0 and (usdjpy_1w >= 1.0 or usdcny_1w >= 0.5):
+    dxy_1w = _asset_regime_number(rows, "dxy", "change_1w_pct")
+    broad_1w = _asset_regime_number(rows, "broad_dollar", "change_1w_pct")
+    eurusd_1w = _asset_regime_number(rows, "eurusd", "change_1w_pct")
+    usdjpy_1w = _asset_regime_number(rows, "usdjpy", "change_1w_pct")
+    usdcny_1w = _asset_regime_number(rows, "usdcny", "change_1w_pct")
+    uup_1w = _asset_regime_number(rows, "uup", "change_1w_pct")
+    if (
+        dxy_1w is not None
+        and broad_1w is not None
+        and eurusd_1w is not None
+        and dxy_1w >= 1.0
+        and broad_1w >= 0.5
+        and eurusd_1w <= -1.0
+        and ((usdjpy_1w is not None and usdjpy_1w >= 1.0) or (usdcny_1w is not None and usdcny_1w >= 0.5))
+    ):
         return (
             "dollar_squeeze",
             "美元挤压",
             "美元压力偏紧：DXY 和广义美元走强，欧元、日元与人民币同步确认离岸美元需求。",
         )
-    if dxy_1w <= -1.0 and broad_1w <= -0.5 and eurusd_1w >= 1.0 and (uup_1w <= -0.5 or usdcny_1w <= -0.5):
+    if (
+        dxy_1w is not None
+        and broad_1w is not None
+        and eurusd_1w is not None
+        and dxy_1w <= -1.0
+        and broad_1w <= -0.5
+        and eurusd_1w >= 1.0
+        and ((uup_1w is not None and uup_1w <= -0.5) or (usdcny_1w is not None and usdcny_1w <= -0.5))
+    ):
         return (
             "dollar_relief",
             "美元回落",
             "美元压力缓和：DXY 和广义美元走弱，非美货币与美元 ETF 同步确认风险资产获得缓冲。",
         )
-    if dxy_1w >= 1.0 and (eurusd_1w >= 0.0 or usdjpy_1w <= 0.0):
+    if (
+        dxy_1w is not None
+        and dxy_1w >= 1.0
+        and ((eurusd_1w is not None and eurusd_1w >= 0.0) or (usdjpy_1w is not None and usdjpy_1w <= 0.0))
+    ):
         return (
             "dollar_index_divergence",
             "美元指数背离",
             "DXY 走强但主要货币对未同步确认，避免把单点美元指数当成离岸美元挤压。",
         )
-    if dxy_1w <= -1.0 and (broad_1w >= 0.0 or usdcny_1w >= 0.5):
+    if (
+        dxy_1w is not None
+        and dxy_1w <= -1.0
+        and ((broad_1w is not None and broad_1w >= 0.0) or (usdcny_1w is not None and usdcny_1w >= 0.5))
+    ):
         return (
             "dollar_relief_divergence",
             "美元回落背离",
@@ -2024,13 +2264,11 @@ def _fx_regime(rows: Sequence[Mapping[str, Any]]) -> tuple[str, str, str]:
 
 
 def _crypto_regime(rows: Sequence[Mapping[str, Any]]) -> tuple[str, str, str]:
-    btc = _asset_row(rows, "btc")
-    eth = _asset_row(rows, "eth")
-    btc_1w = _number(btc.get("change_1w_pct")) or 0.0
-    eth_1w = _number(eth.get("change_1w_pct")) or 0.0
-    eth_underperforms = eth_1w <= btc_1w - 2.0
-    spot_up = btc_1w >= 3.0 and eth_1w >= 3.0
-    spot_down = btc_1w <= -3.0 and eth_1w <= -3.0
+    btc_1w = _asset_regime_number(rows, "btc", "change_1w_pct")
+    eth_1w = _asset_regime_number(rows, "eth", "change_1w_pct")
+    eth_underperforms = btc_1w is not None and eth_1w is not None and eth_1w <= btc_1w - 2.0
+    spot_up = btc_1w is not None and eth_1w is not None and btc_1w >= 3.0 and eth_1w >= 3.0
+    spot_down = btc_1w is not None and eth_1w is not None and btc_1w <= -3.0 and eth_1w <= -3.0
     oi_expanding = _has_row_status(rows, "leverage_expanding")
     oi_flush = _has_row_status(rows, "leverage_flush")
     funding_hot = _has_row_status(rows, "funding_hot")
@@ -2056,25 +2294,25 @@ def _crypto_regime(rows: Sequence[Mapping[str, Any]]) -> tuple[str, str, str]:
             "加密波动压力",
             "DVOL 升温且衍生品定价转弱，加密 beta 的风险补偿正在恶化。",
         )
-    if btc_1w <= -3.0 and eth_1w <= -3.0:
+    if spot_down:
         return (
             "crypto_beta_unwind",
             "加密 beta 降温",
             "加密资产同步降温：BTC 和 ETH 单周回撤，ETH 跑输 BTC，宏观 risk-on 需要降档。",
         )
-    if btc_1w >= 3.0 and eth_1w >= 3.0:
+    if spot_up:
         return (
             "crypto_beta_risk_on",
             "加密 beta 升温",
             "加密资产同步升温：BTC 和 ETH 同步上行，风险偏好获得高 beta 确认。",
         )
-    if btc_1w >= 3.0 and eth_underperforms:
+    if btc_1w is not None and btc_1w >= 3.0 and eth_underperforms:
         return (
             "btc_defensive_bid",
             "BTC 单边修复",
             "BTC 修复但 ETH 明显跑输，市场更像质量/流动性回补而非广谱加密 risk-on。",
         )
-    if eth_1w >= 5.0 and btc_1w >= 0.0:
+    if eth_1w is not None and btc_1w is not None and eth_1w >= 5.0 and btc_1w >= 0.0:
         return (
             "eth_high_beta_chase",
             "ETH 高 beta 追涨",
@@ -2671,8 +2909,11 @@ def _growth_industrial_row(feature_map: Mapping[str, Any]) -> dict[str, Any] | N
     )
     if row is None:
         return None
+    current_yoy_pct = _number(row.get("current_yoy_pct"))
+    if current_yoy_pct is None:
+        return None
     status, status_label = _growth_industrial_status(
-        current_yoy_pct=_number(row.get("current_yoy_pct")) or 0.0,
+        current_yoy_pct=current_yoy_pct,
         change_1m_pct=_number(row.get("change_1m_pct")),
     )
     row["status"] = status
@@ -2696,8 +2937,11 @@ def _growth_consumption_row(
     )
     if row is None:
         return None
+    current_yoy_pct = _number(row.get("current_yoy_pct"))
+    if current_yoy_pct is None:
+        return None
     status, status_label = _growth_consumption_status(
-        current_yoy_pct=_number(row.get("current_yoy_pct")) or 0.0,
+        current_yoy_pct=current_yoy_pct,
         change_1m_pct=_number(row.get("change_1m_pct")),
         retail=retail,
     )
@@ -2765,6 +3009,8 @@ def _growth_gdp_status(*, current_yoy_pct: float, change_1q_pct: float | None) -
         return "slowing", "放缓"
     if current_yoy_pct >= 2.5 and (change_1q_pct is None or change_1q_pct >= 0.0):
         return "resilient", "韧性"
+    if change_1q_pct is None:
+        return "insufficient_history", "样本不足"
     return "stable", "稳定"
 
 
@@ -2775,6 +3021,8 @@ def _growth_gdpnow_status(*, current_pct: float, change_1m_pct: float | None) ->
         return "nowcast_cooling", "Nowcast 降温"
     if current_pct >= 2.5 and (change_1m_pct is None or change_1m_pct >= 0.0):
         return "nowcast_resilient", "Nowcast 韧性"
+    if change_1m_pct is None:
+        return "insufficient_history", "样本不足"
     return "nowcast_stable", "Nowcast 稳定"
 
 
@@ -2785,6 +3033,8 @@ def _growth_industrial_status(*, current_yoy_pct: float, change_1m_pct: float | 
         return "slowing", "放缓"
     if current_yoy_pct >= 2.0:
         return "expanding", "扩张"
+    if change_1m_pct is None:
+        return "insufficient_history", "样本不足"
     return "stable", "稳定"
 
 
@@ -2798,47 +3048,64 @@ def _growth_consumption_status(
         return ("demand_cooling", "需求降温") if retail else ("consumption_cooling", "消费降温")
     if current_yoy_pct >= 3.0:
         return ("demand_resilient", "需求韧性") if retail else ("consumption_resilient", "消费韧性")
+    if change_1m_pct is None:
+        return "insufficient_history", "样本不足"
     return "stable", "稳定"
 
 
 def _growth_housing_status(*, current_m: float, change_1m_k: float | None) -> tuple[str, str]:
     if current_m <= 1.2 or (change_1m_k is not None and change_1m_k <= -100.0):
         return "housing_drag", "地产拖累"
+    if change_1m_k is None:
+        return "insufficient_history", "样本不足"
     if change_1m_k is not None and change_1m_k >= 100.0:
         return "housing_rebound", "地产修复"
     return "stable", "稳定"
 
 
 def _growth_regime(rows: Sequence[Mapping[str, Any]]) -> tuple[str, str, str]:
-    gdp = next((row for row in rows if row.get("key") == "real_gdp_yoy"), {})
-    industrial = next((row for row in rows if row.get("key") == "industrial_production_yoy"), {})
-    housing = next((row for row in rows if row.get("key") == "housing_starts"), {})
-    pce = next((row for row in rows if row.get("key") == "real_pce_yoy"), {})
-    gdp_current = _number(gdp.get("current_yoy_pct")) or 0.0
-    gdp_change_1q = _number(gdp.get("change_1q_pct")) or 0.0
-    industrial_current = _number(industrial.get("current_yoy_pct")) or 0.0
-    housing_change_1m = _number(housing.get("change_1m_k")) or 0.0
-    pce_current = _number(pce.get("current_yoy_pct")) or 0.0
-    pce_change_1m = _number(pce.get("change_1m_pct")) or 0.0
-    if gdp_current <= 0.0 or (industrial_current <= -2.0 and pce_current <= 0.5):
+    gdp_current = _growth_row_number(rows, "real_gdp_yoy", "current_yoy_pct")
+    gdp_change_1q = _growth_row_number(rows, "real_gdp_yoy", "change_1q_pct")
+    industrial_current = _growth_row_number(rows, "industrial_production_yoy", "current_yoy_pct")
+    housing_change_1m = _growth_row_number(rows, "housing_starts", "change_1m_k")
+    pce_current = _growth_row_number(rows, "real_pce_yoy", "current_yoy_pct")
+    pce_change_1m = _growth_row_number(rows, "real_pce_yoy", "change_1m_pct")
+    if (gdp_current is not None and gdp_current <= 0.0) or (
+        industrial_current is not None and pce_current is not None and industrial_current <= -2.0 and pce_current <= 0.5
+    ):
         return (
             "recession_risk",
             "衰退风险",
             "增长进入衰退风险区：实际 GDP 或生产消费同步转弱，风险资产需要盈利下修折价。",
         )
-    if gdp_change_1q <= -0.5 and (industrial_current < 0.0 or pce_change_1m <= -0.5 or housing_change_1m <= -100.0):
+    if (
+        gdp_change_1q is not None
+        and gdp_change_1q <= -0.5
+        and (
+            (industrial_current is not None and industrial_current < 0.0)
+            or (pce_change_1m is not None and pce_change_1m <= -0.5)
+            or (housing_change_1m is not None and housing_change_1m <= -100.0)
+        )
+    ):
         return (
             "growth_cooling",
             "增长降温",
             "增长降温：实际 GDP、工业生产和消费动能同步放缓，风险资产盈利预期需要降级。",
         )
-    if housing_change_1m <= -100.0:
+    if housing_change_1m is not None and housing_change_1m <= -100.0:
         return (
             "housing_drag",
             "地产拖累",
             "地产拖累增长：住房开工快速下行，需观察消费和就业是否跟随走弱。",
         )
-    if gdp_current >= 2.0 and pce_current >= 2.0 and industrial_current >= 0.0:
+    if (
+        gdp_current is not None
+        and pce_current is not None
+        and industrial_current is not None
+        and gdp_current >= 2.0
+        and pce_current >= 2.0
+        and industrial_current >= 0.0
+    ):
         return (
             "resilient",
             "增长韧性",
@@ -2849,6 +3116,13 @@ def _growth_regime(rows: Sequence[Mapping[str, Any]]) -> tuple[str, str, str]:
         "中性",
         "增长信号中性：等待 GDP、工业生产、消费和地产同向确认。",
     )
+
+
+def _growth_row_number(rows: Sequence[Mapping[str, Any]], row_key: str, field_name: str) -> float | None:
+    row = next((item for item in rows if item.get("key") == row_key), None)
+    if row is None:
+        return None
+    return _number(row.get(field_name))
 
 
 def _growth_implications(regime: str) -> list[str]:
@@ -2924,10 +3198,11 @@ def _employment_claims_row(feature_map: Mapping[str, Any]) -> dict[str, Any] | N
     if not points:
         return None
     current_date, current_value = points[-1]
+    current_k = _round_k(_labor_thousands(current_value))
     row: dict[str, Any] = {
         "key": "initial_claims",
         "label": "初请失业金",
-        "current_k": _round_k(_labor_thousands(current_value)),
+        "current_k": current_k,
     }
     for suffix, days in _LIQUIDITY_CHANGE_WINDOWS:
         prior_value = _point_value_at_or_before(points, current_date - timedelta(days=days))
@@ -2937,7 +3212,7 @@ def _employment_claims_row(feature_map: Mapping[str, Any]) -> dict[str, Any] | N
             else None
         )
     status, status_label = _employment_claims_status(
-        current_k=_number(row.get("current_k")) or 0.0,
+        current_k=current_k,
         change_1m_k=_number(row.get("change_1m_k")),
     )
     row["status"] = status
@@ -3002,6 +3277,8 @@ def _employment_unemployment_status(*, current_pct: float, change_1m_pct: float 
         return "improving", "改善"
     if current_pct <= 4.0:
         return "tight", "偏紧"
+    if change_1m_pct is None:
+        return "insufficient_history", "样本不足"
     return "stable", "稳定"
 
 
@@ -3010,6 +3287,8 @@ def _employment_payroll_status(*, current_k: float, change_1m_k: float | None) -
         return "slowing", "放缓"
     if current_k >= 180.0:
         return "strong", "强劲"
+    if change_1m_k is None:
+        return "insufficient_history", "样本不足"
     return "steady", "稳定"
 
 
@@ -3018,6 +3297,8 @@ def _employment_claims_status(*, current_k: float, change_1m_k: float | None) ->
         return "claims_rising", "初请上行"
     if change_1m_k is not None and change_1m_k <= -20.0:
         return "claims_falling", "初请回落"
+    if change_1m_k is None:
+        return "insufficient_history", "样本不足"
     return "stable", "稳定"
 
 
@@ -3026,6 +3307,8 @@ def _employment_openings_status(*, current_m: float, change_1m_m: float | None) 
         return "demand_cooling", "需求降温"
     if current_m >= 9.0:
         return "demand_tight", "需求偏紧"
+    if change_1m_m is None:
+        return "insufficient_history", "样本不足"
     return "stable", "稳定"
 
 
@@ -3034,39 +3317,61 @@ def _employment_wage_status(*, current_yoy_pct: float, change_1m_pct: float | No
         return "wage_pressure", "工资压力"
     if change_1m_pct is not None and change_1m_pct <= -0.3:
         return "wage_cooling", "工资降温"
+    if change_1m_pct is None:
+        return "insufficient_history", "样本不足"
     return "stable", "稳定"
 
 
 def _employment_regime(rows: Sequence[Mapping[str, Any]]) -> tuple[str, str, str]:
-    unemployment = next((row for row in rows if row.get("key") == "unemployment_rate"), {})
-    payroll = next((row for row in rows if row.get("key") == "payroll_gain"), {})
-    claims = next((row for row in rows if row.get("key") == "initial_claims"), {})
-    wage = next((row for row in rows if row.get("key") == "wage_yoy"), {})
-    unemployment_current = _number(unemployment.get("current_pct")) or 0.0
-    unemployment_change_1m = _number(unemployment.get("change_1m_pct")) or 0.0
-    payroll_current = _number(payroll.get("current_k")) or 0.0
-    claims_current = _number(claims.get("current_k")) or 0.0
-    claims_change_1m = _number(claims.get("change_1m_k")) or 0.0
-    wage_current = _number(wage.get("current_yoy_pct")) or 0.0
-    if unemployment_current >= 4.8 and claims_current >= 300.0:
+    unemployment_current = _employment_row_number(rows, "unemployment_rate", "current_pct")
+    unemployment_change_1m = _employment_row_number(rows, "unemployment_rate", "change_1m_pct")
+    payroll_current = _employment_row_number(rows, "payroll_gain", "current_k")
+    claims_current = _employment_row_number(rows, "initial_claims", "current_k")
+    claims_change_1m = _employment_row_number(rows, "initial_claims", "change_1m_k")
+    wage_current = _employment_row_number(rows, "wage_yoy", "current_yoy_pct")
+    if (
+        unemployment_current is not None
+        and claims_current is not None
+        and unemployment_current >= 4.8
+        and claims_current >= 300.0
+    ):
         return (
             "labor_stress",
             "就业压力",
             "就业压力上升：失业率和初请同时处于压力区，风险资产需要增长风险折价。",
         )
-    if unemployment_change_1m >= 0.2 and (payroll_current <= 100.0 or claims_change_1m >= 20.0):
+    if (
+        unemployment_change_1m is not None
+        and unemployment_change_1m >= 0.2
+        and (
+            (payroll_current is not None and payroll_current <= 100.0)
+            or (claims_change_1m is not None and claims_change_1m >= 20.0)
+        )
+    ):
         return (
             "labor_cooling",
             "就业降温",
             "就业降温：失业率与初请上行、非农动能放缓，增长风险开始压过软着陆叙事。",
         )
-    if unemployment_current <= 4.0 and payroll_current >= 180.0 and wage_current >= 4.0:
+    if (
+        unemployment_current is not None
+        and payroll_current is not None
+        and wage_current is not None
+        and unemployment_current <= 4.0
+        and payroll_current >= 180.0
+        and wage_current >= 4.0
+    ):
         return (
             "labor_tight",
             "就业偏紧",
             "就业仍偏紧：非农和工资压力支撑更高更久的政策利率假设。",
         )
-    if payroll_current >= 180.0 and claims_change_1m <= 0.0:
+    if (
+        payroll_current is not None
+        and claims_change_1m is not None
+        and payroll_current >= 180.0
+        and claims_change_1m <= 0.0
+    ):
         return (
             "resilient",
             "就业韧性",
@@ -3077,6 +3382,13 @@ def _employment_regime(rows: Sequence[Mapping[str, Any]]) -> tuple[str, str, str
         "中性",
         "就业信号中性：等待非农、失业率、初请和工资同向确认。",
     )
+
+
+def _employment_row_number(rows: Sequence[Mapping[str, Any]], row_key: str, field_name: str) -> float | None:
+    row = next((item for item in rows if item.get("key") == row_key), None)
+    if row is None:
+        return None
+    return _number(row.get(field_name))
 
 
 def _employment_implications(regime: str) -> list[str]:
@@ -3160,10 +3472,11 @@ def _inflation_breakeven_row(feature_map: Mapping[str, Any]) -> dict[str, Any] |
     if not points:
         return None
     current_date, current_value = points[-1]
+    current_pct = _round_pct(current_value)
     row: dict[str, Any] = {
         "key": "breakeven_10y",
         "label": "10Y 通胀补偿",
-        "current_pct": _round_pct(current_value),
+        "current_pct": current_pct,
     }
     for suffix, days in _LIQUIDITY_CHANGE_WINDOWS:
         prior_value = _point_value_at_or_before(points, current_date - timedelta(days=days))
@@ -3171,7 +3484,7 @@ def _inflation_breakeven_row(feature_map: Mapping[str, Any]) -> dict[str, Any] |
             _round_bp((current_value - prior_value) * 100.0) if prior_value is not None else None
         )
     status, status_label = _inflation_breakeven_status(
-        current_pct=_number(row.get("current_pct")) or 0.0,
+        current_pct=current_pct,
         change_1m_bp=_number(row.get("change_1m_bp")),
     )
     row["status"] = status
@@ -3213,39 +3526,54 @@ def _inflation_yoy_status(
 def _inflation_breakeven_status(*, current_pct: float, change_1m_bp: float | None) -> tuple[str, str]:
     if current_pct >= 2.5 or (change_1m_bp is not None and change_1m_bp >= 10.0):
         return "expectation_pressure", "预期升温"
-    if change_1m_bp is not None and change_1m_bp <= -10.0:
+    if change_1m_bp is None:
+        return "insufficient_history", "样本不足"
+    if change_1m_bp <= -10.0:
         return "expectation_relief", "预期降温"
     return "stable", "稳定"
 
 
 def _inflation_regime(rows: Sequence[Mapping[str, Any]]) -> tuple[str, str, str]:
-    cpi = next((row for row in rows if row.get("key") == "cpi_yoy"), {})
-    core_cpi = next((row for row in rows if row.get("key") == "core_cpi_yoy"), {})
-    breakeven = next((row for row in rows if row.get("key") == "breakeven_10y"), {})
-    cpi_change_1m = _number(cpi.get("change_1m_pct")) or 0.0
-    core_current = _number(core_cpi.get("current_yoy_pct")) or 0.0
-    core_change_1m = _number(core_cpi.get("change_1m_pct")) or 0.0
-    breakeven_current = _number(breakeven.get("current_pct")) or 0.0
-    breakeven_change_1m = _number(breakeven.get("change_1m_bp")) or 0.0
-    if cpi_change_1m >= 0.3 and core_change_1m >= 0.3 and breakeven_change_1m >= 10.0:
+    cpi_change_1m = _inflation_row_number(rows, "cpi_yoy", "change_1m_pct")
+    core_current = _inflation_row_number(rows, "core_cpi_yoy", "current_yoy_pct")
+    core_change_1m = _inflation_row_number(rows, "core_cpi_yoy", "change_1m_pct")
+    breakeven_current = _inflation_row_number(rows, "breakeven_10y", "current_pct")
+    breakeven_change_1m = _inflation_row_number(rows, "breakeven_10y", "change_1m_bp")
+    if (
+        cpi_change_1m is not None
+        and core_change_1m is not None
+        and breakeven_change_1m is not None
+        and cpi_change_1m >= 0.3
+        and core_change_1m >= 0.3
+        and breakeven_change_1m >= 10.0
+    ):
         return (
             "reaccelerating",
             "通胀再加速",
             "通胀再加速：CPI/Core CPI 同比重新上行且通胀补偿走阔，降息交易需要降级。",
         )
-    if core_current <= 3.0 and cpi_change_1m <= -0.3 and core_change_1m <= -0.3:
+    if (
+        core_current is not None
+        and cpi_change_1m is not None
+        and core_change_1m is not None
+        and core_current <= 3.0
+        and cpi_change_1m <= -0.3
+        and core_change_1m <= -0.3
+    ):
         return (
             "disinflation",
             "通胀降温",
             "通胀继续降温：核心通胀回落，降息交易可获得经济数据确认。",
         )
-    if breakeven_current >= 2.5 or breakeven_change_1m >= 10.0:
+    if (breakeven_current is not None and breakeven_current >= 2.5) or (
+        breakeven_change_1m is not None and breakeven_change_1m >= 10.0
+    ):
         return (
             "expectation_pressure",
             "预期升温",
             "通胀预期升温：市场补偿走阔，实际利率与久期资产需要重新评估。",
         )
-    if core_current >= 4.0:
+    if core_current is not None and core_current >= 4.0:
         return (
             "sticky",
             "粘性通胀",
@@ -3256,6 +3584,13 @@ def _inflation_regime(rows: Sequence[Mapping[str, Any]]) -> tuple[str, str, str]
         "中性",
         "通胀信号中性：等待 CPI、PCE 与通胀补偿同向确认。",
     )
+
+
+def _inflation_row_number(rows: Sequence[Mapping[str, Any]], row_key: str, field_name: str) -> float | None:
+    row = next((item for item in rows if item.get("key") == row_key), None)
+    if row is None:
+        return None
+    return _number(row.get(field_name))
 
 
 def _inflation_implications(regime: str) -> list[str]:
@@ -3291,10 +3626,11 @@ def _liquidity_corridor_row(feature_map: Mapping[str, Any]) -> dict[str, Any] | 
     current_spread = _spread_at_or_before(iorb_points, sofr_points, current_date)
     if current_spread is None:
         return None
+    current_bp = _round_bp(current_spread * 100.0)
     row: dict[str, Any] = {
         "key": "sofr_iorb",
         "label": "SOFR-IORB 走廊压力",
-        "current_bp": _round_bp(current_spread * 100.0),
+        "current_bp": current_bp,
     }
     for suffix, days in _LIQUIDITY_CHANGE_WINDOWS:
         prior_spread = _spread_at_or_before(iorb_points, sofr_points, current_date - timedelta(days=days))
@@ -3302,7 +3638,7 @@ def _liquidity_corridor_row(feature_map: Mapping[str, Any]) -> dict[str, Any] | 
             _round_bp((current_spread - prior_spread) * 100.0) if prior_spread is not None else None
         )
     status, status_label = _liquidity_corridor_status(
-        current_bp=_number(row.get("current_bp")) or 0.0,
+        current_bp=current_bp,
         change_1w_bp=_number(row.get("change_1w_bp")),
     )
     row["status"] = status
@@ -3319,10 +3655,11 @@ def _liquidity_repo_depth_row(feature_map: Mapping[str, Any]) -> dict[str, Any] 
     current_spread = _spread_at_or_before(tgcr_points, sofr_points, current_date)
     if current_spread is None:
         return None
+    current_bp = _round_bp(current_spread * 100.0)
     row: dict[str, Any] = {
         "key": "sofr_tgcr",
         "label": "SOFR-TGCR 深度压力",
-        "current_bp": _round_bp(current_spread * 100.0),
+        "current_bp": current_bp,
     }
     for suffix, days in _LIQUIDITY_CHANGE_WINDOWS:
         prior_spread = _spread_at_or_before(tgcr_points, sofr_points, current_date - timedelta(days=days))
@@ -3330,7 +3667,7 @@ def _liquidity_repo_depth_row(feature_map: Mapping[str, Any]) -> dict[str, Any] 
             _round_bp((current_spread - prior_spread) * 100.0) if prior_spread is not None else None
         )
     status, status_label = _liquidity_repo_depth_status(
-        current_bp=_number(row.get("current_bp")) or 0.0,
+        current_bp=current_bp,
         change_1w_bp=_number(row.get("change_1w_bp")),
     )
     row["status"] = status
@@ -3371,16 +3708,17 @@ def _liquidity_balance_row(
     if not points:
         return None
     current_date, current_value = points[-1]
+    current_bn = _round_bn(current_value)
     row: dict[str, Any] = {
         "key": key,
         "label": label,
-        "current_bn": _round_bn(current_value),
+        "current_bn": current_bn,
     }
     for suffix, days in _LIQUIDITY_CHANGE_WINDOWS:
         prior_value = _point_value_at_or_before(points, current_date - timedelta(days=days))
         row[f"change_{suffix}_bn"] = _round_bn(current_value - prior_value) if prior_value is not None else None
     status, status_label = status_fn(
-        current_bn=_number(row.get("current_bn")) or 0.0,
+        current_bn=current_bn,
         change_1w_bn=_number(row.get("change_1w_bn")),
     )
     row["status"] = status
@@ -3479,6 +3817,8 @@ def _liquidity_tga_status(*, current_bn: float, change_1w_bn: float | None) -> t
         return "treasury_injection", "财政注入"
     if current_bn >= 900.0:
         return "treasury_high", "TGA 偏高"
+    if change_1w_bn is None:
+        return "insufficient_history", "样本不足"
     return "stable", "稳定"
 
 
@@ -3497,29 +3837,36 @@ def _liquidity_regime(rows: Sequence[Mapping[str, Any]]) -> tuple[str, str, str]
     rrp = next((row for row in rows if row.get("key") == "on_rrp"), {})
     tga = next((row for row in rows if row.get("key") == "tga"), {})
     net = next((row for row in rows if row.get("key") == "net_liquidity"), {})
-    corridor_current = _number(corridor.get("current_bp")) or 0.0
-    net_change_1w = _number(net.get("change_1w_bn")) or 0.0
-    tga_change_1w = _number(tga.get("change_1w_bn")) or 0.0
-    rrp_current = _number(rrp.get("current_bn")) or 0.0
-    if corridor_current >= 5.0 and net_change_1w <= -50.0:
+    corridor_current = _number(corridor.get("current_bp"))
+    net_change_1w = _number(net.get("change_1w_bn"))
+    tga_change_1w = _number(tga.get("change_1w_bn"))
+    rrp_current = _number(rrp.get("current_bn"))
+    if (
+        corridor_current is not None
+        and net_change_1w is not None
+        and corridor_current >= 5.0
+        and net_change_1w <= -50.0
+    ):
         return (
             "corridor_drain",
             "走廊抽水",
             "流动性走廊抽水：SOFR 高于 IORB 且净流动性回落，高 beta 需要降杠杆。",
         )
-    if rrp_current < 300.0 and net_change_1w <= 0.0:
+    if rrp_current is not None and net_change_1w is not None and rrp_current < 300.0 and net_change_1w <= 0.0:
         return (
             "buffer_low",
             "缓冲偏低",
             "RRP 缓冲偏低：财政或 QT 抽水更容易传导到准备金和融资市场。",
         )
-    if tga_change_1w >= 100.0 or net_change_1w <= -100.0:
+    if (tga_change_1w is not None and tga_change_1w >= 100.0) or (
+        net_change_1w is not None and net_change_1w <= -100.0
+    ):
         return (
             "treasury_drain",
             "财政抽水",
             "财政现金或 QT 正在抽走净流动性，风险资产需要等待资金面确认。",
         )
-    if net_change_1w >= 50.0:
+    if net_change_1w is not None and net_change_1w >= 50.0:
         return (
             "liquidity_injection",
             "净注入",
@@ -3568,17 +3915,18 @@ def _volatility_index_row(
     if not points:
         return None
     current_date, current_value = points[-1]
+    current_index = _round_index(current_value)
     row: dict[str, Any] = {
         "key": key,
         "label": label,
-        "current_index": _round_index(current_value),
+        "current_index": current_index,
     }
     for _window_label, field_name, days in _VOLATILITY_CHANGE_WINDOWS:
         prior_value = _point_value_at_or_before(points, current_date - timedelta(days=days))
         row[field_name] = _round_index(current_value - prior_value) if prior_value is not None else None
     row_status_fn = status_fn or _volatility_index_status
     status, status_label = row_status_fn(
-        current_index=_number(row.get("current_index")) or 0.0,
+        current_index=current_index,
         change_1w_index=_number(row.get("change_1w_index")),
     )
     row["status"] = status
@@ -3675,16 +4023,17 @@ def _volatility_rates_vol_row(feature_map: Mapping[str, Any]) -> dict[str, Any] 
     if not points:
         return None
     current_date, current_value = points[-1]
+    current_index = _round_index(current_value)
     row: dict[str, Any] = {
         "key": "move",
         "label": "MOVE 美债波动率",
-        "current_index": _round_index(current_value),
+        "current_index": current_index,
     }
     for _window_label, field_name, days in _VOLATILITY_CHANGE_WINDOWS:
         prior_value = _point_value_at_or_before(points, current_date - timedelta(days=days))
         row[field_name] = _round_index(current_value - prior_value) if prior_value is not None else None
     status, status_label = _volatility_move_status(
-        current_index=_number(row.get("current_index")) or 0.0,
+        current_index=current_index,
         change_1w_index=_number(row.get("change_1w_index")),
     )
     row["status"] = status
@@ -3832,50 +4181,46 @@ def _volatility_skew_status(
 
 
 def _volatility_regime(rows: Sequence[Mapping[str, Any]]) -> tuple[str, str, str]:
-    vix = next((row for row in rows if row.get("key") == "vix_spot"), {})
     front_rows = [row for row in rows if row.get("key") in {"vix1d_vix", "vix9d_vix"}]
-    term = next((row for row in rows if row.get("key") == "vix3m_vix"), {})
-    etf = next((row for row in rows if row.get("key") == "vixy_vixm"), {})
-    move = next((row for row in rows if row.get("key") == "move"), {})
-    vix_current = _number(vix.get("current_index")) or 0.0
-    vix_change_1w = _number(vix.get("change_1w_index")) or 0.0
-    front_current = max((_number(row.get("current_points")) or 0.0 for row in front_rows), default=0.0)
-    front_change_1w = max((_number(row.get("change_1w_points")) or 0.0 for row in front_rows), default=0.0)
-    term_current = _number(term.get("current_points")) or 0.0
-    etf_change_1w = _number(etf.get("change_1w_pct")) or 0.0
-    move_current = _number(move.get("current_index")) or 0.0
-    move_change_1w = _number(move.get("change_1w_index")) or 0.0
-    if vix_current >= 30.0 or term_current < 0.0:
+    vix_current = _volatility_row_number(rows, "vix_spot", "current_index")
+    vix_change_1w = _volatility_row_number(rows, "vix_spot", "change_1w_index")
+    front_current = _volatility_front_max(front_rows, "current_points")
+    front_change_1w = _volatility_front_max(front_rows, "change_1w_points")
+    term_current = _volatility_row_number(rows, "vix3m_vix", "current_points")
+    etf_change_1w = _volatility_row_number(rows, "vixy_vixm", "change_1w_pct")
+    move_current = _volatility_row_number(rows, "move", "current_index")
+    move_change_1w = _volatility_row_number(rows, "move", "change_1w_index")
+    if (vix_current is not None and vix_current >= 30.0) or (term_current is not None and term_current < 0.0):
         return (
             "backwardation_stress",
             "倒挂压力",
             "波动率进入倒挂压力：VIX 或期限结构提示去杠杆风险，优先降低风险暴露。",
         )
-    if move_current >= 150.0:
+    if move_current is not None and move_current >= 150.0:
         return (
             "rates_vol_stress",
             "利率波动升温",
             "MOVE 指示美债波动率压力：久期、信用和高估值资产需要同步降敏感度。",
         )
     if (
-        front_current >= 2.0
-        or front_change_1w >= 2.0
-        or vix_change_1w >= 5.0
-        or etf_change_1w >= 5.0
-        or move_change_1w >= 15.0
+        (front_current is not None and front_current >= 2.0)
+        or (front_change_1w is not None and front_change_1w >= 2.0)
+        or (vix_change_1w is not None and vix_change_1w >= 5.0)
+        or (etf_change_1w is not None and etf_change_1w >= 5.0)
+        or (move_change_1w is not None and move_change_1w >= 15.0)
     ):
         return (
             "front_repricing",
             "前端升温",
             "波动率前端重新定价：短端避险需求升温，高 beta 需要降杠杆。",
         )
-    if term_current >= 3.0 and vix_current < 20.0:
+    if term_current is not None and vix_current is not None and term_current >= 3.0 and vix_current < 20.0:
         return (
             "carry_contango",
             "期限 Contango",
             "波动率处于 Contango：VIX 回落且远期仍有溢价，短期风险偏 carry。",
         )
-    if vix_current >= 20.0:
+    if vix_current is not None and vix_current >= 20.0:
         return (
             "elevated",
             "波动偏高",
@@ -3886,6 +4231,19 @@ def _volatility_regime(rows: Sequence[Mapping[str, Any]]) -> tuple[str, str, str
         "中性",
         "波动率信号中性：等待 VIX、MOVE、期限结构和期货代理同向确认。",
     )
+
+
+def _volatility_row_number(rows: Sequence[Mapping[str, Any]], row_key: str, field_name: str) -> float | None:
+    row = next((item for item in rows if item.get("key") == row_key), None)
+    if row is None:
+        return None
+    return _number(row.get(field_name))
+
+
+def _volatility_front_max(rows: Sequence[Mapping[str, Any]], field_name: str) -> float | None:
+    values = [_number(row.get(field_name)) for row in rows]
+    numeric_values = [value for value in values if value is not None]
+    return max(numeric_values) if numeric_values else None
 
 
 def _volatility_implications(regime: str) -> list[str]:
@@ -3981,10 +4339,11 @@ def _credit_financial_conditions_row(feature_map: Mapping[str, Any]) -> dict[str
     if not points:
         return None
     current_date, current_value = points[-1]
+    current_index = _round_index(current_value)
     row: dict[str, Any] = {
         "key": "nfci",
         "label": "NFCI 金融条件",
-        "current_index": _round_index(current_value),
+        "current_index": current_index,
     }
     for _window_label, field_name, days in _CREDIT_CONDITIONS_CHANGE_WINDOWS:
         prior_value = _point_value_at_or_before(points, current_date - timedelta(days=days))
@@ -3994,7 +4353,7 @@ def _credit_financial_conditions_row(feature_map: Mapping[str, Any]) -> dict[str
     if adjusted_value is not None:
         row["adjusted_index"] = _round_index(adjusted_value)
     status, status_label = _credit_financial_conditions_status(
-        current_index=_number(row.get("current_index")) or 0.0,
+        current_index=current_index,
         change_1w_index=_number(row.get("change_1w_index")),
         change_1m_index=_number(row.get("change_1m_index")),
     )
@@ -4066,7 +4425,7 @@ def _credit_row_has_change(row: Mapping[str, Any]) -> bool:
 
 def _credit_oas_status(change_1w_bp: float | None) -> tuple[str, str]:
     if change_1w_bp is None:
-        return "stable", "稳定"
+        return "insufficient_history", "样本不足"
     if change_1w_bp >= 5.0:
         return "widening", "走阔"
     if change_1w_bp <= -5.0:
@@ -4076,7 +4435,7 @@ def _credit_oas_status(change_1w_bp: float | None) -> tuple[str, str]:
 
 def _credit_tail_status(change_1w_bp: float | None) -> tuple[str, str]:
     if change_1w_bp is None:
-        return "stable", "稳定"
+        return "insufficient_history", "样本不足"
     if change_1w_bp >= 25.0:
         return "tail_widening", "尾部恶化"
     if change_1w_bp <= -25.0:
@@ -4095,21 +4454,25 @@ def _credit_sloos_status(*, current_value: float, change_1q_pct: float | None) -
 def _credit_financial_conditions_status(
     *, current_index: float, change_1w_index: float | None, change_1m_index: float | None
 ) -> tuple[str, str]:
-    change_1w = change_1w_index if change_1w_index is not None else 0.0
-    change_1m = change_1m_index if change_1m_index is not None else 0.0
-    if current_index >= 0.5 or change_1w >= 0.2 or change_1m >= 0.4:
+    if current_index >= 0.5:
         return "conditions_tightening", "金融条件收紧"
-    if current_index <= -0.75 and change_1w <= -0.2:
+    if current_index <= -0.75 and (change_1w_index is None or change_1w_index <= -0.2):
         return "conditions_easing", "金融条件宽松"
+    if change_1w_index is None and change_1m_index is None:
+        return "insufficient_history", "样本不足"
+    if (change_1w_index is not None and change_1w_index >= 0.2) or (
+        change_1m_index is not None and change_1m_index >= 0.4
+    ):
+        return "conditions_tightening", "金融条件收紧"
     return "conditions_stable", "条件稳定"
 
 
 def _credit_etf_relative_status(*, hyg_1w_pct: float | None, relative_1w_pct: float | None) -> tuple[str, str]:
-    hyg_1w = hyg_1w_pct if hyg_1w_pct is not None else 0.0
-    relative_1w = relative_1w_pct if relative_1w_pct is not None else 0.0
-    if relative_1w <= -1.0 and hyg_1w <= 0.0:
+    if hyg_1w_pct is None or relative_1w_pct is None:
+        return "insufficient_history", "样本不足"
+    if relative_1w_pct <= -1.0 and hyg_1w_pct <= 0.0:
         return "etf_pressure", "HYG跑输"
-    if relative_1w >= 1.0 and hyg_1w >= 0.0:
+    if relative_1w_pct >= 1.0 and hyg_1w_pct >= 0.0:
         return "etf_relief", "HYG企稳"
     return "etf_neutral", "ETF中性"
 
@@ -4120,22 +4483,22 @@ def _credit_regime(rows: Sequence[Mapping[str, Any]]) -> tuple[str, str, str]:
     etf = next((row for row in rows if row.get("key") == "hyg_lqd_relative"), {})
     conditions = next((row for row in rows if row.get("key") == "nfci"), {})
     sloos = next((row for row in rows if row.get("key") == "sloos_ci_large_tightening"), {})
-    hy_current = _number(hy.get("current_bp")) or 0.0
-    hy_change_1w = _number(hy.get("change_1w_bp")) or 0.0
-    hy_change_1m = _number(hy.get("change_1m_bp")) or 0.0
-    tail_current = _number(tail.get("current_bp")) or 0.0
-    tail_change_1w = _number(tail.get("change_1w_bp")) or 0.0
-    tail_change_1m = _number(tail.get("change_1m_bp")) or 0.0
+    hy_current = _number(hy.get("current_bp"))
+    hy_change_1w = _number(hy.get("change_1w_bp"))
+    hy_change_1m = _number(hy.get("change_1m_bp"))
+    tail_current = _number(tail.get("current_bp"))
+    tail_change_1w = _number(tail.get("change_1w_bp"))
+    tail_change_1m = _number(tail.get("change_1m_bp"))
     etf_status = str(etf.get("status") or "")
     conditions_status = str(conditions.get("status") or "")
     sloos_status = str(sloos.get("status") or "")
-    if hy_current >= 600.0 or tail_current >= 700.0:
+    if (hy_current is not None and hy_current >= 600.0) or (tail_current is not None and tail_current >= 700.0):
         return (
             "credit_stress",
             "信用压力",
             "信用压力升温：高收益或 CCC 尾部进入压力区，风险资产需要防守。",
         )
-    if hy_change_1w > 0.0 and tail_change_1w >= 25.0:
+    if hy_change_1w is not None and tail_change_1w is not None and hy_change_1w > 0.0 and tail_change_1w >= 25.0:
         return (
             "tail_widening",
             "尾部走阔",
@@ -4153,7 +4516,7 @@ def _credit_regime(rows: Sequence[Mapping[str, Any]]) -> tuple[str, str, str]:
             "金融条件收紧",
             "金融条件收紧：NFCI 已经升温，但信用利差尚未完全扩散，警惕滞后确认。",
         )
-    if hy_change_1m <= -20.0 and tail_change_1m <= 0.0:
+    if hy_change_1m is not None and tail_change_1m is not None and hy_change_1m <= -20.0 and tail_change_1m <= 0.0:
         return (
             "credit_relief",
             "信用缓和",
@@ -4314,14 +4677,15 @@ def _policy_volume_row(
         return None
     current_date, current_value = points[-1]
     prior_value = _point_value_at_or_before(points, current_date - timedelta(days=7))
+    current_bn = _round_bn(current_value)
     row: dict[str, Any] = {
         "key": key,
         "label": label,
-        "current_bn": _round_bn(current_value),
+        "current_bn": current_bn,
         "change_1w_bn": _round_bn(current_value - prior_value) if prior_value is not None else None,
     }
     status, status_label = _policy_volume_status(
-        current_bn=_number(row.get("current_bn")) or 0.0,
+        current_bn=current_bn,
         change_1w_bn=_number(row.get("change_1w_bn")),
     )
     row["status"] = status
@@ -4387,15 +4751,17 @@ def _policy_regime(rows: Sequence[Mapping[str, Any]]) -> tuple[str, str, str]:
     effr_iorb = next((row for row in rows if row.get("key") == "effr_iorb_spread"), {})
     sofr_effr = next((row for row in rows if row.get("key") == "sofr_effr_spread"), {})
     effr_status = str(effr.get("status") or "")
-    effr_iorb_bp = _number(effr_iorb.get("current_bp")) or 0.0
-    sofr_effr_bp = _number(sofr_effr.get("current_bp")) or 0.0
-    if effr_status == "above_upper" and (effr_iorb_bp >= 10.0 or sofr_effr_bp >= 5.0):
+    effr_iorb_bp = _number(effr_iorb.get("current_bp"))
+    sofr_effr_bp = _number(sofr_effr.get("current_bp"))
+    if effr_status == "above_upper" and (
+        (effr_iorb_bp is not None and effr_iorb_bp >= 10.0) or (sofr_effr_bp is not None and sofr_effr_bp >= 5.0)
+    ):
         return (
             "corridor_pressure",
             "走廊压力",
             "政策走廊承压：EFFR 高于目标上限且 SOFR 相对 EFFR 走阔，隔夜融资压力需要降杠杆。",
         )
-    if sofr_effr_bp >= 10.0 or effr_iorb_bp >= 10.0:
+    if (sofr_effr_bp is not None and sofr_effr_bp >= 10.0) or (effr_iorb_bp is not None and effr_iorb_bp >= 10.0):
         return (
             "funding_pressure",
             "融资压力",
@@ -4594,7 +4960,7 @@ def _yield_curve_spread_status(
     change_1w_bp: float | None,
 ) -> tuple[str, str]:
     if change_1w_bp is None:
-        return ("inverted", "倒挂") if current_bp < 0 else ("stable", "稳定")
+        return ("inverted", "倒挂") if current_bp < 0 else ("insufficient_history", "样本不足")
     if current_bp < 0 and change_1w_bp >= 5.0:
         return "less_inverted", "倒挂缓和"
     if change_1w_bp >= 5.0:
@@ -4608,28 +4974,28 @@ def _yield_curve_spread_status(
 
 def _yield_curve_shape(rows: Sequence[Mapping[str, Any]], feature_map: Mapping[str, Any]) -> tuple[str, str, str]:
     two_ten = next((row for row in rows if row.get("key") == "2s10s"), {})
-    two_ten_current = _number(two_ten.get("current_bp")) or 0.0
-    two_ten_change = _number(two_ten.get("change_1w_bp")) or 0.0
-    ten_year_change = _yield_curve_feature_change_bp(_mapping(feature_map.get("rates:dgs10")), days=7) or 0.0
-    if ten_year_change > 0 and two_ten_change > 0:
+    two_ten_current = _number(two_ten.get("current_bp"))
+    two_ten_change = _number(two_ten.get("change_1w_bp"))
+    ten_year_change = _yield_curve_feature_change_bp(_mapping(feature_map.get("rates:dgs10")), days=7)
+    if ten_year_change is not None and two_ten_change is not None and ten_year_change > 0 and two_ten_change > 0:
         return (
             "bear_steepening",
             "熊陡",
             "曲线熊陡：10Y 上行且 2s10s 走陡，期限溢价压力压制久期资产。",
         )
-    if ten_year_change < 0 and two_ten_change > 0:
+    if ten_year_change is not None and two_ten_change is not None and ten_year_change < 0 and two_ten_change > 0:
         return (
             "bull_steepening",
             "牛陡",
             "曲线牛陡：10Y 下行且 2s10s 走陡，增长下行压力高于期限溢价。",
         )
-    if two_ten_change < 0:
+    if two_ten_change is not None and two_ten_change < 0:
         return (
             "flattening",
             "走平",
             "曲线走平：前端政策压力相对后端更强，风险资产仍需等待政策预期确认。",
         )
-    if two_ten_current < 0:
+    if two_ten_current is not None and two_ten_current < 0:
         return (
             "inverted",
             "倒挂",
@@ -4679,15 +5045,16 @@ def _real_rate_row(
     current = _latest_feature_value(feature)
     if current is None:
         return None
+    current_pct = _round_pct(current)
     row: dict[str, Any] = {
         "key": spec["key"],
         "label": spec["label"],
-        "current_pct": _round_pct(current),
+        "current_pct": current_pct,
     }
     for _window_label, field_name, days in _YIELD_CURVE_CHANGE_WINDOWS:
         row[field_name] = _yield_curve_feature_change_bp(feature, days=days)
     status, status_label = status_fn(
-        current_pct=_number(row.get("current_pct")) or 0.0,
+        current_pct=current_pct,
         change_1w_bp=_number(row.get("change_1w_bp")),
     )
     row["status"] = status
@@ -4702,6 +5069,8 @@ def _real_rate_row_has_change(row: Mapping[str, Any]) -> bool:
 def _real_rate_real_status(*, current_pct: float, change_1w_bp: float | None) -> tuple[str, str]:
     if current_pct >= 2.0 or (change_1w_bp is not None and change_1w_bp >= 15.0):
         return "valuation_pressure", "估值压力"
+    if change_1w_bp is None:
+        return "insufficient_history", "样本不足"
     if change_1w_bp is not None and change_1w_bp <= -15.0:
         return "valuation_relief", "估值缓和"
     return "stable", "稳定"
@@ -4709,7 +5078,7 @@ def _real_rate_real_status(*, current_pct: float, change_1w_bp: float | None) ->
 
 def _real_rate_inflation_status(*, current_pct: float, change_1w_bp: float | None) -> tuple[str, str]:
     if change_1w_bp is None:
-        return "stable", "稳定"
+        return "insufficient_history", "样本不足"
     if change_1w_bp >= 5.0:
         return "rising", "补偿走阔"
     if change_1w_bp <= -5.0:
@@ -4723,22 +5092,26 @@ def _real_rate_regime(
 ) -> tuple[str, str, str]:
     ten_year_real = next((row for row in real_yield_rows if row.get("key") == "real_10y"), {})
     ten_year_breakeven = next((row for row in inflation_rows if row.get("key") == "breakeven_10y"), {})
-    real_current = _number(ten_year_real.get("current_pct")) or 0.0
-    real_change = _number(ten_year_real.get("change_1w_bp")) or 0.0
-    breakeven_change = _number(ten_year_breakeven.get("change_1w_bp")) or 0.0
-    if (real_current >= 2.0 or real_change >= 15.0) and breakeven_change <= 5.0:
+    real_current = _number(ten_year_real.get("current_pct"))
+    real_change = _number(ten_year_real.get("change_1w_bp"))
+    breakeven_change = _number(ten_year_breakeven.get("change_1w_bp"))
+    if (
+        ((real_current is not None and real_current >= 2.0) or (real_change is not None and real_change >= 15.0))
+        and breakeven_change is not None
+        and breakeven_change <= 5.0
+    ):
         return (
             "real_rate_pressure",
             "实际利率压力",
             "实际利率上行且通胀补偿未同步走阔：估值压力偏实际利率驱动，长久期与高 beta 需要降级。",
         )
-    if breakeven_change >= 10.0 and real_change < 10.0:
+    if breakeven_change is not None and real_change is not None and breakeven_change >= 10.0 and real_change < 10.0:
         return (
             "inflation_compensation",
             "通胀补偿走阔",
             "通胀补偿走阔而实际利率未同步上行：名义利率压力偏通胀预期驱动。",
         )
-    if real_change <= -15.0:
+    if real_change is not None and real_change <= -15.0:
         return (
             "real_rate_relief",
             "实际利率缓和",
@@ -4836,24 +5209,20 @@ def _module_evidence(
     if config.module_id == "overview":
         return {
             "confirmations": [
-                item
-                for item in (_evidence_item(item) for item in _mapping_list(scenario.get("confirmations")))
-                if item is not None
+                _evidence_item(item)
+                for item in _required_scenario_mapping_list(scenario, "confirmations", allow_empty=True)
             ],
             "contradictions": [
-                item
-                for item in (_evidence_item(item) for item in _mapping_list(scenario.get("contradictions")))
-                if item is not None
+                _evidence_item(item)
+                for item in _required_scenario_mapping_list(scenario, "contradictions", allow_empty=True)
             ],
             "watch_triggers": [
-                item
-                for item in (_evidence_item(item) for item in _mapping_list(scenario.get("watch_triggers")))
-                if item is not None
+                _evidence_item(item)
+                for item in _required_scenario_mapping_list(scenario, "watch_triggers", allow_empty=True)
             ],
             "invalidations": [
-                item
-                for item in (_evidence_item(item) for item in _mapping_list(scenario.get("invalidations")))
-                if item is not None
+                _evidence_item(item)
+                for item in _required_scenario_mapping_list(scenario, "invalidations", allow_empty=True)
             ],
         }
 
@@ -4861,7 +5230,7 @@ def _module_evidence(
         {
             "code": f"module_concept_available:{concept_key}",
             "label": _feature_label(concept_key, _mapping(feature_map.get(concept_key))),
-            "description": _availability_note(concept_key, _mapping(feature_map.get(concept_key))),
+            "evidence_label": _availability_note(concept_key, _mapping(feature_map.get(concept_key))),
         }
         for concept_key in _module_concept_keys(config)
         if concept_key in feature_map
@@ -4871,7 +5240,7 @@ def _module_evidence(
         {
             "code": f"module_concept_missing:{concept_key}",
             "label": _concept_required_text(concept_key, "label"),
-            "description": "模块配置概念未在最新宏观投影中出现。",
+            "evidence_label": "模块配置概念未在最新宏观投影中出现。",
         }
         for concept_key in missing_concepts
     ]
@@ -4883,7 +5252,7 @@ def _module_evidence(
             {
                 "code": "module_chart_missing",
                 "label": "主图缺失",
-                "description": "主图核心序列全部缺失时，模块信号不可用。",
+                "evidence_label": "主图核心序列全部缺失时，模块信号不可用。",
             }
         ]
         if primary_chart.get("status") == "missing"
@@ -4894,33 +5263,20 @@ def _module_evidence(
 def _decision_console(
     *,
     scenario: Mapping[str, Any],
-    data_health: Mapping[str, Any],
     feature_map: Mapping[str, Any],
     observations: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
-    quality_blockers = _mapping_list(scenario.get("quality_blockers"))
-    if not quality_blockers:
-        quality_blockers = [
-            {
-                "code": gap.get("code"),
-                "label": gap.get("label"),
-                "description": gap.get("remediation_hint") or gap.get("label") or "",
-                "severity": gap.get("severity"),
-            }
-            for gap in _mapping_list(data_health.get("global_gaps"))
-        ]
+    quality_blockers = _required_scenario_mapping_list(scenario, "quality_blockers", allow_empty=True)
     trade_map = [
-        item
-        for item in (_trade_map_item(item, observations) for item in _mapping_list(scenario.get("trade_map")))
-        if item is not None
+        _trade_map_item(item, observations)
+        for item in _required_scenario_mapping_list(scenario, "trade_map", allow_empty=True)
     ]
-    payload: dict[str, Any] = {
+    compact_quality_blockers = [_compact_quality_blocker(item) for item in quality_blockers]
+    payload = {
         "top_changes": [
-            item
-            for item in (_compact_signal(item) for item in _mapping_list(scenario.get("top_changes")))
-            if item is not None
+            _compact_signal(item) for item in _required_scenario_mapping_list(scenario, "top_changes", allow_empty=True)
         ],
-        "quality_blockers": [_compact_quality_blocker(item) for item in quality_blockers],
+        "quality_blockers": compact_quality_blockers,
         "trade_map": trade_map,
     }
     watchlist_alerts = _watchlist_alerts(
@@ -4933,9 +5289,8 @@ def _decision_console(
     judgement_review = _judgement_review(trade_map)
     if judgement_review:
         payload["judgement_review"] = judgement_review
-    scenario_cases = _mapping_list(scenario.get("scenario_cases"))
-    if scenario_cases:
-        payload["scenario_cases"] = [dict(item) for item in scenario_cases]
+    scenario_cases = _required_scenario_mapping_list(scenario, "scenario_cases")
+    payload["scenario_cases"] = [dict(item) for item in scenario_cases]
     liquidity_pressure = _liquidity_pressure(feature_map)
     if liquidity_pressure:
         payload["liquidity_pressure"] = liquidity_pressure
@@ -4954,9 +5309,8 @@ def _future_catalysts(
     event_candidates: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any] | None:
     rows = [
-        row
-        for row in (_future_watch_catalyst(item) for item in _mapping_list(scenario.get("watch_triggers")))
-        if row is not None
+        _future_watch_catalyst(item)
+        for item in _required_scenario_mapping_list(scenario, "watch_triggers", allow_empty=True)
     ]
     rows.extend(row for row in (_future_event_catalyst(catalyst) for catalyst in event_candidates) if row is not None)
     if not rows:
@@ -4967,21 +5321,32 @@ def _future_catalysts(
     }
 
 
-def _future_watch_catalyst(item: Mapping[str, Any]) -> dict[str, Any] | None:
+def _future_watch_catalyst(item: Mapping[str, Any]) -> dict[str, Any]:
     code = str(item.get("code") or "").strip()
-    label = str(item.get("label") or _code_label(code) or "").strip()
-    window = _future_catalyst_window(item.get("time_window"))
-    if not label or window is None:
-        return None
+    label = _required_scenario_rule_text(item, "label", "macro_future_watch_catalyst_label_required")
+    detail = _required_scenario_rule_text(item, "detail", "macro_future_watch_catalyst_detail_required")
+    window = _required_future_watch_catalyst_window(item.get("time_window"))
+    window_label = _required_scenario_rule_text(
+        item,
+        "time_window_label",
+        "macro_future_watch_catalyst_window_label_required",
+    )
+    if not code:
+        raise ValueError("macro_future_watch_catalyst_code_required")
     severity = _required_macro_severity(item.get("severity"))
+    severity_label = _required_scenario_rule_text(
+        item,
+        "severity_label",
+        "macro_future_watch_catalyst_severity_label_required",
+    )
     return {
-        "key": f"watch:{code or label}",
+        "key": f"watch:{code}",
         "label": label,
-        "description": str(item.get("description") or ""),
+        "detail": detail,
         "window": window,
-        "window_label": window,
+        "window_label": window_label,
         "severity": severity,
-        "severity_label": _future_catalyst_severity_label(severity),
+        "severity_label": severity_label,
         "source": "情景触发",
         "kind": "watch_trigger",
     }
@@ -4994,17 +5359,31 @@ def _future_event_catalyst(catalyst: Mapping[str, Any]) -> dict[str, Any] | None
         return None
     if days_until < 0 or days_until > 3:
         return None
-    window = "24h" if days_until <= 1 else "72h"
-    severity = "high" if window == "24h" else "medium"
+    label = _required_event_catalyst_text(catalyst, "label", "macro_future_event_catalyst_label_required")
+    detail = _required_event_catalyst_text(catalyst, "detail", "macro_future_event_catalyst_detail_required")
+    code = _required_event_catalyst_code(catalyst, "macro_future_event_catalyst_code_required")
+    source = _required_event_catalyst_source(catalyst, "macro_future_event_catalyst_source_required")
+    window = _required_future_event_catalyst_window(catalyst.get("time_window"))
+    window_label = _required_event_catalyst_text(
+        catalyst,
+        "time_window_label",
+        "macro_future_event_catalyst_window_label_required",
+    )
+    severity = _required_macro_severity(catalyst.get("severity"))
+    severity_label = _required_event_catalyst_text(
+        catalyst,
+        "severity_label",
+        "macro_future_event_catalyst_severity_label_required",
+    )
     row = {
-        "key": f"event:{catalyst.get('code') or catalyst.get('label') or ''}",
-        "label": str(catalyst.get("label") or ""),
-        "description": str(catalyst.get("description") or ""),
+        "key": f"event:{code}",
+        "label": label,
+        "detail": detail,
         "window": window,
-        "window_label": window,
+        "window_label": window_label,
         "severity": severity,
-        "severity_label": _future_catalyst_severity_label(severity),
-        "source": str(catalyst.get("source") or ""),
+        "severity_label": severity_label,
+        "source": source,
         "kind": kind,
     }
     source_url = catalyst.get("source_url")
@@ -5020,6 +5399,20 @@ def _future_catalyst_window(value: object) -> str | None:
     if window in {"72h", "3d"}:
         return "72h"
     return None
+
+
+def _required_future_watch_catalyst_window(value: object) -> str:
+    window = _future_catalyst_window(value)
+    if window is None:
+        raise ValueError("macro_future_watch_catalyst_time_window_required")
+    return window
+
+
+def _required_future_event_catalyst_window(value: object) -> str:
+    window = _future_catalyst_window(value)
+    if window is None:
+        raise ValueError("macro_future_event_catalyst_time_window_required")
+    return window
 
 
 def _future_catalyst_severity_label(severity: str) -> str:
@@ -5041,8 +5434,8 @@ def _market_event_flow(
     *,
     news_rows: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any] | None:
-    rows = [row for row in (_market_news_event_flow_row(news_row) for news_row in news_rows) if row is not None]
-    rows.extend(row for row in (_market_event_flow_row(catalyst) for catalyst in catalysts) if row is not None)
+    rows = [_market_news_event_flow_row(news_row) for news_row in news_rows]
+    rows.extend(_market_event_flow_row(catalyst) for catalyst in catalysts)
     if not rows:
         return None
     return {
@@ -5052,23 +5445,70 @@ def _market_event_flow(
     }
 
 
-def _market_event_flow_row(catalyst: Mapping[str, Any]) -> dict[str, Any] | None:
-    label = str(catalyst.get("label") or "").strip()
-    detail = str(catalyst.get("description") or "").strip()
-    date = str(catalyst.get("observed_at") or "").strip()
-    if not label or not detail or not date:
-        return None
-    window, severity, severity_label = _event_flow_window(catalyst)
-    category, category_label, impact, impact_label, watch = _event_flow_classification(catalyst)
+def _market_event_flow_row(catalyst: Mapping[str, Any]) -> dict[str, Any]:
+    label = _required_event_catalyst_text(catalyst, "label", "macro_market_event_flow_label_required")
+    detail = _required_event_catalyst_text(catalyst, "detail", "macro_market_event_flow_detail_required")
+    date = _required_event_catalyst_text(catalyst, "observed_at", "macro_market_event_flow_date_required")
+    code = _required_event_catalyst_code(catalyst, "macro_market_event_flow_code_required")
+    source = _required_event_catalyst_source(catalyst, "macro_market_event_flow_source_required")
+    kind = _required_event_catalyst_kind(catalyst, "macro_market_event_flow_kind_required")
+    window = _required_event_catalyst_text(
+        catalyst,
+        "event_flow_window",
+        "macro_market_event_flow_window_required",
+    )
+    window_label = _required_event_catalyst_text(
+        catalyst,
+        "event_flow_window_label",
+        "macro_market_event_flow_window_label_required",
+    )
+    severity = _required_macro_severity(
+        _required_event_catalyst_text(
+            catalyst,
+            "event_flow_severity",
+            "macro_market_event_flow_severity_required",
+        )
+    )
+    severity_label = _required_event_catalyst_text(
+        catalyst,
+        "event_flow_severity_label",
+        "macro_market_event_flow_severity_label_required",
+    )
+    category = _required_event_catalyst_text(
+        catalyst,
+        "event_flow_category",
+        "macro_market_event_flow_category_required",
+    )
+    category_label = _required_event_catalyst_text(
+        catalyst,
+        "event_flow_category_label",
+        "macro_market_event_flow_category_label_required",
+    )
+    impact = _required_event_catalyst_text(
+        catalyst,
+        "event_flow_impact",
+        "macro_market_event_flow_impact_required",
+    )
+    impact_label = _required_event_catalyst_text(
+        catalyst,
+        "event_flow_impact_label",
+        "macro_market_event_flow_impact_label_required",
+    )
+    watch = _required_event_catalyst_text(
+        catalyst,
+        "event_flow_watch",
+        "macro_market_event_flow_watch_required",
+    )
     return {
-        "key": str(catalyst.get("code") or label),
+        "key": code,
         "label": label,
         "date": date,
         "detail": detail,
-        "source": str(catalyst.get("source") or ""),
+        "source": source,
         "source_url": catalyst.get("source_url"),
-        "kind": str(catalyst.get("kind") or ""),
+        "kind": kind,
         "window": window,
+        "window_label": window_label,
         "severity": severity,
         "severity_label": severity_label,
         "category": category,
@@ -5079,66 +5519,149 @@ def _market_event_flow_row(catalyst: Mapping[str, Any]) -> dict[str, Any] | None
     }
 
 
-def _market_news_event_flow_row(row: Mapping[str, Any]) -> dict[str, Any] | None:
-    label = str(row.get("headline") or "").strip()
-    detail = str(row.get("summary") or "").strip()
+def _required_event_catalyst_text(catalyst: Mapping[str, Any], field_name: str, message: str) -> str:
+    value = str(catalyst.get(field_name) or "").strip()
+    if not value:
+        raise ValueError(message)
+    return value
+
+
+def _required_event_catalyst_code(catalyst: Mapping[str, Any], message: str) -> str:
+    code = str(catalyst.get("code") or "").strip()
+    if not code:
+        raise ValueError(message)
+    return code
+
+
+def _required_event_catalyst_source(catalyst: Mapping[str, Any], message: str) -> str:
+    source = str(catalyst.get("source") or "").strip()
+    if not source:
+        raise ValueError(message)
+    return source
+
+
+def _required_event_catalyst_kind(catalyst: Mapping[str, Any], message: str) -> str:
+    kind = str(catalyst.get("kind") or "").strip()
+    if not kind:
+        raise ValueError(message)
+    return kind
+
+
+def _market_news_event_flow_row(row: Mapping[str, Any]) -> dict[str, Any]:
+    label = _required_market_news_event_text(row, "headline", "macro_market_news_event_headline_required")
+    detail = _required_market_news_event_text(row, "summary", "macro_market_news_event_summary_required")
     date_label = _news_row_date(row)
-    source = str(row.get("source_domain") or "").strip()
-    if not label or not detail or not date_label or not source:
-        return None
-    market_scope = _mapping(row.get("market_scope"))
-    category = str(market_scope.get("primary") or "").strip() or "market_event"
-    category_label = _news_scope_label(category)
-    impact, impact_label, severity, severity_label = _news_mainline_impact(row)
-    watch_parts = _news_watch_parts(row, category_label=category_label)
+    source = _required_market_news_event_text(
+        row,
+        "source_domain",
+        "macro_market_news_event_source_domain_required",
+    )
+    row_id = _required_market_news_event_row_id(row)
+    event_flow = _required_market_news_event_flow(row)
+    window = _required_market_news_event_flow_text(
+        event_flow,
+        "window",
+        "macro_market_news_event_window_required",
+    )
+    window_label = _required_market_news_event_flow_text(
+        event_flow,
+        "window_label",
+        "macro_market_news_event_window_label_required",
+    )
+    severity = _required_macro_severity(
+        _required_market_news_event_flow_text(
+            event_flow,
+            "severity",
+            "macro_market_news_event_severity_required",
+        )
+    )
+    severity_label = _required_market_news_event_flow_text(
+        event_flow,
+        "severity_label",
+        "macro_market_news_event_severity_label_required",
+    )
+    category = _required_market_news_event_flow_text(
+        event_flow,
+        "category",
+        "macro_market_news_event_category_required",
+    )
+    category_label = _required_market_news_event_flow_text(
+        event_flow,
+        "category_label",
+        "macro_market_news_event_category_label_required",
+    )
+    impact = _required_market_news_event_flow_text(
+        event_flow,
+        "impact",
+        "macro_market_news_event_impact_required",
+    )
+    impact_label = _required_market_news_event_flow_text(
+        event_flow,
+        "impact_label",
+        "macro_market_news_event_impact_label_required",
+    )
+    watch = _required_market_news_event_flow_text(
+        event_flow,
+        "watch",
+        "macro_market_news_event_watch_required",
+    )
     return {
-        "key": f"news:{row.get('row_id') or row.get('news_item_id') or label}",
+        "key": f"news:{row_id}",
         "label": label,
         "date": date_label,
         "detail": detail,
         "source": source,
         "source_url": row.get("canonical_url"),
         "kind": "news",
-        "window": "recent",
+        "window": window,
+        "window_label": window_label,
         "severity": severity,
         "severity_label": severity_label,
         "category": category,
         "category_label": category_label,
         "impact": impact,
         "impact_label": impact_label,
-        "watch": " · ".join(watch_parts),
+        "watch": watch,
     }
+
+
+def _required_market_news_event_text(row: Mapping[str, Any], field_name: str, message: str) -> str:
+    value = str(row.get(field_name) or "").strip()
+    if not value:
+        raise ValueError(message)
+    return value
+
+
+def _required_market_news_event_row_id(row: Mapping[str, Any]) -> str:
+    row_id = str(row.get("row_id") or "").strip()
+    if not row_id:
+        raise ValueError("macro_market_news_event_row_id_required")
+    return row_id
+
+
+def _required_market_news_event_flow(row: Mapping[str, Any]) -> Mapping[str, Any]:
+    event_flow = row.get("macro_event_flow")
+    if not isinstance(event_flow, Mapping):
+        raise ValueError("macro_market_news_event_flow_required")
+    return event_flow
+
+
+def _required_market_news_event_flow_text(
+    event_flow: Mapping[str, Any],
+    field_name: str,
+    message: str,
+) -> str:
+    value = str(event_flow.get(field_name) or "").strip()
+    if not value:
+        raise ValueError(message)
+    return value
 
 
 def _news_row_date(row: Mapping[str, Any]) -> str | None:
     latest_at_ms = _number(row.get("latest_at_ms"))
     if latest_at_ms is None:
-        return _date_string(row.get("published_at") or row.get("observed_at"))
+        raise ValueError("macro_market_news_event_latest_at_required")
     return datetime.fromtimestamp(latest_at_ms / 1000, tz=UTC).date().isoformat()
-
-
-def _news_scope_label(scope: str) -> str:
-    return _NEWS_MARKET_SCOPE_LABELS.get(scope, "市场事件")
-
-
-def _news_mainline_impact(row: Mapping[str, Any]) -> tuple[str, str, str, str]:
-    signal = _mapping(row.get("signal"))
-    agent_signal = _mapping(signal.get("agent_signal"))
-    alert_eligibility = _mapping(signal.get("alert_eligibility"))
-    decision_class = str(agent_signal.get("decision_class") or alert_eligibility.get("decision_class") or "").strip()
-    if decision_class == "driver":
-        return "mainline_driver", "改变主线", "high", "高"
-    if decision_class == "watch":
-        return "mainline_watch", "观察主线", "medium", "中"
-    return "mainline_context", "不改主线", "low", "低"
-
-
-def _news_watch_parts(row: Mapping[str, Any], *, category_label: str) -> list[str]:
-    token_lanes = _mapping_list(row.get("token_lanes"))
-    symbols = _unique(str(item.get("symbol") or "").strip() for item in token_lanes)
-    if symbols:
-        return [*symbols[:4], category_label]
-    return [category_label]
 
 
 def _event_flow_window(catalyst: Mapping[str, Any]) -> tuple[str, str, str]:
@@ -5153,6 +5676,22 @@ def _event_flow_window(catalyst: Mapping[str, Any]) -> tuple[str, str, str]:
     return "recent", "medium", "中"
 
 
+def _event_flow_display_fields(catalyst: Mapping[str, Any]) -> dict[str, str]:
+    window, severity, severity_label = _event_flow_window(catalyst)
+    category, category_label, impact, impact_label, watch = _event_flow_classification(catalyst)
+    return {
+        "event_flow_window": window,
+        "event_flow_window_label": _event_flow_window_label(window),
+        "event_flow_severity": severity,
+        "event_flow_severity_label": severity_label,
+        "event_flow_category": category,
+        "event_flow_category_label": category_label,
+        "event_flow_impact": impact,
+        "event_flow_impact_label": impact_label,
+        "event_flow_watch": watch,
+    }
+
+
 def _event_flow_calendar_window(days_until: float) -> tuple[str, str, str]:
     if days_until <= 3:
         return "0-3d", "high", "高"
@@ -5163,6 +5702,18 @@ def _event_flow_calendar_window(days_until: float) -> tuple[str, str, str]:
     if days_until <= 30:
         return "15-30d", "low", "低"
     return "30d+", "low", "低"
+
+
+def _event_flow_window_label(window: str) -> str:
+    labels = {
+        "recent": "近期",
+        "0-3d": "0-3天",
+        "4-7d": "4-7天",
+        "8-14d": "8-14天",
+        "15-30d": "15-30天",
+        "30d+": "30天+",
+    }
+    return labels[window]
 
 
 def _event_flow_fed_text_window(catalyst: Mapping[str, Any]) -> tuple[str, str, str]:
@@ -5195,12 +5746,10 @@ def _watchlist_assets(trade_map: Sequence[Mapping[str, Any]]) -> list[dict[str, 
     seen: set[str] = set()
     for trade in trade_map:
         for leg in _mapping_list(trade.get("legs")):
-            symbol = str(leg.get("symbol") or "").strip()
-            label = str(leg.get("label") or symbol).strip()
-            action = str(leg.get("action") or "").strip()
-            key = symbol or label
-            if not key or not label:
-                continue
+            symbol = _required_watchlist_asset_text(leg, "symbol")
+            label = _required_watchlist_asset_text(leg, "label")
+            action = _required_watchlist_asset_text(leg, "action")
+            key = symbol
             normalized_key = key.lower()
             if normalized_key in seen:
                 continue
@@ -5216,32 +5765,29 @@ def _watchlist_assets(trade_map: Sequence[Mapping[str, Any]]) -> list[dict[str, 
     return assets
 
 
+def _required_watchlist_asset_text(leg: Mapping[str, Any], field_name: str) -> str:
+    if field_name not in leg or leg.get(field_name) is None:
+        raise ValueError(f"macro_watchlist_asset_{field_name}_required")
+    value = str(leg.get(field_name)).strip()
+    if not value:
+        raise ValueError(f"macro_watchlist_asset_{field_name}_required")
+    return value
+
+
 def _watchlist_rules(
     scenario: Mapping[str, Any],
     quality_blockers: Sequence[Mapping[str, Any]],
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     rows.extend(
-        row
-        for row in (
-            _watchlist_rule(item, kind="watch", kind_label="触发")
-            for item in _mapping_list(scenario.get("watch_triggers"))
-        )
-        if row is not None
+        _watchlist_rule(item, kind="watch", kind_label="触发")
+        for item in _required_scenario_mapping_list(scenario, "watch_triggers", allow_empty=True)
     )
     rows.extend(
-        row
-        for row in (
-            _watchlist_rule(item, kind="invalidation", kind_label="失效")
-            for item in _mapping_list(scenario.get("invalidations"))
-        )
-        if row is not None
+        _watchlist_rule(item, kind="invalidation", kind_label="失效")
+        for item in _required_scenario_mapping_list(scenario, "invalidations", allow_empty=True)
     )
-    rows.extend(
-        row
-        for row in (_watchlist_rule(item, kind="quality", kind_label="质量") for item in quality_blockers)
-        if row is not None
-    )
+    rows.extend(_watchlist_rule(item, kind="quality", kind_label="质量") for item in quality_blockers)
     return rows
 
 
@@ -5250,30 +5796,48 @@ def _watchlist_rule(
     *,
     kind: str,
     kind_label: str,
-) -> dict[str, Any] | None:
+) -> dict[str, Any]:
     code = str(item.get("code") or "").strip()
-    label = str(item.get("label") or _code_label(code) or "").strip()
-    if not label:
-        return None
+    label = _required_scenario_rule_text(item, "label", "macro_watchlist_rule_label_required")
+    detail = _watchlist_rule_detail(item, kind=kind)
+    if not detail:
+        raise ValueError("macro_watchlist_rule_detail_required")
+    if not code:
+        raise ValueError("macro_watchlist_rule_code_required")
     payload = {
-        "key": f"{kind}:{code or label}",
+        "key": f"{kind}:{code}",
         "label": label,
-        "description": str(item.get("description") or item.get("remediation_hint") or ""),
+        "detail": detail,
         "kind": kind,
         "kind_label": kind_label,
     }
     window = str(item.get("time_window") or "").strip()
     if window:
+        window_label = str(item.get("time_window_label") or "").strip()
+        if not window_label:
+            raise ValueError("macro_watchlist_rule_window_label_required")
         payload["window"] = window
+        payload["window_label"] = window_label
     severity = str(item.get("severity") or "").strip()
     if severity:
+        severity_label = str(item.get("severity_label") or "").strip()
+        if not severity_label:
+            raise ValueError("macro_watchlist_rule_severity_label_required")
         payload["severity"] = severity
-        payload["severity_label"] = _watchlist_severity_label(severity)
+        payload["severity_label"] = severity_label
     return payload
 
 
-def _watchlist_severity_label(severity: str) -> str:
-    return _required_macro_severity_label(severity)
+def _required_scenario_rule_text(item: Mapping[str, Any], field_name: str, message: str) -> str:
+    value = str(item.get(field_name) or "").strip()
+    if not value:
+        raise ValueError(message)
+    return value
+
+
+def _watchlist_rule_detail(item: Mapping[str, Any], *, kind: str) -> str:
+    value = item.get("detail") or item.get("evidence_label") if kind == "quality" else item.get("detail")
+    return str(value or "").strip()
 
 
 def _liquidity_pressure(feature_map: Mapping[str, Any]) -> dict[str, Any] | None:
@@ -5360,7 +5924,10 @@ def _data_credibility_row(concept_key: str, feature: Mapping[str, Any]) -> dict[
 
 
 def _judgement_review(trade_map: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
-    rows = [row for row in (_judgement_review_row(item) for item in trade_map) if row is not None]
+    review_items = [
+        item for item in trade_map if _mapping_list(_mapping(item.get("holding_period_review")).get("rows"))
+    ]
+    rows = [_judgement_review_row(item) for item in review_items]
     if not rows:
         return None
     return {
@@ -5371,17 +5938,13 @@ def _judgement_review(trade_map: Sequence[Mapping[str, Any]]) -> dict[str, Any] 
     }
 
 
-def _judgement_review_row(item: Mapping[str, Any]) -> dict[str, Any] | None:
-    expression = str(item.get("expression") or "")
-    if not expression:
-        return None
-    label = str(item.get("label") or _trade_map_expression_label(expression) or "").strip()
-    if not label:
-        return None
+def _judgement_review_row(item: Mapping[str, Any]) -> dict[str, Any]:
+    expression = _required_trade_map_item_text(item, "expression")
+    label = _required_trade_map_item_text(item, "label")
     holding_rows = _mapping_list(_mapping(item.get("holding_period_review")).get("rows"))
-    windows = [row for row in (_judgement_review_window(row) for row in holding_rows) if row is not None]
-    if not windows:
-        return None
+    if not holding_rows:
+        raise ValueError("macro_judgement_review_rows_required")
+    windows = [_judgement_review_window(row) for row in holding_rows]
     trust_summary = str(_mapping(item.get("historical_trust")).get("summary") or "")
     return {
         "key": f"{expression}:holding_periods",
@@ -5392,45 +5955,65 @@ def _judgement_review_row(item: Mapping[str, Any]) -> dict[str, Any] | None:
     }
 
 
-def _judgement_review_window(row: Mapping[str, Any]) -> dict[str, Any] | None:
-    horizon = str(row.get("horizon") or "").strip()
-    label = str(row.get("label") or "").strip()
-    if not horizon or not label:
-        return None
-    status = str(row.get("status") or "insufficient_history")
+def _judgement_review_window(row: Mapping[str, Any]) -> dict[str, Any]:
+    horizon = _required_judgement_review_window_text(row, "horizon")
+    label = _required_judgement_review_window_text(row, "label")
+    status = _required_judgement_review_window_text(row, "status")
+    status_label = _required_judgement_review_window_text(row, "status_label")
+    sample_count = _required_judgement_review_window_int(row, "sample_count", positive=True)
+    hit_count = _required_judgement_review_window_int(row, "hit_count")
+    win_rate_label = _required_judgement_review_window_text(row, "win_rate_label")
+    pnl_usd = _required_judgement_review_window_number(row, "pnl_usd")
+    average_signed_return_pct = _required_judgement_review_window_number(row, "average_signed_return_pct")
     return {
         "horizon": horizon,
         "label": label,
         "status": status,
-        "status_label": str(row.get("status_label") or _judgement_review_status_label(status)),
-        "sample_count": _int_or_none(row.get("sample_count")) or 0,
-        "hit_count": _int_or_none(row.get("hit_count")) or 0,
-        "win_rate_label": str(row.get("win_rate_label") or "0/0"),
-        "pnl_usd": _number(row.get("pnl_usd")) or 0.0,
-        "average_signed_return_pct": _number(row.get("average_signed_return_pct")) or 0.0,
+        "status_label": status_label,
+        "sample_count": sample_count,
+        "hit_count": hit_count,
+        "win_rate_label": win_rate_label,
+        "pnl_usd": pnl_usd,
+        "average_signed_return_pct": average_signed_return_pct,
     }
 
 
-def _judgement_review_status_label(status: str) -> str:
-    return {
-        "complete": "已完成",
-        "completed": "已完成",
-        "in_progress": "观察中",
-        "pending": "观察中",
-        "observing": "观察中",
-        "insufficient_history": "样本不足",
-    }.get(status, "样本不足")
+def _required_judgement_review_window_text(row: Mapping[str, Any], field_name: str) -> str:
+    if field_name not in row or row.get(field_name) is None:
+        raise ValueError(f"macro_judgement_review_window_{field_name}_required")
+    value = str(row.get(field_name)).strip()
+    if not value:
+        raise ValueError(f"macro_judgement_review_window_{field_name}_required")
+    return value
 
 
-def _trade_map_expression_label(expression: str) -> str | None:
-    return _TRADE_MAP_EXPRESSION_LABELS.get(expression)
+def _required_judgement_review_window_int(
+    row: Mapping[str, Any],
+    field_name: str,
+    *,
+    positive: bool = False,
+) -> int:
+    if field_name not in row or row.get(field_name) is None:
+        raise ValueError(f"macro_judgement_review_window_{field_name}_required")
+    value = _int_or_none(row.get(field_name))
+    if value is None or (positive and value <= 0):
+        raise ValueError(f"macro_judgement_review_window_{field_name}_required")
+    return value
 
 
-def _trade_map_item(item: Mapping[str, Any], observations: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+def _required_judgement_review_window_number(row: Mapping[str, Any], field_name: str) -> float:
+    if field_name not in row or row.get(field_name) is None:
+        raise ValueError(f"macro_judgement_review_window_{field_name}_required")
+    value = _number(row.get(field_name))
+    if value is None:
+        raise ValueError(f"macro_judgement_review_window_{field_name}_required")
+    return value
+
+
+def _trade_map_item(item: Mapping[str, Any], observations: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     payload = dict(item)
-    expression = str(payload.get("expression") or "").strip()
-    if expression and not str(payload.get("label") or "").strip() and _trade_map_expression_label(expression) is None:
-        return None
+    expression = _required_trade_map_item_text(payload, "expression")
+    _required_trade_map_item_text(payload, "label")
     historical_review = _trade_map_historical_review(expression, observations)
     if historical_review:
         payload["historical_review"] = historical_review
@@ -5442,6 +6025,15 @@ def _trade_map_item(item: Mapping[str, Any], observations: Sequence[Mapping[str,
             payload["holding_period_review"] = holding_review
             payload["historical_trust"] = _trade_map_historical_trust(holding_review)
     return payload
+
+
+def _required_trade_map_item_text(item: Mapping[str, Any], field_name: str) -> str:
+    if field_name not in item or item.get(field_name) is None:
+        raise ValueError(f"macro_trade_map_{field_name}_required")
+    value = str(item.get(field_name)).strip()
+    if not value:
+        raise ValueError(f"macro_trade_map_{field_name}_required")
+    return value
 
 
 def _trade_map_historical_review(
@@ -5527,6 +6119,7 @@ def _trade_map_historical_row(
         "mfe_pct": _round_pct(mfe_pct),
         "mae_pct": _round_pct(mae_pct),
         "outcome": outcome,
+        "outcome_label": _trade_map_outcome_label(outcome),
     }
 
 
@@ -5544,6 +6137,13 @@ def _trade_map_outcome_hit(return_pct: float, expected_direction: str) -> bool:
     return abs(return_pct) < 0.5
 
 
+def _trade_map_outcome_label(outcome: str) -> str:
+    label = {"hit": "命中", "miss": "未中"}.get(outcome)
+    if label:
+        return label
+    raise ValueError(f"Missing macro trade-map outcome label metadata: {outcome or '<missing>'}")
+
+
 def _trade_map_portfolio_review(review: Mapping[str, Any]) -> dict[str, Any]:
     rows = _mapping_list(review.get("rows"))
     notional = float(TRADE_MAP_PAPER_NOTIONAL_USD)
@@ -5551,16 +6151,16 @@ def _trade_map_portfolio_review(review: Mapping[str, Any]) -> dict[str, Any]:
     pnl = 0.0
     max_adverse = 0.0
     for row in rows:
-        return_pct = _number(row.get("return_pct")) or 0.0
-        direction = str(row.get("expected_direction") or "")
+        return_pct = _required_trade_map_review_number(row, "return_pct")
+        direction = _required_trade_map_review_text(row, "expected_direction")
         signed_return_pct = return_pct if direction == "up" else -return_pct if direction == "down" else 0.0
         pnl += per_asset * signed_return_pct / 100.0
-        max_adverse += per_asset * (_number(row.get("mae_pct")) or 0.0) / 100.0
-    hit_count = _int_or_none(review.get("hit_count")) or 0
-    sample_count = _int_or_none(review.get("sample_count")) or len(rows)
+        max_adverse += per_asset * _required_trade_map_review_number(row, "mae_pct") / 100.0
+    hit_count = _required_trade_map_review_int(review, "hit_count")
+    sample_count = _required_trade_map_review_int(review, "sample_count")
     risk_temperature = _trade_map_risk_temperature(hit_count, sample_count, max_adverse / notional if notional else 0.0)
     pnl_pct = pnl / notional * 100.0 if notional else 0.0
-    win_rate_label = str(review.get("win_rate_label") or f"{hit_count}/{sample_count}")
+    win_rate_label = _required_trade_map_review_text(review, "win_rate_label")
     return {
         "label": "$10K 纸面映射",
         "notional_usd": TRADE_MAP_PAPER_NOTIONAL_USD,
@@ -5571,6 +6171,33 @@ def _trade_map_portfolio_review(review: Mapping[str, Any]) -> dict[str, Any]:
         "risk_temperature": risk_temperature,
         "summary": f"{_format_usd(notional)} · P&L {_format_usd(pnl, signed=True)} · 胜率 {win_rate_label}",
     }
+
+
+def _required_trade_map_review_number(row: Mapping[str, Any], field_name: str) -> float:
+    if field_name not in row or row.get(field_name) is None:
+        raise ValueError(f"macro_trade_map_review_row_{field_name}_required")
+    value = _number(row.get(field_name))
+    if value is None:
+        raise ValueError(f"macro_trade_map_review_row_{field_name}_required")
+    return value
+
+
+def _required_trade_map_review_int(review: Mapping[str, Any], field_name: str) -> int:
+    if field_name not in review or review.get(field_name) is None:
+        raise ValueError(f"macro_trade_map_review_{field_name}_required")
+    value = _int_or_none(review.get(field_name))
+    if value is None:
+        raise ValueError(f"macro_trade_map_review_{field_name}_required")
+    return value
+
+
+def _required_trade_map_review_text(payload: Mapping[str, Any], field_name: str) -> str:
+    if field_name not in payload or payload.get(field_name) is None:
+        raise ValueError(f"macro_trade_map_review_{field_name}_required")
+    value = str(payload.get(field_name)).strip()
+    if not value:
+        raise ValueError(f"macro_trade_map_review_{field_name}_required")
+    return value
 
 
 def _trade_map_risk_temperature(hit_count: int, sample_count: int, adverse_ratio: float) -> str:
@@ -5587,38 +6214,46 @@ def _trade_map_action_checklist(
     portfolio_review: Mapping[str, Any],
 ) -> list[dict[str, str]]:
     checklist: list[dict[str, str]] = []
-    for code in _string_list(item.get("confirms_on"))[:2]:
-        label = _code_label(code)
-        if not label:
-            continue
-        checklist.append(
-            {
-                "kind": "confirm",
-                "label": label,
-                "description": f"观察 {label} 是否继续确认。",
-            }
-        )
-    for code in _string_list(item.get("invalidates_on"))[:2]:
-        label = _code_label(code)
-        if not label:
-            continue
-        checklist.append(
-            {
-                "kind": "invalidate",
-                "label": label,
-                "description": f"若 {label}，则撤销该映射。",
-            }
-        )
+    for row in _trade_map_action_checklist_rows(item):
+        kind = _required_trade_map_action_checklist_text(row, "kind")
+        kind_label = _required_trade_map_action_checklist_text(row, "kind_label")
+        label = _required_trade_map_action_checklist_text(row, "label")
+        description = _required_trade_map_action_checklist_text(row, "description")
+        checklist.append({"kind": kind, "kind_label": kind_label, "label": label, "description": description})
     summary = str(portfolio_review.get("summary") or "")
     if summary:
         checklist.append(
             {
                 "kind": "position_review",
+                "kind_label": "纸面仓位",
                 "label": "纸面仓位复盘",
                 "description": summary,
             }
         )
     return checklist
+
+
+def _trade_map_action_checklist_rows(item: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    if "action_checklist" not in item or item.get("action_checklist") is None:
+        return []
+    value = item.get("action_checklist")
+    if isinstance(value, Mapping | str | bytes | bytearray) or not isinstance(value, Sequence):
+        raise ValueError("macro_trade_map_action_checklist_rows_required")
+    rows: list[Mapping[str, Any]] = []
+    for row in value:
+        if not isinstance(row, Mapping):
+            raise ValueError("macro_trade_map_action_checklist_row_required")
+        rows.append(row)
+    return rows
+
+
+def _required_trade_map_action_checklist_text(row: Mapping[str, Any], field_name: str) -> str:
+    if field_name not in row or row.get(field_name) is None:
+        raise ValueError(f"macro_trade_map_action_checklist_{field_name}_required")
+    value = str(row.get(field_name)).strip()
+    if not value:
+        raise ValueError(f"macro_trade_map_action_checklist_{field_name}_required")
+    return value
 
 
 def _trade_map_holding_period_review(
@@ -5640,7 +6275,8 @@ def _trade_map_holding_period_review(
             holding_row = _trade_map_holding_asset_row(points, expected_direction=expected[0], days=days)
             if holding_row is not None:
                 horizon_rows.append(holding_row)
-        rows.append(_trade_map_holding_period_row(horizon, label, horizon_rows))
+        if horizon_rows:
+            rows.append(_trade_map_holding_period_row(horizon, label, horizon_rows))
     return {"label": "持有期复盘", "rows": rows} if rows else None
 
 
@@ -5678,13 +6314,15 @@ def _trade_map_holding_period_row(
     label: str,
     rows: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
+    if not rows:
+        raise ValueError("macro_trade_map_holding_rows_required")
     sample_count = len(rows)
     hit_count = len([row for row in rows if row.get("outcome") == "hit"])
-    win_rate = round(hit_count / sample_count, 2) if sample_count else 0.0
+    win_rate = round(hit_count / sample_count, 2)
     per_asset = float(TRADE_MAP_PAPER_NOTIONAL_USD) / len(_TRADE_MAP_RELIABILITY_ASSETS)
-    signed_returns = [_number(row.get("signed_return_pct")) or 0.0 for row in rows]
+    signed_returns = [_required_trade_map_holding_number(row, "signed_return_pct") for row in rows]
     pnl = sum(per_asset * value / 100.0 for value in signed_returns)
-    average_signed_return = sum(signed_returns) / sample_count if sample_count else 0.0
+    average_signed_return = sum(signed_returns) / sample_count
     return {
         "horizon": horizon,
         "label": label,
@@ -5709,10 +6347,19 @@ def _trade_map_holding_status_label(sample_count: int) -> str:
     return {"complete": "已完成", "partial": "部分样本", "observing": "观察中"}[_trade_map_holding_status(sample_count)]
 
 
+def _required_trade_map_holding_number(row: Mapping[str, Any], field_name: str) -> float:
+    if field_name not in row or row.get(field_name) is None:
+        raise ValueError(f"macro_trade_map_holding_{field_name}_required")
+    value = _number(row.get(field_name))
+    if value is None:
+        raise ValueError(f"macro_trade_map_holding_{field_name}_required")
+    return value
+
+
 def _trade_map_historical_trust(review: Mapping[str, Any]) -> dict[str, Any]:
     rows = _mapping_list(review.get("rows"))
-    sample_count = sum(_int_or_none(row.get("sample_count")) or 0 for row in rows)
-    hit_count = sum(_int_or_none(row.get("hit_count")) or 0 for row in rows)
+    sample_count = sum(_required_trade_map_historical_trust_int(row, "sample_count") for row in rows)
+    hit_count = sum(_required_trade_map_historical_trust_int(row, "hit_count") for row in rows)
     score_pct = round(hit_count / sample_count * 100.0, 1) if sample_count else 0.0
     quality = _trade_map_trust_quality(score_pct)
     return {
@@ -5723,6 +6370,15 @@ def _trade_map_historical_trust(review: Mapping[str, Any]) -> dict[str, Any]:
         "hit_count": hit_count,
         "summary": f"历史可信度 {score_pct:.1f}% · {quality} · {sample_count} 个样本",
     }
+
+
+def _required_trade_map_historical_trust_int(row: Mapping[str, Any], field_name: str) -> int:
+    if field_name not in row or row.get(field_name) is None:
+        raise ValueError(f"macro_trade_map_historical_trust_{field_name}_required")
+    value = _int_or_none(row.get(field_name))
+    if value is None:
+        raise ValueError(f"macro_trade_map_historical_trust_{field_name}_required")
+    return value
 
 
 def _trade_map_trust_quality(score_pct: float) -> str:
@@ -5829,10 +6485,10 @@ def _event_catalyst(observation: Mapping[str, Any]) -> dict[str, Any] | None:
     value = _number(observation.get("value_numeric"))
     if value is None:
         value = _number(raw_payload.get("value"))
-    observed_at = _date_string(observation.get("observed_at") or raw_payload.get("observed_at"))
+    observed_at = _required_event_observed_at(observation=observation, raw_payload=raw_payload)
     provenance = _mapping_list(raw_payload.get("provenance"))
     first_provenance = provenance[0] if provenance else {}
-    provider = str(observation.get("source_name") or raw_payload.get("provider") or "").strip()
+    provider = _required_event_source_name(observation)
     kind = _event_kind(series_key)
     text_value = _event_text_value(raw_payload=raw_payload, provenance=first_provenance)
     source_url = _event_source_url(raw_payload=raw_payload, provenance=first_provenance)
@@ -5846,12 +6502,11 @@ def _event_catalyst(observation: Mapping[str, Any]) -> dict[str, Any] | None:
         document_type=document_type,
         raw_payload=raw_payload,
         provenance=first_provenance,
-        text_value=text_value,
     )
     catalyst = {
         "code": series_key,
         "label": _event_label(concept_key),
-        "description": _event_description(
+        "detail": _event_detail(
             kind=kind,
             observed_at=observed_at,
             value=value,
@@ -5863,6 +6518,8 @@ def _event_catalyst(observation: Mapping[str, Any]) -> dict[str, Any] | None:
         "observed_at": observed_at,
         "value": value,
     }
+    catalyst.update(_event_flow_display_fields(catalyst))
+    catalyst.update(_event_future_catalyst_display_fields(kind=kind, days_until=value))
     if source_url:
         catalyst["source_url"] = source_url
     if document_type:
@@ -5870,6 +6527,29 @@ def _event_catalyst(observation: Mapping[str, Any]) -> dict[str, Any] | None:
     if speaker:
         catalyst["speaker"] = speaker
     return catalyst
+
+
+def _event_future_catalyst_display_fields(*, kind: str, days_until: float | None) -> dict[str, str]:
+    if kind not in {"auction_calendar", "calendar"} or days_until is None:
+        return {}
+    if days_until < 0 or days_until > 3:
+        return {}
+    window = "24h" if days_until <= 1 else "72h"
+    severity = "high" if window == "24h" else "medium"
+    return {
+        "time_window": window,
+        "time_window_label": _future_catalyst_window_label(window),
+        "severity": severity,
+        "severity_label": _future_catalyst_severity_label(severity),
+    }
+
+
+def _future_catalyst_window_label(window: str) -> str:
+    if window == "24h":
+        return "24小时"
+    if window == "72h":
+        return "72小时"
+    raise ValueError("macro_future_event_catalyst_time_window_required")
 
 
 def _event_raw_payload(observation: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -5898,15 +6578,29 @@ def _event_label(concept_key: str) -> str:
     return _concept_required_text(concept_key, "label")
 
 
-def _event_description(
+def _required_event_observed_at(*, observation: Mapping[str, Any], raw_payload: Mapping[str, Any]) -> str:
+    observed_at = _date_string(observation.get("observed_at") or raw_payload.get("observed_at"))
+    if not observed_at:
+        raise ValueError("macro_event_catalyst_observed_at_required")
+    return observed_at
+
+
+def _required_event_source_name(observation: Mapping[str, Any]) -> str:
+    source_name = str(observation.get("source_name") or "").strip()
+    if not source_name:
+        raise ValueError("macro_event_catalyst_source_required")
+    return source_name
+
+
+def _event_detail(
     *,
     kind: str,
-    observed_at: str | None,
+    observed_at: str,
     value: float | None,
     provenance: Mapping[str, Any],
     text_value: str | None = None,
 ) -> str:
-    date_label = observed_at or "--"
+    date_label = observed_at
     if kind == "calendar":
         days_label = _event_days_label(value)
         event_time = str(provenance.get("event_time") or provenance.get("event_time_et") or "").strip()
@@ -5932,6 +6626,8 @@ def _event_description(
         ]
         return " · ".join(part for part in parts if part)
     if kind == "fed_text":
+        if not text_value:
+            raise ValueError("macro_event_text_value_required")
         return " · ".join(part for part in (date_label, text_value or "") if part)
     value_label = _event_number_label(value)
     return " · ".join(part for part in (date_label, value_label) if part)
@@ -5941,7 +6637,6 @@ def _event_text_value(*, raw_payload: Mapping[str, Any], provenance: Mapping[str
     candidates = (
         raw_payload.get("value"),
         provenance.get("document_title"),
-        provenance.get("description"),
     )
     for candidate in candidates:
         text = str(candidate or "").strip()
@@ -5984,7 +6679,6 @@ def _event_speaker(
     document_type: str | None,
     raw_payload: Mapping[str, Any],
     provenance: Mapping[str, Any],
-    text_value: str | None,
 ) -> str | None:
     if kind != "fed_text" or document_type != "speech":
         return None
@@ -5992,11 +6686,7 @@ def _event_speaker(
         speaker = str(candidate or "").strip()
         if speaker:
             return speaker
-    title = text_value or _event_text_value(raw_payload=raw_payload, provenance=provenance)
-    if not title or "," not in title:
-        return None
-    speaker = title.split(",", 1)[0].strip()
-    return speaker or None
+    return None
 
 
 def _event_days_label(value: float | None) -> str:
@@ -6011,25 +6701,41 @@ def _event_number_label(value: float | None) -> str:
     return str(int(value)) if value.is_integer() else f"{value:.2f}"
 
 
-def _compact_signal(item: Mapping[str, Any]) -> dict[str, Any] | None:
+def _compact_signal(item: Mapping[str, Any]) -> dict[str, Any]:
+    code = str(item.get("code") or "").strip()
     node = str(item.get("node") or "").strip()
-    label = str(item.get("label") or _code_label(str(item.get("code") or "")) or "").strip()
+    label = str(item.get("label") or "").strip()
+    kind = str(item.get("kind") or "").strip()
+    evidence_label = str(item.get("evidence_label") or "").strip()
+    if not code:
+        raise ValueError("macro_compact_signal_code_required")
     if not label:
-        return None
-    payload = {
-        "code": str(item.get("code") or ""),
+        raise ValueError("macro_compact_signal_label_required")
+    if not kind:
+        raise ValueError("macro_compact_signal_kind_required")
+    if not evidence_label:
+        raise ValueError("macro_compact_signal_evidence_label_required")
+    payload: dict[str, Any] = {
+        "code": code,
         "label": label,
-        "description": str(item.get("description") or ""),
-        "node": _section_label(node),
-        "kind": str(item.get("kind") or "signal"),
+        "evidence_label": evidence_label,
+        "node": node,
+        "node_label": _section_label(node),
+        "kind": kind,
     }
+    severity = str(item.get("severity") or "").strip()
+    if severity:
+        severity = _required_macro_severity(severity)
+        severity_label = str(item.get("severity_label") or "").strip()
+        if not severity_label:
+            raise ValueError("macro_compact_signal_severity_label_required")
+        payload["severity"] = severity
+        payload["severity_label"] = severity_label
     for key in (
         "change_label",
         "value_label",
         "observed_at",
         "source_label",
-        "severity",
-        "severity_label",
         "evidence_label",
     ):
         value = item.get(key)
@@ -6038,17 +6744,24 @@ def _compact_signal(item: Mapping[str, Any]) -> dict[str, Any] | None:
     return payload
 
 
-def _compact_quality_blocker(item: Mapping[str, Any]) -> dict[str, Any]:
+def _compact_quality_blocker(item: Mapping[str, Any]) -> dict[str, Any] | None:
     code = str(item.get("code") or "").strip()
     label = str(item.get("label") or "").strip()
     if not label:
         raise ValueError("Missing macro quality blocker label metadata")
     severity = _quality_blocker_severity(item, code=code)
+    severity_label = str(item.get("severity_label") or "").strip()
+    if not severity_label:
+        raise ValueError("macro_quality_blocker_severity_label_required")
+    evidence_label = str(item.get("evidence_label") or "").strip()
+    if not evidence_label:
+        raise ValueError("macro_quality_blocker_evidence_required")
     return {
         "code": code,
         "label": label,
-        "description": str(item.get("description") or item.get("remediation_hint") or label),
+        "evidence_label": evidence_label,
         "severity": severity,
+        "severity_label": severity_label,
     }
 
 
@@ -6059,20 +6772,39 @@ def _quality_blocker_severity(item: Mapping[str, Any], *, code: str) -> str:
     return _required_macro_severity(severity)
 
 
-def _evidence_item(item: Mapping[str, Any]) -> dict[str, Any] | None:
-    code = str(item.get("code") or "")
-    label = str(item.get("label") or _code_label(code) or "").strip()
+def _evidence_item(item: Mapping[str, Any]) -> dict[str, Any]:
+    code = str(item.get("code") or "").strip()
+    label = str(item.get("label") or "").strip()
+    evidence_label = str(item.get("evidence_label") or "").strip()
+    if not code:
+        raise ValueError("macro_evidence_item_code_required")
     if not label:
-        return None
-    payload = {
+        raise ValueError("macro_evidence_item_label_required")
+    if not evidence_label:
+        raise ValueError("macro_evidence_item_evidence_label_required")
+    payload: dict[str, Any] = {
         "code": code,
         "label": label,
-        "description": item.get("description") or "",
+        "evidence_label": evidence_label,
     }
+    node = str(item.get("node") or "").strip()
+    if node:
+        payload["node"] = node
+        payload["node_label"] = _section_label(node)
     if item.get("time_window"):
+        time_window_label = str(item.get("time_window_label") or "").strip()
+        if not time_window_label:
+            raise ValueError("macro_evidence_item_time_window_label_required")
         payload["time_window"] = item.get("time_window")
-    if item.get("severity"):
-        payload["severity"] = item.get("severity")
+        payload["time_window_label"] = time_window_label
+    severity = str(item.get("severity") or "").strip()
+    if severity:
+        severity = _required_macro_severity(severity)
+        severity_label = str(item.get("severity_label") or "").strip()
+        if not severity_label:
+            raise ValueError("macro_evidence_item_severity_label_required")
+        payload["severity"] = severity
+        payload["severity_label"] = severity_label
     return payload
 
 
@@ -6100,9 +6832,7 @@ def _provenance(
 def _observation_source_rows(observations: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     by_source: dict[str, dict[str, Any]] = {}
     for observation in observations:
-        source = str(observation.get("source_name") or "").strip()
-        if not source:
-            continue
+        source = _required_observation_source_name(observation)
         row = by_source.setdefault(
             source,
             {"source": source, "status": "ok", "latest_observed_at": None, "concepts": set[str](), "notes": ""},
@@ -6111,7 +6841,7 @@ def _observation_source_rows(observations: Sequence[Mapping[str, Any]]) -> list[
         observed_at = observation.get("observed_at")
         if observed_at and (row["latest_observed_at"] is None or str(observed_at) > str(row["latest_observed_at"])):
             row["latest_observed_at"] = observed_at
-        quality = _status_key(observation.get("data_quality") or "ok")
+        quality = _status_key(_required_observation_quality(observation))
         if quality != "ok":
             row["status"] = quality
     return [
@@ -6200,9 +6930,8 @@ def _data_health(
 
 
 def _asset_depth_reference_gaps(module_id: str, feature_map: Mapping[str, Any]) -> list[dict[str, Any]]:
-    groups: tuple[_ReferenceGapGroup, ...]
     if module_id == "assets":
-        groups = (
+        groups: _ReferenceGapRules = (
             (
                 "asset_risk_breadth_missing",
                 "缺少 NDX/RUT：无法判断风险资产广度",
@@ -6497,9 +7226,8 @@ def _credit_depth_reference_gaps(module_id: str, feature_map: Mapping[str, Any])
 
 
 def _economy_depth_reference_gaps(module_id: str, feature_map: Mapping[str, Any]) -> list[dict[str, Any]]:
-    groups: tuple[_ReferenceGapGroup, ...]
     if module_id == "economy/gdp":
-        groups = (
+        groups: _ReferenceGapRules = (
             (
                 "growth_nominal_gdp_missing",
                 "缺少名义 GDP：无法拆分实际增长与价格贡献",
@@ -6716,9 +7444,8 @@ def _policy_corridor_reference_gaps(module_id: str, feature_map: Mapping[str, An
 
 
 def _rates_depth_reference_gaps(module_id: str, feature_map: Mapping[str, Any]) -> list[dict[str, Any]]:
-    groups: tuple[_ReferenceGapGroup, ...]
     if module_id == "rates/yield-curve":
-        groups = (
+        groups: _ReferenceGapRules = (
             (
                 "yield_curve_front_end_missing",
                 "缺少 3M 国债收益率：无法判断 3m10y 前端倒挂",
@@ -6915,26 +7642,30 @@ def _transmission(
     feature_map: Mapping[str, Any],
     data_health: Mapping[str, Any],
 ) -> list[dict[str, Any]]:
+    summary_status = _required_data_health_status(data_health)
     if config.module_id == "overview":
-        nodes = [
-            {
-                "id": f"global:{key}",
-                "label": _section_label(key),
-                "value": _regime_label(str(_mapping(value).get("regime") or "data_gap")),
-                "kind": "signal",
-                "status": "ok" if _mapping(value).get("regime") not in {None, "data_gap"} else "missing",
-            }
-            for key, value in chain.items()
-            if isinstance(value, Mapping)
-        ]
+        nodes = []
+        for key, value in chain.items():
+            if not isinstance(value, Mapping):
+                continue
+            regime = _required_transmission_regime(str(key), value)
+            nodes.append(
+                {
+                    "id": f"global:{key}",
+                    "label": _section_label(str(key)),
+                    "value": _regime_label(regime),
+                    "kind": "signal",
+                    "status": "ok" if regime != "data_gap" else "missing",
+                }
+            )
         if not nodes:
             nodes = [
                 {
                     "id": "global:data_health",
                     "label": "全局数据健康",
-                    "value": _status_label(data_health.get("summary_status")),
+                    "value": _status_label(summary_status),
                     "kind": "risk",
-                    "status": str(data_health.get("summary_status") or "unknown"),
+                    "status": summary_status,
                 }
             ]
         return nodes
@@ -6957,18 +7688,25 @@ def _transmission(
         {
             "id": f"{config.module_id}:signal",
             "label": config.title,
-            "value": _status_label(data_health.get("summary_status")),
+            "value": _status_label(summary_status),
             "kind": "signal",
-            "status": str(data_health.get("summary_status") or "unknown"),
+            "status": summary_status,
         },
         {
             "id": f"{config.module_id}:implication",
             "label": "宏观含义",
             "value": config.question,
             "kind": "implication",
-            "status": str(data_health.get("summary_status") or "unknown"),
+            "status": summary_status,
         },
     ]
+
+
+def _required_transmission_regime(node_key: str, value: Mapping[str, Any]) -> str:
+    regime = value.get("regime")
+    if regime is None or str(regime) == "":
+        raise ValueError(f"macro_transmission_regime_required:{node_key}")
+    return str(regime)
 
 
 def _section_label(section: str) -> str:
@@ -7041,16 +7779,16 @@ def _concept_optional_text(concept_key: str, field: str) -> str | None:
 
 
 def _gap_payload(value: object) -> dict[str, Any]:
-    require_remediation_hint = False
     if isinstance(value, Mapping):
-        payload: dict[str, Any] = {str(key): item for key, item in value.items()}
-        require_remediation_hint = True
+        payload = dict(value)
+        is_mapping_payload = True
     else:
-        payload = dict(build_macro_data_gaps([str(value)])[0])
+        payload = build_macro_data_gaps([str(value)])[0]
+        is_mapping_payload = False
     payload["code"] = _required_data_gap_field(payload, "code")
     payload["label"] = _required_data_gap_field(payload, "label")
     payload["severity"] = _required_data_gap_field(payload, "severity")
-    if require_remediation_hint:
+    if is_mapping_payload:
         payload["remediation_hint"] = _required_data_gap_field(payload, "remediation_hint")
     payload.setdefault("score_participation", False)
     payload.setdefault("owner", "macro_intel")
@@ -7106,9 +7844,18 @@ def _chart_status(
         return "missing"
     if missing_concept_keys:
         return "partial"
-    if any((_int_or_none(item.get("point_count")) or 0) < MACRO_MIN_CHART_POINTS for item in series):
+    if any(_required_chart_point_count(item) < MACRO_MIN_CHART_POINTS for item in series):
         return "insufficient_history"
     return "ok"
+
+
+def _required_chart_point_count(item: Mapping[str, Any]) -> int:
+    if "point_count" not in item or item.get("point_count") is None:
+        raise ValueError("macro_chart_series_point_count_required")
+    point_count = _int_or_none(item.get("point_count"))
+    if point_count is None:
+        raise ValueError("macro_chart_series_point_count_required")
+    return point_count
 
 
 def _spec_status(*, concept_keys: tuple[str, ...], missing_concept_keys: list[str]) -> str:
@@ -7122,29 +7869,35 @@ def _spec_status(*, concept_keys: tuple[str, ...], missing_concept_keys: list[st
 
 
 def _feature_label(concept_key: str, feature: Mapping[str, Any]) -> str:
-    label = _public_text(feature.get("label")) or _concept_required_text(concept_key, "label")
-    if label:
-        return label
-    raise ValueError(f"Missing macro concept label metadata: {concept_key}")
+    return _required_feature_display_text(concept_key, feature, "label")
 
 
 def _feature_short_label(concept_key: str, feature: Mapping[str, Any]) -> str:
-    return _public_text(feature.get("short_label")) or _concept_short_label(concept_key)
+    return _required_feature_display_text(concept_key, feature, "short_label")
 
 
 def _feature_description(concept_key: str, feature: Mapping[str, Any]) -> str:
-    return _public_text(feature.get("description")) or _concept_optional_text(concept_key, "description") or ""
+    return _required_feature_display_text(concept_key, feature, "description")
 
 
-def _feature_unit_label(concept_key: str, feature: Mapping[str, Any], latest: Mapping[str, Any]) -> str:
-    unit_label = _public_text(feature.get("unit_label")) or _concept_required_text(
-        concept_key,
-        "unit_label",
-        error_field="unit",
-    )
-    if unit_label:
-        return unit_label
-    raise ValueError(f"Missing macro concept unit metadata: {concept_key}")
+def _feature_unit_label(concept_key: str, feature: Mapping[str, Any]) -> str:
+    return _required_feature_display_text(concept_key, feature, "unit_label")
+
+
+def _required_feature_display_metadata(concept_key: str, feature: Mapping[str, Any]) -> dict[str, str]:
+    return {
+        "label": _required_feature_display_text(concept_key, feature, "label"),
+        "short_label": _required_feature_display_text(concept_key, feature, "short_label"),
+        "description": _required_feature_display_text(concept_key, feature, "description"),
+        "unit_label": _required_feature_display_text(concept_key, feature, "unit_label"),
+    }
+
+
+def _required_feature_display_text(concept_key: str, feature: Mapping[str, Any], field_name: str) -> str:
+    value = _public_text(feature.get(field_name))
+    if value is None:
+        raise ValueError(f"macro_module_view_feature_{field_name}_required:{concept_key}")
+    return value
 
 
 def _public_text(value: object) -> str | None:
@@ -7278,63 +8031,6 @@ def _token_impact(regime: str) -> str:
     return "维持选择性暴露，避免把单币种叙事误读成宏观确认。"
 
 
-def _contains_cjk(value: str) -> bool:
-    return any("\u3400" <= char <= "\u9fff" for char in value)
-
-
-def _code_label(code: str) -> str | None:
-    if not code:
-        return None
-    if _contains_cjk(code):
-        return code
-    return {
-        "breakevens_accelerate": "通胀补偿加速",
-        "credit_spreads_benign": "信用利差温和",
-        "credit_spreads_normalize": "信用利差正常化",
-        "credit_stress": "信用压力",
-        "cross_asset_risk_off": "跨资产 risk-off 确认",
-        "deep_curve_inversion": "曲线深度倒挂",
-        "fed_corridor_pressure": "政策走廊压力",
-        "global_term_premium": "期限溢价压力",
-        "hyg_underperforms_lqd": "HYG 跑输 LQD",
-        "hy_oas_distress": "高收益债利差进入困境区",
-        "hy_oas_stress": "高收益债利差压力",
-        "hy_oas_tightens": "HY OAS 收窄",
-        "hy_oas_widening": "HY OAS 走阔",
-        "hy_oas_widening_5d": "HY OAS 5日走阔",
-        "term_premium_pressure": "期限溢价压力",
-        "higher_real_rates": "实际利率上行",
-        "liquidity_easing": "流动性宽松",
-        "liquidity_impulse_fades": "流动性脉冲减弱",
-        "liquidity_impulse_persists": "流动性脉冲延续",
-        "liquidity_tightening": "流动性收紧",
-        "liquidity_tightens": "流动性转紧",
-        "macro_core_coverage_recovers": "宏观核心覆盖恢复",
-        "macro_regime_breakout": "宏观状态突破",
-        "positioning_extreme": "仓位极端",
-        "rates_pressure": "利率压力",
-        "real_yield_breakout": "实际利率突破",
-        "real_yield_recedes": "实际利率回落",
-        "repo_pressure_persists_3d": "回购压力持续三日",
-        "repo_corridor_pressure": "回购走廊压力",
-        "risk_asset_confirmation_missing": "风险资产确认缺失",
-        "risk_assets_confirm_risk_on": "风险资产确认 risk-on",
-        "rrp_buffer_low": "RRP 缓冲偏低",
-        "sofr_above_iorb": "SOFR 高于 IORB",
-        "sofr_iorb_normalizes": "SOFR/IORB 回归正常",
-        "ten_year_yield_reverses": "10年期收益率回落",
-        "tga_high": "TGA 偏高",
-        "vix_breaks_30": "VIX 突破 30",
-        "vix_elevated": "VIX 偏高",
-        "vix_reprices_higher": "VIX 重新上行定价",
-        "vix_returns_to_carry": "VIX 回到 carry 区间",
-        "volatility_carry": "波动率 carry",
-        "volatility_panic": "波动率恐慌",
-        "volatility_stress": "波动率压力",
-        "volatility_unconcerned": "波动率未确认压力",
-    }.get(code)
-
-
 def _related_routes(routes: Sequence[str]) -> list[dict[str, str]]:
     return [{"href": route, "label": _ROUTE_LABELS.get(route, route)} for route in routes]
 
@@ -7365,6 +8061,10 @@ def _display_number(value: float | None) -> str:
     return "缺失" if value is None else f"{value:.2f}"
 
 
+def _display_required_number(value: float) -> str:
+    return f"{value:.2f}"
+
+
 def _history_coverage_label(points: int | None, required_points: int | None) -> str:
     if points is None:
         return "历史缺失"
@@ -7377,9 +8077,16 @@ def _availability_note(concept_key: str, feature: Mapping[str, Any]) -> str:
     if not feature:
         return "未在最新宏观投影中出现；检查 macrodata bundle 和 importer 映射。"
     source = _mapping(feature.get("source"))
-    source_name = _source_label(source) or "未标注来源"
+    source_name = _required_availability_source_label(concept_key, source)
     description = _concept_optional_text(concept_key, "description") or ""
     return f"{source_name}；{description}" if description else source_name
+
+
+def _required_availability_source_label(concept_key: str, source: Mapping[str, Any]) -> str:
+    source_name = _source_label(source)
+    if not source_name:
+        raise ValueError(f"macro_availability_source_required:{concept_key}")
+    return source_name
 
 
 def _date_string(value: object) -> str | None:
@@ -7436,7 +8143,7 @@ def _string_list(value: object) -> list[str]:
     return [str(value)]
 
 
-def _unique(values: Iterable[str]) -> list[str]:
+def _unique(values: Sequence[str]) -> list[str]:
     return list(dict.fromkeys(value for value in values if value))
 
 

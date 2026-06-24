@@ -88,6 +88,14 @@ def test_build_macro_series_view_reports_missing_concept_series() -> None:
     ]
 
 
+def test_macro_series_view_requires_observation_quality_field() -> None:
+    observation = _obs("rates:dgs10", "2026-05-20", 4.7, source_name="fred", unit="percent")
+    del observation["data_quality"]
+
+    with pytest.raises(ValueError, match="macro_series_observation_quality_required:rates:dgs10"):
+        build_macro_series_view(concept_keys=("rates:dgs10",), observations=[observation], window="20d")
+
+
 def test_macro_series_view_rejects_provider_series_keys() -> None:
     with pytest.raises(UnsupportedMacroConceptError) as exc_info:
         build_macro_series_view(concept_keys=("fred:DGS10",), observations=[], window="60d")

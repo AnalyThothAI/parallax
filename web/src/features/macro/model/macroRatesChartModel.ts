@@ -64,7 +64,10 @@ export function buildRatesCorridorModel(
     if (!concept || !key || seriesByKey.has(key)) {
       continue;
     }
-    seriesByKey.set(key, buildCorridorSeries(key, series, seriesData?.series[concept]));
+    const corridorSeries = buildCorridorSeries(key, series, seriesData?.series[concept]);
+    if (corridorSeries) {
+      seriesByKey.set(key, corridorSeries);
+    }
   }
 
   const missingLabels = uniqueLabels([
@@ -91,42 +94,19 @@ function buildCorridorSeries(
   key: RatesCorridorSeriesKey,
   series: MacroSemanticRecord,
   payload?: MacroSeriesPayload,
-): RatesCorridorSeries {
+): RatesCorridorSeries | null {
+  const label = stringValue(series.label);
+  if (!label) {
+    return null;
+  }
   const payloadPoints = normalizeSeriesPoints(payload?.points ?? []);
-  const inlinePoints =
-    payloadPoints.length > 0 ? [] : normalizeSeriesPoints(inlineSeriesPoints(series));
-  const latest = latestSeriesValue(series, payload, payloadPoints, inlinePoints);
-  const points =
-    payloadPoints.length > 0
-      ? payloadPoints
-      : inlinePoints.length > 0
-        ? inlinePoints
-        : latest === null
-          ? []
-          : [{ time: snapshotTime(series, payload), value: latest }];
   return {
     key,
-    label: CORRIDOR_LABELS[key],
-    unit: stringValue(series.unit) ?? stringValue(payload?.unit),
-    latest: points.at(-1)?.value ?? latest,
-    points,
+    label,
+    unit: stringValue(series.unit),
+    latest: payloadPoints.at(-1)?.value ?? null,
+    points: payloadPoints,
   };
-}
-
-function latestSeriesValue(
-  series: MacroSemanticRecord,
-  payload: MacroSeriesPayload | undefined,
-  payloadPoints: RatesCorridorPoint[],
-  inlinePoints: RatesCorridorPoint[],
-): number | null {
-  return (
-    payloadPoints.at(-1)?.value ??
-    inlinePoints.at(-1)?.value ??
-    numericValue(series.latest) ??
-    numericValue(series.latest_value) ??
-    numericValue(series.value) ??
-    numericValue(payload?.latest_value)
-  );
 }
 
 function normalizeSeriesPoints(points: MacroSeriesPoint[]): RatesCorridorPoint[] {
@@ -140,10 +120,6 @@ function normalizeSeriesPoints(points: MacroSeriesPoint[]): RatesCorridorPoint[]
     .sort((left, right) => left.time.localeCompare(right.time));
 }
 
-function inlineSeriesPoints(series: MacroSemanticRecord): MacroSeriesPoint[] {
-  return Array.isArray(series.points) ? (series.points as MacroSeriesPoint[]) : [];
-}
-
 function chartSeries(chart: MacroModuleChart): MacroSemanticRecord[] {
   return Array.isArray(chart.series) ? chart.series : [];
 }
@@ -154,15 +130,6 @@ function renderableSeries(series: RatesCorridorSeries | undefined): RatesCorrido
 
 function isRenderable(series: RatesCorridorSeries | undefined): series is RatesCorridorSeries {
   return Boolean(series && series.points.length > 0);
-}
-
-function snapshotTime(series: MacroSemanticRecord, payload?: MacroSeriesPayload): string {
-  return (
-    stringValue(series.observed_at) ??
-    stringValue(payload?.latest_observed_at) ??
-    stringValue(series.latest_observed_at) ??
-    "snapshot"
-  );
 }
 
 function uniqueLabels(labels: string[]): string[] {

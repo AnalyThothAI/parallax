@@ -19,7 +19,7 @@ export function MacroPageHeader({ header }: { header: MacroShellHeaderModel }) {
       </div>
       <div className="macro-shell-heading-row">
         <div className="macro-shell-heading-copy">
-          <span className="macro-shell-kicker">{header.eyebrow}</span>
+          {header.eyebrow ? <span className="macro-shell-kicker">{header.eyebrow}</span> : null}
           <h1>{header.title}</h1>
         </div>
         {header.actions ? (

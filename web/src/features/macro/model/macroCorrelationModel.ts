@@ -42,16 +42,16 @@ export function correlationTone(value: number | null | undefined): string {
   return "neutral";
 }
 
-export function matrixCorrelationLabel(value: number | null | undefined): string {
+export function matrixCorrelationLabel(value: number | null | undefined): string | null {
   if (typeof value !== "number") {
-    return "-";
+    return null;
   }
   return value.toFixed(2);
 }
 
-export function signedCorrelationLabel(value: number | null | undefined): string {
+export function signedCorrelationLabel(value: number | null | undefined): string | null {
   if (typeof value !== "number") {
-    return "-";
+    return null;
   }
   const sign = value > 0 ? "+" : "";
   return `${sign}${value.toFixed(2)}`;

@@ -1,7 +1,7 @@
 import type { MacroModuleTable, MacroModuleView, MacroSemanticRecord } from "@lib/types";
 
 import { chartCaption } from "./macroModulePageModel";
-import { formatMacroScalar, macroAsOfLabel, macroStatusLabel } from "./macroPageViewModel";
+import { formatMacroScalar, macroAsOfLabel } from "./macroPageViewModel";
 
 export const RATES_MODULE_IDS = [
   "rates/fed-funds",
@@ -64,7 +64,7 @@ export type RatesCurveTenorComparisonRow = {
   key: string;
   label: string;
   value: string;
-  change: string;
+  change: string | null;
   residual: string | null;
   driverLabel: string | null;
 };
@@ -112,15 +112,13 @@ export type RatesRealRateDiagnostics = {
 
 export type RatesWorkbenchView = {
   moduleId: RatesModuleId;
-  title: string;
-  question: string;
+  title: string | null;
   readiness: RatesReadiness;
-  readinessLabel: string;
+  readinessLabel: string | null;
   marketHeadline: string | null;
   asOfLabel: string | null;
   facts: RatesFact[];
   missingPrimaryItems: string[];
-  proxyNote: string | null;
   chartTitle: string | null;
   chartNote: string | null;
   curveDiagnostics: RatesCurveDiagnostics | null;
@@ -136,51 +134,12 @@ export type RatesWorkbenchView = {
   };
 };
 
-const RATES_PAGE_COPY: Record<RatesModuleId, { title: string; question: string }> = {
-  "rates/fed-funds": {
-    title: "联邦基金与走廊",
-    question: "政策走廊是否稳定，隔夜融资是否溢出目标区间？",
-  },
-  "rates/yield-curve": {
-    title: "收益率曲线",
-    question: "曲线是在交易衰退压力，还是期限溢价？",
-  },
-  "rates/real-rates": {
-    title: "实际利率",
-    question: "实际利率是在压制估值，还是通胀补偿主导？",
-  },
-};
-
 const DECISION_GROUPS = [
   { key: "confirmations", label: "确认" },
   { key: "contradictions", label: "反证" },
   { key: "watch_triggers", label: "观察触发" },
   { key: "invalidations", label: "失效条件" },
 ] as const;
-
-const CONCEPT_LABELS: Record<string, string> = {
-  "fed:target_lower": "目标下限",
-  "fed:target_upper": "目标上限",
-  "fed:effr": "EFFR",
-  "fed:effr_volume": "EFFR 成交量",
-  "fed:iorb": "IORB",
-  "fed:obfr": "OBFR",
-  "fed:obfr_volume": "OBFR 成交量",
-  "fed:sofr_30d": "SOFR 30D",
-  "liquidity:sofr": "SOFR",
-  "rates:dgs2": "2年期美债收益率",
-  "rates:dgs5": "5年期美债收益率",
-  "rates:dgs10": "10年期美债收益率",
-  "rates:dgs30": "30年期美债收益率",
-  "rates:real_5y": "5年期实际利率",
-  "rates:real_10y": "10年期实际利率",
-  "inflation:breakeven_10y": "10年期通胀补偿",
-};
-
-const GAP_LABELS: Record<string, string> = {
-  "insufficient_history:60d": "历史样本不足：无法计算 60 日变化",
-  sofr_30d_missing: "SOFR 30D 尚未入库",
-};
 
 export function isRatesModuleId(moduleId: string): moduleId is RatesModuleId {
   return (RATES_MODULE_IDS as readonly string[]).includes(moduleId);
@@ -193,18 +152,17 @@ export function buildRatesWorkbenchView(
   const readiness = readinessFromModule(module);
   const readHeadline = readableText(module.module_read.headline);
   const marketHeadline = sanitizeOptionalText(readHeadline);
+  const moduleHealthLabel = dataHealthSummaryLabel(module);
 
   return {
     moduleId,
-    title: ratesTitle(module, moduleId),
-    question: ratesQuestion(module, moduleId),
+    title: sanitizeOptionalText(module.snapshot.title),
     readiness,
-    readinessLabel: readinessLabel(readiness),
+    readinessLabel: moduleHealthLabel,
     marketHeadline,
     asOfLabel: macroAsOfLabel(module),
     facts: module.tiles.map(buildRatesFact).filter((fact): fact is RatesFact => fact !== null),
     missingPrimaryItems: missingPrimaryItems(module),
-    proxyNote: null,
     chartTitle: sanitizeOptionalText(chartCaption(module.primary_chart)),
     chartNote: chartNote(module),
     curveDiagnostics: buildCurveDiagnostics(module.module_read.curve_diagnostics),
@@ -215,9 +173,7 @@ export function buildRatesWorkbenchView(
     diagnostics: {
       coverage: gapSummaries(module),
       sourceMeta: sourceMeta(module.provenance),
-      moduleHealthLabel: sanitizeOptionalText(
-        stringValue(module.data_health.summary_label) ?? macroStatusLabel(module),
-      ),
+      moduleHealthLabel,
       globalGapReferenceCount: module.data_health.global_gaps.length,
     },
   };
@@ -381,10 +337,10 @@ function buildCurveHistorySeries(series: MacroSemanticRecord): RatesCurveHistory
   if (points.length === 0) {
     return null;
   }
-  const latestValue = numberValue(series.latest_bp) ?? points[points.length - 1]?.value;
-  const minValue = numberValue(series.min_bp) ?? Math.min(...points.map((point) => point.value));
-  const maxValue = numberValue(series.max_bp) ?? Math.max(...points.map((point) => point.value));
-  if (latestValue === undefined) {
+  const latestValue = numberValue(series.latest_bp);
+  const minValue = numberValue(series.min_bp);
+  const maxValue = numberValue(series.max_bp);
+  if (latestValue === null || minValue === null || maxValue === null) {
     return null;
   }
   return {
@@ -410,6 +366,14 @@ function buildCurveTenorComparisonRow(
   const nominalChange = numberValue(row.nominal_change_1w_bp);
   const realChange = numberValue(row.real_change_1w_bp);
   const breakevenChange = numberValue(row.breakeven_change_1w_bp);
+  const changeParts = [
+    ["名义", nominalChange],
+    ["实际", realChange],
+    ["通胀补偿", breakevenChange],
+  ].flatMap(([label, value]) =>
+    typeof value === "number" ? `${label} ${formatSignedBp(value)}` : [],
+  );
+  const residualBp = numberValue(row.residual_bp);
   return {
     key,
     label: sanitizePrimaryText(label),
@@ -418,22 +382,8 @@ function buildCurveTenorComparisonRow(
       `实际 ${formatPercent(realPct)}`,
       `通胀补偿 ${formatPercent(breakevenPct)}`,
     ].join(" · "),
-    change: [
-      "1w：",
-      [
-        ["名义", nominalChange],
-        ["实际", realChange],
-        ["通胀补偿", breakevenChange],
-      ]
-        .flatMap(([label, value]) =>
-          typeof value === "number" ? `${label} ${formatSignedBp(value)}` : [],
-        )
-        .join(" · "),
-    ].join(""),
-    residual:
-      numberValue(row.residual_bp) === null
-        ? null
-        : `残差 ${formatBp(numberValue(row.residual_bp) ?? 0)}`,
+    change: changeParts.length > 0 ? `1w：${changeParts.join(" · ")}` : null,
+    residual: residualBp === null ? null : `残差 ${formatBp(residualBp)}`,
     driverLabel: sanitizeOptionalText(row.driver_label),
   };
 }
@@ -492,14 +442,10 @@ function buildRealRateDiagnosticRow(row: MacroSemanticRecord): RatesRealRateDiag
   };
 }
 
-export function humanizeRatesConceptKey(conceptKey: string): string | null {
-  return CONCEPT_LABELS[conceptKey] ?? null;
-}
-
 function buildRatesFact(tile: MacroModuleView["tiles"][number]): RatesFact | null {
   const key = stringValue(tile.concept_key);
   const label = sanitizeOptionalText(tile.label);
-  const value = sanitizeOptionalText(formatMacroScalar(tile.display_value ?? tile.value));
+  const value = sanitizeOptionalText(formatMacroScalar(tile.display_value));
   if (!key || !label || !value) {
     return null;
   }
@@ -507,38 +453,15 @@ function buildRatesFact(tile: MacroModuleView["tiles"][number]): RatesFact | nul
     key,
     label,
     value,
-    observedAtLabel: sanitizeOptionalText(tile.observed_at_label ?? tile.observed_at),
+    observedAtLabel: sanitizeOptionalText(tile.observed_at_label),
     sourceLabel: sanitizeOptionalText(tile.source_label),
-    statusLabel: sanitizeOptionalText(tile.quality_label ?? tile.quality),
-    interpretation: sanitizeOptionalText(tile.description ?? tile.delta_label),
+    statusLabel: sanitizeOptionalText(tile.quality_label),
+    interpretation: sanitizeOptionalText(tile.description),
   };
 }
 
-function ratesTitle(module: MacroModuleView, moduleId: RatesModuleId): string {
-  const snapshotTitle = readableText(module.snapshot.title);
-  if (!snapshotTitle || isGenericRatesCopy(snapshotTitle)) {
-    return RATES_PAGE_COPY[moduleId].title;
-  }
-  return sanitizePrimaryText(snapshotTitle);
-}
-
-function ratesQuestion(module: MacroModuleView, moduleId: RatesModuleId): string {
-  const snapshotQuestion = readableText(module.snapshot.question);
-  if (!snapshotQuestion || isGenericRatesCopy(snapshotQuestion)) {
-    return RATES_PAGE_COPY[moduleId].question;
-  }
-  return sanitizePrimaryText(snapshotQuestion);
-}
-
-function isGenericRatesCopy(value: string): boolean {
-  return (
-    /^(macro|rates?|宏观|利率|模块|总览)$/i.test(value.trim()) || /资产|asset|crypto/i.test(value)
-  );
-}
-
 function readinessFromModule(module: MacroModuleView): RatesReadiness {
-  const status =
-    stringValue(module.data_health.summary_status) ?? stringValue(module.snapshot.status);
+  const status = stringValue(module.data_health.summary_status);
   if (status === "ok" || status === "ready") {
     return "ready";
   }
@@ -548,17 +471,14 @@ function readinessFromModule(module: MacroModuleView): RatesReadiness {
   if (status === "missing" || status === "unavailable") {
     return "missing";
   }
-  return "partial";
+  if (status === "partial" || status === "degraded") {
+    return "partial";
+  }
+  return "missing";
 }
 
-function readinessLabel(readiness: RatesReadiness): string {
-  const labels: Record<RatesReadiness, string> = {
-    ready: "可用",
-    partial: "部分可用",
-    stale: "已过期",
-    missing: "缺失",
-  };
-  return labels[readiness];
+function dataHealthSummaryLabel(module: MacroModuleView): string | null {
+  return sanitizeOptionalText(module.data_health.summary_label);
 }
 
 function missingPrimaryItems(module: MacroModuleView): string[] {
@@ -566,23 +486,11 @@ function missingPrimaryItems(module: MacroModuleView): string[] {
     const label = explicitGapLabel(gap);
     return label ? [label] : [];
   });
-  const missingConceptLabels = [
-    ...(module.primary_chart.missing_concept_keys ?? []).flatMap((conceptKey) => {
-      const label = humanizeRatesConceptKey(conceptKey);
-      return label ? [label] : [];
-    }),
-    ...module.tables
-      .flatMap((table) => table.missing_concept_keys ?? [])
-      .flatMap((conceptKey) => {
-        const label = humanizeRatesConceptKey(conceptKey);
-        return label ? [label] : [];
-      }),
-  ];
-  return uniqueStrings([...gapLabels, ...missingConceptLabels].map(sanitizePrimaryText));
+  return uniqueStrings(gapLabels.map(sanitizePrimaryText));
 }
 
 function chartNote(module: MacroModuleView): string | null {
-  return sanitizeOptionalText(module.primary_chart.subtitle ?? module.primary_chart.status_label);
+  return sanitizeOptionalText(module.primary_chart.subtitle);
 }
 
 function decisionGroups(evidence: MacroModuleView["module_evidence"]): RatesDecisionGroup[] {
@@ -607,7 +515,7 @@ function evidenceItems(
       }
       return {
         label: sanitizePrimaryText(label),
-        detail: sanitizeOptionalText(item.description),
+        detail: sanitizeOptionalText(item.evidence_label),
       };
     })
     .filter((item): item is { label: string; detail: string | null } => Boolean(item));
@@ -628,23 +536,28 @@ function gapSummaries(module: MacroModuleView): RatesGapSummary[] {
 
 function gapSummary(gap: MacroSemanticRecord): RatesGapSummary | null {
   const key = stringValue(gap.code);
-  const label = explicitGapLabel(gap);
-  if (!key || !label) {
+  const label = explicitGapLabel(gap, key);
+  const severity = gapSeverity(gap.severity);
+  if (!key || !label || !severity) {
     return null;
   }
   return {
     key,
     label: sanitizePrimaryText(label),
-    severity: gapSeverity(gap.severity),
+    severity,
   };
 }
 
-function explicitGapLabel(gap: MacroSemanticRecord): string | null {
-  return readableText(gap.label) ?? readableText(gap.display_value) ?? null;
+function explicitGapLabel(gap: MacroSemanticRecord, code = stringValue(gap.code)): string | null {
+  const label = readableText(gap.label);
+  if (!label || (code && label.trim() === code.trim())) {
+    return null;
+  }
+  return label;
 }
 
-function gapSeverity(value: unknown): RatesGapSummary["severity"] {
-  return value === "critical" || value === "warning" ? value : "info";
+function gapSeverity(value: unknown): RatesGapSummary["severity"] | null {
+  return value === "critical" || value === "warning" || value === "info" ? value : null;
 }
 
 function allGaps(module: MacroModuleView): MacroSemanticRecord[] {
@@ -671,12 +584,8 @@ function sanitizeOptionalText(value: unknown): string | null {
 }
 
 function sanitizePrimaryText(value: string): string {
-  let text = value;
-  for (const [code, label] of Object.entries(GAP_LABELS)) {
-    text = text.replaceAll(code, label);
-  }
-  return text
-    .replace(/\b[a-z]+:[\w.-]+\b/gi, (concept) => humanizeRatesConceptKey(concept) ?? "")
+  return value
+    .replace(/\b[a-z]+:[\w.-]+\b/gi, "")
     .replace(/\s{2,}/g, " ")
     .trim();
 }

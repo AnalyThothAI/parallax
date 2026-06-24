@@ -65,12 +65,15 @@ export function parseMacroRouteTail(routeTail: string | undefined): MacroRouteRe
   const normalized = normalizeRouteTail(routeTail);
   if (normalized === "") {
     const descriptor = macroRouteDescriptor("overview");
+    if (!descriptor) {
+      return null;
+    }
     return {
-      canonicalPath: "/macro",
-      moduleId: "overview",
-      pageKind: descriptor?.pageKind ?? "overview",
-      productTier: descriptor?.productTier ?? "primary",
-      routeId: "overview",
+      canonicalPath: descriptor.href,
+      moduleId: descriptor.routeId,
+      pageKind: descriptor.pageKind,
+      productTier: descriptor.productTier,
+      routeId: descriptor.routeId,
       routeKind: "module",
     };
   }
@@ -90,11 +93,11 @@ export function parseMacroRouteTail(routeTail: string | undefined): MacroRouteRe
 }
 
 export function macroModuleHref(moduleId: MacroModuleId): string {
-  return ROUTES_BY_ID.get(moduleId)?.href ?? "/macro";
+  return requiredMacroModuleRoute(moduleId).href;
 }
 
 export function macroRouteLabel(moduleId: MacroModuleId): string {
-  return ROUTES_BY_ID.get(moduleId)?.label ?? "总览";
+  return requiredMacroModuleRoute(moduleId).label;
 }
 
 export function macroNavigationPath(routeId: MacroRouteId): MacroNavigationNode[] {
@@ -130,6 +133,14 @@ function flattenMacroModuleRoutes(nodes: MacroNavigationNode[]): MacroModuleRout
         : [];
     return [...current, ...flattenMacroModuleRoutes(node.children ?? [])];
   });
+}
+
+function requiredMacroModuleRoute(moduleId: MacroModuleId): MacroModuleRoute {
+  const route = ROUTES_BY_ID.get(moduleId);
+  if (!route) {
+    throw new Error(`macro_route_required:${moduleId}`);
+  }
+  return route;
 }
 
 function findNavigationPath(

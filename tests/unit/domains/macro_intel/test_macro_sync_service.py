@@ -50,6 +50,19 @@ def test_sync_service_date_contract_accepts_only_date_and_yyyy_mm_dd_text() -> N
     assert _to_date("2026-05-28T00:00:00Z") is None
 
 
+def test_sync_success_status_requires_import_status() -> None:
+    from parallax.domains.macro_intel.services.macro_sync_service import _sync_success_status
+
+    with pytest.raises(ValueError, match="macro_sync_import_status_required"):
+        _sync_success_status(None)
+    with pytest.raises(ValueError, match="macro_sync_import_status_required"):
+        _sync_success_status("")
+
+    assert _sync_success_status("ok") == "ok"
+    assert _sync_success_status("partial") == "partial"
+    assert _sync_success_status("empty") == "partial"
+
+
 def test_sync_service_idle_claims_no_window_and_does_not_call_runner() -> None:
     from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
 
