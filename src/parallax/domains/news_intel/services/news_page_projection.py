@@ -11,6 +11,23 @@ _RESOLVED_TOKEN_STATUSES = frozenset({"exact_address", "known_symbol", "unique_b
 _IGNORED_TOKEN_STATUSES = frozenset({"non_crypto", "nil"})
 _AGENT_NOTIFICATION_ADMISSION_STATUSES = frozenset({"eligible", "eligible_refresh"})
 _NOTIFIABLE_DECISION_CLASSES = frozenset({"driver", "watch"})
+_MACRO_EVENT_FLOW_SCOPE_LABELS = {
+    "macro_policy": "美联储",
+    "rates": "利率",
+    "equities": "权益",
+    "us_equity": "美股",
+    "fx": "外汇",
+    "credit": "信用",
+    "commodities": "商品",
+    "crypto": "加密",
+    "geopolitical": "地缘",
+    "regulation": "监管",
+}
+_MACRO_EVENT_FLOW_DECISION_FIELDS = {
+    "driver": ("high", "高", "mainline_driver", "改变主线"),
+    "watch": ("medium", "中", "mainline_watch", "观察主线"),
+    "context": ("low", "低", "mainline_context", "不改主线"),
+}
 
 
 def build_news_page_row(
@@ -80,6 +97,11 @@ def build_news_page_row(
         "agent_status": agent_status,
         "agent_brief_computed_at_ms": agent_payload.get("computed_at_ms"),
         "market_scope": market_scope,
+        "macro_event_flow": _macro_event_flow_payload(
+            agent_signal=agent_payload,
+            market_scope=market_scope,
+            token_lanes=token_lanes,
+        ),
         "agent_admission_status": agent_admission_status,
         "agent_admission_reason": agent_admission_reason,
         "agent_admission": agent_admission,
@@ -347,6 +369,55 @@ def _page_signal(
         agent_admission_status=agent_admission_status,
         market_scope=market_scope,
     )
+
+
+def _macro_event_flow_payload(
+    *,
+    agent_signal: Mapping[str, Any],
+    market_scope: Mapping[str, Any],
+    token_lanes: Sequence[Mapping[str, Any]],
+) -> dict[str, str] | None:
+    if str(agent_signal.get("status") or "") != "ready":
+        return None
+    category = str(market_scope.get("primary") or "").strip()
+    category_label = _MACRO_EVENT_FLOW_SCOPE_LABELS.get(category)
+    if category_label is None:
+        return None
+    if str(agent_signal.get("decision_class") or "").strip() == "discard":
+        return None
+    severity, severity_label, impact, impact_label = _macro_event_flow_decision_fields(agent_signal)
+    return {
+        "window": "recent",
+        "window_label": "近期",
+        "severity": severity,
+        "severity_label": severity_label,
+        "category": category,
+        "category_label": category_label,
+        "impact": impact,
+        "impact_label": impact_label,
+        "watch": _macro_event_flow_watch(token_lanes=token_lanes, category_label=category_label),
+    }
+
+
+def _macro_event_flow_decision_fields(agent_signal: Mapping[str, Any]) -> tuple[str, str, str, str]:
+    decision_class = str(agent_signal.get("decision_class") or "").strip()
+    fields = _MACRO_EVENT_FLOW_DECISION_FIELDS.get(decision_class)
+    if fields is None:
+        raise ValueError(f"news_page_macro_event_flow_decision_class_unknown:{decision_class}")
+    return fields
+
+
+def _macro_event_flow_watch(
+    *,
+    token_lanes: Sequence[Mapping[str, Any]],
+    category_label: str,
+) -> str:
+    symbols: list[str] = []
+    for lane in token_lanes:
+        symbol = str(lane.get("symbol") or "").strip()
+        if symbol and symbol not in symbols:
+            symbols.append(symbol)
+    return " · ".join([*symbols[:3], category_label])
 
 
 def _signal_with_independent_state(

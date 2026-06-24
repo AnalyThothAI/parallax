@@ -84,7 +84,7 @@ def test_news_workers_ingest_process_project_and_query_visible_news(tmp_path) ->
             db=db,
             telemetry=object(),
             news_settings=SimpleNamespace(sources=(source,)),
-            wake_bus=wake_bus,
+            wake_emitter=wake_bus,
             feed_client=feed_client,
         )
         process = NewsItemProcessWorker(
@@ -93,14 +93,13 @@ def test_news_workers_ingest_process_project_and_query_visible_news(tmp_path) ->
             db=db,
             telemetry=object(),
             identity_lookup=_FakeIdentityLookup(),
-            wake_bus=wake_bus,
+            wake_emitter=wake_bus,
         )
         page = NewsPageProjectionWorker(
             name="news_page_projection",
             settings=_worker_settings(batch_size=10),
             db=db,
             telemetry=object(),
-            wake_bus=wake_bus,
         )
 
         fetch_result = fetch.run_once_sync(now_ms=NOW_MS)
@@ -154,7 +153,20 @@ def test_news_workers_ingest_process_project_and_query_visible_news(tmp_path) ->
 
 
 def _worker_settings(*, batch_size: int) -> SimpleNamespace:
-    return SimpleNamespace(batch_size=batch_size, statement_timeout_seconds=30)
+    return SimpleNamespace(
+        enabled=True,
+        batch_size=batch_size,
+        lease_ms=30_000,
+        max_attempts=3,
+        retry_delay_ms=1_000,
+        retry_ms=1_000,
+        statement_timeout_seconds=30,
+        interval_seconds=1,
+        soft_timeout_seconds=30,
+        hard_timeout_seconds=60,
+        advisory_lock_key=None,
+        backoff=SimpleNamespace(initial_seconds=1, max_seconds=5),
+    )
 
 
 class _SingleConnectionWorkerDB:

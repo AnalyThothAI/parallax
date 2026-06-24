@@ -7,8 +7,7 @@
     align-items: start;
   }
 
-  .macro-page-scaffold[data-page-kind="overview"],
-  .macro-page-scaffold[data-page-kind="matrix"] {
+  .macro-page-scaffold[data-page-kind="overview"] {
     gap: 16px;
   }
 

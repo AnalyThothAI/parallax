@@ -126,7 +126,7 @@ describe("macro route", () => {
     expect(await screen.findByRole("heading", { name: "美股风险" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "宏观" })).not.toBeInTheDocument();
     expect(screen.getByText("美股风险：等待小盘确认")).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "美股模块页面" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "美股风险模块页面" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "模块简报" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "主市场证据" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "驱动与反证" })).toBeInTheDocument();
@@ -142,17 +142,60 @@ describe("macro route", () => {
     );
   });
 
+  it("surfaces missing module titles instead of falling back to route labels", async () => {
+    const baseGetApi = apiMock.getApiImpl;
+    apiMock.getApiImpl = async (path, options) => {
+      if (path === "/api/macro/modules/assets/equities") {
+        return ok(
+          macroModuleFixture({
+            snapshot: {
+              ...macroModuleFixture().snapshot,
+              title: "",
+            },
+          }),
+        );
+      }
+      return baseGetApi(path, options);
+    };
+
+    renderAppRoute("/macro/assets/equities");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("macro_module_title_missing");
+    expect(screen.queryByRole("heading", { name: "美股" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "美股风险" })).not.toBeInTheDocument();
+  });
+
+  it("omits macro shell eyebrow copy when backend section metadata is absent", async () => {
+    const baseGetApi = apiMock.getApiImpl;
+    apiMock.getApiImpl = async (path, options) => {
+      if (path === "/api/macro/modules/assets/equities") {
+        return ok(
+          macroModuleFixture({
+            snapshot: {
+              ...macroModuleFixture().snapshot,
+              section: null,
+            },
+          }),
+        );
+      }
+      return baseGetApi(path, options);
+    };
+
+    renderAppRoute("/macro/assets/equities");
+
+    expect(await screen.findByRole("heading", { name: "美股风险" })).toBeInTheDocument();
+    expect(screen.queryByText("宏观工作台")).not.toBeInTheDocument();
+  });
+
   it("opens the asset landing module without redirecting to equities", async () => {
     renderAppRoute("/macro/assets");
 
     expect(await screen.findByRole("heading", { name: "大类资产" })).toBeInTheDocument();
+    expect(screen.queryByText("Assets")).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "核心资产行情" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "今日判断" })).toBeInTheDocument();
     expect(screen.getByText("风险资产偏震荡")).toBeInTheDocument();
-    expect(await screen.findByRole("link", { name: "相关性详情" })).toHaveAttribute(
-      "href",
-      "/macro/assets/correlation",
-    );
+    expect(screen.queryByRole("link", { name: "相关性详情" })).not.toBeInTheDocument();
     expect(screen.getByText("矩阵").closest("details")).not.toHaveAttribute("open");
     await waitFor(() =>
       expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/modules/assets", {
@@ -164,38 +207,43 @@ describe("macro route", () => {
     });
   });
 
-  it("renders an unsupported state for unknown macro routes", async () => {
+  it("hard-deletes unknown macro routes into the route error surface", async () => {
     renderAppRoute("/macro/not-real");
 
-    expect(await screen.findByRole("status", { name: "不支持的宏观页面" })).toHaveTextContent(
-      "不支持的宏观页面",
-    );
+    expect(await screen.findByRole("alert")).toHaveTextContent("404 Not Found");
+    expect(screen.queryByRole("status", { name: "不支持的宏观页面" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "宏观模块" })).not.toBeInTheDocument();
     expect(apiMock.readApi).not.toHaveBeenCalledWith("/api/macro/modules/overview", {
       token: "secret",
     });
   });
 
-  it("opens the macro asset correlation detail route", async () => {
+  it.each([
+    "/macro/rates",
+    "/macro/liquidity",
+    "/macro/economy",
+    "/macro/volatility",
+    "/macro/credit",
+  ])("hard-deletes macro category alias route %s", async (route) => {
+    renderAppRoute(route);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("404 Not Found");
+    expect(screen.queryByRole("navigation", { name: "宏观模块" })).not.toBeInTheDocument();
+    expect(apiMock.readApi).not.toHaveBeenCalledWith("/api/macro/modules/overview", {
+      token: "secret",
+    });
+  });
+
+  it("hard-deletes the standalone asset correlation page into the route error surface", async () => {
     renderAppRoute("/macro/assets/correlation");
 
-    expect(await screen.findByRole("heading", { name: "资产相关性" })).toBeInTheDocument();
-    expect(screen.getByLabelText("宏观工作台")).toHaveAttribute("data-page-kind", "matrix");
-    expect(screen.getByRole("navigation", { name: "宏观面包屑" })).toHaveTextContent(
-      "宏观/大类资产/相关性",
-    );
-    expect(await screen.findByRole("region", { name: "相关性简报" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "相关性矩阵" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "相关性证据" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "数据诊断" })).toBeInTheDocument();
-    expect(screen.getByText("查看完整矩阵").closest("details")).not.toHaveAttribute("open");
-    expect(screen.queryByRole("table", { name: "60d 资产相关性矩阵" })).not.toBeInTheDocument();
-    expect(await screen.findByText("SPY / QQQ")).toBeInTheDocument();
-    await waitFor(() =>
-      expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/assets/correlation", {
-        params: { window: "60d" },
-        token: "secret",
-      }),
-    );
+    expect(await screen.findByRole("alert")).toHaveTextContent("404 Not Found");
+    expect(screen.queryByRole("heading", { name: "资产相关性" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("宏观工作台")).not.toBeInTheDocument();
+    expect(apiMock.readApi).not.toHaveBeenCalledWith("/api/macro/assets/correlation", {
+      params: { window: "60d" },
+      token: "secret",
+    });
   });
 
   it.each([

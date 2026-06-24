@@ -10,27 +10,27 @@ import { describe, expect, it } from "vitest";
 describe("macroTableColumns", () => {
   it("keeps numeric raw values for sorting while displaying formatted values", () => {
     const table: MacroModuleTable = {
-      id: "cex_perp_board",
+      id: "credit_stress_table",
       columns: [
-        { key: "symbol", label: "合约" },
-        { key: "open_interest", label: "未平仓" },
-        { key: "funding", label: "资金费率" },
+        { key: "instrument", label: "指标" },
+        { key: "spread", label: "利差" },
+        { key: "yield", label: "收益率" },
       ],
       rows: [
         {
-          row_id: "BTCUSDT",
+          row_id: "credit:hy_oas",
           cells: {
-            symbol: { display_value: "BTC", sort_value: "BTC" },
-            open_interest: { display_value: "12.50B", sort_value: 12_500_000_000 },
-            funding: { display_value: "0.0100%", sort_value: 0.0001 },
+            instrument: { display_value: "HY OAS", sort_value: "HY OAS" },
+            spread: { display_value: "320.00", sort_value: 320 },
+            yield: { display_value: "8.10", sort_value: 8.1 },
           },
         },
         {
-          row_id: "ETHUSDT",
+          row_id: "credit:ig_oas",
           cells: {
-            symbol: { display_value: "ETH", sort_value: "ETH" },
-            open_interest: { display_value: "8.30B", sort_value: 8_300_000_000 },
-            funding: { display_value: "-0.0200%", sort_value: -0.0002 },
+            instrument: { display_value: "IG OAS", sort_value: "IG OAS" },
+            spread: { display_value: "105.00", sort_value: 105 },
+            yield: { display_value: "5.40", sort_value: 5.4 },
           },
         },
       ],
@@ -39,20 +39,20 @@ describe("macroTableColumns", () => {
     const model = buildMacroTableModel(table);
 
     expect(model.columns).toEqual([
-      { id: "symbol", label: "合约" },
-      { id: "open_interest", label: "未平仓" },
-      { id: "funding", label: "资金费率" },
+      { id: "instrument", label: "指标" },
+      { id: "spread", label: "利差" },
+      { id: "yield", label: "收益率" },
     ]);
-    expect(model.rows[0]?.cells.open_interest).toMatchObject({
-      rawValue: 12_500_000_000,
-      sortValue: 12_500_000_000,
-      displayValue: "12.50B",
+    expect(model.rows[0]?.cells.spread).toMatchObject({
+      rawValue: 320,
+      sortValue: 320,
+      displayValue: "320.00",
       isNumeric: true,
     });
-    expect(model.rows[1]?.cells.funding).toMatchObject({
-      rawValue: -0.0002,
-      sortValue: -0.0002,
-      displayValue: "-0.0200%",
+    expect(model.rows[1]?.cells.yield).toMatchObject({
+      rawValue: 5.4,
+      sortValue: 5.4,
+      displayValue: "5.40",
       isNumeric: true,
     });
   });
@@ -148,7 +148,135 @@ describe("macroTableColumns", () => {
     });
 
     expect(model.columns).toEqual([]);
-    expect(model.rows[0]?.cells).toEqual({});
+    expect(model.rows).toEqual([]);
+  });
+
+  it("drops sparse table placeholders, empty rows, and empty columns", () => {
+    const model = buildMacroTableModel({
+      id: "credit_stress_table",
+      columns: [
+        { key: "instrument", label: "指标" },
+        { key: "spread", label: "利差" },
+        { key: "notes", label: "备注" },
+      ],
+      rows: [
+        {
+          row_id: "credit:hy_oas",
+          cells: {
+            instrument: { display_value: "HY OAS", sort_value: "HY OAS" },
+            spread: { display_value: null, sort_value: null },
+            notes: { display_value: "", sort_value: null },
+          },
+        },
+        {
+          row_id: "credit:ig_oas",
+          cells: {
+            instrument: { display_value: "IG OAS", sort_value: "IG OAS" },
+            spread: { display_value: "105.00", sort_value: 105 },
+          },
+        },
+        {
+          row_id: "credit:empty",
+          cells: {
+            instrument: { display_value: "", sort_value: "empty" },
+            spread: { display_value: null, sort_value: null },
+          },
+        },
+      ],
+    });
+
+    expect(model.columns.map((column) => column.id)).toEqual(["instrument", "spread"]);
+    expect(model.rows.map((row) => row.id)).toEqual(["credit:hy_oas", "credit:ig_oas"]);
+    expect(model.rows[0]?.cells.spread).toBeUndefined();
+    expect(JSON.stringify(model)).not.toContain("暂无");
+    expect(JSON.stringify(model)).not.toContain("credit:empty");
+  });
+
+  it("drops rows without backend row_id instead of deriving synthetic row ids", () => {
+    const model = buildMacroTableModel({
+      id: "asset_snapshot",
+      columns: [{ key: "instrument", label: "指标" }],
+      rows: [
+        {
+          concept_key: "asset:spx",
+          cells: {
+            instrument: { display_value: "S&P 500", sort_value: "SPX" },
+          },
+        },
+        {
+          label: "TLT",
+          cells: {
+            instrument: { display_value: "TLT", sort_value: "TLT" },
+          },
+        },
+        {
+          id: "legacy-id",
+          cells: {
+            instrument: { display_value: "DXY", sort_value: "DXY" },
+          },
+        },
+      ],
+    });
+
+    expect(model.rows).toEqual([]);
+    expect(JSON.stringify(model)).not.toContain("asset:spx");
+    expect(JSON.stringify(model)).not.toContain("row:0");
+    expect(JSON.stringify(model)).not.toContain("legacy-id");
+  });
+
+  it("drops table models with missing table ids instead of assigning unknown ids", () => {
+    const model = buildMacroTableModel({
+      id: "",
+      columns: [{ key: "indicator", label: "指标" }],
+      rows: [
+        {
+          row_id: "asset:spx",
+          cells: {
+            indicator: { display_value: "S&P 500", sort_value: "S&P 500" },
+          },
+        },
+      ],
+    });
+
+    expect(model).toEqual({
+      columns: [],
+      rows: [],
+      tableId: "",
+    });
+    expect(JSON.stringify(model)).not.toContain("unknown_table");
+  });
+
+  it("does not expose table object labels or titles without display values", () => {
+    expect(formatMacroTableValue({ label: "legacy object label" })).toBeNull();
+    expect(formatMacroTableValue({ title: "legacy object title" })).toBeNull();
+
+    const model = buildMacroTableModel({
+      id: "legacy_object_table",
+      columns: [
+        { key: "indicator", label: "指标" },
+        { key: "value", label: "值" },
+      ],
+      rows: [
+        {
+          row_id: "row:legacy",
+          cells: {
+            indicator: { label: "legacy object label" },
+            value: { title: "legacy object title" },
+          },
+        },
+        {
+          row_id: "row:display",
+          cells: {
+            indicator: { display_value: "显式指标", sort_value: "显式指标" },
+            value: { display_value: "显式值", sort_value: "显式值" },
+          },
+        },
+      ],
+    });
+
+    expect(model.rows.map((row) => row.id)).toEqual(["row:display"]);
+    expect(JSON.stringify(model)).not.toContain("legacy object label");
+    expect(JSON.stringify(model)).not.toContain("legacy object title");
   });
 
   it("formats arrays and empty values without changing raw sort semantics", () => {
@@ -156,11 +284,65 @@ describe("macroTableColumns", () => {
       formatMacroTableValue([
         { code: "insufficient_history:60d", label: "历史样本不足：无法计算 60 日变化" },
       ]),
-    ).toBe("历史样本不足：无法计算 60 日变化");
-    expect(formatMacroTableValue({ raw: true })).toBe("暂无");
+    ).toBeNull();
+    expect(formatMacroTableValue({ raw: true })).toBeNull();
     expect(formatMacroTableValue({ display_value: "来源可用", sort_value: "ok" })).toBe("来源可用");
-    expect(formatMacroTableValue(null)).toBe("暂无");
+    expect(formatMacroTableValue(null)).toBeNull();
+    expect(formatMacroTableValue("unknown")).toBe("unknown");
     expect(compareMacroTableSortValues(2, 10)).toBeLessThan(0);
     expect(compareMacroTableSortValues("asset:qqq", "asset:spy")).toBeLessThan(0);
+  });
+
+  it("does not infer raw or sort values from display-cell text", () => {
+    const model = buildMacroTableModel({
+      id: "source_status_table",
+      columns: [
+        { key: "source", label: "来源" },
+        { key: "latest", label: "最新值" },
+      ],
+      rows: [
+        {
+          row_id: "source:FRED",
+          cells: {
+            source: { display_value: "FRED" },
+            latest: { display_value: "320.00" },
+          },
+        },
+      ],
+    });
+
+    expect(model.rows[0]?.cells.source).toMatchObject({
+      displayValue: "FRED",
+      rawValue: null,
+      sortValue: null,
+      isNumeric: false,
+    });
+    expect(model.rows[0]?.cells.latest).toMatchObject({
+      displayValue: "320.00",
+      rawValue: null,
+      sortValue: null,
+      isNumeric: false,
+    });
+  });
+
+  it("does not translate table scalar status codes into synthetic labels", () => {
+    expect(formatMacroTableValue("ok")).toBe("ok");
+    expect(formatMacroTableValue("partial")).toBe("partial");
+    expect(formatMacroTableValue("unavailable")).toBe("unavailable");
+
+    const model = buildMacroTableModel({
+      id: "source_status_table",
+      columns: [{ key: "status", label: "状态" }],
+      rows: [
+        {
+          row_id: "source:FRED",
+          cells: {
+            status: { display_value: "partial", sort_value: "partial" },
+          },
+        },
+      ],
+    });
+
+    expect(model.rows[0]?.cells.status?.displayValue).toBe("partial");
   });
 });

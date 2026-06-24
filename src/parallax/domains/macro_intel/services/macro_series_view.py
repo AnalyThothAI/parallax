@@ -125,7 +125,17 @@ def _series_gap(code: str, concept_key: str) -> dict[str, Any]:
 
 def _concept_label(concept_key: str) -> str:
     metadata = MACRO_CONCEPT_METADATA.get(concept_key, {})
-    return str(metadata.get("short_label") or metadata.get("label") or "未命名指标")
+    label = _metadata_label(metadata)
+    if label:
+        return label
+    raise ValueError(f"Missing macro concept label metadata: {concept_key}")
+
+
+def _metadata_label(metadata: Mapping[str, Any]) -> str | None:
+    label = metadata.get("short_label") or metadata.get("label")
+    if isinstance(label, str) and label.strip():
+        return label
+    return None
 
 
 def _point(observation: Mapping[str, Any]) -> dict[str, Any]:
@@ -133,7 +143,7 @@ def _point(observation: Mapping[str, Any]) -> dict[str, Any]:
         "observed_at": observation.get("observed_at"),
         "value": observation.get("value_numeric"),
         "source_name": observation.get("source_name"),
-        "data_quality": str(observation.get("data_quality") or "ok"),
+        "data_quality": _required_observation_quality(observation),
     }
 
 
@@ -156,7 +166,7 @@ def _sources(observations: Sequence[Mapping[str, Any]]) -> list[str]:
 
 
 def _quality(observations: Sequence[Mapping[str, Any]]) -> str:
-    qualities = {str(observation.get("data_quality") or "ok") for observation in observations}
+    qualities = {_required_observation_quality(observation) for observation in observations}
     if not qualities:
         return "missing"
     if qualities == {"ok"}:
@@ -164,6 +174,16 @@ def _quality(observations: Sequence[Mapping[str, Any]]) -> str:
     if len(qualities) == 1:
         return next(iter(qualities))
     return "mixed"
+
+
+def _required_observation_quality(observation: Mapping[str, Any]) -> str:
+    concept_key = str(observation.get("concept_key") or "").strip() or "<missing>"
+    if "data_quality" not in observation or observation.get("data_quality") is None:
+        raise ValueError(f"macro_series_observation_quality_required:{concept_key}")
+    quality = str(observation.get("data_quality")).strip()
+    if not quality:
+        raise ValueError(f"macro_series_observation_quality_required:{concept_key}")
+    return quality
 
 
 __all__ = [

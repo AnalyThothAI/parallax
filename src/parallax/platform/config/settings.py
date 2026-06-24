@@ -1087,10 +1087,16 @@ class MacroSyncWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=900.0, ge=0)
     soft_timeout_seconds: float = Field(default=180.0, ge=0)
     hard_timeout_seconds: float = Field(default=300.0, ge=0)
-    batch_size: int = Field(default=1, ge=1)
+    batch_size: int = Field(default=3, ge=1)
     statement_timeout_seconds: float = Field(default=30.0, ge=0)
     advisory_lock_key: int = 2026052711
-    bundle_name: str = "macro-core"
+    bundle_names: tuple[str, ...] = (
+        "macro-core",
+        "macro-calendar-core",
+        "treasury-auction-core",
+        "fed-text-core",
+        "crypto-derivatives-core",
+    )
     source_name: str = "macrodata-cli"
     bootstrap_lookback_days: int = Field(default=1095, ge=1)
     max_window_days: int = Field(default=31, ge=1)
@@ -1100,6 +1106,16 @@ class MacroSyncWorkerSettings(PerWorkerSettings):
     retry_delay_ms: int = Field(default=900_000, ge=1)
     max_attempts: int = Field(default=8, ge=1)
     macrodata_timeout_seconds: float = Field(default=240.0, ge=1)
+
+    @field_validator("bundle_names", mode="before")
+    @classmethod
+    def parse_bundle_names(cls, value: Any) -> tuple[str, ...]:
+        parsed = tuple(_split_values(value))
+        if not parsed:
+            raise ValueError("macro_sync.bundle_names must not be empty")
+        if len(set(parsed)) != len(parsed):
+            raise ValueError("macro_sync.bundle_names must be unique")
+        return parsed
 
 
 class PulseCandidateTriggerThresholds(BaseModel):
@@ -1961,10 +1977,15 @@ macro_sync:
   interval_seconds: 900.0
   soft_timeout_seconds: 180.0
   hard_timeout_seconds: 300.0
-  batch_size: 1
+  batch_size: 3
   statement_timeout_seconds: 30.0
   advisory_lock_key: 2026052711
-  bundle_name: "macro-core"
+  bundle_names:
+    - "macro-core"
+    - "macro-calendar-core"
+    - "treasury-auction-core"
+    - "fed-text-core"
+    - "crypto-derivatives-core"
   source_name: "macrodata-cli"
   bootstrap_lookback_days: 1095
   max_window_days: 31

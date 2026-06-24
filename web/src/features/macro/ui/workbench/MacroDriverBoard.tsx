@@ -20,66 +20,75 @@ export function MacroDriverBoard({
   transmission: MacroTransmissionNode[];
 }) {
   const evidenceGroups = drivers.evidenceGroups.filter((group) => group.items.length > 0);
+  const transmissionRows = transmission.flatMap((node) => {
+    const key = textValue(node.key);
+    const label = formatMacroScalar(node.label);
+    const value = formatMacroScalar(node.value);
+    return key && label && value ? [{ key, label, value }] : [];
+  });
+  const hasTransmission = transmissionRows.length > 0;
+  const hasEvidence = evidenceGroups.length > 0;
+
+  if (!hasTransmission && !hasEvidence) {
+    return null;
+  }
 
   return (
     <MacroPanel
       ariaLabel={ariaLabel}
       className="macro-workbench-driver-panel"
-      meta={meta ?? `${drivers.evidenceCount} 条证据`}
+      meta={meta}
       span="full"
       title={title}
     >
       <div className="macro-workbench-driver-layout">
-        <section aria-label="传导路径" className="macro-workbench-flow" role="group">
-          <div className="macro-workbench-section-head">
-            <h4>传导路径</h4>
-            <span>{drivers.transmissionCount}</span>
-          </div>
-          <ol className="macro-workbench-flow-list">
-            {transmission.length > 0 ? (
-              transmission.map((node, index) => (
-                <li className="macro-workbench-flow-node" key={`${node.label ?? "node"}:${index}`}>
-                  <span>{formatMacroScalar(node.label ?? node.kind ?? "传导节点")}</span>
-                  <b>{formatMacroScalar(node.value ?? node.status_label ?? node.status)}</b>
+        {hasTransmission ? (
+          <section aria-label="传导路径" className="macro-workbench-flow" role="group">
+            <div className="macro-workbench-section-head">
+              <h4>传导路径</h4>
+              <span>{transmissionRows.length}</span>
+            </div>
+            <ol className="macro-workbench-flow-list">
+              {transmissionRows.map((node) => (
+                <li className="macro-workbench-flow-node" key={node.key}>
+                  <span>{node.label}</span>
+                  <b>{node.value}</b>
                 </li>
-              ))
-            ) : (
-              <li className="macro-workbench-flow-node">
-                <span>传导路径</span>
-                <b>暂无</b>
-              </li>
-            )}
-          </ol>
-        </section>
-        <section aria-label="证据与反证" className="macro-workbench-evidence" role="group">
-          <div className="macro-workbench-section-head">
-            <h4>证据与反证</h4>
-            <span>{drivers.evidenceCount}</span>
-          </div>
-          <div className="macro-workbench-evidence-grid">
-            {evidenceGroups.length > 0 ? (
-              evidenceGroups.map((group) => (
+              ))}
+            </ol>
+          </section>
+        ) : null}
+        {hasEvidence ? (
+          <section aria-label="证据与反证" className="macro-workbench-evidence" role="group">
+            <div className="macro-workbench-section-head">
+              <h4>证据与反证</h4>
+              <span>{drivers.evidenceCount}</span>
+            </div>
+            <div className="macro-workbench-evidence-grid">
+              {evidenceGroups.map((group) => (
                 <article className="macro-workbench-evidence-group" key={group.key}>
                   <div className="macro-workbench-evidence-group-head">
                     <h5>{group.label}</h5>
                     <span>{group.items.length}</span>
                   </div>
                   <ul className="macro-workbench-evidence-list">
-                    {group.items.map((item, index) => (
-                      <li key={`${group.key}:${item.label}:${index}`}>
+                    {group.items.map((item) => (
+                      <li key={item.key}>
                         <b>{item.label}</b>
                         <span>{item.detail}</span>
                       </li>
                     ))}
                   </ul>
                 </article>
-              ))
-            ) : (
-              <p className="macro-workbench-empty">暂无可用证据</p>
-            )}
-          </div>
-        </section>
+              ))}
+            </div>
+          </section>
+        ) : null}
       </div>
     </MacroPanel>
   );
+}
+
+function textValue(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
 }

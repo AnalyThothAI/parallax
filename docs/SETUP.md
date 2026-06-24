@@ -75,6 +75,9 @@ Macro freshness is normally owned by the `macro_sync` worker. Docker/runtime
 uses the packaged `macrodata` executable when the console script is healthy, or
 the installed Python package entrypoint when the script is absent or stale. It
 must not depend on `uv run macrodata` or a host-local macrodata checkout.
+The worker reads the formal `workers.macro_sync.bundle_names` list; the default
+set is `macro-core`, `macro-calendar-core`, `treasury-auction-core`, and
+`fed-text-core`.
 Provide a FRED API key either as `providers.macrodata.fred_api_key` in the
 operator-owned `~/.parallax/config.yaml`, or through the environment /
 deployment secret manager named by `providers.macrodata.fred_api_key_env`
@@ -101,8 +104,10 @@ catches up. If facts exist but no macro snapshot exists yet,
 that source facts are missing. The `macrodata_cli` block must show the expected
 package version and `required_bundle_series_available=true`; otherwise the
 runtime is using an old packaged `macrodata-cli` bundle and sync cannot import
-all Parallax-required series. FRED public CSV timeouts or a missing optional
-FRED API key are source-health gaps; they should appear as partial
+all Parallax-required series. The installed macrodata runtime must also expose
+history commands for the configured event bundles before the default worker
+cadence can refresh decision-console catalysts. FRED public CSV timeouts or a
+missing optional FRED API key are source-health gaps; they should appear as partial
 coverage/data gaps and are not frontend defects.
 
 The full CLI surface is documented by `uv run parallax --help`.

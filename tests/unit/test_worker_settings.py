@@ -127,8 +127,14 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.pulse_candidate.gate_thresholds.high_conviction_min == 78
     assert settings.macro_sync.enabled is True
     assert settings.macro_sync.interval_seconds == 900.0
-    assert settings.macro_sync.batch_size == 1
-    assert settings.macro_sync.bundle_name == "macro-core"
+    assert settings.macro_sync.batch_size == 3
+    assert settings.macro_sync.bundle_names == (
+        "macro-core",
+        "macro-calendar-core",
+        "treasury-auction-core",
+        "fed-text-core",
+        "crypto-derivatives-core",
+    )
     assert settings.macro_sync.source_name == "macrodata-cli"
     assert settings.macro_sync.bootstrap_lookback_days == 1095
     assert settings.macro_sync.max_window_days == 31

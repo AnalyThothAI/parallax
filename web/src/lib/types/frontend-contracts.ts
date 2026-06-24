@@ -93,11 +93,37 @@ export type MacroScenarioSignal = {
   delta_5d?: number | null;
 };
 
+export type MacroTradeMapAction = {
+  kind?: string | null;
+  label?: string | null;
+  description?: string | null;
+};
+
 export type MacroTradeMapEntry = {
   expression?: string | null;
+  label?: string | null;
   time_window?: string | null;
-  confirms_on?: string[];
-  invalidates_on?: string[];
+  action_checklist?: MacroTradeMapAction[];
+};
+
+export type MacroScenarioQualityBlocker = {
+  code?: string | null;
+  description?: string | null;
+  label?: string | null;
+  severity?: string | null;
+};
+
+export type MacroScenarioCase = {
+  case?: string | null;
+  entry_condition?: string | null;
+  invalidation?: string | null;
+  label?: string | null;
+  probability?: number | null;
+  probability_label?: string | null;
+  stop?: string | null;
+  thesis?: string | null;
+  time_window?: string | null;
+  trade?: string | null;
 };
 
 export type MacroScenario = {
@@ -109,6 +135,9 @@ export type MacroScenario = {
   watch_triggers?: MacroScenarioSignal[];
   invalidations?: MacroScenarioSignal[];
   trade_map?: MacroTradeMapEntry[];
+  top_changes?: MacroScenarioSignal[];
+  quality_blockers?: MacroScenarioQualityBlocker[];
+  scenario_cases?: MacroScenarioCase[];
 };
 
 export type MacroScorecard = {
@@ -212,10 +241,10 @@ export type MacroDataHealth = {
   module_gaps: MacroSemanticRecord[];
   chart_gaps: MacroSemanticRecord[];
   global_gaps: MacroSemanticRecord[];
-  future_integration_gaps: MacroSemanticRecord[];
 };
 
 export type MacroTransmissionNode = {
+  key?: string | null;
   label?: string | null;
   value?: unknown;
   kind?: string | null;

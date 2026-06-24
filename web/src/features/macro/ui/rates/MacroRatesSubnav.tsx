@@ -5,9 +5,7 @@ import type { RatesModuleId } from "../../model/macroRatesWorkbenchModel";
 const RATES_NAV_ITEMS: Array<{ href: string; label: string; moduleId: RatesModuleId }> = [
   { href: "/macro/rates/fed-funds", label: "联邦基金", moduleId: "rates/fed-funds" },
   { href: "/macro/rates/yield-curve", label: "收益率曲线", moduleId: "rates/yield-curve" },
-  { href: "/macro/rates/auctions", label: "国债拍卖", moduleId: "rates/auctions" },
   { href: "/macro/rates/real-rates", label: "实际利率", moduleId: "rates/real-rates" },
-  { href: "/macro/rates/expectations", label: "政策预期", moduleId: "rates/expectations" },
 ];
 
 export function MacroRatesSubnav({ activeModuleId }: { activeModuleId: RatesModuleId }) {

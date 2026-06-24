@@ -21,6 +21,7 @@ from parallax.domains.pulse_lab.repositories.pulse_trigger_dirty_target_reposito
     PulseTriggerDirtyTargetRepository,
 )
 from parallax.domains.pulse_lab.runtime.pulse_candidate_worker import PulseCandidateWorker
+from parallax.domains.pulse_lab.services.agent_runtime import pulse_runtime_hash
 from parallax.domains.pulse_lab.types.agent_decision import (
     BullBearView,
     FinalDecision,
@@ -228,7 +229,7 @@ class _PulseAgentClient:
             "schema_version": "pulse-decision-v2",
             "artifact_version_hash": self.artifact_version_hash,
             "runtime_version": runtime_manifest["runtime_version"],
-            "runtime_hash": "sha256:e2e",
+            "runtime_hash": pulse_runtime_hash(runtime_manifest),
             "trace_metadata": {"candidate_id": context["candidate_id"], "route": route},
             "input_hash": "input-e2e",
             "usage": {"input_tokens": 100, "output_tokens": 50},
@@ -332,6 +333,29 @@ class _PulseReadAdapter:
         ]
         return {"items": rows, "next_cursor": None}
 
+    def list_signal_pulse_notification_candidates(
+        self,
+        *,
+        window: str,
+        scopes: tuple[str, ...],
+        statuses: tuple[str, ...],
+        per_scope_status_limit: int,
+    ) -> list[dict[str, Any]]:
+        if per_scope_status_limit <= 0:
+            return []
+        scope_set = set(scopes)
+        status_set = set(statuses)
+        rows = [
+            row
+            for row in self._repos.pulse_candidates.candidates.values()
+            if row.get("window") == window and row.get("scope") in scope_set and row.get("pulse_status") in status_set
+        ]
+        rows.sort(
+            key=lambda row: (int(row.get("updated_at_ms") or 0), str(row.get("candidate_id") or "")),
+            reverse=True,
+        )
+        return rows[:per_scope_status_limit]
+
 
 class _RealWorkerDb:
     def __init__(
@@ -372,6 +396,11 @@ class _RealWorkerRepos:
         self.pulse_trigger_dirty_targets = PulseTriggerDirtyTargetRepository(conn)
         self.token_radar = _StaticRows(rows=token_radar_rows)
         self.token_targets = _StaticRows(rows=token_target_rows)
+
+    @contextmanager
+    def transaction(self):
+        with self.conn.transaction():
+            yield
 
 
 class _StaticRows:
@@ -464,6 +493,18 @@ class _RealWorkerEvidenceSources:
                 "source_table": "asset_identity_current",
             }
         ]
+
+    def get_current_discussion_digest(
+        self,
+        *,
+        target_type: str,
+        target_id: str,
+        window: str,
+        scope: str,
+        schema_version: str,
+    ) -> dict[str, Any] | None:
+        del target_type, target_id, window, scope, schema_version
+        return None
 
 
 class _EmptyEvidence:

@@ -461,6 +461,68 @@ def test_build_news_page_row_includes_ready_compact_agent_brief() -> None:
     )
 
 
+def test_build_news_page_row_projects_macro_event_flow_for_ready_market_scope() -> None:
+    row = build_news_page_row(
+        item={
+            "news_item_id": "news-1",
+            "title": "Fed liquidity update lifts futures",
+            "summary": "Dollar and equities repriced after the update.",
+            "source_domain": "example.test",
+            "canonical_url": "https://example.test/fed-liquidity",
+            "published_at_ms": 1_000,
+            "agent_admission_status": "eligible",
+            "agent_admission_reason": "ready_market_driver",
+            "agent_representative_news_item_id": "news-1",
+            "market_scope_json": {
+                "scope": ["macro_policy", "equities", "fx"],
+                "primary": "macro_policy",
+                "status": "classified",
+                "reason": "fed_liquidity_subject",
+                "basis": {"subject": "fed_liquidity"},
+                "version": "test_news_market_scope_v1",
+            },
+        },
+        token_mentions=[
+            {
+                "resolution_status": "known_symbol",
+                "display_symbol": "SPX",
+                "target_type": "macro_asset",
+                "target_id": "asset:spx",
+            },
+            {
+                "resolution_status": "known_symbol",
+                "display_symbol": "DXY",
+                "target_type": "macro_asset",
+                "target_id": "fx:dxy",
+            },
+        ],
+        fact_candidates=[],
+        agent_brief={
+            "status": "ready",
+            "direction": "bullish",
+            "decision_class": "driver",
+            "brief_json": {
+                "summary_zh": "流动性信号推动风险资产重新定价。",
+                "market_read_zh": "主线偏风险修复。",
+            },
+            "computed_at_ms": 2_000,
+        },
+        computed_at_ms=3_000,
+    )
+
+    assert row["macro_event_flow"] == {
+        "window": "recent",
+        "window_label": "近期",
+        "severity": "high",
+        "severity_label": "高",
+        "category": "macro_policy",
+        "category_label": "美联储",
+        "impact": "mainline_driver",
+        "impact_label": "改变主线",
+        "watch": "SPX · DXY · 美联储",
+    }
+
+
 def test_page_signal_envelope_separates_provider_agent_display_and_alert() -> None:
     row = build_news_page_row(
         item={

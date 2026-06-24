@@ -32,7 +32,7 @@ path.
 
 ```text
 macro_sync windows
-  -> packaged macrodata bundle history macro-core
+  -> packaged macrodata history bundles configured in workers.macro_sync.bundle_names
   -> macro_observations / macro_import_runs / macro_sync_runs
   -> wake macro_observations_imported
   -> macro_view_projection
@@ -619,7 +619,11 @@ are wrong too.
    by `MacroViewProjectionWorker`. That worker reads statement timeout,
    claim batch, lease, retry, lookback, and per-series bounds from the formal
    `macro_view_projection` worker settings; the worker must not keep runtime
-   fallback constants for those execution budgets. `macro_view_snapshots`
+   fallback constants for those execution budgets. Event/document rows in
+   `macro_observation_series_rows` may have `value_numeric=NULL`; the writer
+   must preserve those rows for decision-console catalysts instead of forcing
+   numeric sentinels or dropping them with numeric-series filters.
+   `macro_view_snapshots`
    JSON sections are also part of the writer contract: missing
    `panels_json`, `indicators_json`, `triggers_json`, `data_gaps_json`,
    `source_coverage_json`, `features_json`, `chain_json`, `scenario_json`, or
@@ -962,6 +966,7 @@ own maps next to the code they describe, and this file links to them.
 | Asset market and market tick capture | [`src/parallax/domains/asset_market/ARCHITECTURE.md`](../src/parallax/domains/asset_market/ARCHITECTURE.md) | Asset identity evidence ledger, `MarketTick` schema, capture-tier / stream / poll workers, cache-only live fan-out, profile / discovery workers, provider capability model. |
 | CEX market intelligence | [`src/parallax/domains/cex_market_intel/ARCHITECTURE.md`](../src/parallax/domains/cex_market_intel/ARCHITECTURE.md) | Binance USDT perpetual universe consumption, OI radar board read model, CEX detail snapshots, and snapshot-only Token Case / Agent read paths. |
 | Signal Pulse pipeline | [`src/parallax/domains/pulse_lab/ARCHITECTURE.md`](../src/parallax/domains/pulse_lab/ARCHITECTURE.md) | Candidate gate, agent route policy, stage runtime, decision persistence, audit ledger, abstain contract. |
+| Watchlist intelligence | [`src/parallax/domains/watchlist_intel/ARCHITECTURE.md`](../src/parallax/domains/watchlist_intel/ARCHITECTURE.md) | Watchlist account topic read models, overview API contracts, and worker-owned refresh boundaries. |
 | News intelligence | [`src/parallax/domains/news_intel/ARCHITECTURE.md`](../src/parallax/domains/news_intel/ARCHITECTURE.md) | Configured source ingestion, raw news item facts, token mention observations, fact candidates, item briefs, and the News page read model. |
 | Macro intelligence | [`src/parallax/domains/macro_intel/ARCHITECTURE.md`](../src/parallax/domains/macro_intel/ARCHITECTURE.md) | `macro_sync` fact ingest, macro observation facts, deterministic `macro_regime_v4` feature/regime/scenario scoring, module v3 views, and Macro projection ownership. |
 | Account quality | [`src/parallax/domains/account_quality/ARCHITECTURE.md`](../src/parallax/domains/account_quality/ARCHITECTURE.md) | Account profile/stat/snapshot read-model ownership, ops-only backfill, and public account-quality read services. |

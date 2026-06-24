@@ -6,6 +6,7 @@ from datetime import UTC, date, datetime, timedelta
 import pytest
 
 from parallax.domains.macro_intel.repositories.macro_intel_repository import MacroIntelRepository
+from parallax.domains.macro_intel.services import macro_feature_engine
 from parallax.domains.macro_intel.services.macro_feature_engine import build_macro_features
 
 COMPUTED_AT_MS = int(datetime(2026, 5, 21, 12, tzinfo=UTC).timestamp() * 1000)
@@ -58,6 +59,125 @@ def test_feature_engine_computes_latest_delta_zscore_and_percentile() -> None:
     ]
 
 
+@pytest.mark.parametrize("concept_key", (None, " "))
+def test_feature_engine_requires_concept_key_without_silent_drop(concept_key: str | None) -> None:
+    observation = _obs("rates:dgs10", "2026-05-20", value_numeric=4.7)
+    if concept_key is None:
+        del observation["concept_key"]
+    else:
+        observation["concept_key"] = concept_key
+
+    with pytest.raises(ValueError, match="macro_feature_concept_key_required"):
+        build_macro_features([observation], computed_at_ms=COMPUTED_AT_MS)
+
+
+@pytest.mark.parametrize("field_name", ("label", "short_label", "description", "unit_label"))
+def test_feature_engine_requires_concept_display_metadata_without_raw_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    field_name: str,
+) -> None:
+    metadata = dict(macro_feature_engine.MACRO_CONCEPT_METADATA["rates:dgs10"])
+    metadata.pop(field_name)
+    monkeypatch.setitem(macro_feature_engine.MACRO_CONCEPT_METADATA, "rates:dgs10", metadata)
+    observations = _daily_observations(
+        "rates:dgs10",
+        start=date(2026, 4, 21),
+        values=[4.41 + i * 0.01 for i in range(30)],
+    )
+
+    with pytest.raises(ValueError, match=f"macro_feature_metadata_{field_name}_required:rates:dgs10"):
+        build_macro_features(observations, computed_at_ms=COMPUTED_AT_MS)
+
+
+@pytest.mark.parametrize(
+    ("field_name", "message"),
+    (
+        ("source_name", "macro_feature_source_name_required:rates:dgs10"),
+        ("series_key", "macro_feature_series_key_required:rates:dgs10"),
+    ),
+)
+def test_feature_engine_requires_source_metadata_without_empty_string_fallback(
+    field_name: str,
+    message: str,
+) -> None:
+    observations = _daily_observations(
+        "rates:dgs10",
+        start=date(2026, 4, 21),
+        values=[4.41 + i * 0.01 for i in range(30)],
+    )
+    for observation in observations:
+        del observation[field_name]
+
+    with pytest.raises(ValueError, match=message):
+        build_macro_features(observations, computed_at_ms=COMPUTED_AT_MS)
+
+
+def test_feature_engine_requires_latest_unit_without_none_fallback() -> None:
+    observations = _daily_observations(
+        "rates:dgs10",
+        start=date(2026, 4, 21),
+        values=[4.41 + i * 0.01 for i in range(30)],
+    )
+    for observation in observations:
+        del observation["unit"]
+
+    with pytest.raises(ValueError, match="macro_feature_unit_required:rates:dgs10"):
+        build_macro_features(observations, computed_at_ms=COMPUTED_AT_MS)
+
+
+@pytest.mark.parametrize(
+    ("frequency", "message"),
+    (
+        (None, "macro_feature_frequency_required:rates:dgs10"),
+        (" ", "macro_feature_frequency_required:rates:dgs10"),
+        ("intraday", "macro_feature_frequency_unknown:rates:dgs10:intraday"),
+    ),
+)
+def test_feature_engine_requires_supported_frequency_without_daily_fallback(
+    frequency: str | None,
+    message: str,
+) -> None:
+    observations = _daily_observations(
+        "rates:dgs10",
+        start=date(2026, 4, 21),
+        values=[4.41 + i * 0.01 for i in range(30)],
+    )
+    for observation in observations:
+        if frequency is None:
+            del observation["frequency"]
+        else:
+            observation["frequency"] = frequency
+
+    with pytest.raises(ValueError, match=message):
+        build_macro_features(observations, computed_at_ms=COMPUTED_AT_MS)
+
+
+@pytest.mark.parametrize(
+    ("data_quality", "message"),
+    (
+        (None, "macro_feature_data_quality_required:rates:dgs10"),
+        (" ", "macro_feature_data_quality_required:rates:dgs10"),
+    ),
+)
+def test_feature_engine_requires_data_quality_without_ok_fallback(
+    data_quality: str | None,
+    message: str,
+) -> None:
+    observations = _daily_observations(
+        "rates:dgs10",
+        start=date(2026, 4, 21),
+        values=[4.41 + i * 0.01 for i in range(30)],
+    )
+    for observation in observations:
+        if data_quality is None:
+            del observation["data_quality"]
+        else:
+            observation["data_quality"] = data_quality
+
+    with pytest.raises(ValueError, match=message):
+        build_macro_features(observations, computed_at_ms=COMPUTED_AT_MS)
+
+
 def test_feature_engine_marks_insufficient_history_for_all_deltas_when_history_is_short() -> None:
     observations = _daily_observations("rates:dgs10", start=date(2026, 5, 18), values=[4.55, 4.60, 4.70])
 
@@ -83,7 +203,7 @@ def test_feature_engine_marks_insufficient_history_for_all_deltas_when_history_i
     ]
 
 
-def test_feature_engine_falls_back_to_numeric_value_and_ignores_non_numeric_values() -> None:
+def test_feature_engine_requires_value_numeric_without_raw_value_fallback() -> None:
     observations = [
         _obs("rates:dgs10", "2026-05-17", value=4.5),
         _obs("rates:dgs10", "2026-05-18", value_numeric="not-a-number", value="n/a"),
@@ -94,13 +214,15 @@ def test_feature_engine_falls_back_to_numeric_value_and_ignores_non_numeric_valu
     features = build_macro_features(observations, computed_at_ms=COMPUTED_AT_MS)
 
     dgs10 = features["rates:dgs10"]
-    assert dgs10["latest"]["value"] == pytest.approx(4.7)
-    assert dgs10["zscore"]["value"] is not None
-    assert math.isfinite(dgs10["zscore"]["value"])
-    assert any(gap["code"] == "non_numeric_values_1" for gap in dgs10["data_gaps"])
+    assert dgs10["latest"]["value"] is None
+    assert dgs10["zscore"]["value"] is None
+    assert [gap["code"] for gap in dgs10["data_gaps"]] == [
+        "non_numeric_values_4",
+        "missing_numeric_history",
+    ]
 
 
-def test_feature_engine_does_not_truncate_timestamp_dates() -> None:
+def test_feature_engine_rejects_timestamp_dates_without_truncating_to_day() -> None:
     observations = [
         {
             "concept_key": "rates:dgs10",
@@ -114,12 +236,18 @@ def test_feature_engine_does_not_truncate_timestamp_dates() -> None:
         }
     ]
 
-    features = build_macro_features(observations, computed_at_ms=COMPUTED_AT_MS)
+    with pytest.raises(ValueError, match="macro_feature_observed_at_required:rates:dgs10"):
+        build_macro_features(observations, computed_at_ms=COMPUTED_AT_MS)
 
-    dgs10 = features["rates:dgs10"]
-    assert dgs10["latest"]["value"] is None
-    assert dgs10["latest"]["observed_at"] is None
-    assert "missing_numeric_history" in {gap["code"] for gap in dgs10["data_gaps"]}
+
+def test_feature_engine_rejects_malformed_observed_at_without_silent_drop() -> None:
+    observations = [
+        _obs("rates:dgs10", "2026-05-20", value_numeric=4.7),
+        _obs("rates:dgs10", "2026-05-21T00:00:00Z", value_numeric=4.8),
+    ]
+
+    with pytest.raises(ValueError, match="macro_feature_observed_at_required:rates:dgs10"):
+        build_macro_features(observations, computed_at_ms=COMPUTED_AT_MS)
 
 
 def test_feature_engine_marks_degraded_latest_data_quality_as_gap() -> None:

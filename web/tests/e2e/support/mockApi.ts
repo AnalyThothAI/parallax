@@ -1,9 +1,7 @@
 import type { Page, Route } from "@playwright/test";
 import {
   macroAssetsModuleFixture,
-  macroAuctionsProxyModuleFixture,
   macroCorrelationFixture,
-  macroExpectationsProxyModuleFixture,
   macroFedFundsModuleFixture,
   macroModuleFixture,
   macroOverviewModuleFixture,
@@ -55,7 +53,7 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
     if (path === "/api/search/inspect") return fulfill(route, searchInspectData(url));
     if (path === "/api/signal-lab/pulse") return fulfill(route, signalPulseData(url));
     if (path.startsWith("/api/signal-lab/pulse/")) return fulfill(route, pulseItem());
-    if (path === "/api/social-events/by-ids") return fulfill(route, socialEventsByIds(url));
+    if (path === "/api/events/by-ids") return fulfill(route, socialEventsByIds(url));
     if (path === "/api/target-social-timeline") return fulfill(route, timelineData());
     if (path === "/api/target-posts") return fulfill(route, targetPostsData(url));
     if (path === "/api/account-quality") return fulfill(route, accountQualityData());
@@ -1338,9 +1336,22 @@ function macroData() {
       trade_map: [
         {
           expression: "risk_down_credit_sensitive",
+          label: "风险降档 / 信用敏感",
           time_window: "1w",
-          confirms_on: ["sofr_above_iorb"],
-          invalidates_on: ["sofr_iorb_normalizes"],
+          action_checklist: [
+            {
+              kind: "confirm",
+              kind_label: "确认",
+              label: "SOFR 高于 IORB",
+              description: "观察 SOFR 高于 IORB 是否继续确认。",
+            },
+            {
+              kind: "invalidate",
+              kind_label: "失效",
+              label: "SOFR 回到 IORB 附近",
+              description: "若 SOFR 回到 IORB 附近，则撤销该映射。",
+            },
+          ],
         },
       ],
     },
@@ -1358,7 +1369,7 @@ function macroModuleIdFromPath(path: string) {
 }
 
 function isParentMacroModule(moduleId: string) {
-  return new Set(["rates", "fed", "liquidity", "economy", "volatility", "credit"]).has(moduleId);
+  return new Set(["rates", "liquidity", "economy", "volatility", "credit"]).has(moduleId);
 }
 
 function macroModuleData(moduleId: string) {
@@ -1372,12 +1383,8 @@ function macroModuleData(moduleId: string) {
       return macroFedFundsModuleFixture();
     case "rates/yield-curve":
       return macroYieldCurveModuleFixture();
-    case "rates/auctions":
-      return macroAuctionsProxyModuleFixture();
     case "rates/real-rates":
       return macroRealRatesModuleFixture();
-    case "rates/expectations":
-      return macroExpectationsProxyModuleFixture();
     default:
       break;
   }

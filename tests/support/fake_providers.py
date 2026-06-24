@@ -7,6 +7,7 @@ from typing import Any
 
 from parallax.domains.asset_market.providers import CexTicker, DexTokenQuote, DexTokenQuoteRequest
 from parallax.domains.pulse_lab.providers import DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT, PulseDecisionResult
+from parallax.domains.pulse_lab.services.agent_runtime import pulse_runtime_hash
 from parallax.domains.pulse_lab.types.agent_decision import (
     BullBearView,
     FinalDecision,
@@ -154,7 +155,7 @@ class FakePulseDecisionProvider:
             "schema_version": "pulse-decision-v2",
             "artifact_version_hash": self.artifact_version_hash,
             "runtime_version": runtime_manifest["runtime_version"],
-            "runtime_hash": "sha256:hot-path",
+            "runtime_hash": pulse_runtime_hash(runtime_manifest),
             "trace_metadata": {
                 "candidate_id": context["candidate_id"],
                 "route": route,

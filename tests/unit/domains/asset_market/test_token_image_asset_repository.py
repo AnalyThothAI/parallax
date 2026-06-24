@@ -224,7 +224,7 @@ def _source_row() -> dict[str, Any]:
         "source_provider": "gmgn",
         "source_kind": "asset_profiles.logo_url",
         "raw_ref_json": {"asset_id": "asset-alpha"},
-}
+    }
 
 
 _ROWCOUNT_FROM_RESULT = object()

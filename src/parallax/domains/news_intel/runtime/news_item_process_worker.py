@@ -185,9 +185,7 @@ class NewsItemProcessWorker(WorkerBase):
                         news_item_ids=[news_item_id],
                         reason="news_item_processed",
                         now_ms=now,
-                        source_watermark_ms_by_news_item_id={
-                            news_item_id: _source_watermark_ms(processed_item)
-                        },
+                        source_watermark_ms_by_news_item_id={news_item_id: _source_watermark_ms(processed_item)},
                         commit=False,
                     )
                     context_payload = _agent_admission_context(

@@ -1,27 +1,21 @@
 import type { MacroModuleView } from "@lib/types";
 
-import { type MacroModuleId, macroRouteLabel } from "./macroRoutes";
-
 export type MacroFreshnessAlertModel = {
   detail: string;
   items: string[];
   title: string;
 };
 
-export function macroModuleTitle(moduleId: MacroModuleId, module?: MacroModuleView): string {
-  return stringValue(module?.snapshot.title) || macroRouteLabel(moduleId) || "总览";
+export function macroModuleTitle(module?: MacroModuleView): string | null {
+  return stringValue(module?.snapshot.title);
 }
 
-export function macroAsOfLabel(module?: MacroModuleView): string {
-  return stringValue(module?.snapshot.asof_label) ?? dateAsOfLabel(module?.snapshot.asof_date);
+export function macroAsOfLabel(module?: MacroModuleView): string | null {
+  return stringValue(module?.snapshot.asof_label);
 }
 
-export function macroStatusLabel(module?: MacroModuleView): string {
-  const label = stringValue(module?.snapshot.status_label);
-  if (label) {
-    return label;
-  }
-  return statusLabel(stringValue(module?.snapshot.status));
+export function macroStatusLabel(module?: MacroModuleView): string | null {
+  return stringValue(module?.snapshot.status_label);
 }
 
 export function macroFreshnessAlert(module?: MacroModuleView): MacroFreshnessAlertModel | null {
@@ -38,69 +32,45 @@ export function macroFreshnessAlert(module?: MacroModuleView): MacroFreshnessAle
   const items = uniqueLabels(staleGaps.map(staleGapLabel)).slice(0, 3);
   if (wholePageStale) {
     return {
-      detail: `${asOfLabel}；宏观快照整体处于滞后状态，请先确认同步与投影状态。`,
+      detail: `${asOfPrefix(asOfLabel)}宏观快照整体处于滞后状态，请先确认同步与投影状态。`,
       items,
       title: "宏观数据滞后",
     };
   }
   return {
-    detail: `${asOfLabel}；页面已使用最新可用观测，少数指标仍有新鲜度缺口。`,
+    detail: `${asOfPrefix(asOfLabel)}页面已使用最新可用观测，少数指标仍有新鲜度缺口。`,
     items,
     title: "部分宏观序列滞后",
   };
 }
 
-export function formatMacroScalar(value: unknown): string {
+export function formatMacroScalar(value: unknown): string | null {
   if (typeof value === "number") {
     return Number.isInteger(value) ? String(value) : value.toFixed(2);
   }
   if (typeof value === "string" && value.trim()) {
-    return statusLabel(value);
-  }
-  if (typeof value === "boolean") {
-    return value ? "是" : "否";
+    return value.trim();
   }
   if (value === null || value === undefined) {
-    return "暂无";
+    return null;
   }
   if (Array.isArray(value)) {
-    return (
-      value
-        .map(formatMacroScalar)
-        .filter((item) => item !== "暂无")
-        .join(", ") || "暂无"
-    );
+    const labels = value.map(formatMacroScalar).filter((item): item is string => Boolean(item));
+    return labels.length > 0 ? labels.join(", ") : null;
   }
   if (value && typeof value === "object") {
     const record = value as Record<string, unknown>;
-    return (
-      stringValue(record.display_value) ??
-      stringValue(record.label) ??
-      stringValue(record.title) ??
-      "暂无"
-    );
+    return formatMacroScalar(record.display_value);
   }
-  return "暂无";
+  return null;
 }
 
-export function gapLabel(gap: unknown): string {
+export function gapLabel(gap: unknown): string | null {
   if (gap && typeof gap === "object" && !Array.isArray(gap)) {
     const record = gap as Record<string, unknown>;
-    return (
-      stringValue(record.display_value) ??
-      stringValue(record.label) ??
-      stringValue(record.title) ??
-      "数据缺口待确认"
-    );
+    return stringValue(record.label);
   }
-  return "数据缺口待确认";
-}
-
-export function macroFieldLabel(key: string): string {
-  if (isCanonicalConceptKey(key)) {
-    return "指标";
-  }
-  return FIELD_LABELS[key] ?? key;
+  return null;
 }
 
 function stringValue(value: unknown): string | null {
@@ -116,7 +86,6 @@ function dataHealthGaps(module?: MacroModuleView): unknown[] {
     ...(dataHealth.module_gaps ?? []),
     ...(dataHealth.chart_gaps ?? []),
     ...(dataHealth.global_gaps ?? []),
-    ...(dataHealth.future_integration_gaps ?? []),
   ];
 }
 
@@ -134,51 +103,17 @@ function isStaleGap(gap: unknown): boolean {
   }
   const record = gap as Record<string, unknown>;
   const code = stringValue(record.code)?.toLowerCase() ?? "";
-  const label = stringValue(record.label) ?? "";
-  return code.startsWith("stale_latest") || code.startsWith("stale_") || label.includes("滞后");
+  return code.startsWith("stale_latest") || code.startsWith("stale_");
 }
 
-function staleGapLabel(gap: unknown): string {
-  const label = gapLabel(gap);
-  return label === "数据缺口待确认" ? "最新宏观观测滞后" : label;
+function staleGapLabel(gap: unknown): string | null {
+  return gapLabel(gap);
 }
 
-function uniqueLabels(labels: string[]): string[] {
-  return [...new Set(labels.filter((label) => label && label !== "数据缺口待确认"))];
+function uniqueLabels(labels: Array<string | null>): string[] {
+  return [...new Set(labels.filter((label): label is string => Boolean(label)))];
 }
 
-function dateAsOfLabel(value: unknown): string {
-  const asof = stringValue(value);
-  return asof ? `截至 ${asof}` : "暂无日期";
+function asOfPrefix(asOfLabel: string | null): string {
+  return asOfLabel ? `${asOfLabel}；` : "";
 }
-
-function isCanonicalConceptKey(key: string): boolean {
-  return /^[a-z]+:[\w.-]+$/i.test(key);
-}
-
-function statusLabel(value: string | null): string {
-  if (!value) {
-    return "未知";
-  }
-  const labels: Record<string, string> = {
-    degraded: "降级",
-    insufficient_history: "历史样本不足",
-    missing: "缺失",
-    ok: "正常",
-    partial: "部分可用",
-    unavailable: "不可用",
-    unknown: "未知",
-  };
-  return labels[value] ?? value;
-}
-
-const FIELD_LABELS: Record<string, string> = {
-  confidence_label: "置信度",
-  current_regime: "当前状态",
-  crypto_read: "加密影响",
-  expression: "表达方式",
-  regime: "宏观状态",
-  regime_label: "宏观状态",
-  token_impact: "代币影响",
-  trade_map: "交易映射",
-};

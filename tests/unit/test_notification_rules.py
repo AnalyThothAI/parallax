@@ -44,8 +44,7 @@ class FakePulse:
                     if item.get("window") == kwargs.get("window")
                     and item.get("scope") == scope
                     and item.get("pulse_status") == status
-                    and item.get("pulse_status")
-                    in {"trade_candidate", "token_watch", "risk_rejected_high_info"}
+                    and item.get("pulse_status") in {"trade_candidate", "token_watch", "risk_rejected_high_info"}
                     and item.get("verdict") != "blocked_low_information"
                 ]
                 rows.extend(bucket[:per_scope_status_limit])

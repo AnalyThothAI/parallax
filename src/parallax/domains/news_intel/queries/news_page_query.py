@@ -16,15 +16,20 @@ class NewsPageQuery:
         cursor: str | None = None,
         status: str | None = None,
         signal: str | None = None,
+        macro_event_flow: bool = False,
         q: str | None = None,
     ) -> dict[str, Any]:
         requested_limit = max(1, int(limit))
+        options: dict[str, Any] = {}
+        if macro_event_flow:
+            options["macro_event_flow"] = True
         rows = self.repository.list_news_page_rows(
             limit=requested_limit + 1,
             cursor=cursor,
             status=status,
             signal=signal,
             q=q,
+            **options,
         )
         items = [_public_news_row(row) for row in rows[:requested_limit]]
         next_cursor = news_page_cursor(items[-1]) if len(rows) > requested_limit and items else None

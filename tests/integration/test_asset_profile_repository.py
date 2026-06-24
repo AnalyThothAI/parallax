@@ -3,14 +3,15 @@ from __future__ import annotations
 import pytest
 
 from parallax.domains.asset_market.repositories.asset_profile_repository import (
-    ERROR_REFRESH_MS,
     GMGN_DEX_PROFILE_PROVIDER,
-    READY_REFRESH_MS,
     AssetProfileRepository,
 )
 from parallax.domains.asset_market.repositories.registry_repository import RegistryRepository
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
+
+READY_PROFILE_REFRESH_DELTA_MS = 86_400_000
+ERROR_PROFILE_REFRESH_DELTA_MS = 900_000
 
 
 def test_ready_profile_round_trips_by_asset_id(tmp_path):
@@ -36,7 +37,7 @@ def test_ready_profile_round_trips_by_asset_id(tmp_path):
             description="Official profile from GMGN.",
             raw_payload={"links": {"twitter": "https://x.com/sattoken"}},
             observed_at_ms=1_778_000_000_000,
-            next_refresh_at_ms=1_778_000_000_000 + READY_REFRESH_MS,
+            next_refresh_at_ms=1_778_000_000_000 + READY_PROFILE_REFRESH_DELTA_MS,
         )
 
         rows = repo.profiles_for_asset_ids([asset_id])
@@ -50,7 +51,7 @@ def test_ready_profile_round_trips_by_asset_id(tmp_path):
     assert rows[asset_id]["twitter_username"] == "sattoken"
     assert rows[asset_id]["raw_payload_json"] == {"links": {"twitter": "https://x.com/sattoken"}}
     assert rows[asset_id]["observed_at_ms"] == 1_778_000_000_000
-    assert rows[asset_id]["next_refresh_at_ms"] == 1_778_000_000_000 + READY_REFRESH_MS
+    assert rows[asset_id]["next_refresh_at_ms"] == 1_778_000_000_000 + READY_PROFILE_REFRESH_DELTA_MS
     assert rows[asset_id]["last_error"] is None
 
 
@@ -77,14 +78,14 @@ def test_status_error_row_round_trips_and_clears_profile_fields(tmp_path):
             description="Profile before provider error.",
             raw_payload={"status": "ready"},
             observed_at_ms=1_778_000_000_000,
-            next_refresh_at_ms=1_778_000_000_000 + READY_REFRESH_MS,
+            next_refresh_at_ms=1_778_000_000_000 + READY_PROFILE_REFRESH_DELTA_MS,
         )
         repo.upsert_status(
             asset_id=asset_id,
             provider=GMGN_DEX_PROFILE_PROVIDER,
             status="error",
             observed_at_ms=1_778_000_030_000,
-            next_refresh_at_ms=1_778_000_030_000 + ERROR_REFRESH_MS,
+            next_refresh_at_ms=1_778_000_030_000 + ERROR_PROFILE_REFRESH_DELTA_MS,
             last_error="rate limited",
             raw_payload={"error": "429"},
         )
@@ -101,7 +102,7 @@ def test_status_error_row_round_trips_and_clears_profile_fields(tmp_path):
     assert row["description"] is None
     assert row["raw_payload_json"] == {"error": "429"}
     assert row["observed_at_ms"] == 1_778_000_030_000
-    assert row["next_refresh_at_ms"] == 1_778_000_030_000 + ERROR_REFRESH_MS
+    assert row["next_refresh_at_ms"] == 1_778_000_030_000 + ERROR_PROFILE_REFRESH_DELTA_MS
     assert row["last_error"] == "rate limited"
 
 
@@ -128,7 +129,7 @@ def test_ready_profile_normalizes_blank_strings_to_none(tmp_path):
             description="",
             raw_payload={},
             observed_at_ms=1_778_000_000_000,
-            next_refresh_at_ms=1_778_000_000_000 + READY_REFRESH_MS,
+            next_refresh_at_ms=1_778_000_000_000 + READY_PROFILE_REFRESH_DELTA_MS,
         )
 
         row = repo.profiles_for_asset_ids([asset_id])[asset_id]
@@ -174,7 +175,7 @@ def test_ready_profile_strips_nul_bytes_from_text_and_raw_payload(tmp_path):
             description="profile\x00 text",
             raw_payload={"symbol\x00": "ZEC\x00", "links": ["https://x.example/\x00zec"]},
             observed_at_ms=1_778_000_000_000,
-            next_refresh_at_ms=1_778_000_000_000 + READY_REFRESH_MS,
+            next_refresh_at_ms=1_778_000_000_000 + READY_PROFILE_REFRESH_DELTA_MS,
         )
 
         row = repo.profiles_for_asset_ids([asset_id])[asset_id]

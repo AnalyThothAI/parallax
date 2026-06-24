@@ -145,27 +145,27 @@ def _price_series_by_asset(
         concept_key = str(observation.get("concept_key") or "").strip()
         if concept_key not in selected:
             continue
-        observed_at = _date_value(observation.get("observed_at"))
-        value = _numeric_value(observation.get("value_numeric", observation.get("value")))
-        if observed_at is None or value is None or value <= 0:
+        observed_at = _required_date_value(concept_key, observation.get("observed_at"))
+        value = _numeric_value(observation.get("value_numeric"))
+        if value is None or value <= 0:
             continue
         key = (concept_key, observed_at)
         previous = by_key_date.get(key)
-        if previous is None or _source_rank(observation) > _source_rank(previous):
+        if previous is None or _source_rank(concept_key, observation) > _source_rank(concept_key, previous):
             by_key_date[key] = observation
 
     grouped: dict[str, list[dict[str, Any]]] = {concept_key: [] for concept_key in assets}
     for (concept_key, observed_at), observation in by_key_date.items():
-        value = _numeric_value(observation.get("value_numeric", observation.get("value")))
+        value = _numeric_value(observation.get("value_numeric"))
         if value is None:
             continue
         grouped.setdefault(concept_key, []).append(
             {
                 "observed_at": observed_at,
                 "value": value,
-                "source_name": str(observation.get("source_name") or "").strip(),
-                "source_priority": _int_value(observation.get("source_priority")),
-                "ingested_at_ms": _int_value(observation.get("ingested_at_ms")),
+                "source_name": _required_observation_text(concept_key, observation, "source_name"),
+                "source_priority": _required_int_metadata(concept_key, observation, "source_priority"),
+                "ingested_at_ms": _required_int_metadata(concept_key, observation, "ingested_at_ms"),
             }
         )
     for points in grouped.values():
@@ -231,12 +231,12 @@ def _asset_payload(
     prices: Sequence[Mapping[str, Any]],
     returns: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
-    sources = sorted({str(point.get("source_name") or "") for point in prices if point.get("source_name")})
+    sources = sorted({str(point["source_name"]) for point in prices})
     return_dates = [_date_text(point["observed_at"]) for point in returns]
     latest = prices[-1] if prices else None
     return {
         "concept_key": concept_key,
-        "title": ASSET_CORRELATION_TITLES.get(concept_key, concept_key),
+        "title": _required_asset_title(concept_key),
         "observations_count": len(prices),
         "return_count": len(returns),
         "start_date": return_dates[0] if return_dates else None,
@@ -287,11 +287,18 @@ def _minimum_sample_size(window_days: int) -> int:
     return min(window_days, max(10, min(30, window_days // 2)))
 
 
-def _source_rank(observation: Mapping[str, Any]) -> tuple[int, int]:
+def _source_rank(concept_key: str, observation: Mapping[str, Any]) -> tuple[int, int]:
     return (
-        _int_value(observation.get("source_priority")),
-        _int_value(observation.get("ingested_at_ms")),
+        _required_int_metadata(concept_key, observation, "source_priority"),
+        _required_int_metadata(concept_key, observation, "ingested_at_ms"),
     )
+
+
+def _required_asset_title(concept_key: str) -> str:
+    title = ASSET_CORRELATION_TITLES.get(concept_key)
+    if not isinstance(title, str) or not title.strip():
+        raise ValueError(f"macro_asset_correlation_title_required:{concept_key}")
+    return title
 
 
 def _numeric_value(value: Any) -> float | None:
@@ -312,18 +319,32 @@ def _float_value(value: Any) -> float | None:
     return value if isinstance(value, float) and math.isfinite(value) else None
 
 
-def _int_value(value: Any) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return 0
-
-
 def _date_value(value: Any) -> date | None:
     try:
         return normalize_macro_date(value)
     except ValueError:
         return None
+
+
+def _required_date_value(concept_key: str, value: Any) -> date:
+    observed_at = _date_value(value)
+    if observed_at is None:
+        raise ValueError(f"macro_asset_correlation_observed_at_required:{concept_key}")
+    return observed_at
+
+
+def _required_observation_text(concept_key: str, observation: Mapping[str, Any], field_name: str) -> str:
+    value = observation.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"macro_asset_correlation_{field_name}_required:{concept_key}")
+    return value.strip()
+
+
+def _required_int_metadata(concept_key: str, observation: Mapping[str, Any], field_name: str) -> int:
+    value = observation.get(field_name)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"macro_asset_correlation_{field_name}_required:{concept_key}")
+    return value
 
 
 def _date_text(value: Any) -> str | None:

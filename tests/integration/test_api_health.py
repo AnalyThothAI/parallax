@@ -83,7 +83,11 @@ class FakeDB:
         self.api_pool = FakePool()
         self.worker_pool = FakePool()
         self.tool_pool = FakePool()
+        self.lock_pool = FakePool()
         self.wake_pool = FakePool()
+        self.pulse_job_running_timeout_ms = 120_000
+        self.notification_delivery_running_timeout_ms = 120_000
+        self.notification_delivery_stale_running_terminalization_batch_size = 100
 
     @contextmanager
     def api_session(self):
@@ -102,6 +106,10 @@ class FakeDB:
     def acquire_advisory_lock_connection(self, _name, _key):
         return SimpleNamespace(release=lambda: None)
 
+    async def aclose(self) -> None:
+        for pool in (self.api_pool, self.worker_pool, self.lock_pool, self.tool_pool, self.wake_pool):
+            pool.close()
+
 
 class FakePulseProvider:
     provider = "fake"
@@ -110,6 +118,10 @@ class FakePulseProvider:
 
     def __init__(self, *, model):
         self.model = model
+        self.closed = 0
+
+    async def aclose(self) -> None:
+        self.closed += 1
 
 
 class FakeClosableProvider:
@@ -141,6 +153,74 @@ class FakeProviderWrapper:
     def close(self) -> None:
         self.closed += 1
         self.inner.close()
+
+
+class FakeWiredProviders(SimpleNamespace):
+    def __init__(self, **kwargs) -> None:
+        kwargs["asset_market"] = _complete_fake_asset_market(kwargs.get("asset_market"))
+        kwargs.setdefault("cex_market_intel", SimpleNamespace(oi_market=None, coinglass_derivatives=None))
+        super().__init__(**kwargs)
+
+    async def aclose(self) -> None:
+        errors: list[Exception] = []
+        seen: set[int] = set()
+        for value in self.__dict__.values():
+            await _close_fake_provider_tree(value, errors=errors, seen=seen)
+        if errors:
+            raise ExceptionGroup("fake_wired_provider_cleanup_failed", errors)
+
+
+def _complete_fake_asset_market(asset_market=None) -> SimpleNamespace:
+    values = dict(getattr(asset_market, "__dict__", {})) if asset_market is not None else {}
+    values.setdefault("cex_market", None)
+    values.setdefault("dex_discovery_market", None)
+    values.setdefault("dex_quote_market", None)
+    values.setdefault("dex_candle_market", None)
+    values.setdefault("dex_profile_sources", ())
+    values.setdefault("stream_dex_market", None)
+    values.setdefault("discovery_chain_ids", ())
+    values.setdefault("provider_health", ())
+    return SimpleNamespace(**values)
+
+
+def _leaf_exception_messages(exc: BaseException) -> set[str]:
+    if isinstance(exc, ExceptionGroup):
+        messages: set[str] = set()
+        for inner in exc.exceptions:
+            messages.update(_leaf_exception_messages(inner))
+        return messages
+    return {str(exc)}
+
+
+async def _close_fake_provider_tree(value, *, errors: list[Exception], seen: set[int]) -> None:
+    if value is None or isinstance(value, str | bytes | int | float | bool):
+        return
+    object_id = id(value)
+    if object_id in seen:
+        return
+    seen.add(object_id)
+    close = getattr(value, "close", None)
+    if callable(close):
+        try:
+            close()
+        except Exception as exc:
+            errors.append(exc)
+        return
+    aclose = getattr(value, "aclose", None)
+    if callable(aclose):
+        try:
+            await aclose()
+        except Exception as exc:
+            errors.append(exc)
+        return
+    if isinstance(value, dict):
+        children = value.values()
+    elif isinstance(value, list | tuple | set | frozenset):
+        children = value
+    else:
+        children = getattr(value, "__dict__", {}).values()
+    for child in children:
+        await _close_fake_provider_tree(child, errors=errors, seen=seen)
 
 
 class FailingScheduler:
@@ -180,7 +260,7 @@ def fake_wired_providers(
     news_intel=None,
     upstream_client_factory=None,
 ):
-    return SimpleNamespace(
+    return FakeWiredProviders(
         ingestion=SimpleNamespace(upstream_client_factory=upstream_client_factory),
         asset_market=asset_market
         or SimpleNamespace(
@@ -239,7 +319,10 @@ def test_healthz_readyz_and_metrics_return_status(monkeypatch, tmp_path):
         "parallax.app.runtime.worker_scheduler.WorkerScheduler.start",
         noop_scheduler_start,
     )
-    patch_runtime_dependencies(monkeypatch, news_intel=SimpleNamespace(feed_client=object(), brief_provider=None))
+    patch_runtime_dependencies(
+        monkeypatch,
+        news_intel=SimpleNamespace(feed_client=FakeClosableProvider(), brief_provider=None),
+    )
     monkeypatch.setattr(
         app_module,
         "postgres_health_check",
@@ -301,8 +384,10 @@ def test_healthz_readyz_and_metrics_return_status(monkeypatch, tmp_path):
     assert "worker:market_tick_poll:unavailable:missing_asset_market_quote_provider" in payload["reasons"]
     worker_unavailable_reasons = sorted(reason for reason in payload["reasons"] if ":unavailable:" in reason)
     assert worker_unavailable_reasons == [
+        "worker:asset_profile_refresh:unavailable:missing_asset_profile_provider",
         "worker:market_tick_poll:unavailable:missing_asset_market_quote_provider",
         "worker:market_tick_stream:unavailable:missing_asset_market_stream_provider",
+        "worker:resolution_refresh:unavailable:missing_asset_discovery_provider",
     ]
     assert not any("factory_not_constructed" in reason for reason in payload["reasons"])
     assert "event_anchor_backfill" in payload["workers"]
@@ -333,7 +418,7 @@ def test_healthz_readyz_and_metrics_return_status(monkeypatch, tmp_path):
             upstream_client=None,
         ),
         db=FakeDB(),
-        settings=SimpleNamespace(handles=("toly",)),
+        settings=SimpleNamespace(handles=("toly",), news_intel=SimpleNamespace(sources=())),
         providers=SimpleNamespace(asset_market=SimpleNamespace(stream_dex_market=None)),
         agent_execution_gateway=None,
     )
@@ -419,7 +504,7 @@ def test_runtime_aclose_closes_wired_providers_even_when_scheduler_stop_fails(mo
     sync_provider = FakeClosableProvider()
     async_provider = FakeAsyncClosableProvider()
     providers = fake_wired_providers(make_settings(tmp_path), start_collector=False)
-    providers = SimpleNamespace(
+    providers = FakeWiredProviders(
         **{
             **providers.__dict__,
             "asset_market": SimpleNamespace(
@@ -452,7 +537,7 @@ def test_runtime_aclose_does_not_recurse_into_closable_provider_wrappers(monkeyp
     inner = FakeClosableProvider()
     wrapper = FakeProviderWrapper(inner)
     providers = fake_wired_providers(make_settings(tmp_path), start_collector=False)
-    providers = SimpleNamespace(
+    providers = FakeWiredProviders(
         **{
             **providers.__dict__,
             "asset_market": SimpleNamespace(stream_dex_market=wrapper, discovery_chain_ids=()),
@@ -473,7 +558,7 @@ def test_runtime_aclose_does_not_recurse_into_closable_provider_wrappers(monkeyp
 
 def test_runtime_aclose_groups_scheduler_and_provider_cleanup_failures(monkeypatch, tmp_path):
     providers = fake_wired_providers(make_settings(tmp_path), start_collector=False)
-    providers = SimpleNamespace(
+    providers = FakeWiredProviders(
         **{
             **providers.__dict__,
             "asset_market": SimpleNamespace(stream_dex_market=FakeFailingProvider(), discovery_chain_ids=()),
@@ -489,14 +574,14 @@ def test_runtime_aclose_groups_scheduler_and_provider_cleanup_failures(monkeypat
     with pytest.raises(ExceptionGroup, match="runtime_close_failed") as excinfo:
         close_runtime(runtime)
 
-    messages = {str(error) for error in excinfo.value.exceptions}
+    messages = _leaf_exception_messages(excinfo.value)
     assert messages == {"scheduler failed", "provider failed"}
 
 
 def test_bootstrap_failure_after_provider_wiring_closes_providers(monkeypatch, tmp_path):
     sync_provider = FakeClosableProvider()
     async_provider = FakeAsyncClosableProvider()
-    providers = SimpleNamespace(
+    providers = FakeWiredProviders(
         asset_market=SimpleNamespace(cex_market=sync_provider, nested={"async": async_provider}),
     )
     db = FakeDB()
@@ -753,7 +838,7 @@ def test_readiness_uses_scheduler_workers_payload(monkeypatch):
     }
     runtime = SimpleNamespace(
         settings=Settings(ws_token="secret", handles=("toly",), notifications={"enabled": False}),
-        collector=SimpleNamespace(status=SimpleNamespace(to_dict=lambda: {"frames_received": 0})),
+        collector=SimpleNamespace(status=SimpleNamespace(to_dict=lambda: {"frames_received": 0}), upstream_client=None),
         providers=SimpleNamespace(asset_market=SimpleNamespace(stream_dex_market=None)),
         agent_execution_gateway=SimpleNamespace(status_snapshot=lambda: agent_execution),
         scheduler=SimpleNamespace(
@@ -818,7 +903,8 @@ def test_readiness_worker_lanes_count_each_effective_status(monkeypatch):
     }
     runtime = SimpleNamespace(
         settings=Settings(ws_token="secret", handles=("toly",), notifications={"enabled": False}),
-        collector=SimpleNamespace(status=SimpleNamespace(to_dict=lambda: {"frames_received": 0})),
+        collector=SimpleNamespace(status=SimpleNamespace(to_dict=lambda: {"frames_received": 0}), upstream_client=None),
+        db=FakeDB(),
         providers=SimpleNamespace(asset_market=SimpleNamespace(stream_dex_market=None)),
         agent_execution_gateway=None,
         scheduler=SimpleNamespace(
@@ -852,7 +938,8 @@ def test_readiness_reports_result_derived_failed_worker(monkeypatch):
     )
     runtime = SimpleNamespace(
         settings=Settings(ws_token="secret", handles=("toly",), notifications={"enabled": False}),
-        collector=SimpleNamespace(status=SimpleNamespace(to_dict=lambda: {"frames_received": 0})),
+        collector=SimpleNamespace(status=SimpleNamespace(to_dict=lambda: {"frames_received": 0}), upstream_client=None),
+        db=FakeDB(),
         providers=SimpleNamespace(asset_market=SimpleNamespace(stream_dex_market=None)),
         agent_execution_gateway=None,
         scheduler=bootstrap_module.WorkerScheduler(
@@ -874,7 +961,7 @@ def test_readiness_reports_result_derived_failed_worker(monkeypatch):
 def test_readiness_reports_okx_circuit_open_without_failing_app(monkeypatch):
     runtime = SimpleNamespace(
         settings=Settings(ws_token="secret", handles=("toly",), notifications={"enabled": False}),
-        collector=SimpleNamespace(status=SimpleNamespace(to_dict=lambda: {"frames_received": 0})),
+        collector=SimpleNamespace(status=SimpleNamespace(to_dict=lambda: {"frames_received": 0}), upstream_client=None),
         providers=SimpleNamespace(
             asset_market=SimpleNamespace(
                 stream_dex_market=SimpleNamespace(

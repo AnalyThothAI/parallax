@@ -50,7 +50,7 @@ def test_public_token_profile_read_model_requires_formal_current_row_fields_with
     assert "token_profile_current_public_required" in text
     assert "token_profile_current_public_invalid" in text
     assert '(_clean(row.get("status")) or "pending").lower()' not in text
-    assert 'return dict(payload) if isinstance(payload, dict) else {}' not in text
+    assert "return dict(payload) if isinstance(payload, dict) else {}" not in text
     assert "if not isinstance(value, (list, tuple)):\n        return []" not in text
 
 
@@ -83,9 +83,9 @@ def test_token_radar_frontend_has_no_raw_icon_fallback() -> None:
 
 
 def test_token_profile_current_dirty_target_source_watermark_has_no_runtime_fallback() -> None:
-    repository = (
-        SRC / "domains/asset_market/repositories/token_profile_current_dirty_target_repository.py"
-    ).read_text(encoding="utf-8")
+    repository = (SRC / "domains/asset_market/repositories/token_profile_current_dirty_target_repository.py").read_text(
+        encoding="utf-8"
+    )
     ops_queries = (SRC / "app/runtime/ops_cli_queries.py").read_text(encoding="utf-8")
     producers = [
         SRC / "domains/asset_market/runtime/asset_profile_refresh_worker.py",

@@ -65,13 +65,6 @@
     align-items: start;
   }
 
-  .macro-rates-eyebrow {
-    margin: 0 0 5px;
-    color: #93c5fd;
-    font-size: 0.74rem;
-    font-weight: 800;
-  }
-
   .macro-rates-market-read-head h3,
   .macro-rates-chart-copy h3 {
     margin: 0;
@@ -81,7 +74,6 @@
   }
 
   .macro-rates-market-copy,
-  .macro-rates-proxy-note,
   .macro-rates-chart-copy p,
   .macro-rates-fact-note,
   .macro-rates-corridor-missing {
@@ -89,12 +81,6 @@
     color: var(--text-secondary, #cbd5e1);
     font-size: 0.84rem;
     line-height: 1.5;
-  }
-
-  .macro-rates-proxy-note {
-    padding-left: 10px;
-    border-left: 2px solid rgba(250, 204, 21, 0.58);
-    color: #fde68a;
   }
 
   .macro-rates-read-state,
@@ -258,28 +244,6 @@
     color: #bae6fd;
     font-size: 0.74rem;
     font-weight: 800;
-  }
-
-  .macro-rates-health-chip-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 7px;
-    min-width: 0;
-    padding-top: 8px;
-  }
-
-  .macro-rates-health-chip {
-    max-width: 100%;
-    min-width: 0;
-    padding: 5px 8px;
-    border: 1px solid rgba(251, 191, 36, 0.2);
-    border-radius: 999px;
-    color: #fde68a;
-    background: rgba(251, 191, 36, 0.08);
-    font-size: 0.74rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .macro-rates-corridor-chart,

@@ -52,7 +52,7 @@ def test_unresolved_attention_never_projects_as_driver(tmp_path):
         for index in range(7)
     ]
 
-    TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=1_777_800_060_000)
+    TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=1_777_800_060_000, limit=20)
     rows = repos.token_radar.latest_current_rows(
         window="5m",
         scope="all",
@@ -142,4 +142,5 @@ def _rebuild_resolved_current_rows(repos, *, now_ms: int) -> None:
         now_ms=now_ms,
         limit=20,
         rank_limit=20,
+        lease_owner="golden_corpus_projection",
     )

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from parallax.domains.macro_intel._constants import MACRO_EVENT_CONCEPTS
 from parallax.domains.macro_intel.observation_identity import (
     macro_series_current_row_payload_hash,
 )
@@ -35,7 +36,14 @@ def test_partition_refresh_upserts_only_claimed_concepts() -> None:
     assert result["source_rows"] == 1
     assert "FROM macro_observations" in source_query
     assert "concept_key = ANY" in source_query
-    assert source_params == (["rates:dgs10"], 730, "macro_regime_v4", 1_779_000_000_000, 252)
+    assert source_params == (
+        ["rates:dgs10"],
+        730,
+        list(MACRO_EVENT_CONCEPTS),
+        "macro_regime_v4",
+        1_779_000_000_000,
+        252,
+    )
     assert "projection_version = %s" in delete_query
     assert "concept_key = ANY" in delete_query
     assert "NOT EXISTS" in delete_query
@@ -53,6 +61,35 @@ def test_partition_refresh_upserts_only_claimed_concepts() -> None:
         'DELETE FROM macro_observation_series_rows\n                WHERE projection_version = %s\n                """'
     )
     assert unbounded_delete not in queries
+
+
+def test_partition_refresh_allows_text_event_rows_without_numeric_values() -> None:
+    selected_row = _series_row(concept_key="event:fed_speech") | {
+        "value_numeric": None,
+        "source_name": "official_fed_text",
+        "series_key": "official_fed_text:speech_latest#abc123",
+        "unit": "document",
+        "frequency": "event",
+        "raw_payload_json": {"value": "Waller, Update On Federal Reserve Bank Operations"},
+    }
+    conn = PartitionRefreshConnection(selected_rows=[selected_row], existing_rows=[], insert_rowcount=1)
+    repo = MacroIntelRepository(conn)
+
+    result = repo.refresh_observation_series_rows_for_concepts(
+        projection_version="macro_regime_v4",
+        now_ms=1_779_000_000_000,
+        lookback_days=730,
+        limit_per_series=252,
+        claimed_targets=[_dirty_target("event:fed_speech")],
+        concept_keys=("event:fed_speech",),
+    )
+
+    source_query, source_params = conn.executions[0]
+    assert result["status"] == "published"
+    assert result["rows_written"] == 1
+    assert result["source_rows"] == 1
+    assert "value_numeric IS NOT NULL OR concept_key = ANY" in " ".join(source_query.split())
+    assert "event:fed_speech" in source_params[2]
 
 
 def test_partition_refresh_skips_unchanged_concepts_without_delete_insert() -> None:

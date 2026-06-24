@@ -1,6 +1,5 @@
 import type { MacroAssetCorrelationData, MacroAssetCorrelationPair } from "@lib/types";
 import { useState } from "react";
-import { Link } from "react-router-dom";
 
 import {
   MacroCorrelationMatrixTable,
@@ -35,18 +34,19 @@ export function AssetCorrelationPreview({
     return <div className="macro-assets-inline-state">相关性暂不可用：{errorLabel}</div>;
   }
   if (!data) {
-    return <div className="macro-assets-inline-state">暂无相关性样本</div>;
+    return null;
   }
   return (
     <div className="macro-assets-correlation-summary">
       <div className="macro-assets-correlation-pairs">
-        <PairGroup emptyLabel="暂无" pairs={positivePairs} title="正相关" titleByKey={titleByKey} />
-        <PairGroup emptyLabel="暂无" pairs={negativePairs} title="负相关" titleByKey={titleByKey} />
+        {positivePairs.length > 0 ? (
+          <PairGroup pairs={positivePairs} title="正相关" titleByKey={titleByKey} />
+        ) : null}
+        {negativePairs.length > 0 ? (
+          <PairGroup pairs={negativePairs} title="负相关" titleByKey={titleByKey} />
+        ) : null}
       </div>
       <div className="macro-assets-correlation-actions">
-        <Link className="macro-assets-detail-link" to="/macro/assets/correlation">
-          相关性详情
-        </Link>
         <details
           className="macro-assets-correlation-details"
           onToggle={(event) => setMatrixOpen(event.currentTarget.open)}
@@ -68,12 +68,10 @@ export function AssetCorrelationPreview({
 }
 
 function PairGroup({
-  emptyLabel,
   pairs,
   title,
   titleByKey,
 }: {
-  emptyLabel: string;
   pairs: MacroAssetCorrelationPair[];
   title: string;
   titleByKey: Record<string, string>;
@@ -81,12 +79,7 @@ function PairGroup({
   return (
     <div className="macro-assets-pair-group">
       <h4>{title}</h4>
-      <MacroCorrelationPairList
-        emptyLabel={emptyLabel}
-        pairs={pairs}
-        titleByKey={titleByKey}
-        variant="summary"
-      />
+      <MacroCorrelationPairList pairs={pairs} titleByKey={titleByKey} variant="summary" />
     </div>
   );
 }

@@ -1,0 +1,214 @@
+@layer app.features {
+  .macro-rates-curve-diagnostics {
+    display: grid;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .macro-rates-curve-summary {
+    margin: 0;
+    color: var(--text-primary, #f8fafc);
+    font-size: 0.88rem;
+    line-height: 1.55;
+  }
+
+  .macro-rates-curve-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .macro-rates-curve-row {
+    display: grid;
+    gap: 10px;
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.22);
+  }
+
+  .macro-rates-curve-row div {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: space-between;
+    min-width: 0;
+  }
+
+  .macro-rates-curve-row h4,
+  .macro-rates-curve-readouts h4 {
+    margin: 0;
+    color: var(--text-primary, #f8fafc);
+    font-size: 0.82rem;
+    line-height: 1.3;
+  }
+
+  .macro-rates-curve-row span {
+    flex: 0 0 auto;
+    color: #bae6fd;
+    font-size: 0.72rem;
+    font-weight: 800;
+  }
+
+  .macro-rates-curve-row strong {
+    color: #fef3c7;
+    font-size: 0.86rem;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.35;
+  }
+
+  .macro-rates-curve-history,
+  .macro-rates-curve-tenors {
+    display: grid;
+    gap: 10px;
+    min-width: 0;
+    padding-top: 10px;
+    border-top: 1px solid rgba(148, 163, 184, 0.14);
+  }
+
+  .macro-rates-curve-history h4,
+  .macro-rates-curve-tenors h4 {
+    margin: 0;
+    color: var(--text-primary, #f8fafc);
+    font-size: 0.82rem;
+    line-height: 1.3;
+  }
+
+  .macro-rates-curve-history-grid,
+  .macro-rates-curve-tenor-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .macro-rates-curve-history-card,
+  .macro-rates-curve-tenor-row {
+    display: grid;
+    gap: 9px;
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    border-radius: 8px;
+    background: rgba(2, 6, 23, 0.2);
+  }
+
+  .macro-rates-curve-history-card header,
+  .macro-rates-curve-tenor-row header {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    justify-content: space-between;
+    min-width: 0;
+  }
+
+  .macro-rates-curve-history-card h5,
+  .macro-rates-curve-tenor-row h5 {
+    margin: 0;
+    color: var(--text-primary, #f8fafc);
+    font-size: 0.78rem;
+    line-height: 1.35;
+  }
+
+  .macro-rates-curve-history-card header span,
+  .macro-rates-curve-tenor-row header span,
+  .macro-rates-curve-tenor-row small {
+    color: #93c5fd;
+    font-size: 0.72rem;
+    font-weight: 800;
+    line-height: 1.35;
+  }
+
+  .macro-rates-curve-history-card strong,
+  .macro-rates-curve-tenor-row strong {
+    color: #fef3c7;
+    font-size: 0.86rem;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.35;
+  }
+
+  .macro-rates-curve-sparkbars {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(5px, 1fr));
+    align-items: end;
+    min-height: 46px;
+    gap: 3px;
+    padding: 7px;
+    border-radius: 6px;
+    background: rgba(15, 23, 42, 0.34);
+  }
+
+  .macro-rates-curve-sparkbar {
+    min-height: 8px;
+    height: calc(8px + var(--macro-rates-spark-level) * 32px);
+    border-radius: 999px 999px 2px 2px;
+    background: linear-gradient(180deg, #38bdf8 0%, #fde68a 100%);
+  }
+
+  .macro-rates-curve-history-card ol {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .macro-rates-curve-history-card li,
+  .macro-rates-curve-tenor-row p {
+    margin: 0;
+    color: var(--text-secondary, #cbd5e1);
+    font-size: 0.72rem;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.4;
+  }
+
+  .macro-rates-curve-readouts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .macro-rates-curve-readouts section {
+    display: grid;
+    align-content: start;
+    gap: 8px;
+    min-width: 0;
+    padding-top: 10px;
+    border-top: 1px solid rgba(148, 163, 184, 0.14);
+  }
+
+  .macro-rates-curve-readouts ul {
+    display: grid;
+    gap: 7px;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .macro-rates-curve-readouts li {
+    color: var(--text-secondary, #cbd5e1);
+    font-size: 0.78rem;
+    line-height: 1.45;
+  }
+
+  @media (min-width: 768px) and (max-width: 1279px) {
+    .macro-rates-curve-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 767px) {
+    .macro-rates-curve-grid,
+    .macro-rates-curve-history-grid,
+    .macro-rates-curve-tenor-grid,
+    .macro-rates-curve-readouts {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+}

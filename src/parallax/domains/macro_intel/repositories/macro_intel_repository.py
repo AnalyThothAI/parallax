@@ -9,7 +9,7 @@ from typing import Any, NotRequired, TypedDict, cast
 
 from psycopg.types.json import Jsonb
 
-from parallax.domains.macro_intel._constants import MACRO_VIEW_PROJECTION_VERSION
+from parallax.domains.macro_intel._constants import MACRO_EVENT_CONCEPTS, MACRO_VIEW_PROJECTION_VERSION
 from parallax.domains.macro_intel.observation_identity import (
     macro_observation_fact_payload_hash,
     macro_observation_id,
@@ -144,7 +144,7 @@ class MacroIntelRepository:
                 "value_numeric": observation.get("value_numeric"),
                 "unit": observation.get("unit"),
                 "frequency": observation.get("frequency"),
-                "data_quality": str(observation.get("data_quality") or "ok"),
+                "data_quality": _required_observation_text(observation, "data_quality"),
                 "source_ts": observation.get("source_ts"),
                 "raw_payload_json": Jsonb(raw_payload),
                 "ingested_at_ms": int(observation["ingested_at_ms"]),
@@ -1411,7 +1411,7 @@ class MacroIntelRepository:
               FROM macro_observations
               WHERE concept_key = ANY(%s)
                 AND observed_at >= CURRENT_DATE - %s::int
-                AND value_numeric IS NOT NULL
+                AND (value_numeric IS NOT NULL OR concept_key = ANY(%s))
             ),
             series_ranked AS (
               SELECT
@@ -1446,6 +1446,7 @@ class MacroIntelRepository:
             (
                 list(bounded_concept_keys),
                 int(lookback_days),
+                list(MACRO_EVENT_CONCEPTS),
                 projection_version,
                 int(projected_at_ms),
                 int(limit_per_series),
@@ -2039,6 +2040,13 @@ def _required_snapshot_list(snapshot: Mapping[str, Any], field_name: str) -> lis
     if not isinstance(value, Sequence):
         raise RuntimeError(f"macro_view_snapshot_payload_invalid:{field_name}")
     return list(value)
+
+
+def _required_observation_text(observation: Mapping[str, Any], field_name: str) -> str:
+    value = observation.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"macro_observation_{field_name}_required")
+    return value.strip()
 
 
 def _macro_daily_brief_payload_hash(brief: Mapping[str, Any]) -> str:

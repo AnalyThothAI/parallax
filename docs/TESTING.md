@@ -117,10 +117,11 @@ Record only redacted paths, booleans, migration status, history readiness,
 coverage, and data-gap summaries. Do not paste full config JSON, handles,
 tokens, provider URLs with credentials, API keys, or secret-bearing DSNs.
 Manual macro page verification should cover `/macro`, `/macro/assets`,
-`/macro/rates`, `/macro/fed`, `/macro/liquidity`, `/macro/volatility`,
-`/macro/credit`, and `/macro/assets/crypto-derivatives`, with checks that raw
-concept keys, raw gap codes, JSON provenance, and old v1/v3 field names are not
-visible.
+`/macro/assets/correlation`, `/macro/rates`, `/macro/liquidity`,
+`/macro/economy`, `/macro/volatility`, and `/macro/credit`, with checks that
+raw concept keys, raw gap codes, JSON provenance, and old v1/v3 field names are
+not visible. Removed proxy or gap-only pages must not appear in navigation or
+render compatibility shells through direct URLs.
 
 ## Worker inventory
 

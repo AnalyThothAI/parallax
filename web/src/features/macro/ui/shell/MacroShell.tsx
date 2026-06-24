@@ -18,8 +18,7 @@ export type MacroShellStatusItem = {
 export type MacroShellHeaderModel = {
   actions?: ReactNode;
   breadcrumbs: MacroBreadcrumbItem[];
-  eyebrow: string;
-  question?: string | null;
+  eyebrow?: string | null;
   statusItems: MacroShellStatusItem[];
   title: string;
 };
@@ -107,9 +106,6 @@ function macroShellModuleNavItems(): MacroShellModuleNavItem[] {
 }
 
 function visibleHref(node: MacroNavigationNode): string | null {
-  if (node.navHidden || node.productTier === "hiddenSupported") {
-    return null;
-  }
   if (node.pageKind) {
     return node.href;
   }

@@ -17,9 +17,9 @@ export type MacroChartSeriesModel = {
   conceptKey: string;
   label: string;
   latest: number | null;
-  pointCount: number;
+  pointCount: number | null;
   points: MacroChartPoint[];
-  status: string;
+  status: string | null;
   statusLabel: string | null;
   unit: string | null;
 };
@@ -27,7 +27,7 @@ export type MacroChartSeriesModel = {
 export type MacroTimeSeriesModel = {
   chartId: string;
   minPoints: number;
-  status: string;
+  status: string | null;
   statusLabel: string | null;
   series: MacroChartSeriesModel[];
 };
@@ -43,28 +43,6 @@ export type MacroYieldCurvePoint = {
 export type MacroYieldCurveModel = {
   chartId: string;
   points: MacroYieldCurvePoint[];
-};
-
-export type MacroHeatmapColumn = {
-  key: string;
-  label: string;
-};
-
-export type MacroHeatmapCell = {
-  columnKey: string;
-  label: string;
-  rawValue: number | null;
-};
-
-export type MacroHeatmapRow = {
-  cells: MacroHeatmapCell[];
-  key: string;
-  label: string;
-};
-
-export type MacroHeatmapMatrix = {
-  columns: MacroHeatmapColumn[];
-  rows: MacroHeatmapRow[];
 };
 
 const CANONICAL_CONCEPT_PREFIXES = new Set([
@@ -103,9 +81,19 @@ export function buildMacroTimeSeriesModel(
   chart: MacroModuleChart,
   seriesData?: MacroSeriesData | null,
 ): MacroTimeSeriesModel {
+  const id = chartId(chart);
+  if (!id) {
+    return {
+      chartId: "",
+      minPoints: chartMinPoints(chart),
+      status: statusValue(chart.status),
+      statusLabel: stringValue(chart.status_label),
+      series: [],
+    };
+  }
   const chartSeries = Array.isArray(chart.series) ? chart.series : [];
   return {
-    chartId: chartId(chart),
+    chartId: id,
     minPoints: chartMinPoints(chart),
     status: statusValue(chart.status),
     statusLabel: stringValue(chart.status_label),
@@ -136,18 +124,23 @@ export function buildMacroNormalizedReturnModel(
 }
 
 export function buildMacroYieldCurveModel(chart: MacroModuleChart): MacroYieldCurveModel {
+  const id = chartId(chart);
+  if (!id) {
+    return { chartId: "", points: [] };
+  }
   const chartSeries = Array.isArray(chart.series) ? chart.series : [];
   const points = chartSeries
     .map((series) => {
       const key = conceptKey(series);
       const tenorYears = TENOR_YEARS_BY_CONCEPT[key];
+      const label = displayLabel(series);
       const value = latestSeriesNumericValue(series);
-      if (!tenorYears || value === null) {
+      if (!tenorYears || !label || value === null) {
         return null;
       }
       return {
         conceptKey: key,
-        label: displayLabel(series) ?? `${tenorYears}Y`,
+        label,
         tenorYears,
         unit: stringValue(series.unit),
         value,
@@ -155,45 +148,7 @@ export function buildMacroYieldCurveModel(chart: MacroModuleChart): MacroYieldCu
     })
     .filter((point): point is MacroYieldCurvePoint => Boolean(point))
     .sort((left, right) => left.tenorYears - right.tenorYears);
-  return { chartId: chartId(chart), points };
-}
-
-export function buildMacroHeatmapMatrix(rows: MacroSemanticRecord[]): MacroHeatmapMatrix {
-  const sourceRows = rows
-    .map((row) => {
-      const key = stringValue(row.concept_key);
-      if (!key || !isCanonicalMacroConceptKey(key)) {
-        return null;
-      }
-      return {
-        key,
-        label: displayLabel(row) ?? "未命名指标",
-        row,
-      };
-    })
-    .filter((row): row is { key: string; label: string; row: MacroSemanticRecord } => Boolean(row));
-  const columns = sourceRows.map(({ key, label }) => ({ key, label }));
-  return {
-    columns,
-    rows: sourceRows.map(({ key, label, row }) => {
-      const correlations =
-        row.correlations && typeof row.correlations === "object"
-          ? (row.correlations as Record<string, unknown>)
-          : {};
-      return {
-        key,
-        label,
-        cells: columns.map((column) => {
-          const rawValue = numericValue(correlations[column.key]);
-          return {
-            columnKey: column.key,
-            label: rawValue === null ? "n/a" : formatMacroChartValue(rawValue),
-            rawValue,
-          };
-        }),
-      };
-    }),
-  };
+  return { chartId: id, points };
 }
 
 export function formatMacroChartValue(value: number, unit?: string | null): string {
@@ -211,21 +166,22 @@ function buildSeriesModel(
   if (!isCanonicalMacroConceptKey(key)) {
     return null;
   }
-  const payloadPoints = normalizeSeriesPoints(payload?.points ?? []);
-  const inlinePoints =
-    payloadPoints.length > 0 ? [] : normalizeSeriesPoints(inlineSeriesPoints(series));
-  const normalizedPoints = payloadPoints.length > 0 ? payloadPoints : inlinePoints;
-  const pointCount = integerValue(series.point_count) ?? normalizedPoints.length;
-  const status = seriesStatus(series, payload, normalizedPoints.length, minPoints);
+  const label = displayLabel(series);
+  if (!label) {
+    return null;
+  }
+  const normalizedPoints = normalizeSeriesPoints(payload?.points ?? []);
+  const pointCount = integerValue(series.point_count);
+  const status = seriesStatus(series);
   return {
     conceptKey: key,
-    label: displayLabel(series) ?? "未命名指标",
+    label,
     latest: numericValue(series.latest),
     pointCount,
     points: normalizedPoints.length >= minPoints ? normalizedPoints : [],
     status,
-    statusLabel: stringValue(series.status_label) ?? stringValue(payload?.status_label),
-    unit: stringValue(series.unit ?? payload?.unit),
+    statusLabel: stringValue(series.status_label),
+    unit: stringValue(series.unit),
   };
 }
 
@@ -248,22 +204,8 @@ function normalizeSeriesPoints(points: MacroSeriesPoint[]): MacroChartPoint[] {
     .sort((left, right) => left.time.localeCompare(right.time));
 }
 
-function inlineSeriesPoints(series: MacroSemanticRecord): MacroSeriesPoint[] {
-  return Array.isArray(series.points) ? (series.points as MacroSeriesPoint[]) : [];
-}
-
 function latestSeriesNumericValue(series: MacroSemanticRecord): number | null {
-  return (
-    numericValue(series.latest) ??
-    numericValue(series.latest_value) ??
-    numericValue(series.value) ??
-    latestInlinePointValue(series)
-  );
-}
-
-function latestInlinePointValue(series: MacroSemanticRecord): number | null {
-  const points = normalizeSeriesPoints(inlineSeriesPoints(series));
-  return points.at(-1)?.value ?? null;
+  return numericValue(series.latest);
 }
 
 function normalizeReturnPoints(points: MacroChartPoint[]): MacroChartPoint[] {
@@ -281,8 +223,8 @@ function conceptKey(series: MacroSemanticRecord): string {
   return stringValue(series.concept_key) ?? "";
 }
 
-function chartId(chart: MacroModuleChart): string {
-  return stringValue(chart.id) ?? "unknown_chart";
+function chartId(chart: MacroModuleChart): string | null {
+  return stringValue(chart.id);
 }
 
 function chartMinPoints(chart: MacroModuleChart): number {
@@ -290,24 +232,15 @@ function chartMinPoints(chart: MacroModuleChart): number {
 }
 
 function displayLabel(record: MacroSemanticRecord): string | null {
-  return stringValue(record.label) ?? stringValue(record.short_label) ?? stringValue(record.title);
+  return stringValue(record.label) ?? stringValue(record.short_label);
 }
 
-function statusValue(value: unknown): string {
-  return stringValue(value) ?? "unknown";
+function statusValue(value: unknown): string | null {
+  return stringValue(value);
 }
 
-function seriesStatus(
-  series: MacroSemanticRecord,
-  payload: MacroSeriesPayload | undefined,
-  usablePointCount: number,
-  minPoints: number,
-): string {
-  const explicit = stringValue(series.status) ?? stringValue(payload?.status);
-  if (usablePointCount < minPoints) {
-    return "insufficient_history";
-  }
-  return explicit ?? "ok";
+function seriesStatus(series: MacroSemanticRecord): string | null {
+  return stringValue(series.status);
 }
 
 function isCanonicalMacroConceptKey(key: string): boolean {

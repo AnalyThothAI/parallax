@@ -31,6 +31,53 @@ FRESHNESS_CRITICAL_CONCEPTS = (
 OPTIONAL_CONFIRMATION_CONCEPTS = ("asset:spx", "fx:broad_dollar", "commodity:wti")
 PANEL_NAMES = ("liquidity", "rates", "volatility", "credit", "cross_asset")
 CHAIN_NODE_NAMES = ("liquidity", "rates", "fed_corridor", "volatility", "credit", "positioning", "cross_asset")
+TRIGGER_METADATA = {
+    "rrp_buffer_low": {
+        "label": "RRP 缓冲偏低",
+        "node": "funding",
+        "indicator_keys": ["net_liquidity_usd_millions"],
+    },
+    "tga_high": {
+        "label": "TGA 偏高",
+        "node": "funding",
+        "indicator_keys": ["net_liquidity_usd_millions"],
+    },
+    "sofr_above_iorb": {
+        "label": "SOFR 高于 IORB",
+        "node": "funding",
+        "indicator_keys": ["sofr_iorb_spread_bps"],
+    },
+    "repo_corridor_pressure": {
+        "label": "回购走廊压力",
+        "node": "funding",
+        "indicator_keys": ["sofr_iorb_spread_bps"],
+    },
+    "term_premium_pressure": {
+        "label": "期限溢价压力",
+        "node": "rates",
+        "indicator_keys": ["ust_10y_yield_pct", "ust_10y_2y_curve_pct"],
+    },
+    "deep_curve_inversion": {
+        "label": "曲线深度倒挂",
+        "node": "rates",
+        "indicator_keys": ["ust_10y_2y_curve_pct"],
+    },
+    "vix_elevated": {
+        "label": "VIX 偏高",
+        "node": "volatility",
+        "indicator_keys": ["vix"],
+    },
+    "hy_oas_distress": {
+        "label": "高收益债利差进入困境区",
+        "node": "credit",
+        "indicator_keys": ["hy_oas_pct"],
+    },
+    "hy_oas_stress": {
+        "label": "高收益债利差压力",
+        "node": "credit",
+        "indicator_keys": ["hy_oas_pct"],
+    },
+}
 
 
 def build_macro_view_snapshot(
@@ -136,7 +183,7 @@ def _liquidity_chain_node(
     panel: Mapping[str, Any],
     features: Mapping[str, Any],
 ) -> dict[str, Any]:
-    score = _panel_score(panel, default=4.0)
+    score = _panel_score(panel)
     evidence = _panel_strings(panel, "evidence")
     data_gaps = _panel_strings(panel, "data_gaps")
 
@@ -145,19 +192,26 @@ def _liquidity_chain_node(
     tga_20d = _feature_delta(features, "liquidity:tga", "20d")
     if walcl_20d is not None:
         evidence.append(f"walcl_20d_delta={walcl_20d:.2f}")
-        if walcl_20d <= -100_000:
+        if score is not None and walcl_20d <= -100_000:
             score += 0.75
     if rrp_20d is not None:
         evidence.append(f"rrp_20d_delta={rrp_20d:.2f}")
-        if rrp_20d <= -100_000:
+        if score is not None and rrp_20d <= -100_000:
             score += 0.5
     if tga_20d is not None:
         evidence.append(f"tga_20d_delta={tga_20d:.2f}")
-        if tga_20d >= 100_000:
+        if score is not None and tga_20d >= 100_000:
             score += 0.75
 
     if not evidence:
         return _chain_node(score=None, regime="data_gap", evidence=[], data_gaps=data_gaps)
+    if score is None:
+        return _chain_node(
+            score=None,
+            regime="data_gap",
+            evidence=[],
+            data_gaps=[*data_gaps, "missing_panel_score:liquidity"],
+        )
     return _chain_node(
         score=score,
         regime=_liquidity_regime(_score(score)),
@@ -290,22 +344,29 @@ def _fed_corridor_chain_node(*, latest: Mapping[str, Mapping[str, Any]]) -> dict
 
 
 def _volatility_chain_node(*, panel: Mapping[str, Any], features: Mapping[str, Any]) -> dict[str, Any]:
-    score = _panel_score(panel, default=0.0)
+    score = _panel_score(panel)
     evidence = _panel_strings(panel, "evidence")
     data_gaps = _panel_strings(panel, "data_gaps")
     vix_5d = _feature_delta(features, "vol:vix", "5d")
     vix_20d = _feature_delta(features, "vol:vix", "20d")
     if vix_5d is not None:
         evidence.append(f"vix_5d_delta={vix_5d:.2f}")
-        if vix_5d >= 3.0:
+        if score is not None and vix_5d >= 3.0:
             score += 0.75
     if vix_20d is not None:
         evidence.append(f"vix_20d_delta={vix_20d:.2f}")
-        if vix_20d >= 5.0:
+        if score is not None and vix_20d >= 5.0:
             score += 0.75
 
     if not evidence:
         return _chain_node(score=None, regime="data_gap", evidence=[], data_gaps=data_gaps)
+    if score is None:
+        return _chain_node(
+            score=None,
+            regime="data_gap",
+            evidence=[],
+            data_gaps=[*data_gaps, "missing_panel_score:volatility"],
+        )
     final_score = _score(score)
     return _chain_node(
         score=final_score,
@@ -321,7 +382,7 @@ def _credit_chain_node(
     panel: Mapping[str, Any],
     features: Mapping[str, Any],
 ) -> dict[str, Any]:
-    score = _panel_score(panel, default=0.0)
+    score = _panel_score(panel)
     evidence = _panel_strings(panel, "evidence")
     data_gaps = _panel_strings(panel, "data_gaps")
     hy_oas = _value(latest.get("credit:hy_oas"))
@@ -333,23 +394,30 @@ def _credit_chain_node(
     if hy_oas is not None and ig_oas is not None:
         hy_ig_spread = hy_oas - ig_oas
         evidence.append(f"hy_ig_spread={hy_ig_spread:.2f}")
-        if hy_ig_spread >= 4.0:
+        if score is not None and hy_ig_spread >= 4.0:
             score += 0.75
     if hy_5d is not None:
         evidence.append(f"hy_oas_5d_delta={hy_5d:.2f}")
-        if hy_5d >= 0.25:
+        if score is not None and hy_5d >= 0.25:
             score += 0.75
     if hy_20d is not None:
         evidence.append(f"hy_oas_20d_delta={hy_20d:.2f}")
-        if hy_20d >= 0.5:
+        if score is not None and hy_20d >= 0.5:
             score += 0.75
     if ig_20d is not None:
         evidence.append(f"ig_oas_20d_delta={ig_20d:.2f}")
-        if ig_20d >= 0.2:
+        if score is not None and ig_20d >= 0.2:
             score += 0.5
 
     if not evidence:
         return _chain_node(score=None, regime="data_gap", evidence=[], data_gaps=data_gaps)
+    if score is None:
+        return _chain_node(
+            score=None,
+            regime="data_gap",
+            evidence=[],
+            data_gaps=[*data_gaps, "missing_panel_score:credit"],
+        )
     final_score = _score(score)
     if (hy_oas is not None and hy_oas >= 7.0) or final_score >= 8.5:
         regime = "credit_led_derisking"
@@ -405,7 +473,7 @@ def _cross_asset_chain_node(
     panel: Mapping[str, Any],
     features: Mapping[str, Any],
 ) -> dict[str, Any]:
-    score = _panel_score(panel, default=4.0)
+    score = _panel_score(panel)
     evidence = _panel_strings(panel, "evidence")
     data_gaps = _panel_strings(panel, "data_gaps")
     spx = _first_value(latest, ("asset:spx", "asset:spy"))
@@ -461,6 +529,13 @@ def _cross_asset_chain_node(
 
     if not evidence:
         return _chain_node(score=None, regime="data_gap", evidence=[], data_gaps=data_gaps)
+    if score is None:
+        return _chain_node(
+            score=None,
+            regime="data_gap",
+            evidence=[],
+            data_gaps=[*data_gaps, "missing_panel_score:cross_asset"],
+        )
     if risk_off_votes >= 2:
         score = max(score, 6.5 + min(2.0, risk_off_votes * 0.5))
         regime = "risk_off_confirmation"
@@ -468,7 +543,14 @@ def _cross_asset_chain_node(
         score = min(score, 3.0)
         regime = "risk_on_confirmation"
     else:
-        regime = _panel_regime(panel, default="macro_confirmation_pending")
+        regime = _panel_regime(panel)
+        if not regime:
+            return _chain_node(
+                score=None,
+                regime="data_gap",
+                evidence=[],
+                data_gaps=[*data_gaps, "missing_panel_regime:cross_asset"],
+            )
     return _chain_node(score=score, regime=regime, evidence=evidence, data_gaps=data_gaps)
 
 
@@ -741,15 +823,35 @@ def _scorecard(
         if node.get("regime") != "data_gap" and node.get("score") is not None
     ]
     chain_average = round(sum(chain_scores) / len(chain_scores), 2) if chain_scores else None
+    observed_concept_count = _required_int_metadata(
+        coverage,
+        "observed_concept_count",
+        context="source coverage",
+    )
+    required_concept_count = _required_int_metadata(
+        coverage,
+        "required_concept_count",
+        context="source coverage",
+    )
+    latest_coverage_ratio = _required_float_metadata(
+        coverage,
+        "latest_coverage_ratio",
+        context="source coverage",
+    )
+    history_coverage_ratio = _required_float_metadata(
+        coverage,
+        "history_coverage_ratio",
+        context="source coverage",
+    )
     return {
         "projection_version": MACRO_VIEW_PROJECTION_VERSION,
         "overall_score": overall_score,
         "chain_average": chain_average,
-        "observed_concept_count": int(coverage.get("observed_concept_count") or 0),
-        "required_concept_count": int(coverage.get("required_concept_count") or len(CORE_REQUIRED_CONCEPTS)),
-        "coverage_ratio": float(coverage.get("latest_coverage_ratio") or 0.0),
-        "latest_coverage_ratio": float(coverage.get("latest_coverage_ratio") or 0.0),
-        "history_coverage_ratio": float(coverage.get("history_coverage_ratio") or 0.0),
+        "observed_concept_count": observed_concept_count,
+        "required_concept_count": required_concept_count,
+        "coverage_ratio": latest_coverage_ratio,
+        "latest_coverage_ratio": latest_coverage_ratio,
+        "history_coverage_ratio": history_coverage_ratio,
         "data_gap_count": len([gap for gap in data_gaps if gap]),
         "chain_regimes": {node_key: str(node.get("regime") or "") for node_key, node in chain.items()},
     }
@@ -790,9 +892,8 @@ def _rates_chain_regime(
     return "neutral"
 
 
-def _panel_score(panel: Mapping[str, Any], *, default: float) -> float:
-    value = _float_value(panel.get("score"))
-    return default if value is None else value
+def _panel_score(panel: Mapping[str, Any]) -> float | None:
+    return _float_value(panel.get("score"))
 
 
 def _panel_strings(panel: Mapping[str, Any], key: str) -> list[str]:
@@ -802,9 +903,9 @@ def _panel_strings(panel: Mapping[str, Any], key: str) -> list[str]:
     return [str(item) for item in value if str(item)]
 
 
-def _panel_regime(panel: Mapping[str, Any], *, default: str) -> str:
+def _panel_regime(panel: Mapping[str, Any]) -> str:
     value = str(panel.get("regime") or "")
-    return value or default
+    return value
 
 
 def _feature_delta(features: Mapping[str, Any], series_key: str, horizon: str) -> float | None:
@@ -906,9 +1007,11 @@ def _snapshot_status(
         return "missing"
     if _has_stale_required_features(features):
         return "stale"
-    if float(coverage.get("latest_coverage_ratio") or 0.0) < 1.0:
+    latest_coverage_ratio = _required_float_metadata(coverage, "latest_coverage_ratio", context="source coverage")
+    history_coverage_ratio = _required_float_metadata(coverage, "history_coverage_ratio", context="source coverage")
+    if latest_coverage_ratio < 1.0:
         return "partial"
-    if float(coverage.get("history_coverage_ratio") or 0.0) < 1.0:
+    if history_coverage_ratio < 1.0:
         return "partial"
     if _has_data_quality_gaps(data_gaps):
         return "partial"
@@ -960,8 +1063,15 @@ def _has_stale_required_features(features: Mapping[str, Any]) -> bool:
         feature = features.get(concept_key)
         if not isinstance(feature, Mapping):
             continue
-        freshness_days = _int_or_none(feature.get("freshness_days"))
-        stale_after_days = _int_or_none(feature.get("stale_after_days")) or 7
+        freshness_days = _required_int_metadata(
+            feature,
+            "freshness_days",
+            context=f"feature {concept_key}",
+            allow_none=True,
+        )
+        stale_after_days = _required_int_metadata(feature, "stale_after_days", context=f"feature {concept_key}")
+        if stale_after_days is None:
+            raise ValueError(f"Invalid macro feature {concept_key} metadata: stale_after_days")
         if freshness_days is not None and freshness_days > stale_after_days:
             return True
     return False
@@ -972,13 +1082,44 @@ def _feature_has_required_history(features: Mapping[str, Any], concept_key: str)
     if not isinstance(feature, Mapping):
         return False
     required_points = MACRO_HISTORY_REQUIRED_POINTS_BY_CONCEPT.get(concept_key, MACRO_REQUIRED_STAT_POINTS)
-    history_points = _int_or_none(feature.get("history_points")) or 0
+    history_points = _required_int_metadata(feature, "history_points", context=f"feature {concept_key}")
+    if history_points is None:
+        raise ValueError(f"Invalid macro feature {concept_key} metadata: history_points")
     return history_points >= required_points
 
 
 def _has_data_quality_gaps(data_gaps: Sequence[str]) -> bool:
     quality_gap_codes = {"missing_numeric_history", "missing_latest_observed_at"}
     return any(gap_code.startswith("data_quality_") or gap_code in quality_gap_codes for gap_code in data_gaps)
+
+
+def _required_float_metadata(payload: Mapping[str, Any], field_name: str, *, context: str) -> float:
+    if field_name not in payload:
+        raise ValueError(f"Missing macro {context} metadata: {field_name}")
+    value = _float_value(payload.get(field_name))
+    if value is None:
+        raise ValueError(f"Invalid macro {context} metadata: {field_name}")
+    return value
+
+
+def _required_int_metadata(
+    payload: Mapping[str, Any],
+    field_name: str,
+    *,
+    context: str,
+    allow_none: bool = False,
+) -> int | None:
+    if field_name not in payload:
+        raise ValueError(f"Missing macro {context} metadata: {field_name}")
+    value = payload.get(field_name)
+    if allow_none and value is None:
+        return None
+    if isinstance(value, bool):
+        raise ValueError(f"Invalid macro {context} metadata: {field_name}")
+    parsed = _int_or_none(value)
+    if parsed is None:
+        raise ValueError(f"Invalid macro {context} metadata: {field_name}")
+    return parsed
 
 
 def _structured_gaps(raw_codes: Sequence[str]) -> list[dict[str, Any]]:
@@ -1084,7 +1225,18 @@ def _indicator(
 
 
 def _trigger(code: str, description: str, value: float) -> dict[str, Any]:
-    return {"code": code, "description": description, "value": round(float(value), 4)}
+    metadata = TRIGGER_METADATA.get(code)
+    if metadata is None:
+        raise ValueError(f"Missing macro trigger metadata: {code}")
+    return {
+        "code": code,
+        "label": metadata["label"],
+        "description": description,
+        "node": metadata["node"],
+        "kind": "trigger",
+        "indicator_keys": list(metadata["indicator_keys"]),
+        "value": round(float(value), 4),
+    }
 
 
 def _score(value: float) -> float:

@@ -84,9 +84,7 @@ def _reprocess_recent_token_intents(
     resolved = 0
     dirty_targets: list[dict[str, Any]] = []
     discovery_lookup_keys: set[str] = set()
-    evidence_by_intent = repos.token_evidence.evidence_for_intents(
-        [str(intent["intent_id"]) for intent in intents]
-    )
+    evidence_by_intent = repos.token_evidence.evidence_for_intents([str(intent["intent_id"]) for intent in intents])
     for intent in intents:
         evidence = evidence_by_intent.get(str(intent["intent_id"]), [])
         decision = resolver.resolve(

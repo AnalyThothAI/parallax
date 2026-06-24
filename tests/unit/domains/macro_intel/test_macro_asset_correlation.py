@@ -82,6 +82,83 @@ def test_build_macro_asset_correlation_uses_aligned_daily_returns() -> None:
     assert result["matrix"][0]["correlations"]["asset:qqq"] == pytest.approx(1.0)
 
 
+def test_build_macro_asset_correlation_requires_value_numeric_without_raw_value_fallback() -> None:
+    dates = _dates(24)
+    returns = ([0.004, 0.009, -0.003, 0.014, 0.002, -0.005] * 4)[:-1]
+    observations = [
+        *_price_samples("asset:spy", dates, _prices_from_returns(returns), source="yahoo"),
+        *_price_samples("asset:qqq", dates, _prices_from_returns(returns), source="yahoo"),
+    ]
+    for observation in observations:
+        observation["value"] = observation.pop("value_numeric")
+
+    result = build_macro_asset_correlation(
+        observations,
+        assets=("asset:spy", "asset:qqq"),
+        window="20d",
+    )
+
+    pair = _pair(result, "asset:spy", "asset:qqq")
+    assert pair["available"] is False
+    assert pair["sample_size"] == 0
+    assert pair["reason"] == "insufficient_overlap"
+    assert result["assets"][0]["observations_count"] == 0
+    assert result["matrix"][0]["correlations"]["asset:qqq"] is None
+
+
+@pytest.mark.parametrize("source_name", (None, " "))
+def test_build_macro_asset_correlation_requires_source_name_without_empty_source_fallback(
+    source_name: str | None,
+) -> None:
+    dates = _dates(24)
+    observations = _price_samples("asset:spy", dates, _prices_from_returns(([0.004, -0.002, 0.007] * 8)[:-1]))
+    for observation in observations:
+        if source_name is None:
+            del observation["source_name"]
+        else:
+            observation["source_name"] = source_name
+
+    with pytest.raises(ValueError, match="macro_asset_correlation_source_name_required:asset:spy"):
+        build_macro_asset_correlation(observations, assets=("asset:spy",), window="20d")
+
+
+@pytest.mark.parametrize(
+    ("field_name", "message"),
+    (
+        ("source_priority", "macro_asset_correlation_source_priority_required:asset:spy"),
+        ("ingested_at_ms", "macro_asset_correlation_ingested_at_ms_required:asset:spy"),
+    ),
+)
+@pytest.mark.parametrize("field_value", (None, " "))
+def test_build_macro_asset_correlation_requires_ranking_metadata_without_zero_fallback(
+    field_name: str,
+    message: str,
+    field_value: object | None,
+) -> None:
+    dates = _dates(24)
+    observations = _price_samples("asset:spy", dates, _prices_from_returns(([0.004, -0.002, 0.007] * 8)[:-1]))
+    for observation in observations:
+        if field_value is None:
+            del observation[field_name]
+        else:
+            observation[field_name] = field_value
+
+    with pytest.raises(ValueError, match=message):
+        build_macro_asset_correlation(observations, assets=("asset:spy",), window="20d")
+
+
+def test_build_macro_asset_correlation_requires_title_metadata_without_concept_key_fallback() -> None:
+    dates = _dates(24)
+    observations = _price_samples(
+        "asset:unknown",
+        dates,
+        _prices_from_returns(([0.004, -0.002, 0.007] * 8)[:-1]),
+    )
+
+    with pytest.raises(ValueError, match="macro_asset_correlation_title_required:asset:unknown"):
+        build_macro_asset_correlation(observations, assets=("asset:unknown",), window="20d")
+
+
 def test_build_macro_asset_correlation_dedupes_by_source_priority() -> None:
     dates = _dates(24)
     returns = ([0.004, 0.009, -0.003, 0.014, 0.002, -0.005] * 4)[:-1]
@@ -108,7 +185,7 @@ def test_build_macro_asset_correlation_dedupes_by_source_priority() -> None:
     assert result["assets"][0]["sources"] == ["yahoo"]
 
 
-def test_build_macro_asset_correlation_does_not_truncate_timestamp_dates() -> None:
+def test_build_macro_asset_correlation_rejects_malformed_observed_at_without_silent_drop() -> None:
     dates = _dates(24)
     observations = _price_samples("asset:spy", dates, _prices_from_returns(([0.004, -0.002, 0.007] * 8)[:-1]))
     observations.append(
@@ -122,11 +199,8 @@ def test_build_macro_asset_correlation_does_not_truncate_timestamp_dates() -> No
         )
     )
 
-    result = build_macro_asset_correlation(observations, assets=("asset:spy",), window="20d")
-
-    assert result["asof_date"] == "2026-05-20"
-    assert result["assets"][0]["latest_observed_at"] == "2026-05-20"
-    assert result["assets"][0]["sources"] == ["yahoo"]
+    with pytest.raises(ValueError, match="macro_asset_correlation_observed_at_required:asset:spy"):
+        build_macro_asset_correlation(observations, assets=("asset:spy",), window="20d")
 
 
 def test_build_macro_asset_correlation_marks_pairs_unavailable_when_overlap_is_too_small() -> None:

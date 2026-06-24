@@ -27,18 +27,37 @@ export type MacroTableModel = {
 };
 
 export function buildMacroTableModel(table: MacroModuleTable): MacroTableModel {
+  const id = tableId(table);
+  if (!id) {
+    return { columns: [], rows: [], tableId: "" };
+  }
   const rows = Array.isArray(table.rows) ? table.rows : [];
-  const columns = columnModels(table);
+  const candidateColumns = columnModels(table);
+  const candidateRows = rows.reduce<MacroTableRowModel[]>((accumulator, row) => {
+    const id = rowId(row);
+    if (!id) {
+      return accumulator;
+    }
+    const cells = Object.fromEntries(
+      candidateColumns
+        .map((column) => {
+          const cell = buildMacroTableCell(tableCell(row, column.id));
+          return cell ? ([column.id, cell] as const) : null;
+        })
+        .filter((entry): entry is readonly [string, MacroTableCellModel] => entry !== null),
+    );
+    if (Object.keys(cells).length > 0) {
+      accumulator.push({ id, raw: row, cells });
+    }
+    return accumulator;
+  }, []);
+  const columns = candidateColumns.filter((column) =>
+    candidateRows.some((row) => Boolean(row.cells[column.id])),
+  );
   return {
     columns,
-    rows: rows.map((row, rowIndex) => ({
-      id: rowId(row, rowIndex),
-      raw: row,
-      cells: Object.fromEntries(
-        columns.map((column) => [column.id, buildMacroTableCell(tableCell(row, column.id))]),
-      ),
-    })),
-    tableId: tableId(table),
+    rows: candidateRows,
+    tableId: id,
   };
 }
 
@@ -74,12 +93,13 @@ export function compareMacroTableSortValues(left: unknown, right: unknown): numb
   return String(left).localeCompare(String(right));
 }
 
-export function formatMacroTableValue(value: unknown): string {
+export function formatMacroTableValue(value: unknown): string | null {
   if (value === null || value === undefined || value === "") {
-    return "暂无";
+    return null;
   }
   if (Array.isArray(value)) {
-    return value.map(formatMacroTableValue).join(", ");
+    const labels = value.map(formatMacroTableValue).filter((item): item is string => Boolean(item));
+    return labels.length > 0 ? labels.join(", ") : null;
   }
   if (typeof value === "number") {
     return formatNumber(value);
@@ -88,21 +108,26 @@ export function formatMacroTableValue(value: unknown): string {
     return value ? "是" : "否";
   }
   if (typeof value === "string") {
-    return VALUE_LABELS[value] ?? value;
+    const text = value.trim();
+    return text;
   }
   const display = displayValue(value);
   if (display !== null) {
     return display;
   }
-  return "暂无";
+  return null;
 }
 
-function buildMacroTableCell(value: unknown): MacroTableCellModel {
+function buildMacroTableCell(value: unknown): MacroTableCellModel | null {
   if (isDisplayCell(value)) {
+    const displayValue = formatMacroTableValue(value.display_value);
+    if (!displayValue) {
+      return null;
+    }
     const sortValue = scalarValue(value.sort_value);
-    const rawValue = sortValue ?? scalarValue(value.display_value);
+    const rawValue = sortValue;
     return {
-      displayValue: formatMacroTableValue(value.display_value),
+      displayValue,
       isNumeric: typeof sortValue === "number",
       rawValue,
       sortValue,
@@ -118,8 +143,12 @@ function buildMacroTableCell(value: unknown): MacroTableCellModel {
     };
   }
   const scalar = scalarValue(value);
+  const displayValue = formatMacroTableValue(value);
+  if (!displayValue) {
+    return null;
+  }
   return {
-    displayValue: formatMacroTableValue(value),
+    displayValue,
     isNumeric: false,
     rawValue: scalar,
     sortValue: scalar,
@@ -144,14 +173,8 @@ function columnModels(table: MacroModuleTable): MacroTableColumnModel[] {
     .filter((column): column is MacroTableColumnModel => Boolean(column));
 }
 
-function rowId(row: MacroSemanticRecord, rowIndex: number): string {
-  const stable =
-    stringValue(row.row_id) ??
-    stringValue(row.concept_key) ??
-    stringValue(row.symbol) ??
-    stringValue(row.label) ??
-    stringValue(row.id);
-  return stable ? `${stable}:${rowIndex}` : `row:${rowIndex}`;
+function rowId(row: MacroSemanticRecord): string | null {
+  return stringValue(row.row_id);
 }
 
 function tableCell(row: MacroSemanticRecord, columnId: string): unknown {
@@ -162,8 +185,8 @@ function tableCell(row: MacroSemanticRecord, columnId: string): unknown {
   return undefined;
 }
 
-function tableId(table: MacroModuleTable): string {
-  return stringValue(table.id) ?? "unknown_table";
+function tableId(table: MacroModuleTable): string | null {
+  return stringValue(table.id);
 }
 
 function displayValue(value: unknown): string | null {
@@ -171,12 +194,7 @@ function displayValue(value: unknown): string | null {
     return null;
   }
   const record = value as Record<string, unknown>;
-  return (
-    stringValue(record.display_value) ??
-    stringValue(record.label) ??
-    stringValue(record.title) ??
-    null
-  );
+  return stringValue(record.display_value);
 }
 
 function isDisplayCell(value: unknown): value is { display_value?: unknown; sort_value?: unknown } {
@@ -184,15 +202,6 @@ function isDisplayCell(value: unknown): value is { display_value?: unknown; sort
     value && typeof value === "object" && !Array.isArray(value) && "display_value" in value,
   );
 }
-
-const VALUE_LABELS: Record<string, string> = {
-  degraded: "降级",
-  missing: "缺失",
-  ok: "正常",
-  partial: "部分可用",
-  unavailable: "不可用",
-  unknown: "未知",
-};
 
 function numericValue(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) {

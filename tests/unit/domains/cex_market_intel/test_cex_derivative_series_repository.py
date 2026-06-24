@@ -93,9 +93,7 @@ def test_upsert_open_interest_points_reports_zero_for_unchanged_conflict_rows() 
         ("negative", "cex_derivative_series_rowcount_invalid"),
     ),
 )
-def test_upsert_open_interest_points_requires_real_cursor_rowcount(
-    cursor_kind: str, match: str
-) -> None:
+def test_upsert_open_interest_points_requires_real_cursor_rowcount(cursor_kind: str, match: str) -> None:
     rowcounts: dict[str, object] = {"string": "unknown", "bool": True, "negative": -1}
     cursor = object() if cursor_kind == "missing" else _Cursor(rowcount=rowcounts[cursor_kind])
     conn = _CursorConn(cursor=cursor)
@@ -187,9 +185,7 @@ def test_upsert_open_interest_points_requires_formal_series_identity_before_sql(
         ({"period": " "}, "period"),
     ),
 )
-def test_series_id_requires_formal_identity_without_empty_hash_segments(
-    overrides: dict[str, str], field: str
-) -> None:
+def test_series_id_requires_formal_identity_without_empty_hash_segments(overrides: dict[str, str], field: str) -> None:
     params = {
         "provider": "binance",
         "native_market_id": "BTCUSDT",

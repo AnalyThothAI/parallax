@@ -2,41 +2,44 @@ import type { RatesWorkbenchView } from "../../model/macroRatesWorkbenchModel";
 import { MacroPanel } from "../primitives/MacroPanel";
 
 export function RatesMarketRead({ view }: { view: RatesWorkbenchView }) {
+  if (!view.marketHeadline) {
+    return null;
+  }
   const asOf = compactAsOfLabel(view.asOfLabel);
   const gapCount = view.missingPrimaryItems.length;
-  const proxyNote =
-    view.proxyNote && view.proxyNote !== view.marketHeadline ? view.proxyNote : null;
 
   return (
     <MacroPanel
       ariaLabel="利率简报"
       className="macro-rates-market-read-panel"
-      meta={`${view.readinessLabel} · ${asOf}`}
+      meta={[view.readinessLabel, asOf].filter(Boolean).join(" · ")}
       span="full"
       title="利率简报"
     >
       <div className="macro-rates-market-read">
         <div className="macro-rates-market-read-head">
           <div>
-            <p className="macro-rates-eyebrow">{view.title}</p>
             <h3>{view.marketHeadline}</h3>
           </div>
           <dl className="macro-rates-read-state" aria-label="利率模块状态">
-            <div>
-              <dt>状态</dt>
-              <dd>{view.readinessLabel}</dd>
-            </div>
-            <div>
-              <dt>截至</dt>
-              <dd>{asOf}</dd>
-            </div>
+            {view.readinessLabel ? (
+              <div>
+                <dt>状态</dt>
+                <dd>{view.readinessLabel}</dd>
+              </div>
+            ) : null}
+            {asOf ? (
+              <div>
+                <dt>截至</dt>
+                <dd>{asOf}</dd>
+              </div>
+            ) : null}
             <div>
               <dt>缺口</dt>
               <dd>{gapCount > 0 ? `${gapCount} 项` : "0"}</dd>
             </div>
           </dl>
         </div>
-        {proxyNote ? <p className="macro-rates-proxy-note">{proxyNote}</p> : null}
         {view.missingPrimaryItems.length > 0 ? (
           <div className="macro-rates-missing-primary">
             <span>明细</span>
@@ -52,6 +55,6 @@ export function RatesMarketRead({ view }: { view: RatesWorkbenchView }) {
   );
 }
 
-function compactAsOfLabel(label: string): string {
-  return label.replace(/^截至\s*/, "");
+function compactAsOfLabel(label: string | null): string | null {
+  return label ? label.replace(/^截至\s*/, "") : null;
 }

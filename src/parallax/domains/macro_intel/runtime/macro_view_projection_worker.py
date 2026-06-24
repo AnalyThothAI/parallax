@@ -116,7 +116,7 @@ class MacroViewProjectionWorker(WorkerBase):
         projected_rows_written = int(refresh_result.get("rows_written") or 0)
         series_status = str(refresh_result.get("status") or "")
         source_signature = str(refresh_result.get("source_signature") or "")
-        if series_status == "unchanged" and not _claims_current_target(claimed):
+        if not _should_rebuild_snapshot(claimed=claimed, concept_keys=concept_keys, series_status=series_status):
             repos.macro_intel.mark_macro_projection_dirty_targets_done(claimed, now_ms=now, commit=False)
             return (
                 WorkerResult(
@@ -126,8 +126,8 @@ class MacroViewProjectionWorker(WorkerBase):
                         "queue_depth": 0,
                         "source_rows_scanned": 0,
                         "targets_loaded": 0,
-                        "rows_written": 0,
-                        "projected_rows_written": 0,
+                        "rows_written": projected_rows_written,
+                        "projected_rows_written": projected_rows_written,
                         "snapshot_rows_written": 0,
                         "series_status": series_status,
                         "source_signature": source_signature,
@@ -228,6 +228,20 @@ def _claimed_concept_keys(claimed: list[dict[str, Any]]) -> tuple[str, ...]:
 
 def _claims_current_target(claimed: list[dict[str, Any]]) -> bool:
     return any(str(target.get("target_kind") or "") == "current" for target in claimed)
+
+
+def _should_rebuild_snapshot(
+    *,
+    claimed: list[dict[str, Any]],
+    concept_keys: tuple[str, ...],
+    series_status: str,
+) -> bool:
+    if _claims_current_target(claimed):
+        return True
+    if series_status == "unchanged":
+        return False
+    core_concepts = set(MACRO_CORE_CONCEPTS)
+    return any(concept_key in core_concepts for concept_key in concept_keys)
 
 
 __all__ = ["MacroViewProjectionWorker"]

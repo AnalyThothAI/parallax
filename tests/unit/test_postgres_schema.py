@@ -218,6 +218,12 @@ NEWS_PAGE_SEARCH_DOCUMENT_MIGRATION = Path(
 PULSE_PUBLIC_SEARCH_TRGM_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260612_0179_pulse_public_search_trgm_indexes.py"
 )
+MACRO_EVENT_TEXT_SERIES_NULLABLE_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260616_0180_macro_event_text_series_nullable.py"
+)
+NEWS_PAGE_MACRO_EVENT_FLOW_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260623_0181_news_page_macro_event_flow.py"
+)
 NEWS_AGENT_MARKET_ADMISSION_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260606_0151_news_agent_market_admission_hard_cut.py"
 )
@@ -2818,6 +2824,42 @@ def test_signal_pulse_public_search_migration_adds_trigram_indexes() -> None:
     assert "ON pulse_candidates USING GIN (target_id gin_trgm_ops) WHERE target_id IS NOT NULL" in normalized_text
     assert "ON pulse_agent_jobs USING GIN (subject_key gin_trgm_ops)" in normalized_text
     assert "ON pulse_agent_jobs USING GIN (target_id gin_trgm_ops) WHERE target_id IS NOT NULL" in normalized_text
+
+
+def test_macro_event_text_series_nullable_migration_allows_text_event_rows() -> None:
+    assert MACRO_EVENT_TEXT_SERIES_NULLABLE_MIGRATION.exists(), (
+        f"{MACRO_EVENT_TEXT_SERIES_NULLABLE_MIGRATION} missing; Fed text event rows need nullable value_numeric"
+    )
+    text = MACRO_EVENT_TEXT_SERIES_NULLABLE_MIGRATION.read_text()
+
+    assert 'revision = "20260616_0180"' in text
+    assert 'down_revision = "20260612_0179"' in text
+    assert "ALTER TABLE macro_observation_series_rows" in text
+    assert "ALTER COLUMN value_numeric DROP NOT NULL" in text
+    assert "ALTER COLUMN value_numeric SET NOT NULL" in text
+    assert "DELETE FROM macro_observation_series_rows" not in text
+    assert "ANALYZE macro_observation_series_rows" in text
+
+
+def test_news_page_macro_event_flow_migration_adds_formal_projection_column() -> None:
+    assert NEWS_PAGE_MACRO_EVENT_FLOW_MIGRATION.exists(), (
+        f"{NEWS_PAGE_MACRO_EVENT_FLOW_MIGRATION} missing; macro overview news rows need formal event-flow projection"
+    )
+    text = NEWS_PAGE_MACRO_EVENT_FLOW_MIGRATION.read_text(encoding="utf-8")
+    normalized_text = " ".join(text.split())
+
+    assert 'revision = "20260623_0181"' in text
+    assert 'down_revision = "20260616_0180"' in text
+    assert "ALTER TABLE news_page_rows ADD COLUMN IF NOT EXISTS macro_event_flow_json JSONB" in text
+    assert "rows.projection_version = 'news_page_rows_v5'" in text
+    assert "COALESCE(rows.agent_brief_json ->> 'status', '') = 'ready'" in text
+    assert "rows.market_scope_json ->> 'primary'" in text
+    assert "rows.agent_brief_json ->> 'decision_class'" in text
+    assert "jsonb_build_object" in text
+    assert "macro_event_flow_json IS NOT NULL" in text
+    assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_page_rows_macro_event_flow_latest" in text
+    assert "ON news_page_rows(projection_version, latest_at_ms DESC, row_id DESC)" in normalized_text
+    assert "DROP COLUMN IF EXISTS macro_event_flow_json" in text
 
 
 def test_token_search_demotion_migration_demotes_only_unprotected_search_assets() -> None:

@@ -3,7 +3,6 @@ export { useMacroAssetCorrelationQuery } from "./api/useMacroAssetCorrelationQue
 export { useMacroModuleQuery } from "./api/useMacroModuleQuery";
 export { useMacroSeriesQuery } from "./api/useMacroSeriesQuery";
 export {
-  buildMacroHeatmapMatrix,
   buildMacroNormalizedReturnModel,
   buildMacroTimeSeriesModel,
   buildMacroYieldCurveModel,
@@ -17,21 +16,17 @@ export {
 export {
   assetLabel,
   assetTitleByKey,
-  correlationGapLabel,
   correlationTone,
   matrixCorrelationLabel,
   signedCorrelationLabel,
-  sourceLabel,
   strongestCorrelationPairs,
 } from "./model/macroCorrelationModel";
 export { MACRO_NAVIGATION_TREE } from "./model/macroNavigationTree";
 export { parseMacroRouteTail } from "./model/macroRoutes";
-export { MacroHeatmap } from "./ui/charts/MacroHeatmap";
 export { MacroNormalizedReturnChart } from "./ui/charts/MacroNormalizedReturnChart";
 export { MacroTimeSeriesChart } from "./ui/charts/MacroTimeSeriesChart";
 export { MacroYieldCurveChart } from "./ui/charts/MacroYieldCurveChart";
 export { MacroLeafModulePage } from "./ui/pages/MacroLeafModulePage";
-export { MacroMatrixPage } from "./ui/pages/MacroMatrixPage";
 export { MacroModulePageRenderer } from "./ui/pages/MacroModulePageRenderer";
 export { MacroOverviewModulePage } from "./ui/pages/MacroOverviewModulePage";
 export { MacroDataTable } from "./ui/tables/MacroDataTable";
@@ -39,7 +34,6 @@ export { MacroSourceTable } from "./ui/tables/MacroSourceTable";
 export type {
   MacroChartPoint,
   MacroChartSeriesModel,
-  MacroHeatmapMatrix,
   MacroTimeSeriesModel,
   MacroYieldCurveModel,
 } from "./model/macroChartModel";

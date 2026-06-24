@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from parallax.domains.news_intel.repositories.news_repository import NewsRepository
 from parallax.domains.news_intel.services.source_quality_projection import build_source_quality_rows
+from parallax.domains.news_intel.types.news_extraction import NewsFactCandidate, NewsTokenMention
 from parallax.domains.news_intel.types.news_item_brief_contract import CURRENT_NEWS_ITEM_BRIEF_CONTRACT
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
@@ -61,48 +62,48 @@ def test_source_quality_repository_aggregates_and_replaces_rows(tmp_path) -> Non
         repo.replace_token_mentions(
             news_item_id=news_item_id,
             mentions=[
-                {
-                    "mention_id": "mention-1",
-                    "news_item_id": news_item_id,
-                    "entity_id": None,
-                    "observed_symbol": "BTC",
-                    "chain_id": None,
-                    "address": None,
-                    "resolution_status": "known_symbol",
-                    "target_type": "CexToken",
-                    "target_id": "cex:BTC",
-                    "display_symbol": "BTC",
-                    "display_name": "Bitcoin",
-                    "reason_codes": ["CONFIRMED_CEX_TOKEN"],
-                    "candidate_targets": [],
-                    "evidence_strength": "strong",
-                    "confidence": 0.95,
-                    "created_at_ms": NOW_MS - 5_000,
-                }
+                NewsTokenMention(
+                    mention_id="mention-1",
+                    news_item_id=news_item_id,
+                    entity_id=None,
+                    observed_symbol="BTC",
+                    chain_id=None,
+                    address=None,
+                    resolution_status="known_symbol",
+                    target_type="CexToken",
+                    target_id="cex:BTC",
+                    display_symbol="BTC",
+                    display_name="Bitcoin",
+                    reason_codes=["CONFIRMED_CEX_TOKEN"],
+                    candidate_targets=[],
+                    evidence_strength="strong",
+                    confidence=0.95,
+                    created_at_ms=NOW_MS - 5_000,
+                )
             ],
         )
         repo.replace_fact_candidates(
             news_item_id=news_item_id,
             candidates=[
-                {
-                    "fact_candidate_id": "fact-1",
-                    "news_item_id": news_item_id,
-                    "event_type": "exchange_listing",
-                    "claim": "Coinbase lists BTC",
-                    "realis": "actual",
-                    "evidence_quote": "Coinbase lists $BTC",
-                    "evidence_span_start": 0,
-                    "evidence_span_end": 19,
-                    "source_role": "specialist_media",
-                    "required_slots": {"target": "BTC"},
-                    "affected_targets": [{"target_type": "CexToken", "target_id": "cex:BTC"}],
-                    "validation_status": "accepted",
-                    "rejection_reasons": [],
-                    "extraction_method": "deterministic",
-                    "policy_version": "test",
-                    "created_at_ms": NOW_MS - 4_000,
-                    "updated_at_ms": NOW_MS - 4_000,
-                }
+                NewsFactCandidate(
+                    fact_candidate_id="fact-1",
+                    news_item_id=news_item_id,
+                    event_type="exchange_listing",
+                    claim="Coinbase lists BTC",
+                    realis="actual",
+                    evidence_quote="Coinbase lists $BTC",
+                    evidence_span_start=0,
+                    evidence_span_end=19,
+                    source_role="specialist_media",
+                    required_slots={"target": True},
+                    affected_targets=[{"target_type": "CexToken", "target_id": "cex:BTC"}],
+                    validation_status="accepted",
+                    rejection_reasons=[],
+                    extraction_method="deterministic",
+                    policy_version="test",
+                    created_at_ms=NOW_MS - 4_000,
+                    updated_at_ms=NOW_MS - 4_000,
+                )
             ],
         )
         repo.mark_item_processed(news_item_id=news_item_id, processed_at_ms=NOW_MS - 3_000)

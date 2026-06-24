@@ -92,13 +92,17 @@ export function MacroLineChartFigure({
     };
   }, [visibleSeries]);
 
+  if (visibleSeries.length === 0 && !stateLabel) {
+    return null;
+  }
+
   return (
     <figure aria-label={title} className="macro-chart-figure">
       <figcaption>{title}</figcaption>
       {visibleSeries.length > 0 ? (
         <>
           <div className="macro-chart-canvas-host" ref={containerRef} />
-          <ChartLegend model={model} valueUnit={valueUnit} />
+          <ChartLegend series={visibleSeries} valueUnit={valueUnit} />
         </>
       ) : (
         <div aria-label={`${title} state`} className="macro-chart-state-panel" role="status">
@@ -109,41 +113,36 @@ export function MacroLineChartFigure({
   );
 }
 
-function chartStateLabel(model: MacroTimeSeriesModel): string {
+function chartStateLabel(model: MacroTimeSeriesModel): string | null {
   if (
     model.status === "insufficient_history" ||
     model.series.some((series) => series.status === "insufficient_history")
   ) {
-    return (
-      model.statusLabel ??
-      model.series.find((series) => series.status === "insufficient_history")?.statusLabel ??
-      "历史样本不足"
-    );
+    return model.statusLabel ?? null;
   }
-  return model.statusLabel ?? "暂无可绘制序列";
+  return model.statusLabel ?? null;
 }
 
 function ChartLegend({
-  model,
+  series,
   valueUnit,
 }: {
-  model: MacroTimeSeriesModel;
+  series: MacroTimeSeriesModel["series"];
   valueUnit?: string | null;
 }) {
   return (
     <div className="macro-chart-legend">
-      {model.series.map((series) => {
-        const latest = series.points.at(-1)?.value ?? series.latest;
-        return (
+      {series.flatMap((series) => {
+        const latestPoint = series.points.at(-1);
+        if (!latestPoint) {
+          return [];
+        }
+        return [
           <span className="macro-chart-legend-item" key={series.conceptKey}>
             <b>{series.label}</b>
-            <strong>
-              {latest === null || latest === undefined
-                ? "n/a"
-                : formatMacroChartValue(latest, valueUnit ?? series.unit)}
-            </strong>
-          </span>
-        );
+            <strong>{formatMacroChartValue(latestPoint.value, valueUnit ?? series.unit)}</strong>
+          </span>,
+        ];
       })}
     </div>
   );

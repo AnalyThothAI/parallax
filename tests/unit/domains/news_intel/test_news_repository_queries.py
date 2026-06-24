@@ -121,15 +121,16 @@ def test_news_page_row_payload_hash_rejects_legacy_story_keys_before_write() -> 
         ("provider_rating", None),
         ("agent_brief", None),
         ("market_scope", None),
+        ("macro_event_flow", None),
         ("agent_admission", None),
         ("token_lanes", {}),
         ("story", []),
         ("source", []),
+        ("macro_event_flow", []),
+        ("macro_event_flow", {"window": "recent"}),
     ],
 )
-def test_news_page_row_payload_requires_formal_json_sections_before_write(
-    field_name: str, bad_value: object
-) -> None:
+def test_news_page_row_payload_requires_formal_json_sections_before_write(field_name: str, bad_value: object) -> None:
     conn = CapturingConnection()
     repo = NewsRepository(conn)
     row = _valid_news_page_row()
@@ -227,6 +228,38 @@ def test_list_news_page_rows_requires_formal_projected_sections_without_public_d
 
     with pytest.raises(ValueError, match=f"news_page_row_projection.*{field_name}"):
         repo.list_news_page_rows(limit=1)
+
+
+def test_list_news_page_rows_filters_and_requires_macro_event_flow_when_requested() -> None:
+    page_row = _valid_news_page_read_row()
+    page_row["macro_event_flow"] = {
+        "window": "recent",
+        "window_label": "近期",
+        "severity": "high",
+        "severity_label": "高",
+        "category": "macro_policy",
+        "category_label": "美联储",
+        "impact": "mainline_driver",
+        "impact_label": "改变主线",
+        "watch": "SPX · 美联储",
+    }
+    conn = NewsPageRowsConnection(rows=[page_row])
+    repo = NewsRepository(conn)
+
+    rows = repo.list_news_page_rows(limit=1, macro_event_flow=True)
+
+    assert rows[0]["macro_event_flow"] == page_row["macro_event_flow"]
+    assert "macro_event_flow_json AS macro_event_flow" in conn.sql
+    assert "macro_event_flow_json IS NOT NULL" in conn.sql
+
+
+def test_list_news_page_rows_rejects_macro_event_flow_rows_without_projection_contract() -> None:
+    page_row = _valid_news_page_read_row()
+    conn = NewsPageRowsConnection(rows=[page_row])
+    repo = NewsRepository(conn)
+
+    with pytest.raises(ValueError, match=r"news_page_row_projection.*macro_event_flow"):
+        repo.list_news_page_rows(limit=1, macro_event_flow=True)
 
 
 def test_high_signal_notification_candidates_require_projected_agent_brief_without_pending_fallback() -> None:
@@ -2605,6 +2638,7 @@ def _valid_news_page_row() -> dict[str, object]:
         "source_domains_json": [],
         "provider_article_keys_json": [],
         "market_scope": {"primary": "crypto"},
+        "macro_event_flow": None,
         "agent_admission": _valid_agent_admission_payload(),
         "agent_admission_status": "needs_review",
         "agent_admission_reason": "pending",

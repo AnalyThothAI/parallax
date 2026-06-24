@@ -10,13 +10,13 @@ describe("Macro table primitives", () => {
   });
 
   it("renders backend table rows with formatted numeric display", () => {
-    render(<MacroDataTable table={tableFixture()} caption="CEX 永续看板" />);
+    render(<MacroDataTable table={tableFixture()} caption="信用压力表" />);
 
-    expect(screen.getByRole("region", { name: "CEX 永续看板，可横向滚动" })).toBeInTheDocument();
-    const table = screen.getByRole("table", { name: "CEX 永续看板" });
-    expect(within(table).getByText("CEX 永续看板")).toBeInTheDocument();
-    expect(within(table).getByText("12.50B")).toBeInTheDocument();
-    expect(within(table).getByText("0.0100%")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "信用压力表，可横向滚动" })).toBeInTheDocument();
+    const table = screen.getByRole("table", { name: "信用压力表" });
+    expect(within(table).getByText("信用压力表")).toBeInTheDocument();
+    expect(within(table).getByText("320.00")).toBeInTheDocument();
+    expect(within(table).getByText("8.10")).toBeInTheDocument();
     expect(table).not.toHaveTextContent("asset:spx");
     expect(table).not.toHaveTextContent("insufficient_history:60d");
     expect(table).not.toHaveTextContent("{");
@@ -26,16 +26,16 @@ describe("Macro table primitives", () => {
     render(
       <MacroDataTable
         table={{
-          id: "cex_perp_board",
+          id: "credit_stress_table",
           columns: tableFixture().columns,
           rows: [
             ...(tableFixture().rows ?? []),
             {
-              row_id: "SOLUSDT",
+              row_id: "credit:missing",
               cells: {
-                symbol: { display_value: "SOL", sort_value: "SOL" },
-                open_interest: { display_value: "缺失", sort_value: null },
-                funding: { display_value: "缺失", sort_value: null },
+                instrument: { display_value: "Missing spread", sort_value: "Missing spread" },
+                spread: { display_value: "缺失", sort_value: null },
+                yield: { display_value: "缺失", sort_value: null },
               },
             },
           ],
@@ -44,60 +44,101 @@ describe("Macro table primitives", () => {
       />,
     );
 
-    const sortButton = screen.getByRole("button", { name: "按未平仓排序" });
+    const sortButton = screen.getByRole("button", { name: "按利差排序" });
     fireEvent.click(sortButton);
 
     const table = screen.getByRole("table", { name: "可排序宏观表格" });
-    expect(within(table).getByRole("columnheader", { name: /未平仓/ })).toHaveAttribute(
+    expect(within(table).getByRole("columnheader", { name: /利差/ })).toHaveAttribute(
       "aria-sort",
       "ascending",
     );
     let rows = within(table).getAllByRole("row");
-    expect(rows[1]?.textContent).toContain("ETH");
-    expect(rows[2]?.textContent).toContain("BTC");
-    expect(rows[3]?.textContent).toContain("SOL");
+    expect(rows[1]?.textContent).toContain("IG OAS");
+    expect(rows[2]?.textContent).toContain("HY OAS");
+    expect(rows[3]?.textContent).toContain("Missing spread");
 
     fireEvent.click(sortButton);
 
-    expect(within(table).getByRole("columnheader", { name: /未平仓/ })).toHaveAttribute(
+    expect(within(table).getByRole("columnheader", { name: /利差/ })).toHaveAttribute(
       "aria-sort",
       "descending",
     );
     rows = within(table).getAllByRole("row");
-    expect(rows[1]?.textContent).toContain("BTC");
-    expect(rows[2]?.textContent).toContain("ETH");
-    expect(rows[3]?.textContent).toContain("SOL");
+    expect(rows[1]?.textContent).toContain("HY OAS");
+    expect(rows[2]?.textContent).toContain("IG OAS");
+    expect(rows[3]?.textContent).toContain("Missing spread");
   });
 
-  it("renders stable loading and empty states with accessible status labels", () => {
-    const { rerender } = render(
+  it("omits missing sparse cells and empty columns without placeholder text", () => {
+    render(
       <MacroDataTable
-        table={{ id: "rates_snapshot", rows: [] }}
-        caption="利率快照"
-        state="loading"
+        table={{
+          id: "credit_stress_table",
+          columns: [
+            { key: "instrument", label: "指标" },
+            { key: "spread", label: "利差" },
+            { key: "notes", label: "备注" },
+          ],
+          rows: [
+            {
+              row_id: "credit:hy_oas",
+              cells: {
+                instrument: { display_value: "HY OAS", sort_value: "HY OAS" },
+                spread: { display_value: null, sort_value: null },
+                notes: { display_value: "", sort_value: null },
+              },
+            },
+            {
+              row_id: "credit:ig_oas",
+              cells: {
+                instrument: { display_value: "IG OAS", sort_value: "IG OAS" },
+                spread: { display_value: "105.00", sort_value: 105 },
+              },
+            },
+            {
+              row_id: "credit:empty",
+              cells: {
+                instrument: { display_value: "", sort_value: "empty" },
+                spread: { display_value: null, sort_value: null },
+              },
+            },
+          ],
+        }}
+        caption="稀疏信用表"
       />,
     );
 
-    expect(screen.getByRole("status", { name: "利率快照加载状态" })).toHaveTextContent(
-      "表格加载中",
+    const table = screen.getByRole("table", { name: "稀疏信用表" });
+    expect(within(table).getByText("HY OAS")).toBeInTheDocument();
+    expect(within(table).getByText("IG OAS")).toBeInTheDocument();
+    expect(within(table).getByText("105.00")).toBeInTheDocument();
+    expect(within(table).queryByRole("columnheader", { name: /备注/ })).not.toBeInTheDocument();
+    expect(table).not.toHaveTextContent("暂无");
+    expect(table).not.toHaveTextContent("credit:empty");
+  });
+
+  it("returns no table chrome when the table model has no displayable rows", () => {
+    const { container } = render(
+      <MacroDataTable table={{ id: "rates_snapshot", rows: [] }} caption="利率快照" />,
     );
 
-    rerender(<MacroDataTable table={{ id: "rates_snapshot", rows: [] }} caption="利率快照" />);
-
-    expect(screen.getByRole("status", { name: "利率快照空状态" })).toHaveTextContent("暂无表格行");
+    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByRole("status", { name: "利率快照空状态" })).not.toBeInTheDocument();
+    expect(screen.queryByText("暂无表格行")).not.toBeInTheDocument();
   });
 
   it("renders source metadata tables without local provider inference", () => {
     render(
       <MacroSourceTable
-        caption="CEX 数据源"
+        caption="宏观降级数据源"
         source={{
           rows: [
             {
-              name: "cex_market_intel",
+              row_id: "source:FRED",
+              source_label: "FRED",
               status: "degraded",
               status_label: "降级",
-              degraded_reasons: ["coinglass_partial"],
+              degraded_reasons: ["provider_timeout"],
               observed_at_ms: 1_779_000_000_000,
             },
           ],
@@ -105,29 +146,102 @@ describe("Macro table primitives", () => {
       />,
     );
 
-    const table = screen.getByRole("table", { name: "CEX 数据源" });
-    expect(within(table).getByText("CEX OI Radar")).toBeInTheDocument();
+    const table = screen.getByRole("table", { name: "宏观降级数据源" });
+    expect(within(table).getByText("FRED")).toBeInTheDocument();
     expect(within(table).getByText("降级")).toBeInTheDocument();
-    expect(within(table).getByText("存在降级原因")).toBeInTheDocument();
-    expect(table).not.toHaveTextContent("cex_market_intel");
-    expect(table).not.toHaveTextContent("coinglass_partial");
+    expect(within(table).queryByRole("columnheader", { name: "备注" })).not.toBeInTheDocument();
+    expect(table).not.toHaveTextContent("provider_timeout");
   });
 
-  it("maps known provider ids to display names in source metadata", () => {
+  it("does not format raw source observed timestamps as latest-observation labels", () => {
+    render(
+      <MacroSourceTable
+        caption="宏观时间戳数据源"
+        source={{
+          rows: [
+            {
+              row_id: "source:FRED",
+              source_label: "FRED",
+              status_label: "降级",
+              observed_at_ms: Date.UTC(2026, 5, 10),
+            },
+          ],
+        }}
+      />,
+    );
+
+    const table = screen.getByRole("table", { name: "宏观时间戳数据源" });
+    expect(within(table).getByText("FRED")).toBeInTheDocument();
+    expect(within(table).getByText("降级")).toBeInTheDocument();
+    expect(within(table).queryByRole("columnheader", { name: "最新观测" })).not.toBeInTheDocument();
+    expect(table).not.toHaveTextContent("2026-06-10");
+  });
+
+  it("does not use raw source messages as notes", () => {
+    render(
+      <MacroSourceTable
+        caption="宏观消息数据源"
+        source={{
+          rows: [
+            {
+              row_id: "source:FRED",
+              source_label: "FRED",
+              status_label: "降级",
+              message: "FRED public CSV timed out",
+            },
+          ],
+        }}
+      />,
+    );
+
+    const table = screen.getByRole("table", { name: "宏观消息数据源" });
+    expect(within(table).getByText("FRED")).toBeInTheDocument();
+    expect(within(table).getByText("降级")).toBeInTheDocument();
+    expect(within(table).queryByRole("columnheader", { name: "备注" })).not.toBeInTheDocument();
+    expect(table).not.toHaveTextContent("FRED public CSV timed out");
+  });
+
+  it("does not use source degraded reasons as notes without backend note text", () => {
+    render(
+      <MacroSourceTable
+        caption="宏观降级原因数据源"
+        source={{
+          rows: [
+            {
+              row_id: "source:FRED",
+              source_label: "FRED",
+              status_label: "降级",
+              degraded_reasons: ["FRED public CSV timed out"],
+            },
+          ],
+        }}
+      />,
+    );
+
+    const table = screen.getByRole("table", { name: "宏观降级原因数据源" });
+    expect(within(table).getByText("FRED")).toBeInTheDocument();
+    expect(within(table).getByText("降级")).toBeInTheDocument();
+    expect(within(table).queryByRole("columnheader", { name: "备注" })).not.toBeInTheDocument();
+    expect(table).not.toHaveTextContent("FRED public CSV timed out");
+  });
+
+  it("does not translate score-participation booleans into source-table labels", () => {
     render(
       <MacroSourceTable
         caption="宏观数据源"
         source={{
           rows: [
             {
-              source: "fred",
+              row_id: "source:FRED",
+              source_label: "FRED",
               status: "ok",
               latest_observed_at: "2026-05-20",
               concept_count: 3,
               score_participation: true,
             },
             {
-              source: "yahoo",
+              row_id: "source:Yahoo",
+              source_label: "Yahoo",
               status: "partial",
               latest_observed_at: "2026-05-20",
               concept_count: 2,
@@ -141,64 +255,201 @@ describe("Macro table primitives", () => {
     const table = screen.getByRole("table", { name: "宏观数据源" });
     expect(within(table).getByText("FRED")).toBeInTheDocument();
     expect(within(table).getByText("Yahoo")).toBeInTheDocument();
-    expect(within(table).getByText("参与计分")).toBeInTheDocument();
-    expect(within(table).getByText("计分排除")).toBeInTheDocument();
+    expect(within(table).queryByRole("columnheader", { name: "计分" })).not.toBeInTheDocument();
+    expect(within(table).queryByText("参与计分")).not.toBeInTheDocument();
+    expect(within(table).queryByText("计分排除")).not.toBeInTheDocument();
     expect(table).not.toHaveTextContent("fred");
     expect(table).not.toHaveTextContent("yahoo");
   });
 
-  it("does not expose unknown raw source statuses", () => {
-    render(
+  it("drops source provider codes instead of translating them to display labels", () => {
+    const { container } = render(
       <MacroSourceTable
-        caption="未知状态数据源"
-        source={{ rows: [{ source: "fred", status: "provider_not_configured" }] }}
+        caption="provider code 数据源"
+        source={{
+          rows: [
+            {
+              row_id: "source:fred",
+              source_label: "fred",
+              latest_observed_at: "2026-05-20",
+              concept_count: 3,
+            },
+          ],
+        }}
       />,
     );
 
-    const table = screen.getByRole("table", { name: "未知状态数据源" });
-    expect(within(table).getByText("未知状态")).toBeInTheDocument();
-    expect(table).not.toHaveTextContent("provider_not_configured");
+    expect(screen.queryByRole("table", { name: "provider code 数据源" })).not.toBeInTheDocument();
+    expect(container).not.toHaveTextContent("FRED");
+    expect(container).not.toHaveTextContent("fred");
   });
 
-  it("does not infer rows from a legacy source metadata object", () => {
+  it("drops source rows without a real provider label and omits sparse fallback cells", () => {
     render(
+      <MacroSourceTable
+        caption="稀疏数据源"
+        source={{
+          rows: [
+            {
+              row_id: "source:FRED",
+              source_label: "FRED",
+              status: "ok",
+              latest_observed_at: "2026-05-20",
+              concept_count: 3,
+            },
+            {
+              source: "provider_not_configured",
+              status: "provider_not_configured",
+              message: "provider_not_configured",
+            },
+          ],
+        }}
+      />,
+    );
+
+    const table = screen.getByRole("table", { name: "稀疏数据源" });
+    expect(within(table).getByText("FRED")).toBeInTheDocument();
+    expect(within(table).getByText("2026-05-20")).toBeInTheDocument();
+    expect(within(table).getByText("3")).toBeInTheDocument();
+    expect(table).not.toHaveTextContent("暂无");
+    expect(table).not.toHaveTextContent("provider_not_configured");
+    expect(within(table).queryByRole("columnheader", { name: "计分" })).not.toBeInTheDocument();
+    expect(within(table).queryByRole("columnheader", { name: "备注" })).not.toBeInTheDocument();
+  });
+
+  it("drops source rows without backend row ids and source labels", () => {
+    const { container } = render(
+      <MacroSourceTable
+        caption="缺身份数据源"
+        source={{
+          rows: [
+            {
+              source_label: "FRED",
+              status: "ok",
+              latest_observed_at: "2026-05-20",
+              concept_count: 3,
+            },
+            {
+              row_id: "source:Yahoo",
+              source: "yahoo",
+              status: "ok",
+              latest_observed_at: "2026-05-20",
+              concept_count: 2,
+            },
+            {
+              row_id: "source:Legacy",
+              label: "Legacy Provider",
+              status: "ok",
+              latest_observed_at: "2026-05-20",
+              concept_count: 1,
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.queryByRole("table", { name: "缺身份数据源" })).not.toBeInTheDocument();
+    expect(container).not.toHaveTextContent("FRED");
+    expect(container).not.toHaveTextContent("Yahoo");
+    expect(container).not.toHaveTextContent("Legacy Provider");
+  });
+
+  it("drops unmapped source statuses instead of manufacturing placeholder labels", () => {
+    const { container } = render(
+      <MacroSourceTable
+        caption="异常状态数据源"
+        source={{
+          rows: [
+            { row_id: "source:FRED", source_label: "FRED", status: "provider_not_configured" },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.queryByRole("table", { name: "异常状态数据源" })).not.toBeInTheDocument();
+    expect(container).not.toHaveTextContent("未知状态");
+    expect(container).not.toHaveTextContent("provider_not_configured");
+  });
+
+  it("requires explicit source status labels instead of translating source status codes", () => {
+    const { container } = render(
+      <MacroSourceTable
+        caption="状态码数据源"
+        source={{
+          rows: [{ row_id: "source:FRED", source_label: "FRED", status: "ok" }],
+        }}
+      />,
+    );
+
+    expect(screen.queryByRole("table", { name: "状态码数据源" })).not.toBeInTheDocument();
+    expect(container).not.toHaveTextContent("可用");
+    expect(container).not.toHaveTextContent("ok");
+  });
+
+  it("drops coded source degradation reasons instead of manufacturing note copy", () => {
+    render(
+      <MacroSourceTable
+        caption="降级原因数据源"
+        source={{
+          rows: [
+            {
+              row_id: "source:FRED",
+              source_label: "FRED",
+              status_label: "部分可用",
+              degraded_reasons: ["provider_not_configured"],
+            },
+          ],
+        }}
+      />,
+    );
+
+    const table = screen.getByRole("table", { name: "降级原因数据源" });
+    expect(within(table).getByText("FRED")).toBeInTheDocument();
+    expect(within(table).getByText("部分可用")).toBeInTheDocument();
+    expect(table).not.toHaveTextContent("存在降级原因");
+    expect(table).not.toHaveTextContent("provider_not_configured");
+    expect(within(table).queryByRole("columnheader", { name: "备注" })).not.toBeInTheDocument();
+  });
+
+  it("deletes empty source metadata state instead of inferring legacy rows", () => {
+    const { container } = render(
       <MacroSourceTable
         caption="旧数据源"
         source={{ name: "fred", status: "provider_not_configured", run_id: "run-1" }}
       />,
     );
 
-    const state = screen.getByRole("status", { name: "旧数据源空状态" });
-    expect(state).toHaveTextContent("暂无数据源元信息");
-    expect(state).not.toHaveTextContent("fred");
-    expect(state).not.toHaveTextContent("provider_not_configured");
-    expect(state).not.toHaveTextContent("run-1");
+    expect(screen.queryByRole("status", { name: "旧数据源空状态" })).not.toBeInTheDocument();
+    expect(container).not.toHaveTextContent("暂无数据源元信息");
+    expect(container).not.toHaveTextContent("fred");
+    expect(container).not.toHaveTextContent("provider_not_configured");
+    expect(container).not.toHaveTextContent("run-1");
   });
 });
 
 function tableFixture(): MacroModuleTable {
   return {
-    id: "cex_perp_board",
+    id: "credit_stress_table",
     columns: [
-      { key: "symbol", label: "合约" },
-      { key: "open_interest", label: "未平仓" },
-      { key: "funding", label: "资金费率" },
+      { key: "instrument", label: "指标" },
+      { key: "spread", label: "利差" },
+      { key: "yield", label: "收益率" },
     ],
     rows: [
       {
-        row_id: "BTCUSDT",
+        row_id: "credit:hy_oas",
         cells: {
-          symbol: { display_value: "BTC", sort_value: "BTC" },
-          open_interest: { display_value: "12.50B", sort_value: 12_500_000_000 },
-          funding: { display_value: "0.0100%", sort_value: 0.0001 },
+          instrument: { display_value: "HY OAS", sort_value: "HY OAS" },
+          spread: { display_value: "320.00", sort_value: 320 },
+          yield: { display_value: "8.10", sort_value: 8.1 },
         },
       },
       {
-        row_id: "ETHUSDT",
+        row_id: "credit:ig_oas",
         cells: {
-          symbol: { display_value: "ETH", sort_value: "ETH" },
-          open_interest: { display_value: "8.30B", sort_value: 8_300_000_000 },
-          funding: { display_value: "-0.0200%", sort_value: -0.0002 },
+          instrument: { display_value: "IG OAS", sort_value: "IG OAS" },
+          spread: { display_value: "105.00", sort_value: 105 },
+          yield: { display_value: "5.40", sort_value: 5.4 },
         },
       },
     ],

@@ -67,6 +67,37 @@ class TokenIntentLookupRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def recent_intents_for_lookup_keys(
+        self,
+        keys: list[str],
+        *,
+        since_ms: int,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        if not keys:
+            return []
+        placeholders = ",".join("%s" for _ in keys)
+        rows = self.conn.execute(
+            f"""
+            WITH picked AS (
+              SELECT DISTINCT token_intents.intent_id
+              FROM token_intent_lookup_keys
+              JOIN token_intents ON token_intents.intent_id = token_intent_lookup_keys.intent_id
+              JOIN events ON events.event_id = token_intents.event_id
+              WHERE token_intent_lookup_keys.lookup_key IN ({placeholders})
+                AND events.received_at_ms >= %s
+              ORDER BY token_intents.intent_id
+              LIMIT %s
+            )
+            SELECT token_intents.*
+            FROM picked
+            JOIN token_intents ON token_intents.intent_id = picked.intent_id
+            ORDER BY token_intents.created_at_ms DESC, token_intents.intent_id
+            """,
+            (*keys, int(since_ms), max(0, int(limit))),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def recent_unresolved_intents_for_lookup_keys(
         self,
         keys: list[str],
@@ -138,34 +169,3 @@ def _run_repository_write[T](conn: Any, commit: bool, write: Callable[[], T]) ->
         with _transaction(conn):
             return write()
     return write()
-
-    def recent_intents_for_lookup_keys(
-        self,
-        keys: list[str],
-        *,
-        since_ms: int,
-        limit: int,
-    ) -> list[dict[str, Any]]:
-        if not keys:
-            return []
-        placeholders = ",".join("%s" for _ in keys)
-        rows = self.conn.execute(
-            f"""
-            WITH picked AS (
-              SELECT DISTINCT token_intents.intent_id
-              FROM token_intent_lookup_keys
-              JOIN token_intents ON token_intents.intent_id = token_intent_lookup_keys.intent_id
-              JOIN events ON events.event_id = token_intents.event_id
-              WHERE token_intent_lookup_keys.lookup_key IN ({placeholders})
-                AND events.received_at_ms >= %s
-              ORDER BY token_intents.intent_id
-              LIMIT %s
-            )
-            SELECT token_intents.*
-            FROM picked
-            JOIN token_intents ON token_intents.intent_id = picked.intent_id
-            ORDER BY token_intents.created_at_ms DESC, token_intents.intent_id
-            """,
-            (*keys, int(since_ms), max(0, int(limit))),
-        ).fetchall()
-        return [dict(row) for row in rows]

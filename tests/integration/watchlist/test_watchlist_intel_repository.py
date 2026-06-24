@@ -68,7 +68,13 @@ def test_watchlist_handle_overview_uses_raw_events_for_clusters(tmp_path):
         )
         _insert_token_resolution(conn, event_id="event-2", symbol="BONK")
 
-        overview = repo.handle_overview(handle="MarionAwfal", scope="signal", since_ms=0)
+        overview = repo.handle_overview(
+            handle="MarionAwfal",
+            scope="signal",
+            since_ms=0,
+            source_limit=10,
+            cluster_limit=10,
+        )
     finally:
         conn.close()
 
@@ -104,7 +110,13 @@ def test_watchlist_handle_overview_metrics_are_not_limited_by_cluster_sample(tmp
                 is_watched=True,
             )
 
-        overview = repo.handle_overview(handle="marionawfal", scope="signal", since_ms=0, limit=2)
+        overview = repo.handle_overview(
+            handle="marionawfal",
+            scope="signal",
+            since_ms=0,
+            source_limit=10,
+            cluster_limit=2,
+        )
     finally:
         conn.close()
 

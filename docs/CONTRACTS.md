@@ -468,37 +468,53 @@ Macro contract:
   module key `read`, retired module key `evidence`, and retired top-level
   `data_gaps` field are not compatibility surfaces. Frontend module pages
   consume v3 directly and must not recompute scoring, readiness, or module
-  reads locally. There is no v1 or v2 compatibility read path.
+  reads locally. There is no v1 or v2 compatibility read path. `data_health`
+  gap rows are display-ready source-health records: clients preserve backend
+  labels, severity, scope, and `remediation_hint` so missing implemented depth
+  sources read as actionable repair work, not opaque chips or frontend-inferred
+  provider advice.
+  The `overview` module's `module_read.decision_console` is the formal
+  decision-console payload for the first screen. It may include
+  `top_changes`, `quality_blockers`, `trade_map`, `future_catalysts`,
+  `watchlist_alerts`, and `data_credibility`; the frontend renders these
+  source-backed fields and must not synthesize macro trade logic or catalyst
+  text from raw indicator values. Broader event facts from persisted `event:*`
+  macro observations and source-backed `news_page_rows` are rendered as the
+  sibling `module_read.market_event_flow` block, not as duplicate
+  decision-console sections. Market-event rows cover official Fed/BEA/BLS
+  calendar events, Treasury auction calendar/results, official Federal Reserve
+  text documents, and projected News Intel story rows with source URL,
+  market-scope, asset, and mainline-impact labels; they are not numeric regime
+  inputs and do not restore deleted proxy pages. Text/document event rows may
+  carry `value_numeric=null`; the API
+  displays titles from persisted raw payload/provenance instead of using
+  numeric placeholder values. When source provenance includes an official URL,
+  each market-event row carries `source_url` so the frontend can link to the
+  primary document. Fed text rows also carry `document_type` and, for speeches
+  when available, `speaker`; these fields are metadata for auditability, not
+  text-scoring or route-restoration contracts. Official calendar rows preserve
+  release timing and reference periods when the source provides them, such as
+  BLS `event_time_et` and `reference_period`.
   The `assets` module may include a persisted `daily_brief` from
   `macro_daily_briefs(brief_key='assets_today')`; an absent row is exposed as
   no daily brief, but a missing repository read method is a server-side contract
   failure rather than a fallback to `null`.
-  Supported module ids include `overview`; asset subpages
+  Supported module ids include `overview`; `assets` plus asset subpages
   (`assets/equities`, `assets/bonds`, `assets/commodities`, `assets/fx`,
-  `assets/crypto`, `assets/crypto-derivatives`); rates subpages
-  (`rates/fed-funds`, `rates/yield-curve`, `rates/auctions`,
-  `rates/real-rates`, `rates/expectations`); Fed subpages
-  (`fed/statements`, `fed/speeches`); liquidity subpages
-  (`liquidity/transmission-chain`, `liquidity/fed-balance-sheet`,
-  `liquidity/operations`, `liquidity/rrp-tga`, `liquidity/reserves`,
-  `liquidity/global-dollar`, `liquidity/subsurface`); economy
-  subpages (`economy/gdp`, `economy/employment`, `economy/inflation`,
-  `economy/consumer`); volatility subpages
-  (`volatility/dashboard`, `volatility/vix`); and credit
-  subpages (`credit/cds`, `credit/stress`). Unsupported ids return
-  `400 {"error":"unsupported_macro_module","field":"module_id"}`.
-- The `assets/crypto-derivatives` module may attach a `cex_perp_board` table
-  sourced from persisted current rows in `cex_oi_radar_rows` and publication
-  state in `cex_oi_radar_publication_state`. Rows are compact display-table
-  rows with labeled cells for symbol, open interest, funding, 24h volume, and
-  score. Optional richer derivatives facts are exposed only when persisted read
-  models add them through the v3 table-cell contract; internal audit and join
-  fields such as target ids, pricefeed ids, and score component JSON are not
-  part of the macro module contract. Missing board rows are represented by the
-  persisted board read returning `status="missing"` and empty rows; a missing
-  `cex_oi_radar` repository contract is a server-side failure, not a fallback
-  that omits the table.
-- `/api/cex/radar-board` reads the same persisted board repository contract.
+  `assets/crypto`); rates subpages
+  (`rates/fed-funds`, `rates/yield-curve`, `rates/real-rates`); the retained
+  liquidity subpage (`liquidity/rrp-tga`); economy subpages (`economy/gdp`,
+  `economy/employment`, `economy/inflation`); volatility subpage
+  (`volatility/vix`); and credit subpage (`credit/stress`). Removed proxy or
+  gap-only ids are not hidden compatibility surfaces; they return
+  `400 {"error":"unsupported_macro_module","field":"module_id"}` through the
+  ordinary unsupported-module path.
+  `volatility/vix` consumes the source-backed VIX family plus the packaged
+  Yahoo Finance `^MOVE` rates-volatility proxy when available; licensed ICE
+  intraday redistribution remains a source-backlog item, not a hidden module
+  gap.
+- `/api/cex/radar-board` reads the persisted CEX radar board repository
+  contract.
   The route requires the repository payload to include a formal `rows` list and
   each row to include mapping-shaped `score_components_json`; missing fields
   are server-side read-model contract failures, not empty board or empty score
@@ -506,11 +522,12 @@ Macro contract:
 - `/api/macro/series` is authenticated and read-only. It accepts
   `concept_keys=<comma-separated canonical macro concepts>` and
   `window=20d|60d|120d|1y|3y` and returns grouped observation points for chart
-  hydration. Query-token auth uses the shared `token` parameter. Provider-native
-  series keys such as `fred:DGS10` or `yahoo:SPY` are rejected; frontend clients
-  must request canonical concept keys only. Series with fewer than two usable
-  points return `status = "insufficient_history"` plus a structured data gap;
-  drawable multi-point series return `status = "ok"` with usable points.
+  hydration. Macro series does not accept query-token authentication or a
+  `token` query parameter; clients authenticate through the macro API request
+  auth path and send only canonical concept keys. Provider-native series keys
+  such as `fred:DGS10` or `yahoo:SPY` are rejected. Series with fewer than two
+  usable points return `status = "insufficient_history"` plus a structured data
+  gap; drawable multi-point series return `status = "ok"` with usable points.
 
 Watchlist handle intel contract:
 
@@ -863,17 +880,33 @@ Macro one-shot CLI commands are operator surfaces, not background workers.
 `macro sync --bundle macro-core --start <date> --end <date>` delegates to the
 same `MacroSyncService` as the `macro_sync` worker and executes one bounded
 window. It never writes macro read models directly. `macro import-bundle --file
-<json>` or `--stdin` imports a saved macrodata-cli `macro-core` envelope for
-offline replay/seed only, records a `macro_import_runs` audit row, and emits the
-same persisted-fact wake hint as runtime sync; `macro status` reports migration readiness,
-observation/concept counts, history readiness, concepts below minimum history,
-sync queue state, fact max observed date, projection lag, the latest snapshot,
-and a `macrodata_cli` diagnostic block. That block reports the installed
-`macrodata-cli` package version, whether runtime will use a console script or
-Python entrypoint fallback, and whether the installed `macro-core` bundle
-contains the Parallax-required series. A status can therefore distinguish
-provider/key gaps from an old packaged macrodata dependency before operators
-debug the page.
+<json>` or `--stdin` imports a saved macrodata-cli envelope for offline
+replay/seed only, records a `macro_import_runs` audit row, and emits the same
+persisted-fact wake hint as runtime sync. Numeric regime bundles such as
+`macro-core` write core concepts; standalone event bundles such as
+`macro-calendar-core`, `treasury-auction-core`, and `fed-text-core` write
+`event:*` concepts for the overview market-event read path without expanding
+`MACRO_CORE_CONCEPTS` or rebuilding the numeric regime snapshot for event-only
+changes. Market-event projection must allow non-numeric text rows with
+`value_numeric=null`; numeric macro-series filters must not silently exclude
+official Fed text documents from the request-path read model. Market-event
+payloads preserve official source URLs and Fed text document metadata from raw
+provenance when available. The background `macro_sync` worker reads
+`workers.macro_sync.bundle_names`; the default set syncs `macro-core`,
+`macro-calendar-core`, `treasury-auction-core`, and `fed-text-core` through the
+same bounded window table. `macro status`
+reports migration readiness, observation/concept counts, history readiness,
+concepts below minimum history, sync queue state, fact max observed date,
+projection lag, the latest snapshot, and a `macrodata_cli` diagnostic block.
+That block reports the installed `macrodata-cli` package version, whether
+runtime will use a console script or Python entrypoint fallback, and whether the
+installed macrodata dependency exposes the Parallax-required bundles and series.
+A status can therefore distinguish provider/key gaps from an old packaged
+macrodata dependency before operators debug the page. Event bundle freshness is
+checked at the series level as well as the bundle-name level; missing
+configured series are reported in `missing_required_bundle_series_by_bundle`.
+Event-bundle history command availability must be verified before relying on
+the default catalyst sync cadence.
 Docker builds install the pinned `AnalyThothAI/macrodata-cli` Git dependency.
 Runtime sync uses the packaged `macrodata` executable when the console script
 is healthy, or the installed Python package entrypoint when the script is

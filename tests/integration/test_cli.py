@@ -28,6 +28,18 @@ from tests.postgres_test_utils import test_postgres_dsn as postgres_test_dsn
 PEPE = "0x6982508145454ce325ddbe47a25d4ec3d2311933"
 
 
+class FakeWorkerSettings(SimpleNamespace):
+    def model_copy(self, *, update: dict[str, object] | None = None):
+        data = vars(self).copy()
+        data.update(update or {})
+        return type(self)(**data)
+
+
+class FakeAssetMarketProviders(SimpleNamespace):
+    async def aclose(self):
+        return None
+
+
 def make_event(
     event_id: str,
     received_at_ms: int | None = None,
@@ -126,6 +138,7 @@ def seed_postgres(db_path: Path) -> None:
             now_ms=now_ms,
             limit=20,
             rank_limit=20,
+            lease_owner="test_cli_seed",
         )
     finally:
         conn.close()
@@ -551,6 +564,9 @@ def test_rebuild_token_radar_one_shot_acquires_projection_advisory_lock(monkeypa
             events.append(("acquire", worker_name, key))
             return FakeLock()
 
+        async def aclose(self):
+            return None
+
     class FakeWorker:
         SINGLE_WRITER_KEY = 2026051501
 
@@ -574,7 +590,7 @@ def test_rebuild_token_radar_one_shot_acquires_projection_advisory_lock(monkeypa
     db = FakeDB()
     settings = SimpleNamespace(
         workers=SimpleNamespace(
-            token_radar_projection=SimpleNamespace(
+            token_radar_projection=FakeWorkerSettings(
                 advisory_lock_key=configured_lock_key,
                 batch_size=100,
                 wakes_on=("market_tick_written",),
@@ -632,6 +648,9 @@ def test_rebuild_token_radar_one_shot_skips_when_live_worker_holds_lock(monkeypa
             events.append(("acquire", worker_name, key))
             raise RuntimeError("advisory_lock_unavailable")
 
+        async def aclose(self):
+            return None
+
     class FakeWorker:
         SINGLE_WRITER_KEY = 2026051501
 
@@ -652,7 +671,7 @@ def test_rebuild_token_radar_one_shot_skips_when_live_worker_holds_lock(monkeypa
     db = FakeDB()
     settings = SimpleNamespace(
         workers=SimpleNamespace(
-            token_radar_projection=SimpleNamespace(
+            token_radar_projection=FakeWorkerSettings(
                 advisory_lock_key=configured_lock_key,
                 batch_size=100,
                 wakes_on=("market_tick_written",),
@@ -716,6 +735,11 @@ def test_run_sync_gmgn_directory_walks_all_pages_and_upserts():
                 outer = self
 
                 def commit(self_inner):
+                    self_inner.outer.commits += 1
+
+                @contextmanager
+                def transaction(self_inner):
+                    yield
                     self_inner.outer.commits += 1
 
             self.conn = _Conn()
@@ -971,9 +995,12 @@ def test_cli_ops_refresh_asset_profiles_emits_skipped_without_profile_provider(m
         worker_pool = SimpleNamespace(close=lambda: None)
         wake_pool = SimpleNamespace(close=lambda: None)
 
+        async def aclose(self):
+            return None
+
     def fake_wire_asset_market_providers(settings, *, start_collector):
         captured["start_collector"] = start_collector
-        return SimpleNamespace(dex_profile_sources=())
+        return FakeAssetMarketProviders(dex_profile_sources=())
 
     write_runtime_config(tmp_path, db_path=tmp_path / ".parallax" / "postgres_test_db", llm=True)
     monkeypatch.setenv("HOME", str(tmp_path))
@@ -1033,6 +1060,12 @@ def test_cli_ops_run_resolution_refresh_uses_worker_without_outer_repository_ses
             captured.setdefault("session_names", []).append(name)
             return FakeSession(self.repos)
 
+        def wake_emitter(self):
+            return object()
+
+        async def aclose(self):
+            return None
+
     class FakeSession:
         def __init__(self, repos):
             self.repos = repos
@@ -1053,7 +1086,7 @@ def test_cli_ops_run_resolution_refresh_uses_worker_without_outer_repository_ses
 
     def fake_wire_asset_market_providers(settings, *, start_collector):
         captured["start_collector"] = start_collector
-        return SimpleNamespace(
+        return FakeAssetMarketProviders(
             dex_discovery_market=object(),
             dex_quote_market=None,
             discovery_chain_ids=("solana",),
@@ -1099,6 +1132,12 @@ def test_cli_ops_rebuild_token_profiles_is_db_only_and_closes_db(monkeypatch, tm
         worker_pool = FakePool("worker")
         tool_pool = FakePool("tool")
         wake_pool = FakePool("wake")
+
+        async def aclose(self):
+            self.api_pool.close()
+            self.worker_pool.close()
+            self.tool_pool.close()
+            self.wake_pool.close()
 
     class FakeWorker:
         def __init__(self, *, name, settings, db, telemetry):
@@ -1171,6 +1210,12 @@ def test_cli_ops_mirror_token_images_is_db_only_and_closes_db(monkeypatch, tmp_p
         tool_pool = FakePool("tool")
         wake_pool = FakePool("wake")
 
+        async def aclose(self):
+            self.api_pool.close()
+            self.worker_pool.close()
+            self.tool_pool.close()
+            self.wake_pool.close()
+
     class FakeWorker:
         def __init__(self, *, name, settings, db, telemetry, app_home):
             captured["worker"] = (name, settings.batch_size, db, telemetry, app_home)
@@ -1240,7 +1285,7 @@ def test_cli_ops_repair_token_profile_images_enqueues_profiles_then_runs_worker(
                 {
                     "target_type": "CexToken",
                     "target_id": "cex_token:BTC",
-                    "source_watermark_ms": None,
+                    "source_watermark_ms": 1_700_000_000_000,
                 },
             ]
 
@@ -1299,6 +1344,12 @@ def test_cli_ops_repair_token_profile_images_enqueues_profiles_then_runs_worker(
         def worker_session(self, name):
             captured["worker_session_name"] = name
             yield FakeRepos()
+
+        async def aclose(self):
+            self.api_pool.close()
+            self.worker_pool.close()
+            self.tool_pool.close()
+            self.wake_pool.close()
 
     class FakeWorker:
         def __init__(self, *, name, settings, db, telemetry):
@@ -1423,6 +1474,12 @@ def test_cli_ops_repair_token_profile_images_closes_db_when_worker_close_fails(m
         def worker_session(self, _name):
             yield FakeRepos()
 
+        async def aclose(self):
+            self.api_pool.close()
+            self.worker_pool.close()
+            self.tool_pool.close()
+            self.wake_pool.close()
+
     class FakeWorker:
         def __init__(self, *, name, settings, db, telemetry):
             pass
@@ -1465,6 +1522,11 @@ def test_cli_ops_refresh_asset_profiles_closes_db_when_provider_wiring_fails(mon
             self.api_pool = FakePool("api")
             self.worker_pool = FakePool("worker")
             self.wake_pool = FakePool("wake")
+
+        async def aclose(self):
+            self.api_pool.close()
+            self.worker_pool.close()
+            self.wake_pool.close()
 
     def fake_wire_asset_market_providers(settings, *, start_collector):
         raise RuntimeError("provider wiring failed")

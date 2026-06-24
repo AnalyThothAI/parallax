@@ -20,19 +20,25 @@ export type {
   MacroDailyBriefBlock,
 } from "./macroAssetOverviewTypes";
 
-export function buildAssetMarketGroups(
-  table: MacroModuleTable,
-  fallbackAsOf = "",
-): AssetMarketGroup[] {
+export function buildAssetMarketGroups(table: MacroModuleTable | null): AssetMarketGroup[] {
+  if (!table) {
+    return [];
+  }
   const model = buildMacroTableModel(table);
-  return ASSET_GROUPS.map((group) => ({
-    key: group.key,
-    route: group.route,
-    rows: model.rows
+  return ASSET_GROUPS.map((group) => {
+    const rows = model.rows
       .filter((row) => group.match(rowKey(row)))
-      .map((row) => assetMarketRow(row, fallbackAsOf)),
-    title: group.title,
-  }));
+      .flatMap((row) => {
+        const assetRow = assetMarketRow(row);
+        return assetRow ? [assetRow] : [];
+      });
+    return {
+      key: group.key,
+      route: group.route,
+      rows,
+      title: group.title,
+    };
+  }).filter((group) => group.rows.length > 0);
 }
 
 export function buildAssetDiagnosticsSummary({
@@ -41,7 +47,7 @@ export function buildAssetDiagnosticsSummary({
   provenance,
 }: {
   buckets: MacroDataHealthBucket[];
-  moduleStatus: string;
+  moduleStatus: string | null;
   provenance: MacroSemanticRecord;
 }): AssetDiagnosticsSummary {
   return {
@@ -57,42 +63,54 @@ export function buildAssetDiagnosticsSummary({
 export function normalizeDailyBrief(value: unknown): MacroDailyBrief | null {
   if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
+  const headline = stringValue(record.headline);
+  const status = stringValue(record.status);
+  if (!headline || !status) {
+    return null;
+  }
   const blocks = Array.isArray(record.blocks)
     ? record.blocks.flatMap((block) => normalizeDailyBriefBlock(block))
     : [];
   return {
     blocks,
     dataQuality: normalizeDailyBriefQuality(record.data_quality),
-    headline: String(record.headline ?? "今日判断暂不可用"),
-    status: String(record.status ?? "unknown"),
+    headline,
+    status,
   };
 }
 
-function assetMarketRow(row: MacroTableRowModel, fallbackAsOf: string): AssetMarketRow {
+function assetMarketRow(row: MacroTableRowModel): AssetMarketRow | null {
+  const latest = displayCell(row, "latest");
+  const name = displayCell(row, "indicator");
+  const symbol = assetSymbol(row);
+  if (!latest || !name || !symbol) {
+    return null;
+  }
   return {
-    asOf: asOfLabel(row, fallbackAsOf),
+    asOf: asOfLabel(row),
     delta: dayDelta(row),
     deltaTone: deltaTone(row),
     id: row.id,
-    latest: cell(row, "latest"),
-    name: cell(row, "indicator"),
+    latest,
+    name,
     quality: qualityLabel(row),
-    symbol: assetSymbol(row),
+    symbol,
   };
 }
 
 function normalizeDailyBriefBlock(value: unknown): MacroDailyBriefBlock[] {
   if (!value || typeof value !== "object") return [];
   const record = value as Record<string, unknown>;
-  const id = String(record.id ?? "").trim();
-  const title = String(record.title ?? "").trim();
-  const body = String(record.body ?? "").trim();
-  if (!id || !title || !body) return [];
+  const id = stringValue(record.id);
+  const title = stringValue(record.title);
+  const body = stringValue(record.body);
+  const stance = stringValue(record.stance);
+  if (!id || !title || !body || !stance) return [];
   return [
     {
       body,
       id,
-      stance: String(record.stance ?? "neutral"),
+      stance,
       title,
     },
   ];
@@ -101,70 +119,56 @@ function normalizeDailyBriefBlock(value: unknown): MacroDailyBriefBlock[] {
 function normalizeDailyBriefQuality(value: unknown): MacroDailyBriefQuality | undefined {
   if (!value || typeof value !== "object") return undefined;
   const record = value as Record<string, unknown>;
+  const status = stringValue(record.status);
+  if (!status) {
+    return undefined;
+  }
   return {
     gapCount: numberValue(record.gap_count),
     historyCoverageRatio: numberValue(record.history_coverage_ratio),
     latestCoverageRatio: numberValue(record.latest_coverage_ratio),
-    status: String(record.status ?? "unknown"),
+    status,
   };
 }
 
 function rowKey(row: MacroTableRowModel): string {
-  return String(row.raw.row_id ?? row.raw.concept_key ?? row.id ?? "").toLowerCase();
+  return row.id.toLowerCase();
 }
 
-function cell(row: MacroTableRowModel, columnId: string): string {
-  return row.cells[columnId]?.displayValue ?? "暂无";
+function displayCell(row: MacroTableRowModel, columnId: string): string | null {
+  const value = row.cells[columnId]?.displayValue;
+  if (!value) {
+    return null;
+  }
+  return value;
 }
 
-function assetSymbol(row: MacroTableRowModel): string {
-  const symbol = row.cells.symbol?.displayValue;
-  if (symbol && symbol !== "暂无") return symbol;
-  const rawSymbol = stringValue(row.raw.symbol) ?? stringValue(row.raw.ticker);
-  if (rawSymbol) return rawSymbol;
-  const key = rowKey(row);
-  const suffix = key.split(":").at(-1);
-  return suffix ? suffix.toUpperCase() : "暂无";
+function assetSymbol(row: MacroTableRowModel): string | null {
+  return displayCell(row, "symbol");
 }
 
-function dayDelta(row: MacroTableRowModel): string {
-  const oneDay = row.cells.delta_1d?.displayValue;
-  if (oneDay && oneDay !== "暂无") return oneDay;
-  return row.cells.delta_20d?.displayValue ?? "暂无";
+function dayDelta(row: MacroTableRowModel): string | null {
+  return displayCell(row, "delta_1d");
 }
 
-function asOfLabel(row: MacroTableRowModel, fallbackAsOf: string): string {
-  return (
-    firstDisplayCell(row, ["observed_at", "latest_observed_at", "date", "asof_date"]) ??
-    stringValue(row.raw.latest_observed_at) ??
-    stringValue(row.raw.observed_at) ??
-    stringValue(row.raw.date) ??
-    stringValue(fallbackAsOf) ??
-    "待确认"
-  );
+function asOfLabel(row: MacroTableRowModel): string | null {
+  return firstDisplayCell(row, ["observed_at", "latest_observed_at"]);
 }
 
 function firstDisplayCell(row: MacroTableRowModel, columnIds: string[]): string | null {
   for (const columnId of columnIds) {
     const value = row.cells[columnId]?.displayValue;
-    if (value && value !== "暂无") return value;
+    if (value) return value;
   }
   return null;
 }
 
-function qualityLabel(row: MacroTableRowModel): string {
-  const quality = row.cells.quality?.displayValue;
-  const source = row.cells.source?.displayValue;
-  if (quality && quality !== "暂无" && source && source !== "暂无" && quality !== source) {
-    return `${quality} · ${source}`;
-  }
-  if (quality && quality !== "暂无") return quality;
-  if (source && source !== "暂无") return source;
-  return "待确认";
+function qualityLabel(row: MacroTableRowModel): string | null {
+  return displayCell(row, "quality");
 }
 
 function deltaTone(row: MacroTableRowModel): "up" | "down" | "flat" {
-  const value = row.cells.delta_1d?.sortValue ?? row.cells.delta_20d?.sortValue;
+  const value = row.cells.delta_1d?.sortValue;
   if (typeof value !== "number") return "flat";
   if (value > 0) return "up";
   if (value < 0) return "down";

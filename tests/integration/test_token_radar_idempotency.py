@@ -46,6 +46,7 @@ def test_token_radar_rebuild_is_idempotent_from_explicit_repair_dirty_targets(tm
             now_ms=FIXED_NOW_MS,
             limit=10,
             rank_limit=10,
+            lease_owner="test_token_radar_idempotency",
         )
         first_rows = _radar_rows(conn)
 
@@ -58,6 +59,7 @@ def test_token_radar_rebuild_is_idempotent_from_explicit_repair_dirty_targets(tm
             now_ms=FIXED_NOW_MS,
             limit=10,
             rank_limit=10,
+            lease_owner="test_token_radar_idempotency",
         )
         second_rows = _radar_rows(conn)
     finally:

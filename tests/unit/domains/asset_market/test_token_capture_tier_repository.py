@@ -44,10 +44,13 @@ class _ScriptedConnection:
         self.results = list(results)
         self.sql: list[str] = []
         self.params: list[dict[str, Any]] = []
+        self.rowcount = 0
 
     def execute(self, sql: str, params: dict[str, Any] | None = None) -> _ScriptedConnection:
         self.sql.append(str(sql))
         self.params.append(params or {})
+        next_result = self.results[0] if self.results else None
+        self.rowcount = 1 if next_result is not None else 0
         return self
 
     def fetchone(self) -> dict[str, Any] | None:

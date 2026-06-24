@@ -14,35 +14,20 @@ export type MacroModuleId =
   | "assets/commodities"
   | "assets/fx"
   | "assets/crypto"
-  | "assets/crypto-derivatives"
   | "rates/fed-funds"
   | "rates/yield-curve"
-  | "rates/auctions"
   | "rates/real-rates"
-  | "rates/expectations"
-  | "fed/statements"
-  | "fed/speeches"
-  | "liquidity/transmission-chain"
-  | "liquidity/fed-balance-sheet"
-  | "liquidity/operations"
   | "liquidity/rrp-tga"
-  | "liquidity/reserves"
-  | "liquidity/global-dollar"
-  | "liquidity/subsurface"
   | "economy/gdp"
   | "economy/employment"
   | "economy/inflation"
-  | "economy/consumer"
-  | "volatility/dashboard"
   | "volatility/vix"
-  | "credit/cds"
   | "credit/stress";
 
 export type MacroRouteSection =
   | "overview"
   | "assets"
   | "rates"
-  | "fed"
   | "liquidity"
   | "economy"
   | "volatility"
@@ -55,38 +40,14 @@ export type MacroModuleRoute = {
   href: string;
 };
 
-export type MacroRouteResolution =
-  | {
-      routeKind: "module";
-      moduleId: MacroModuleId;
-      pageKind: Exclude<MacroPageKind, "matrix" | "unsupported">;
-      productTier: Exclude<MacroProductTier, "unsupported">;
-      routeId: MacroModuleId;
-      canonicalPath: string;
-      wasUnknown: false;
-    }
-  | {
-      routeKind: "matrix";
-      pageKind: "matrix";
-      productTier: Exclude<MacroProductTier, "unsupported">;
-      routeId: "assets/correlation";
-      canonicalPath: string;
-      wasUnknown: false;
-    }
-  | {
-      routeKind: "redirect";
-      canonicalPath: string;
-      routeTail: string;
-      wasUnknown: false;
-    }
-  | {
-      routeKind: "unsupported";
-      pageKind: "unsupported";
-      productTier: "unsupported";
-      canonicalPath: string;
-      routeTail: string;
-      wasUnknown: true;
-    };
+export type MacroRouteResolution = {
+  routeKind: "module";
+  moduleId: MacroModuleId;
+  pageKind: MacroPageKind;
+  productTier: MacroProductTier;
+  routeId: MacroModuleId;
+  canonicalPath: string;
+};
 
 export type MacroBreadcrumb = {
   label: string;
@@ -100,78 +61,43 @@ export const MACRO_MODULE_ROUTES: MacroModuleRoute[] =
 
 const ROUTES_BY_ID = new Map(MACRO_MODULE_ROUTES.map((route) => [route.moduleId, route]));
 
-const MACRO_PARENT_ROUTE_REDIRECTS = new Map<string, string>([
-  ["rates", "/macro/rates/fed-funds"],
-  ["fed", "/macro/fed/statements"],
-  ["liquidity", "/macro/liquidity/transmission-chain"],
-  ["economy", "/macro/economy/gdp"],
-  ["volatility", "/macro/volatility/dashboard"],
-  ["credit", "/macro/credit/cds"],
-]);
-
-export function parseMacroRouteTail(routeTail: string | undefined): MacroRouteResolution {
+export function parseMacroRouteTail(routeTail: string | undefined): MacroRouteResolution | null {
   const normalized = normalizeRouteTail(routeTail);
   if (normalized === "") {
     const descriptor = macroRouteDescriptor("overview");
+    if (!descriptor) {
+      return null;
+    }
     return {
-      canonicalPath: "/macro",
-      moduleId: "overview",
-      pageKind: descriptor ? modulePageKind(descriptor.pageKind) : "overview",
-      productTier: descriptor?.productTier ?? "primary",
-      routeId: "overview",
+      canonicalPath: descriptor.href,
+      moduleId: descriptor.routeId,
+      pageKind: descriptor.pageKind,
+      productTier: descriptor.productTier,
+      routeId: descriptor.routeId,
       routeKind: "module",
-      wasUnknown: false,
-    };
-  }
-
-  const parentRedirectPath = MACRO_PARENT_ROUTE_REDIRECTS.get(normalized);
-  if (parentRedirectPath) {
-    return {
-      canonicalPath: parentRedirectPath,
-      routeKind: "redirect",
-      routeTail: normalized,
-      wasUnknown: false,
     };
   }
 
   const descriptor = macroRouteDescriptor(normalized as MacroRouteId);
-  if (descriptor?.routeId === "assets/correlation") {
-    return {
-      canonicalPath: descriptor.href,
-      pageKind: "matrix",
-      productTier: descriptor.productTier,
-      routeId: descriptor.routeId,
-      routeKind: "matrix",
-      wasUnknown: false,
-    };
-  }
-  if (descriptor && isMacroModuleId(descriptor.routeId)) {
+  if (descriptor) {
     return {
       canonicalPath: descriptor.href,
       moduleId: descriptor.routeId,
-      pageKind: modulePageKind(descriptor.pageKind),
+      pageKind: descriptor.pageKind,
       productTier: descriptor.productTier,
       routeId: descriptor.routeId,
       routeKind: "module",
-      wasUnknown: false,
     };
   }
-  return {
-    canonicalPath: `/macro/${normalized}`,
-    pageKind: "unsupported",
-    productTier: "unsupported",
-    routeKind: "unsupported",
-    routeTail: normalized,
-    wasUnknown: true,
-  };
+  return null;
 }
 
 export function macroModuleHref(moduleId: MacroModuleId): string {
-  return ROUTES_BY_ID.get(moduleId)?.href ?? "/macro";
+  return requiredMacroModuleRoute(moduleId).href;
 }
 
 export function macroRouteLabel(moduleId: MacroModuleId): string {
-  return ROUTES_BY_ID.get(moduleId)?.label ?? "总览";
+  return requiredMacroModuleRoute(moduleId).label;
 }
 
 export function macroNavigationPath(routeId: MacroRouteId): MacroNavigationNode[] {
@@ -195,7 +121,7 @@ export function macroModuleRouteFromHref(href: string): MacroModuleRoute | undef
 function flattenMacroModuleRoutes(nodes: MacroNavigationNode[]): MacroModuleRoute[] {
   return nodes.flatMap((node) => {
     const current =
-      node.routeId && node.routeId !== "assets/correlation" && node.section
+      node.routeId && node.section
         ? [
             {
               href: node.href,
@@ -207,6 +133,14 @@ function flattenMacroModuleRoutes(nodes: MacroNavigationNode[]): MacroModuleRout
         : [];
     return [...current, ...flattenMacroModuleRoutes(node.children ?? [])];
   });
+}
+
+function requiredMacroModuleRoute(moduleId: MacroModuleId): MacroModuleRoute {
+  const route = ROUTES_BY_ID.get(moduleId);
+  if (!route) {
+    throw new Error(`macro_route_required:${moduleId}`);
+  }
+  return route;
 }
 
 function findNavigationPath(
@@ -233,17 +167,4 @@ function normalizeRouteTail(routeTail: string | undefined): string {
     .map((part) => part.trim())
     .filter(Boolean)
     .join("/");
-}
-
-function isMacroModuleId(value: MacroRouteId): value is MacroModuleId {
-  return value !== "assets/correlation";
-}
-
-function modulePageKind(
-  pageKind: Exclude<MacroPageKind, "unsupported">,
-): Exclude<MacroPageKind, "matrix" | "unsupported"> {
-  if (pageKind === "matrix") {
-    throw new Error("Matrix macro routes must not resolve as module pages.");
-  }
-  return pageKind;
 }

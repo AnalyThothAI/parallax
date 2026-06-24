@@ -1821,8 +1821,7 @@ def test_playbook_snapshot_skips_update_when_only_runtime_timestamps_change(tmp_
         conn.close()
 
     assert first["decision_time_ms"] == 3_100
-    assert second["decision_time_ms"] == 3_100
-    assert second["created_at_ms"] == 3_100
+    assert second is None
     assert stored["decision_time_ms"] == 3_100
     assert stored["created_at_ms"] == 3_100
 

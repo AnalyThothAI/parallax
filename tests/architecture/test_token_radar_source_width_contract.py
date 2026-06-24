@@ -130,7 +130,7 @@ def test_ingest_source_dirty_requires_formal_resolution_decisions_without_dict_f
     assert "TokenIntentResolutionDecision" in ingest_service
     assert "isinstance(decision, TokenIntentResolutionDecision)" in ingest_service
     assert "ingest_resolution_decision_contract_required" in ingest_service
-    assert "event_id = str(formal_decision.event_id or \"\")" in ingest_service
+    assert 'event_id = str(formal_decision.event_id or "")' in ingest_service
     assert "target_type = formal_decision.target_type" in ingest_service
     assert "target_id = formal_decision.target_id" in ingest_service
 

@@ -23,6 +23,22 @@ const CORE_PAGE_CONTRACTS = [
   },
 ] as const;
 
+const HARD_DELETED_MACRO_ROUTES = [
+  "/macro/assets/crypto-derivatives",
+  "/macro/rates/auctions",
+  "/macro/rates/expectations",
+  "/macro/fed/statements",
+  "/macro/fed/speeches",
+  "/macro/liquidity/global-dollar",
+  "/macro/liquidity/reserves",
+  "/macro/liquidity/subsurface",
+  "/macro/liquidity/transmission-chain",
+  "/macro/liquidity/operations",
+  "/macro/economy/consumer",
+  "/macro/volatility/dashboard",
+  "/macro/credit/cds",
+] as const;
+
 test.describe("macro terminal navigation hardening", () => {
   test("macro core pages keep the workbench grammar across target viewports", async ({ page }) => {
     await installMockApi(page);
@@ -61,7 +77,7 @@ test.describe("macro terminal navigation hardening", () => {
     await expect(primaryNavigation.getByRole("link", { name: "大类资产" })).toBeVisible();
 
     await expect(page.getByRole("region", { name: "主市场证据" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "美股风险" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "美股风险", exact: true })).toBeVisible();
     await expectNoDocumentHorizontalOverflow(page);
     await expectNoUnhandledApiRequests(page);
   });
@@ -108,20 +124,24 @@ test.describe("macro terminal navigation hardening", () => {
     await expectNoUnhandledApiRequests(page);
   });
 
-  test("macro terminal unsupported routes show the unsupported state instead of overview", async ({
+  test("macro terminal hard-deleted routes go to the route error surface", async ({
     page,
   }, testInfo) => {
-    test.skip(!testInfo.project.name.startsWith("desktop-"), "desktop unsupported route contract");
+    test.skip(!testInfo.project.name.startsWith("desktop-"), "desktop deleted-route contract");
 
     await installMockApi(page);
-    await page.goto("/macro/not-real");
 
-    await expect(page.getByRole("status", { name: "不支持的宏观页面" })).toBeVisible();
-    await expect(page.getByText("/macro/not-real")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "总览" })).toHaveCount(0);
+    for (const route of ["/macro/not-real", ...HARD_DELETED_MACRO_ROUTES]) {
+      await page.goto(route);
 
-    await expectNoDocumentHorizontalOverflow(page);
-    await expectNoUnhandledApiRequests(page);
+      await expect(page.getByRole("alert")).toContainText("404 Not Found");
+      await expect(page.getByRole("status", { name: "不支持的宏观页面" })).toHaveCount(0);
+      await expect(page.getByRole("heading", { name: "总览" })).toHaveCount(0);
+      await expect(page.getByRole("navigation", { name: "宏观模块" })).toHaveCount(0);
+
+      await expectNoDocumentHorizontalOverflow(page);
+      await expectNoUnhandledApiRequests(page);
+    }
   });
 });
 

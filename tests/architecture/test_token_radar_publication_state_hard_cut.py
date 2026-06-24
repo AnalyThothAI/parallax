@@ -451,7 +451,7 @@ def test_token_radar_projection_builds_formal_identity_before_publication_withou
     forbidden = (
         'else str(row.get("intent_id"))',
         'str(target_id or latest.get("intent_id"))',
-        '_display_symbol(dict(row))',
+        "_display_symbol(dict(row))",
         'f"symbol:{symbol.upper()}"',
         'row.get("lookup_keys_json") or []',
     )
@@ -496,7 +496,7 @@ def test_token_radar_projection_requires_formal_high_confidence_target_identity(
     project_group = _function_source(TOKEN_RADAR_PROJECTION, "_project_group")
     has_resolved_target = _function_source(TOKEN_RADAR_PROJECTION, "_has_resolved_target")
     forbidden = (
-        "not bool(row.get(\"target_id\"))",
+        'not bool(row.get("target_id"))',
         'str(row.get("resolution_status") or "")',
         'row.get("target_type") == "Asset"',
     )

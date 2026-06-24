@@ -230,25 +230,6 @@
     white-space: nowrap;
   }
 
-  .macro-route-unsupported {
-    display: grid;
-    gap: 6px;
-    padding: 12px;
-    border: 1px solid rgba(245, 158, 11, 0.24);
-    color: var(--text-secondary, #cbd5e1);
-    background: rgba(245, 158, 11, 0.07);
-  }
-
-  .macro-route-unsupported strong {
-    color: var(--text-primary, #f8fafc);
-    font-size: 0.95rem;
-  }
-
-  .macro-route-unsupported span {
-    color: var(--text-muted, #94a3b8);
-    font-size: 0.82rem;
-  }
-
   @media (min-width: 768px) and (max-width: 1279px) {
     .macro-shell {
       grid-template-columns: 1fr;

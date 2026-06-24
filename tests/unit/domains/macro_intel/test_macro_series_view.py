@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from parallax.domains.macro_intel._constants import MACRO_CONCEPT_METADATA, MACRO_CORE_CONCEPTS
 from parallax.domains.macro_intel.services.macro_series_view import (
     UnsupportedMacroConceptError,
     UnsupportedMacroSeriesWindowError,
@@ -87,6 +88,14 @@ def test_build_macro_series_view_reports_missing_concept_series() -> None:
     ]
 
 
+def test_macro_series_view_requires_observation_quality_field() -> None:
+    observation = _obs("rates:dgs10", "2026-05-20", 4.7, source_name="fred", unit="percent")
+    del observation["data_quality"]
+
+    with pytest.raises(ValueError, match="macro_series_observation_quality_required:rates:dgs10"):
+        build_macro_series_view(concept_keys=("rates:dgs10",), observations=[observation], window="20d")
+
+
 def test_macro_series_view_rejects_provider_series_keys() -> None:
     with pytest.raises(UnsupportedMacroConceptError) as exc_info:
         build_macro_series_view(concept_keys=("fred:DGS10",), observations=[], window="60d")
@@ -114,6 +123,17 @@ def test_macro_series_view_rejects_unsupported_window() -> None:
 def test_macro_series_query_bounds_are_bounded() -> None:
     assert macro_series_query_bounds("20d") == {"lookback_days": 35, "limit_per_series": 35}
     assert macro_series_query_bounds("3y") == {"lookback_days": 1095, "limit_per_series": 800}
+
+
+def test_macro_core_concepts_have_public_series_labels() -> None:
+    assert [
+        concept_key
+        for concept_key in MACRO_CORE_CONCEPTS
+        if not (
+            MACRO_CONCEPT_METADATA.get(concept_key, {}).get("short_label")
+            or MACRO_CONCEPT_METADATA.get(concept_key, {}).get("label")
+        )
+    ] == []
 
 
 def _obs(

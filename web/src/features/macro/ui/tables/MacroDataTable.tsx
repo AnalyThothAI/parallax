@@ -19,15 +19,7 @@ import {
 import { MacroTableFrame } from "./MacroTableFrame";
 import "./macroTables.css";
 
-export function MacroDataTable({
-  caption,
-  state,
-  table,
-}: {
-  caption: string;
-  state?: "idle" | "loading";
-  table: MacroModuleTable;
-}) {
+export function MacroDataTable({ caption, table }: { caption: string; table: MacroModuleTable }) {
   const model = useMemo(() => buildMacroTableModel(table), [table]);
   const [sorting, setSorting] = useState<SortingState>([]);
   const columns = useMemo<ColumnDef<MacroTableRowModel>[]>(
@@ -35,7 +27,7 @@ export function MacroDataTable({
       model.columns.map((column) => ({
         id: column.id,
         accessorFn: (row) => row.cells[column.id]?.sortValue ?? undefined,
-        cell: ({ row }) => row.original.cells[column.id]?.displayValue ?? "暂无",
+        cell: ({ row }) => row.original.cells[column.id]?.displayValue ?? null,
         enableSorting: true,
         header: column.label,
         sortDescFirst: false,
@@ -54,11 +46,8 @@ export function MacroDataTable({
     state: { sorting },
   });
 
-  if (state === "loading") {
-    return <TableState caption={caption} label="表格加载中" stateName="加载" />;
-  }
   if (model.rows.length === 0) {
-    return <TableState caption={caption} label="暂无表格行" stateName="空" />;
+    return null;
   }
 
   return (
@@ -127,24 +116,4 @@ function sortIndicator(sortState: false | "asc" | "desc"): string {
     return "↓";
   }
   return "↕";
-}
-
-function TableState({
-  caption,
-  label,
-  stateName,
-}: {
-  caption: string;
-  label: string;
-  stateName: string;
-}) {
-  return (
-    <div
-      aria-label={`${caption}${stateName}状态`}
-      className="macro-table-state-panel"
-      role="status"
-    >
-      {label}
-    </div>
-  );
 }

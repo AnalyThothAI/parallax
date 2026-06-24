@@ -750,10 +750,7 @@ def _market_readiness() -> dict:
 
 def _factor_families(*, family_scores: dict | None = None) -> dict:
     scores = family_scores or {}
-    return {
-        family: _factor_family(scores.get(family, 0.0))
-        for family in TOKEN_RADAR_FACTOR_FAMILIES
-    }
+    return {family: _factor_family(scores.get(family, 0.0)) for family in TOKEN_RADAR_FACTOR_FAMILIES}
 
 
 def _factor_family(score: object) -> dict:

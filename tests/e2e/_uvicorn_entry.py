@@ -33,12 +33,14 @@ def main() -> int:
 
     # Import after env validation to keep error pretty.
     from parallax.app.runtime.app import create_app
+    from parallax.app.runtime.worker_manifest import all_worker_manifests
     from parallax.platform.config.settings import Settings
 
     settings = Settings(
         ws_token=ws_token,
         handles=("e2e_test",),
         storage={"postgres": {"dsn": dsn, "password_file": None}},
+        workers={manifest.name: {"enabled": False} for manifest in all_worker_manifests()},
     )
 
     app = create_app(settings=settings, start_collector=False)

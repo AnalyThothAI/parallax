@@ -564,12 +564,10 @@ def test_open_tech_debt_duplicate_symbol_claims_match_current_sources() -> None:
 def test_open_tech_debt_does_not_keep_resolved_legacy_asset_schema_debt() -> None:
     open_debt = _tech_debt_open_section()
     drop_migration = _read(
-        REPO_ROOT
-        / "src/parallax/platform/db/alembic/versions/20260516_0050_drop_legacy_asset_stack.py"
+        REPO_ROOT / "src/parallax/platform/db/alembic/versions/20260516_0050_drop_legacy_asset_stack.py"
     )
     reconcile_migration = _read(
-        REPO_ROOT
-        / "src/parallax/platform/db/alembic/versions/20260517_0053_reconcile_legacy_asset_stack_drop.py"
+        REPO_ROOT / "src/parallax/platform/db/alembic/versions/20260517_0053_reconcile_legacy_asset_stack_drop.py"
     )
 
     dropped_contracts = (

@@ -54,13 +54,4 @@
     color: var(--text-muted, #94a3b8);
     font-size: 0.7rem;
   }
-
-  .macro-table-state-panel {
-    display: grid;
-    min-height: 180px;
-    place-items: center;
-    border: 1px dashed var(--border-subtle, rgba(148, 163, 184, 0.24));
-    color: var(--text-muted, #94a3b8);
-    font-size: 0.78rem;
-  }
 }

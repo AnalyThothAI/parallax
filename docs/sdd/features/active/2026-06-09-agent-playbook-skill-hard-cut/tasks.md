@@ -67,7 +67,7 @@
 - **Owner**: parent
 - **Depends on**: Task 1
 - **Touch set**: `tests/unit/domains/macro_intel/test_macro_migration_contract.py`, `tests/unit/domains/macro_intel/test_macro_generation_swap.py`, `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`
-- **Conflict set**: coordinate with `2026-06-11-executable-harness-followup` for shared macro repository and migration-contract edits.
+- **Conflict set**: coordinate with `2026-06-11-executable-harness-followup` for shared macro repository and migration-contract edits; coordinate with `2026-06-16-macro-decision-console` for shared macro repository and migration-contract edits.
 - **Failing test first**: `tests/unit/domains/macro_intel/test_macro_migration_contract.py::test_repository_concept_history_counts_reads_projected_rows` — forbids `series_rank = 1` in history counts.
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated

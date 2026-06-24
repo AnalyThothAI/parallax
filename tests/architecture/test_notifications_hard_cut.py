@@ -234,7 +234,7 @@ def test_signal_pulse_notification_page_budget_uses_formal_config_without_servic
     banned = (
         "list_candidates(",
         "cursor =",
-        "page.get(\"next_cursor\")",
+        'page.get("next_cursor")',
         "range(int(self.settings.notifications.signal_pulse_max_pages))",
     )
     assert [token for token in banned if token in signal_pulse_section] == []
@@ -430,8 +430,8 @@ def test_notification_aggregate_update_requires_real_cursor_rowcount_without_def
         maxsplit=1,
     )[0]
     banned = (
-        "getattr(cursor, \"rowcount\"",
-        "getattr(cursor, \"rowcount\", 0)",
+        'getattr(cursor, "rowcount"',
+        'getattr(cursor, "rowcount", 0)',
         "cursor.rowcount or 0",
     )
     update_position = aggregate_source.index("UPDATE notifications")

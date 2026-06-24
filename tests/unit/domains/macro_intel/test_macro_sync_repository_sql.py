@@ -319,6 +319,13 @@ def test_upsert_observation_updates_only_when_fact_payload_hash_changes() -> Non
     assert "WHERE macro_observations.fact_payload_hash IS DISTINCT FROM excluded.fact_payload_hash" in normalized_source
 
 
+def test_upsert_observation_requires_explicit_data_quality_without_default_ok() -> None:
+    source = inspect.getsource(MacroIntelRepository.upsert_observation)
+
+    assert 'observation.get("data_quality") or "ok"' not in source
+    assert '_required_observation_text(observation, "data_quality")' in source
+
+
 def test_upsert_macro_daily_brief_is_stable_key_payload_hash_read_model() -> None:
     source = inspect.getsource(MacroIntelRepository.upsert_macro_daily_brief)
     hash_source = inspect.getsource(_macro_daily_brief_payload_hash)

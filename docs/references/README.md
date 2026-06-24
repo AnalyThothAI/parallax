@@ -7,3 +7,9 @@
 - Add a new file when a governance file or spec needs to cite an external source it does not already cite.
 - Each entry includes: source URL, fetch date, one-paragraph summary, and the rule or formula it supports.
 - Prune entries whose only consumer was a since-deleted spec.
+
+## Current Market-Data References
+
+- `MACRO_TIMSUN_SOURCE_GAP_MAP.md` maps the TimSun parity backlog to official
+  or license-gated source candidates and hard restoration gates for deleted
+  macro pages.

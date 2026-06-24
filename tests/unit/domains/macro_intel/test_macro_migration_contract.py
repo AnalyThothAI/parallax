@@ -89,6 +89,218 @@ def test_macro_hard_cut_constants_and_core_concept_metadata_are_exported() -> No
     assert _constants.MACRO_CONCEPT_METADATA["vol:vix"]["unit_label"] == "点"
 
 
+def test_macro_constants_map_sloos_credit_supply_and_demand_concepts() -> None:
+    assert _constants.MACRO_PROVIDER_SERIES_TO_CONCEPT["fred:DRTSCILM"] == "credit:sloos_ci_large_tightening"
+    assert _constants.MACRO_PROVIDER_SERIES_TO_CONCEPT["fred:DRTSCIS"] == "credit:sloos_ci_small_tightening"
+    assert _constants.MACRO_PROVIDER_SERIES_TO_CONCEPT["fred:DRSDCILM"] == "credit:sloos_ci_large_demand"
+    assert _constants.MACRO_PROVIDER_SERIES_TO_CONCEPT["fred:DRSDCIS"] == "credit:sloos_ci_small_demand"
+
+    assert _constants.MACRO_CONCEPT_METADATA["credit:sloos_ci_large_tightening"] == {
+        "label": "大中型企业贷款标准",
+        "short_label": "SLOOS Lg Tight",
+        "description": "SLOOS 大中型企业 C&I 贷款标准收紧净比例",
+        "unit_label": "%",
+    }
+    assert _constants.MACRO_CONCEPT_METADATA["credit:sloos_ci_small_demand"]["short_label"] == "SLOOS Sm Demand"
+
+
+def test_macro_constants_map_loan_quality_credit_concepts() -> None:
+    assert _constants.MACRO_PROVIDER_SERIES_TO_CONCEPT["fred:DRBLACBS"] == "credit:business_delinquency"
+    assert _constants.MACRO_PROVIDER_SERIES_TO_CONCEPT["fred:DRCLACBS"] == "credit:consumer_delinquency"
+    assert _constants.MACRO_PROVIDER_SERIES_TO_CONCEPT["fred:CORBLACBS"] == "credit:business_charge_off"
+    assert _constants.MACRO_PROVIDER_SERIES_TO_CONCEPT["fred:CORCACBS"] == "credit:consumer_charge_off"
+
+    assert _constants.MACRO_CONCEPT_METADATA["credit:business_delinquency"] == {
+        "label": "企业贷款逾期率",
+        "short_label": "Biz Delinq",
+        "description": "商业银行企业贷款逾期率",
+        "unit_label": "%",
+    }
+    assert _constants.MACRO_CONCEPT_METADATA["credit:consumer_charge_off"]["short_label"] == "Cons ChgOff"
+
+
+def test_macro_constants_map_gdpnow_nowcast_concept() -> None:
+    assert _constants.MACRO_PROVIDER_SERIES_TO_CONCEPT["fred:GDPNOW"] == "economy:gdp_nowcast"
+    assert _constants.MACRO_CONCEPT_METADATA["economy:gdp_nowcast"] == {
+        "label": "GDPNow",
+        "short_label": "GDPNow",
+        "description": "Atlanta Fed GDPNow 实时 GDP 增长估计",
+        "unit_label": "% SAAR",
+    }
+    assert "economy:gdp_nowcast" not in _constants.MACRO_HISTORY_REQUIRED_CONCEPTS
+
+
+def test_macro_constants_map_nyfed_repo_depth_concepts() -> None:
+    repo_depth_concepts = {
+        "liquidity:bgcr",
+        "liquidity:tgcr",
+        "liquidity:sofr_volume",
+        "liquidity:bgcr_volume",
+        "liquidity:tgcr_volume",
+    }
+
+    assert _constants.MACRO_PROVIDER_SERIES_TO_CONCEPT["nyfed:BGCR"] == "liquidity:bgcr"
+    assert _constants.MACRO_PROVIDER_SERIES_TO_CONCEPT["nyfed:TGCR"] == "liquidity:tgcr"
+    assert _constants.MACRO_PROVIDER_SERIES_TO_CONCEPT["nyfed:SOFR_VOLUME"] == "liquidity:sofr_volume"
+    assert _constants.MACRO_PROVIDER_SERIES_TO_CONCEPT["nyfed:BGCR_VOLUME"] == "liquidity:bgcr_volume"
+    assert _constants.MACRO_PROVIDER_SERIES_TO_CONCEPT["nyfed:TGCR_VOLUME"] == "liquidity:tgcr_volume"
+    assert repo_depth_concepts.isdisjoint(_constants.MACRO_HISTORY_REQUIRED_CONCEPTS)
+
+    assert _constants.MACRO_CONCEPT_METADATA["liquidity:tgcr"] == {
+        "label": "TGCR",
+        "short_label": "TGCR",
+        "description": "NY Fed 三方一般抵押品回购利率",
+        "unit_label": "%",
+    }
+    assert _constants.MACRO_CONCEPT_METADATA["liquidity:sofr_volume"]["short_label"] == "SOFR Vol"
+
+
+def test_macro_constants_map_nyfed_unsecured_funding_concepts() -> None:
+    unsecured_depth_concepts = {"fed:obfr", "fed:effr_volume", "fed:obfr_volume"}
+
+    assert _constants.MACRO_PROVIDER_SERIES_TO_CONCEPT["nyfed:EFFR"] == "fed:effr"
+    assert _constants.MACRO_PROVIDER_SERIES_TO_CONCEPT["nyfed:OBFR"] == "fed:obfr"
+    assert _constants.MACRO_PROVIDER_SERIES_TO_CONCEPT["nyfed:EFFR_VOLUME"] == "fed:effr_volume"
+    assert _constants.MACRO_PROVIDER_SERIES_TO_CONCEPT["nyfed:OBFR_VOLUME"] == "fed:obfr_volume"
+    assert unsecured_depth_concepts.isdisjoint(_constants.MACRO_HISTORY_REQUIRED_CONCEPTS)
+    assert (
+        _constants.MACRO_PROVIDER_SERIES_SOURCE_PRIORITY["nyfed:EFFR"]
+        > (_constants.MACRO_PROVIDER_SERIES_SOURCE_PRIORITY["fred:EFFR"])
+    )
+
+    assert _constants.MACRO_CONCEPT_METADATA["fed:obfr"] == {
+        "label": "隔夜银行融资利率",
+        "short_label": "OBFR",
+        "description": "NY Fed 广义无担保隔夜银行融资利率",
+        "unit_label": "%",
+    }
+    assert _constants.MACRO_CONCEPT_METADATA["fed:effr_volume"]["short_label"] == "EFFR Vol"
+    assert _constants.MACRO_CONCEPT_METADATA["fed:obfr_volume"]["unit_label"] == "百万美元"
+
+
+def test_macro_constants_map_bls_calendar_event_concepts() -> None:
+    assert _constants.MACRO_EVENT_PROVIDER_SERIES_TO_CONCEPT["official_calendar:bls_cpi_next"] == ("event:bls_cpi_next")
+    assert _constants.MACRO_EVENT_PROVIDER_SERIES_TO_CONCEPT["official_calendar:bls_employment_next"] == (
+        "event:bls_employment_next"
+    )
+    assert _constants.MACRO_EVENT_PROVIDER_SERIES_TO_CONCEPT["official_calendar:bls_ppi_next"] == ("event:bls_ppi_next")
+
+    assert "event:bls_cpi_next" in _constants.MACRO_EVENT_CONCEPTS
+    assert "event:bls_employment_next" in _constants.MACRO_EVENT_CONCEPTS
+    assert "event:bls_ppi_next" in _constants.MACRO_EVENT_CONCEPTS
+    assert _constants.MACRO_CONCEPT_METADATA["event:bls_cpi_next"]["label"] == "CPI 发布"
+
+
+def test_macro_constants_map_treasury_auction_calendar_event_concepts() -> None:
+    assert _constants.MACRO_EVENT_PROVIDER_SERIES_TO_CONCEPT["treasury_auction:2y_next_auction_days"] == (
+        "event:treasury_auction_2y_next"
+    )
+    assert _constants.MACRO_EVENT_PROVIDER_SERIES_TO_CONCEPT["treasury_auction:10y_next_auction_days"] == (
+        "event:treasury_auction_10y_next"
+    )
+    assert _constants.MACRO_EVENT_PROVIDER_SERIES_TO_CONCEPT["treasury_auction:30y_next_auction_days"] == (
+        "event:treasury_auction_30y_next"
+    )
+
+    assert "event:treasury_auction_2y_next" in _constants.MACRO_EVENT_CONCEPTS
+    assert "event:treasury_auction_10y_next" in _constants.MACRO_EVENT_CONCEPTS
+    assert "event:treasury_auction_30y_next" in _constants.MACRO_EVENT_CONCEPTS
+    assert _constants.MACRO_CONCEPT_METADATA["event:treasury_auction_10y_next"] == {
+        "label": "10Y 国债拍卖日历",
+        "short_label": "10Y Auction",
+        "description": "美国财政部 10 年期名义国债下一次拍卖日程",
+        "unit_label": "天",
+    }
+
+
+def test_quarterly_credit_history_thresholds_match_quarterly_release_cadence() -> None:
+    quarterly_credit_concepts = {
+        "credit:sloos_ci_large_tightening",
+        "credit:sloos_ci_small_tightening",
+        "credit:sloos_ci_large_demand",
+        "credit:sloos_ci_small_demand",
+        "credit:business_delinquency",
+        "credit:consumer_delinquency",
+        "credit:business_charge_off",
+        "credit:consumer_charge_off",
+    }
+
+    assert {
+        concept: _constants.MACRO_HISTORY_REQUIRED_POINTS_BY_CONCEPT[concept] for concept in quarterly_credit_concepts
+    } == {concept: 8 for concept in quarterly_credit_concepts}
+
+
+def test_macro_constants_map_mid_term_vix_futures_proxy() -> None:
+    assert _constants.MACRO_PROVIDER_SERIES_TO_CONCEPT["yahoo:VIXM"] == "asset:vixm"
+    assert _constants.MACRO_CONCEPT_METADATA["asset:vixm"] == {
+        "label": "VIX 中期期货 ETF",
+        "short_label": "VIXM",
+        "description": "中期 VIX 期货敞口的可交易代理",
+        "unit_label": "美元",
+    }
+
+
+def test_macro_constants_map_move_rates_volatility_proxy() -> None:
+    assert _constants.MACRO_PROVIDER_SERIES_TO_CONCEPT["yahoo:^MOVE"] == "vol:move"
+    assert "vol:move" in _constants.MACRO_CORE_CONCEPTS
+    assert "vol:move" not in _constants.MACRO_HISTORY_REQUIRED_CONCEPTS
+    assert _constants.MACRO_CONCEPT_METADATA["vol:move"] == {
+        "label": "MOVE 美债波动率",
+        "short_label": "MOVE",
+        "description": "Yahoo Finance 上的 ICE BofA MOVE 美债隐含波动率代理",
+        "unit_label": "点",
+    }
+
+
+def test_macro_constants_map_cboe_vvix_and_skew_tail_risk_indexes() -> None:
+    assert _constants.MACRO_PROVIDER_SERIES_TO_CONCEPT["cboe:VIX1D"] == "vol:vix1d"
+    assert _constants.MACRO_PROVIDER_SERIES_TO_CONCEPT["cboe:VIX9D"] == "vol:vix9d"
+    assert _constants.MACRO_PROVIDER_SERIES_TO_CONCEPT["cboe:VVIX"] == "vol:vvix"
+    assert _constants.MACRO_PROVIDER_SERIES_TO_CONCEPT["cboe:SKEW"] == "vol:skew"
+    assert "vol:vix1d" in _constants.MACRO_CORE_CONCEPTS
+    assert "vol:vix9d" in _constants.MACRO_CORE_CONCEPTS
+    assert "vol:vvix" in _constants.MACRO_CORE_CONCEPTS
+    assert "vol:skew" in _constants.MACRO_CORE_CONCEPTS
+    assert "vol:vix1d" in _constants.MACRO_HISTORY_REQUIRED_CONCEPTS
+    assert "vol:vix9d" in _constants.MACRO_HISTORY_REQUIRED_CONCEPTS
+    assert "vol:vvix" in _constants.MACRO_HISTORY_REQUIRED_CONCEPTS
+    assert "vol:skew" in _constants.MACRO_HISTORY_REQUIRED_CONCEPTS
+    assert _constants.MACRO_CONCEPT_METADATA["vol:vix1d"] == {
+        "label": "VIX1D 当日波动率",
+        "short_label": "VIX1D",
+        "description": "Cboe 1-Day Volatility Index，衡量标普500 1日隐含波动率与当日事件风险",
+        "unit_label": "点",
+    }
+    assert _constants.MACRO_CONCEPT_METADATA["vol:vix9d"] == {
+        "label": "VIX9D 近端波动率",
+        "short_label": "VIX9D",
+        "description": "Cboe 9-Day Volatility Index，衡量标普500 9日隐含波动率与近端事件风险",
+        "unit_label": "点",
+    }
+    assert _constants.MACRO_CONCEPT_METADATA["vol:vvix"] == {
+        "label": "VVIX 波动率凸性",
+        "short_label": "VVIX",
+        "description": "Cboe VIX of VIX 指数，衡量 VIX 期权隐含的波动率波动率",
+        "unit_label": "点",
+    }
+    assert _constants.MACRO_CONCEPT_METADATA["vol:skew"] == {
+        "label": "SKEW 尾部风险",
+        "short_label": "SKEW",
+        "description": "Cboe SKEW 指数，衡量标普500 30日尾部风险溢价",
+        "unit_label": "点",
+    }
+
+
+def test_macro_constants_map_average_hourly_earnings_labor_concept() -> None:
+    assert _constants.MACRO_PROVIDER_SERIES_TO_CONCEPT["fred:CES0500000003"] == "labor:avg_hourly_earnings"
+    assert _constants.MACRO_CONCEPT_METADATA["labor:avg_hourly_earnings"] == {
+        "label": "平均时薪",
+        "short_label": "AHE",
+        "description": "美国私营部门平均小时工资",
+        "unit_label": "美元/小时",
+    }
+
+
 def test_repository_latest_observations_reads_projected_rows() -> None:
     rows = [
         {
@@ -172,7 +384,14 @@ def test_repository_refresh_observation_series_rows_writes_current_read_model() 
     select_query, select_params = conn.executions[0]
     assert "WITH source_ranked AS" in select_query
     assert "concept_key = ANY" in select_query
-    assert select_params == (["rates:dgs10"], 730, "macro_regime_v4", 1_779_000_000_000, 252)
+    assert select_params == (
+        ["rates:dgs10"],
+        730,
+        list(_constants.MACRO_EVENT_CONCEPTS),
+        "macro_regime_v4",
+        1_779_000_000_000,
+        252,
+    )
 
 
 def test_macro_observation_series_contract_is_current_only_after_hard_cut() -> None:

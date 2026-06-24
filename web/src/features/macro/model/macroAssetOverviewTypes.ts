@@ -6,13 +6,13 @@ export type AssetMarketGroup = {
 };
 
 export type AssetMarketRow = {
-  asOf: string;
-  delta: string;
+  asOf: string | null;
+  delta: string | null;
   deltaTone: "up" | "down" | "flat";
   id: string;
   latest: string;
   name: string;
-  quality: string;
+  quality: string | null;
   symbol: string;
 };
 
@@ -39,7 +39,7 @@ export type MacroDailyBriefQuality = {
 
 export type AssetDiagnosticsSummary = {
   gapCount: number;
-  moduleStatus: string;
+  moduleStatus: string | null;
   sourceCount: number;
 };
 

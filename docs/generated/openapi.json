@@ -7146,22 +7146,6 @@
               "title": "Window",
               "type": "string"
             }
-          },
-          {
-            "in": "query",
-            "name": "token",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Token"
-            }
           }
         ],
         "responses": {

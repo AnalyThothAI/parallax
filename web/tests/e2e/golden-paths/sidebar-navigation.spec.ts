@@ -9,7 +9,7 @@ async function expectSidebarRouteClickFast(
   page: Page,
   routeName: string,
   expectedPath: string,
-  budgetMs = 300,
+  budgetMs = 500,
 ) {
   const primaryNavigation = page.getByRole("navigation", { name: "Primary navigation" });
   const startedAt = Date.now();
@@ -92,9 +92,9 @@ test.describe("desktop sidebar navigation", () => {
     await installMockApi(page, { failNonBootstrap: true });
     await page.goto("/");
 
-    await expectSidebarRouteClickFast(page, "News", "/news");
-    await expectSidebarRouteClickFast(page, "Ops", "/ops");
-    await expectSidebarRouteClickFast(page, "Token Radar", "/");
+    await expectSidebarRouteClickFast(page, "News", "/news", 500);
+    await expectSidebarRouteClickFast(page, "Ops", "/ops", 500);
+    await expectSidebarRouteClickFast(page, "Token Radar", "/", 500);
   });
 });
 

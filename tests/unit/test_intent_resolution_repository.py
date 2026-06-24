@@ -36,15 +36,35 @@ def test_insert_resolution_serializes_current_row_by_intent_before_superseding()
 class RecordingConn:
     def __init__(self) -> None:
         self.statements: list[tuple[str, tuple[object, ...] | None]] = []
+        self.current_row = {
+            "resolution_id": "old-resolution",
+            "intent_id": "intent-1",
+            "decision_time_ms": 1_000,
+        }
+        self.inserted_row = {
+            "resolution_id": "new-resolution",
+            "intent_id": "intent-1",
+            "decision_time_ms": 2_000,
+        }
 
     def execute(self, sql: str, params: tuple[object, ...] | None = None) -> RecordingResult:
         self.statements.append((sql, params))
-        return RecordingResult()
+        if "SELECT *" in sql and "FOR UPDATE" in sql:
+            return RecordingResult(self.current_row, rowcount=1)
+        if "UPDATE token_intent_resolutions" in sql:
+            return RecordingResult(None, rowcount=1)
+        if "INSERT INTO token_intent_resolutions" in sql:
+            return RecordingResult(self.inserted_row, rowcount=1)
+        return RecordingResult(None, rowcount=0)
 
     def commit(self) -> None:
         raise AssertionError("commit should not be called when commit=False")
 
 
 class RecordingResult:
-    def fetchone(self) -> None:
-        return None
+    def __init__(self, row: dict[str, object] | None, *, rowcount: int) -> None:
+        self._row = row
+        self.rowcount = rowcount
+
+    def fetchone(self) -> dict[str, object] | None:
+        return self._row

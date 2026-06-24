@@ -81,6 +81,17 @@ _URL_USERINFO_RE = re.compile(r"([a-z][a-z0-9+.-]*://)[^/@\s]+@", re.IGNORECASE)
 _CHECK_QUOTED_VALUE_RE = re.compile(r"'((?:''|[^'])*)'(?:\s*::\s*[A-Za-z_][A-Za-z0-9_]*)?")
 _PUBLICATION_METADATA_FIELDS = {"computed_at_ms", "updated_at_ms", "projected_at_ms", "payload_hash"}
 _NEWS_PAGE_SIGNAL_SQL = "LOWER(signal_json -> 'display_signal' ->> 'direction') = %s"
+_MACRO_EVENT_FLOW_FIELDS = (
+    "window",
+    "window_label",
+    "severity",
+    "severity_label",
+    "category",
+    "category_label",
+    "impact",
+    "impact_label",
+    "watch",
+)
 _NEWS_ITEM_WORKER_COLUMNS = (
     "news_item_id",
     "provider_item_id",
@@ -2186,6 +2197,7 @@ class NewsRepository:
         cursor: str | None = None,
         status: str | None = None,
         signal: str | None = None,
+        macro_event_flow: bool = False,
         q: str | None = None,
     ) -> list[dict[str, Any]]:
         return self._list_projected_news_page_rows(
@@ -2193,6 +2205,7 @@ class NewsRepository:
             cursor=cursor,
             status=status,
             signal=signal,
+            macro_event_flow=macro_event_flow,
             q=q,
         )
 
@@ -2271,6 +2284,7 @@ class NewsRepository:
         cursor: str | None = None,
         status: str | None = None,
         signal: str | None = None,
+        macro_event_flow: bool = False,
         q: str | None = None,
     ) -> list[dict[str, Any]]:
         cursor_time, cursor_id = _decode_page_cursor(cursor)
@@ -2309,6 +2323,7 @@ class NewsRepository:
               agent_status,
               agent_brief_computed_at_ms,
               market_scope_json AS market_scope,
+              macro_event_flow_json AS macro_event_flow,
               agent_admission_status,
               agent_admission_reason,
               agent_admission_json AS agent_admission,
@@ -2336,8 +2351,9 @@ class NewsRepository:
                    WHERE projected_source.source_id = source_json ->> 'source_id'
                      AND projected_source.enabled = true
                 )
-              )
+            )
             {filter_sql}
+              {"AND macro_event_flow_json IS NOT NULL" if macro_event_flow else ""}
             ORDER BY latest_at_ms DESC, row_id DESC
             LIMIT %s
             """,
@@ -2350,7 +2366,14 @@ class NewsRepository:
                 max(0, int(limit)),
             ),
         ).fetchall()
-        return [_projected_news_page_row_payload(row, require_full_sections=True) for row in rows]
+        return [
+            _projected_news_page_row_payload(
+                row,
+                require_full_sections=True,
+                require_macro_event_flow=macro_event_flow,
+            )
+            for row in rows
+        ]
 
     @_news_repository_write
     def claim_unprocessed_items(
@@ -4836,7 +4859,7 @@ class NewsRepository:
                   source_json, signal_json, provider_rating_json, token_impacts_json, agent_brief_json,
                   agent_status, agent_brief_computed_at_ms, computed_at_ms, projection_version,
                   canonical_item_key, duplicate_count, source_ids_json, source_domains_json,
-                  provider_article_keys_json, market_scope_json,
+                  provider_article_keys_json, market_scope_json, macro_event_flow_json,
                   agent_admission_status, agent_admission_reason,
                   agent_admission_json, agent_representative_news_item_id, payload_hash
                 )
@@ -4850,7 +4873,7 @@ class NewsRepository:
                   %(agent_brief_json)s, %(agent_status)s, %(agent_brief_computed_at_ms)s,
                   %(computed_at_ms)s, %(projection_version)s, %(canonical_item_key)s,
                   %(duplicate_count)s, %(source_ids_json)s, %(source_domains_json)s,
-                  %(provider_article_keys_json)s, %(market_scope_json)s,
+                  %(provider_article_keys_json)s, %(market_scope_json)s, %(macro_event_flow_json)s,
                   %(agent_admission_status)s, %(agent_admission_reason)s,
                   %(agent_admission_json)s, %(agent_representative_news_item_id)s, %(payload_hash)s
                 )
@@ -4886,6 +4909,7 @@ class NewsRepository:
                   source_domains_json = EXCLUDED.source_domains_json,
                   provider_article_keys_json = EXCLUDED.provider_article_keys_json,
                   market_scope_json = EXCLUDED.market_scope_json,
+                  macro_event_flow_json = EXCLUDED.macro_event_flow_json,
                   agent_admission_status = EXCLUDED.agent_admission_status,
                   agent_admission_reason = EXCLUDED.agent_admission_reason,
                   agent_admission_json = EXCLUDED.agent_admission_json,
@@ -5201,9 +5225,9 @@ def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
         int(payload["agent_brief_computed_at_ms"]) if payload.get("agent_brief_computed_at_ms") is not None else None
     )
     payload["market_scope_json"] = _json(_required_page_mapping(payload, "market_scope"))
-    agent_admission = _agent_admission_mapping_payload(
-        _required_page_mapping(payload, "agent_admission")
-    )
+    macro_event_flow = _required_page_optional_macro_event_flow(payload)
+    payload["macro_event_flow_json"] = _json(macro_event_flow) if macro_event_flow is not None else None
+    agent_admission = _agent_admission_mapping_payload(_required_page_mapping(payload, "agent_admission"))
     payload["agent_admission_status"] = str(payload.get("agent_admission_status") or agent_admission["status"])
     payload["agent_admission_reason"] = str(payload.get("agent_admission_reason") or agent_admission["reason"])
     agent_admission["status"] = payload["agent_admission_status"]
@@ -5231,6 +5255,22 @@ def _required_page_list(payload: Mapping[str, Any], field_name: str) -> list[Any
     if not isinstance(value, list):
         raise ValueError(f"news_page_row_payload_invalid:{field_name}")
     return list(value)
+
+
+def _required_page_optional_macro_event_flow(payload: Mapping[str, Any]) -> dict[str, Any] | None:
+    field_name = "macro_event_flow"
+    if field_name not in payload:
+        raise ValueError(f"news_page_row_payload_required:{field_name}")
+    value = payload[field_name]
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise ValueError(f"news_page_row_payload_invalid:{field_name}")
+    event_flow = dict(value)
+    for event_field in _MACRO_EVENT_FLOW_FIELDS:
+        if not str(event_flow.get(event_field) or "").strip():
+            raise ValueError(f"news_page_row_payload_invalid:{field_name}.{event_field}")
+    return event_flow
 
 
 def _required_projected_page_text(projected: Mapping[str, Any], field_name: str) -> str:
@@ -5264,6 +5304,7 @@ def _projected_news_page_row_payload(
     row: Mapping[str, Any],
     *,
     require_full_sections: bool,
+    require_macro_event_flow: bool = False,
 ) -> dict[str, Any]:
     payload = dict(row)
     for field_name in (
@@ -5293,6 +5334,10 @@ def _projected_news_page_row_payload(
         payload["content_classification"] = _required_news_page_row_mapping(payload, "content_classification")
         payload["token_lanes"] = _required_news_page_row_list(payload, "token_lanes")
         payload["fact_lanes"] = _required_news_page_row_list(payload, "fact_lanes")
+    if require_macro_event_flow or payload.get("macro_event_flow") is not None:
+        payload["macro_event_flow"] = _required_news_page_row_macro_event_flow(payload)
+    else:
+        payload.pop("macro_event_flow", None)
     payload["agent_brief"] = _public_agent_brief_payload(_required_news_page_row_mapping(payload, "agent_brief"))
     return payload
 
@@ -5322,6 +5367,20 @@ def _required_news_page_row_list(projected: Mapping[str, Any], field_name: str) 
     if not isinstance(value, list):
         raise ValueError(f"news_page_row_projection_invalid:{field_name}")
     return list(value)
+
+
+def _required_news_page_row_macro_event_flow(projected: Mapping[str, Any]) -> dict[str, Any]:
+    field_name = "macro_event_flow"
+    if field_name not in projected:
+        raise ValueError(f"news_page_row_projection_required:{field_name}")
+    value = projected[field_name]
+    if not isinstance(value, Mapping):
+        raise ValueError(f"news_page_row_projection_invalid:{field_name}")
+    event_flow = dict(value)
+    for event_field in _MACRO_EVENT_FLOW_FIELDS:
+        if not str(event_flow.get(event_field) or "").strip():
+            raise ValueError(f"news_page_row_projection_invalid:{field_name}.{event_field}")
+    return event_flow
 
 
 def _story_projection_payload(*, story_key: str, member_payloads: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
