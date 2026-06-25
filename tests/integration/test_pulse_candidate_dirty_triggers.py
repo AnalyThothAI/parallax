@@ -207,7 +207,14 @@ def test_pulse_trigger_old_claim_cannot_complete_or_error_newer_payload(tmp_path
             now_ms=200,
         )
         stale_done = repo.mark_done([old_claim], now_ms=201)
-        stale_error = repo.mark_error([old_claim], error="stale completion", now_ms=202, retry_ms=10_000)
+        stale_error = repo.mark_error(
+            [old_claim],
+            error="stale completion",
+            max_attempts=3,
+            worker_name="pulse_candidate",
+            now_ms=202,
+            retry_ms=10_000,
+        )
         new_claim = repo.claim_due(now_ms=203, limit=1, lease_owner="new-worker", lease_ms=60_000)[0]
     finally:
         conn.close()
@@ -216,7 +223,7 @@ def test_pulse_trigger_old_claim_cannot_complete_or_error_newer_payload(tmp_path
     assert stale_error == 0
     assert new_claim["payload_hash"] == "payload-v2"
     assert new_claim["lease_owner"] == "new-worker"
-    assert new_claim["attempt_count"] == 2
+    assert new_claim["attempt_count"] == 1
     assert new_claim["last_error"] is None
     assert new_claim["dirty_reason"] == "token_radar_rank_changed"
 

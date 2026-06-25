@@ -448,6 +448,36 @@ def test_enqueue_token_radar_dirty_targets_execute_dispatches_to_market_current_
     assert conn.events == ["enter", "exit"]
 
 
+@pytest.mark.parametrize(
+    ("since_ms", "limit", "error_code"),
+    [
+        pytest.param(-1, 25, "ops_token_radar_dirty_targets_since_ms_required", id="negative-since"),
+        pytest.param(True, 25, "ops_token_radar_dirty_targets_since_ms_required", id="bool-since"),
+        pytest.param(0, 0, "ops_token_radar_dirty_targets_limit_required", id="zero-limit"),
+        pytest.param(0, -1, "ops_token_radar_dirty_targets_limit_required", id="negative-limit"),
+        pytest.param(0, True, "ops_token_radar_dirty_targets_limit_required", id="bool-limit"),
+        pytest.param(0, "25", "ops_token_radar_dirty_targets_limit_required", id="string-limit"),
+    ],
+)
+def test_enqueue_token_radar_dirty_targets_rejects_malformed_boundaries_before_repository_call(
+    since_ms: object,
+    limit: object,
+    error_code: str,
+) -> None:
+    from parallax.app.surfaces.cli.commands.ops import _enqueue_token_radar_dirty_targets
+
+    with pytest.raises(ValueError, match=error_code):
+        _enqueue_token_radar_dirty_targets(
+            object(),
+            source="events",
+            since_ms=since_ms,  # type: ignore[arg-type]
+            limit=limit,  # type: ignore[arg-type]
+            dry_run=True,
+            execute=False,
+            now_ms=1_700_000_100_000,
+        )
+
+
 def test_enqueue_token_capture_tier_rank_set_dry_run_reads_bounded_current_rows(monkeypatch) -> None:
     from parallax.app.surfaces.cli.commands import ops as ops_module
 
@@ -478,6 +508,31 @@ def test_enqueue_token_capture_tier_rank_set_dry_run_reads_bounded_current_rows(
     assert dirty_targets.calls == []
     assert registry.calls == [("token-radar-v13-social-attention", 1_700_000_100_000 - 24 * 60 * 60 * 1000, 25)]
     assert registry.read_depths == [0]
+
+
+@pytest.mark.parametrize(
+    "limit",
+    [
+        pytest.param(0, id="zero"),
+        pytest.param(-1, id="negative"),
+        pytest.param(True, id="bool"),
+        pytest.param("25", id="string"),
+    ],
+)
+def test_enqueue_token_capture_tier_rank_set_rejects_malformed_limit_before_repository_call(
+    limit: object,
+) -> None:
+    from parallax.app.surfaces.cli.commands.ops import _enqueue_token_capture_tier_rank_set
+
+    with pytest.raises(ValueError, match="ops_capture_tier_rank_set_limit_required"):
+        _enqueue_token_capture_tier_rank_set(
+            object(),
+            window="24h",
+            limit=limit,  # type: ignore[arg-type]
+            dry_run=True,
+            execute=False,
+            now_ms=1_700_000_100_000,
+        )
 
 
 def test_enqueue_token_capture_tier_rank_set_rejects_invalid_window_without_24h_fallback() -> None:
@@ -554,6 +609,27 @@ def test_enqueue_token_capture_tier_rank_set_execute_writes_rank_set_dirty_targe
     assert registry.read_depths == [1]
     assert dirty_targets.enqueue_depths == [1]
     assert conn.events == ["enter", "exit"]
+
+
+@pytest.mark.parametrize("limit", [0, -1, True, "5"])
+def test_run_token_profile_image_repair_rejects_malformed_limit_before_db_create(
+    monkeypatch,
+    limit: object,
+) -> None:
+    from parallax.app.surfaces.cli.commands import ops as ops_module
+
+    def fail_create(settings: object, telemetry: object) -> object:
+        _ = (settings, telemetry)
+        raise AssertionError("DBPoolBundle.create must not run before limit validation")
+
+    monkeypatch.setattr(ops_module.DBPoolBundle, "create", staticmethod(fail_create))
+
+    with pytest.raises(ValueError, match="ops_token_profile_image_repair_limit_required"):
+        ops_module._run_token_profile_image_repair_once(
+            SimpleNamespace(),
+            limit=limit,  # type: ignore[arg-type]
+            now_ms=1_700_000_100_000,
+        )
 
 
 def test_rebuild_news_canonical_items_execute_reads_and_writes_inside_transaction() -> None:

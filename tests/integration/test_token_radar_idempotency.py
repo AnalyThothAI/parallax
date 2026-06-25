@@ -41,6 +41,7 @@ def test_token_radar_rebuild_is_idempotent_from_explicit_repair_dirty_targets(tm
         first_result = projection.rebuild_dirty_targets(
             lease_ms=120_000,
             retry_ms=30_000,
+            max_attempts=3,
             windows=("1h",),
             scopes=("all",),
             now_ms=FIXED_NOW_MS,
@@ -54,6 +55,7 @@ def test_token_radar_rebuild_is_idempotent_from_explicit_repair_dirty_targets(tm
         second_result = projection.rebuild_dirty_targets(
             lease_ms=120_000,
             retry_ms=30_000,
+            max_attempts=3,
             windows=("1h",),
             scopes=("all",),
             now_ms=FIXED_NOW_MS,

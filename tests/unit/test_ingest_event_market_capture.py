@@ -11,6 +11,7 @@ from parallax.app.runtime import bootstrap as bootstrap_module
 from parallax.app.runtime.bootstrap import _ingest_service_for_repos, _PooledIngestStore
 from parallax.app.runtime.providers_wiring import AssetMarketProviders
 from parallax.domains.asset_market.providers import DexTokenQuote
+from parallax.domains.evidence.services.ingest_service import PreparedIngest
 from parallax.domains.ingestion.interfaces import IngestedEvent
 from tests.factories import make_event
 
@@ -98,6 +99,41 @@ def test_ingest_service_for_repos_requires_event_anchor_window_contract() -> Non
         _ingest_service_for_repos(_FakeRepos(event_exists=False))
 
 
+@pytest.mark.parametrize("value", [0, -1, True, "300000"])
+def test_pooled_ingest_store_rejects_malformed_event_anchor_window_without_runtime_repair(value: Any) -> None:
+    with pytest.raises(ValueError, match="event_anchor_active_window_ms_required"):
+        _PooledIngestStore(
+            _FakeDB(_FakeState(), event_exists=False),
+            providers=AssetMarketProviders(),
+            event_anchor_active_window_ms=value,
+        )
+
+
+@pytest.mark.parametrize("value", [0, -1, True, "300000"])
+def test_ingest_service_rejects_malformed_event_anchor_window_without_runtime_repair(value: Any) -> None:
+    with pytest.raises(ValueError, match="event_anchor_active_window_ms_required"):
+        _ingest_service_for_repos(_FakeRepos(event_exists=False), event_anchor_active_window_ms=value)
+
+
+def test_pooled_ingest_store_requires_formal_prepared_ingest_contract(monkeypatch) -> None:
+    state = _FakeState()
+    provider = _AssertingDexQuoteProvider(state)
+    db = _FakeDB(state, event_exists=False)
+    event = make_event("event-prepared-contract")
+
+    monkeypatch.setattr(bootstrap_module, "IngestService", _DictPreparedIngestService)
+
+    store = _PooledIngestStore(
+        db,
+        providers=AssetMarketProviders(dex_quote_market=provider),
+        event_anchor_active_window_ms=300_000,
+        now_ms=lambda: event.received_at_ms + 100,
+    )
+
+    with pytest.raises(RuntimeError, match="prepared_ingest_contract_required"):
+        store.ingest_event(event, is_watched=True)
+
+
 @dataclass
 class _FakeState:
     in_session: bool = False
@@ -129,6 +165,7 @@ class _FakeMarketTicks:
 
 class _FakeRepos:
     def __init__(self, *, event_exists: bool) -> None:
+        self.conn = object()
         self.evidence = self
         self.entities = self
         self.signals = self
@@ -171,7 +208,16 @@ class _FakeIngestService:
 
     @staticmethod
     def prepare_event(event, *, is_watched: bool):
-        return {"event": event, "event_id": event.event_id, "event_ms": event.received_at_ms}
+        return PreparedIngest(
+            raw_event=event,
+            event_id=event.event_id,
+            event_ms=event.received_at_ms,
+            event_row={},
+            entities=[],
+            evidence_inputs=[],
+            intents=[],
+            is_watched=is_watched,
+        )
 
     def event_already_exists(self, prepared) -> bool:
         return bool(self.repos.event_exists)
@@ -182,12 +228,12 @@ class _FakeIngestService:
     def resolve_prepared(self, prepared, *, persist: bool = False):
         return [
             {
-                "event_id": prepared["event_id"],
+                "event_id": prepared.event_id,
                 "intent_id": "intent-1",
                 "target_type": "Asset",
                 "target_id": "asset:eip155:1:erc20:0xabc",
                 "pricefeed_id": None,
-                "decision_time_ms": prepared["event_ms"],
+                "decision_time_ms": prepared.event_ms,
             }
         ]
 
@@ -204,7 +250,7 @@ class _FakeIngestService:
 
     def duplicate_result(self, prepared):
         return IngestedEvent(
-            event=prepared["event"],
+            event=prepared.raw_event,
             entities=[],
             alerts=[],
             token_intents=[],
@@ -214,10 +260,28 @@ class _FakeIngestService:
 
     def commit_prepared_event(self, prepared, *, resolutions, captures):
         return IngestedEvent(
-            event=prepared["event"],
+            event=prepared.raw_event,
             entities=[],
             alerts=[],
             token_intents=[],
             token_resolutions=[],
             inserted=True,
         )
+
+
+class _DictPreparedIngestService(_FakeIngestService):
+    @staticmethod
+    def prepare_event(event, *, is_watched: bool):
+        return {"event": event, "event_id": event.event_id, "event_ms": event.received_at_ms}
+
+    def resolve_prepared(self, prepared, *, persist: bool = False):
+        return [
+            {
+                "event_id": prepared["event_id"],
+                "intent_id": "intent-1",
+                "target_type": "Asset",
+                "target_id": "asset:eip155:1:erc20:0xabc",
+                "pricefeed_id": None,
+                "decision_time_ms": prepared["event_ms"],
+            }
+        ]

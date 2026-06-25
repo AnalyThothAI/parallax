@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import date
 
+import pytest
+
 
 def test_scheduler_bootstrap_partitions_missing_history_into_bounded_windows() -> None:
     from parallax.domains.macro_intel.services.macro_sync_scheduler import (
@@ -118,6 +120,54 @@ def test_scheduler_steady_overlap_identity_is_stable_across_interval_buckets() -
 
     steady_reasons = [window["trigger_reason"] for window in repo.enqueued]
     assert steady_reasons == ["steady_overlap", "steady_overlap", "steady_overlap"]
+
+
+@pytest.mark.parametrize(
+    ("overrides", "error_code"),
+    [
+        pytest.param({"bootstrap_lookback_days": 0}, "macro_sync_bootstrap_lookback_days_required"),
+        pytest.param({"bootstrap_lookback_days": True}, "macro_sync_bootstrap_lookback_days_required"),
+        pytest.param({"max_window_days": 0}, "macro_sync_max_window_days_required"),
+        pytest.param({"steady_overlap_days": 0}, "macro_sync_steady_overlap_days_required"),
+        pytest.param({"steady_interval_seconds": -1.0}, "macro_sync_steady_interval_seconds_required"),
+        pytest.param({"steady_interval_seconds": True}, "macro_sync_steady_interval_seconds_required"),
+        pytest.param(
+            {"max_bootstrap_windows_per_cycle": 0},
+            "macro_sync_max_bootstrap_windows_per_cycle_required",
+        ),
+        pytest.param({"max_attempts": 0}, "macro_sync_max_attempts_required"),
+        pytest.param({"max_attempts": "8"}, "macro_sync_max_attempts_required"),
+    ],
+)
+def test_scheduler_rejects_malformed_boundaries_before_repository_read(
+    overrides: dict[str, object],
+    error_code: str,
+) -> None:
+    from parallax.domains.macro_intel.services.macro_sync_scheduler import (
+        ensure_due_macro_sync_windows,
+    )
+
+    repo = FakeMacroIntelRepository(max_observed_at=None)
+    kwargs: dict[str, object] = {
+        "repos": FakeRepositorySession(repo),
+        "source_name": "macrodata-cli",
+        "bundle_name": "macro-core",
+        "now": date(2026, 5, 27),
+        "now_ms": 1_779_000_000_000,
+        "bootstrap_lookback_days": 95,
+        "max_window_days": 31,
+        "steady_overlap_days": 7,
+        "steady_interval_seconds": 900.0,
+        "max_bootstrap_windows_per_cycle": 2,
+        "max_attempts": 8,
+    }
+    kwargs.update(overrides)
+
+    with pytest.raises(ValueError, match=error_code):
+        ensure_due_macro_sync_windows(**kwargs)  # type: ignore[arg-type]
+
+    assert repo.sync_state_reads == []
+    assert repo.enqueued == []
 
 
 class FakeRepositorySession:

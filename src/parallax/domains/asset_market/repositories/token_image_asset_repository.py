@@ -134,17 +134,21 @@ class TokenImageAssetRepository:
         commit: bool = True,
     ) -> None:
         normalized_source_url = _required_source_url(source_url)
+        parsed_retry_ms = _required_positive_int(
+            retry_ms,
+            "token_image_asset_retry_ms_required",
+        )
         if commit:
             with _transaction(self.conn):
                 self.mark_error(
                     source_url=normalized_source_url,
                     error=error,
                     now_ms=now_ms,
-                    retry_ms=retry_ms,
+                    retry_ms=parsed_retry_ms,
                     commit=False,
                 )
                 return
-        retry_at_ms = int(now_ms) + max(0, int(retry_ms))
+        retry_at_ms = int(now_ms) + parsed_retry_ms
         cursor = self.conn.execute(
             """
             UPDATE token_image_assets
@@ -360,6 +364,12 @@ def _positive_int(value: Any, *, field_name: str) -> int:
     if number <= 0:
         raise ValueError(f"{field_name} must be positive")
     return number
+
+
+def _required_positive_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _optional_text(value: Any) -> str | None:

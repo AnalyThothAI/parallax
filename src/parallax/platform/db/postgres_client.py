@@ -106,7 +106,14 @@ def _postgres_runtime_options(
 
 
 def _seconds_to_ms(seconds: float) -> int:
-    return max(0, int(float(seconds) * 1000))
+    timeout_seconds = _nonnegative_timeout_seconds(seconds)
+    return int(timeout_seconds * 1000)
+
+
+def _nonnegative_timeout_seconds(value: Any) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float) or value < 0:
+        raise ValueError("postgres_runtime_timeout_seconds_required")
+    return float(value)
 
 
 def _running_in_container() -> bool:

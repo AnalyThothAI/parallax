@@ -183,6 +183,14 @@ def test_token_case_market_live_uses_durable_ticks_only() -> None:
 
 
 @pytest.mark.architecture
+def test_search_inspect_limit_rejects_runtime_int_repairs() -> None:
+    source = (SRC / "domains/token_intel/read_models/search_inspect_service.py").read_text()
+
+    assert "min(max(1, int(limit)), 50)" not in source
+    assert "search_inspect_limit_required" in source
+
+
+@pytest.mark.architecture
 def test_token_case_cex_detail_requires_snapshot_repository_contract() -> None:
     service_source = (SRC / "domains/token_intel/read_models/token_case_service.py").read_text()
     cex_detail_source = service_source.split("def _cex_detail", maxsplit=1)[1].split(

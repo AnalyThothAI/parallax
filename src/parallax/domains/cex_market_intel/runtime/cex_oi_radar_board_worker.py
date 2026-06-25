@@ -43,6 +43,30 @@ class CexOiRadarBoardWorker(WorkerBase):
         self.oi_market = oi_market
         self.coinglass_derivatives = coinglass_derivatives
         self.clock_ms = clock_ms or _now_ms
+        self.period = _required_worker_text(
+            settings.period,
+            error_code="cex_oi_radar_board_period_required",
+        )
+        self.batch_size = _positive_worker_setting_int(
+            settings,
+            "batch_size",
+            error_code="cex_oi_radar_board_batch_size_required",
+        )
+        self.universe_limit = _positive_worker_setting_int(
+            settings,
+            "universe_limit",
+            error_code="cex_oi_radar_board_universe_limit_required",
+        )
+        self.coinglass_enrichment_limit = _nonnegative_worker_setting_int(
+            settings,
+            "coinglass_enrichment_limit",
+            error_code="cex_oi_radar_board_coinglass_enrichment_limit_required",
+        )
+        self.coinglass_level_limit = _nonnegative_worker_setting_int(
+            settings,
+            "coinglass_level_limit",
+            error_code="cex_oi_radar_board_coinglass_level_limit_required",
+        )
         self._local_run_lock = Lock()
 
     async def run_once(self) -> WorkerResult:
@@ -68,9 +92,9 @@ class CexOiRadarBoardWorker(WorkerBase):
 
     def _run_once_sync_locked(self, *, now_ms: int | None = None) -> WorkerResult:
         now = int(now_ms if now_ms is not None else self.clock_ms())
-        period = str(self.settings.period)
+        period = self.period
         batch_size = self._batch_size()
-        limit = max(1, min(int(self.settings.universe_limit), batch_size))
+        limit = min(self.universe_limit, batch_size)
         with self._repository_session() as repos:
             universe = repos.cex_oi_radar.binance_usdt_perp_universe(limit=limit)
 
@@ -108,8 +132,8 @@ class CexOiRadarBoardWorker(WorkerBase):
                 list(built["rows"]),
                 client=self.coinglass_derivatives,
                 now_ms=now,
-                limit=int(self.settings.coinglass_enrichment_limit),
-                level_limit=int(self.settings.coinglass_level_limit),
+                limit=self.coinglass_enrichment_limit,
+                level_limit=self.coinglass_level_limit,
             )
             if not rows and int(built["failed"]) > 0:
                 with self._repository_session() as repos, repos.transaction():
@@ -181,7 +205,7 @@ class CexOiRadarBoardWorker(WorkerBase):
         )
 
     def _batch_size(self) -> int:
-        return max(1, int(self.settings.batch_size))
+        return self.batch_size
 
     def _publish_board_and_detail(
         self,
@@ -218,3 +242,28 @@ class CexOiRadarBoardWorker(WorkerBase):
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _positive_worker_setting_int(settings: Any, field_name: str, *, error_code: str) -> int:
+    value = getattr(settings, field_name)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value <= 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _nonnegative_worker_setting_int(settings: Any, field_name: str, *, error_code: str) -> int:
+    value = getattr(settings, field_name)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value < 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _required_worker_text(value: Any, *, error_code: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError(error_code)
+    return text

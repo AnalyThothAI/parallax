@@ -26,13 +26,14 @@ class AssetFlowService:
         venue: str,
         now_ms: int | None = None,
     ) -> dict[str, Any]:
+        parsed_limit = _required_nonnegative_int(limit, "asset_flow_limit_required")
         publication_state = self.token_radar.latest_publication_state(
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
             windows=(window,),
             scopes=(scope,),
             venues=(venue,),
         ).get((window, scope, venue))
-        row_limit = max(0, int(limit)) * 2
+        row_limit = parsed_limit * 2
         publication_status = str((publication_state or {}).get("latest_attempt_status") or "")
         rows = self.token_radar.latest_current_rows(
             window=window,
@@ -68,15 +69,15 @@ class AssetFlowService:
         attention = [row for row in targetful_rows if row.get("_lane") == "attention"]
         for row in [*targets, *attention]:
             row.pop("_lane", None)
-        returned_rows = [*targets[:limit], *attention[:limit]]
+        returned_rows = [*targets[:parsed_limit], *attention[:parsed_limit]]
         projection_quality_status, projection_degraded_reasons = _projection_quality(
             projection_status=projection_status,
             rows=returned_rows,
             unresolved=unresolved,
         )
         return {
-            "targets": targets[:limit],
-            "attention": attention[:limit],
+            "targets": targets[:parsed_limit],
+            "attention": attention[:parsed_limit],
             "projection": {
                 "status": projection_status,
                 "version": TOKEN_RADAR_PROJECTION_VERSION,
@@ -257,6 +258,14 @@ def _pending_quality(reason: str) -> tuple[str, list[str]]:
     if reason == "projection_window_failed":
         return "failed", [reason]
     return "insufficient", [reason]
+
+
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value < 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _string_list(value: Any) -> list[str]:

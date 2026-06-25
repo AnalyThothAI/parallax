@@ -101,6 +101,46 @@ def test_target_posts_rejects_invalid_window_before_repository_call():
     assert targets.seen_cursors == []
 
 
+def test_target_posts_allows_zero_limit_with_empty_page_and_lookahead() -> None:
+    targets = FakeTargets(pages={None: [post_row("event-1", received_at_ms=1_000)]})
+
+    result = TokenTargetPostsService(targets=targets).target_posts(
+        target_type="CexToken",
+        target_id="cex_token:BTC",
+        window="1h",
+        scope="all",
+        post_range="current_window",
+        sort="recent",
+        limit=0,
+        now_ms=2_000_000,
+    )
+
+    assert result["items"] == []
+    assert result["returned_count"] == 0
+    assert result["has_more"] is True
+    assert targets.seen_limits == [1]
+
+
+@pytest.mark.parametrize("limit", [-1, True, "2"])
+def test_target_posts_rejects_malformed_limit_before_repository_call(limit: object) -> None:
+    targets = FakeTargets(pages={})
+
+    with pytest.raises(ValueError, match="token_target_posts_limit_required"):
+        TokenTargetPostsService(targets=targets).target_posts(
+            target_type="CexToken",
+            target_id="cex_token:BTC",
+            window="1h",
+            scope="all",
+            post_range="current_window",
+            sort="recent",
+            limit=limit,  # type: ignore[arg-type]
+            now_ms=2_000_000,
+        )
+
+    assert targets.seen_cursors == []
+    assert targets.seen_limits == []
+
+
 def test_target_repository_reads_post_prices_from_enriched_events_and_market_ticks():
     conn = FakeConn(rows=[])
 
@@ -139,9 +179,11 @@ class FakeTargets:
     def __init__(self, *, pages):
         self.pages = pages
         self.seen_cursors = []
+        self.seen_limits = []
 
     def timeline_rows(self, *, target_type, target_id, since_ms, watched_only, limit, cursor=None):
         self.seen_cursors.append(cursor)
+        self.seen_limits.append(limit)
         return self.pages.get(cursor, [])[:limit]
 
 

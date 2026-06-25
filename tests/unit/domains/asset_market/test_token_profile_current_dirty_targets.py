@@ -143,6 +143,41 @@ def test_claim_due_orders_by_priority_due_and_updated_and_increments_attempts() 
     assert conn.params[-1]["lease_owner"] == "profile-a"
 
 
+@pytest.mark.parametrize(
+    ("overrides", "error"),
+    [
+        pytest.param({"limit": -1}, "token_profile_current_dirty_target_claim_limit_required", id="negative-limit"),
+        pytest.param({"limit": True}, "token_profile_current_dirty_target_claim_limit_required", id="bool-limit"),
+        pytest.param({"limit": "25"}, "token_profile_current_dirty_target_claim_limit_required", id="string-limit"),
+        pytest.param({"lease_ms": 0}, "token_profile_current_dirty_target_claim_lease_ms_required", id="zero-lease"),
+        pytest.param({"lease_ms": True}, "token_profile_current_dirty_target_claim_lease_ms_required", id="bool-lease"),
+        pytest.param(
+            {"lease_ms": "60000"},
+            "token_profile_current_dirty_target_claim_lease_ms_required",
+            id="string-lease",
+        ),
+    ],
+)
+def test_profile_current_dirty_claim_due_rejects_malformed_parameters_before_transaction(
+    overrides: dict[str, object],
+    error: str,
+) -> None:
+    conn = _MissingTransactionConnection()
+    params: dict[str, object] = {
+        "now_ms": 1_700_000_000_000,
+        "limit": 25,
+        "lease_owner": "profile-a",
+        "lease_ms": 60_000,
+    }
+    params.update(overrides)
+
+    with pytest.raises(ValueError, match=error):
+        TokenProfileCurrentDirtyTargetRepository(conn).claim_due(**params)
+
+    assert conn.sql == []
+    assert conn.commits == 0
+
+
 def test_mark_done_requires_full_stale_completion_token() -> None:
     conn = _ScriptedConnection([])
     conn.rowcount = 1
@@ -203,6 +238,22 @@ def test_mark_error_releases_claim_without_terminal_attempt_limit() -> None:
     assert conn.params[-1]["last_error"] == "source failed"
 
 
+@pytest.mark.parametrize("retry_ms", [0, True, "30000"])
+def test_profile_current_dirty_mark_error_rejects_malformed_retry_before_transaction(retry_ms: object) -> None:
+    conn = _MissingTransactionConnection()
+
+    with pytest.raises(ValueError, match="token_profile_current_dirty_target_retry_ms_required"):
+        TokenProfileCurrentDirtyTargetRepository(conn).mark_error(
+            [_dirty_claim()],
+            error="source failed",
+            retry_ms=retry_ms,  # type: ignore[arg-type]
+            now_ms=1_700_000_010_000,
+        )
+
+    assert conn.sql == []
+    assert conn.commits == 0
+
+
 def test_completion_rejects_claim_without_payload_hash() -> None:
     conn = _ScriptedConnection([])
 
@@ -250,6 +301,24 @@ def test_profile_current_dirty_completion_requires_claim_attempt_field_without_d
         operation(TokenProfileCurrentDirtyTargetRepository(conn), claim)
 
     assert isinstance(exc_info.value.__cause__, KeyError)
+    assert conn.sql == []
+
+
+@pytest.mark.parametrize("attempt_count", [0, True, "1"])
+def test_profile_current_dirty_completion_rejects_malformed_attempt_count(attempt_count: object) -> None:
+    conn = _ScriptedConnection([])
+    claim = {**_dirty_claim(), "attempt_count": attempt_count}
+
+    with pytest.raises(
+        ValueError,
+        match="token profile current dirty target completion requires attempt_count",
+    ):
+        TokenProfileCurrentDirtyTargetRepository(conn).mark_done(
+            [claim],
+            now_ms=1_700_000_010_000,
+            commit=False,
+        )
+
     assert conn.sql == []
 
 
@@ -347,9 +416,11 @@ class _ScriptedConnection:
 
     def fetchall(self) -> list[dict[str, Any]]:
         if not self.results:
+            self.rowcount = 0
             return []
         result = self.results.pop(0)
         assert isinstance(result, list)
+        self.rowcount = len(result)
         return result
 
     def fetchone(self) -> dict[str, Any] | None:

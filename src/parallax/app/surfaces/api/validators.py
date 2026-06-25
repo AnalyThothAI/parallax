@@ -16,8 +16,27 @@ SIGNAL_PULSE_VISIBILITIES = {"public", "hidden"}
 WATCHLIST_TIMELINE_SCOPES = {"signal", "all"}
 
 
-def _limit(value: int, *, maximum: int = 1000) -> int:
-    return max(0, min(int(value), maximum))
+def _limit(value: int, *, maximum: int = 1000, field: str = "limit") -> int:
+    parsed = _api_limit_int(value, field=field)
+    if parsed < 0:
+        raise ApiBadRequest("invalid_limit", field=field)
+    return min(parsed, maximum)
+
+
+def _positive_limit(value: int, *, maximum: int = 1000, field: str = "limit") -> int:
+    parsed = _api_limit_int(value, field=field)
+    if parsed <= 0:
+        raise ApiBadRequest("invalid_limit", field=field)
+    return min(parsed, maximum)
+
+
+def _api_limit_int(value: int, *, field: str) -> int:
+    if isinstance(value, bool):
+        raise ApiBadRequest("invalid_limit", field=field)
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ApiBadRequest("invalid_limit", field=field) from exc
 
 
 def _handle_set(raw: str) -> set[str]:

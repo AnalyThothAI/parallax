@@ -1,16 +1,21 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from typing import Any
 
-from .deterministic_token_resolver import (
-    DeterministicResolution,
+from parallax.domains.token_intel.services.deterministic_token_resolver import (
     DeterministicTokenResolver,
-    MentionKeys,
 )
-from .token_evidence_builder import TokenEvidenceInput
-from .token_intent_builder import TokenIntentInput
+from parallax.domains.token_intel.types.token_fact_inputs import (
+    DeterministicResolution,
+    MentionKeys,
+    TokenEvidenceInput,
+    TokenIntentInput,
+)
 
 TokenIntentResolutionDecision = DeterministicResolution
+TokenIntentResolveInput = TokenIntentInput | Mapping[str, Any]
+TokenEvidenceResolveInput = TokenEvidenceInput | Mapping[str, Any]
 
 
 class TokenIntentResolver:
@@ -21,8 +26,8 @@ class TokenIntentResolver:
 
     def resolve(
         self,
-        intent: TokenIntentInput | dict[str, Any],
-        evidence: list[TokenEvidenceInput] | list[dict[str, Any]],
+        intent: TokenIntentResolveInput,
+        evidence: Sequence[TokenEvidenceResolveInput],
         *,
         decision_time_ms: int | None = None,
         persist: bool = False,
@@ -40,8 +45,8 @@ class TokenIntentResolver:
 
 
 def _mention_keys(
-    intent: TokenIntentInput | dict[str, Any],
-    evidence: list[TokenEvidenceInput] | list[dict[str, Any]],
+    intent: TokenIntentResolveInput,
+    evidence: Sequence[TokenEvidenceResolveInput],
 ) -> MentionKeys:
     cex_pricefeed_id = _cex_pricefeed_id(evidence)
     return MentionKeys(
@@ -53,7 +58,7 @@ def _mention_keys(
     )
 
 
-def _cex_pricefeed_id(evidence: list[TokenEvidenceInput] | list[dict[str, Any]]) -> str | None:
+def _cex_pricefeed_id(evidence: Sequence[TokenEvidenceResolveInput]) -> str | None:
     for item in evidence:
         evidence_type = _evidence_value(item, "evidence_type")
         if evidence_type == "cex_pricefeed":
@@ -62,7 +67,7 @@ def _cex_pricefeed_id(evidence: list[TokenEvidenceInput] | list[dict[str, Any]])
     return None
 
 
-def _exchange_hint(evidence: list[TokenEvidenceInput] | list[dict[str, Any]]) -> str | None:
+def _exchange_hint(evidence: Sequence[TokenEvidenceResolveInput]) -> str | None:
     for item in evidence:
         provider = _evidence_value(item, "provider")
         if provider:
@@ -70,15 +75,36 @@ def _exchange_hint(evidence: list[TokenEvidenceInput] | list[dict[str, Any]]) ->
     return None
 
 
-def _intent_value(intent: TokenIntentInput | dict[str, Any], key: str) -> Any:
-    return intent.get(key) if isinstance(intent, dict) else getattr(intent, key)
+def _intent_value(intent: TokenIntentResolveInput, key: str) -> Any:
+    if isinstance(intent, TokenIntentInput):
+        values = {
+            "intent_id": intent.intent_id,
+            "event_id": intent.event_id,
+            "display_symbol": intent.display_symbol,
+            "chain_hint": intent.chain_hint,
+            "address_hint": intent.address_hint,
+            "created_at_ms": intent.created_at_ms,
+        }
+        return values.get(key)
+    if isinstance(intent, Mapping):
+        return intent.get(key)
+    raise TypeError("token_intent_resolver_input_contract_required")
 
 
-def _evidence_value(evidence: TokenEvidenceInput | dict[str, Any], key: str) -> Any:
-    return evidence.get(key) if isinstance(evidence, dict) else getattr(evidence, key)
+def _evidence_value(evidence: TokenEvidenceResolveInput, key: str) -> Any:
+    if isinstance(evidence, TokenEvidenceInput):
+        values = {
+            "evidence_type": evidence.evidence_type,
+            "provider": evidence.provider,
+            "provider_ref": evidence.provider_ref,
+        }
+        return values.get(key)
+    if isinstance(evidence, Mapping):
+        return evidence.get(key)
+    raise TypeError("token_intent_resolver_evidence_contract_required")
 
 
-def _intent_created_at(intent: TokenIntentInput | dict[str, Any]) -> int | None:
+def _intent_created_at(intent: TokenIntentResolveInput) -> int | None:
     value = _intent_value(intent, "created_at_ms")
     return int(value) if value is not None else None
 

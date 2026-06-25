@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from parallax.domains.news_intel.types.news_item_agent_admission import NewsItemAgentAdmission
+
 _AUTHORITATIVE_SOURCE_ROLES = frozenset(
     {
         "developer_signal",
@@ -45,7 +47,7 @@ _MATERIAL_MARKET_SCOPES = frozenset(
 def news_item_agent_brief_priority(
     *,
     item: Mapping[str, Any],
-    admission: Any | None = None,
+    admission: NewsItemAgentAdmission | None = None,
 ) -> int:
     admission_payload = _admission_payload(item=item, admission=admission)
     status = _text(admission_payload.get("status"))
@@ -74,12 +76,14 @@ def news_item_agent_brief_priority(
     return max(12, min(95, priority))
 
 
-def _admission_payload(*, item: Mapping[str, Any], admission: Any | None) -> dict[str, Any]:
+def _admission_payload(*, item: Mapping[str, Any], admission: NewsItemAgentAdmission | None) -> dict[str, Any]:
     if admission is not None:
+        if not isinstance(admission, NewsItemAgentAdmission):
+            raise TypeError("news_item_agent_policy_admission_contract_required")
         return {
-            "status": _text(getattr(admission, "status", "")),
-            "reason": _text(getattr(admission, "reason", "")),
-            "basis": _optional_policy_mapping(getattr(admission, "basis", None), "basis"),
+            "status": _text(admission.status),
+            "reason": _text(admission.reason),
+            "basis": _optional_policy_mapping(admission.basis, "basis"),
         }
     return _optional_policy_mapping(item.get("agent_admission_json"), "agent_admission_json")
 

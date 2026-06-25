@@ -4,14 +4,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from parallax.domains.asset_market.services.asset_market_sync import sync_binance_usdt_perp_routes
+from parallax.domains.asset_market.services.asset_market_sync import BinanceUsdtPerpRoute, sync_binance_usdt_perp_routes
 
 
 def test_sync_binance_usdt_perp_routes_writes_instruments_and_feeds_without_market_ticks():
     registry = _Registry()
     result = sync_binance_usdt_perp_routes(
         registry=registry,
-        client=_BinanceClient(),
+        routes=_binance_routes(),
         observed_at_ms=1_778_000_000_000,
         dry_run=False,
         execute=True,
@@ -54,7 +54,7 @@ def test_sync_binance_usdt_perp_routes_dry_run_does_not_write_or_commit():
     registry = _Registry()
     result = sync_binance_usdt_perp_routes(
         registry=registry,
-        client=_BinanceClient(),
+        routes=_binance_routes(),
         observed_at_ms=1_778_000_000_000,
         dry_run=True,
         execute=False,
@@ -75,7 +75,7 @@ def test_sync_binance_usdt_perp_routes_requires_formal_plan_count_repository_con
     with pytest.raises(AttributeError, match="binance_usdt_perp_sync_plan_counts"):
         sync_binance_usdt_perp_routes(
             registry=registry,
-            client=_BinanceClient(),
+            routes=_binance_routes(),
             observed_at_ms=1_778_000_000_000,
             dry_run=True,
             execute=False,
@@ -91,7 +91,7 @@ def test_sync_binance_usdt_perp_routes_requires_transaction_before_writes():
     with pytest.raises(RuntimeError, match="asset_market_sync_transaction_required"):
         sync_binance_usdt_perp_routes(
             registry=registry,
-            client=_BinanceClient(),
+            routes=_binance_routes(),
             observed_at_ms=1_778_000_000_000,
             dry_run=False,
             execute=True,
@@ -100,16 +100,35 @@ def test_sync_binance_usdt_perp_routes_requires_transaction_before_writes():
     assert registry.pricefeeds == []
 
 
-class _BinanceClient:
-    def usdt_perpetual_routes(self):
-        return [
-            SimpleNamespace(
-                native_market_id="BTCUSDT",
-                base_symbol="BTC",
-                quote_symbol="USDT",
-                multiplier=None,
-            )
-        ]
+def test_sync_binance_usdt_perp_routes_requires_formal_route_dto_without_object_reflection():
+    registry = _Registry()
+
+    with pytest.raises(RuntimeError, match="asset_market_sync_binance_route_contract_required"):
+        sync_binance_usdt_perp_routes(
+            registry=registry,
+            routes=[
+                SimpleNamespace(
+                    native_market_id="BTCUSDT",
+                    base_symbol="BTC",
+                    quote_symbol="USDT",
+                    multiplier=None,
+                )
+            ],
+            observed_at_ms=1_778_000_000_000,
+            dry_run=True,
+            execute=False,
+        )
+
+
+def _binance_routes() -> list[BinanceUsdtPerpRoute]:
+    return [
+        BinanceUsdtPerpRoute(
+            native_market_id="BTCUSDT",
+            base_symbol="BTC",
+            quote_symbol="USDT",
+            multiplier=None,
+        )
+    ]
 
 
 class _Registry:

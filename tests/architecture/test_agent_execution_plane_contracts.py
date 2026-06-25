@@ -435,17 +435,39 @@ def test_pulse_stage_audit_no_longer_dual_writes_safety_net_trace_metadata() -> 
     assert [token for token in forbidden_type_tokens if token in decision_types_text] == []
 
 
+def test_pulse_stage_audit_numeric_fields_reject_runtime_zero_repair() -> None:
+    client_text = (SRC / "integrations/model_execution/pulse_decision_agent_client.py").read_text(encoding="utf-8")
+    forbidden_tokens = (
+        "int(float(value or 0))",
+        'int(safety.get("safety_net_retries") or 0)',
+        "except (TypeError, ValueError):\n        return 0",
+    )
+    required_tokens = (
+        "pulse_decision_agent_latency_ms_required",
+        "pulse_decision_agent_safety_net_retries_required",
+        "def _safety_net_retries",
+    )
+
+    assert [token for token in forbidden_tokens if token in client_text] == []
+    assert [token for token in required_tokens if token not in client_text] == []
+
+
 def test_pulse_stage_audit_requires_formal_agent_execution_audit_without_reflection() -> None:
     source = (SRC / "integrations/model_execution/pulse_decision_agent_client.py").read_text(encoding="utf-8")
     forbidden_tokens = (
         "getattr(audit",
         "getattr(exc",
+        "exc.error_class == AgentExecutionErrorClass.TIMEOUT",
+        "exc.error_class in {",
     )
     required_tokens = (
         "AgentExecutionResult",
         "pulse_decision_execution_result_contract_required",
         "pulse_decision_execution_audit_contract_required",
+        "pulse_decision_agent_error_class_contract_required",
         "def _require_execution_audit",
+        "def _require_agent_error_class",
+        "error_class = _require_agent_error_class(exc.error_class)",
         "exc.execution_started is False",
     )
 
@@ -574,12 +596,54 @@ def test_model_execution_provider_wiring_uses_formal_agent_lane_timeout_contract
         "lanes.get(lane)",
         'getattr(lane_policy, "timeout_seconds", 120.0)',
         "return 120.0",
+        "return float(lane_policy.timeout_seconds)",
     )
     offenders = [token for token in forbidden_tokens if token in helper_source]
 
     assert offenders == []
     assert "lane_policy = settings.workers.agent_runtime.lanes[lane]" in helper_source
-    assert "return float(lane_policy.timeout_seconds)" in helper_source
+    assert "_positive_timeout_seconds(" in helper_source
+    assert "agent_runtime_lane_timeout_seconds_required" in helper_source
+    assert "pulse_decision_pipeline_timeout_seconds_required" in source
+
+
+def test_agent_execution_numeric_boundaries_reject_instead_of_repair() -> None:
+    gateway_source = (MODEL_EXECUTION / "execution_gateway.py").read_text(encoding="utf-8")
+    structured_source = (MODEL_EXECUTION / "structured_json_strategy.py").read_text(encoding="utf-8")
+    forbidden_gateway = (
+        "rate_unit_count = max(1, int(rate_units))",
+        "requested_units = max(1, int(requested_rate_units))",
+        'int(audit_extra.get("safety_net_retries") or 0)',
+    )
+    forbidden_structured = (
+        "attempts = max(1, int(context.capability_profile.client_validation_retries) + 1)",
+    )
+
+    assert [token for token in forbidden_gateway if token in gateway_source] == []
+    assert [token for token in forbidden_structured if token in structured_source] == []
+    assert "agent_execution_rate_units_required" in gateway_source
+    assert "agent_execution_safety_net_retries_required" in gateway_source
+    assert "def _safety_net_retries" in gateway_source
+    assert "structured_json_client_validation_retries_required" in structured_source
+
+
+def test_agent_execution_gateway_requires_formal_llm_gateway_surface_without_reflection_defaults() -> None:
+    gateway_source = (MODEL_EXECUTION / "execution_gateway.py").read_text(encoding="utf-8")
+    forbidden_tokens = (
+        'getattr(llm_gateway, "trace_export_enabled", False)',
+        'getattr(llm_gateway, "api_key", "")',
+        'getattr(llm_gateway, "base_url", "")',
+    )
+    required_tokens = (
+        "agent_execution_llm_gateway_api_key_required",
+        "agent_execution_llm_gateway_base_url_required",
+        "agent_execution_llm_gateway_trace_export_enabled_required",
+        "def _llm_gateway_text",
+        "def _llm_gateway_bool",
+    )
+
+    assert [token for token in forbidden_tokens if token in gateway_source] == []
+    assert [token for token in required_tokens if token not in gateway_source] == []
 
 
 def test_pulse_decision_client_does_not_keep_provider_timeout_fallback() -> None:

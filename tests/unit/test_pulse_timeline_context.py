@@ -54,6 +54,34 @@ def test_build_context_has_all_windows_and_budget_limits():
     assert all(len(post["text"]) <= 80 for post in context["selected_posts"])
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "error"),
+    [
+        ("max_selected_posts", -1, "pulse_timeline_max_selected_posts_required"),
+        ("max_selected_posts", True, "pulse_timeline_max_selected_posts_required"),
+        ("max_selected_posts", "24", "pulse_timeline_max_selected_posts_required"),
+        ("max_post_clusters", -1, "pulse_timeline_max_post_clusters_required"),
+        ("max_post_clusters", True, "pulse_timeline_max_post_clusters_required"),
+        ("max_post_clusters", "16", "pulse_timeline_max_post_clusters_required"),
+        ("max_raw_text_chars_per_post", -1, "pulse_timeline_max_raw_text_chars_per_post_required"),
+        ("max_raw_text_chars_per_post", True, "pulse_timeline_max_raw_text_chars_per_post_required"),
+        ("max_raw_text_chars_per_post", "80", "pulse_timeline_max_raw_text_chars_per_post_required"),
+    ],
+)
+def test_build_context_rejects_malformed_budget_limits(field: str, value: object, error: str) -> None:
+    rows = [row("event-1", "alice", NOW_MS - 30_000, text="PEPE seed")]
+
+    with pytest.raises(ValueError, match=error):
+        build_pulse_timeline_context(
+            target=TARGET,
+            rows=rows,
+            window="1h",
+            scope="all",
+            now_ms=NOW_MS,
+            **{field: value},
+        )
+
+
 def test_deduplicates_same_author_text_and_clusters_multi_author_duplicates():
     rows = [
         row("event-1", "alice", NOW_MS - 10_000, text="PEPE ripping https://x.test/a 🚀!!!"),

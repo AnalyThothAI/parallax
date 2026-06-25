@@ -11,6 +11,7 @@ from parallax.domains.news_intel.repositories.news_repository import NewsReposit
 from parallax.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
 from parallax.domains.news_intel.runtime.news_item_process_worker import NewsItemProcessWorker
 from parallax.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
+from parallax.domains.news_intel.types import NewsSourceConfig
 from parallax.domains.news_intel.types.source_provider import (
     NewsProviderFetchResult,
     NewsProviderObservation,
@@ -28,21 +29,21 @@ def test_news_workers_ingest_process_project_and_query_visible_news(tmp_path) ->
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        source = {
-            "source_id": "binance-announcements",
-            "provider_type": "rss",
-            "feed_url": "https://www.binance.com/en/support/announcement/rss",
-            "source_domain": "binance.com",
-            "source_name": "Binance Announcements",
-            "source_role": "official_exchange",
-            "trust_tier": "high",
-            "authority_scope": {
+        source = NewsSourceConfig(
+            source_id="binance-announcements",
+            provider_type="rss",
+            feed_url="https://www.binance.com/en/support/announcement/rss",
+            source_domain="binance.com",
+            source_name="Binance Announcements",
+            source_role="official_exchange",
+            trust_tier="high",
+            authority_scope={
                 "event_types": ["exchange_listing"],
                 "domains": ["binance.com"],
                 "targets": [{"target_type": "CexToken", "target_id": "cex:BTC"}],
             },
-            "refresh_interval_seconds": 300,
-        }
+            refresh_interval_seconds=300,
+        )
         db = _SingleConnectionWorkerDB(conn)
         wake_bus = _FakeWakeBus()
         feed_client = _FakeFeedClient(

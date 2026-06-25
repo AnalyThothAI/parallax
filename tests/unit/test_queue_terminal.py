@@ -7,6 +7,7 @@ import pytest
 
 from parallax.platform.db.queue_terminal import (
     inspect_terminal_events,
+    list_terminal_event_ids,
     resolve_terminal_event,
     terminal_reason_bucket,
     terminalize_source_row,
@@ -369,6 +370,51 @@ def test_inspect_terminal_events_filters_by_reason_bucket() -> None:
     assert payload["reason_bucket"] == "llm_provider_522"
     assert payload["count"] == 1
     assert payload["items"][0]["terminal_id"] == "terminal-1"
+
+
+def test_list_terminal_event_ids_filters_unresolved_bucket() -> None:
+    conn = _FakeTerminalConnection()
+    conn.rows = [
+        _terminal_row(
+            "terminal-1",
+            worker_name="resolution_refresh",
+            source_table="token_discovery_dirty_lookup_keys",
+            target_key="a",
+            final_reason_bucket="retry_budget_exhausted",
+        ),
+        _terminal_row(
+            "terminal-2",
+            worker_name="resolution_refresh",
+            source_table="token_discovery_dirty_lookup_keys",
+            target_key="b",
+            final_reason_bucket="retry_budget_exhausted",
+            operator_action="archive",
+        ),
+        _terminal_row(
+            "terminal-3",
+            worker_name="event_anchor_backfill",
+            source_table="event_anchor_backfill_jobs",
+            target_key="c",
+            final_reason_bucket="retry_budget_exhausted",
+        ),
+        _terminal_row(
+            "terminal-4",
+            worker_name="resolution_refresh",
+            source_table="token_discovery_dirty_lookup_keys",
+            target_key="d",
+            final_reason_bucket="provider_error",
+        ),
+    ]
+
+    terminal_ids = list_terminal_event_ids(
+        conn,
+        worker_name="resolution_refresh",
+        source_table="token_discovery_dirty_lookup_keys",
+        reason_bucket="retry_budget_exhausted",
+        limit=10,
+    )
+
+    assert terminal_ids == ["terminal-1"]
 
 
 def test_inspect_terminal_events_excludes_quarantine_from_unresolved_terminal_rows() -> None:

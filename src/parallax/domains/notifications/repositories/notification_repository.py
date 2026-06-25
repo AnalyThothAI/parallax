@@ -30,8 +30,14 @@ class NotificationRepository:
         stale_running_terminalization_batch_size: int,
     ):
         self.conn = conn
-        self.running_timeout_ms = int(running_timeout_ms)
-        self.stale_running_terminalization_batch_size = max(1, int(stale_running_terminalization_batch_size))
+        self.running_timeout_ms = _required_positive_int(
+            running_timeout_ms,
+            error_code="notification_delivery_running_timeout_ms_required",
+        )
+        self.stale_running_terminalization_batch_size = _required_positive_int(
+            stale_running_terminalization_batch_size,
+            error_code="notification_delivery_stale_running_terminalization_batch_size_required",
+        )
 
     def insert_notification(
         self,
@@ -582,6 +588,11 @@ class NotificationRepository:
         next_run_at_ms: int | None = None,
         commit: bool = True,
     ) -> dict[str, Any] | None:
+        required_max_attempts = _required_positive_int(
+            max_attempts,
+            error_code="notification_delivery_max_attempts_required",
+        )
+
         def write() -> dict[str, Any] | None:
             now_ms = _now_ms()
             delivery_id = _id("delivery", notification_id, channel_id)
@@ -601,7 +612,7 @@ class NotificationRepository:
                     provider,
                     "pending",
                     0,
-                    max(1, int(max_attempts)),
+                    required_max_attempts,
                     int(next_run_at_ms if next_run_at_ms is not None else now_ms),
                     None,
                     None,
@@ -631,6 +642,11 @@ class NotificationRepository:
         next_run_at_ms: int | None = None,
         commit: bool = True,
     ) -> dict[str, Any] | None:
+        required_max_attempts = _required_positive_int(
+            max_attempts,
+            error_code="notification_delivery_max_attempts_required",
+        )
+
         def write() -> dict[str, Any] | None:
             now_ms = _now_ms()
             delivery_id = _id("delivery", notification_id, channel_id)
@@ -661,7 +677,7 @@ class NotificationRepository:
                     provider,
                     "pending",
                     0,
-                    max(1, int(max_attempts)),
+                    required_max_attempts,
                     int(next_run_at_ms if next_run_at_ms is not None else now_ms),
                     None,
                     None,
@@ -692,7 +708,7 @@ class NotificationRepository:
 
         def write() -> dict[str, Any] | None:
             stale_before = now - self.running_timeout_ms
-            self.conn.execute(
+            terminalize_cursor = self.conn.execute(
                 """
                 WITH expired AS (
                   SELECT delivery_id
@@ -712,6 +728,12 @@ class NotificationRepository:
                 WHERE delivery.delivery_id = expired.delivery_id
                 """,
                 (stale_before, self.stale_running_terminalization_batch_size, now),
+            )
+            _bounded_write_count(
+                terminalize_cursor,
+                limit=self.stale_running_terminalization_batch_size,
+                required_error="notification_delivery_stale_terminalize_rowcount_required",
+                invalid_error="notification_delivery_stale_terminalize_rowcount_invalid",
             )
             cursor = self.conn.execute(
                 """
@@ -774,9 +796,10 @@ class NotificationRepository:
         commit: bool = True,
     ) -> None:
         now = int(delivered_at_ms if delivered_at_ms is not None else _now_ms())
+        delivery_id, claim_attempt_count, claim_updated_at_ms = _delivery_claim_contract(delivery)
 
         def write() -> None:
-            self.conn.execute(
+            cursor = self.conn.execute(
                 """
                 UPDATE notification_deliveries
                 SET status = 'delivered',
@@ -784,8 +807,16 @@ class NotificationRepository:
                     last_error = NULL,
                     updated_at_ms = %s
                 WHERE delivery_id = %s
+                  AND status = 'running'
+                  AND attempt_count = %s
+                  AND updated_at_ms = %s
                 """,
-                (now, now, delivery["delivery_id"]),
+                (now, now, delivery_id, claim_attempt_count, claim_updated_at_ms),
+            )
+            _single_row_write_count(
+                cursor,
+                required_error="notification_delivery_complete_rowcount_required",
+                invalid_error="notification_delivery_complete_rowcount_invalid",
             )
 
         _run_delivery_write(self.conn, commit, write)
@@ -800,11 +831,12 @@ class NotificationRepository:
     ) -> None:
         now = int(now_ms if now_ms is not None else _now_ms())
         attempts, max_attempts = _delivery_attempt_contract(delivery)
+        delivery_id, claim_attempt_count, claim_updated_at_ms = _delivery_claim_contract(delivery)
         status = "dead" if attempts >= max_attempts else "failed"
         delay_ms = min(15 * 60_000, 30_000 * max(1, attempts))
 
         def write() -> None:
-            self.conn.execute(
+            cursor = self.conn.execute(
                 """
                 UPDATE notification_deliveries
                 SET status = %s,
@@ -812,13 +844,30 @@ class NotificationRepository:
                     last_error = %s,
                     updated_at_ms = %s
                 WHERE delivery_id = %s
+                  AND status = 'running'
+                  AND attempt_count = %s
+                  AND updated_at_ms = %s
                 """,
-                (status, now + delay_ms, str(error)[:1000], now, delivery["delivery_id"]),
+                (
+                    status,
+                    now + delay_ms,
+                    str(error)[:1000],
+                    now,
+                    delivery_id,
+                    claim_attempt_count,
+                    claim_updated_at_ms,
+                ),
+            )
+            _single_row_write_count(
+                cursor,
+                required_error="notification_delivery_fail_rowcount_required",
+                invalid_error="notification_delivery_fail_rowcount_invalid",
             )
 
         _run_delivery_write(self.conn, commit, write)
 
     def list_deliveries(self, *, limit: int, status: str | None = None) -> list[dict[str, Any]]:
+        parsed_limit = _required_nonnegative_int(limit, error_code="notification_delivery_list_limit_required")
         clauses: list[str] = []
         params: list[Any] = []
         if status:
@@ -833,7 +882,7 @@ class NotificationRepository:
             ORDER BY updated_at_ms DESC, created_at_ms DESC
             LIMIT %s
             """,
-            (*params, max(0, int(limit))),
+            (*params, parsed_limit),
         ).fetchall()
         return [dict(row) for row in rows]
 
@@ -845,6 +894,7 @@ class NotificationRepository:
         limit: int,
         subscriber_key: str | None,
     ) -> list[dict[str, Any]]:
+        parsed_limit = _required_nonnegative_int(limit, error_code="notification_list_limit_required")
         join = ""
         select_read = "NULL AS read_at_ms"
         query_params = list(params)
@@ -866,7 +916,7 @@ class NotificationRepository:
             ORDER BY n.last_seen_at_ms DESC, n.created_at_ms DESC
             LIMIT %s
             """,
-            (*query_params, max(0, int(limit))),
+            (*query_params, parsed_limit),
         ).fetchall()
         return [dict(row) for row in rows]
 
@@ -964,6 +1014,13 @@ def _single_row_write_count(cursor: Any, *, required_error: str, invalid_error: 
     return rowcount
 
 
+def _bounded_write_count(cursor: Any, *, limit: int, required_error: str, invalid_error: str) -> int:
+    rowcount = _write_count(cursor, required_error=required_error, invalid_error=invalid_error)
+    if rowcount > limit:
+        raise TypeError(invalid_error)
+    return rowcount
+
+
 def _returned_write_count(
     cursor: Any,
     rows: Sequence[Any],
@@ -1003,6 +1060,34 @@ def _delivery_attempt_contract(delivery: dict[str, Any]) -> tuple[int, int]:
     if attempts < 0 or max_attempts < 1:
         raise RuntimeError("notification_delivery_attempt_contract_required")
     return attempts, max_attempts
+
+
+def _delivery_claim_contract(delivery: dict[str, Any]) -> tuple[str, int, int]:
+    try:
+        delivery_id = str(delivery["delivery_id"])
+        attempts = int(delivery["attempt_count"])
+        updated_at_ms = int(delivery["updated_at_ms"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError("notification_delivery_claim_contract_required") from exc
+    if not delivery_id or attempts < 1 or updated_at_ms <= 0:
+        raise RuntimeError("notification_delivery_claim_contract_required")
+    return delivery_id, attempts, updated_at_ms
+
+
+def _required_positive_int(value: Any, *, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError(error_code)
+    if value <= 0:
+        raise RuntimeError(error_code)
+    return int(value)
+
+
+def _required_nonnegative_int(value: Any, *, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError(error_code)
+    if value < 0:
+        raise RuntimeError(error_code)
+    return int(value)
 
 
 def _id(*parts: str) -> str:

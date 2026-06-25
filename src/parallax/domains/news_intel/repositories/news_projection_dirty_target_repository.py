@@ -140,6 +140,12 @@ class NewsProjectionDirtyTargetRepository:
                       THEN NULL
                     ELSE news_projection_dirty_targets.lease_owner
                   END,
+                  attempt_count = CASE
+                    WHEN EXCLUDED.source_watermark_ms >= news_projection_dirty_targets.source_watermark_ms
+                      AND news_projection_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                      THEN 0
+                    ELSE news_projection_dirty_targets.attempt_count
+                  END,
                   last_error = NULL,
                   first_dirty_at_ms = news_projection_dirty_targets.first_dirty_at_ms,
                   updated_at_ms = EXCLUDED.updated_at_ms
@@ -165,11 +171,19 @@ class NewsProjectionDirtyTargetRepository:
         commit: bool = True,
     ) -> list[dict[str, Any]]:
         projection_filter = ""
+        parsed_lease_ms = _required_positive_int(
+            lease_ms,
+            "news_projection_dirty_target_claim_lease_ms_required",
+        )
+        parsed_limit = _required_nonnegative_int(
+            limit,
+            "news_projection_dirty_target_claim_limit_required",
+        )
         params: dict[str, Any] = {
             "now_ms": int(now_ms),
-            "leased_until_ms": int(now_ms) + max(1, int(lease_ms)),
+            "leased_until_ms": int(now_ms) + parsed_lease_ms,
             "lease_owner": str(lease_owner),
-            "limit": max(0, int(limit)),
+            "limit": parsed_limit,
         }
         if projection_name is not None:
             _validate_projection_name(str(projection_name))
@@ -327,9 +341,13 @@ class NewsProjectionDirtyTargetRepository:
         records = _key_records(keys)
         if not records:
             return 0
+        parsed_retry_ms = _required_positive_int(
+            retry_ms,
+            "news_projection_dirty_target_retry_ms_required",
+        )
         params: dict[str, Any] = {
             **_key_params(records),
-            "due_at_ms": int(now_ms) + max(1, int(retry_ms)),
+            "due_at_ms": int(now_ms) + parsed_retry_ms,
             "now_ms": int(now_ms),
             "last_error": str(error)[:2048],
             "attempt_increment": 1 if count_attempt else 0,
@@ -619,12 +637,12 @@ def _completion_window_text(key: Mapping[str, Any]) -> str:
 
 def _completion_attempt_count(key: Mapping[str, Any]) -> int:
     try:
-        attempt_count = int(key["attempt_count"])
-    except (KeyError, TypeError, ValueError) as exc:
+        value = key["attempt_count"]
+    except KeyError as exc:
         raise ValueError("news projection dirty target completion requires attempt_count from claim_due") from exc
-    if attempt_count < 0:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise ValueError("news projection dirty target completion requires attempt_count from claim_due")
-    return attempt_count
+    return int(value)
 
 
 def _completion_lease_owner(key: Mapping[str, Any]) -> str:
@@ -761,6 +779,18 @@ def _required_dirty_due_at_ms(value: Any) -> int:
     if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
         raise ValueError("news_projection_dirty_target_due_at_ms_required")
     return value
+
+
+def _required_positive_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _payload_hash(payload: Mapping[str, Any]) -> str:

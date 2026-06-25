@@ -11,6 +11,7 @@ from psycopg.types.json import Jsonb
 
 from parallax.app.runtime.repository_session import repositories_for_connection
 from parallax.domains.news_intel._constants import (
+    NEWS_ITEM_AGENT_ADMISSION_VERSION,
     NEWS_ITEM_BRIEF_GUARDRAIL_VERSION,
     NEWS_ITEM_BRIEF_PROMPT_VERSION,
     NEWS_ITEM_BRIEF_SCHEMA_VERSION,
@@ -131,6 +132,8 @@ def test_source_fetch_provider_and_news_item_round_trip(tmp_path) -> None:
                     },
                     "provider_rating": {},
                     "agent_brief": {"status": "pending"},
+                    "agent_status": "pending",
+                    "agent_brief_computed_at_ms": None,
                     "market_scope": {},
                     "macro_event_flow": None,
                     "agent_admission": {
@@ -139,6 +142,7 @@ def test_source_fetch_provider_and_news_item_round_trip(tmp_path) -> None:
                         "reason": "integration_fixture",
                         "representative_news_item_id": news["news_item_id"],
                         "basis": {},
+                        "version": NEWS_ITEM_AGENT_ADMISSION_VERSION,
                     },
                     "agent_admission_status": "eligible",
                     "agent_admission_reason": "integration_fixture",
@@ -4094,13 +4098,14 @@ def test_page_projection_loader_omits_item_current_brief_after_story_hard_cut(tm
             updated_at_ms=NOW_MS + 100,
         )
 
-        candidates = repo.load_items_for_page_projection(news_item_ids=[news_item_id])
+        candidates = repo.load_story_projection_payloads_for_items(news_item_ids=[news_item_id])
         row = candidates[0]
         projected_row = build_news_page_row(
             item=row["item"],
             token_mentions=row["token_mentions"],
             fact_candidates=row["fact_candidates"],
-            agent_brief=None,
+            story=row["story"],
+            agent_brief=row["current_brief"],
             computed_at_ms=NOW_MS + 200,
         )
         repo.replace_page_rows_for_items(
@@ -4112,7 +4117,7 @@ def test_page_projection_loader_omits_item_current_brief_after_story_hard_cut(tm
         conn.close()
 
     assert [candidate["item"]["news_item_id"] for candidate in candidates] == [news_item_id]
-    assert "current_brief" not in row
+    assert row["current_brief"] is None
     assert projected_row["agent_brief"]["status"] == "pending"
     assert rows[0]["agent_status"] == "pending"
     assert rows[0]["agent_brief_computed_at_ms"] is None
@@ -4189,6 +4194,14 @@ def test_news_high_signal_candidates_require_ready_agent_status(tmp_path) -> Non
                         "version": "test_news_market_scope_v1",
                     },
                     "agent_admission_status": "needs_review",
+                    "agent_admission": {
+                        "eligible": False,
+                        "status": "needs_review",
+                        "reason": "integration_fixture",
+                        "representative_news_item_id": news_item_id,
+                        "basis": {},
+                        "version": NEWS_ITEM_AGENT_ADMISSION_VERSION,
+                    },
                     "agent_status": "insufficient",
                     "agent_brief": {
                         "status": "insufficient",
@@ -4450,13 +4463,13 @@ def test_list_news_page_rows_filters_by_signal(tmp_path) -> None:
                 {
                     **_page_row("row-bullish", bullish_item_id, source_id="source-1"),
                     "agent_status": "ready",
-                    "agent_brief": {"status": "ready", "direction": "bullish"},
+                    "agent_brief": {"status": "ready", "direction": "bullish", "decision_class": "market_signal"},
                     "signal": {"display_signal": {"direction": "bullish", "status": "ready"}},
                 },
                 {
                     **_page_row("row-bearish", bearish_item_id, source_id="source-1"),
                     "agent_status": "ready",
-                    "agent_brief": {"status": "ready", "direction": "bearish"},
+                    "agent_brief": {"status": "ready", "direction": "bearish", "decision_class": "market_signal"},
                     "signal": {"display_signal": {"direction": "bearish", "status": "ready"}},
                 },
             ],
@@ -4615,13 +4628,37 @@ def test_build_news_page_row_populates_deterministic_search_text() -> None:
     row = build_news_page_row(
         item={
             "news_item_id": "news-search-doc",
+            "canonical_item_key": "opennews-realtime:news-search-doc",
             "title": "ZEC listing update",
             "summary": "OpenNews reports an exchange listing.",
             "source_domain": "6551.io",
             "source_id": "opennews-realtime",
             "provider_type": "opennews",
             "source_name": "OpenNews",
+            "source_quality_status": "unknown",
+            "canonical_url": "https://6551.io/news/zec-listing-update",
             "published_at_ms": NOW_MS,
+            "content_class": "market_signal",
+            "content_tags_json": ["listing"],
+            "content_classification_json": {"class": "market_signal"},
+            "market_scope_json": {
+                "scope": ["crypto"],
+                "primary": "crypto",
+                "status": "eligible",
+                "reason": "integration_fixture",
+                "basis": {},
+                "version": "integration_fixture",
+            },
+            "agent_admission_status": "eligible",
+            "agent_admission_reason": "integration_fixture",
+            "agent_representative_news_item_id": "news-search-doc",
+            "agent_admission_json": {
+                "status": "eligible",
+                "reason": "integration_fixture",
+                "representative_news_item_id": "news-search-doc",
+                "basis": {},
+                "version": NEWS_ITEM_AGENT_ADMISSION_VERSION,
+            },
         },
         token_mentions=[
             {
@@ -4638,6 +4675,15 @@ def test_build_news_page_row_populates_deterministic_search_text() -> None:
                 "validation_status": "accepted",
             }
         ],
+        story={
+            "story_key": "news-story:fixture:news-search-doc",
+            "representative_news_item_id": "news-search-doc",
+            "member_news_item_ids": ["news-search-doc"],
+            "member_count": 1,
+            "source_domains": ["6551.io"],
+            "source_ids": ["opennews-realtime"],
+            "provider_article_keys": ["opennews-realtime:news-search-doc"],
+        },
         computed_at_ms=NOW_MS + 100,
     )
 
@@ -4791,13 +4837,26 @@ def test_updating_news_item_clears_stale_item_facts_and_refreshes_page_projectio
         ).fetchone()["lifecycle_status"]
         repos = _repositories_for_test_connection(conn)
         repos.news_projection_dirty_targets.enqueue_targets(
-            [{"projection_name": "page", "target_kind": "news_item", "target_id": news_item_id}],
+            [
+                {
+                    "projection_name": "page",
+                    "target_kind": "news_item",
+                    "target_id": news_item_id,
+                    "source_watermark_ms": NOW_MS + 1,
+                }
+            ],
             reason="news_item_written",
             now_ms=NOW_MS + 2,
         )
         page_worker = NewsPageProjectionWorker(
             name="news_page_projection",
-            settings=SimpleNamespace(batch_size=10, lease_ms=60_000, retry_ms=30_000, statement_timeout_seconds=30),
+            settings=SimpleNamespace(
+                batch_size=10,
+                lease_ms=60_000,
+                retry_ms=30_000,
+                max_attempts=3,
+                statement_timeout_seconds=30,
+            ),
             db=_SingleConnectionWorkerDB(conn),
             telemetry=object(),
         )
@@ -6370,6 +6429,8 @@ def _page_row(
         "provider_rating": {},
         "signal": {"display_signal": {"direction": "neutral", "status": "partial"}},
         "agent_brief": {"status": "pending"},
+        "agent_status": "pending",
+        "agent_brief_computed_at_ms": None,
         "market_scope": {},
         "macro_event_flow": None,
         "agent_admission": {
@@ -6378,6 +6439,7 @@ def _page_row(
             "reason": "integration_fixture",
             "representative_news_item_id": news_item_id,
             "basis": {},
+            "version": NEWS_ITEM_AGENT_ADMISSION_VERSION,
         },
         "agent_admission_status": "eligible",
         "agent_admission_reason": "integration_fixture",
@@ -6587,6 +6649,7 @@ def _insert_agent_run(repo: NewsRepository, *, news_item_id: str, run_id: str) -
         news_item_id=news_item_id,
         provider="litellm",
         model="gpt-5-mini",
+        backend="litellm_sdk",
         execution_trace_id=f"trace-{run_id}",
         workflow_name=NEWS_ITEM_BRIEF_WORKFLOW_NAME,
         agent_name=NEWS_ITEM_BRIEF_AGENT_NAME,

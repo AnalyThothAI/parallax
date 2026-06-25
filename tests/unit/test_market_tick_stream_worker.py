@@ -12,6 +12,7 @@ from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.asset_market.providers import DexMarketFactUpdate
 from parallax.domains.asset_market.runtime.market_tick_stream_worker import (
     MarketTickStreamWorker,
+    _stream_targets,
 )
 from parallax.domains.asset_market.types import market_tick_id
 
@@ -444,6 +445,75 @@ def test_market_tick_stream_worker_requires_db_pool_bundle_contract() -> None:
             settings=_stream_settings(),
             telemetry=object(),
         )
+
+
+@pytest.mark.parametrize(
+    ("overrides", "error_code"),
+    [
+        pytest.param(
+            {"subscription_limit": 0},
+            "market_tick_stream_subscription_limit_required",
+            id="subscription-zero",
+        ),
+        pytest.param(
+            {"subscription_limit": -1},
+            "market_tick_stream_subscription_limit_required",
+            id="subscription-negative",
+        ),
+        pytest.param(
+            {"subscription_limit": True},
+            "market_tick_stream_subscription_limit_required",
+            id="subscription-bool",
+        ),
+        pytest.param(
+            {"subscription_limit": "50"},
+            "market_tick_stream_subscription_limit_required",
+            id="subscription-string",
+        ),
+        pytest.param(
+            {"stream_cycle_seconds": 0.0},
+            "market_tick_stream_cycle_seconds_required",
+            id="cycle-zero",
+        ),
+        pytest.param(
+            {"stream_cycle_seconds": True},
+            "market_tick_stream_cycle_seconds_required",
+            id="cycle-bool",
+        ),
+        pytest.param(
+            {"stream_cycle_seconds": "0.01"},
+            "market_tick_stream_cycle_seconds_required",
+            id="cycle-string",
+        ),
+    ],
+)
+def test_market_tick_stream_worker_rejects_malformed_runtime_settings(
+    overrides: dict[str, object],
+    error_code: str,
+) -> None:
+    state = FakeSessionState()
+
+    with pytest.raises(ValueError, match=error_code):
+        MarketTickStreamWorker(
+            pool_bundle=FakeDB(state, FakeRepos(state, [])),
+            stream_dex_market=FakeDexMarketStream(state, []),
+            settings=_stream_settings(**overrides),
+            telemetry=object(),
+        )
+
+
+@pytest.mark.parametrize(
+    "limit",
+    [
+        pytest.param(-1, id="negative"),
+        pytest.param(0, id="zero"),
+        pytest.param(True, id="bool"),
+        pytest.param("1", id="string"),
+    ],
+)
+def test_market_tick_stream_target_selection_rejects_malformed_limit(limit: object) -> None:
+    with pytest.raises(ValueError, match="market_tick_stream_subscription_limit_required"):
+        _stream_targets([], limit=limit)  # type: ignore[arg-type]
 
 
 def _worker(

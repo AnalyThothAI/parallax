@@ -4,6 +4,8 @@ from collections.abc import Iterable
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from parallax.app.runtime.ops_diagnostics import (
     INVALID_QUEUE,
     _asset_market_provider_health,
@@ -56,6 +58,18 @@ def test_ops_diagnostics_payload_requires_explicit_query_boundaries_without_defa
         assert "scope" in message
     else:  # pragma: no cover - RED guard expectation
         raise AssertionError("ops diagnostics runtime helper must require explicit query boundaries")
+
+
+@pytest.mark.parametrize("since_hours", [0, -1, True, "4"])
+def test_ops_diagnostics_payload_rejects_malformed_since_hours(since_hours: object) -> None:
+    with pytest.raises(ValueError, match="ops_diagnostics_since_hours_required"):
+        ops_diagnostics_payload(
+            FakeRuntime(),
+            now_ms=10_000,
+            since_hours=since_hours,  # type: ignore[arg-type]
+            window="1h",
+            scope="all",
+        )
 
 
 def test_ops_diagnostics_survives_news_section_failure() -> None:

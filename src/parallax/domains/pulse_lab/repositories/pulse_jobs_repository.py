@@ -20,7 +20,10 @@ ACTIVE_JOB_STATUSES = ("pending", "failed", "running")
 class PulseJobsRepository:
     def __init__(self, conn: Any, *, running_timeout_ms: int):
         self.conn = conn
-        self.running_timeout_ms = int(running_timeout_ms)
+        self.running_timeout_ms = _required_positive_int(
+            running_timeout_ms,
+            error_code="pulse_job_running_timeout_ms_required",
+        )
 
     def enqueue_job(
         self,
@@ -48,6 +51,10 @@ class PulseJobsRepository:
         now = int(now_ms if now_ms is not None else _now_ms())
         run_at = int(next_run_at_ms if next_run_at_ms is not None else now)
         resolved_job_id = job_id or _id("pulse-job", candidate_id, trigger_signature, timeline_signature)
+        required_max_attempts = _required_positive_int(
+            max_attempts,
+            error_code="pulse_agent_job_max_attempts_required",
+        )
 
         def _enqueue() -> dict[str, Any]:
             cursor = self.conn.execute(
@@ -128,7 +135,7 @@ class PulseJobsRepository:
                     int(priority),
                     status,
                     int(attempt_count),
-                    max(1, int(max_attempts)),
+                    required_max_attempts,
                     run_at,
                     last_error,
                     now,
@@ -197,8 +204,11 @@ class PulseJobsRepository:
         commit: bool = True,
     ) -> int:
         now = int(now_ms)
-        stale_before_ms = now - max(0, int(stale_after_ms))
-        bounded_limit = max(1, min(500, int(limit)))
+        stale_before_ms = now - _required_positive_int(
+            stale_after_ms,
+            error_code="pulse_jobs_stale_after_ms_required",
+        )
+        bounded_limit = min(500, _required_positive_int(limit, error_code="pulse_jobs_terminalize_limit_required"))
         with _transaction(self.conn):
             cursor = self.conn.execute(
                 """
@@ -236,11 +246,12 @@ class PulseJobsRepository:
 
     def mark_job_succeeded(
         self,
-        job_id: str,
+        job: dict[str, Any],
         now_ms: int | None = None,
         commit: bool = True,
     ) -> dict[str, Any] | None:
         now = int(now_ms if now_ms is not None else _now_ms())
+        job_id, claim_attempt_count, claim_updated_at_ms = _pulse_job_claim_identity(job)
 
         def _mark_succeeded() -> dict[str, Any] | None:
             cursor = self.conn.execute(
@@ -250,9 +261,12 @@ class PulseJobsRepository:
                     last_error = NULL,
                     updated_at_ms = %s
                 WHERE job_id = %s
+                  AND status = 'running'
+                  AND attempt_count = %s
+                  AND updated_at_ms = %s
                 RETURNING *
                 """,
-                (now, job_id),
+                (now, job_id, claim_attempt_count, claim_updated_at_ms),
             )
             row = cursor.fetchone()
             return _optional_returning_row(cursor, row)
@@ -273,6 +287,7 @@ class PulseJobsRepository:
         now = int(now_ms if now_ms is not None else _now_ms())
         attempts = _pulse_job_claim_attempt_count(job)
         max_attempts = _pulse_job_claim_max_attempts(job)
+        job_id, claim_attempt_count, claim_updated_at_ms = _pulse_job_claim_identity(job)
         status = "dead" if attempts >= max_attempts else "failed"
         delay_ms = 0 if status == "dead" else min(300_000, 5_000 * max(1, attempts))
         stored_error = str(failure_reason or error)[:1000]
@@ -285,9 +300,12 @@ class PulseJobsRepository:
                     last_error = %s,
                     updated_at_ms = %s
                 WHERE job_id = %s
+                  AND status = 'running'
+                  AND attempt_count = %s
+                  AND updated_at_ms = %s
                 RETURNING *
                 """,
-                (status, now + delay_ms, stored_error, now, job["job_id"]),
+                (status, now + delay_ms, stored_error, now, job_id, claim_attempt_count, claim_updated_at_ms),
             )
             row = cursor.fetchone()
             updated = _optional_returning_row(cursor, row)
@@ -339,7 +357,8 @@ class PulseJobsRepository:
             return None
         now = int(now_ms)
         claim_attempt_count = _pulse_job_claim_attempt_count(job)
-        claim_updated_at_ms = int(job.get("updated_at_ms") or 0)
+        claim_updated_at_ms = _pulse_job_claim_updated_at_ms(job)
+        job_id = _pulse_job_claim_job_id(job)
         with _transaction(self.conn):
             if not execution_started:
                 cursor = self.conn.execute(
@@ -356,7 +375,7 @@ class PulseJobsRepository:
                       AND updated_at_ms = %s
                     RETURNING *
                     """,
-                    (now + 5_000, now, str(job["job_id"]), claim_attempt_count, claim_updated_at_ms),
+                    (now + 5_000, now, job_id, claim_attempt_count, claim_updated_at_ms),
                 )
             else:
                 cursor = self.conn.execute(
@@ -378,7 +397,7 @@ class PulseJobsRepository:
                       AND updated_at_ms = %s
                     RETURNING *
                     """,
-                    (now, now, now, str(job["job_id"]), claim_attempt_count, claim_updated_at_ms),
+                    (now, now, now, job_id, claim_attempt_count, claim_updated_at_ms),
                 )
             row = cursor.fetchone()
             updated = _optional_returning_row(cursor, row)
@@ -403,7 +422,7 @@ class PulseJobsRepository:
         if job is None:
             return None
         now = int(now_ms)
-        attempts = _pulse_job_claim_attempt_count(job)
+        job_id, attempts, claim_updated_at_ms = _pulse_job_claim_identity(job)
 
         def _release() -> dict[str, Any] | None:
             cursor = self.conn.execute(
@@ -417,14 +436,16 @@ class PulseJobsRepository:
                 WHERE job_id = %s
                   AND status = 'running'
                   AND attempt_count = %s
+                  AND updated_at_ms = %s
                 RETURNING *
                 """,
                 (
                     now + int(delay_ms),
                     str(reason)[:1000],
                     now,
-                    str(job["job_id"]),
+                    job_id,
                     attempts,
+                    claim_updated_at_ms,
                 ),
             )
             row = cursor.fetchone()
@@ -445,7 +466,7 @@ class PulseJobsRepository:
         if job is None:
             return None
         now = int(now_ms)
-        attempts = _pulse_job_claim_attempt_count(job)
+        job_id, attempts, claim_updated_at_ms = _pulse_job_claim_identity(job)
 
         def _release() -> dict[str, Any] | None:
             cursor = self.conn.execute(
@@ -462,6 +483,7 @@ class PulseJobsRepository:
                 WHERE job_id = %s
                   AND status = 'running'
                   AND attempt_count = %s
+                  AND updated_at_ms = %s
                 RETURNING *
                 """,
                 (
@@ -469,8 +491,9 @@ class PulseJobsRepository:
                     str(reason)[:1000],
                     bool(decrement_attempt),
                     now,
-                    str(job["job_id"]),
+                    job_id,
                     attempts,
+                    claim_updated_at_ms,
                 ),
             )
             row = cursor.fetchone()
@@ -621,6 +644,35 @@ def _pulse_job_claim_attempt_count(job: Mapping[str, Any]) -> int:
     return attempt_count
 
 
+def _pulse_job_claim_job_id(job: Mapping[str, Any]) -> str:
+    try:
+        value = job["job_id"]
+    except KeyError as exc:
+        raise ValueError("pulse_agent_job_claim_job_id_required") from exc
+    job_id = str(value or "").strip()
+    if not job_id:
+        raise ValueError("pulse_agent_job_claim_job_id_required")
+    return job_id
+
+
+def _pulse_job_claim_updated_at_ms(job: Mapping[str, Any]) -> int:
+    try:
+        updated_at_ms = int(job["updated_at_ms"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("pulse_agent_job_claim_updated_at_ms_required") from exc
+    if updated_at_ms <= 0:
+        raise ValueError("pulse_agent_job_claim_updated_at_ms_required")
+    return updated_at_ms
+
+
+def _pulse_job_claim_identity(job: Mapping[str, Any]) -> tuple[str, int, int]:
+    return (
+        _pulse_job_claim_job_id(job),
+        _pulse_job_claim_attempt_count(job),
+        _pulse_job_claim_updated_at_ms(job),
+    )
+
+
 def _pulse_job_claim_max_attempts(job: Mapping[str, Any]) -> int:
     try:
         max_attempts = int(job["max_attempts"])
@@ -629,6 +681,14 @@ def _pulse_job_claim_max_attempts(job: Mapping[str, Any]) -> int:
     if max_attempts <= 0:
         raise ValueError("pulse_agent_job_claim_max_attempts_required")
     return max_attempts
+
+
+def _required_positive_int(value: Any, *, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError(error_code)
+    if value <= 0:
+        raise RuntimeError(error_code)
+    return int(value)
 
 
 def _cursor_rowcount(cursor: Any) -> int:

@@ -36,6 +36,19 @@ def test_enqueue_ignores_non_pending_captures() -> None:
     assert conn.sql == []
 
 
+@pytest.mark.parametrize("active_window_ms", [0, -1, True, "300000"])
+def test_enqueue_pending_capture_rejects_malformed_active_window_without_sql(active_window_ms: Any) -> None:
+    conn = _ScriptedConnection([])
+
+    with pytest.raises(ValueError, match="event_anchor_active_window_ms_required"):
+        EventAnchorBackfillJobRepository(conn).enqueue_for_capture(
+            _pending_capture(),
+            active_window_ms=active_window_ms,
+        )
+
+    assert conn.sql == []
+
+
 def test_event_anchor_claim_due_moves_pending_to_running() -> None:
     conn = _ScriptedConnection(
         [
@@ -85,6 +98,74 @@ def test_event_anchor_claim_due_moves_pending_to_running() -> None:
     assert "created_at_ms <= %(ready_before_ms)s" in sql
     assert conn.params[-1]["lease_owner"] == "worker-a"
     assert conn.params[-1]["leased_until_ms"] == 1_700_000_061_000
+
+
+@pytest.mark.parametrize(
+    ("override", "error_code"),
+    [
+        pytest.param({"limit": 0}, "event_anchor_limit_required", id="limit-zero"),
+        pytest.param({"limit": True}, "event_anchor_limit_required", id="limit-bool"),
+        pytest.param({"limit": "25"}, "event_anchor_limit_required", id="limit-string"),
+        pytest.param({"min_age_ms": -1}, "event_anchor_min_age_ms_required", id="min-age-negative"),
+        pytest.param({"min_age_ms": True}, "event_anchor_min_age_ms_required", id="min-age-bool"),
+        pytest.param({"min_age_ms": "250"}, "event_anchor_min_age_ms_required", id="min-age-string"),
+        pytest.param({"lease_ms": 0}, "event_anchor_lease_ms_required", id="lease-zero"),
+        pytest.param({"lease_ms": True}, "event_anchor_lease_ms_required", id="lease-bool"),
+        pytest.param({"lease_ms": "60000"}, "event_anchor_lease_ms_required", id="lease-string"),
+    ],
+)
+def test_claim_due_rejects_malformed_runtime_parameters_without_sql(
+    override: dict[str, Any],
+    error_code: str,
+) -> None:
+    conn = _ScriptedConnection([])
+    kwargs: dict[str, Any] = {
+        "limit": 25,
+        "now_ms": 1_700_000_001_000,
+        "min_age_ms": 250,
+        "lease_owner": "worker-a",
+        "lease_ms": 60_000,
+    }
+    kwargs.update(override)
+
+    with pytest.raises(ValueError, match=error_code):
+        EventAnchorBackfillJobRepository(conn).claim_due(**kwargs)
+
+    assert conn.sql == []
+
+
+@pytest.mark.parametrize(
+    ("override", "error_code"),
+    [
+        pytest.param({"limit": 0}, "event_anchor_limit_required", id="limit-zero"),
+        pytest.param({"limit": True}, "event_anchor_limit_required", id="limit-bool"),
+        pytest.param({"limit": "5"}, "event_anchor_limit_required", id="limit-string"),
+        pytest.param({"max_attempts": 0}, "event_anchor_max_attempts_required", id="attempts-zero"),
+        pytest.param({"max_attempts": True}, "event_anchor_max_attempts_required", id="attempts-bool"),
+        pytest.param({"max_attempts": "3"}, "event_anchor_max_attempts_required", id="attempts-string"),
+        pytest.param({"retry_backoff_ms": 0}, "event_anchor_retry_backoff_ms_required", id="backoff-zero"),
+        pytest.param({"retry_backoff_ms": True}, "event_anchor_retry_backoff_ms_required", id="backoff-bool"),
+        pytest.param({"retry_backoff_ms": "10000"}, "event_anchor_retry_backoff_ms_required", id="backoff-string"),
+    ],
+)
+def test_expire_stale_rejects_malformed_runtime_parameters_before_transaction(
+    override: dict[str, Any],
+    error_code: str,
+) -> None:
+    conn = _ScriptedConnection([])
+    kwargs: dict[str, Any] = {
+        "limit": 5,
+        "now_ms": 1_700_000_010_000,
+        "max_attempts": 3,
+        "retry_backoff_ms": 10_000,
+    }
+    kwargs.update(override)
+
+    with pytest.raises(ValueError, match=error_code):
+        EventAnchorBackfillJobRepository(conn).expire_stale(**kwargs)
+
+    assert conn.sql == []
+    assert conn.transaction_events == []
 
 
 def test_event_anchor_mark_done_requires_lease_owner_and_attempt() -> None:
@@ -168,6 +249,7 @@ def test_event_anchor_mark_done_requires_lease_owner_and_attempt() -> None:
                     "intent_id": "intent-1",
                     "status": "failed",
                     "created_at_ms": 1_700_000_000_000,
+                    "active_until_ms": 1_700_000_300_000,
                 },
                 now_ms=1_700_000_001_000,
                 reason="operator_retry",
@@ -242,7 +324,12 @@ def test_event_anchor_job_returning_writes_require_cursor_rowcount(
         ),
         pytest.param(
             lambda repo: repo.retry_terminal_job_from_snapshot(
-                {"event_id": "event-1", "intent_id": "intent-1"},
+                {
+                    "event_id": "event-1",
+                    "intent_id": "intent-1",
+                    "created_at_ms": 1_700_000_000_000,
+                    "active_until_ms": 1_700_000_300_000,
+                },
                 now_ms=1_700_000_001_000,
                 reason="operator_retry",
             ),
@@ -399,6 +486,49 @@ def test_reschedule_uses_claim_guard_without_incrementing_attempts() -> None:
     assert conn.params[-1]["reason"] == "rate_limited"
 
 
+def test_retry_terminal_job_extends_active_window_from_source_snapshot() -> None:
+    conn = _ScriptedConnection([{"event_id": "event-1", "intent_id": "intent-1"}])
+
+    row = EventAnchorBackfillJobRepository(conn).retry_terminal_job_from_snapshot(
+        {
+            "event_id": "event-1",
+            "intent_id": "intent-1",
+            "status": "expired",
+            "created_at_ms": 1_700_000_000_000,
+            "active_until_ms": 1_700_000_300_000,
+        },
+        now_ms=1_700_001_000_000,
+        reason="operator_retry",
+    )
+
+    assert row == {"event_id": "event-1", "intent_id": "intent-1"}
+    sql = conn.sql[-1]
+    assert "active_until_ms = GREATEST(active_until_ms, %(active_until_ms)s)" in sql
+    assert conn.params[-1]["active_until_ms"] == 1_700_001_300_000
+
+
+@pytest.mark.parametrize("active_until_ms", [1_700_000_000_000, 1_699_999_999_999])
+def test_retry_terminal_job_rejects_nonpositive_snapshot_active_window_without_sql(
+    active_until_ms: int,
+) -> None:
+    conn = _ScriptedConnection([])
+
+    with pytest.raises(ValueError, match="event_anchor_terminal_active_window_required"):
+        EventAnchorBackfillJobRepository(conn).retry_terminal_job_from_snapshot(
+            {
+                "event_id": "event-1",
+                "intent_id": "intent-1",
+                "status": "expired",
+                "created_at_ms": 1_700_000_000_000,
+                "active_until_ms": active_until_ms,
+            },
+            now_ms=1_700_001_000_000,
+            reason="operator_retry",
+        )
+
+    assert conn.sql == []
+
+
 def test_mark_terminal_writes_operator_terminal_evidence() -> None:
     conn = _ScriptedConnection(
         [
@@ -476,6 +606,20 @@ def test_reconcile_ready_historical_jobs_dry_run_reports_bounded_explain_without
     assert any("EXPLAIN (FORMAT TEXT)" in sql for sql in conn.sql)
     assert all("job.status = 'pending'" in sql for sql in conn.sql if "event_anchor_backfill_jobs job" in sql)
     assert not any("UPDATE event_anchor_backfill_jobs job" in sql for sql in conn.sql)
+
+
+@pytest.mark.parametrize("limit", [0, True, "10"])
+def test_reconcile_ready_historical_jobs_rejects_malformed_limit_without_sql(limit: Any) -> None:
+    conn = _ScriptedConnection([])
+
+    with pytest.raises(ValueError, match="event_anchor_limit_required"):
+        EventAnchorBackfillJobRepository(conn).reconcile_ready_historical_jobs(
+            limit=limit,
+            now_ms=1_700_000_010_000,
+            execute=False,
+        )
+
+    assert conn.sql == []
 
 
 def test_reconcile_ready_historical_jobs_execute_marks_bounded_rows_done() -> None:

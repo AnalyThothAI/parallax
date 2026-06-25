@@ -13,6 +13,15 @@ from parallax.platform.cancellation import WORKER_HARD_TIMEOUT_CANCEL_REASON
 
 _MIN_WAIT_SECONDS = 0.001
 _MAX_DURATION_SAMPLES = 256
+_TIMING_SETTING_ERRORS = {
+    "interval_seconds": "worker_interval_seconds_required",
+    "soft_timeout_seconds": "worker_soft_timeout_seconds_required",
+    "hard_timeout_seconds": "worker_hard_timeout_seconds_required",
+}
+_BACKOFF_SETTING_ERRORS = {
+    "backoff_base_ms": "worker_backoff_base_ms_required",
+    "backoff_max_ms": "worker_backoff_max_ms_required",
+}
 
 
 @dataclass(slots=True)
@@ -222,15 +231,27 @@ class WorkerBase(ABC):
 
     @property
     def interval_seconds(self) -> float:
-        return max(0.0, float(self.settings.interval_seconds))
+        return _nonnegative_setting_seconds(
+            self.settings.interval_seconds,
+            field="interval_seconds",
+            worker_name=self.name,
+        )
 
     @property
     def soft_timeout_seconds(self) -> float:
-        return max(0.0, float(self.settings.soft_timeout_seconds))
+        return _nonnegative_setting_seconds(
+            self.settings.soft_timeout_seconds,
+            field="soft_timeout_seconds",
+            worker_name=self.name,
+        )
 
     @property
     def hard_timeout_seconds(self) -> float:
-        return max(0.0, float(self.settings.hard_timeout_seconds))
+        return _nonnegative_setting_seconds(
+            self.settings.hard_timeout_seconds,
+            field="hard_timeout_seconds",
+            worker_name=self.name,
+        )
 
     async def _run_once_with_timeout(
         self,
@@ -439,9 +460,9 @@ class WorkerBase(ABC):
 
     def _backoff_seconds(self) -> float:
         backoff = self.settings.backoff
-        base_ms = int(backoff.base_ms)
-        max_ms = int(backoff.max_ms)
-        delay_ms = min(max(0, max_ms), max(0, base_ms) * max(1, self._consecutive_failures))
+        base_ms = _nonnegative_setting_int(backoff.base_ms, field="backoff_base_ms", worker_name=self.name)
+        max_ms = _nonnegative_setting_int(backoff.max_ms, field="backoff_max_ms", worker_name=self.name)
+        delay_ms = min(max_ms, base_ms * max(1, self._consecutive_failures))
         return _loop_wait_seconds(delay_ms / 1000)
 
     def _queue_depth(self) -> int | None:
@@ -560,6 +581,20 @@ def _now_ms() -> int:
 
 def _loop_wait_seconds(seconds: float) -> float:
     return max(_MIN_WAIT_SECONDS, float(seconds))
+
+
+def _nonnegative_setting_seconds(value: Any, *, field: str, worker_name: str) -> float:
+    error_code = _TIMING_SETTING_ERRORS[field]
+    if isinstance(value, bool) or not isinstance(value, int | float) or value < 0:
+        raise ValueError(f"{error_code}:{worker_name}")
+    return float(value)
+
+
+def _nonnegative_setting_int(value: Any, *, field: str, worker_name: str) -> int:
+    error_code = _BACKOFF_SETTING_ERRORS[field]
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"{error_code}:{worker_name}")
+    return int(value)
 
 
 def _error_text(exc: BaseException) -> str:

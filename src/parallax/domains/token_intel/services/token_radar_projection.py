@@ -66,6 +66,7 @@ PULSE_TRIGGER_WINDOWS = frozenset({"1h", "4h"})
 PULSE_TRIGGER_SCOPES = frozenset({"all", "matched"})
 NARRATIVE_ADMISSION_WINDOWS = frozenset({"1h"})
 NARRATIVE_ADMISSION_SCOPE = "all"
+ASSET_PROFILE_REFRESH_PROVIDERS = ("gmgn_dex_profile", "binance_web3_profile")
 
 
 class TokenRadarProjectionWindowError(ValueError):
@@ -105,8 +106,13 @@ class TokenRadarProjection:
         limit: int,
     ) -> dict[str, Any]:
         computed_at_ms = int(now_ms)
-        cutoff_ms = computed_at_ms - max(1, int(retention_ms))
-        remaining = max(1, int(limit))
+        parsed_retention_ms = _required_positive_int(
+            retention_ms,
+            "token_radar_private_cache_retention_ms_required",
+        )
+        parsed_limit = _required_positive_int(limit, "token_radar_private_cache_limit_required")
+        cutoff_ms = computed_at_ms - parsed_retention_ms
+        remaining = parsed_limit
         target_features_deleted = 0
         rank_source_edges_deleted = 0
         with _transaction_context(self.repos.conn):
@@ -145,7 +151,7 @@ class TokenRadarProjection:
             "cutoff_ms": cutoff_ms,
             "target_features_deleted": target_features_deleted,
             "rank_source_edges_deleted": rank_source_edges_deleted,
-            "limit": max(1, int(limit)),
+            "limit": parsed_limit,
         }
 
     def rebuild_dirty_targets(
@@ -161,10 +167,23 @@ class TokenRadarProjection:
         rank_limit: int,
         lease_ms: int,
         retry_ms: int,
+        max_attempts: int,
         lease_owner: str,
         claimed_targets: Sequence[Mapping[str, Any]] | None = None,
         claimed_source_events: Sequence[Mapping[str, Any]] | None = None,
     ) -> dict[str, Any]:
+        dirty_lease_ms = _positive_worker_policy_ms(
+            lease_ms,
+            error="token_radar_projection_lease_ms_invalid",
+        )
+        dirty_retry_ms = _positive_worker_policy_ms(
+            retry_ms,
+            error="token_radar_projection_retry_ms_invalid",
+        )
+        dirty_max_attempts = _positive_worker_policy_ms(
+            max_attempts,
+            error="token_radar_projection_max_attempts_invalid",
+        )
         with _transaction_context(self.repos.conn):
             return self._rebuild_dirty_targets_in_transaction(
                 windows=windows,
@@ -175,8 +194,9 @@ class TokenRadarProjection:
                 now_ms=now_ms,
                 limit=limit,
                 rank_limit=rank_limit,
-                lease_ms=lease_ms,
-                retry_ms=retry_ms,
+                lease_ms=dirty_lease_ms,
+                retry_ms=dirty_retry_ms,
+                max_attempts=dirty_max_attempts,
                 lease_owner=lease_owner,
                 claimed_targets=claimed_targets,
                 claimed_source_events=claimed_source_events,
@@ -195,13 +215,24 @@ class TokenRadarProjection:
         rank_limit: int,
         lease_ms: int,
         retry_ms: int,
+        max_attempts: int,
         lease_owner: str,
         claimed_targets: Sequence[Mapping[str, Any]] | None = None,
         claimed_source_events: Sequence[Mapping[str, Any]] | None = None,
     ) -> dict[str, Any]:
         computed_at_ms = int(now_ms or time.time() * 1000)
-        dirty_lease_ms = max(1, int(lease_ms))
-        dirty_retry_ms = max(1, int(retry_ms))
+        dirty_lease_ms = _positive_worker_policy_ms(
+            lease_ms,
+            error="token_radar_projection_lease_ms_invalid",
+        )
+        dirty_retry_ms = _positive_worker_policy_ms(
+            retry_ms,
+            error="token_radar_projection_retry_ms_invalid",
+        )
+        dirty_max_attempts = _positive_worker_policy_ms(
+            max_attempts,
+            error="token_radar_projection_max_attempts_invalid",
+        )
         source_work_items = _resolve_work_items(
             windows=windows,
             scopes=scopes,
@@ -274,6 +305,8 @@ class TokenRadarProjection:
                     source_claim_keys,
                     error=str(exc),
                     retry_ms=dirty_retry_ms,
+                    max_attempts=dirty_max_attempts,
+                    worker_name=lease_owner,
                     now_ms=computed_at_ms,
                     commit=False,
                 )
@@ -302,6 +335,8 @@ class TokenRadarProjection:
                         [_claim_key(claim) for claim in edge_refresh_claims],
                         error=str(exc),
                         retry_ms=dirty_retry_ms,
+                        max_attempts=dirty_max_attempts,
+                        worker_name=lease_owner,
                         now_ms=computed_at_ms,
                         commit=False,
                     )
@@ -331,10 +366,15 @@ class TokenRadarProjection:
             )
 
             if source_projection_targets:
-                source_touched: set[tuple[str, str, str]] = set()
-                try:
-                    for target_index, target in enumerate(source_projection_targets):
-                        for request in _source_requests_by_target(source_requests).get(target_index, []):
+                source_requests_by_target = _source_requests_by_target(source_requests)
+                source_claim_keys_by_target = _source_claim_keys_by_target(source_claim_keys)
+                handled_source_claim_targets: set[tuple[str, str]] = set()
+                for target_index, target in enumerate(source_projection_targets):
+                    target_claim_key = _target_identity_key(target)
+                    target_source_claim_keys = source_claim_keys_by_target.get(target_claim_key, [])
+                    source_touched: set[tuple[str, str, str]] = set()
+                    try:
+                        for request in source_requests_by_target.get(target_index, []):
                             score_result = self._project_source_request(
                                 request=request,
                                 target=target,
@@ -346,17 +386,29 @@ class TokenRadarProjection:
                                 items = _rank_items_for_projection_change(request=request, score_result=score_result)
                                 touched.update(items)
                                 source_touched.update(items)
-                    successful_source_claims.extend((claim_key, set(source_touched)) for claim_key in source_claim_keys)
-                except Exception as exc:
-                    failures += len(source_claims) or 1
-                    first_error = first_error or str(exc)
-                    source_dirty_repo.mark_error(
-                        source_claim_keys,
-                        error=str(exc),
-                        retry_ms=dirty_retry_ms,
-                        now_ms=computed_at_ms,
-                        commit=False,
-                    )
+                        handled_source_claim_targets.add(target_claim_key)
+                        successful_source_claims.extend(
+                            (claim_key, set(source_touched)) for claim_key in target_source_claim_keys
+                        )
+                    except Exception as exc:
+                        handled_source_claim_targets.add(target_claim_key)
+                        failures += len(target_source_claim_keys) or 1
+                        first_error = first_error or str(exc)
+                        if target_source_claim_keys:
+                            source_dirty_repo.mark_error(
+                                target_source_claim_keys,
+                                error=str(exc),
+                                retry_ms=dirty_retry_ms,
+                                max_attempts=dirty_max_attempts,
+                                worker_name=lease_owner,
+                                now_ms=computed_at_ms,
+                                commit=False,
+                            )
+                successful_source_claims.extend(
+                    (claim_key, set())
+                    for claim_key in source_claim_keys
+                    if _claim_identity_key(claim_key) not in handled_source_claim_targets
+                )
 
             requests_by_target = _source_requests_by_target(target_requests)
             for claim_index, claim in enumerate(target_claims):
@@ -389,6 +441,8 @@ class TokenRadarProjection:
                         [claim_key],
                         error=str(exc),
                         retry_ms=dirty_retry_ms,
+                        max_attempts=dirty_max_attempts,
+                        worker_name=lease_owner,
                         now_ms=computed_at_ms,
                         commit=False,
                     )
@@ -435,6 +489,8 @@ class TokenRadarProjection:
                 failed_publish_items=failed_publish_items,
                 error=first_publish_error or first_error or str(result["error"]),
                 retry_ms=dirty_retry_ms,
+                max_attempts=dirty_max_attempts,
+                worker_name=lease_owner,
                 now_ms=computed_at_ms,
             )
             self._finish_successful_claims(
@@ -443,6 +499,8 @@ class TokenRadarProjection:
                 failed_publish_items=failed_publish_items,
                 error=first_publish_error or first_error or str(result["error"]),
                 retry_ms=dirty_retry_ms,
+                max_attempts=dirty_max_attempts,
+                worker_name=lease_owner,
                 now_ms=computed_at_ms,
             )
         else:
@@ -468,6 +526,8 @@ class TokenRadarProjection:
         failed_publish_items: set[tuple[str, str, str]],
         error: str,
         retry_ms: int,
+        max_attempts: int,
+        worker_name: str,
         now_ms: int,
     ) -> None:
         if not successful_claims:
@@ -490,6 +550,8 @@ class TokenRadarProjection:
                 retry_claims,
                 error=error,
                 retry_ms=retry_ms,
+                max_attempts=max_attempts,
+                worker_name=worker_name,
                 now_ms=now_ms,
                 commit=False,
             )
@@ -868,6 +930,14 @@ class TokenRadarProjection:
             previous_by_key=previous_by_key,
             computed_at_ms=computed_at_ms,
         )
+        self._enqueue_asset_profile_refresh_for_rank_changes(
+            window=window,
+            scope=scope,
+            rows=rows,
+            exited_rows=exited_rows,
+            previous_by_key=previous_by_key,
+            computed_at_ms=computed_at_ms,
+        )
         self._enqueue_token_capture_tier_for_rank_changes(
             window=window,
             scope=scope,
@@ -1016,6 +1086,40 @@ class TokenRadarProjection:
         for reason, reason_targets in grouped.items():
             repo.enqueue_targets(reason_targets, reason=reason, now_ms=computed_at_ms, commit=False)
 
+    def _enqueue_asset_profile_refresh_for_rank_changes(
+        self,
+        *,
+        window: str,
+        scope: str,
+        rows: list[dict[str, Any]],
+        exited_rows: list[dict[str, Any]],
+        previous_by_key: dict[tuple[str, str, str], dict[str, Any]],
+        computed_at_ms: int,
+    ) -> None:
+        del exited_rows
+        targets: list[dict[str, Any]] = []
+        for row in rows:
+            previous = previous_by_key.get(_current_key(row))
+            if previous is not None and _rank_change_payload_hash(previous) == _rank_change_payload_hash(row):
+                continue
+            targets.extend(
+                _asset_profile_refresh_targets(
+                    row,
+                    previous=previous,
+                    window=window,
+                    scope=scope,
+                    computed_at_ms=computed_at_ms,
+                )
+            )
+        if not targets:
+            return
+        repo = self.repos.asset_profile_refresh_targets
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for target in targets:
+            grouped.setdefault(str(target.pop("dirty_reason")), []).append(target)
+        for reason, reason_targets in grouped.items():
+            repo.enqueue_targets(reason_targets, reason=reason, now_ms=computed_at_ms, commit=False)
+
     def _enqueue_token_capture_tier_for_rank_changes(
         self,
         *,
@@ -1083,6 +1187,12 @@ def _analysis_since_ms(*, computed_at_ms: int, window_ms: int) -> int:
     score_since_ms = computed_at_ms - window_ms
     baseline_since_ms = score_since_ms - BASELINE_SLOT_COUNT * window_ms
     return max(baseline_since_ms, computed_at_ms - MAX_ANALYSIS_LOOKBACK_MS)
+
+
+def _positive_worker_policy_ms(value: int, *, error: str) -> int:
+    if type(value) is not int or value <= 0:
+        raise ValueError(error)
+    return value
 
 
 def _rank_source_repair_analysis_since_ms(
@@ -1249,6 +1359,22 @@ def _source_request_target_key(request: TokenRadarFeatureSourceRequest) -> tuple
     return (str(request.target_type_key), str(request.identity_id))
 
 
+def _target_identity_key(target: Mapping[str, Any]) -> tuple[str, str]:
+    return (
+        _required_target_identity_text(target, "target_type_key"),
+        _required_target_identity_text(target, "identity_id"),
+    )
+
+
+def _source_claim_keys_by_target(
+    claim_keys: Sequence[Mapping[str, Any]],
+) -> dict[tuple[str, str], list[dict[str, str | int]]]:
+    grouped: dict[tuple[str, str], list[dict[str, str | int]]] = {}
+    for claim_key in claim_keys:
+        grouped.setdefault(_claim_identity_key(claim_key), []).append(dict(claim_key))
+    return grouped
+
+
 def _target_source_request_key(
     *,
     target_index: int,
@@ -1337,12 +1463,13 @@ def _source_claim_key(claim: Mapping[str, Any]) -> dict[str, str | int]:
 
 def _claim_attempt_count(claim: Mapping[str, Any]) -> int:
     try:
-        attempt_count = int(claim["attempt_count"])
-    except (KeyError, TypeError, ValueError) as exc:
+        value = claim["attempt_count"]
+    except KeyError as exc:
         raise RuntimeError("token_radar_dirty_claim_attempt_contract_required") from exc
-    if attempt_count < 1:
-        raise RuntimeError("token_radar_dirty_claim_attempt_contract_required")
-    return attempt_count
+    try:
+        return _required_positive_int(value, "token_radar_dirty_claim_attempt_contract_required")
+    except ValueError as exc:
+        raise RuntimeError("token_radar_dirty_claim_attempt_contract_required") from exc
 
 
 def _required_claim_text(claim: Mapping[str, Any], column: str, *, error: str) -> str:
@@ -1752,6 +1879,81 @@ def _token_profile_current_target(
     }
 
 
+def _asset_profile_refresh_targets(
+    row: Mapping[str, Any],
+    *,
+    previous: Mapping[str, Any] | None,
+    window: str,
+    scope: str,
+    computed_at_ms: int,
+) -> list[dict[str, Any]]:
+    resolved_target = _current_row_resolved_target(row)
+    if resolved_target is None:
+        return []
+    target_type, target_id = resolved_target
+    if target_type != "Asset":
+        return []
+    fields = _asset_profile_refresh_fields(row)
+    reason = _token_profile_current_reason(row, previous=previous, exited=False)
+    source_watermark_ms = _downstream_source_watermark_ms(row)
+    targets: list[dict[str, Any]] = []
+    for provider in ASSET_PROFILE_REFRESH_PROVIDERS:
+        payload = {
+            "provider": provider,
+            "target_type": target_type,
+            "target_id": target_id,
+            "chain_id": fields["chain_id"],
+            "address": fields["address"],
+            "symbol": fields["symbol"],
+            "window": str(window),
+            "scope": str(scope),
+            "rank": row.get("rank"),
+            "lane": row.get("lane"),
+            "decision": row.get("decision"),
+            "source_watermark_ms": source_watermark_ms,
+            "token_radar_payload_hash": row.get("payload_hash"),
+            "reason": reason,
+        }
+        targets.append(
+            {
+                "provider": provider,
+                "target_type": target_type,
+                "target_id": target_id,
+                "chain_id": fields["chain_id"],
+                "address": fields["address"],
+                "symbol": fields["symbol"],
+                "dirty_reason": reason,
+                "payload_hash": stable_token_radar_payload_hash(payload),
+                "source_watermark_ms": source_watermark_ms,
+                "priority": 80,
+                "due_at_ms": int(computed_at_ms),
+            }
+        )
+    return targets
+
+
+def _asset_profile_refresh_fields(row: Mapping[str, Any]) -> dict[str, str | None]:
+    subject = _rank_subject(row)
+    chain_id = _optional_text(
+        row.get("asset_chain_id")
+        or row.get("chain_id")
+        or row.get("chain")
+        or subject.get("chain_id")
+        or subject.get("chain")
+        or subject.get("asset_chain_id")
+    )
+    address = _optional_text(
+        row.get("asset_address") or row.get("address") or row.get("token_address") or subject.get("address")
+    )
+    if not chain_id or not address:
+        raise RuntimeError("asset_profile_refresh_target_identity_required")
+    return {"chain_id": chain_id, "address": address, "symbol": _asset_profile_refresh_symbol(row, subject=subject)}
+
+
+def _asset_profile_refresh_symbol(row: Mapping[str, Any], *, subject: Mapping[str, Any]) -> str | None:
+    return _first_real_symbol(row.get("asset_symbol"), subject.get("symbol"), row.get("display_symbol"))
+
+
 def _pulse_trigger_reason(
     row: Mapping[str, Any],
     *,
@@ -2113,7 +2315,7 @@ def _project_group(
             "reason_codes": reason_codes_json,
             "candidate_ids": candidate_ids_json,
             "lookup_keys": lookup_keys_json,
-            "discovery": _resolution_discovery(latest, lookup_keys_json=lookup_keys_json),
+            "discovery": _resolution_discovery(lookup_keys_json=lookup_keys_json),
         },
         "decision": decision,
         "data_health_json": {
@@ -2206,18 +2408,9 @@ def _has_resolved_target(row: dict[str, Any], *, resolution_status: str) -> bool
     return target_type != "Asset" or row.get("asset_registry_status") in {"candidate", "canonical"}
 
 
-def _resolution_discovery(row: dict[str, Any], *, lookup_keys_json: list[Any]) -> list[dict[str, Any]]:
+def _resolution_discovery(*, lookup_keys_json: list[Any]) -> list[dict[str, Any]]:
     lookup_keys = _discovery_lookup_keys(lookup_keys_json)
-    existing = [
-        _discovery_result(item)
-        for item in row.get("discovery_results_json") or []
-        if isinstance(item, dict) and item.get("lookup_key")
-    ]
-    existing_by_key = {str(item["lookup_key"]): item for item in existing}
-    out: list[dict[str, Any]] = [existing_by_key.get(key) or _not_searched_discovery(key) for key in lookup_keys]
-    seen = {str(item["lookup_key"]) for item in out}
-    out.extend(item for item in existing if str(item["lookup_key"]) not in seen)
-    return out
+    return [_not_searched_discovery(key) for key in lookup_keys]
 
 
 def _discovery_lookup_keys(raw_keys: list[Any]) -> list[str]:
@@ -2254,20 +2447,6 @@ def _required_resolved_target_text(row: Mapping[str, Any], field: str) -> str:
     if not value:
         raise RuntimeError(f"token_radar_projection_resolved_target_invalid:{field}")
     return value
-
-
-def _discovery_result(item: dict[str, Any]) -> dict[str, Any]:
-    lookup_key = str(item.get("lookup_key") or "")
-    return {
-        "lookup_key": lookup_key,
-        "lookup_type": item.get("lookup_type") or _lookup_type(lookup_key),
-        "status": item.get("status") or "unknown",
-        "candidate_count": int(item.get("candidate_count") or 0),
-        "last_lookup_at_ms": item.get("last_lookup_at_ms"),
-        "next_refresh_at_ms": item.get("next_refresh_at_ms"),
-        "last_error": item.get("last_error"),
-        "error_count": int(item.get("error_count") or 0),
-    }
 
 
 def _not_searched_discovery(lookup_key: str) -> dict[str, Any]:
@@ -2715,11 +2894,12 @@ def _compact_rank_key(row: dict[str, Any]) -> tuple[int, float, int, int, int]:
 
 
 def _select_top_ranked_by_lane(ranked: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
+    row_limit = _required_nonnegative_int(limit, "token_radar_rank_lane_limit_required")
     selected: list[dict[str, Any]] = []
     lane_order = ("resolved", "attention")
     for lane in lane_order:
         lane_rows = [row for row in ranked if _rank_input_lane(row) == lane]
-        for rank, row in enumerate(lane_rows[: max(0, int(limit))], start=1):
+        for rank, row in enumerate(lane_rows[:row_limit], start=1):
             selected.append({**row, "rank": rank})
     return selected
 
@@ -3042,3 +3222,19 @@ def _cohort_first_seen_global(row: dict[str, Any]) -> bool:
     if row.get("_cohort_first_seen_global_24h") is True:
         return True
     return row.get("first_seen_global_24h") is True
+
+
+def _required_positive_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value <= 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value < 0:
+        raise ValueError(error_code)
+    return int(value)

@@ -102,6 +102,9 @@ Macro sync-window terminal/retry/failure writes, `macro_sync_state` repair,
 `cursor.rowcount` evidence before returning write counts. Missing or invalid
 rowcount is malformed repository/driver state, not zero Macro work or inferred
 target/row-length success; single-row sync/state paths reject multi-row counts.
+Macro projection dirty-target claim `UPDATE ... RETURNING` paths also require
+cursor rowcount to match returned claimed rows before projection payloads are
+loaded or reported as claimed.
 Macro sync-window enqueue and claim `RETURNING` paths validate rowcount against
 returned-row presence before reporting enqueued, no-work, or claimed control
 state; returned-row presence alone is not a sync-window state-machine contract.
@@ -116,7 +119,12 @@ claim/done/error mutations also require a callable connection transaction before
 dirty-target SQL. `MacroViewProjectionWorker` keeps those queue writes
 caller-owned with `commit=False` inside `RepositorySession.transaction`; direct
 repository callers that omit transaction support fail before claim, delete, or
-retry SQL instead of falling back to naked `self.conn.commit()`.
+retry SQL instead of falling back to naked `self.conn.commit()`. Failure
+completion receives formal `settings.workers.macro_view_projection.max_attempts`
+and `worker_name`; claims below budget are rescheduled, while exhausted claims
+are deleted with `RETURNING queue.*` and recorded in
+`worker_queue_terminal_events` using the claimed payload hash and stable
+`projection_name:projection_version:target_kind:target_id` target key.
 
 The `macro_regime_v4` snapshot stores:
 

@@ -30,6 +30,12 @@ def _optional_returning_row(cursor: Any, row: Any) -> dict[str, Any] | None:
     return _row(row) if row is not None else None
 
 
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
 class PulseCandidatesRepository:
     def __init__(self, conn: Any):
         self.conn = conn
@@ -79,6 +85,11 @@ class PulseCandidatesRepository:
         updated_at_ms: int | None = None,
         commit: bool = True,
     ) -> dict[str, Any] | None:
+        parsed_decision_stage_count = _required_nonnegative_int(
+            decision_stage_count,
+            "pulse_candidate_decision_stage_count_required",
+        )
+
         def _upsert_candidate() -> dict[str, Any] | None:
             now = int(updated_at_ms if updated_at_ms is not None else _now_ms())
             created = int(created_at_ms if created_at_ms is not None else now)
@@ -244,7 +255,7 @@ class PulseCandidatesRepository:
                     decision_recommendation,
                     float(decision_confidence),
                     decision_abstain_reason,
-                    max(0, int(decision_stage_count)),
+                    parsed_decision_stage_count,
                     _json(decision_json),
                     _json(gate_reasons_json or []),
                     _json(risk_reasons_json or []),

@@ -183,19 +183,73 @@ def mark_work_error(
     error: Exception | str,
     retry_ms: int,
     now_ms: int,
+    max_attempts: int,
+    worker_name: str,
     count_attempt: bool = True,
     commit: bool = True,
 ) -> int:
-    return int(
-        repos.news_projection_dirty_targets.mark_error(
-            targets,
-            error=str(error),
-            retry_ms=retry_ms,
-            now_ms=now_ms,
-            count_attempt=count_attempt,
-            commit=commit,
-        )
+    target_rows = [dict(target) for target in targets]
+    if not target_rows:
+        return 0
+    if commit:
+        with repos.transaction():
+            return mark_work_error(
+                repos,
+                target_rows,
+                error=error,
+                retry_ms=retry_ms,
+                now_ms=now_ms,
+                max_attempts=max_attempts,
+                worker_name=worker_name,
+                count_attempt=count_attempt,
+                commit=False,
+            )
+    parsed_max_attempts = _required_positive_int(
+        max_attempts,
+        error_name="news_projection_dirty_target_max_attempts_required",
     )
+    parsed_worker_name = _required_worker_name(worker_name)
+    if not count_attempt:
+        return int(
+            repos.news_projection_dirty_targets.mark_error(
+                target_rows,
+                error=str(error),
+                retry_ms=retry_ms,
+                now_ms=now_ms,
+                count_attempt=False,
+                commit=False,
+            )
+        )
+    retry_targets = [
+        target for target in target_rows if _completion_attempt_count(target) < parsed_max_attempts
+    ]
+    exhausted_targets = [
+        target for target in target_rows if _completion_attempt_count(target) >= parsed_max_attempts
+    ]
+    changed = 0
+    if retry_targets:
+        changed += int(
+            repos.news_projection_dirty_targets.mark_error(
+                retry_targets,
+                error=str(error),
+                retry_ms=retry_ms,
+                now_ms=now_ms,
+                count_attempt=True,
+                commit=False,
+            )
+        )
+    if exhausted_targets:
+        changed += int(
+            repos.news_projection_dirty_targets.terminalize_targets(
+                exhausted_targets,
+                worker_name=parsed_worker_name,
+                final_reason=_retry_budget_exhausted_reason(error),
+                final_reason_bucket="retry_budget_exhausted",
+                now_ms=now_ms,
+                commit=False,
+            )
+        )
+    return changed
 
 
 def page_news_item_ids(rows: Iterable[Mapping[str, Any]]) -> list[str]:
@@ -330,6 +384,38 @@ def _optional_due_at_ms(value: int | None) -> int | None:
     if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
         raise ValueError("news_projection_dirty_target_due_at_ms_required")
     return value
+
+
+def _required_positive_int(value: Any, *, error_name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_name)
+    if value <= 0:
+        raise ValueError(error_name)
+    return int(value)
+
+
+def _required_worker_name(value: str) -> str:
+    worker_name = str(value or "").strip()
+    if not worker_name:
+        raise ValueError("news_projection_dirty_target_worker_name_required")
+    return worker_name
+
+
+def _completion_attempt_count(target: Mapping[str, Any]) -> int:
+    try:
+        value = target["attempt_count"]
+    except KeyError as exc:
+        raise ValueError("news_projection_dirty_target_attempt_count_required") from exc
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("news_projection_dirty_target_attempt_count_required")
+    if value < 0:
+        raise ValueError("news_projection_dirty_target_attempt_count_required")
+    return int(value)
+
+
+def _retry_budget_exhausted_reason(error: Exception | str) -> str:
+    message = str(error or "").strip()
+    return f"news_projection_dirty_retry_budget_exhausted: {message}"[:2048]
 
 
 def _target_ids(

@@ -41,6 +41,18 @@ def build_pulse_timeline_context(
     max_post_clusters: int = 16,
     max_raw_text_chars_per_post: int = 280,
 ) -> dict[str, Any]:
+    selected_post_limit = _required_nonnegative_int(
+        max_selected_posts,
+        "pulse_timeline_max_selected_posts_required",
+    )
+    post_cluster_limit = _required_nonnegative_int(
+        max_post_clusters,
+        "pulse_timeline_max_post_clusters_required",
+    )
+    raw_text_limit = _required_nonnegative_int(
+        max_raw_text_chars_per_post,
+        "pulse_timeline_max_raw_text_chars_per_post_required",
+    )
     ordered = sorted(_scope_rows(rows, scope), key=_row_sort_key)
     resolved_now_ms = _resolve_now_ms(ordered, now_ms)
     active_window_ms = _window_ms(window)
@@ -54,10 +66,10 @@ def build_pulse_timeline_context(
         row_infos,
         cluster_by_event_id=cluster_by_event_id,
         stage_representative_ids=stage_representative_ids,
-        max_selected_posts=max_selected_posts,
-        max_raw_text_chars_per_post=max_raw_text_chars_per_post,
+        max_selected_posts=selected_post_limit,
+        max_raw_text_chars_per_post=raw_text_limit,
     )
-    post_clusters = [_public_cluster(cluster) for cluster in cluster_infos[: max(0, int(max_post_clusters))]]
+    post_clusters = [_public_cluster(cluster) for cluster in cluster_infos[:post_cluster_limit]]
     risk_flags = _risk_flags(active_rows, row_infos, cluster_infos)
     phase = _active_phase(stage_segments)
     windows = {
@@ -245,7 +257,7 @@ def _selected_posts(
     bulk_role_rows.extend(("new_independent_author", info) for info in _new_independent_authors(row_infos))
 
     selected: dict[str, dict[str, Any]] = {}
-    max_posts = max(0, int(max_selected_posts))
+    max_posts = _required_nonnegative_int(max_selected_posts, "pulse_timeline_max_selected_posts_required")
     for role, info in [*priority_role_rows, *bulk_role_rows]:
         event_id = str(info["event_id"])
         if not event_id or event_id not in cluster_by_event_id:
@@ -586,10 +598,16 @@ def _ordered_unique(values: Any) -> list[str]:
 
 
 def _truncate(text: str, max_chars: int) -> str:
-    limit = max(0, int(max_chars))
+    limit = _required_nonnegative_int(max_chars, "pulse_timeline_max_raw_text_chars_per_post_required")
     if len(text) <= limit:
         return text
     return text[:limit]
+
+
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _number(value: Any) -> float | None:

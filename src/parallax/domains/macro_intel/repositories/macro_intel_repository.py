@@ -21,6 +21,7 @@ from parallax.platform.current_read_model_payload_hash import (
     stable_dirty_target_payload_hash,
 )
 from parallax.platform.db.json_safety import postgres_safe_json
+from parallax.platform.db.queue_terminal import terminalize_source_row
 
 
 class MacroSeriesRefreshResult(TypedDict):
@@ -884,6 +885,11 @@ class MacroIntelRepository:
               due_at_ms = LEAST(macro_projection_dirty_targets.due_at_ms, EXCLUDED.due_at_ms),
               leased_until_ms = NULL,
               lease_owner = NULL,
+              attempt_count = CASE
+                WHEN macro_projection_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                THEN 0
+                ELSE macro_projection_dirty_targets.attempt_count
+              END,
               last_error = NULL,
               updated_at_ms = EXCLUDED.updated_at_ms
             RETURNING 1 AS inserted
@@ -1026,6 +1032,11 @@ class MacroIntelRepository:
               due_at_ms = LEAST(macro_projection_dirty_targets.due_at_ms, EXCLUDED.due_at_ms),
               leased_until_ms = NULL,
               lease_owner = NULL,
+              attempt_count = CASE
+                WHEN macro_projection_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                THEN 0
+                ELSE macro_projection_dirty_targets.attempt_count
+              END,
               last_error = NULL,
               updated_at_ms = EXCLUDED.updated_at_ms
             RETURNING 1 AS inserted
@@ -1045,19 +1056,21 @@ class MacroIntelRepository:
         now_ms: int,
         commit: bool = True,
     ) -> list[dict[str, Any]]:
+        parsed_lease_ms = _required_positive_int(lease_ms, "macro_projection_dirty_target_claim_lease_ms_required")
+        parsed_limit = _required_nonnegative_int(limit, "macro_projection_dirty_target_claim_limit_required")
         if commit:
             with _macro_projection_dirty_target_transaction_context(self.conn):
                 return self.claim_macro_projection_dirty_targets(
                     projection_name=projection_name,
                     projection_version=projection_version,
-                    limit=limit,
-                    lease_ms=lease_ms,
+                    limit=parsed_limit,
+                    lease_ms=parsed_lease_ms,
                     lease_owner=lease_owner,
                     now_ms=now_ms,
                     commit=False,
                 )
 
-        rows = self.conn.execute(
+        cursor = self.conn.execute(
             """
             WITH due AS (
               SELECT projection_name, projection_version, target_kind, target_id
@@ -1087,11 +1100,13 @@ class MacroIntelRepository:
                 "projection_name": str(projection_name),
                 "projection_version": str(projection_version),
                 "now_ms": int(now_ms),
-                "leased_until_ms": int(now_ms) + max(1, int(lease_ms)),
+                "leased_until_ms": int(now_ms) + parsed_lease_ms,
                 "lease_owner": str(lease_owner),
-                "limit": max(0, int(limit)),
+                "limit": parsed_limit,
             },
-        ).fetchall()
+        )
+        rows = cursor.fetchall()
+        _returned_rowcount(cursor, rows)
         return [dict(row) for row in rows]
 
     def mark_macro_projection_dirty_targets_done(
@@ -1153,39 +1168,108 @@ class MacroIntelRepository:
         *,
         error: str,
         retry_ms: int,
+        max_attempts: int,
+        worker_name: str,
         now_ms: int,
         commit: bool = True,
     ) -> int:
         records = _macro_projection_dirty_claims(claimed)
         if not records:
             return 0
+        parsed_max_attempts = _required_max_attempts(max_attempts)
+        parsed_retry_ms = _required_positive_int(retry_ms, "macro_projection_dirty_target_retry_ms_required")
+        parsed_worker_name = _required_text(worker_name, "worker_name")
         if commit:
             with _macro_projection_dirty_target_transaction_context(self.conn):
                 return self.mark_macro_projection_dirty_targets_error(
                     claimed,
                     error=error,
                     retry_ms=retry_ms,
+                    max_attempts=parsed_max_attempts,
+                    worker_name=parsed_worker_name,
                     now_ms=now_ms,
                     commit=False,
                 )
 
-        params = _macro_projection_dirty_claim_params(records)
-        params.update(
+        retry_records = [record for record in records if int(record["attempt_count"]) < parsed_max_attempts]
+        exhausted_records = [record for record in records if int(record["attempt_count"]) >= parsed_max_attempts]
+        retry_params = _macro_projection_dirty_claim_params(retry_records)
+        retry_params.update(
             {
-                "due_at_ms": int(now_ms) + max(1, int(retry_ms)),
+                "due_at_ms": int(now_ms) + parsed_retry_ms,
                 "now_ms": int(now_ms),
                 "last_error": str(error)[:2048],
             }
         )
+        changed = 0
+        if retry_records:
+            cursor = self.conn.execute(
+                """
+                UPDATE macro_projection_dirty_targets queue
+                SET due_at_ms = %(due_at_ms)s,
+                    leased_until_ms = NULL,
+                    lease_owner = NULL,
+                    last_error = %(last_error)s,
+                    updated_at_ms = %(now_ms)s
+                FROM (
+                  SELECT *
+                  FROM unnest(
+                    %(projection_names)s::text[],
+                    %(projection_versions)s::text[],
+                    %(target_kinds)s::text[],
+                    %(target_ids)s::text[],
+                    %(payload_hashes)s::text[],
+                    %(lease_owners)s::text[],
+                    %(attempt_counts)s::int[]
+                  ) AS failed(
+                    projection_name,
+                    projection_version,
+                    target_kind,
+                    target_id,
+                    payload_hash,
+                    lease_owner,
+                    attempt_count
+                  )
+                ) AS failed
+                WHERE queue.projection_name = failed.projection_name
+                  AND queue.projection_version = failed.projection_version
+                  AND queue.target_kind = failed.target_kind
+                  AND queue.target_id = failed.target_id
+                  AND queue.payload_hash = failed.payload_hash
+                  AND queue.lease_owner = failed.lease_owner
+                  AND queue.attempt_count = failed.attempt_count
+                """,
+                retry_params,
+            )
+            changed += _cursor_rowcount(cursor)
+        if exhausted_records:
+            deleted_rows, deleted_count = self._delete_macro_projection_dirty_claims_returning(exhausted_records)
+            changed += deleted_count
+            for row in deleted_rows:
+                terminalize_source_row(
+                    self.conn,
+                    worker_name=parsed_worker_name,
+                    source_table="macro_projection_dirty_targets",
+                    target_key=_macro_projection_dirty_target_key(row),
+                    source_row=row,
+                    final_status="terminal",
+                    final_reason=_macro_projection_retry_budget_exhausted_reason(error),
+                    now_ms=now_ms,
+                    attempt_count=int(row["attempt_count"]),
+                    payload_hash=_required_text(row.get("payload_hash"), "payload_hash"),
+                    first_seen_at_ms=_optional_int(row.get("created_at_ms")),
+                    last_attempted_at_ms=now_ms,
+                    commit=False,
+                )
+        return changed
+
+    def _delete_macro_projection_dirty_claims_returning(
+        self,
+        records: Sequence[Mapping[str, Any]],
+    ) -> tuple[list[dict[str, Any]], int]:
         cursor = self.conn.execute(
             """
-            UPDATE macro_projection_dirty_targets queue
-            SET due_at_ms = %(due_at_ms)s,
-                leased_until_ms = NULL,
-                lease_owner = NULL,
-                last_error = %(last_error)s,
-                updated_at_ms = %(now_ms)s
-            FROM (
+            WITH exhausted AS (
               SELECT *
               FROM unnest(
                 %(projection_names)s::text[],
@@ -1195,7 +1279,7 @@ class MacroIntelRepository:
                 %(payload_hashes)s::text[],
                 %(lease_owners)s::text[],
                 %(attempt_counts)s::int[]
-              ) AS failed(
+              ) AS exhausted(
                 projection_name,
                 projection_version,
                 target_kind,
@@ -1204,18 +1288,23 @@ class MacroIntelRepository:
                 lease_owner,
                 attempt_count
               )
-            ) AS failed
-            WHERE queue.projection_name = failed.projection_name
-              AND queue.projection_version = failed.projection_version
-              AND queue.target_kind = failed.target_kind
-              AND queue.target_id = failed.target_id
-              AND queue.payload_hash = failed.payload_hash
-              AND queue.lease_owner = failed.lease_owner
-              AND queue.attempt_count = failed.attempt_count
+            )
+            DELETE FROM macro_projection_dirty_targets queue
+            USING exhausted
+            WHERE queue.projection_name = exhausted.projection_name
+              AND queue.projection_version = exhausted.projection_version
+              AND queue.target_kind = exhausted.target_kind
+              AND queue.target_id = exhausted.target_id
+              AND queue.payload_hash = exhausted.payload_hash
+              AND queue.lease_owner = exhausted.lease_owner
+              AND queue.attempt_count = exhausted.attempt_count
+            RETURNING queue.*
             """,
-            params,
+            _macro_projection_dirty_claim_params(records),
         )
-        return _cursor_rowcount(cursor)
+        rows = cursor.fetchall()
+        deleted_count = _returned_rowcount(cursor, rows)
+        return [dict(row) for row in rows], deleted_count
 
     def latest_observations(
         self,
@@ -1224,7 +1313,7 @@ class MacroIntelRepository:
         concept_keys: Sequence[str] | None = None,
         projection_version: str = MACRO_VIEW_PROJECTION_VERSION,
     ) -> list[dict[str, Any]]:
-        bounded_limit = max(1, int(limit))
+        bounded_limit = _required_positive_int(limit, "macro_latest_observations_limit_required")
         if concept_keys:
             rows = self.conn.execute(
                 """
@@ -1262,8 +1351,14 @@ class MacroIntelRepository:
         claimed_targets: Sequence[Mapping[str, Any]] = (),
         concept_keys: Sequence[str] = (),
     ) -> MacroSeriesRefreshResult:
-        bounded_lookback_days = max(1, int(lookback_days))
-        bounded_limit_per_series = max(1, int(limit_per_series))
+        bounded_lookback_days = _required_positive_int(
+            lookback_days,
+            "macro_observation_series_refresh_lookback_days_required",
+        )
+        bounded_limit_per_series = _required_positive_int(
+            limit_per_series,
+            "macro_observation_series_refresh_limit_per_series_required",
+        )
         target_concept_keys = _refresh_target_concept_keys(claimed_targets=claimed_targets, concept_keys=concept_keys)
         if not target_concept_keys:
             source_signature = _series_source_signature(
@@ -1668,8 +1763,14 @@ class MacroIntelRepository:
         limit_per_series: int,
         projection_version: str = MACRO_VIEW_PROJECTION_VERSION,
     ) -> list[dict[str, Any]]:
-        bounded_lookback_days = max(1, int(lookback_days))
-        bounded_limit_per_series = max(1, int(limit_per_series))
+        bounded_lookback_days = _required_positive_int(
+            lookback_days,
+            "macro_observations_for_concepts_lookback_days_required",
+        )
+        bounded_limit_per_series = _required_positive_int(
+            limit_per_series,
+            "macro_observations_for_concepts_limit_per_series_required",
+        )
         rows = self.conn.execute(
             """
             SELECT rows.*
@@ -1690,7 +1791,10 @@ class MacroIntelRepository:
         lookback_days: int,
         projection_version: str = MACRO_VIEW_PROJECTION_VERSION,
     ) -> list[dict[str, Any]]:
-        bounded_lookback_days = max(1, int(lookback_days))
+        bounded_lookback_days = _required_positive_int(
+            lookback_days,
+            "macro_concept_history_counts_lookback_days_required",
+        )
         rows = self.conn.execute(
             """
             WITH requested AS (
@@ -2168,6 +2272,53 @@ def _macro_projection_dirty_claim_params(records: Sequence[Mapping[str, Any]]) -
     }
 
 
+def _required_max_attempts(value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError("macro_projection_dirty_target_max_attempts_required")
+    return int(value)
+
+
+def _required_positive_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _required_text(value: Any, field_name: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError(f"macro_projection_dirty_target_{field_name}_required")
+    return text
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    return int(value)
+
+
+def _macro_projection_dirty_target_key(row: Mapping[str, Any]) -> str:
+    return ":".join(
+        [
+            _required_text(row.get("projection_name"), "projection_name"),
+            _required_text(row.get("projection_version"), "projection_version"),
+            _required_text(row.get("target_kind"), "target_kind"),
+            _required_text(row.get("target_id"), "target_id"),
+        ]
+    )
+
+
+def _macro_projection_retry_budget_exhausted_reason(error: str) -> str:
+    message = str(error or "").strip()
+    return f"macro_view_projection_retry_budget_exhausted: {message}"[:2048]
+
+
 def _observation_id(observation: Mapping[str, Any]) -> str:
     identity = "|".join(
         [
@@ -2263,6 +2414,13 @@ def _cursor_rowcount(cursor: Any) -> int:
     if isinstance(rowcount, bool) or not isinstance(rowcount, int):
         raise TypeError("macro_intel_repository_rowcount_invalid")
     if rowcount < 0:
+        raise TypeError("macro_intel_repository_rowcount_invalid")
+    return rowcount
+
+
+def _returned_rowcount(cursor: Any, rows: list[Any]) -> int:
+    rowcount = _cursor_rowcount(cursor)
+    if rowcount != len(rows):
         raise TypeError("macro_intel_repository_rowcount_invalid")
     return rowcount
 

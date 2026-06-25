@@ -30,7 +30,7 @@ from parallax.domains.asset_market.runtime.asset_profile_refresh_worker import A
 from parallax.domains.asset_market.runtime.resolution_refresh_worker import ResolutionRefreshWorker
 from parallax.domains.asset_market.runtime.token_image_mirror_worker import TokenImageMirrorWorker
 from parallax.domains.asset_market.runtime.token_profile_current_worker import TokenProfileCurrentWorker
-from parallax.domains.asset_market.services.asset_market_sync import sync_binance_usdt_perp_routes
+from parallax.domains.asset_market.services.asset_market_sync import BinanceUsdtPerpRoute, sync_binance_usdt_perp_routes
 from parallax.domains.asset_market.services.cex_token_profile_sync import sync_cex_token_profiles
 from parallax.domains.asset_market.services.market_tick_current_rebuild import (
     MarketTickCurrentRebuildService,
@@ -55,7 +55,7 @@ from parallax.domains.token_intel.services.token_factor_evaluation import settle
 from parallax.domains.token_intel.services.token_radar_projection import WINDOW_MS
 from parallax.domains.token_intel.services.token_resolution_refresh import reprocess_recent_token_intents
 from parallax.integrations.binance.cex_profile_client import BinanceCexProfileClient
-from parallax.integrations.binance.usdm_futures_client import BinanceUsdmFuturesClient
+from parallax.integrations.binance.usdm_futures_client import BinanceUsdmFuturesClient, BinanceUsdmRoute
 from parallax.integrations.gmgn.directory_client import GmgnDirectoryClient, GmgnDirectoryError
 from parallax.platform.config.settings import load_settings
 from parallax.platform.db.postgres_audit import ProjectionValidationAudit
@@ -154,7 +154,9 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
 
     with repositories(settings) as repos:
         if args.ops_command == "news-dedup-diagnostics":
-            window_hours = max(0.0, float(args.window_hours))
+            window_hours = float(args.window_hours)
+            if window_hours <= 0:
+                raise ValueError("news_dedup_window_hours_required")
             return (
                 0,
                 {
@@ -181,6 +183,9 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
 
         if args.ops_command == "queue-resolve":
             return queue_ops.handle_queue_resolve(args, repos, now_ms=_now_ms())
+
+        if args.ops_command == "queue-resolve-bucket":
+            return queue_ops.handle_queue_resolve_bucket(args, repos, now_ms=_now_ms())
 
         if args.ops_command == "reconcile-event-anchor-jobs":
             data = repos.event_anchor_jobs.reconcile_ready_historical_jobs(
@@ -271,7 +276,7 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
             try:
                 data = sync_binance_usdt_perp_routes(
                     registry=repos.registry,
-                    client=client,
+                    routes=_binance_usdt_perp_routes(client),
                     observed_at_ms=_now_ms(),
                     dry_run=bool(args.dry_run),
                     execute=bool(args.execute),
@@ -425,8 +430,8 @@ def _enqueue_token_radar_dirty_targets(
     execute: bool,
     now_ms: int,
 ) -> dict[str, Any]:
-    parsed_since_ms = max(0, int(since_ms))
-    parsed_limit = max(0, int(limit))
+    parsed_since_ms = _required_nonnegative_int(since_ms, "ops_token_radar_dirty_targets_since_ms_required")
+    parsed_limit = _required_positive_int(limit, "ops_token_radar_dirty_targets_limit_required")
     data: dict[str, Any] = {
         "source": str(source),
         "since_ms": parsed_since_ms,
@@ -496,7 +501,7 @@ def _enqueue_token_capture_tier_rank_set(
     now_ms: int,
 ) -> dict[str, Any]:
     parsed_window = str(window)
-    parsed_limit = max(0, int(limit))
+    parsed_limit = _required_positive_int(limit, "ops_capture_tier_rank_set_limit_required")
     since_ms = max(0, int(now_ms) - _ops_window_ms(parsed_window))
     reason = f"ops_capture_tier_repair:{parsed_window}"
     data: dict[str, Any] = {
@@ -583,13 +588,14 @@ def _rebuild_news_canonical_items(
     execute: bool,
     now_ms: int,
 ) -> dict[str, Any]:
+    parsed_limit = _required_positive_int(limit, "ops_news_canonical_rebuild_limit_required")
     data: dict[str, Any] = {
         "mode": "execute" if execute else "dry_run",
         "dry_run": bool(dry_run),
         "execute": bool(execute),
     }
     if dry_run:
-        rows = repos.news.list_news_items_for_canonical_rebuild(limit=max(0, int(limit)))
+        rows = repos.news.list_news_items_for_canonical_rebuild(limit=parsed_limit)
         targets = _news_canonical_rebuild_targets(rows)
         data["matched_canonical_items"] = len(rows)
         data["would_enqueue"] = len(targets)
@@ -597,7 +603,7 @@ def _rebuild_news_canonical_items(
         data["deleted_disabled_rows"] = 0
         return data
     with _transaction(repos.conn):
-        rows = repos.news.list_news_items_for_canonical_rebuild(limit=max(0, int(limit)))
+        rows = repos.news.list_news_items_for_canonical_rebuild(limit=parsed_limit)
         targets = _news_canonical_rebuild_targets(rows)
         data["matched_canonical_items"] = len(rows)
         data["would_enqueue"] = len(targets)
@@ -666,6 +672,22 @@ def _required_news_canonical_rebuild_watermark(row: Mapping[str, Any]) -> int:
         raise ValueError("ops_news_canonical_rebuild_source_watermark_required")
     if value <= 0:
         raise ValueError("ops_news_canonical_rebuild_source_watermark_required")
+    return int(value)
+
+
+def _required_positive_int(value: object, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value <= 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _required_nonnegative_int(value: object, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value < 0:
+        raise ValueError(error_code)
     return int(value)
 
 
@@ -822,7 +844,7 @@ def _run_token_profile_image_repair_once(settings: object, *, limit: int, now_ms
     telemetry = TelemetryRegistry()
     db = None
     worker = None
-    bounded_limit = max(1, int(limit))
+    bounded_limit = _required_positive_int(limit, "ops_token_profile_image_repair_limit_required")
     profile_rebuild = {}
     try:
         db = DBPoolBundle.create(settings, telemetry=telemetry)
@@ -951,6 +973,22 @@ def _run_token_radar_projection_worker_once(
             asyncio.run(worker.aclose())
         if db is not None:
             _close_db_bundle(db)
+
+
+def _binance_usdt_perp_routes(client: BinanceUsdmFuturesClient) -> list[BinanceUsdtPerpRoute]:
+    routes: list[BinanceUsdtPerpRoute] = []
+    for route in client.usdt_perpetual_routes():
+        if not isinstance(route, BinanceUsdmRoute):
+            raise RuntimeError("binance_usdm_route_contract_required")
+        routes.append(
+            BinanceUsdtPerpRoute(
+                native_market_id=route.native_market_id,
+                base_symbol=route.base_symbol,
+                quote_symbol=route.quote_symbol,
+                multiplier=route.multiplier,
+            )
+        )
+    return routes
 
 
 def _worker_settings_with_overrides(config: object, **overrides: object) -> object:

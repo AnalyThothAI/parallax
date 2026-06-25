@@ -82,6 +82,10 @@ def test_cli_ops_worker_status_emits_manifest_workers_lanes_and_queue_depths(mon
 
     class FakeConn:
         def execute(self, sql, params=()):
+            if "worker_queue_terminal_events" in sql:
+                if "GROUP BY final_reason_bucket" in sql:
+                    return FakeRows([])
+                return FakeRows([{"terminal_count": 0, "unresolved_terminal_count": 0}])
             if "GROUP BY status" not in sql:
                 if "pulse_agent_jobs" in sql:
                     return FakeRows(

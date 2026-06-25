@@ -454,7 +454,7 @@ def test_mark_job_failed_retries_then_dead_and_succeeded_sets_done(tmp_path) -> 
             now_ms=900,
         )
         success_claim = repo.jobs.claim_due_job(now_ms=1_000)
-        success = repo.jobs.mark_job_succeeded("job-success", now_ms=4_000)
+        success = repo.jobs.mark_job_succeeded(success_claim, now_ms=4_000)
     finally:
         conn.close()
 
@@ -468,6 +468,54 @@ def test_mark_job_failed_retries_then_dead_and_succeeded_sets_done(tmp_path) -> 
     assert success is not None
     assert success["status"] == "done"
     assert success["last_error"] is None
+
+
+def test_pulse_job_completion_and_failure_ignore_stale_claim_after_reclaim(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = _repo_bundle(conn, running_timeout_ms=1_000)
+        repo.jobs.enqueue_job(
+            job_id="job-stale-claim",
+            candidate_id="candidate-stale-claim",
+            candidate_type="token_target",
+            subject_key="toly",
+            window="1h",
+            scope="global",
+            trigger_signature="trigger-stale-claim",
+            timeline_signature="timeline-stale-claim",
+            priority=10,
+            max_attempts=3,
+            next_run_at_ms=1_000,
+            now_ms=900,
+        )
+
+        stale_claim = repo.jobs.claim_due_job(now_ms=1_000)
+        reclaimed = repo.jobs.claim_due_job(now_ms=2_100)
+        assert stale_claim is not None
+        assert reclaimed is not None
+        assert stale_claim["job_id"] == reclaimed["job_id"]
+        assert stale_claim["attempt_count"] == 1
+        assert reclaimed["attempt_count"] == 2
+
+        stale_success = repo.jobs.mark_job_succeeded(stale_claim, now_ms=2_200)
+        stale_failure = repo.jobs.mark_job_failed(stale_claim, "late stale failure", now_ms=2_300)
+        after_stale_write = repo.jobs.job_for_candidate("candidate-stale-claim")
+
+        assert stale_success is None
+        assert stale_failure is None
+        assert after_stale_write is not None
+        assert after_stale_write["status"] == "running"
+        assert after_stale_write["attempt_count"] == 2
+        assert after_stale_write["last_error"] is None
+
+        completed = repo.jobs.mark_job_succeeded(reclaimed, now_ms=2_400)
+    finally:
+        conn.close()
+
+    assert completed is not None
+    assert completed["status"] == "done"
+    assert completed["attempt_count"] == 2
 
 
 def test_reenqueue_dead_job_resets_attempts_and_is_claimable(tmp_path) -> None:

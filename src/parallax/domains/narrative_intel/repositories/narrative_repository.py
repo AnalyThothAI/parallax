@@ -33,7 +33,12 @@ class NarrativeRepository:
         limit: int | None = None,
         commit: bool = True,
     ) -> dict[str, int]:
-        selected = list(rows)[: max(1, int(limit))] if limit is not None else list(rows)
+        selected_limit = (
+            _required_positive_int(limit, "narrative_admission_upsert_limit_required")
+            if limit is not None
+            else None
+        )
+        selected = list(rows)[:selected_limit] if selected_limit is not None else list(rows)
         if not selected:
             return {"upserted": 0, "seen": 0}
         if commit:
@@ -733,6 +738,14 @@ def _required(row: dict[str, Any], key: str) -> str:
 def _clean(value: Any) -> str | None:
     text = str(value or "").strip()
     return text or None
+
+
+def _required_positive_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value <= 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _int(value: Any) -> int | None:

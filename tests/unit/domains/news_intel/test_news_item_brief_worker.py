@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
 
@@ -40,8 +41,8 @@ def _news_item_brief_settings(**overrides: Any) -> NewsItemBriefWorkerSettings:
     return NewsItemBriefWorkerSettings(**payload)
 
 
-def test_worker_writes_ready_brief_and_emits_wake() -> None:
-    asyncio.run(_test_worker_writes_ready_brief_and_emits_wake())
+def test_worker_writes_ready_brief_without_dead_wake_dependency() -> None:
+    asyncio.run(_test_worker_writes_ready_brief_without_dead_wake_dependency())
 
 
 def test_worker_canonicalizes_run_artifact_hash_to_worker_config() -> None:
@@ -165,11 +166,10 @@ def test_worker_rejects_publishable_validation_missing_payload_without_empty_def
     asyncio.run(_test_worker_rejects_publishable_validation_missing_payload_without_empty_default())
 
 
-async def _test_worker_writes_ready_brief_and_emits_wake() -> None:
+async def _test_worker_writes_ready_brief_without_dead_wake_dependency() -> None:
     db = FakeDB([_candidate()])
     provider = FakeBriefProvider(payload=_ready_payload())
-    wake_bus = FakeWakeBus()
-    worker = _worker(db=db, provider=provider, wake_emitter=wake_bus)
+    worker = _worker(db=db, provider=provider)
 
     result = await worker.run_once()
 
@@ -183,7 +183,6 @@ async def _test_worker_writes_ready_brief_and_emits_wake() -> None:
     assert db.news.briefs[0]["status"] == "ready"
     assert db.news.briefs[0]["brief_json"]["summary_zh"] == "SOL ETF filing boosts attention."
     assert db.dirty.enqueued == []
-    assert wake_bus.brief_updates == [1]
     assert result.processed == 1
     assert result.failed == 0
     assert result.notes["ready"] == 1
@@ -496,8 +495,7 @@ async def _test_worker_restores_current_from_completed_run_without_second_model_
         "response_json": _ready_payload(),
     }
     db = FakeDB([candidate])
-    wake_bus = FakeWakeBus()
-    worker = _worker(db=db, provider=provider, wake_emitter=wake_bus)
+    worker = _worker(db=db, provider=provider)
 
     result = await worker.run_once()
 
@@ -507,7 +505,6 @@ async def _test_worker_restores_current_from_completed_run_without_second_model_
     assert db.news.briefs[0]["agent_run_id"] == "run-existing-ready"
     assert db.news.briefs[0]["status"] == "ready"
     assert len(db.dirty.done) == 1
-    assert wake_bus.brief_updates == [1]
     assert result.processed == 1
     assert result.notes["ready"] == 1
     assert result.notes["restored_from_completed_run"] == 1
@@ -1015,7 +1012,7 @@ async def _test_worker_reads_formal_settings_for_claim_session_retry_and_backpre
             "retry_ms": 90_000,
             "now_ms": NOW_MS,
             "count_attempt": True,
-            "commit": True,
+            "commit": False,
         }
     ]
     assert worker._backpressure_cooldown_ms() == 12_000
@@ -1128,6 +1125,20 @@ def test_worker_capacity_denied_does_not_claim_dirty_target_or_write_ledger() ->
     asyncio.run(_test_worker_capacity_denied_does_not_claim_dirty_target_or_write_ledger())
 
 
+def test_worker_capacity_denied_requires_formal_agent_capacity_reservation() -> None:
+    asyncio.run(_test_worker_capacity_denied_requires_formal_agent_capacity_reservation())
+
+
+def test_worker_capacity_denied_requires_formal_reason_enum() -> None:
+    asyncio.run(_test_worker_capacity_denied_requires_formal_reason_enum())
+
+
+def test_worker_provider_error_class_requires_formal_enum_without_string_fallback() -> None:
+    invalid_reason: Any = "rate_limited"
+    with pytest.raises(RuntimeError, match="news_item_brief_agent_error_class_contract_required"):
+        worker_module._reason_value(invalid_reason)
+
+
 async def _test_worker_capacity_denied_does_not_claim_dirty_target_or_write_ledger() -> None:
     db = FakeDB([_candidate()])
     provider = FakeBriefProvider(
@@ -1155,6 +1166,32 @@ async def _test_worker_capacity_denied_does_not_claim_dirty_target_or_write_ledg
     assert result.notes["claimed"] == 0
     assert result.notes["backpressure"] == 1
     assert result.notes["backpressure_capacity_denied"] == 1
+
+
+async def _test_worker_capacity_denied_requires_formal_agent_capacity_reservation() -> None:
+    class LooseReservation:
+        acquired = False
+        reason = AgentExecutionErrorClass.CAPACITY_DENIED
+        rate_units = 1
+
+    db = FakeDB([_candidate()])
+    loose_reservation: Any = LooseReservation()
+    provider = FakeBriefProvider(reservation=loose_reservation)
+    worker = _worker(db=db, provider=provider)
+
+    with pytest.raises(RuntimeError, match="news_item_brief_agent_reservation_contract_required"):
+        await worker.run_once()
+
+
+async def _test_worker_capacity_denied_requires_formal_reason_enum() -> None:
+    db = FakeDB([_candidate()])
+    reservation = AgentCapacityReservation(lane=NEWS_ITEM_BRIEF_LANE, acquired=False)
+    reservation.reason = "rate_limited"  # type: ignore[assignment]
+    provider = FakeBriefProvider(reservation=reservation)
+    worker = _worker(db=db, provider=provider)
+
+    with pytest.raises(RuntimeError, match="news_item_brief_agent_reservation_reason_contract_required"):
+        await worker.run_once()
 
 
 def test_worker_execute_no_start_rate_limit_does_not_write_business_ledger() -> None:
@@ -1218,8 +1255,7 @@ def test_worker_request_audit_error_requeues_without_business_ledger_or_current_
 async def _test_worker_request_audit_error_requeues_without_business_ledger_or_current_write() -> None:
     db = FakeDB([_candidate()])
     provider = FakeBriefProvider(audit_error=RuntimeError("audit exploded"))
-    wake_bus = FakeWakeBus()
-    worker = _worker(db=db, provider=provider, wake_emitter=wake_bus)
+    worker = _worker(db=db, provider=provider)
 
     result = await worker.run_once()
 
@@ -1229,7 +1265,6 @@ async def _test_worker_request_audit_error_requeues_without_business_ledger_or_c
     assert db.news.briefs == []
     assert len(db.dirty.errors) == 1
     assert db.dirty.error_kwargs[-1]["count_attempt"] is False
-    assert wake_bus.brief_updates == []
     assert result.failed == 0
     assert result.skipped == 1
     assert result.notes["backpressure"] == 1
@@ -1243,8 +1278,7 @@ def test_worker_reserve_error_does_not_claim_dirty_target_or_write_ledger() -> N
 async def _test_worker_reserve_error_does_not_claim_dirty_target_or_write_ledger() -> None:
     db = FakeDB([_candidate()])
     provider = FakeBriefProvider(reserve_error=RuntimeError("reserve exploded"))
-    wake_bus = FakeWakeBus()
-    worker = _worker(db=db, provider=provider, wake_emitter=wake_bus)
+    worker = _worker(db=db, provider=provider)
 
     result = await worker.run_once()
 
@@ -1254,7 +1288,6 @@ async def _test_worker_reserve_error_does_not_claim_dirty_target_or_write_ledger
     assert db.news.loaded_target_ids == []
     assert db.news.runs == []
     assert db.news.briefs == []
-    assert wake_bus.brief_updates == []
     assert result.failed == 0
     assert result.skipped == 1
     assert result.notes["claimed"] == 0
@@ -1423,8 +1456,7 @@ async def _test_worker_validation_failure_writes_failed_current_without_retry_or
     invalid_ready_payload["summary_zh"] = ""
     invalid_ready_payload["market_read_zh"] = ""
     provider = FakeBriefProvider(payload=invalid_ready_payload)
-    wake_bus = FakeWakeBus()
-    worker = _worker(db=db, provider=provider, wake_emitter=wake_bus)
+    worker = _worker(db=db, provider=provider)
 
     result = await worker.run_once()
 
@@ -1436,7 +1468,6 @@ async def _test_worker_validation_failure_writes_failed_current_without_retry_or
     assert len(db.dirty.done) == 1
     assert db.news.briefs[0]["status"] == "failed"
     assert db.news.briefs[0]["agent_run_id"] == db.news.runs[0]["run_id"]
-    assert wake_bus.brief_updates == []
     assert result.failed == 0
     assert result.notes["validation_failed"] == 1
     assert result.notes["ready"] == 0
@@ -1469,7 +1500,9 @@ def test_news_item_brief_worker_provider_error_audit_requires_formal_agent_execu
         execution_started=False,
     )
 
-    assert _provider_error_audit(formal_error)["execution_trace_id"] == "trace-run-formal"
+    audit = _provider_error_audit(formal_error)
+    assert audit is not None
+    assert audit["execution_trace_id"] == "trace-run-formal"
 
 
 def test_news_item_brief_worker_agent_admission_payload_requires_formal_admission_type() -> None:
@@ -1535,11 +1568,45 @@ async def _test_worker_provider_failure_hard_cuts_dirty_target_without_terminal_
     assert result.failed == 1
 
 
+def test_worker_rejects_malformed_queue_depth_without_reserving_or_claiming() -> None:
+    asyncio.run(_test_worker_rejects_malformed_queue_depth_without_reserving_or_claiming())
+
+
+async def _test_worker_rejects_malformed_queue_depth_without_reserving_or_claiming() -> None:
+    db = FakeDB([_candidate()])
+    provider = FakeBriefProvider()
+    worker = _worker(db=db, provider=provider)
+
+    def malformed_queue_depth(*, now_ms: int, projection_name: str | None = None) -> int:
+        del now_ms, projection_name
+        return -1
+
+    db.dirty.queue_depth = malformed_queue_depth  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError, match="news_item_brief_queue_depth_required"):
+        await worker.run_once()
+
+    assert provider.reserve_calls == []
+    assert db.dirty.claim_kwargs == []
+
+
+@pytest.mark.parametrize("limit", [0, True, "1"])
+def test_worker_rejects_malformed_claim_limit_before_session(limit: object) -> None:
+    db = FakeDB([_candidate()])
+    provider = FakeBriefProvider()
+    worker = _worker(db=db, provider=provider)
+
+    with pytest.raises(RuntimeError, match="news_item_brief_claim_limit_required"):
+        worker._claim_targets(now_ms=NOW_MS, limit=limit)  # type: ignore[arg-type]
+
+    assert db.in_session is False
+    assert db.dirty.claim_kwargs == []
+
+
 def _worker(
     *,
     db: FakeDB,
     provider: FakeBriefProvider,
-    wake_emitter: Any | None = None,
     settings: NewsItemBriefWorkerSettings | None = None,
 ) -> NewsItemBriefWorker:
     provider.db = db
@@ -1549,7 +1616,6 @@ def _worker(
         db=db,
         telemetry=object(),
         provider=provider,
-        wake_emitter=wake_emitter,
         clock_ms=lambda: NOW_MS,
     )
 
@@ -2146,7 +2212,7 @@ class FakeDirtyRepository:
 
 class FakeConn:
     @contextmanager
-    def transaction(self):
+    def transaction(self) -> Iterator[None]:
         yield
 
 
@@ -2159,11 +2225,3 @@ def _agent_admission_context_for_candidate(candidate: dict[str, Any]) -> dict[st
         "exact_duplicate_candidates": [dict(row) for row in candidate.get("exact_duplicate_candidates", [])],
         "story_candidates": [dict(row) for row in candidate.get("story_candidates", [])],
     }
-
-
-class FakeWakeBus:
-    def __init__(self) -> None:
-        self.brief_updates: list[int] = []
-
-    def notify_news_item_brief_updated(self, *, count: int) -> None:
-        self.brief_updates.append(count)

@@ -88,7 +88,10 @@ def ops_diagnostics_payload(
     now_ms: int | None = None,
 ) -> dict[str, Any]:
     generated_at_ms = int(now_ms if now_ms is not None else _now_ms())
-    since_ms = generated_at_ms - max(1, int(since_hours)) * 60 * 60 * 1000
+    since_ms = generated_at_ms - _required_positive_int(
+        since_hours,
+        "ops_diagnostics_since_hours_required",
+    ) * 60 * 60 * 1000
     database = _section("database", lambda: _database_payload(runtime))
     collector = _section("collector", lambda: _collector_payload(runtime))
     providers = _providers_payload(runtime)
@@ -883,6 +886,12 @@ def _age_ms(now_ms: int, timestamp_ms: Any) -> int | None:
         return max(0, int(now_ms) - int(timestamp_ms))
     except (TypeError, ValueError):
         return None
+
+
+def _required_positive_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _is_secret_key(key: str) -> bool:

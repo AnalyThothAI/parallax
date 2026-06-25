@@ -5,6 +5,7 @@ from contextlib import AbstractContextManager
 from typing import Any, cast
 
 from parallax.platform.current_read_model_payload_hash import stable_dirty_target_payload_hash
+from parallax.platform.db.queue_terminal import terminalize_source_row
 
 
 class MarketTickCurrentDirtyTargetRepository:
@@ -75,6 +76,11 @@ class MarketTickCurrentDirtyTargetRepository:
                   priority = GREATEST(market_tick_current_dirty_targets.priority, EXCLUDED.priority),
                   leased_until_ms = NULL,
                   lease_owner = NULL,
+                  attempt_count = CASE
+                    WHEN market_tick_current_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                    THEN 0
+                    ELSE market_tick_current_dirty_targets.attempt_count
+                  END,
                   last_error = NULL,
                   first_dirty_at_ms = market_tick_current_dirty_targets.first_dirty_at_ms,
                   updated_at_ms = EXCLUDED.updated_at_ms
@@ -107,8 +113,17 @@ class MarketTickCurrentDirtyTargetRepository:
         lease_owner: str,
         commit: bool = True,
     ) -> list[dict[str, Any]]:
+        parsed_limit = _required_nonnegative_int(
+            limit,
+            "market_tick_current_dirty_target_claim_limit_required",
+        )
+        parsed_lease_ms = _required_positive_int(
+            lease_ms,
+            "market_tick_current_dirty_target_claim_lease_ms_required",
+        )
+
         def _write() -> list[dict[str, Any]]:
-            rows = self.conn.execute(
+            cursor = self.conn.execute(
                 """
                 WITH due AS (
                   SELECT target_type, target_id
@@ -132,11 +147,13 @@ class MarketTickCurrentDirtyTargetRepository:
                 """,
                 {
                     "now_ms": int(now_ms),
-                    "leased_until_ms": int(now_ms) + max(1, int(lease_ms)),
+                    "leased_until_ms": int(now_ms) + parsed_lease_ms,
                     "lease_owner": str(lease_owner),
-                    "limit": max(0, int(limit)),
+                    "limit": parsed_limit,
                 },
-            ).fetchall()
+            )
+            rows = cursor.fetchall()
+            _returned_rowcount(cursor, rows)
             return [dict(row) for row in rows]
 
         return _run_repository_write(self.conn, commit, _write)
@@ -185,52 +202,110 @@ class MarketTickCurrentDirtyTargetRepository:
         *,
         error: str,
         retry_ms: int,
+        max_attempts: int,
+        worker_name: str,
         now_ms: int,
         commit: bool = True,
     ) -> int:
         records = _claim_records(claims)
         if not records:
             return 0
-        params = _claim_params(records)
-        params.update(
-            {
-                "due_at_ms": int(now_ms) + max(1, int(retry_ms)),
-                "now_ms": int(now_ms),
-                "last_error": str(error)[:2048],
-            }
+        parsed_max_attempts = _required_max_attempts(max_attempts)
+        parsed_retry_ms = _required_positive_int(
+            retry_ms,
+            "market_tick_current_dirty_target_retry_ms_required",
         )
+        parsed_worker_name = _required_text(worker_name, "worker_name")
+        retry_records = [record for record in records if int(record["attempt_count"]) < parsed_max_attempts]
+        exhausted_records = [record for record in records if int(record["attempt_count"]) >= parsed_max_attempts]
+        params = {
+            **_claim_params(retry_records),
+            "due_at_ms": int(now_ms) + parsed_retry_ms,
+            "now_ms": int(now_ms),
+            "last_error": str(error)[:2048],
+        }
 
         def _write() -> int:
-            cursor = self.conn.execute(
-                """
-                WITH failed AS (
-                  SELECT *
-                  FROM unnest(
-                    %(target_types)s::text[],
-                    %(target_ids)s::text[],
-                    %(payload_hashes)s::text[],
-                    %(lease_owners)s::text[],
-                    %(attempt_counts)s::bigint[]
-                  ) AS failed(target_type, target_id, payload_hash, lease_owner, attempt_count)
+            changed = 0
+            if retry_records:
+                cursor = self.conn.execute(
+                    """
+                    WITH failed AS (
+                      SELECT *
+                      FROM unnest(
+                        %(target_types)s::text[],
+                        %(target_ids)s::text[],
+                        %(payload_hashes)s::text[],
+                        %(lease_owners)s::text[],
+                        %(attempt_counts)s::bigint[]
+                      ) AS failed(target_type, target_id, payload_hash, lease_owner, attempt_count)
+                    )
+                    UPDATE market_tick_current_dirty_targets queue
+                    SET due_at_ms = %(due_at_ms)s,
+                        leased_until_ms = NULL,
+                        lease_owner = NULL,
+                        last_error = %(last_error)s,
+                        updated_at_ms = %(now_ms)s
+                    FROM failed
+                    WHERE queue.target_type = failed.target_type
+                      AND queue.target_id = failed.target_id
+                      AND queue.payload_hash = failed.payload_hash
+                      AND queue.lease_owner = failed.lease_owner
+                      AND queue.attempt_count = failed.attempt_count
+                    """,
+                    params,
                 )
-                UPDATE market_tick_current_dirty_targets queue
-                SET due_at_ms = %(due_at_ms)s,
-                    leased_until_ms = NULL,
-                    lease_owner = NULL,
-                    last_error = %(last_error)s,
-                    updated_at_ms = %(now_ms)s
-                FROM failed
-                WHERE queue.target_type = failed.target_type
-                  AND queue.target_id = failed.target_id
-                  AND queue.payload_hash = failed.payload_hash
-                  AND queue.lease_owner = failed.lease_owner
-                  AND queue.attempt_count = failed.attempt_count
-                """,
-                params,
-            )
-            return _cursor_rowcount(cursor)
+                changed += _cursor_rowcount(cursor)
+            if exhausted_records:
+                deleted_rows, deleted_count = self._delete_claims_returning(exhausted_records)
+                changed += deleted_count
+                for row in deleted_rows:
+                    terminalize_source_row(
+                        self.conn,
+                        worker_name=parsed_worker_name,
+                        source_table="market_tick_current_dirty_targets",
+                        target_key=_terminal_target_key(row),
+                        source_row=row,
+                        final_status="terminal",
+                        final_reason=_retry_budget_exhausted_reason(error),
+                        now_ms=int(now_ms),
+                        attempt_count=int(row["attempt_count"]),
+                        payload_hash=_completion_payload_hash(row),
+                        first_seen_at_ms=_optional_int(row.get("first_dirty_at_ms")),
+                        last_attempted_at_ms=int(now_ms),
+                        commit=False,
+                    )
+            return changed
 
         return _run_repository_write(self.conn, commit, _write)
+
+    def _delete_claims_returning(self, records: list[dict[str, str | int]]) -> tuple[list[dict[str, Any]], int]:
+        cursor = self.conn.execute(
+            """
+            WITH done AS (
+              SELECT *
+              FROM unnest(
+                %(target_types)s::text[],
+                %(target_ids)s::text[],
+                %(payload_hashes)s::text[],
+                %(lease_owners)s::text[],
+                %(attempt_counts)s::bigint[]
+              ) AS done(target_type, target_id, payload_hash, lease_owner, attempt_count)
+            )
+            DELETE FROM market_tick_current_dirty_targets queue
+            USING done
+            WHERE queue.target_type = done.target_type
+              AND queue.target_id = done.target_id
+              AND queue.payload_hash = done.payload_hash
+              AND queue.lease_owner = done.lease_owner
+              AND queue.attempt_count = done.attempt_count
+            RETURNING queue.*
+            """,
+            _claim_params(records),
+        )
+        rows = cursor.fetchall()
+        deleted_count = _returned_rowcount(cursor, rows)
+        return [dict(row) for row in rows], deleted_count
 
     def queue_depth(self, *, now_ms: int) -> int:
         row = self.conn.execute(
@@ -323,12 +398,13 @@ def _claim_records(claims: Iterable[Mapping[str, Any]]) -> list[dict[str, str | 
 
 def _completion_attempt_count(claim: Mapping[str, Any]) -> int:
     try:
-        attempt_count = int(claim["attempt_count"])
-    except (KeyError, TypeError, ValueError) as exc:
+        value = claim["attempt_count"]
+    except KeyError as exc:
         raise ValueError("market tick current dirty target completion requires attempt_count from claim_due") from exc
-    if attempt_count <= 0:
-        raise ValueError("market tick current dirty target completion requires attempt_count from claim_due")
-    return attempt_count
+    return _required_positive_int(
+        value,
+        "market tick current dirty target completion requires attempt_count from claim_due",
+    )
 
 
 def _completion_lease_owner(claim: Mapping[str, Any]) -> str:
@@ -365,6 +441,56 @@ def _claim_params(records: list[dict[str, str | int]]) -> dict[str, Any]:
         "lease_owners": [str(record["lease_owner"]) for record in records],
         "attempt_counts": [int(record["attempt_count"]) for record in records],
     }
+
+
+def _returned_rowcount(cursor: Any, rows: list[Any]) -> int:
+    rowcount = _cursor_rowcount(cursor)
+    if rowcount != len(rows):
+        raise TypeError("market_tick_current_dirty_target_rowcount_invalid")
+    return rowcount
+
+
+def _required_max_attempts(value: Any) -> int:
+    return _required_positive_int(value, "market_tick_current_dirty_target_max_attempts_required")
+
+
+def _required_positive_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _required_text(value: Any, field_name: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError(f"market_tick_current_dirty_target_{field_name}_required")
+    return text
+
+
+def _terminal_target_key(row: Mapping[str, Any]) -> str:
+    return ":".join(
+        (
+            _required_text(row.get("target_type"), "target_type"),
+            _required_text(row.get("target_id"), "target_id"),
+        )
+    )
+
+
+def _retry_budget_exhausted_reason(error: str) -> str:
+    message = str(error or "").strip()
+    return f"market_tick_current_dirty_retry_budget_exhausted: {message}"[:2048]
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    return int(value)
 
 
 def _transaction(conn: Any) -> AbstractContextManager[Any]:

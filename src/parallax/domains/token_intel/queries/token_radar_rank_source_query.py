@@ -35,7 +35,7 @@ class TokenRadarFeatureSourceRequest:
 class TokenRadarRankSourceQuery:
     def __init__(self, conn: Any, *, chunk_size: int = TOKEN_RADAR_RANK_SOURCE_REQUEST_CHUNK_SIZE) -> None:
         self.conn = conn
-        self.chunk_size = max(1, int(chunk_size))
+        self.chunk_size = _required_positive_int(chunk_size, "token_radar_rank_source_chunk_size_required")
 
     def load_rows_for_requests(
         self,
@@ -155,6 +155,7 @@ class TokenRadarRankSourceQuery:
         event_received_before_ms: int,
         limit: int,
     ) -> int:
+        row_limit = _required_positive_int(limit, "token_radar_rank_source_prune_limit_required")
         cursor = self.conn.execute(
             """
             DELETE FROM token_radar_rank_source_events
@@ -167,7 +168,7 @@ class TokenRadarRankSourceQuery:
               LIMIT %s
             )
             """,
-            (projection_version, int(event_received_before_ms), max(1, int(limit))),
+            (projection_version, int(event_received_before_ms), row_limit),
         )
         return _cursor_rowcount(cursor)
 
@@ -272,6 +273,14 @@ def _cursor_rowcount(cursor: Any) -> int:
     if rowcount < 0:
         raise TypeError("token_radar_rank_source_rowcount_invalid")
     return rowcount
+
+
+def _required_positive_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value <= 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 _LATEST_MARKET_CONTEXT_FOR_TARGETS_SQL = """
@@ -471,7 +480,6 @@ hydrated AS (
     token_intent_resolutions.reason_codes_json,
     token_intent_resolutions.candidate_ids_json,
     token_intent_resolutions.lookup_keys_json,
-    NULL::jsonb AS discovery_results_json,
     token_intent_resolutions.decision_time_ms,
     events.author_handle,
     source_edges.is_watched,

@@ -36,6 +36,12 @@ def _optional_returning_row(cursor: Any, row: Any) -> dict[str, Any] | None:
     return _row(row) if row is not None else None
 
 
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
 class PulseRunsRepository:
     def __init__(self, conn: Any):
         self.conn = conn
@@ -73,6 +79,12 @@ class PulseRunsRepository:
         finished_at_ms: int | None = None,
         commit: bool = True,
     ) -> dict[str, Any]:
+        parsed_latency_ms = _required_nonnegative_int(latency_ms, "pulse_run_latency_ms_required")
+        parsed_decision_stage_count = _required_nonnegative_int(
+            decision_stage_count,
+            "pulse_run_decision_stage_count_required",
+        )
+
         def _insert_agent_run() -> dict[str, Any]:
             started = int(started_at_ms if started_at_ms is not None else _now_ms())
             finished = int(finished_at_ms if finished_at_ms is not None else started)
@@ -110,11 +122,11 @@ class PulseRunsRepository:
                     output_hash,
                     _json(trace_metadata_json or {}),
                     _json(usage_json or {}),
-                    max(0, int(latency_ms)),
+                    parsed_latency_ms,
                     status,
                     outcome,
                     decision_route,
-                    max(0, int(decision_stage_count)),
+                    parsed_decision_stage_count,
                     _json(request_json or {}),
                     _json(response_json) if response_json is not None else None,
                     error,
@@ -147,6 +159,12 @@ class PulseRunsRepository:
         finished_at_ms: int | None = None,
         commit: bool = True,
     ) -> dict[str, Any] | None:
+        parsed_decision_stage_count = (
+            _required_nonnegative_int(decision_stage_count, "pulse_run_decision_stage_count_required")
+            if decision_stage_count is not None
+            else None
+        )
+
         def _finish_agent_run() -> dict[str, Any] | None:
             existing = self.conn.execute(
                 "SELECT started_at_ms, usage_json, trace_metadata_json FROM pulse_agent_runs WHERE run_id = %s",
@@ -190,7 +208,7 @@ class PulseRunsRepository:
                     latency_ms,
                     outcome,
                     decision_route,
-                    max(0, int(decision_stage_count)) if decision_stage_count is not None else None,
+                    parsed_decision_stage_count,
                     evidence_packet_id,
                     evidence_packet_hash,
                     evidence_status,
@@ -233,6 +251,13 @@ class PulseRunsRepository:
         parse_mode: str = "strict",
         commit: bool = True,
     ) -> dict[str, Any]:
+        parsed_attempt_index = _required_nonnegative_int(attempt_index, "pulse_run_step_attempt_index_required")
+        parsed_latency_ms = _required_nonnegative_int(latency_ms, "pulse_run_step_latency_ms_required")
+        parsed_safety_net_retries = _required_nonnegative_int(
+            safety_net_retries,
+            "pulse_run_step_safety_net_retries_required",
+        )
+
         def _insert_agent_run_step() -> dict[str, Any]:
             started = int(started_at_ms if started_at_ms is not None else _now_ms())
             finished = int(finished_at_ms if finished_at_ms is not None else started)
@@ -279,7 +304,7 @@ class PulseRunsRepository:
                     run_id,
                     stage,
                     route,
-                    max(0, int(attempt_index)),
+                    parsed_attempt_index,
                     provider,
                     model,
                     prompt_version,
@@ -289,14 +314,14 @@ class PulseRunsRepository:
                     _json(response_json) if response_json is not None else None,
                     _json(trace_metadata_json or {}),
                     _json(usage_json or {}),
-                    max(0, int(latency_ms)),
+                    parsed_latency_ms,
                     status,
                     error,
                     started,
                     finished,
                     created,
                     bool(safety_net_used),
-                    max(0, int(safety_net_retries)),
+                    parsed_safety_net_retries,
                     str(parse_mode or "strict"),
                 ),
             )

@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+import pytest
+
 from parallax.domains.account_quality.repositories.account_quality_repository import (
     AccountQualityRepository,
 )
@@ -109,6 +111,53 @@ def test_token_target_repository_event_id_timeline_starts_from_event_id_unnest()
     _assert_binance_usdt_swap_only(sql)
     _assert_no_legacy_cex_preference_ordering(sql)
     _assert_token_target_timeline_rejects_legacy_cex_event_tick(sql)
+
+
+@pytest.mark.parametrize("limit", [-1, True, "25"])
+def test_token_target_repository_timeline_rejects_malformed_limit_before_sql(limit: object) -> None:
+    conn = RecordingConn()
+
+    with pytest.raises(ValueError, match="token_target_repository_limit_required"):
+        TokenTargetRepository(conn).timeline_rows(
+            target_type="CexToken",
+            target_id="cex_token:BTC",
+            since_ms=1,
+            watched_only=False,
+            limit=limit,  # type: ignore[arg-type]
+        )
+
+    assert conn.sql_calls == []
+
+
+def test_token_target_repository_event_id_timeline_allows_zero_limit_without_sql() -> None:
+    conn = RecordingConn()
+
+    rows = TokenTargetRepository(conn).timeline_rows_for_event_ids(
+        target_type="CexToken",
+        target_id="cex_token:BTC",
+        event_ids=["event-1"],
+        watched_only=False,
+        limit=0,
+    )
+
+    assert rows == []
+    assert conn.sql_calls == []
+
+
+@pytest.mark.parametrize("limit", [-1, True, "25"])
+def test_token_target_repository_event_id_timeline_rejects_malformed_limit_before_sql(limit: object) -> None:
+    conn = RecordingConn()
+
+    with pytest.raises(ValueError, match="token_target_repository_limit_required"):
+        TokenTargetRepository(conn).timeline_rows_for_event_ids(
+            target_type="CexToken",
+            target_id="cex_token:BTC",
+            event_ids=[],
+            watched_only=False,
+            limit=limit,  # type: ignore[arg-type]
+        )
+
+    assert conn.sql_calls == []
 
 
 def test_account_quality_cex_market_target_read_is_binance_usdt_swap_only() -> None:

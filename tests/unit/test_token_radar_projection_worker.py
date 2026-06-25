@@ -160,6 +160,7 @@ def test_projection_worker_calls_dirty_incremental_projection_not_window_rebuild
             "rank_limit": 7,
             "lease_ms": 120_000,
             "retry_ms": 30_000,
+            "max_attempts": 3,
             "lease_owner": "token_radar_projection",
             "claimed_targets": (
                 {
@@ -213,6 +214,98 @@ def test_projection_worker_requires_formal_settings_and_db_contract() -> None:
             db=None,
             telemetry=object(),
         )
+
+
+@pytest.mark.parametrize(
+    ("overrides", "error_code"),
+    [
+        pytest.param({"batch_size": 0}, "token_radar_projection_batch_size_required", id="batch-zero"),
+        pytest.param({"batch_size": True}, "token_radar_projection_batch_size_required", id="batch-bool"),
+        pytest.param({"batch_size": "7"}, "token_radar_projection_batch_size_required", id="batch-string"),
+        pytest.param({"lease_ms": 0}, "token_radar_projection_lease_ms_required", id="lease-zero"),
+        pytest.param({"lease_ms": True}, "token_radar_projection_lease_ms_required", id="lease-bool"),
+        pytest.param({"lease_ms": "120000"}, "token_radar_projection_lease_ms_required", id="lease-string"),
+        pytest.param({"retry_ms": 0}, "token_radar_projection_retry_ms_required", id="retry-zero"),
+        pytest.param({"retry_ms": True}, "token_radar_projection_retry_ms_required", id="retry-bool"),
+        pytest.param({"retry_ms": "30000"}, "token_radar_projection_retry_ms_required", id="retry-string"),
+        pytest.param({"max_attempts": 0}, "token_radar_projection_max_attempts_required", id="attempts-zero"),
+        pytest.param({"max_attempts": True}, "token_radar_projection_max_attempts_required", id="attempts-bool"),
+        pytest.param({"max_attempts": "3"}, "token_radar_projection_max_attempts_required", id="attempts-string"),
+        pytest.param(
+            {"private_cache_retention_enabled": "true"},
+            "token_radar_projection_private_cache_retention_enabled_required",
+            id="retention-enabled-string",
+        ),
+        pytest.param(
+            {"private_cache_retention_enabled": 1},
+            "token_radar_projection_private_cache_retention_enabled_required",
+            id="retention-enabled-int",
+        ),
+        pytest.param(
+            {"private_cache_retention_ms": 0},
+            "token_radar_projection_private_cache_retention_ms_required",
+            id="retention-zero",
+        ),
+        pytest.param(
+            {"private_cache_retention_ms": True},
+            "token_radar_projection_private_cache_retention_ms_required",
+            id="retention-bool",
+        ),
+        pytest.param(
+            {"private_cache_retention_ms": "172800000"},
+            "token_radar_projection_private_cache_retention_ms_required",
+            id="retention-string",
+        ),
+        pytest.param(
+            {"cold_interval_seconds": -1.0},
+            "token_radar_projection_cold_interval_seconds_required",
+            id="cold-negative",
+        ),
+        pytest.param(
+            {"cold_interval_seconds": True},
+            "token_radar_projection_cold_interval_seconds_required",
+            id="cold-bool",
+        ),
+        pytest.param(
+            {"cold_interval_seconds": "60"},
+            "token_radar_projection_cold_interval_seconds_required",
+            id="cold-string",
+        ),
+    ],
+)
+def test_projection_worker_rejects_malformed_runtime_settings_before_session(
+    overrides: dict[str, object],
+    error_code: str,
+) -> None:
+    db = FakeDB({})
+
+    with pytest.raises(ValueError, match=error_code):
+        module.TokenRadarProjectionWorker(
+            name="token_radar_projection",
+            settings=_settings(**overrides),
+            db=db,
+            telemetry=object(),
+        )
+
+    assert db.worker_sessions == []
+    assert db.sessions == []
+
+
+@pytest.mark.parametrize("limit", [0, True, "7"])
+def test_projection_worker_rejects_malformed_rebuild_limit_before_session(limit: object) -> None:
+    db = FakeDB({})
+    worker = module.TokenRadarProjectionWorker(
+        name="token_radar_projection",
+        settings=_settings(),
+        db=db,
+        telemetry=object(),
+    )
+
+    with pytest.raises(ValueError, match="token_radar_projection_limit_required"):
+        worker.rebuild_once(now_ms=1_777_800_000_000, limit=limit)
+
+    assert db.worker_sessions == []
+    assert db.sessions == []
 
 
 def test_projection_worker_requires_source_dirty_event_repository(monkeypatch):
@@ -398,6 +491,7 @@ def test_projection_worker_uses_formal_dirty_lease_and_retry_settings(monkeypatc
             batch_size=3,
             lease_ms=45_000,
             retry_ms=12_000,
+            max_attempts=7,
         ),
         db=db,
         telemetry=object(),
@@ -410,6 +504,7 @@ def test_projection_worker_uses_formal_dirty_lease_and_retry_settings(monkeypatc
     assert db.sessions[0].repos.token_radar_source_dirty_events.claim_due_calls[0]["lease_ms"] == 45_000
     assert calls[0]["lease_ms"] == 45_000
     assert calls[0]["retry_ms"] == 12_000
+    assert calls[0]["max_attempts"] == 7
 
 
 def test_projection_worker_runs_bounded_private_cache_retention_from_formal_settings(monkeypatch) -> None:
@@ -1039,6 +1134,7 @@ def _settings(**overrides):
         "batch_size": 100,
         "lease_ms": 120_000,
         "retry_ms": 30_000,
+        "max_attempts": 3,
         "private_cache_retention_enabled": False,
         "private_cache_retention_ms": 172_800_000,
         "statement_timeout_seconds": 120.0,

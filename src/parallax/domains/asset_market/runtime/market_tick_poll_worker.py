@@ -55,8 +55,14 @@ class MarketTickPollWorker(WorkerBase):
         self.dex_quote_market = providers.dex_quote_market
         self.cex_market = providers.cex_market
         self.wake_emitter = wake_emitter
-        self.batch_size = max(1, int(settings.batch_size))
-        self.concurrency = max(1, int(settings.concurrency))
+        self.batch_size = _required_positive_int(
+            settings.batch_size,
+            error_code="market_tick_poll_batch_size_required",
+        )
+        self.concurrency = _required_positive_int(
+            settings.concurrency,
+            error_code="market_tick_poll_concurrency_required",
+        )
         self.clock = clock or _now_ms
         self._recent_tier2_attempts: set[tuple[str, str]] = set()
 
@@ -522,6 +528,12 @@ def _provider_error_reason(exc: Exception) -> str:
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _required_positive_int(value: Any, *, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 __all__ = ["MarketTickPollWorker"]

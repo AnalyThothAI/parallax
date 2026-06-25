@@ -3,6 +3,8 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any
 
+import pytest
+
 from parallax.domains.watchlist_intel.repositories.watchlist_intel_repository import (
     WatchlistIntelRepository,
 )
@@ -103,6 +105,40 @@ def test_handle_overview_requires_explicit_source_and_cluster_limits_before_sql(
         assert "source_limit" in str(exc)
     else:
         raise AssertionError("missing overview limits should fail before SQL")
+
+    assert conn.calls == []
+
+
+@pytest.mark.parametrize("limit", [0, -1, True, "30"])
+def test_timeline_rejects_malformed_limit_before_sql(limit: object) -> None:
+    conn = _RecordingConn([])
+
+    with pytest.raises(ValueError, match="watchlist_timeline_limit_required"):
+        WatchlistIntelRepository(conn).timeline(handle="marionawfal", scope="signal", cursor=None, limit=limit)
+
+    assert conn.calls == []
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "error"),
+    [
+        ("source_limit", 0, "watchlist_source_limit_required"),
+        ("source_limit", -1, "watchlist_source_limit_required"),
+        ("source_limit", True, "watchlist_source_limit_required"),
+        ("source_limit", "1", "watchlist_source_limit_required"),
+        ("cluster_limit", 0, "watchlist_cluster_limit_required"),
+        ("cluster_limit", -1, "watchlist_cluster_limit_required"),
+        ("cluster_limit", True, "watchlist_cluster_limit_required"),
+        ("cluster_limit", "1", "watchlist_cluster_limit_required"),
+    ],
+)
+def test_handle_overview_rejects_malformed_limits_before_sql(field: str, value: object, error: str) -> None:
+    conn = _RecordingConn([])
+    kwargs = {"source_limit": 1, "cluster_limit": 1}
+    kwargs[field] = value
+
+    with pytest.raises(ValueError, match=error):
+        WatchlistIntelRepository(conn).handle_overview(handle="marionawfal", scope="signal", since_ms=0, **kwargs)
 
     assert conn.calls == []
 

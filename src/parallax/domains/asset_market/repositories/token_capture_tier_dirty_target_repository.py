@@ -75,6 +75,11 @@ class TokenCaptureTierDirtyTargetRepository:
                   due_at_ms = LEAST(token_capture_tier_dirty_targets.due_at_ms, EXCLUDED.due_at_ms),
                   leased_until_ms = NULL,
                   lease_owner = NULL,
+                  attempt_count = CASE
+                    WHEN token_capture_tier_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                    THEN 0
+                    ELSE token_capture_tier_dirty_targets.attempt_count
+                  END,
                   last_error = NULL,
                   first_dirty_at_ms = token_capture_tier_dirty_targets.first_dirty_at_ms,
                   updated_at_ms = EXCLUDED.updated_at_ms
@@ -101,8 +106,17 @@ class TokenCaptureTierDirtyTargetRepository:
         lease_ms: int,
         commit: bool = True,
     ) -> list[dict[str, Any]]:
+        parsed_limit = _required_nonnegative_int(
+            limit,
+            "token_capture_tier_dirty_target_claim_limit_required",
+        )
+        parsed_lease_ms = _required_positive_int(
+            lease_ms,
+            "token_capture_tier_dirty_target_claim_lease_ms_required",
+        )
+
         def _write() -> list[dict[str, Any]]:
-            rows = self.conn.execute(
+            cursor = self.conn.execute(
                 """
                 WITH due AS (
                   SELECT work_name, partition_key
@@ -126,17 +140,19 @@ class TokenCaptureTierDirtyTargetRepository:
                 """,
                 {
                     "now_ms": int(now_ms),
-                    "leased_until_ms": int(now_ms) + max(1, int(lease_ms)),
+                    "leased_until_ms": int(now_ms) + parsed_lease_ms,
                     "lease_owner": str(lease_owner),
-                    "limit": max(0, int(limit)),
+                    "limit": parsed_limit,
                 },
-            ).fetchall()
+            )
+            rows = cursor.fetchall()
+            _returned_rowcount(cursor, rows)
             return [dict(row) for row in rows]
 
         return _run_repository_write(self.conn, commit, _write)
 
     def mark_done(self, claims: Iterable[Mapping[str, Any]], *, now_ms: int, commit: bool = True) -> int:
-        records = list(claims)
+        records = _claim_records(claims)
         if not records:
             return 0
 
@@ -197,7 +213,20 @@ def _run_repository_write[T](conn: Any, commit: bool, write: Callable[[], T]) ->
     return write()
 
 
-def _claim_params(records: list[Mapping[str, Any]]) -> dict[str, list[Any]]:
+def _claim_records(claims: Iterable[Mapping[str, Any]]) -> list[dict[str, str | int]]:
+    return [
+        {
+            "work_name": _required_claim_text(claim, "work_name"),
+            "partition_key": _required_claim_text(claim, "partition_key"),
+            "payload_hash": _required_claim_text(claim, "payload_hash"),
+            "lease_owner": _required_claim_text(claim, "lease_owner"),
+            "attempt_count": _completion_attempt_count(claim),
+        }
+        for claim in claims
+    ]
+
+
+def _claim_params(records: list[dict[str, str | int]]) -> dict[str, list[Any]]:
     return {
         "work_names": [str(record["work_name"]) for record in records],
         "partition_keys": [str(record["partition_key"]) for record in records],
@@ -205,6 +234,28 @@ def _claim_params(records: list[Mapping[str, Any]]) -> dict[str, list[Any]]:
         "lease_owners": [str(record["lease_owner"]) for record in records],
         "attempt_counts": [int(record["attempt_count"]) for record in records],
     }
+
+
+def _required_claim_text(claim: Mapping[str, Any], field_name: str) -> str:
+    try:
+        value = claim[field_name]
+    except KeyError as exc:
+        raise ValueError(f"token capture tier dirty target completion requires {field_name} from claim_due") from exc
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError(f"token capture tier dirty target completion requires {field_name} from claim_due")
+    return text
+
+
+def _completion_attempt_count(claim: Mapping[str, Any]) -> int:
+    try:
+        value = claim["attempt_count"]
+    except KeyError as exc:
+        raise ValueError("token capture tier dirty target completion requires attempt_count from claim_due") from exc
+    return _required_positive_int(
+        value,
+        "token capture tier dirty target completion requires attempt_count from claim_due",
+    )
 
 
 def _cursor_rowcount(cursor: Any) -> int:
@@ -219,11 +270,30 @@ def _cursor_rowcount(cursor: Any) -> int:
     return int(rowcount)
 
 
+def _returned_rowcount(cursor: Any, rows: list[Any]) -> int:
+    rowcount = _cursor_rowcount(cursor)
+    if rowcount != len(rows):
+        raise TypeError("token_capture_tier_dirty_target_rowcount_invalid")
+    return rowcount
+
+
 def _source_watermark_ms(value: Any) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError("token_capture_tier_dirty_target_source_watermark_required")
     if value <= 0:
         raise ValueError("token_capture_tier_dirty_target_source_watermark_required")
+    return int(value)
+
+
+def _required_positive_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(error_code)
     return int(value)
 
 

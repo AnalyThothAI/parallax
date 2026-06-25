@@ -52,6 +52,18 @@ def test_rank_source_table_is_not_window_or_payload_coupled() -> None:
     assert len([line for line in create_table.splitlines() if line.strip() and "--" not in line]) <= 32
 
 
+def test_projection_no_longer_accepts_legacy_discovery_results_json() -> None:
+    query = _text("src/parallax/domains/token_intel/queries/token_radar_rank_source_query.py")
+    projection = _text("src/parallax/domains/token_intel/services/token_radar_projection.py")
+    forbidden_tokens = (
+        "discovery_results_json",
+        "def _discovery_result",
+        'row.get("discovery_results_json")',
+    )
+
+    assert [token for token in forbidden_tokens if token in query or token in projection] == []
+
+
 def test_source_dirty_is_event_edge_queue_not_target_union() -> None:
     projection = _text("src/parallax/domains/token_intel/services/token_radar_projection.py")
     source_dirty_repo = _text(
@@ -140,6 +152,7 @@ def test_projection_claim_completion_keys_require_attempt_contract_without_defau
     forbidden_tokens = (
         'int(claim.get("attempt_count") or 0)',
         'claim.get("attempt_count") or 0',
+        'int(claim["attempt_count"])',
     )
 
     assert [token for token in forbidden_tokens if token in projection] == []
@@ -154,6 +167,7 @@ def test_token_radar_downstream_dirty_target_repositories_are_required_without_o
         'getattr(self.repos, "pulse_trigger_dirty_targets", None)',
         'getattr(self.repos, "narrative_admission_dirty_targets", None)',
         'getattr(self.repos, "token_profile_current_dirty_targets", None)',
+        'getattr(self.repos, "asset_profile_refresh_targets", None)',
         'getattr(self.repos, "token_capture_tier_dirty_targets", None)',
         "if repo is None:",
     )
@@ -161,6 +175,7 @@ def test_token_radar_downstream_dirty_target_repositories_are_required_without_o
         "self.repos.pulse_trigger_dirty_targets",
         "self.repos.narrative_admission_dirty_targets",
         "self.repos.token_profile_current_dirty_targets",
+        "self.repos.asset_profile_refresh_targets",
         "self.repos.token_capture_tier_dirty_targets",
     )
 
@@ -339,3 +354,58 @@ def test_token_radar_dirty_repositories_require_attempt_contract_without_default
         "source": [],
     }
     assert all('key["attempt_count"]' in source for source in sources.values())
+
+
+def test_token_radar_dirty_claim_due_returning_rows_require_cursor_rowcount_match() -> None:
+    sources = {
+        "target": _text("src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py"),
+        "source": _text("src/parallax/domains/token_intel/repositories/token_radar_source_dirty_event_repository.py"),
+    }
+
+    for name, source in sources.items():
+        claim_source = source.split("def claim_due(", 1)[1].split("\n    def ", 1)[0]
+        assert ").fetchall()" not in claim_source, name
+        assert "cursor = self.conn.execute" in claim_source, name
+        assert "rows = cursor.fetchall()" in claim_source, name
+        assert "_returned_rowcount(cursor, rows)" in claim_source, name
+        assert claim_source.index("_returned_rowcount(cursor, rows)") < claim_source.index(
+            "return [dict(row) for row in rows]"
+        ), name
+
+
+def test_token_radar_dirty_repository_queue_policy_rejects_runtime_int_repair() -> None:
+    sources = {
+        "target": _text("src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py"),
+        "source": _text("src/parallax/domains/token_intel/repositories/token_radar_source_dirty_event_repository.py"),
+    }
+    forbidden = (
+        "max(1, int(lease_ms))",
+        "max(0, int(limit))",
+        "max(1, int(retry_ms))",
+    )
+    required_by_source = {
+        "target": (
+            "token_radar_dirty_target_claim_limit_required",
+            "token_radar_dirty_target_claim_lease_ms_required",
+            "token_radar_dirty_target_retry_ms_required",
+            "token_radar_dirty_target_max_attempts_required",
+            "token_radar_dirty_target_limit_required",
+        ),
+        "source": (
+            "token_radar_source_dirty_event_claim_limit_required",
+            "token_radar_source_dirty_event_claim_lease_ms_required",
+            "token_radar_source_dirty_event_retry_ms_required",
+            "token_radar_source_dirty_event_max_attempts_required",
+            "token_radar_source_dirty_event_limit_required",
+        ),
+    }
+
+    assert {name: [token for token in forbidden if token in source] for name, source in sources.items()} == {
+        "target": [],
+        "source": [],
+    }
+    for name, source in sources.items():
+        assert [token for token in required_by_source[name] if token not in source] == []
+        assert "def _required_positive_int(value: Any, error_code: str) -> int:" in source
+        assert "def _required_nonnegative_int(value: Any, error_code: str) -> int:" in source
+        assert "isinstance(value, bool) or not isinstance(value, int)" in source

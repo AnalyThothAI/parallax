@@ -22,6 +22,20 @@ def _positive_int(value: str) -> int:
     return parsed
 
 
+def _nonnegative_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be a non-negative integer")
+    return parsed
+
+
+def _positive_float(value: str) -> float:
+    parsed = float(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a positive number")
+    return parsed
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="parallax")
     subcommands = parser.add_subparsers(dest="command")
@@ -127,8 +141,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="enqueue Token Radar dirty targets from persisted facts",
     )
     enqueue_token_radar_dirty_targets.add_argument("--source", choices=("events", "market-current"), required=True)
-    enqueue_token_radar_dirty_targets.add_argument("--since-ms", type=int, default=0)
-    enqueue_token_radar_dirty_targets.add_argument("--limit", type=int, default=5000)
+    enqueue_token_radar_dirty_targets.add_argument("--since-ms", type=_nonnegative_int, default=0)
+    enqueue_token_radar_dirty_targets.add_argument("--limit", type=_positive_int, default=5000)
     enqueue_token_radar_dirty_targets_mode = enqueue_token_radar_dirty_targets.add_mutually_exclusive_group(
         required=True
     )
@@ -139,7 +153,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="enqueue Token Capture Tier repair from current Token Radar rank set",
     )
     enqueue_token_capture_tier_rank_set.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="24h")
-    enqueue_token_capture_tier_rank_set.add_argument("--limit", type=int, default=500)
+    enqueue_token_capture_tier_rank_set.add_argument("--limit", type=_positive_int, default=500)
     enqueue_token_capture_tier_rank_set_mode = enqueue_token_capture_tier_rank_set.add_mutually_exclusive_group(
         required=True
     )
@@ -158,6 +172,19 @@ def build_parser() -> argparse.ArgumentParser:
     queue_resolve.add_argument("--action", choices=("retry", "quarantine", "archive"), required=True)
     queue_resolve.add_argument("--reason", required=True)
     queue_resolve.add_argument("--execute", action="store_true")
+    queue_resolve_bucket = ops_subcommands.add_parser(
+        "queue-resolve-bucket",
+        help="resolve a bounded worker queue terminal evidence bucket",
+    )
+    queue_resolve_bucket.add_argument("--worker", required=True)
+    queue_resolve_bucket.add_argument("--source-table", required=True)
+    queue_resolve_bucket.add_argument("--reason-bucket", required=True)
+    queue_resolve_bucket.add_argument("--action", choices=("retry", "quarantine", "archive"), required=True)
+    queue_resolve_bucket.add_argument("--reason", required=True)
+    queue_resolve_bucket.add_argument("--limit", type=int, default=100)
+    queue_resolve_bucket_mode = queue_resolve_bucket.add_mutually_exclusive_group(required=True)
+    queue_resolve_bucket_mode.add_argument("--dry-run", action="store_true")
+    queue_resolve_bucket_mode.add_argument("--execute", action="store_true")
     reconcile_event_anchor = ops_subcommands.add_parser(
         "reconcile-event-anchor-jobs",
         help="one-shot reconcile of historical ready event-anchor backfill jobs",
@@ -183,12 +210,12 @@ def build_parser() -> argparse.ArgumentParser:
         "news-dedup-diagnostics",
         help="print News canonical dedup and OpenNews sync diagnostics",
     )
-    news_dedup_diagnostics.add_argument("--window-hours", type=float, default=8.0)
+    news_dedup_diagnostics.add_argument("--window-hours", type=_positive_float, default=8.0)
     rebuild_news_canonical_items = ops_subcommands.add_parser(
         "rebuild-news-canonical-items",
         help="enqueue a bounded rebuild of News canonical item derived projections",
     )
-    rebuild_news_canonical_items.add_argument("--limit", type=int, default=5000)
+    rebuild_news_canonical_items.add_argument("--limit", type=_positive_int, default=5000)
     rebuild_news_canonical_items_mode = rebuild_news_canonical_items.add_mutually_exclusive_group(required=True)
     rebuild_news_canonical_items_mode.add_argument("--dry-run", action="store_true")
     rebuild_news_canonical_items_mode.add_argument("--execute", action="store_true")

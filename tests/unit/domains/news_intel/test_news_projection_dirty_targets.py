@@ -85,6 +85,41 @@ def _source_quality_projection_settings(**overrides: Any) -> NewsSourceQualityPr
     return NewsSourceQualityProjectionWorkerSettings(**payload)
 
 
+def _raw_page_projection_settings(**overrides: object) -> SimpleNamespace:
+    values = {
+        "enabled": True,
+        "interval_seconds": 5.0,
+        "soft_timeout_seconds": 120.0,
+        "hard_timeout_seconds": 180.0,
+        "batch_size": 10,
+        "lease_ms": 60_000,
+        "retry_ms": 30_000,
+        "max_attempts": 3,
+        "statement_timeout_seconds": 30,
+        "backoff": SimpleNamespace(base_ms=1, max_ms=5),
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+def _raw_source_quality_projection_settings(**overrides: object) -> SimpleNamespace:
+    values = {
+        "enabled": True,
+        "interval_seconds": 60.0,
+        "soft_timeout_seconds": 120.0,
+        "hard_timeout_seconds": 180.0,
+        "batch_size": 10,
+        "lease_ms": 60_000,
+        "retry_ms": 30_000,
+        "max_attempts": 3,
+        "statement_timeout_seconds": 30,
+        "windows": ("24h",),
+        "backoff": SimpleNamespace(base_ms=1, max_ms=5),
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
 def test_dirty_target_repository_rejects_retired_story_projection_name() -> None:
     repo = NewsProjectionDirtyTargetRepository(object())
 
@@ -266,6 +301,91 @@ def test_news_projection_dirty_target_mutations_require_connection_transaction_b
 
 
 @pytest.mark.parametrize(
+    ("overrides", "error_code"),
+    [
+        pytest.param({"limit": -1}, "news_projection_dirty_target_claim_limit_required", id="limit-negative"),
+        pytest.param({"limit": True}, "news_projection_dirty_target_claim_limit_required", id="limit-bool"),
+        pytest.param({"limit": "1"}, "news_projection_dirty_target_claim_limit_required", id="limit-string"),
+        pytest.param({"lease_ms": 0}, "news_projection_dirty_target_claim_lease_ms_required", id="lease-zero"),
+        pytest.param({"lease_ms": True}, "news_projection_dirty_target_claim_lease_ms_required", id="lease-bool"),
+        pytest.param(
+            {"lease_ms": "60000"},
+            "news_projection_dirty_target_claim_lease_ms_required",
+            id="lease-string",
+        ),
+    ],
+)
+def test_news_projection_dirty_claim_due_rejects_malformed_parameters_before_transaction(
+    overrides: dict[str, object],
+    error_code: str,
+) -> None:
+    conn = TransactionalScriptedConnection([[]], rowcount=0)
+    repo = NewsProjectionDirtyTargetRepository(conn)
+    params = {
+        "limit": 1,
+        "lease_ms": 60_000,
+        "now_ms": NOW_MS,
+        "lease_owner": "news_page_projection",
+    }
+    params.update(overrides)
+
+    with pytest.raises(ValueError, match=error_code):
+        repo.claim_due(**params)
+
+    assert conn.sql == []
+    assert conn.transaction_enter_count == 0
+
+
+@pytest.mark.parametrize(
+    "retry_ms",
+    [0, True, "30000"],
+)
+def test_news_projection_dirty_mark_error_rejects_malformed_retry_before_transaction(
+    retry_ms: object,
+) -> None:
+    conn = TransactionalScriptedConnection([], rowcount=0)
+    repo = NewsProjectionDirtyTargetRepository(conn)
+
+    with pytest.raises(ValueError, match="news_projection_dirty_target_retry_ms_required"):
+        repo.mark_error(
+            [_claim("news-1")],
+            error="projection failed",
+            retry_ms=retry_ms,  # type: ignore[arg-type]
+            now_ms=NOW_MS,
+        )
+
+    assert conn.sql == []
+    assert conn.transaction_enter_count == 0
+
+
+@pytest.mark.parametrize(
+    ("count_attempt", "expected_increment"),
+    [
+        pytest.param(True, 1, id="count-failed-attempt"),
+        pytest.param(False, 0, id="release-no-start-claim"),
+    ],
+)
+def test_news_projection_dirty_mark_error_counts_attempt_only_on_failure(
+    count_attempt: bool,
+    expected_increment: int,
+) -> None:
+    conn = TransactionalScriptedConnection([[]], rowcount=1)
+    repo = NewsProjectionDirtyTargetRepository(conn)
+
+    changed = repo.mark_error(
+        [_claim("news-1", payload_hash="hash-1", attempt_count=2)],
+        error="projection failed",
+        retry_ms=30_000,
+        now_ms=NOW_MS,
+        count_attempt=count_attempt,
+    )
+
+    assert changed == 1
+    assert "attempt_count = queue.attempt_count + %(attempt_increment)s" in conn.sql[0]
+    assert conn.params[0]["attempt_increment"] == expected_increment
+
+
+@pytest.mark.parametrize(
     "mutation",
     [
         pytest.param(lambda repo, token: repo.mark_done([token], now_ms=NOW_MS), id="mark_done"),
@@ -304,6 +424,33 @@ def test_news_projection_dirty_target_completion_requires_claim_attempt_contract
     assert conn.sql == []
     assert conn.transaction_enter_count == 0
     assert conn.commits == 0
+
+
+@pytest.mark.parametrize("attempt_count", [-1, True, "1"])
+def test_news_projection_dirty_target_completion_rejects_malformed_attempt_count_before_sql(
+    attempt_count: object,
+) -> None:
+    conn = TransactionalScriptedConnection([])
+    repo = NewsProjectionDirtyTargetRepository(conn)
+    token = _claim("news-1", payload_hash="hash-1", attempt_count=2)
+    token["attempt_count"] = attempt_count
+
+    with pytest.raises(ValueError, match="news projection dirty target completion requires attempt_count"):
+        repo.mark_done([token], now_ms=NOW_MS)
+
+    assert conn.sql == []
+    assert conn.transaction_enter_count == 0
+    assert conn.commits == 0
+
+
+def test_news_projection_dirty_target_completion_accepts_zero_claim_attempt_count() -> None:
+    conn = TransactionalScriptedConnection([[]], rowcount=1)
+    repo = NewsProjectionDirtyTargetRepository(conn)
+
+    changed = repo.mark_done([_claim("news-1", payload_hash="hash-1", attempt_count=0)], now_ms=NOW_MS)
+
+    assert changed == 1
+    assert conn.params[0]["attempt_counts"] == [0]
 
 
 @pytest.mark.parametrize("field", ["projection_name", "target_kind", "target_id"])
@@ -760,6 +907,8 @@ def test_news_projection_dirty_claim_due_returning_rows_accept_matching_claim_ro
     )
 
     assert rows == [claimed]
+    assert "attempt_count + 1" not in conn.sql[0]
+    assert "RETURNING news_projection_dirty_targets.*" in conn.sql[0]
 
 
 def test_page_projection_worker_empty_dirty_queue_does_not_scan() -> None:
@@ -804,7 +953,7 @@ def test_page_projection_worker_loads_only_claimed_news_item_targets_and_marks_d
 
 
 def test_page_projection_worker_marks_error_with_full_claim_token_when_projection_write_fails() -> None:
-    token = _claim("news-1", payload_hash="hash-1", attempt_count=3)
+    token = _claim("news-1", payload_hash="hash-1", attempt_count=2)
     repos = FakePageRepos(claimed=[token])
     repos.news.payloads = [_page_payload("news-1")]
     repos.news.raise_on_replace = RuntimeError("write failed")
@@ -818,10 +967,39 @@ def test_page_projection_worker_marks_error_with_full_claim_token_when_projectio
     assert repos.news.replacements == []
     assert repos.dirty.marked_done == []
     assert repos.dirty.marked_error == [[token]]
+    assert repos.dirty.terminalized == []
+
+
+def test_page_projection_worker_terminalizes_exhausted_dirty_target_when_projection_write_fails() -> None:
+    token = _claim("news-1", payload_hash="hash-1", attempt_count=3)
+    repos = FakePageRepos(claimed=[token])
+    repos.news.payloads = [_page_payload("news-1")]
+    repos.news.raise_on_replace = RuntimeError("write failed")
+    worker = _page_worker(repos)
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.failed == 1
+    assert result.notes["claimed"] == 1
+    assert result.notes["marked_error"] == 1
+    assert repos.news.replacements == []
+    assert repos.dirty.marked_done == []
+    assert repos.dirty.marked_error == []
+    assert repos.dirty.mark_error_calls == []
+    assert repos.dirty.terminalized == [
+        {
+            "rows": [token],
+            "worker_name": "news_page_projection",
+            "final_reason": "news_projection_dirty_retry_budget_exhausted: write failed",
+            "final_reason_bucket": "retry_budget_exhausted",
+            "now_ms": NOW_MS,
+            "commit": False,
+        }
+    ]
 
 
 def test_page_projection_worker_rejects_member_item_missing_identity_without_partial_projection() -> None:
-    token = _claim("news-1", payload_hash="hash-1", attempt_count=3)
+    token = _claim("news-1", payload_hash="hash-1", attempt_count=2)
     repos = FakePageRepos(claimed=[token])
     payload = _page_payload("news-1")
     payload["member_items"].append({"title": "missing identity"})
@@ -847,7 +1025,7 @@ def test_page_projection_worker_rejects_member_item_missing_identity_without_par
 
 
 def test_page_projection_worker_rejects_claim_missing_target_id_without_marking_done() -> None:
-    token = _claim("news-1", payload_hash="hash-1", attempt_count=3)
+    token = _claim("news-1", payload_hash="hash-1", attempt_count=2)
     token.pop("target_id")
     repos = FakePageRepos(claimed=[token])
     worker = _page_worker(repos)
@@ -872,7 +1050,7 @@ def test_page_projection_worker_rejects_claim_missing_target_id_without_marking_
 
 
 def test_page_projection_worker_reads_formal_settings_for_claim_session_and_retry() -> None:
-    token = _claim("news-1", payload_hash="hash-1", attempt_count=3)
+    token = _claim("news-1", payload_hash="hash-1", attempt_count=2)
     repos = FakePageRepos(claimed=[token])
     repos.news.payloads = [_page_payload("news-1")]
     repos.news.raise_on_replace = RuntimeError("write failed")
@@ -905,6 +1083,43 @@ def test_page_projection_worker_reads_formal_settings_for_claim_session_and_retr
     assert repos.dirty.mark_error_calls == [
         {"error": "write failed", "retry_ms": 90_000, "now_ms": NOW_MS, "commit": False}
     ]
+
+
+@pytest.mark.parametrize(
+    ("overrides", "error_code"),
+    [
+        pytest.param({"batch_size": 0}, "news_page_projection_batch_size_required", id="batch-zero"),
+        pytest.param({"batch_size": True}, "news_page_projection_batch_size_required", id="batch-bool"),
+        pytest.param({"batch_size": "10"}, "news_page_projection_batch_size_required", id="batch-string"),
+        pytest.param({"lease_ms": 0}, "news_page_projection_lease_ms_required", id="lease-zero"),
+        pytest.param({"lease_ms": True}, "news_page_projection_lease_ms_required", id="lease-bool"),
+        pytest.param({"lease_ms": "60000"}, "news_page_projection_lease_ms_required", id="lease-string"),
+        pytest.param({"retry_ms": 0}, "news_page_projection_retry_ms_required", id="retry-zero"),
+        pytest.param({"retry_ms": True}, "news_page_projection_retry_ms_required", id="retry-bool"),
+        pytest.param({"retry_ms": "30000"}, "news_page_projection_retry_ms_required", id="retry-string"),
+        pytest.param({"max_attempts": 0}, "news_page_projection_max_attempts_required", id="attempts-zero"),
+        pytest.param({"max_attempts": True}, "news_page_projection_max_attempts_required", id="attempts-bool"),
+        pytest.param({"max_attempts": "3"}, "news_page_projection_max_attempts_required", id="attempts-string"),
+    ],
+)
+def test_page_projection_worker_rejects_malformed_runtime_settings_before_session(
+    overrides: dict[str, object],
+    error_code: str,
+) -> None:
+    repos = FakePageRepos(claimed=[_claim("news-1")])
+    worker = NewsPageProjectionWorker(
+        name="news_page_projection",
+        settings=_raw_page_projection_settings(**overrides),
+        db=FakeDB("news_page_projection", repos),
+        telemetry=object(),
+        clock_ms=lambda: NOW_MS,
+    )
+
+    with pytest.raises(RuntimeError, match=error_code):
+        worker.run_once_sync(now_ms=NOW_MS)
+
+    assert repos.conn.events == []
+    assert repos.dirty.claim_calls == []
 
 
 def test_page_projection_worker_deletes_missing_claimed_items_without_fallback_scan() -> None:
@@ -1228,6 +1443,23 @@ def test_news_repository_material_source_reconcile_reports_updated_status() -> N
     assert any("ON CONFLICT (source_id) DO UPDATE SET" in sql for sql in conn.sql)
 
 
+@pytest.mark.parametrize("refresh_interval_seconds", [0, True, "300"])
+def test_news_repository_upsert_source_rejects_malformed_refresh_interval_before_sql(
+    refresh_interval_seconds: object,
+) -> None:
+    conn = ScriptedConnection([])
+
+    with pytest.raises(ValueError, match="news_source_refresh_interval_seconds_required"):
+        NewsRepository(conn).upsert_source(
+            **_source(),
+            refresh_interval_seconds=refresh_interval_seconds,  # type: ignore[arg-type]
+            now_ms=NOW_MS,
+            commit=False,
+        )
+
+    assert conn.sql == []
+
+
 def test_news_repository_writes_require_connection_transaction_before_sql_when_committing() -> None:
     conn = MissingNewsRepositoryTransactionConnection()
 
@@ -1548,6 +1780,64 @@ def test_source_quality_worker_requires_news_page_dirty_wake_contract_after_page
     assert repos.conn.events[-1] == "commit"
 
 
+@pytest.mark.parametrize(
+    ("overrides", "error_code"),
+    [
+        pytest.param({"batch_size": 0}, "news_source_quality_projection_batch_size_required", id="batch-zero"),
+        pytest.param({"batch_size": True}, "news_source_quality_projection_batch_size_required", id="batch-bool"),
+        pytest.param({"batch_size": "10"}, "news_source_quality_projection_batch_size_required", id="batch-string"),
+        pytest.param({"lease_ms": 0}, "news_source_quality_projection_lease_ms_required", id="lease-zero"),
+        pytest.param({"lease_ms": True}, "news_source_quality_projection_lease_ms_required", id="lease-bool"),
+        pytest.param(
+            {"lease_ms": "60000"},
+            "news_source_quality_projection_lease_ms_required",
+            id="lease-string",
+        ),
+        pytest.param({"retry_ms": 0}, "news_source_quality_projection_retry_ms_required", id="retry-zero"),
+        pytest.param({"retry_ms": True}, "news_source_quality_projection_retry_ms_required", id="retry-bool"),
+        pytest.param(
+            {"retry_ms": "30000"},
+            "news_source_quality_projection_retry_ms_required",
+            id="retry-string",
+        ),
+        pytest.param(
+            {"max_attempts": 0},
+            "news_source_quality_projection_max_attempts_required",
+            id="attempts-zero",
+        ),
+        pytest.param(
+            {"max_attempts": True},
+            "news_source_quality_projection_max_attempts_required",
+            id="attempts-bool",
+        ),
+        pytest.param(
+            {"max_attempts": "3"},
+            "news_source_quality_projection_max_attempts_required",
+            id="attempts-string",
+        ),
+    ],
+)
+def test_source_quality_worker_rejects_malformed_runtime_settings_before_session(
+    overrides: dict[str, object],
+    error_code: str,
+) -> None:
+    repos = FakeSourceQualityRepos()
+    worker = NewsSourceQualityProjectionWorker(
+        name="news_source_quality_projection",
+        settings=_raw_source_quality_projection_settings(**overrides),
+        db=FakeDB("news_source_quality_projection", repos),
+        telemetry=object(),
+        wake_emitter=None,
+        clock_ms=lambda: NOW_MS,
+    )
+
+    with pytest.raises(RuntimeError, match=error_code):
+        worker.run_once_sync(now_ms=NOW_MS)
+
+    assert repos.conn.events == []
+    assert repos.dirty.claim_calls == []
+
+
 def _page_worker(repos: FakePageRepos) -> NewsPageProjectionWorker:
     return NewsPageProjectionWorker(
         name="news_page_projection",
@@ -1806,6 +2096,7 @@ class FakeDirtyRepository:
         self.marked_done: list[list[dict[str, Any]]] = []
         self.marked_error: list[list[dict[str, Any]]] = []
         self.mark_error_calls: list[dict[str, Any]] = []
+        self.terminalized: list[dict[str, Any]] = []
         self.conn: FakeConn | None = None
 
     def claim_due(self, **kwargs: Any) -> list[dict[str, Any]]:
@@ -1856,6 +2147,29 @@ class FakeDirtyRepository:
         self.marked_error.append([dict(row) for row in rows])
         return len(rows)
 
+    def terminalize_targets(
+        self,
+        rows: list[Mapping[str, Any]],
+        *,
+        worker_name: str,
+        final_reason: str,
+        final_reason_bucket: str,
+        now_ms: int,
+        commit: bool = True,
+        **_kwargs: Any,
+    ) -> int:
+        self.terminalized.append(
+            {
+                "rows": [dict(row) for row in rows],
+                "worker_name": worker_name,
+                "final_reason": final_reason,
+                "final_reason_bucket": final_reason_bucket,
+                "now_ms": now_ms,
+                "commit": commit,
+            }
+        )
+        return len(rows)
+
 
 def _fetch_worker(
     repos: FakeFetchRepos,
@@ -1868,7 +2182,7 @@ def _fetch_worker(
         settings=_news_fetch_settings(),
         db=FakeDB("news_fetch", repos),
         telemetry=object(),
-        news_settings=SimpleNamespace(sources=(_source(),)),
+        news_settings=SimpleNamespace(sources=(SimpleNamespace(provider_type="rss"),)),
         wake_emitter=wake_bus,
         feed_client=FakeProvider(observations),
     )

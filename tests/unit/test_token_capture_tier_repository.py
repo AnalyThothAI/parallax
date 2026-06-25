@@ -129,6 +129,29 @@ def test_list_by_tier_excludes_recently_attempted_keys_without_offset() -> None:
     assert params["exclude_keys"].obj == [{"target_type": "chain_token", "target_id": "solana:abc"}]
 
 
+@pytest.mark.parametrize(
+    ("operation", "limit"),
+    [
+        pytest.param(lambda repo, limit: repo.list_by_tier(1, limit=limit), -1, id="list-negative"),
+        pytest.param(lambda repo, limit: repo.list_by_tier(1, limit=limit), True, id="list-bool"),
+        pytest.param(lambda repo, limit: repo.list_by_tier(1, limit=limit), "10", id="list-string"),
+        pytest.param(lambda repo, limit: repo.live_target_rows(limit=limit), -1, id="live-negative"),
+        pytest.param(lambda repo, limit: repo.live_target_rows(limit=limit), True, id="live-bool"),
+        pytest.param(lambda repo, limit: repo.live_target_rows(limit=limit), "10", id="live-string"),
+    ],
+)
+def test_token_capture_tier_read_limits_reject_malformed_before_sql(
+    operation: Any,
+    limit: object,
+) -> None:
+    conn = _ScriptedConnection([])
+
+    with pytest.raises(ValueError, match="token_capture_tier_repository_limit_required"):
+        operation(TokenCaptureTierRepository(conn), limit)
+
+    assert conn.sql == []
+
+
 def test_demote_hot_rows_outside_rank_set_targets_only_tier1_and_tier2_rows() -> None:
     conn = _ScriptedConnection([])
     conn.rowcount = 3

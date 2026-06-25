@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from parallax.integrations.news_feeds.cryptopanic_client import CryptopanicFeedClient
 
 
@@ -101,3 +103,25 @@ def test_cryptopanic_feed_client_returns_not_modified_when_next_page_matches_cac
     assert result.status_code == 304
     assert result.not_modified is True
     assert result.entries == []
+
+
+@pytest.mark.parametrize(
+    "max_items",
+    [
+        pytest.param("0", id="zero"),
+        pytest.param("-1", id="negative"),
+        pytest.param("bad", id="bad-text"),
+    ],
+)
+def test_cryptopanic_feed_client_rejects_malformed_max_items_before_transport(
+    tmp_path,
+    max_items: str,
+) -> None:
+    class FailTransport:
+        def __init__(self, **_kwargs):
+            raise AssertionError("CryptoPanic transport must not open before max_items validation")
+
+    client = CryptopanicFeedClient(transport_factory=FailTransport)
+
+    with pytest.raises(ValueError, match="CryptoPanic feed URL invalid max_items"):
+        client.fetch(f"cryptopanic://posts?profile_dir={tmp_path / 'profile'}&max_items={max_items}")

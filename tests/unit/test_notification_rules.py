@@ -2,6 +2,8 @@ import pytest
 
 from parallax.domains.notifications.services.notification_rules import (
     NotificationRuleEngine,
+    _activity_dedup_key,
+    _alert_dedup_key,
     _news_display_title,
     _news_external_push_signature,
 )
@@ -205,6 +207,30 @@ def test_watched_account_activity_does_not_fall_back_to_event_key_when_cooldown_
     )
 
     assert candidate.dedup_key == f"watched_account_activity:account:toly:post:{NOW_MS // 1000}"
+
+
+@pytest.mark.parametrize("cooldown_seconds", [-1, True, "60"])
+def test_notification_activity_dedup_rejects_malformed_cooldown(cooldown_seconds: object) -> None:
+    with pytest.raises(ValueError, match="notification_cooldown_seconds_required"):
+        _activity_dedup_key(
+            "watched_account_activity",
+            author_handle="toly",
+            action="post",
+            occurrence_at_ms=NOW_MS,
+            cooldown_seconds=cooldown_seconds,  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.parametrize("cooldown_seconds", [-1, True, "60"])
+def test_notification_alert_dedup_rejects_malformed_cooldown(cooldown_seconds: object) -> None:
+    with pytest.raises(ValueError, match="notification_cooldown_seconds_required"):
+        _alert_dedup_key(
+            "watched_account_token_alert",
+            entity_key="asset:solana:token:troll",
+            author_handle="toly",
+            occurrence_at_ms=NOW_MS,
+            cooldown_seconds=cooldown_seconds,  # type: ignore[arg-type]
+        )
 
 
 def test_notification_rule_query_windows_and_news_overscan_use_formal_config():

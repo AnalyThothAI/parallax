@@ -10,7 +10,7 @@ from typing import Any, cast
 
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_result import WorkerResult
-from parallax.domains.asset_market.providers import DexProviderTemporarilyUnavailable
+from parallax.domains.asset_market.providers import DexProviderTemporarilyUnavailable, DexTokenCandidate
 from parallax.domains.token_intel.interfaces import (
     TOKEN_REPROCESS_WINDOW,
     WINDOW_MS,
@@ -57,9 +57,18 @@ class ResolutionRefreshWorker(WorkerBase):
         self.dex_discovery_market = dex_discovery_market
         self.chain_ids = tuple(str(item).strip() for item in settings.chain_ids if str(item).strip())
         self.wake_emitter = wake_emitter
-        self.max_attempts = max(1, int(settings.max_attempts))
-        self.lease_ms = max(1, int(settings.lease_ms))
-        self.hot_not_found_retry_ms = max(1, int(settings.hot_not_found_retry_ms))
+        self.max_attempts = _required_positive_int(
+            settings.max_attempts,
+            error_code="resolution_refresh_max_attempts_required",
+        )
+        self.lease_ms = _required_positive_int(
+            settings.lease_ms,
+            error_code="resolution_refresh_lease_ms_required",
+        )
+        self.hot_not_found_retry_ms = _required_positive_int(
+            settings.hot_not_found_retry_ms,
+            error_code="resolution_refresh_hot_not_found_retry_ms_required",
+        )
 
     async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
         observed_at_ms = int(now_ms if now_ms is not None else _now_ms())
@@ -82,7 +91,10 @@ class ResolutionRefreshWorker(WorkerBase):
         with self.db.worker_session(self.name) as repos:
             lookups = repos.discovery.claim_due_lookup_keys(
                 now_ms=now_ms,
-                limit=max(1, int(self.settings.batch_size)),
+                limit=_required_positive_int(
+                    self.settings.batch_size,
+                    error_code="resolution_refresh_batch_size_required",
+                ),
                 lease_ms=self.lease_ms,
                 running_timeout_ms=self.lease_ms,
                 lease_owner=self.name,
@@ -145,9 +157,19 @@ class ResolutionRefreshWorker(WorkerBase):
                 retry_due_at_ms = now_ms + _refresh_ms(
                     lookup_key=lookup_key,
                     status="error",
-                    error_count=int(lookup.get("error_count") or 0),
+                    error_count=_claim_error_count(lookup),
                 )
                 last_error = _provider_unavailable_error(exc)
+                retryable_claims = [
+                    claim
+                    for claim in provider_unavailable_claims
+                    if not _claim_retry_budget_exhausted(claim, max_attempts=self.max_attempts)
+                ]
+                exhausted_claims = [
+                    claim
+                    for claim in provider_unavailable_claims
+                    if _claim_retry_budget_exhausted(claim, max_attempts=self.max_attempts)
+                ]
                 with self.db.worker_session(self.name) as repos, _session_transaction(repos):
                     repos.discovery.fail_lookup(
                         provider=DISCOVERY_PROVIDER,
@@ -158,13 +180,24 @@ class ResolutionRefreshWorker(WorkerBase):
                         now_ms=now_ms,
                         commit=False,
                     )
-                    repos.discovery.reschedule_lookup_claims(
-                        provider_unavailable_claims,
-                        due_at_ms=retry_due_at_ms,
-                        now_ms=now_ms,
-                        last_error=last_error,
-                        commit=False,
-                    )
+                    if exhausted_claims:
+                        terminal = repos.discovery.terminalize_lookup_claims(
+                            exhausted_claims,
+                            worker_name=self.name,
+                            final_status="error",
+                            final_reason="provider_unavailable_retry_budget_exhausted",
+                            now_ms=now_ms,
+                            commit=False,
+                        )
+                        result["lookups_terminalized"] += int(terminal.get("terminalized") or 0)
+                    if retryable_claims:
+                        repos.discovery.reschedule_lookup_claims(
+                            retryable_claims,
+                            due_at_ms=retry_due_at_ms,
+                            now_ms=now_ms,
+                            last_error=last_error,
+                            commit=False,
+                        )
                 result["provider_unavailable"] += len(provider_unavailable_claims)
                 result["errors"].append({"lookup_key": lookup_key, "error": last_error})
                 break
@@ -172,7 +205,7 @@ class ResolutionRefreshWorker(WorkerBase):
                 retry_due_at_ms = now_ms + _refresh_ms(
                     lookup_key=lookup_key,
                     status="error",
-                    error_count=int(lookup.get("error_count") or 0),
+                    error_count=_claim_error_count(lookup),
                 )
                 with self.db.worker_session(self.name) as repos, _session_transaction(repos):
                     repos.discovery.fail_lookup(
@@ -215,7 +248,10 @@ class ResolutionRefreshWorker(WorkerBase):
                     lookup_keys=sorted_lookup_keys,
                     now_ms=now_ms,
                     window=TOKEN_REPROCESS_WINDOW,
-                    limit=max(1, int(self.settings.reprocess_limit)),
+                    limit=_required_positive_int(
+                        self.settings.reprocess_limit,
+                        error_code="resolution_refresh_reprocess_limit_required",
+                    ),
                 )
             result["reprocess"] = reprocess_result
             result["reprocessed_intents"] = reprocess_result["reprocessed_intents"]
@@ -273,11 +309,10 @@ def _fetch_dex_symbol_lookup_result(
     if not symbol:
         return _lookup_result()
     candidates = dex_discovery_market.search_tokens(query=symbol, chain_ids=chain_ids)
+    candidates = _required_dex_token_candidates(candidates, reason="symbol_search")
     provider_ranks = _provider_ranks(candidates)
     result = _lookup_result(search_requests=1)
-    matched_candidates = [
-        candidate for candidate in candidates if _normalize_symbol(getattr(candidate, "symbol", None)) == symbol
-    ]
+    matched_candidates = [candidate for candidate in candidates if _normalize_symbol(candidate.symbol) == symbol]
     retained_candidates = _retained_symbol_candidates(
         matched_candidates,
         per_chain_limit=MAX_DEX_SYMBOL_CANDIDATES_PER_CHAIN,
@@ -317,11 +352,12 @@ def _fetch_address_lookup_result(
     if not requested_chains:
         return _lookup_result()
     candidates = dex_discovery_market.search_tokens(query=address, chain_ids=requested_chains)
+    candidates = _required_dex_token_candidates(candidates, reason="address_search")
     result = _lookup_result(search_requests=1)
     writes = []
     for candidate in candidates:
-        candidate_address = _normalize_address(getattr(candidate, "address", None))
-        candidate_chain = _chain_id(getattr(candidate, "chain_id", None))
+        candidate_address = _normalize_address(candidate.address)
+        candidate_chain = _chain_id(candidate.chain_id)
         if candidate_address != address:
             continue
         if chain_id and candidate_chain != chain_id:
@@ -364,16 +400,17 @@ def _persist_lookup_provider_result(*, repos: Any, lookup_result: dict[str, Any]
 def _write_dex_candidate(
     *,
     repos: Any,
-    candidate: Any,
+    candidate: DexTokenCandidate,
     now_ms: int,
     evidence_kind: str,
     confidence: str,
     lookup_mode: str,
     provider_rank: int | None = None,
 ) -> str | None:
-    chain_id = _chain_id(getattr(candidate, "chain_id", None))
-    address = _normalize_address(getattr(candidate, "address", None))
-    symbol = _normalize_symbol(getattr(candidate, "symbol", None))
+    candidate = _require_dex_token_candidate(candidate, reason="write_candidate")
+    chain_id = _chain_id(candidate.chain_id)
+    address = _normalize_address(candidate.address)
+    symbol = _normalize_symbol(candidate.symbol)
     if not chain_id or not address or not symbol:
         return None
     asset = repos.registry.upsert_chain_asset(
@@ -382,7 +419,8 @@ def _write_dex_candidate(
         observed_at_ms=now_ms,
         commit=False,
     )
-    raw_payload = {**getattr(candidate, "raw", {}), "payload_hash": _payload_hash(getattr(candidate, "raw", {}))}
+    raw = _required_candidate_raw(candidate)
+    raw_payload = {**raw, "payload_hash": _payload_hash(raw)}
     if provider_rank is not None:
         raw_payload["provider_rank"] = provider_rank
     repos.identity_evidence.upsert_identity_evidence(
@@ -393,7 +431,7 @@ def _write_dex_candidate(
         chain_id=str(asset["chain_id"]),
         address=str(asset["address"]),
         symbol=symbol,
-        name=getattr(candidate, "name", None),
+        name=candidate.name,
         decimals=None,
         confidence=confidence,
         raw_payload=raw_payload,
@@ -505,7 +543,14 @@ def _finish_lookup_claims(
                 continue
             repos.discovery.reschedule_lookup_claims(
                 [claim],
-                due_at_ms=due_by_lookup_key.get(lookup_key, now_ms + max(1, int(hot_not_found_retry_ms))),
+                due_at_ms=due_by_lookup_key.get(
+                    lookup_key,
+                    now_ms
+                    + _required_positive_int(
+                        hot_not_found_retry_ms,
+                        error_code="resolution_refresh_hot_not_found_retry_ms_required",
+                    ),
+                ),
                 now_ms=now_ms,
                 commit=False,
             )
@@ -522,17 +567,26 @@ def _session_transaction(repos: Any) -> AbstractContextManager[Any]:
 
 
 def _claim_retry_budget_exhausted(claim: dict[str, Any], *, max_attempts: int) -> bool:
-    return _claim_attempt_count(claim) >= max(1, int(max_attempts))
+    return _claim_attempt_count(claim) >= _required_positive_int(
+        max_attempts,
+        error_code="resolution_refresh_max_attempts_required",
+    )
 
 
 def _claim_attempt_count(claim: dict[str, Any]) -> int:
     try:
-        attempt_count = int(claim["attempt_count"])
-    except (KeyError, TypeError, ValueError) as exc:
+        value = claim["attempt_count"]
+    except KeyError as exc:
         raise ValueError("resolution_refresh_claim_attempt_count_required") from exc
-    if attempt_count <= 0:
-        raise ValueError("resolution_refresh_claim_attempt_count_required")
-    return attempt_count
+    return _required_positive_int(value, error_code="resolution_refresh_claim_attempt_count_required")
+
+
+def _claim_error_count(claim: dict[str, Any]) -> int:
+    try:
+        value = claim["error_count"]
+    except KeyError as exc:
+        raise ValueError("resolution_refresh_claim_error_count_required") from exc
+    return _required_nonnegative_int(value, error_code="resolution_refresh_claim_error_count_required")
 
 
 def _next_queue_due_at_ms(
@@ -545,7 +599,10 @@ def _next_queue_due_at_ms(
 ) -> int:
     latest_seen_ms = int(lookup.get("latest_seen_ms") or 0)
     if status == "not_found" and latest_seen_ms >= int(now_ms) - HOT_LOOKBACK_MS:
-        return int(now_ms) + max(1, int(hot_not_found_retry_ms))
+        return int(now_ms) + _required_positive_int(
+            hot_not_found_retry_ms,
+            error_code="resolution_refresh_hot_not_found_retry_ms_required",
+        )
     return int(next_refresh_at_ms)
 
 
@@ -565,31 +622,41 @@ def _lookup_result(
     }
 
 
-def _retained_symbol_candidates(candidates: list[Any], *, per_chain_limit: int) -> list[Any]:
-    by_chain: dict[str, dict[str, Any]] = {}
+def _retained_symbol_candidates(
+    candidates: list[DexTokenCandidate],
+    *,
+    per_chain_limit: int,
+) -> list[DexTokenCandidate]:
+    by_chain: dict[str, dict[str, DexTokenCandidate]] = {}
     for candidate in candidates:
-        chain_id = _chain_id(getattr(candidate, "chain_id", None))
-        address = _normalize_address(getattr(candidate, "address", None))
+        formal_candidate = _require_dex_token_candidate(candidate, reason="retain_symbol_candidate")
+        chain_id = _chain_id(formal_candidate.chain_id)
+        address = _normalize_address(formal_candidate.address)
         if not chain_id or not address:
             continue
         chain_bucket = by_chain.setdefault(chain_id, {})
         existing = chain_bucket.get(address)
-        if existing is None or _candidate_rank_key(candidate) < _candidate_rank_key(existing):
-            chain_bucket[address] = candidate
-    retained: list[Any] = []
+        if existing is None or _candidate_rank_key(formal_candidate) < _candidate_rank_key(existing):
+            chain_bucket[address] = formal_candidate
+    retained: list[DexTokenCandidate] = []
+    chain_limit = _required_positive_int(
+        per_chain_limit,
+        error_code="resolution_refresh_symbol_candidate_per_chain_limit_required",
+    )
     for chain_id in sorted(by_chain):
         ranked = sorted(by_chain[chain_id].values(), key=_candidate_rank_key)
-        retained.extend(ranked[: max(0, int(per_chain_limit))])
+        retained.extend(ranked[:chain_limit])
     return retained
 
 
-def _candidate_rank_key(candidate: Any) -> tuple[float, int, str]:
-    address = _normalize_address(getattr(candidate, "address", None))
-    has_price_rank = 0 if getattr(candidate, "price_usd", None) is not None else 1
+def _candidate_rank_key(candidate: DexTokenCandidate) -> tuple[float, int, str]:
+    candidate = _require_dex_token_candidate(candidate, reason="candidate_rank")
+    address = _normalize_address(candidate.address)
+    has_price_rank = 0 if candidate.price_usd is not None else 1
     return (-_candidate_quality_score(candidate), has_price_rank, address)
 
 
-def _provider_ranks(candidates: list[Any]) -> dict[tuple[str | None, str], int]:
+def _provider_ranks(candidates: list[DexTokenCandidate]) -> dict[tuple[str | None, str], int]:
     ranks: dict[tuple[str | None, str], int] = {}
     for index, candidate in enumerate(candidates):
         key = _candidate_identity_key(candidate)
@@ -598,19 +665,40 @@ def _provider_ranks(candidates: list[Any]) -> dict[tuple[str | None, str], int]:
     return ranks
 
 
-def _candidate_identity_key(candidate: Any) -> tuple[str | None, str]:
+def _candidate_identity_key(candidate: DexTokenCandidate) -> tuple[str | None, str]:
+    candidate = _require_dex_token_candidate(candidate, reason="candidate_identity")
     return (
-        _chain_id(getattr(candidate, "chain_id", None)),
-        _normalize_address(getattr(candidate, "address", None)),
+        _chain_id(candidate.chain_id),
+        _normalize_address(candidate.address),
     )
 
 
-def _candidate_quality_score(candidate: Any) -> float:
+def _candidate_quality_score(candidate: DexTokenCandidate) -> float:
+    candidate = _require_dex_token_candidate(candidate, reason="candidate_quality")
     return (
-        0.5 * _log10_number(getattr(candidate, "market_cap_usd", None))
-        + 0.3 * _log10_number(getattr(candidate, "liquidity_usd", None))
-        + 0.2 * _log10_number(getattr(candidate, "holders", None))
+        0.5 * _log10_number(candidate.market_cap_usd)
+        + 0.3 * _log10_number(candidate.liquidity_usd)
+        + 0.2 * _log10_number(candidate.holders)
     )
+
+
+def _required_dex_token_candidates(value: Any, *, reason: str) -> list[DexTokenCandidate]:
+    if not isinstance(value, list):
+        raise RuntimeError(f"dex_token_candidate_list_contract_required:{reason}")
+    return [_require_dex_token_candidate(candidate, reason=reason) for candidate in value]
+
+
+def _require_dex_token_candidate(candidate: Any, *, reason: str) -> DexTokenCandidate:
+    if not isinstance(candidate, DexTokenCandidate):
+        raise RuntimeError(f"dex_token_candidate_contract_required:{reason}")
+    return candidate
+
+
+def _required_candidate_raw(candidate: DexTokenCandidate) -> dict[str, Any]:
+    raw = candidate.raw
+    if not isinstance(raw, dict):
+        raise RuntimeError("dex_token_candidate_raw_contract_required")
+    return dict(raw)
 
 
 def _log10_number(value: Any) -> float:
@@ -643,9 +731,12 @@ def _parse_address_lookup_key(lookup_key: str) -> dict[str, str | None]:
     return {"chain_id": chain_id or None, "address": _normalize_address(address)}
 
 
-def _refresh_ms(*, lookup_key: str, status: str, error_count: int = 0) -> int:
+def _refresh_ms(*, lookup_key: str, status: str, error_count: int | None = None) -> int:
     if status == "error":
-        index = min(max(0, int(error_count)), len(ERROR_REFRESH_BACKOFF_MS) - 1)
+        index = min(
+            _required_nonnegative_int(error_count, error_code="resolution_refresh_claim_error_count_required"),
+            len(ERROR_REFRESH_BACKOFF_MS) - 1,
+        )
         return ERROR_REFRESH_BACKOFF_MS[index]
     if lookup_key.startswith("address:"):
         return FOUND_ADDRESS_REFRESH_MS if status == "found" else NOT_FOUND_ADDRESS_REFRESH_MS
@@ -686,6 +777,18 @@ def _normalize_symbol(value: Any) -> str:
 def _normalize_address(value: Any) -> str:
     text = str(value or "").strip()
     return text.lower() if text.lower().startswith("0x") else text
+
+
+def _required_positive_int(value: Any, *, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _required_nonnegative_int(value: Any, *, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _now_ms() -> int:

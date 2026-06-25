@@ -89,7 +89,10 @@ def test_dirty_payload_hash_rejects_legacy_non_string_payload_keys() -> None:
 
 
 def test_claim_due_uses_skip_locked_and_claims_stale_leases() -> None:
-    conn = _ScriptedConnection([[{"target_type_key": "Asset", "identity_id": "asset-1", "payload_hash": "hash-1"}]])
+    conn = _ScriptedConnection(
+        [[{"target_type_key": "Asset", "identity_id": "asset-1", "payload_hash": "hash-1"}]],
+        rowcount=1,
+    )
 
     rows = TokenRadarDirtyTargetRepository(conn).claim_due(
         limit=25,
@@ -106,6 +109,69 @@ def test_claim_due_uses_skip_locked_and_claims_stale_leases() -> None:
     assert "attempt_count = queue.attempt_count + 1" in sql
     assert conn.params[-1]["leased_until_ms"] == 1_700_000_060_000
     assert conn.params[-1]["lease_owner"] == "worker-a"
+
+
+def test_claim_due_requires_returning_rowcount() -> None:
+    conn = _ScriptedConnection(
+        [[{"target_type_key": "Asset", "identity_id": "asset-1", "payload_hash": "hash-1"}]],
+        omit_rowcount=True,
+    )
+
+    with pytest.raises(TypeError, match="token_radar_dirty_target_rowcount_required"):
+        TokenRadarDirtyTargetRepository(conn).claim_due(
+            limit=25,
+            lease_ms=60_000,
+            now_ms=1_700_000_000_000,
+            lease_owner="worker-a",
+            commit=False,
+        )
+
+
+def test_claim_due_rejects_returning_rowcount_mismatch() -> None:
+    conn = _ScriptedConnection(
+        [[{"target_type_key": "Asset", "identity_id": "asset-1", "payload_hash": "hash-1"}]],
+        rowcount=2,
+    )
+
+    with pytest.raises(TypeError, match="token_radar_dirty_target_rowcount_invalid"):
+        TokenRadarDirtyTargetRepository(conn).claim_due(
+            limit=25,
+            lease_ms=60_000,
+            now_ms=1_700_000_000_000,
+            lease_owner="worker-a",
+            commit=False,
+        )
+
+
+@pytest.mark.parametrize(
+    ("overrides", "error"),
+    [
+        pytest.param({"limit": -1}, "token_radar_dirty_target_claim_limit_required", id="negative-limit"),
+        pytest.param({"limit": True}, "token_radar_dirty_target_claim_limit_required", id="bool-limit"),
+        pytest.param({"limit": "25"}, "token_radar_dirty_target_claim_limit_required", id="string-limit"),
+        pytest.param({"lease_ms": 0}, "token_radar_dirty_target_claim_lease_ms_required", id="zero-lease"),
+        pytest.param({"lease_ms": True}, "token_radar_dirty_target_claim_lease_ms_required", id="bool-lease"),
+        pytest.param({"lease_ms": "60000"}, "token_radar_dirty_target_claim_lease_ms_required", id="string-lease"),
+    ],
+)
+def test_claim_due_rejects_malformed_parameters_before_transaction(
+    overrides: dict[str, object],
+    error: str,
+) -> None:
+    conn = _MissingTransactionConnection()
+    params: dict[str, object] = {
+        "limit": 25,
+        "lease_ms": 60_000,
+        "now_ms": 1_700_000_000_000,
+        "lease_owner": "worker-a",
+    }
+    params.update(overrides)
+
+    with pytest.raises(ValueError, match=error):
+        TokenRadarDirtyTargetRepository(conn).claim_due(**params)
+
+    assert conn.sql == []
+    assert conn.commits == 0
 
 
 def test_mark_done_deletes_only_matching_claim_payload_hash() -> None:
@@ -155,6 +221,8 @@ def test_mark_error_releases_lease_without_overwriting_newer_dirty_payload() -> 
         ],
         error="projection failed",
         retry_ms=30_000,
+        max_attempts=3,
+        worker_name="token_radar_projection",
         now_ms=1_700_000_010_000,
         commit=False,
     )
@@ -169,6 +237,65 @@ def test_mark_error_releases_lease_without_overwriting_newer_dirty_payload() -> 
     assert "failed.payload_hash = ''" not in sql
     assert conn.params[-1]["due_at_ms"] == 1_700_000_040_000
     assert conn.params[-1]["last_error"] == "projection failed"
+
+
+@pytest.mark.parametrize(
+    ("overrides", "error"),
+    [
+        pytest.param({"retry_ms": 0}, "token_radar_dirty_target_retry_ms_required", id="zero-retry"),
+        pytest.param({"retry_ms": True}, "token_radar_dirty_target_retry_ms_required", id="bool-retry"),
+        pytest.param({"retry_ms": "30000"}, "token_radar_dirty_target_retry_ms_required", id="string-retry"),
+        pytest.param({"max_attempts": 0}, "token_radar_dirty_target_max_attempts_required", id="zero-attempts"),
+        pytest.param({"max_attempts": True}, "token_radar_dirty_target_max_attempts_required", id="bool-attempts"),
+        pytest.param({"max_attempts": "3"}, "token_radar_dirty_target_max_attempts_required", id="string-attempts"),
+    ],
+)
+def test_mark_error_rejects_malformed_retry_policy_before_transaction(
+    overrides: dict[str, object],
+    error: str,
+) -> None:
+    conn = _MissingTransactionConnection()
+    params: dict[str, object] = {
+        "error": "projection failed",
+        "retry_ms": 30_000,
+        "max_attempts": 3,
+        "worker_name": "token_radar_projection",
+        "now_ms": 1_700_000_010_000,
+    }
+    params.update(overrides)
+
+    with pytest.raises(ValueError, match=error):
+        TokenRadarDirtyTargetRepository(conn).mark_error([_claim()], **params)
+
+    assert conn.sql == []
+    assert conn.commits == 0
+
+
+def test_mark_error_terminalizes_exhausted_target_dirty_claim() -> None:
+    conn = _TerminalizingConnection()
+    claim = _claim()
+
+    changed = TokenRadarDirtyTargetRepository(conn).mark_error(
+        [claim],
+        error="projection failed",
+        retry_ms=30_000,
+        max_attempts=1,
+        worker_name="token_radar_projection",
+        now_ms=1_700_000_010_000,
+        commit=False,
+    )
+
+    assert changed == 1
+    assert "DELETE FROM token_radar_dirty_targets queue" in conn.sql[0]
+    assert any("INSERT INTO worker_queue_terminal_events" in sql for sql in conn.sql)
+    assert conn.terminal_params["worker_name"] == "token_radar_projection"
+    assert conn.terminal_params["source_table"] == "token_radar_dirty_targets"
+    assert conn.terminal_params["target_key"] == "Asset:asset-1"
+    assert conn.terminal_params["final_status"] == "terminal"
+    assert conn.terminal_params["final_reason"] == "token_radar_projection_retry_budget_exhausted: projection failed"
+    assert conn.terminal_params["final_reason_bucket"] == "retry_budget_exhausted"
+    assert conn.terminal_params["attempt_count"] == 1
+    assert conn.terminal_params["payload_hash"] == "hash-1"
 
 
 @pytest.mark.parametrize(
@@ -194,6 +321,8 @@ def test_mark_error_releases_lease_without_overwriting_newer_dirty_payload() -> 
                 [_claim()],
                 error="projection failed",
                 retry_ms=30_000,
+                max_attempts=3,
+                worker_name="token_radar_projection",
                 now_ms=1_700_000_060_000,
                 commit=False,
             ),
@@ -287,6 +416,8 @@ def test_target_dirty_generic_enqueue_rejects_invalid_cursor_rowcount(rowcount: 
             [_claim()],
             error="projection failed",
             retry_ms=30_000,
+            max_attempts=3,
+            worker_name="token_radar_projection",
             now_ms=1_700_000_060_000,
         ),
     ],
@@ -329,6 +460,8 @@ def test_mark_done_rejects_keys_without_claim_payload_hash() -> None:
                 [claim],
                 error="projection failed",
                 retry_ms=30_000,
+                max_attempts=3,
+                worker_name="token_radar_projection",
                 now_ms=1_700_000_010_000,
                 commit=False,
             ),
@@ -366,6 +499,8 @@ def test_target_dirty_completion_requires_claim_attempt_field_without_default(
                 [claim],
                 error="projection failed",
                 retry_ms=30_000,
+                max_attempts=3,
+                worker_name="token_radar_projection",
                 now_ms=1_700_000_010_000,
                 commit=False,
             ),
@@ -501,6 +636,76 @@ def test_recent_resolved_target_candidate_counts_reuse_bounded_fact_query() -> N
     assert conn.params[1]["projection_version"] == "token-radar-v13-social-attention"
 
 
+@pytest.mark.parametrize("limit", [-1, True, "25"])
+@pytest.mark.parametrize(
+    "operation",
+    [
+        pytest.param(
+            lambda repo, limit: repo.enqueue_recent_resolved_targets(
+                since_ms=1_700_000_000_000,
+                now_ms=1_700_000_060_000,
+                limit=limit,
+                reason="projection_catch_up",
+                commit=False,
+            ),
+            id="enqueue-recent-resolved",
+        ),
+        pytest.param(
+            lambda repo, limit: repo.count_recent_resolved_target_candidates(
+                since_ms=1_700_000_000_000,
+                now_ms=1_700_000_060_000,
+                limit=limit,
+            ),
+            id="count-recent-resolved",
+        ),
+        pytest.param(
+            lambda repo, limit: repo.count_recent_resolved_target_enqueue_candidates(
+                since_ms=1_700_000_000_000,
+                now_ms=1_700_000_060_000,
+                limit=limit,
+            ),
+            id="count-recent-resolved-enqueueable",
+        ),
+        pytest.param(
+            lambda repo, limit: repo.count_market_current_target_candidates(
+                since_ms=123,
+                now_ms=1_700_000_060_000,
+                limit=limit,
+            ),
+            id="count-market-current",
+        ),
+        pytest.param(
+            lambda repo, limit: repo.count_market_current_target_enqueue_candidates(
+                since_ms=123,
+                now_ms=1_700_000_060_000,
+                limit=limit,
+            ),
+            id="count-market-current-enqueueable",
+        ),
+        pytest.param(
+            lambda repo, limit: repo.enqueue_market_current_targets(
+                since_ms=123,
+                now_ms=1_700_000_060_000,
+                limit=limit,
+                reason="ops_market_current_repair",
+                commit=False,
+            ),
+            id="enqueue-market-current",
+        ),
+    ],
+)
+def test_repair_limit_paths_reject_malformed_limit_before_sql(
+    operation: Callable[[TokenRadarDirtyTargetRepository, object], object],
+    limit: object,
+) -> None:
+    conn = _ScriptedConnection([])
+
+    with pytest.raises(ValueError, match="token_radar_dirty_target_limit_required"):
+        operation(TokenRadarDirtyTargetRepository(conn), limit)
+
+    assert conn.sql == []
+
+
 def test_market_current_target_enqueue_maps_persisted_current_rows_since_watermark() -> None:
     conn = _ScriptedConnection([])
     conn.rowcount = 4
@@ -627,3 +832,38 @@ class _MissingTransactionConnection:
     def commit(self) -> None:
         self.commits += 1
         raise AssertionError("manual commit fallback must not run")
+
+
+class _TerminalizingConnection:
+    def __init__(self) -> None:
+        self.rowcount = 1
+        self.sql: list[str] = []
+        self.params: list[dict[str, Any]] = []
+        self.terminal_params: dict[str, Any] = {}
+
+    def execute(self, sql: str, params: dict[str, Any] | None = None) -> _TerminalizingCursor:
+        self.sql.append(str(sql))
+        self.params.append(params or {})
+        normalized = " ".join(str(sql).split()).lower()
+        if "delete from token_radar_dirty_targets queue" in normalized:
+            return _TerminalizingCursor(rowcount=1, rows=[{**_claim(), "first_dirty_at_ms": 1_700_000_000_000}])
+        if "select terminal_generation" in normalized:
+            return _TerminalizingCursor(rowcount=0, rows=[])
+        if "select coalesce(max(terminal_generation)" in normalized:
+            return _TerminalizingCursor(rowcount=1, rows=[{"terminal_generation": 1}])
+        if "insert into worker_queue_terminal_events" in normalized:
+            self.terminal_params = dict(params or {})
+            return _TerminalizingCursor(rowcount=1, rows=[self.terminal_params])
+        raise AssertionError(f"unexpected SQL: {sql}")
+
+
+class _TerminalizingCursor:
+    def __init__(self, *, rowcount: int, rows: list[dict[str, Any]]) -> None:
+        self.rowcount = rowcount
+        self._rows = rows
+
+    def fetchall(self) -> list[dict[str, Any]]:
+        return self._rows
+
+    def fetchone(self) -> dict[str, Any] | None:
+        return self._rows[0] if self._rows else None

@@ -695,6 +695,64 @@ def test_claim_next_delivery_reclaims_stale_running_delivery(tmp_path):
     assert claimed["attempt_count"] == 2
 
 
+def test_complete_and_fail_delivery_ignore_stale_claim_after_reclaim(tmp_path):
+    repo = repository(tmp_path)
+    notification = repo.insert_notification(
+        dedup_key="delivery:stale-claim-cas",
+        rule_id="news_high_signal",
+        severity="high",
+        title="stale claim",
+        body="stale claim",
+        entity_type="token",
+        entity_key="token:eth:stale-claim",
+        source_table="news_page_rows",
+        source_id="token:eth:stale-claim",
+        occurrence_at_ms=1_700_000_000_000,
+        payload={},
+        channels=["pushdeer"],
+    )
+    assert notification is not None
+    delivery = repo.enqueue_delivery(
+        notification_id=notification["notification_id"],
+        channel_id="pushdeer",
+        provider="apprise",
+        max_attempts=5,
+        next_run_at_ms=1_700_000_000_000,
+    )
+    assert delivery is not None
+    strict_repo = NotificationRepository(
+        repo.conn,
+        running_timeout_ms=1_000,
+        stale_running_terminalization_batch_size=100,
+    )
+
+    stale_claim = strict_repo.claim_next_delivery(now_ms=1_700_000_000_100)
+    reclaimed = strict_repo.claim_next_delivery(now_ms=1_700_000_001_200)
+    assert stale_claim is not None
+    assert reclaimed is not None
+    assert stale_claim["delivery_id"] == reclaimed["delivery_id"]
+    assert stale_claim["attempt_count"] == 1
+    assert reclaimed["attempt_count"] == 2
+
+    strict_repo.complete_delivery(stale_claim, delivered_at_ms=1_700_000_001_300)
+    strict_repo.fail_delivery(stale_claim, error="late stale failure", now_ms=1_700_000_001_400)
+    after_stale_update = strict_repo.delivery_by_id(delivery["delivery_id"])
+
+    assert after_stale_update is not None
+    assert after_stale_update["status"] == "running"
+    assert after_stale_update["attempt_count"] == 2
+    assert after_stale_update["delivered_at_ms"] is None
+    assert after_stale_update["last_error"] is None
+
+    strict_repo.complete_delivery(reclaimed, delivered_at_ms=1_700_000_001_500)
+    completed = strict_repo.delivery_by_id(delivery["delivery_id"])
+
+    assert completed is not None
+    assert completed["status"] == "delivered"
+    assert completed["attempt_count"] == 2
+    assert completed["delivered_at_ms"] == 1_700_000_001_500
+
+
 def test_claim_next_delivery_terminalizes_stale_running_rows_in_bounded_batches(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     migrate(conn)

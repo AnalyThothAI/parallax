@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import time
+from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
@@ -313,6 +314,7 @@ def _dirty_target_queue_health(
             """,
             {"now_ms": int(now_ms), **worker_params},
         ).fetchone()
+        metrics = _row_dict(row)
         terminal_metrics = _terminal_projection_metrics(conn, table, worker_name=worker_name)
     except Exception as exc:
         return _unavailable_health(
@@ -325,7 +327,7 @@ def _dirty_target_queue_health(
         table=table,
         kind="dirty_target",
         counts_by_status={},
-        metrics=_row_dict(row),
+        metrics=metrics,
         terminal_metrics=terminal_metrics,
         now_ms=now_ms,
     )
@@ -671,22 +673,19 @@ def _validate_identifier(value: str) -> str:
 
 def _row_dict(row: Any) -> dict[str, Any]:
     if row is None:
-        return {}
-    if isinstance(row, dict):
-        return row
-    try:
-        return dict(row)
-    except Exception:
-        return {}
+        raise ValueError("queue_health_row_required")
+    if not isinstance(row, Mapping):
+        raise TypeError("queue_health_row_mapping_required")
+    return dict(row)
 
 
 def _row_get(row: Any, key: str, index: int) -> Any:
-    if isinstance(row, dict):
-        return row.get(key)
-    try:
-        return row[key]
-    except Exception:
-        return row[index]
+    _ = index
+    if not isinstance(row, Mapping):
+        raise TypeError("queue_health_row_mapping_required")
+    if key not in row:
+        raise KeyError(f"queue_health_row_field_required:{key}")
+    return row[key]
 
 
 def _int_metric(metrics: dict[str, Any], key: str) -> int:

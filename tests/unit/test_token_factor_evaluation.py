@@ -118,6 +118,24 @@ def test_settle_token_factor_scores_requires_formal_rank_score_without_zero_buck
     assert repos.market_ticks.bounded_exit_calls == []
 
 
+@pytest.mark.parametrize("limit", [-1, True, "100"])
+def test_settle_token_factor_scores_rejects_malformed_limit_before_repository_read(limit: object) -> None:
+    repos = FakeRepos(rows=[], prices={})
+
+    with pytest.raises(ValueError, match="token_factor_evaluation_limit_required"):
+        settle_token_factor_scores(
+            repos=repos,
+            horizon="1h",
+            window="1h",
+            scope="all",
+            generated_at_ms=1_700_000_000_000,
+            limit=limit,  # type: ignore[arg-type]
+        )
+
+    assert not hasattr(repos.token_factor_evaluations, "historical_call")
+    assert repos.token_factor_evaluations.upserts == []
+
+
 def test_settle_token_factor_scores_requires_formal_subject_identity_without_row_fallback():
     base_ms = 1_700_000_000_000
     row = {

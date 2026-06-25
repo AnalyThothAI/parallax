@@ -72,6 +72,41 @@ def test_token_image_source_dirty_mutations_require_connection_transaction_befor
 
 
 @pytest.mark.parametrize(
+    ("overrides", "error"),
+    [
+        pytest.param({"limit": -1}, "token_image_source_dirty_target_claim_limit_required", id="negative-limit"),
+        pytest.param({"limit": True}, "token_image_source_dirty_target_claim_limit_required", id="bool-limit"),
+        pytest.param({"limit": "25"}, "token_image_source_dirty_target_claim_limit_required", id="string-limit"),
+        pytest.param({"lease_ms": 0}, "token_image_source_dirty_target_claim_lease_ms_required", id="zero-lease"),
+        pytest.param({"lease_ms": True}, "token_image_source_dirty_target_claim_lease_ms_required", id="bool-lease"),
+        pytest.param(
+            {"lease_ms": "600000"},
+            "token_image_source_dirty_target_claim_lease_ms_required",
+            id="string-lease",
+        ),
+    ],
+)
+def test_token_image_source_dirty_claim_due_rejects_malformed_parameters_before_transaction(
+    overrides: dict[str, object],
+    error: str,
+) -> None:
+    conn = _MissingTransactionConnection()
+    params: dict[str, object] = {
+        "now_ms": NOW_MS,
+        "limit": 25,
+        "lease_owner": "token_image_mirror",
+        "lease_ms": 600_000,
+    }
+    params.update(overrides)
+
+    with pytest.raises(ValueError, match=error):
+        TokenImageSourceDirtyTargetRepository(conn).claim_due(**params)
+
+    assert conn.sql == []
+    assert conn.commits == 0
+
+
+@pytest.mark.parametrize(
     "operation",
     [
         pytest.param(lambda repo, claim: repo.mark_done([claim], now_ms=NOW_MS, commit=False), id="done"),
@@ -103,6 +138,24 @@ def test_token_image_source_dirty_completion_requires_claim_attempt_field_withou
         operation(TokenImageSourceDirtyTargetRepository(conn), claim)
 
     assert isinstance(exc_info.value.__cause__, KeyError)
+    assert conn.sql == ""
+
+
+@pytest.mark.parametrize("attempt_count", [0, True, "1"])
+def test_token_image_source_dirty_completion_rejects_malformed_attempt_count(attempt_count: object) -> None:
+    conn = _ScriptedConnection([])
+    claim = {**_dirty_claim(), "attempt_count": attempt_count}
+
+    with pytest.raises(
+        ValueError,
+        match="token image source dirty target completion requires attempt_count",
+    ):
+        TokenImageSourceDirtyTargetRepository(conn).mark_done(
+            [claim],
+            now_ms=NOW_MS,
+            commit=False,
+        )
+
     assert conn.sql == ""
 
 
@@ -139,6 +192,46 @@ def test_token_image_source_dirty_completion_requires_claim_source_url_hash_with
 
     assert isinstance(exc_info.value.__cause__, KeyError)
     assert conn.sql == ""
+
+
+@pytest.mark.parametrize(
+    ("overrides", "error"),
+    [
+        pytest.param({"retry_ms": 0}, "token_image_source_dirty_target_retry_ms_required", id="zero-retry"),
+        pytest.param({"retry_ms": True}, "token_image_source_dirty_target_retry_ms_required", id="bool-retry"),
+        pytest.param({"retry_ms": "300000"}, "token_image_source_dirty_target_retry_ms_required", id="string-retry"),
+        pytest.param({"max_attempts": 0}, "token_image_source_dirty_target_max_attempts_required", id="zero-attempts"),
+        pytest.param(
+            {"max_attempts": True},
+            "token_image_source_dirty_target_max_attempts_required",
+            id="bool-attempts",
+        ),
+        pytest.param(
+            {"max_attempts": "3"},
+            "token_image_source_dirty_target_max_attempts_required",
+            id="string-attempts",
+        ),
+    ],
+)
+def test_token_image_source_dirty_mark_error_rejects_malformed_retry_policy_before_transaction(
+    overrides: dict[str, object],
+    error: str,
+) -> None:
+    conn = _MissingTransactionConnection()
+    params: dict[str, object] = {
+        "error": "mirror failed",
+        "retry_ms": 300_000,
+        "max_attempts": 3,
+        "worker_name": "token_image_mirror",
+        "now_ms": NOW_MS,
+    }
+    params.update(overrides)
+
+    with pytest.raises(ValueError, match=error):
+        TokenImageSourceDirtyTargetRepository(conn).mark_error([_dirty_claim()], **params)
+
+    assert conn.sql == []
+    assert conn.commits == 0
 
 
 def test_token_image_source_dirty_completion_counts_require_cursor_rowcount() -> None:

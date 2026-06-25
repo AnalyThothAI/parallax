@@ -80,10 +80,11 @@ def test_contracts_websocket_payloads_match_current_surface() -> None:
         "token_intents",
         "token_resolutions",
         "notification",
-        "social_event_enrichment_update",
         "live_market_update",
     ):
         assert f"`{documented_token}`" in websocket_contract
+    assert "social_event_enrichment_update" not in ws_source
+    assert "`social_event_enrichment_update`" not in websocket_contract
     assert "`enrichment`" not in websocket_contract
 
 

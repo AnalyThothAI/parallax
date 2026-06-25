@@ -279,6 +279,21 @@ def test_enabled_wake_listener_concurrency_requires_manifest_worker_settings_con
         enabled_wake_listener_concurrency(settings)
 
 
+def test_enabled_wake_listener_concurrency_rejects_malformed_concurrency_before_sizing() -> None:
+    settings = SimpleNamespace(
+        workers=SimpleNamespace(
+            market_tick_current_projection=SimpleNamespace(
+                enabled=True,
+                wakes_on=("market_tick_written",),
+                concurrency=0,
+            )
+        )
+    )
+
+    with pytest.raises(ValueError, match="worker_wake_listener_concurrency_required:market_tick_current_projection"):
+        enabled_wake_listener_concurrency(settings)
+
+
 def test_create_failure_records_missing_close_contract_for_partial_pool(monkeypatch) -> None:
     created = 0
 
@@ -357,6 +372,29 @@ def test_worker_session_sets_and_restores_application_name(monkeypatch) -> None:
         ("SELECT set_config(%s, %s, false)", ("statement_timeout", "30000ms")),
         ("SELECT set_config(%s, %s, false)", ("application_name", "gmgn_worker")),
     ]
+
+
+@pytest.mark.parametrize("statement_timeout_seconds", [-1, True, "12"])
+def test_worker_session_rejects_malformed_statement_timeout_without_runtime_repair(
+    statement_timeout_seconds: Any,
+    monkeypatch,
+) -> None:
+    conn = FakeConn()
+    pool = FakePool(conn)
+    monkeypatch.setattr(db_pool_bundle, "repositories_for_connection", lambda checkout, **_kwargs: checkout)
+    bundle = _db_bundle(api_pool=FakePool(), worker_pool=pool, wake_pool=FakePool())
+
+    with (
+        pytest.raises(ValueError, match="db_statement_timeout_seconds_required"),
+        bundle.worker_session("pulse_candidate", statement_timeout_seconds=statement_timeout_seconds),
+    ):
+        pass
+
+    assert conn.executed == [
+        ("SELECT set_config(%s, %s, false)", ("application_name", "worker:pulse_candidate")),
+    ]
+    assert conn.closed is True
+    assert pool.put_back == [conn]
 
 
 def test_worker_session_preserves_body_error_and_discards_when_reset_fails(monkeypatch) -> None:

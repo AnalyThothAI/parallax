@@ -43,6 +43,41 @@ def test_token_capture_tier_dirty_mutations_require_connection_transaction_befor
     assert conn.commits == 0
 
 
+@pytest.mark.parametrize(
+    ("overrides", "error"),
+    [
+        pytest.param({"limit": -1}, "token_capture_tier_dirty_target_claim_limit_required", id="negative-limit"),
+        pytest.param({"limit": True}, "token_capture_tier_dirty_target_claim_limit_required", id="bool-limit"),
+        pytest.param({"limit": "25"}, "token_capture_tier_dirty_target_claim_limit_required", id="string-limit"),
+        pytest.param({"lease_ms": 0}, "token_capture_tier_dirty_target_claim_lease_ms_required", id="zero-lease"),
+        pytest.param({"lease_ms": True}, "token_capture_tier_dirty_target_claim_lease_ms_required", id="bool-lease"),
+        pytest.param(
+            {"lease_ms": "600000"},
+            "token_capture_tier_dirty_target_claim_lease_ms_required",
+            id="string-lease",
+        ),
+    ],
+)
+def test_token_capture_tier_dirty_claim_due_rejects_malformed_parameters_before_transaction(
+    overrides: dict[str, object],
+    error: str,
+) -> None:
+    conn = _MissingTransactionConnection()
+    params: dict[str, object] = {
+        "now_ms": NOW_MS,
+        "limit": 25,
+        "lease_owner": "token_capture_tier",
+        "lease_ms": 600_000,
+    }
+    params.update(overrides)
+
+    with pytest.raises(ValueError, match=error):
+        TokenCaptureTierDirtyTargetRepository(conn).claim_due(**params)
+
+    assert conn.sql == []
+    assert conn.commits == 0
+
+
 def test_token_capture_tier_rank_set_hash_requires_formal_current_identity() -> None:
     row = _rank_row()
     row.pop("target_type_key")
@@ -102,6 +137,24 @@ def test_token_capture_tier_dirty_enqueue_requires_formal_source_watermark_witho
             reason="token_radar_updated",
             rows=[_rank_row()],
             source_watermark_ms=source_watermark_ms,  # type: ignore[arg-type]
+            now_ms=NOW_MS,
+            commit=False,
+        )
+
+    assert conn.sql == ""
+
+
+@pytest.mark.parametrize("attempt_count", [0, True, "1"])
+def test_token_capture_tier_dirty_completion_rejects_malformed_attempt_count(attempt_count: object) -> None:
+    conn = _ScriptedConnection()
+    claim = {**_claim(), "attempt_count": attempt_count}
+
+    with pytest.raises(
+        ValueError,
+        match="token capture tier dirty target completion requires attempt_count",
+    ):
+        TokenCaptureTierDirtyTargetRepository(conn).mark_done(
+            [claim],
             now_ms=NOW_MS,
             commit=False,
         )

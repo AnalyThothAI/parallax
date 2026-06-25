@@ -52,6 +52,21 @@ def test_token_image_asset_mutations_require_connection_transaction_before_sql_w
     assert conn.sql == []
 
 
+@pytest.mark.parametrize("retry_ms", [0, -1, True, "30000"])
+def test_token_image_asset_mark_error_rejects_malformed_retry_before_transaction(retry_ms: object) -> None:
+    conn = _NoTransactionConnection(results=[])
+
+    with pytest.raises(ValueError, match="token_image_asset_retry_ms_required"):
+        TokenImageAssetRepository(conn).mark_error(
+            SOURCE_URL,
+            error="fetch failed",
+            now_ms=NOW_MS,
+            retry_ms=retry_ms,  # type: ignore[arg-type]
+        )
+
+    assert conn.sql == []
+
+
 @pytest.mark.parametrize(
     "operation",
     [

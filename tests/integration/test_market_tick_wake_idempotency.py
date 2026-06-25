@@ -101,7 +101,18 @@ def test_market_tick_current_dirty_claim_token_protects_reenqueued_work(tmp_path
         repo.enqueue_targets([target], reason="market_tick_written", now_ms=NOW_MS + 2, commit=True)
 
         assert repo.mark_done([old_claim], now_ms=NOW_MS + 3, commit=True) == 0
-        assert repo.mark_error([old_claim], error="stale", retry_ms=30_000, now_ms=NOW_MS + 4, commit=True) == 0
+        assert (
+            repo.mark_error(
+                [old_claim],
+                error="stale",
+                retry_ms=30_000,
+                max_attempts=3,
+                worker_name="market_tick_current_projection",
+                now_ms=NOW_MS + 4,
+                commit=True,
+            )
+            == 0
+        )
 
         successor_claim = repo.claim_due(
             limit=1,
@@ -116,6 +127,8 @@ def test_market_tick_current_dirty_claim_token_protects_reenqueued_work(tmp_path
                 [successor_claim],
                 error="retry later",
                 retry_ms=30_000,
+                max_attempts=3,
+                worker_name="market_tick_current_projection",
                 now_ms=NOW_MS + 6,
                 commit=True,
             )

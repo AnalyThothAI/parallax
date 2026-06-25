@@ -112,7 +112,7 @@ class SearchEventsQuery:
         route_limit: int,
         since_ms: int,
     ) -> list[dict[str, Any]]:
-        limit = max(0, int(route_limit))
+        limit = _required_nonnegative_int(route_limit, "search_events_route_limit_required")
         if limit <= 0:
             return []
         hits: list[dict[str, Any]] = []
@@ -145,13 +145,16 @@ class SearchEventsQuery:
         after: dict[str, Any] | None = None,
         since_ms: int,
     ) -> list[dict[str, Any]]:
+        row_limit = _required_nonnegative_int(limit, "search_events_target_page_limit_required")
+        if row_limit <= 0:
+            return []
         resolved_targets = [
             candidate for candidate in target_candidates if str(candidate.get("status") or "") == "resolved"
         ]
         if not resolved_targets:
             return []
         return self._target_hits_page(
-            resolved_targets, watched_only=watched_only, limit=limit, after=after, since_ms=since_ms
+            resolved_targets, watched_only=watched_only, limit=row_limit, after=after, since_ms=since_ms
         )
 
     def _resolve_symbol(self, symbol: str) -> list[dict[str, Any]]:
@@ -241,11 +244,14 @@ class SearchEventsQuery:
         limit: int,
         since_ms: int,
     ) -> list[dict[str, Any]]:
+        row_limit = _required_nonnegative_int(limit, "search_events_target_limit_required")
+        if row_limit <= 0:
+            return []
         values_sql = ",".join("(%s, %s, %s)" for _ in target_candidates)
         params: list[Any] = []
         for candidate in target_candidates:
             params.extend([candidate["target_type"], candidate["target_id"], candidate.get("symbol")])
-        params.extend([TOKEN_RADAR_RESOLVER_POLICY_VERSION, watched_only, since_ms, max(0, int(limit))])
+        params.extend([TOKEN_RADAR_RESOLVER_POLICY_VERSION, watched_only, since_ms, row_limit])
         rows = self.conn.execute(
             f"""
             WITH target_candidates(target_type, target_id, target_symbol) AS (
@@ -302,6 +308,9 @@ class SearchEventsQuery:
         after: dict[str, Any] | None,
         since_ms: int,
     ) -> list[dict[str, Any]]:
+        row_limit = _required_nonnegative_int(limit, "search_events_target_page_limit_required")
+        if row_limit <= 0:
+            return []
         values_sql = ",".join("(%s, %s, %s)" for _ in target_candidates)
         params: list[Any] = []
         for candidate in target_candidates:
@@ -321,7 +330,7 @@ class SearchEventsQuery:
                 after_rank,
                 after_received,
                 after_event_id,
-                max(0, int(limit)),
+                row_limit,
             ]
         )
         rows = self.conn.execute(
@@ -395,6 +404,9 @@ class SearchEventsQuery:
         return [_hit(row) for row in rows]
 
     def _handle_hits(self, handle: str, *, watched_only: bool, limit: int, since_ms: int) -> list[dict[str, Any]]:
+        row_limit = _required_nonnegative_int(limit, "search_events_route_limit_required")
+        if row_limit <= 0:
+            return []
         rows = self.conn.execute(
             """
             SELECT
@@ -413,11 +425,14 @@ class SearchEventsQuery:
             ORDER BY events.received_at_ms DESC, events.event_id DESC
             LIMIT %s
             """,
-            (handle.strip().lstrip("@").lower(), watched_only, since_ms, max(0, int(limit))),
+            (handle.strip().lstrip("@").lower(), watched_only, since_ms, row_limit),
         ).fetchall()
         return [_hit(row) for row in rows]
 
     def _lexical_hits(self, query: str, *, watched_only: bool, limit: int, since_ms: int) -> list[dict[str, Any]]:
+        row_limit = _required_nonnegative_int(limit, "search_events_route_limit_required")
+        if row_limit <= 0:
+            return []
         rows = self.conn.execute(
             """
             WITH query AS (
@@ -452,11 +467,14 @@ class SearchEventsQuery:
             ORDER BY route_score DESC, received_at_ms DESC, event_id DESC
             LIMIT %s
             """,
-            (query, query, watched_only, since_ms, max(0, int(limit))),
+            (query, query, watched_only, since_ms, row_limit),
         ).fetchall()
         return [_hit(row) for row in rows]
 
     def _trigram_hits(self, query: str, *, watched_only: bool, limit: int, since_ms: int) -> list[dict[str, Any]]:
+        row_limit = _required_nonnegative_int(limit, "search_events_route_limit_required")
+        if row_limit <= 0:
+            return []
         rows = self.conn.execute(
             """
             SELECT
@@ -478,11 +496,14 @@ class SearchEventsQuery:
             ORDER BY route_score DESC, events.received_at_ms DESC, events.event_id DESC
             LIMIT %s
             """,
-            (query, query, query, query, _TRIGRAM_THRESHOLD, watched_only, since_ms, max(0, int(limit))),
+            (query, query, query, query, _TRIGRAM_THRESHOLD, watched_only, since_ms, row_limit),
         ).fetchall()
         return [_hit(row) for row in rows]
 
     def _substring_hits(self, query: str, *, watched_only: bool, limit: int, since_ms: int) -> list[dict[str, Any]]:
+        row_limit = _required_nonnegative_int(limit, "search_events_route_limit_required")
+        if row_limit <= 0:
+            return []
         rows = self.conn.execute(
             """
             SELECT
@@ -501,7 +522,7 @@ class SearchEventsQuery:
             ORDER BY events.received_at_ms DESC, events.event_id DESC
             LIMIT %s
             """,
-            (_substring_pattern(query), watched_only, since_ms, max(0, int(limit))),
+            (_substring_pattern(query), watched_only, since_ms, row_limit),
         ).fetchall()
         return [_hit(row) for row in rows]
 
@@ -573,6 +594,14 @@ def _safe_substring_query(query: str) -> bool:
 def _substring_pattern(query: str) -> str:
     escaped = query.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     return f"%{escaped}%"
+
+
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value < 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _safe_trigram_query(query: str) -> bool:

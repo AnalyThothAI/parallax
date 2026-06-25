@@ -72,6 +72,41 @@ def test_claim_due_uses_lease_token_and_skip_locked() -> None:
     assert conn.params[-1]["leased_until_ms"] == 1_700_000_060_000
 
 
+@pytest.mark.parametrize(
+    ("overrides", "error"),
+    [
+        pytest.param({"limit": -1}, "market_tick_current_dirty_target_claim_limit_required", id="negative-limit"),
+        pytest.param({"limit": True}, "market_tick_current_dirty_target_claim_limit_required", id="bool-limit"),
+        pytest.param({"limit": "25"}, "market_tick_current_dirty_target_claim_limit_required", id="string-limit"),
+        pytest.param({"lease_ms": 0}, "market_tick_current_dirty_target_claim_lease_ms_required", id="zero-lease"),
+        pytest.param({"lease_ms": True}, "market_tick_current_dirty_target_claim_lease_ms_required", id="bool-lease"),
+        pytest.param(
+            {"lease_ms": "60000"},
+            "market_tick_current_dirty_target_claim_lease_ms_required",
+            id="string-lease",
+        ),
+    ],
+)
+def test_market_tick_current_dirty_claim_due_rejects_malformed_parameters_before_transaction(
+    overrides: dict[str, object],
+    error: str,
+) -> None:
+    conn = _MissingTransactionConnection()
+    params: dict[str, object] = {
+        "limit": 25,
+        "now_ms": 1_700_000_000_000,
+        "lease_ms": 60_000,
+        "lease_owner": "market_tick_current_projection",
+    }
+    params.update(overrides)
+
+    with pytest.raises(ValueError, match=error):
+        MarketTickCurrentDirtyTargetRepository(conn).claim_due(**params)
+
+    assert conn.sql == []
+    assert conn.commits == 0
+
+
 def test_mark_done_cannot_delete_newer_dirty_work() -> None:
     conn = _ScriptedConnection([])
     conn.rowcount = 0
@@ -117,6 +152,8 @@ def test_mark_error_reschedules_only_matching_claim() -> None:
         ],
         error="projection failed",
         retry_ms=30_000,
+        max_attempts=3,
+        worker_name="market_tick_current_projection",
         now_ms=1_700_000_010_000,
         commit=False,
     )
@@ -130,6 +167,93 @@ def test_mark_error_reschedules_only_matching_claim() -> None:
     assert "queue.attempt_count = failed.attempt_count" in sql
     assert conn.params[-1]["due_at_ms"] == 1_700_000_040_000
     assert conn.params[-1]["last_error"] == "projection failed"
+
+
+@pytest.mark.parametrize(
+    ("overrides", "error"),
+    [
+        pytest.param({"retry_ms": 0}, "market_tick_current_dirty_target_retry_ms_required", id="zero-retry"),
+        pytest.param({"retry_ms": True}, "market_tick_current_dirty_target_retry_ms_required", id="bool-retry"),
+        pytest.param({"retry_ms": "30000"}, "market_tick_current_dirty_target_retry_ms_required", id="string-retry"),
+        pytest.param(
+            {"max_attempts": 0},
+            "market_tick_current_dirty_target_max_attempts_required",
+            id="zero-attempts",
+        ),
+        pytest.param(
+            {"max_attempts": True},
+            "market_tick_current_dirty_target_max_attempts_required",
+            id="bool-attempts",
+        ),
+        pytest.param(
+            {"max_attempts": "3"},
+            "market_tick_current_dirty_target_max_attempts_required",
+            id="string-attempts",
+        ),
+    ],
+)
+def test_market_tick_current_dirty_mark_error_rejects_malformed_retry_policy_before_transaction(
+    overrides: dict[str, object],
+    error: str,
+) -> None:
+    conn = _MissingTransactionConnection()
+    params: dict[str, object] = {
+        "error": "projection failed",
+        "retry_ms": 30_000,
+        "max_attempts": 3,
+        "worker_name": "market_tick_current_projection",
+        "now_ms": 1_700_000_010_000,
+    }
+    params.update(overrides)
+
+    with pytest.raises(ValueError, match=error):
+        MarketTickCurrentDirtyTargetRepository(conn).mark_error([_dirty_claim()], **params)
+
+    assert conn.sql == []
+    assert conn.commits == 0
+
+
+def test_mark_error_terminalizes_exhausted_claims_into_queue_terminal() -> None:
+    claim = {
+        **_dirty_claim(),
+        "attempt_count": 3,
+        "dirty_reason": "market_tick_written",
+        "source_watermark_ms": 1_700_000_000_000,
+        "first_dirty_at_ms": 1_700_000_000_000,
+        "updated_at_ms": 1_700_000_005_000,
+    }
+    conn = _ScriptedConnection(
+        [
+            [claim],
+            [],
+            [{"terminal_generation": 1}],
+            [{"terminal_id": "terminal-1", "source_row_json": {}}],
+        ],
+        rowcount=1,
+    )
+
+    changed = MarketTickCurrentDirtyTargetRepository(conn).mark_error(
+        [claim],
+        error="projection failed",
+        retry_ms=30_000,
+        max_attempts=3,
+        worker_name="market_tick_current_projection",
+        now_ms=1_700_000_010_000,
+        commit=False,
+    )
+
+    assert changed == 1
+    assert any(
+        "DELETE FROM market_tick_current_dirty_targets queue" in sql and "RETURNING queue.*" in sql
+        for sql in conn.sql
+    )
+    assert any("INSERT INTO worker_queue_terminal_events" in sql for sql in conn.sql)
+    terminal_params = conn.params[-1]
+    assert terminal_params["worker_name"] == "market_tick_current_projection"
+    assert terminal_params["source_table"] == "market_tick_current_dirty_targets"
+    assert terminal_params["final_status"] == "terminal"
+    assert terminal_params["final_reason"] == "market_tick_current_dirty_retry_budget_exhausted: projection failed"
+    assert terminal_params["attempt_count"] == 3
 
 
 @pytest.mark.parametrize(
@@ -151,6 +275,8 @@ def test_mark_error_reschedules_only_matching_claim() -> None:
             [_dirty_claim()],
             error="projection failed",
             retry_ms=30_000,
+            max_attempts=3,
+            worker_name="market_tick_current_projection",
             now_ms=1_700_000_010_000,
         ),
     ],
@@ -176,6 +302,8 @@ def test_market_tick_current_dirty_mutations_require_connection_transaction_befo
                 [claim],
                 error="projection failed",
                 retry_ms=30_000,
+                max_attempts=3,
+                worker_name="market_tick_current_projection",
                 now_ms=1_700_000_010_000,
                 commit=False,
             ),
@@ -200,6 +328,26 @@ def test_market_tick_current_dirty_completion_requires_claim_attempt_field_witho
     assert conn.sql == []
 
 
+@pytest.mark.parametrize("attempt_count", [0, True, "1"])
+def test_market_tick_current_dirty_completion_rejects_malformed_attempt_count(
+    attempt_count: object,
+) -> None:
+    conn = _ScriptedConnection([])
+    claim = {**_dirty_claim(), "attempt_count": attempt_count}
+
+    with pytest.raises(
+        ValueError,
+        match="market tick current dirty target completion requires attempt_count",
+    ):
+        MarketTickCurrentDirtyTargetRepository(conn).mark_done(
+            [claim],
+            now_ms=1_700_000_010_000,
+            commit=False,
+        )
+
+    assert conn.sql == []
+
+
 def test_market_tick_current_dirty_completion_counts_require_cursor_rowcount() -> None:
     conn = _RowcountConnection(omit_rowcount=True)
     repo = MarketTickCurrentDirtyTargetRepository(conn)
@@ -218,6 +366,8 @@ def test_market_tick_current_dirty_completion_counts_reject_invalid_cursor_rowco
             [_dirty_claim()],
             error="projection failed",
             retry_ms=30_000,
+            max_attempts=3,
+            worker_name="market_tick_current_projection",
             now_ms=1_700_000_010_000,
             commit=False,
         )
@@ -452,11 +602,11 @@ def _dirty_claim() -> dict[str, Any]:
 
 
 class _ScriptedConnection:
-    def __init__(self, results: list[list[dict[str, Any]] | None]) -> None:
+    def __init__(self, results: list[list[dict[str, Any]] | None], *, rowcount: object = 0) -> None:
         self.results = list(results)
         self.sql: list[str] = []
         self.params: list[Any] = []
-        self.rowcount = 0
+        self.rowcount = rowcount
         self.commits = 0
 
     def execute(self, sql: str, params: Any | None = None) -> _ScriptedConnection:
@@ -477,9 +627,11 @@ class _ScriptedConnection:
 
     def fetchall(self) -> list[dict[str, Any]]:
         if not self.results:
+            self.rowcount = 0
             return []
         result = self.results.pop(0)
         assert isinstance(result, list)
+        self.rowcount = len(result)
         return result
 
     def commit(self) -> None:

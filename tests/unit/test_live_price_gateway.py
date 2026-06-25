@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from decimal import Decimal
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -18,6 +19,19 @@ def _live_settings(**overrides: Any) -> LivePriceGatewayWorkerSettings:
     }
     payload.update(overrides)
     return LivePriceGatewayWorkerSettings(**payload)
+
+
+def _raw_live_settings(**overrides: Any) -> SimpleNamespace:
+    payload: dict[str, Any] = {
+        "enabled": True,
+        "interval_seconds": 0.01,
+        "soft_timeout_seconds": 120.0,
+        "hard_timeout_seconds": 180.0,
+        "target_limit": 100,
+        "target_ttl_seconds": 300.0,
+    }
+    payload.update(overrides)
+    return SimpleNamespace(**payload)
 
 
 def test_live_price_gateway_uses_market_ticks_without_upstream_price_providers() -> None:
@@ -203,6 +217,79 @@ def test_live_price_gateway_reads_formal_settings_for_target_limit_and_tick_ttl(
             "now_ms": 1_777_800_000_000,
         }
     ]
+
+
+@pytest.mark.parametrize(
+    ("overrides", "error_code"),
+    [
+        pytest.param({"target_limit": -1}, "live_price_gateway_target_limit_required", id="limit-negative"),
+        pytest.param({"target_limit": True}, "live_price_gateway_target_limit_required", id="limit-bool"),
+        pytest.param({"target_limit": "100"}, "live_price_gateway_target_limit_required", id="limit-string"),
+        pytest.param({"target_ttl_seconds": -0.1}, "live_price_gateway_target_ttl_seconds_required", id="ttl-negative"),
+        pytest.param({"target_ttl_seconds": True}, "live_price_gateway_target_ttl_seconds_required", id="ttl-bool"),
+        pytest.param({"target_ttl_seconds": "300"}, "live_price_gateway_target_ttl_seconds_required", id="ttl-string"),
+    ],
+)
+def test_live_price_gateway_rejects_malformed_runtime_settings(
+    overrides: dict[str, Any],
+    error_code: str,
+) -> None:
+    with pytest.raises(ValueError, match=error_code):
+        LivePriceGateway(
+            settings=_raw_live_settings(**overrides),
+            pool_bundle=FakeDB(FakeRepos(active_targets=[], latest_ticks={})),
+            projection_version="token_radar_v7",
+        )
+
+
+def test_live_price_gateway_does_not_repair_legacy_target_type_rows() -> None:
+    repos = FakeRepos(
+        active_targets=[
+            _live_target(
+                "Asset",
+                "legacy-asset-id",
+                chain_id="solana",
+                address="abc",
+            ),
+            _live_target(
+                "CexToken",
+                "legacy-cex-token-id",
+                provider="binance",
+                native_market_id="BTCUSDT",
+                quote_symbol="USDT",
+            ),
+        ],
+        latest_ticks={
+            ("chain_token", "solana:abc"): _market_tick_row(
+                target_type="chain_token",
+                target_id="solana:abc",
+                source_provider="binance_dex_ws",
+                price_usd="1.23",
+            ),
+            ("cex_symbol", "binance:BTCUSDT"): _market_tick_row(
+                target_type="cex_symbol",
+                target_id="binance:BTCUSDT",
+                source_provider="binance_cex_rest",
+                price_usd="65000.0",
+            ),
+        },
+    )
+    publisher = RecordingLivePublisher()
+    gateway = LivePriceGateway(
+        settings=_live_settings(),
+        pool_bundle=FakeDB(repos),
+        projection_version="token_radar_v7",
+        on_live_market_update=publisher.publish,
+        clock=lambda: 1_777_800_000_000,
+    )
+
+    result = asyncio.run(gateway.run_once(now_ms=1_777_800_000_000))
+
+    assert publisher.payloads == []
+    assert repos.market_ticks.calls == []
+    assert result.notes["result"]["targets_selected"] == 2
+    assert result.notes["result"]["targets_loaded"] == 2
+    assert result.notes["result"]["live_market_updates_published"] == 0
 
 
 def test_live_price_gateway_requires_formal_settings_contract() -> None:

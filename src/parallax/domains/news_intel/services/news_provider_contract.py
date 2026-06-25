@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from typing import Any
 
 
@@ -38,9 +38,13 @@ def validate_news_provider_contract(
     supported_provider_types: Iterable[str],
     schema_provider_types: Iterable[str],
 ) -> dict[str, Any]:
-    configured = _configured_provider_types(configured_sources)
     supported = _normalized_unique(supported_provider_types)
     schema = _normalized_unique(schema_provider_types)
+    configured = _configured_provider_types(
+        configured_sources,
+        supported_provider_types=supported,
+        schema_provider_types=schema,
+    )
 
     missing_from_registry = tuple(provider_type for provider_type in configured if provider_type not in supported)
     if missing_from_registry:
@@ -70,13 +74,38 @@ def validate_news_provider_contract(
     }
 
 
-def _configured_provider_types(configured_sources: Iterable[Any]) -> tuple[str, ...]:
+def configured_news_provider_types(configured_sources: Iterable[Any]) -> tuple[str, ...]:
+    return _configured_provider_types(configured_sources)
+
+
+def _configured_provider_types(
+    configured_sources: Iterable[Any],
+    *,
+    supported_provider_types: Iterable[str] = (),
+    schema_provider_types: Iterable[str] = (),
+) -> tuple[str, ...]:
     values: list[str] = []
     for source in configured_sources:
-        value = source.get("provider_type") if isinstance(source, Mapping) else getattr(source, "provider_type", None)
+        try:
+            value = source.provider_type
+        except AttributeError as exc:
+            raise NewsProviderContractError(
+                "news_provider_settings_contract_required",
+                provider_types=(),
+                configured_provider_types=values,
+                supported_provider_types=supported_provider_types,
+                schema_provider_types=schema_provider_types,
+            ) from exc
         provider_type = str(value or "").strip()
-        if provider_type:
-            values.append(provider_type)
+        if not provider_type:
+            raise NewsProviderContractError(
+                "news_provider_settings_contract_required",
+                provider_types=(),
+                configured_provider_types=values,
+                supported_provider_types=supported_provider_types,
+                schema_provider_types=schema_provider_types,
+            )
+        values.append(provider_type)
     return tuple(sorted(dict.fromkeys(values)))
 
 
@@ -84,4 +113,4 @@ def _normalized_unique(values: Iterable[str]) -> tuple[str, ...]:
     return tuple(sorted(dict.fromkeys(str(value or "").strip() for value in values if str(value or "").strip())))
 
 
-__all__ = ["NewsProviderContractError", "validate_news_provider_contract"]
+__all__ = ["NewsProviderContractError", "configured_news_provider_types", "validate_news_provider_contract"]

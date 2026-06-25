@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -11,11 +12,13 @@ from parallax.domains.asset_market.interfaces import (
     CONFIDENCE_PROVIDER_EXACT,
     EVIDENCE_GMGN_PAYLOAD_EXACT,
     EVIDENCE_TWEET_CONTRACT_MENTION,
+    CaptureResult,
     DiscoveryRepository,
     EnrichedEventCapture,
     EnrichedEventRepository,
     EventAnchorBackfillJobRepository,
     IdentityEvidenceRepository,
+    MarketTick,
     MarketTickCurrentDirtyTargetRepository,
     MarketTickPersistenceService,
     MarketTickRepository,
@@ -34,6 +37,7 @@ from parallax.domains.token_intel.interfaces import (
     IntentResolutionRepository,
     SignalRepository,
     TokenEvidenceRepository,
+    TokenIntentInput,
     TokenIntentLookupRepository,
     TokenIntentRepository,
     TokenIntentResolutionDecision,
@@ -53,8 +57,11 @@ class PreparedIngest:
     event_row: dict[str, Any]
     entities: list[Any]
     evidence_inputs: list[Any]
-    intents: list[Any]
+    intents: list[TokenIntentInput]
     is_watched: bool
+
+
+IngestCaptureInput = CaptureResult | EnrichedEventCapture
 
 
 class IngestService:
@@ -94,7 +101,7 @@ class IngestService:
         self.enriched_events = enriched_events
         self.event_anchor_jobs = event_anchor_jobs
         self.token_radar_source_dirty_events = token_radar_source_dirty_events
-        self.event_anchor_active_window_ms = max(1, int(event_anchor_active_window_ms))
+        self.event_anchor_active_window_ms = require_event_anchor_active_window_ms(event_anchor_active_window_ms)
 
     def require_transaction(self, *, operation: str) -> None:
         self.evidence.require_transaction(operation=operation)
@@ -186,8 +193,9 @@ class IngestService:
         prepared: PreparedIngest,
         *,
         resolutions: list[TokenIntentResolutionDecision],
-        captures: list[Any],
+        captures: Sequence[IngestCaptureInput],
     ) -> IngestedEvent:
+        capture_results = [_require_capture_result(item) for item in captures]
         with self.evidence.unit_of_work():
             inserted = self.evidence.insert_event_without_commit(prepared.event_row)
             if not inserted:
@@ -206,12 +214,12 @@ class IngestService:
                 _require_resolution_decision(decision)
                 self.intent_resolutions.insert_resolution(decision, commit=False)
                 decision_intent_id = decision.intent_id
-                intent = next((item for item in prepared.intents if item.intent_id == decision_intent_id), None)
+                intent = _token_intent_by_id(prepared.intents, decision_intent_id)
                 self.token_intent_lookup.replace_lookup_keys(
                     intent_id=decision_intent_id,
                     event_id=decision.event_id,
                     keys=decision.lookup_keys,
-                    source_evidence_id=getattr(intent, "primary_evidence_id", None),
+                    source_evidence_id=intent.primary_evidence_id,
                     created_at_ms=prepared.event_ms,
                     commit=False,
                 )
@@ -231,18 +239,17 @@ class IngestService:
                     now_ms=prepared.event_ms,
                     commit=False,
                 )
-            capture_ticks = [tick for item in captures if (tick := getattr(item, "tick", None)) is not None]
+            capture_ticks = [item.tick for item in capture_results if item.tick is not None]
             if capture_ticks:
                 MarketTickPersistenceService(self).insert_ticks_and_enqueue_current_dirty(
                     capture_ticks,
                     reason="event_capture_tick_inserted",
                     now_ms=prepared.event_ms,
                 )
-            for item in captures:
-                capture = getattr(item, "capture", item)
-                self.enriched_events.insert_capture(capture)
+            for item in capture_results:
+                self.enriched_events.insert_capture(item.capture)
                 self.event_anchor_jobs.enqueue_for_capture(
-                    capture,
+                    item.capture,
                     active_window_ms=self.event_anchor_active_window_ms,
                 )
             token_resolutions = self.intent_resolutions.resolutions_for_event(prepared.event_id)
@@ -354,21 +361,21 @@ class IngestService:
         )
         return asset
 
-    def _upsert_chain_intent_registry_assets(self, event: TwitterEvent, intents: list[Any]) -> None:
-        for intent in intents:
-            chain_hint = getattr(intent, "chain_hint", None)
-            address_hint = getattr(intent, "address_hint", None)
-            if not chain_hint or not address_hint:
+    def _upsert_chain_intent_registry_assets(self, event: TwitterEvent, intents: list[TokenIntentInput]) -> None:
+        for item in intents:
+            intent = _require_token_intent(item)
+            if not intent.chain_hint or not intent.address_hint:
                 continue
             self.registry.upsert_chain_asset(
-                chain_id=str(chain_hint),
-                address=str(address_hint),
+                chain_id=str(intent.chain_hint),
+                address=str(intent.address_hint),
                 observed_at_ms=event.received_at_ms,
                 commit=False,
             )
 
-    def _intent_with_prepared_chain_hint(self, intent: Any) -> Any:
-        if getattr(intent, "chain_hint", None) or not getattr(intent, "address_hint", None):
+    def _intent_with_prepared_chain_hint(self, intent: TokenIntentInput) -> TokenIntentInput:
+        _require_token_intent(intent)
+        if intent.chain_hint or not intent.address_hint:
             return intent
         rows = self.registry.find_assets_by_address(
             chain_id=None,
@@ -378,15 +385,14 @@ class IngestService:
             return intent
         return replace(intent, chain_hint=str(rows[0]["chain_id"]))
 
-    def _upsert_chain_intent_registry(self, event: TwitterEvent, intents: list[Any]) -> None:
-        for intent in intents:
-            chain_hint = getattr(intent, "chain_hint", None)
-            address_hint = getattr(intent, "address_hint", None)
-            if not chain_hint or not address_hint:
+    def _upsert_chain_intent_registry(self, event: TwitterEvent, intents: list[TokenIntentInput]) -> None:
+        for item in intents:
+            intent = _require_token_intent(item)
+            if not intent.chain_hint or not intent.address_hint:
                 continue
             asset = self.registry.upsert_chain_asset(
-                chain_id=str(chain_hint),
-                address=str(address_hint),
+                chain_id=str(intent.chain_hint),
+                address=str(intent.address_hint),
                 observed_at_ms=event.received_at_ms,
                 commit=False,
             )
@@ -397,12 +403,12 @@ class IngestService:
                 lookup_mode="tweet_mention",
                 chain_id=str(asset["chain_id"]),
                 address=str(asset["address"]),
-                symbol=getattr(intent, "display_symbol", None),
+                symbol=intent.display_symbol,
                 name=None,
                 decimals=None,
                 confidence=CONFIDENCE_MENTION_ONLY,
                 source_event_id=event.event_id,
-                source_intent_id=getattr(intent, "intent_id", None),
+                source_intent_id=intent.intent_id,
                 observed_at_ms=event.received_at_ms,
                 commit=False,
             )
@@ -418,7 +424,7 @@ class IngestService:
         decisions: list[TokenIntentResolutionDecision],
         *,
         resolutions: Any,
-        intents_by_id: dict[str, Any],
+        intents_by_id: dict[str, TokenIntentInput],
         is_watched: bool,
     ) -> list[dict[str, Any]]:
         if not is_watched or not event.author.handle:
@@ -426,9 +432,9 @@ class IngestService:
         alerts: list[dict[str, Any]] = []
         author_handle = event.author.handle.lower()
         for decision in decisions:
-            intent = intents_by_id.get(decision.intent_id)
             if decision.target_type is None or decision.target_id is None:
                 continue
+            intent = _token_intent_by_id_map(intents_by_id, decision.intent_id)
             seen_global, seen_author = resolutions.target_seen_before(
                 target_type=decision.target_type,
                 target_id=decision.target_id,
@@ -504,8 +510,15 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
-def _alert_value(intent: Any, decision: TokenIntentResolutionDecision) -> str:
-    value = getattr(intent, "display_symbol", None) or getattr(intent, "address_hint", None)
+def require_event_anchor_active_window_ms(value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError("event_anchor_active_window_ms_required")
+    return int(value)
+
+
+def _alert_value(intent: TokenIntentInput, decision: TokenIntentResolutionDecision) -> str:
+    formal_intent = _require_token_intent(intent)
+    value = formal_intent.display_symbol or formal_intent.address_hint
     _require_resolution_decision(decision)
     return str(value or decision.target_id)
 
@@ -519,6 +532,39 @@ def _require_resolution_decision(decision: Any) -> TokenIntentResolutionDecision
     if not isinstance(decision, TokenIntentResolutionDecision):
         raise RuntimeError("ingest_resolution_decision_contract_required")
     return decision
+
+
+def _require_token_intent(intent: Any) -> TokenIntentInput:
+    if not isinstance(intent, TokenIntentInput):
+        raise RuntimeError("ingest_token_intent_contract_required")
+    return intent
+
+
+def _token_intent_by_id(intents: list[TokenIntentInput], intent_id: str) -> TokenIntentInput:
+    for intent in intents:
+        formal_intent = _require_token_intent(intent)
+        if formal_intent.intent_id == intent_id:
+            return formal_intent
+    raise RuntimeError("ingest_token_intent_contract_required")
+
+
+def _token_intent_by_id_map(intents_by_id: dict[str, TokenIntentInput], intent_id: str) -> TokenIntentInput:
+    intent = intents_by_id.get(intent_id)
+    if intent is None:
+        raise RuntimeError("ingest_token_intent_contract_required")
+    return _require_token_intent(intent)
+
+
+def _require_capture_result(item: Any) -> CaptureResult:
+    if isinstance(item, EnrichedEventCapture):
+        return CaptureResult(tick=None, capture=item)
+    if not isinstance(item, CaptureResult):
+        raise RuntimeError("ingest_capture_result_contract_required")
+    if item.tick is not None and not isinstance(item.tick, MarketTick):
+        raise RuntimeError("ingest_capture_result_contract_required")
+    if not isinstance(item.capture, EnrichedEventCapture):
+        raise RuntimeError("ingest_capture_result_contract_required")
+    return item
 
 
 def _source_dirty_events_for_resolutions(

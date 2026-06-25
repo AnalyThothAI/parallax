@@ -304,7 +304,14 @@ def _normalize_worker_name(name: str) -> str:
 
 
 def _statement_timeout_value(seconds: float) -> str:
-    return f"{max(0, int(float(seconds) * 1000))}ms"
+    timeout_seconds = _nonnegative_timeout_seconds(seconds)
+    return f"{int(timeout_seconds * 1000)}ms"
+
+
+def _nonnegative_timeout_seconds(value: Any) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float) or value < 0:
+        raise ValueError("db_statement_timeout_seconds_required")
+    return float(value)
 
 
 def wake_pool_max_size(settings: Any) -> int:
@@ -323,8 +330,15 @@ def enabled_wake_listener_concurrency(settings: Any) -> int:
         wakes_on = tuple(worker_settings.wakes_on or ())
         if not wakes_on:
             continue
-        wake_slots += max(1, int(worker_settings.concurrency or 1))
+        wake_slots += _worker_wake_concurrency(worker_name=manifest.name, worker_settings=worker_settings)
     return wake_slots
+
+
+def _worker_wake_concurrency(*, worker_name: str, worker_settings: Any) -> int:
+    value = worker_settings.concurrency
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"worker_wake_listener_concurrency_required:{worker_name}")
+    return int(value)
 
 
 def _set_config(conn: Any, name: str, value: str) -> None:

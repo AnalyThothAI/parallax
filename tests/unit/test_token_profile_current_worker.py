@@ -83,6 +83,42 @@ def test_token_profile_current_worker_requires_formal_statement_timeout_settings
     assert db.session_names == []
 
 
+@pytest.mark.parametrize(
+    ("overrides", "error_code"),
+    [
+        pytest.param({"batch_size": 0}, "token_profile_current_batch_size_required", id="batch-zero"),
+        pytest.param({"batch_size": True}, "token_profile_current_batch_size_required", id="batch-bool"),
+        pytest.param({"batch_size": "500"}, "token_profile_current_batch_size_required", id="batch-string"),
+        pytest.param({"lease_ms": 0}, "token_profile_current_lease_ms_required", id="lease-zero"),
+        pytest.param({"lease_ms": True}, "token_profile_current_lease_ms_required", id="lease-bool"),
+        pytest.param({"lease_ms": "60000"}, "token_profile_current_lease_ms_required", id="lease-string"),
+        pytest.param({"retry_ms": 0}, "token_profile_current_retry_ms_required", id="retry-zero"),
+        pytest.param({"retry_ms": True}, "token_profile_current_retry_ms_required", id="retry-bool"),
+        pytest.param({"retry_ms": "30000"}, "token_profile_current_retry_ms_required", id="retry-string"),
+    ],
+)
+def test_token_profile_current_worker_rejects_malformed_runtime_settings(monkeypatch, overrides, error_code):
+    calls: list[dict] = []
+
+    def fake_rebuild(**kwargs):
+        calls.append(kwargs)
+        return {"claimed": 0}
+
+    monkeypatch.setattr(module, "rebuild_token_profile_current_once", fake_rebuild)
+    db = FakeDB()
+    worker = module.TokenProfileCurrentWorker(
+        name="token_profile_current",
+        settings=worker_settings(**overrides),
+        db=db,
+        telemetry=object(),
+    )
+
+    with pytest.raises(ValueError, match=error_code):
+        asyncio.run(worker.run_once(now_ms=1_700_000_000_000))
+
+    assert calls == []
+
+
 def test_rebuild_token_profile_current_once_projects_sources_and_writes_rows():
     ready_assets = {
         "https://gmgn.ai/external-res/logo.png": ready_image(

@@ -75,6 +75,7 @@ def test_rebuild_dirty_targets_market_only_loads_existing_edges_without_populati
     result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
         lease_ms=120_000,
         retry_ms=30_000,
+        max_attempts=3,
         windows=("5m",),
         scopes=("all",),
         venues=("bsc",),
@@ -121,6 +122,7 @@ def test_rebuild_dirty_targets_source_event_claim_populates_narrow_edges(monkeyp
     result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
         lease_ms=120_000,
         retry_ms=30_000,
+        max_attempts=3,
         windows=("5m",),
         scopes=("all",),
         now_ms=now_ms,
@@ -152,6 +154,7 @@ def test_rebuild_dirty_targets_requires_source_dirty_event_repository() -> None:
         TokenRadarProjection(repos=repos).rebuild_dirty_targets(
             lease_ms=120_000,
             retry_ms=30_000,
+            max_attempts=3,
             windows=("5m",),
             scopes=("all",),
             now_ms=1_777_800_060_000,

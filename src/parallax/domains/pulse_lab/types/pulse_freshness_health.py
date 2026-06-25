@@ -18,7 +18,11 @@ class PulseFreshnessThresholds:
 
 
 def pulse_freshness_since_ms(*, now_ms: int, since_hours: int) -> int:
-    return max(0, int(now_ms) - max(1, int(since_hours)) * HOUR_MS)
+    return max(0, int(now_ms) - pulse_freshness_since_hours(since_hours) * HOUR_MS)
+
+
+def pulse_freshness_since_hours(since_hours: int) -> int:
+    return _required_positive_int(since_hours, "pulse_freshness_since_hours_required")
 
 
 def classify_pulse_freshness_health(
@@ -66,6 +70,12 @@ def _int(value: Any) -> int:
     return int(value or 0)
 
 
+def _required_positive_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
 def _dedupe(values: list[str]) -> list[str]:
     seen: set[str] = set()
     result: list[str] = []
@@ -81,5 +91,6 @@ __all__ = [
     "PulseFreshnessThresholds",
     "PulsePublishStatus",
     "classify_pulse_freshness_health",
+    "pulse_freshness_since_hours",
     "pulse_freshness_since_ms",
 ]

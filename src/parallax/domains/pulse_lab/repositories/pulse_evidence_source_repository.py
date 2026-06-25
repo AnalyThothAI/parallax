@@ -97,7 +97,10 @@ class PulseEvidenceSourceRepository:
         *,
         now_ms: int,
     ) -> dict[str, Any] | None:
-        min_observed_at_ms = max(0, int(now_ms) - max(0, int(max_age_ms)))
+        min_observed_at_ms = max(
+            0,
+            int(now_ms) - _required_positive_int(max_age_ms, "pulse_evidence_max_age_ms_required"),
+        )
         return _optional_row(
             self.conn.execute(
                 """
@@ -120,7 +123,10 @@ class PulseEvidenceSourceRepository:
         *,
         now_ms: int,
     ) -> dict[str, Any] | None:
-        min_observed_at_ms = max(0, int(now_ms) - max(0, int(max_age_ms)))
+        min_observed_at_ms = max(
+            0,
+            int(now_ms) - _required_positive_int(max_age_ms, "pulse_evidence_max_age_ms_required"),
+        )
         return _optional_row(
             self.conn.execute(
                 """
@@ -143,7 +149,10 @@ class PulseEvidenceSourceRepository:
         *,
         now_ms: int,
     ) -> dict[str, Any] | None:
-        min_computed_at_ms = max(0, int(now_ms) - max(0, int(max_age_ms)))
+        min_computed_at_ms = max(
+            0,
+            int(now_ms) - _required_positive_int(max_age_ms, "pulse_evidence_max_age_ms_required"),
+        )
         normalized_type = str(target_type or "").strip()
         if normalized_type in {"CexToken", "cex_token"}:
             return _optional_row(
@@ -472,6 +481,12 @@ def _clean(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _required_positive_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _market_fact_from_tick(row: dict[str, Any]) -> dict[str, Any]:

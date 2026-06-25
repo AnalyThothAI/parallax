@@ -34,9 +34,10 @@ class SearchInspectService:
         limit: int,
         now_ms: int | None = None,
     ) -> dict[str, Any]:
+        parsed_limit = _required_positive_int(limit, "search_inspect_limit_required")
         search_page = SearchService(search_query=self.search_query).search(
             q,
-            limit=limit,
+            limit=parsed_limit,
             scope=scope,
             window=window,
             now_ms=now_ms,
@@ -73,7 +74,7 @@ class SearchInspectService:
                 window=window,
                 scope=scope,
                 now_ms=now_ms,
-                limit=limit,
+                limit=parsed_limit,
             )
             return payload
         topic_result = self._topic_result(query=q.strip(), items=search_page.items)
@@ -109,7 +110,7 @@ class SearchInspectService:
             target_id=target_id,
             window=window,
             scope=scope,
-            posts_limit=min(max(1, int(limit)), 50),
+            posts_limit=min(limit, 50),
             now_ms=now_ms,
         )
 
@@ -166,3 +167,11 @@ def _topic_summary(items: list[dict[str, Any]]) -> dict[str, int]:
 
 def _dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
+
+
+def _required_positive_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value <= 0:
+        raise ValueError(error_code)
+    return int(value)

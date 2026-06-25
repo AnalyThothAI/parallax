@@ -116,6 +116,108 @@ def test_discovery_mutations_require_connection_transaction_before_sql_when_comm
 
 
 @pytest.mark.parametrize(
+    ("intent_count", "error"),
+    [
+        pytest.param(0, "discovery_lookup_intent_count_required", id="zero"),
+        pytest.param(True, "discovery_lookup_intent_count_required", id="bool"),
+        pytest.param("1", "discovery_lookup_intent_count_required", id="string"),
+    ],
+)
+def test_enqueue_lookup_keys_rejects_malformed_intent_count_before_transaction(
+    intent_count: object,
+    error: str,
+) -> None:
+    conn = NoTransactionDiscoveryConnection()
+
+    with pytest.raises(ValueError, match=error):
+        DiscoveryRepository(conn).enqueue_lookup_keys(
+            ["symbol:ABC"],
+            reason="token_resolution_refresh",
+            intent_count=intent_count,  # type: ignore[arg-type]
+            now_ms=NOW_MS,
+        )
+
+    assert conn.sql == []
+    assert conn.commits == 0
+
+
+@pytest.mark.parametrize(
+    ("overrides", "error"),
+    [
+        pytest.param({"limit": -1}, "discovery_lookup_claim_limit_required", id="negative-limit"),
+        pytest.param({"limit": True}, "discovery_lookup_claim_limit_required", id="bool-limit"),
+        pytest.param({"limit": "1"}, "discovery_lookup_claim_limit_required", id="string-limit"),
+        pytest.param({"lease_ms": 0}, "discovery_lookup_claim_lease_ms_required", id="zero-lease"),
+        pytest.param({"lease_ms": True}, "discovery_lookup_claim_lease_ms_required", id="bool-lease"),
+        pytest.param({"lease_ms": "60000"}, "discovery_lookup_claim_lease_ms_required", id="string-lease"),
+        pytest.param({"running_timeout_ms": 0}, "discovery_lookup_running_timeout_ms_required", id="zero-timeout"),
+        pytest.param({"running_timeout_ms": True}, "discovery_lookup_running_timeout_ms_required", id="bool-timeout"),
+        pytest.param(
+            {"running_timeout_ms": "60000"},
+            "discovery_lookup_running_timeout_ms_required",
+            id="string-timeout",
+        ),
+        pytest.param({"hot_since_ms": True}, "discovery_lookup_hot_since_ms_required", id="bool-hot-since"),
+        pytest.param({"hot_since_ms": "1"}, "discovery_lookup_hot_since_ms_required", id="string-hot-since"),
+        pytest.param(
+            {"hot_not_found_retry_ms": 0},
+            "discovery_lookup_hot_not_found_retry_ms_required",
+            id="zero-hot-retry",
+        ),
+        pytest.param(
+            {"hot_not_found_retry_ms": True},
+            "discovery_lookup_hot_not_found_retry_ms_required",
+            id="bool-hot-retry",
+        ),
+        pytest.param(
+            {"hot_not_found_retry_ms": "60000"},
+            "discovery_lookup_hot_not_found_retry_ms_required",
+            id="string-hot-retry",
+        ),
+    ],
+)
+def test_claim_due_lookup_keys_rejects_malformed_parameters_before_transaction(
+    overrides: dict[str, object],
+    error: str,
+) -> None:
+    conn = NoTransactionDiscoveryConnection()
+    params: dict[str, object] = {
+        "now_ms": NOW_MS,
+        "limit": 1,
+        "lease_ms": 60_000,
+        "running_timeout_ms": 60_000,
+        "lease_owner": "resolution_refresh",
+    }
+    params.update(overrides)
+
+    with pytest.raises(ValueError, match=error):
+        DiscoveryRepository(conn).claim_due_lookup_keys(**params)
+
+    assert conn.sql == []
+    assert conn.commits == 0
+
+
+@pytest.mark.parametrize(
+    "running_timeout_ms",
+    [0, True, "60000"],
+)
+def test_start_lookup_rejects_malformed_running_timeout_before_transaction(running_timeout_ms: object) -> None:
+    conn = NoTransactionDiscoveryConnection()
+
+    with pytest.raises(ValueError, match="discovery_lookup_running_timeout_ms_required"):
+        DiscoveryRepository(conn).start_lookup(
+            provider="okx_dex_search",
+            lookup_key="symbol:ABC",
+            lookup_type="dex_symbol_lookup",
+            now_ms=NOW_MS,
+            running_timeout_ms=running_timeout_ms,  # type: ignore[arg-type]
+        )
+
+    assert conn.sql == []
+    assert conn.commits == 0
+
+
+@pytest.mark.parametrize(
     "call",
     [
         pytest.param(
@@ -270,6 +372,21 @@ def test_lookup_claim_completion_requires_claim_attempt_field_without_default(
         operation(DiscoveryRepository(conn), claim)
 
     assert isinstance(exc_info.value.__cause__, KeyError)
+    assert conn.sql == []
+
+
+@pytest.mark.parametrize("attempt_count", [0, True, "1"])
+def test_lookup_claim_completion_rejects_malformed_attempt_count(attempt_count: object) -> None:
+    conn = NoTransactionDiscoveryConnection()
+    claim = dict(CLAIM)
+    claim["attempt_count"] = attempt_count
+
+    with pytest.raises(
+        ValueError,
+        match="token discovery lookup claim completion requires attempt_count",
+    ):
+        DiscoveryRepository(conn).mark_lookup_done([claim], now_ms=NOW_MS, commit=False)
+
     assert conn.sql == []
 
 

@@ -6,6 +6,7 @@ from typing import Any, cast
 
 from parallax.domains.token_intel._constants import TOKEN_RADAR_PROJECTION_VERSION
 from parallax.platform.current_read_model_payload_hash import stable_dirty_target_payload_hash
+from parallax.platform.db.queue_terminal import terminalize_source_row
 
 
 def source_dirty_event_payload_hash(payload: Mapping[str, Any]) -> str:
@@ -82,6 +83,11 @@ class TokenRadarSourceDirtyEventRepository:
                   due_at_ms = LEAST(token_radar_source_dirty_events.due_at_ms, EXCLUDED.due_at_ms),
                   leased_until_ms = NULL,
                   lease_owner = NULL,
+                  attempt_count = CASE
+                    WHEN token_radar_source_dirty_events.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                    THEN 0
+                    ELSE token_radar_source_dirty_events.attempt_count
+                  END,
                   last_error = NULL,
                   first_dirty_at_ms = token_radar_source_dirty_events.first_dirty_at_ms,
                   updated_at_ms = EXCLUDED.updated_at_ms
@@ -110,8 +116,17 @@ class TokenRadarSourceDirtyEventRepository:
         lease_owner: str,
         commit: bool = True,
     ) -> list[dict[str, Any]]:
+        parsed_limit = _required_nonnegative_int(
+            limit,
+            "token_radar_source_dirty_event_claim_limit_required",
+        )
+        parsed_lease_ms = _required_positive_int(
+            lease_ms,
+            "token_radar_source_dirty_event_claim_lease_ms_required",
+        )
+
         def _claim_due() -> list[dict[str, Any]]:
-            rows = self.conn.execute(
+            cursor = self.conn.execute(
                 """
                 WITH due AS (
                   SELECT projection_version, source_event_id, target_type_key, identity_id
@@ -137,34 +152,44 @@ class TokenRadarSourceDirtyEventRepository:
                 """,
                 {
                     "now_ms": int(now_ms),
-                    "leased_until_ms": int(now_ms) + max(1, int(lease_ms)),
+                    "leased_until_ms": int(now_ms) + parsed_lease_ms,
                     "lease_owner": str(lease_owner),
-                    "limit": max(0, int(limit)),
+                    "limit": parsed_limit,
                 },
-            ).fetchall()
+            )
+            rows = cursor.fetchall()
+            _returned_rowcount(cursor, rows)
             return [dict(row) for row in rows]
 
         return _run_repository_write(self.conn, commit, _claim_due)
 
     def list_recent_resolved_events(self, *, since_ms: int, now_ms: int, limit: int) -> list[dict[str, Any]]:
+        parsed_limit = _required_nonnegative_int(
+            limit,
+            "token_radar_source_dirty_event_limit_required",
+        )
         rows = self.conn.execute(
             _RECENT_RESOLVED_EVENT_SQL,
             {
                 "since_ms": int(since_ms),
                 "now_ms": int(now_ms),
-                "limit": max(0, int(limit)),
+                "limit": parsed_limit,
                 "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
             },
         ).fetchall()
         return [dict(row) for row in rows]
 
     def count_recent_resolved_event_candidates(self, *, since_ms: int, now_ms: int, limit: int) -> int:
+        parsed_limit = _required_nonnegative_int(
+            limit,
+            "token_radar_source_dirty_event_limit_required",
+        )
         row = self.conn.execute(
             f"WITH recent AS ({_RECENT_RESOLVED_EVENT_BODY_SQL}) SELECT COUNT(*) AS count FROM recent",
             {
                 "since_ms": int(since_ms),
                 "now_ms": int(now_ms),
-                "limit": max(0, int(limit)),
+                "limit": parsed_limit,
             },
         ).fetchone()
         return int(row.get("count") or 0) if row else 0
@@ -220,59 +245,124 @@ class TokenRadarSourceDirtyEventRepository:
         *,
         error: str,
         retry_ms: int,
+        max_attempts: int,
+        worker_name: str,
         now_ms: int,
         commit: bool = True,
     ) -> int:
         records = _key_records(keys)
         if not records:
             return 0
-        params = _key_params(records)
-        params.update(
-            {
-                "due_at_ms": int(now_ms) + max(1, int(retry_ms)),
-                "now_ms": int(now_ms),
-                "last_error": str(error)[:2048],
-            }
+        parsed_max_attempts = _required_max_attempts(max_attempts)
+        parsed_retry_ms = _required_positive_int(
+            retry_ms,
+            "token_radar_source_dirty_event_retry_ms_required",
         )
+        parsed_worker_name = _required_text(worker_name, "worker_name")
+        retry_records = [record for record in records if int(record["attempt_count"]) < parsed_max_attempts]
+        exhausted_records = [record for record in records if int(record["attempt_count"]) >= parsed_max_attempts]
+        retry_params = {
+            **_key_params(retry_records),
+            "due_at_ms": int(now_ms) + parsed_retry_ms,
+            "now_ms": int(now_ms),
+            "last_error": str(error)[:2048],
+        }
 
         def _mark_error() -> int:
-            cursor = self.conn.execute(
-                """
-                WITH failed AS (
-                  SELECT *
-                  FROM unnest(
-                    %(projection_versions)s::text[],
-                    %(source_event_ids)s::text[],
-                    %(target_type_keys)s::text[],
-                    %(identity_ids)s::text[],
-                    %(payload_hashes)s::text[],
-                    %(lease_owners)s::text[],
-                    %(attempt_counts)s::bigint[]
-                  ) AS failed(
-                    projection_version, source_event_id, target_type_key, identity_id,
-                    payload_hash, lease_owner, attempt_count
-                  )
+            changed = 0
+            if retry_records:
+                cursor = self.conn.execute(
+                    """
+                    WITH failed AS (
+                      SELECT *
+                      FROM unnest(
+                        %(projection_versions)s::text[],
+                        %(source_event_ids)s::text[],
+                        %(target_type_keys)s::text[],
+                        %(identity_ids)s::text[],
+                        %(payload_hashes)s::text[],
+                        %(lease_owners)s::text[],
+                        %(attempt_counts)s::bigint[]
+                      ) AS failed(
+                        projection_version, source_event_id, target_type_key, identity_id,
+                        payload_hash, lease_owner, attempt_count
+                      )
+                    )
+                    UPDATE token_radar_source_dirty_events queue
+                    SET due_at_ms = %(due_at_ms)s,
+                        leased_until_ms = NULL,
+                        lease_owner = NULL,
+                        last_error = %(last_error)s,
+                        updated_at_ms = %(now_ms)s
+                    FROM failed
+                    WHERE queue.projection_version = failed.projection_version
+                      AND queue.source_event_id = failed.source_event_id
+                      AND queue.target_type_key = failed.target_type_key
+                      AND queue.identity_id = failed.identity_id
+                      AND queue.payload_hash = failed.payload_hash
+                      AND queue.lease_owner = failed.lease_owner
+                      AND queue.attempt_count = failed.attempt_count
+                    """,
+                    retry_params,
                 )
-                UPDATE token_radar_source_dirty_events queue
-                SET due_at_ms = %(due_at_ms)s,
-                    leased_until_ms = NULL,
-                    lease_owner = NULL,
-                    last_error = %(last_error)s,
-                    updated_at_ms = %(now_ms)s
-                FROM failed
-                WHERE queue.projection_version = failed.projection_version
-                  AND queue.source_event_id = failed.source_event_id
-                  AND queue.target_type_key = failed.target_type_key
-                  AND queue.identity_id = failed.identity_id
-                  AND queue.payload_hash = failed.payload_hash
-                  AND queue.lease_owner = failed.lease_owner
-                  AND queue.attempt_count = failed.attempt_count
-                """,
-                params,
-            )
-            return _cursor_rowcount(cursor)
+                changed += _cursor_rowcount(cursor)
+            if exhausted_records:
+                deleted_rows, deleted_count = self._delete_claims_returning(exhausted_records)
+                changed += deleted_count
+                for row in deleted_rows:
+                    terminalize_source_row(
+                        self.conn,
+                        worker_name=parsed_worker_name,
+                        source_table="token_radar_source_dirty_events",
+                        target_key=_terminal_target_key(row),
+                        source_row=row,
+                        final_status="terminal",
+                        final_reason=_retry_budget_exhausted_reason(error),
+                        now_ms=now_ms,
+                        attempt_count=int(row["attempt_count"]),
+                        payload_hash=_completion_payload_hash(row),
+                        first_seen_at_ms=_optional_int(row.get("first_dirty_at_ms")),
+                        last_attempted_at_ms=now_ms,
+                        commit=False,
+                    )
+            return changed
 
         return _run_repository_write(self.conn, commit, _mark_error)
+
+    def _delete_claims_returning(self, records: list[dict[str, str | int]]) -> tuple[list[dict[str, Any]], int]:
+        cursor = self.conn.execute(
+            """
+            WITH done AS (
+              SELECT *
+              FROM unnest(
+                %(projection_versions)s::text[],
+                %(source_event_ids)s::text[],
+                %(target_type_keys)s::text[],
+                %(identity_ids)s::text[],
+                %(payload_hashes)s::text[],
+                %(lease_owners)s::text[],
+                %(attempt_counts)s::bigint[]
+              ) AS done(
+                projection_version, source_event_id, target_type_key, identity_id,
+                payload_hash, lease_owner, attempt_count
+              )
+            )
+            DELETE FROM token_radar_source_dirty_events queue
+            USING done
+            WHERE queue.projection_version = done.projection_version
+              AND queue.source_event_id = done.source_event_id
+              AND queue.target_type_key = done.target_type_key
+              AND queue.identity_id = done.identity_id
+              AND queue.payload_hash = done.payload_hash
+              AND queue.lease_owner = done.lease_owner
+              AND queue.attempt_count = done.attempt_count
+            RETURNING queue.*
+            """,
+            _key_params(records),
+        )
+        rows = cursor.fetchall()
+        deleted_count = _returned_rowcount(cursor, rows)
+        return [dict(row) for row in rows], deleted_count
 
 
 def _source_event_records(
@@ -373,12 +463,13 @@ def _completion_text(key: Mapping[str, Any], field: str) -> str:
 
 def _completion_attempt_count(key: Mapping[str, Any]) -> int:
     try:
-        attempt_count = int(key["attempt_count"])
-    except (KeyError, TypeError, ValueError) as exc:
+        value = key["attempt_count"]
+    except KeyError as exc:
         raise ValueError("token radar source dirty completion requires attempt_count from claim_due") from exc
-    if attempt_count <= 0:
-        raise ValueError("token radar source dirty completion requires attempt_count from claim_due")
-    return attempt_count
+    return _required_positive_int(
+        value,
+        "token radar source dirty completion requires attempt_count from claim_due",
+    )
 
 
 def _completion_lease_owner(key: Mapping[str, Any]) -> str:
@@ -446,6 +537,58 @@ def _cursor_rowcount(cursor: Any) -> int:
     if rowcount < 0:
         raise TypeError("token_radar_source_dirty_event_rowcount_invalid")
     return rowcount
+
+
+def _returned_rowcount(cursor: Any, rows: list[Any]) -> int:
+    rowcount = _cursor_rowcount(cursor)
+    if rowcount != len(rows):
+        raise TypeError("token_radar_source_dirty_event_rowcount_invalid")
+    return rowcount
+
+
+def _required_max_attempts(value: Any) -> int:
+    return _required_positive_int(value, "token_radar_source_dirty_event_max_attempts_required")
+
+
+def _required_positive_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _required_text(value: Any, field_name: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError(f"token_radar_source_dirty_event_{field_name}_required")
+    return text
+
+
+def _terminal_target_key(row: Mapping[str, Any]) -> str:
+    return ":".join(
+        (
+            _completion_text(row, "projection_version"),
+            _completion_text(row, "source_event_id"),
+            _completion_text(row, "target_type_key"),
+            _completion_text(row, "identity_id"),
+        )
+    )
+
+
+def _retry_budget_exhausted_reason(error: str) -> str:
+    message = str(error or "").strip()
+    return f"token_radar_projection_retry_budget_exhausted: {message}"[:2048]
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    return int(value)
 
 
 _RECENT_RESOLVED_EVENT_BODY_SQL = """

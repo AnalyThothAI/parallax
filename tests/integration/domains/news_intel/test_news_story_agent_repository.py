@@ -17,6 +17,7 @@ from parallax.domains.news_intel._constants import (
 )
 from parallax.domains.news_intel.repositories.news_repository import NewsRepository
 from parallax.domains.news_intel.runtime.news_projection_work import enqueue_story_brief_work
+from parallax.domains.news_intel.types.news_item_agent_admission import NewsItemAgentAdmission
 from parallax.domains.news_intel.types.news_item_brief import (
     NEWS_ITEM_BRIEF_AGENT_NAME,
     NEWS_ITEM_BRIEF_LANE,
@@ -325,7 +326,7 @@ def _insert_processed_story_item(
 
 
 def _set_story_identity(repo: NewsRepository, *, news_item_id: str, story_key: str) -> None:
-    repo.update_item_market_scope_and_story_identity(
+    repo.update_item_market_scope_and_agent_admission(
         news_item_id=news_item_id,
         market_scope=NewsMarketScope(
             scope=("crypto",),
@@ -339,6 +340,13 @@ def _set_story_identity(repo: NewsRepository, *, news_item_id: str, story_key: s
             confidence="strong",
             basis={"test": True},
             version=NEWS_STORY_IDENTITY_VERSION,
+        ),
+        admission=NewsItemAgentAdmission(
+            eligible=True,
+            status="eligible",
+            reason="integration_fixture",
+            representative_news_item_id=news_item_id,
+            basis={"test": True},
         ),
         now_ms=NOW_MS,
     )
@@ -364,6 +372,7 @@ def _insert_story_run(
         member_news_item_ids_json=member_news_item_ids,
         provider="litellm",
         model="gpt-5-mini",
+        backend="litellm_sdk",
         execution_trace_id=f"trace-{run_id}",
         workflow_name=NEWS_STORY_BRIEF_WORKFLOW_NAME,
         agent_name=NEWS_STORY_BRIEF_AGENT_NAME,
@@ -396,6 +405,7 @@ def _insert_item_run_and_brief(repo: NewsRepository, *, news_item_id: str) -> No
         news_item_id=news_item_id,
         provider="litellm",
         model="gpt-5-mini",
+        backend="litellm_sdk",
         execution_trace_id=f"trace-item-{news_item_id}",
         workflow_name=NEWS_ITEM_BRIEF_WORKFLOW_NAME,
         agent_name=NEWS_ITEM_BRIEF_AGENT_NAME,

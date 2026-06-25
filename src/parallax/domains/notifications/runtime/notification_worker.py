@@ -9,6 +9,10 @@ from typing import TYPE_CHECKING, Any, cast
 
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_result import WorkerResult
+from parallax.domains.notifications.runtime.notification_runtime_settings import (
+    positive_int,
+    positive_worker_setting_int,
+)
 from parallax.domains.notifications.types import NotificationCandidate
 
 if TYPE_CHECKING:
@@ -52,9 +56,12 @@ class NotificationWorker(WorkerBase):
         self.rule_engine = rule_engine
         self.publisher = publisher
         self.delivery_channels = delivery_channels or {}
-        self.delivery_max_attempts = max(1, int(delivery_max_attempts))
+        self.delivery_max_attempts = positive_int(
+            delivery_max_attempts,
+            error_code="notification_rule_delivery_max_attempts_required",
+        )
         self.delivery_wake = delivery_wake
-        self.batch_limit = max(1, int(settings.batch_size))
+        self.batch_limit = positive_worker_setting_int(settings, "batch_size", worker_name=name)
 
     async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
         result = await self._process_once(now_ms=now_ms)

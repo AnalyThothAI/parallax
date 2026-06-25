@@ -276,6 +276,17 @@ def test_macrodata_runner_requires_formal_fred_and_timeout_settings_contracts() 
         runner._macrodata_timeout_seconds(MissingTimeoutSettings())
 
 
+@pytest.mark.parametrize("timeout_seconds", [0.0, -1.0, True, "240"])
+def test_macrodata_runner_rejects_malformed_timeout_settings(timeout_seconds: object) -> None:
+    from parallax.integrations.macrodata import runner
+
+    class Settings:
+        workers = _macrodata_workers(timeout_seconds=timeout_seconds)
+
+    with pytest.raises(ValueError, match="macrodata_timeout_seconds_required"):
+        runner._macrodata_timeout_seconds(Settings())
+
+
 def test_macrodata_runner_honors_disabled_fred_env_without_defaulting(monkeypatch) -> None:
     from parallax.integrations.macrodata.runner import MacrodataBundleRunner
 

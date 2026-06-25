@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import replace
 from decimal import Decimal
 
+import pytest
+
 from parallax.app.runtime.repository_session import repositories_for_connection
 from parallax.domains.asset_market.services.event_market_capture import CaptureResult
 from parallax.domains.asset_market.types import EnrichedEventCapture, MarketTick, market_tick_id
@@ -196,6 +198,26 @@ def test_ingest_capture_tick_and_dirty_target_roll_back_with_event_transaction(t
     assert event_row is None
     assert tick_row is None
     assert dirty_row is None
+
+
+def test_ingest_rejects_loose_capture_result_contract(tmp_path):
+    conn, _, ingest = open_ingest(tmp_path)
+    event = make_event(
+        "event-loose-capture-result",
+        text="https://gmgn.ai/eth/token/0x6982508145454ce325ddbe47a25d4ec3d2311933 loose",
+        received_at_ms=1_800_000_020_000,
+    )
+    try:
+        prepared, resolutions, capture_result = _prepared_capture(ingest, event)
+
+        class LooseCaptureResult:
+            tick = capture_result.tick
+            capture = capture_result.capture
+
+        with pytest.raises(RuntimeError, match="ingest_capture_result_contract_required"):
+            ingest.commit_prepared_event(prepared, resolutions=resolutions, captures=[LooseCaptureResult()])
+    finally:
+        conn.close()
 
 
 def _prepared_capture(ingest: IngestService, event):

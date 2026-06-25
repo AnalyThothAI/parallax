@@ -209,6 +209,61 @@ def test_asset_profile_refresh_worker_reports_provider_block_without_writing_tok
     ]
 
 
+def test_asset_profile_refresh_worker_backfills_missing_token_radar_targets_before_claiming(monkeypatch):
+    now_ms = 1_700_000_000_000
+    row = claim_row("gmgn_dex_profile", target_id="asset-backfill")
+    profile = DexTokenProfile(
+        chain_id="solana",
+        address="abc",
+        symbol="ABC",
+        name="ABC",
+        logo_url=None,
+        banner_url=None,
+        website=None,
+        twitter_username=None,
+        telegram=None,
+        gmgn_url=None,
+        geckoterminal_url=None,
+        description=None,
+        raw={},
+    )
+
+    monkeypatch.setattr(module, "fetch_asset_profile", lambda **_: profile)
+    monkeypatch.setattr(module, "write_ready_asset_profile", lambda **_: None)
+    db = FakeDB(backfill_rows_by_provider={"gmgn_dex_profile": [row]})
+    worker = module.AssetProfileRefreshWorker(
+        name="asset_profile_refresh",
+        settings=worker_settings(batch_size=7),
+        db=db,
+        telemetry=object(),
+        dex_profile_sources=(DexProfileSource(provider="gmgn_dex_profile", market=object()),),
+    )
+
+    result = asyncio.run(worker.run_once(now_ms=now_ms))
+
+    assert result.processed == 1
+    assert result.notes["result"]["source_rows_scanned"] == 1
+    assert result.notes["result"]["sources"]["gmgn_dex_profile"]["targets_enqueued"] == 1
+    assert db.refresh_targets.backfill_calls == [
+        {
+            "provider": "gmgn_dex_profile",
+            "now_ms": now_ms,
+            "limit": 7,
+            "commit": True,
+        }
+    ]
+    assert db.refresh_targets.claim_calls == [
+        {
+            "provider": "gmgn_dex_profile",
+            "now_ms": now_ms,
+            "limit": 7,
+            "lease_owner": "asset_profile_refresh",
+            "lease_ms": 120_000,
+            "commit": True,
+        }
+    ]
+
+
 def test_asset_profile_refresh_worker_requires_formal_statement_timeout_settings_contract(monkeypatch):
     def fake_fetch_asset_profile(**kwargs):
         raise AssertionError("fetch should not run before settings contract fails")
@@ -229,6 +284,121 @@ def test_asset_profile_refresh_worker_requires_formal_statement_timeout_settings
         asyncio.run(worker.run_once(now_ms=1_700_000_000_000))
 
     assert db.session_names == []
+
+
+@pytest.mark.parametrize(
+    ("overrides", "error_code"),
+    [
+        pytest.param({"batch_size": 0}, "asset_profile_refresh_batch_size_required", id="batch-zero"),
+        pytest.param({"batch_size": True}, "asset_profile_refresh_batch_size_required", id="batch-bool"),
+        pytest.param({"batch_size": "50"}, "asset_profile_refresh_batch_size_required", id="batch-string"),
+        pytest.param({"lease_ms": 0}, "asset_profile_refresh_lease_ms_required", id="lease-zero"),
+        pytest.param({"lease_ms": True}, "asset_profile_refresh_lease_ms_required", id="lease-bool"),
+        pytest.param({"lease_ms": "120000"}, "asset_profile_refresh_lease_ms_required", id="lease-string"),
+    ],
+)
+def test_asset_profile_refresh_worker_rejects_malformed_claim_settings_before_claim(
+    overrides,
+    error_code,
+) -> None:
+    db = FakeDB(claims_by_provider={"gmgn_dex_profile": [claim_row("gmgn_dex_profile")]})
+    worker = module.AssetProfileRefreshWorker(
+        name="asset_profile_refresh",
+        settings=worker_settings(**overrides),
+        db=db,
+        telemetry=object(),
+        dex_profile_sources=(DexProfileSource(provider="gmgn_dex_profile", market=object()),),
+    )
+
+    with pytest.raises(ValueError, match=error_code):
+        asyncio.run(worker.run_once(now_ms=1_700_000_000_000))
+
+    if "batch_size" in overrides:
+        assert db.refresh_targets.backfill_calls == []
+    assert db.refresh_targets.claim_calls == []
+
+
+@pytest.mark.parametrize(
+    ("overrides", "error_code"),
+    [
+        pytest.param(
+            {"ready_refresh_ms": 0},
+            "asset_profile_refresh_ready_refresh_ms_required",
+            id="ready-zero",
+        ),
+        pytest.param(
+            {"ready_refresh_ms": True},
+            "asset_profile_refresh_ready_refresh_ms_required",
+            id="ready-bool",
+        ),
+        pytest.param(
+            {"missing_refresh_ms": 0},
+            "asset_profile_refresh_missing_refresh_ms_required",
+            id="missing-zero",
+        ),
+        pytest.param(
+            {"missing_refresh_ms": "900000"},
+            "asset_profile_refresh_missing_refresh_ms_required",
+            id="missing-string",
+        ),
+        pytest.param(
+            {"error_refresh_ms": 0},
+            "asset_profile_refresh_error_refresh_ms_required",
+            id="error-zero",
+        ),
+        pytest.param(
+            {"error_refresh_ms": True},
+            "asset_profile_refresh_error_refresh_ms_required",
+            id="error-bool",
+        ),
+    ],
+)
+def test_asset_profile_refresh_worker_rejects_malformed_refresh_policy_before_provider_fetch(
+    monkeypatch,
+    overrides,
+    error_code,
+) -> None:
+    fetch_calls: list[dict] = []
+    monkeypatch.setattr(module, "fetch_asset_profile", lambda **kwargs: fetch_calls.append(kwargs))
+    db = FakeDB(claims_by_provider={"gmgn_dex_profile": [claim_row("gmgn_dex_profile")]})
+    worker = module.AssetProfileRefreshWorker(
+        name="asset_profile_refresh",
+        settings=worker_settings(**overrides),
+        db=db,
+        telemetry=object(),
+        dex_profile_sources=(DexProfileSource(provider="gmgn_dex_profile", market=object()),),
+    )
+
+    with pytest.raises(ValueError, match=error_code):
+        asyncio.run(worker.run_once(now_ms=1_700_000_000_000))
+
+    assert fetch_calls == []
+    assert db.refresh_targets.rescheduled == []
+
+
+@pytest.mark.parametrize("provider_retry_ms", [0, True, "300000"])
+def test_asset_profile_refresh_worker_rejects_malformed_provider_retry_before_reschedule(
+    monkeypatch,
+    provider_retry_ms,
+) -> None:
+    monkeypatch.setattr(
+        module,
+        "fetch_asset_profile",
+        lambda **_: (_ for _ in ()).throw(DexProviderTemporarilyUnavailable("blocked")),
+    )
+    db = FakeDB(claims_by_provider={"gmgn_dex_profile": [claim_row("gmgn_dex_profile")]})
+    worker = module.AssetProfileRefreshWorker(
+        name="asset_profile_refresh",
+        settings=worker_settings(provider_retry_ms=provider_retry_ms),
+        db=db,
+        telemetry=object(),
+        dex_profile_sources=(DexProfileSource(provider="gmgn_dex_profile", market=object()),),
+    )
+
+    with pytest.raises(ValueError, match="asset_profile_refresh_provider_retry_ms_required"):
+        asyncio.run(worker.run_once(now_ms=1_700_000_000_000))
+
+    assert db.refresh_targets.rescheduled == []
 
 
 def test_asset_profile_refresh_worker_close_does_not_close_shared_profile_provider():
@@ -322,10 +492,14 @@ def worker_settings(**overrides):
 
 
 class FakeDB:
-    def __init__(self, claims_by_provider: dict[str, list[dict]] | None = None) -> None:
+    def __init__(
+        self,
+        claims_by_provider: dict[str, list[dict]] | None = None,
+        backfill_rows_by_provider: dict[str, list[dict]] | None = None,
+    ) -> None:
         self.session_names: list[str] = []
         self.session_kwargs: list[dict] = []
-        self.refresh_targets = FakeRefreshTargets(claims_by_provider or {})
+        self.refresh_targets = FakeRefreshTargets(claims_by_provider or {}, backfill_rows_by_provider or {})
         self.profile_dirty = FakeProfileDirtyTargets()
 
     def worker_session(self, name: str, **kwargs):
@@ -355,10 +529,23 @@ class FakeRepos:
 
 
 class FakeRefreshTargets:
-    def __init__(self, claims_by_provider: dict[str, list[dict]]) -> None:
+    def __init__(
+        self,
+        claims_by_provider: dict[str, list[dict]],
+        backfill_rows_by_provider: dict[str, list[dict]],
+    ) -> None:
         self.claims_by_provider = claims_by_provider
+        self.backfill_rows_by_provider = backfill_rows_by_provider
+        self.backfill_calls: list[dict] = []
         self.claim_calls: list[dict] = []
         self.rescheduled: list[dict] = []
+
+    def enqueue_missing_token_radar_current_targets(self, **kwargs):
+        self.backfill_calls.append(dict(kwargs))
+        rows = list(self.backfill_rows_by_provider.get(kwargs["provider"], []))
+        if rows:
+            self.claims_by_provider.setdefault(kwargs["provider"], []).extend(rows)
+        return {"targets": len(rows), "source_rows_scanned": len(rows)}
 
     def claim_due(self, **kwargs):
         self.claim_calls.append(dict(kwargs))

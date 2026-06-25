@@ -31,6 +31,7 @@ def test_search_read_service_requires_explicit_query_boundaries_without_defaults
         "scope: str =",
         "window: str =",
         "WINDOW_MS.get(window",
+        "max(0, int(limit))",
     )
     required = (
         "limit: int,",
@@ -40,12 +41,49 @@ def test_search_read_service_requires_explicit_query_boundaries_without_defaults
         "WINDOW_MS[window]",
         "SearchScopeError",
         "SearchWindowError",
+        "search_limit_required",
     )
 
     assert [token for token in forbidden if token in source] == []
     assert [token for token in required if token not in source] == []
     assert 'search.add_argument("--window"' in parser_source
     assert "window=args.window" in cli_source
+
+
+def test_search_event_query_limits_reject_runtime_int_repairs() -> None:
+    query_source = (SRC / "domains/token_intel/queries/search_events_query.py").read_text()
+    forbidden = (
+        "max(0, int(route_limit))",
+        "max(0, int(limit))",
+    )
+    required = (
+        "search_events_route_limit_required",
+        "search_events_target_limit_required",
+        "search_events_target_page_limit_required",
+    )
+
+    assert [token for token in forbidden if token in query_source] == []
+    assert [token for token in required if token not in query_source] == []
+
+
+def test_api_limit_validators_reject_runtime_int_repairs() -> None:
+    validators_source = API_VALIDATORS.read_text()
+    search_routes_source = (SRC / "app/surfaces/api/routes_search.py").read_text()
+    forbidden = (
+        "max(0, min(int(value)",
+        "max(1, _limit(posts_limit",
+    )
+
+    assert [token for token in forbidden if token in f"{validators_source}\n{search_routes_source}"] == []
+    assert "invalid_limit" in validators_source
+    assert "_positive_limit(posts_limit, maximum=50, field=\"posts_limit\")" in search_routes_source
+
+
+def test_news_page_query_limit_rejects_runtime_int_repairs() -> None:
+    source = (SRC / "domains/news_intel/queries/news_page_query.py").read_text()
+
+    assert "max(1, int(limit))" not in source
+    assert "news_page_query_limit_required" in source
 
 
 def test_search_or_symbol_resolution_uses_batched_keyset_sql() -> None:
@@ -136,6 +174,7 @@ def test_token_target_read_services_require_valid_window_and_scope_without_fallb
         forbidden = (
             "WINDOW_MS.get(window",
             'watched_only=scope == "matched"',
+            "max(0, int(limit))",
         )
         required = (
             "_window_ms(window)",
@@ -143,10 +182,16 @@ def test_token_target_read_services_require_valid_window_and_scope_without_fallb
             "WINDOW_MS[window]",
             "WindowError",
             "ScopeError",
+            "_required_nonnegative_int(limit,",
         )
 
         assert [token for token in forbidden if token in source] == []
         assert [token for token in required if token not in source] == []
+
+    posts_source = (SRC / "domains/token_intel/read_models/token_target_posts_service.py").read_text()
+    timeline_source = (SRC / "domains/token_intel/read_models/token_target_social_timeline_service.py").read_text()
+    assert "token_target_posts_limit_required" in posts_source
+    assert "token_target_social_timeline_limit_required" in timeline_source
 
 
 def test_event_token_projection_requires_formal_resolution_fields_without_json_defaults() -> None:
@@ -189,6 +234,11 @@ def test_watchlist_handle_overview_bounds_source_sample_without_repository_defau
         "config or WatchlistReadWindowConfig()",
         "def _handle_overview_counts",
         "MAX(events.received_at_ms)",
+        "source_limit=max(1, int(self.config.overview_source_limit))",
+        "cluster_limit=max(1, int(self.config.overview_cluster_limit))",
+        "max(0, int(source_limit))",
+        "max(0, int(cluster_limit))",
+        "max(0, int(limit))",
     )
     required_repository = (
         "source_limit: int,",
@@ -206,13 +256,20 @@ def test_watchlist_handle_overview_bounds_source_sample_without_repository_defau
     required_service = (
         "overview_source_limit: int",
         "overview_cluster_limit: int",
-        "source_limit=max(1, int(self.config.overview_source_limit))",
-        "cluster_limit=max(1, int(self.config.overview_cluster_limit))",
+        "watchlist_window_days_required",
+        "watchlist_overview_source_limit_required",
+        "watchlist_overview_cluster_limit_required",
+    )
+    required_limit_contracts = (
+        "watchlist_timeline_limit_required",
+        "watchlist_source_limit_required",
+        "watchlist_cluster_limit_required",
     )
 
     assert [token for token in forbidden if token in repository_source + service_source] == []
     assert [token for token in required_repository if token not in repository_source] == []
     assert [token for token in required_service if token not in service_source] == []
+    assert [token for token in required_limit_contracts if token not in repository_source] == []
     assert "overview_source_limit=500" in route_source
     assert "overview_cluster_limit=500" in route_source
 
@@ -320,11 +377,13 @@ def test_ops_diagnostics_payload_requires_explicit_query_boundaries_without_defa
         "since_hours: int =",
         "window: str =",
         "scope: str =",
+        "max(1, int(since_hours))",
     )
     required = (
         "since_hours: int,",
         "window: str,",
         "scope: str,",
+        "ops_diagnostics_since_hours_required",
     )
 
     assert [token for token in forbidden if token in payload_source] == []
@@ -356,6 +415,8 @@ def test_stocks_radar_api_is_provider_free() -> None:
     assert "quote_provider" not in service_source
     assert ".quote(" not in service_source
     assert "ThreadPoolExecutor" not in service_source
+    assert "max(0, int(limit))" not in service_source
+    assert "stocks_radar_limit_required" in service_source
 
 
 def test_token_radar_route_does_not_synthesize_target_identity_for_narrative_hydration() -> None:

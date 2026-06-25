@@ -93,6 +93,41 @@ def test_cex_read_model_repositories_require_explicit_transactions() -> None:
     assert "commit=False" in worker_text
 
 
+def test_cex_oi_runtime_limits_are_formal_contracts_without_runtime_repairs() -> None:
+    sources = {
+        "worker": CEX_OI_WORKER.read_text(encoding="utf-8"),
+        "repository": CEX_OI_REPOSITORY.read_text(encoding="utf-8"),
+        "builder": CEX_BINANCE_OI_BUILDER.read_text(encoding="utf-8"),
+        "enricher": CEX_COINGLASS_DETAIL_ENRICHER.read_text(encoding="utf-8"),
+    }
+    forbidden = (
+        "max(1, int(limit))",
+        "max(1, int(self.settings.batch_size))",
+        "max(1, min(int(self.settings.universe_limit), batch_size))",
+        "universe[: max(1, int(limit))]",
+        "bands[: max(0, int(limit))]",
+    )
+    required = (
+        "cex_oi_radar_board_batch_size_required",
+        "cex_oi_radar_board_universe_limit_required",
+        "cex_oi_radar_universe_limit_required",
+        "cex_oi_radar_latest_board_limit_required",
+        "cex_oi_radar_limit_required",
+        "coinglass_detail_enrichment_limit_required",
+        "coinglass_detail_level_limit_required",
+        "isinstance(value, bool) or not isinstance(value, int)",
+    )
+
+    violations = {
+        name: [token for token in forbidden if token in source]
+        for name, source in sources.items()
+    }
+    combined = "\n".join(sources.values())
+
+    assert violations == {name: [] for name in sources}
+    assert [token for token in required if token not in combined] == []
+
+
 def test_cex_derivative_series_upsert_skips_unchanged_conflict_rows() -> None:
     text = CEX_DERIVATIVE_SERIES_REPOSITORY.read_text(encoding="utf-8")
 

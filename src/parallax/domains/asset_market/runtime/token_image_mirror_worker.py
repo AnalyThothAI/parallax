@@ -48,9 +48,15 @@ class TokenImageMirrorWorker(WorkerBase):
         ) as repos:
             claimed = repos.token_image_source_dirty_targets.claim_due(
                 now_ms=now_ms,
-                limit=max(1, int(self.settings.batch_size)),
+                limit=_required_positive_int(
+                    self.settings.batch_size,
+                    error_code="token_image_mirror_batch_size_required",
+                ),
                 lease_owner=self.name,
-                lease_ms=max(1, int(self.settings.lease_ms)),
+                lease_ms=_required_positive_int(
+                    self.settings.lease_ms,
+                    error_code="token_image_mirror_lease_ms_required",
+                ),
                 commit=True,
             )
             result["claimed"] = len(claimed)
@@ -86,7 +92,10 @@ class TokenImageMirrorWorker(WorkerBase):
         mirror_service = TokenImageMirrorService(
             repository=_TokenImageAssetSessionRepository(self.db, self.name, self.settings),
             app_home=self.app_home,
-            retry_ms=max(1, int(self.settings.retry_ms)),
+            retry_ms=_required_positive_int(
+                self.settings.retry_ms,
+                error_code="token_image_mirror_retry_ms_required",
+            ),
         )
         for source_url, source_claims in _claims_by_source_url(pending_claims).items():
             source_row = _source_row_from_claim(source_claims[0])
@@ -129,8 +138,14 @@ class TokenImageMirrorWorker(WorkerBase):
             repos.token_image_source_dirty_targets.mark_error(
                 claims,
                 error=error,
-                retry_ms=max(1, int(self.settings.retry_ms)),
-                max_attempts=int(self.settings.max_attempts),
+                retry_ms=_required_positive_int(
+                    self.settings.retry_ms,
+                    error_code="token_image_mirror_retry_ms_required",
+                ),
+                max_attempts=_required_positive_int(
+                    self.settings.max_attempts,
+                    error_code="token_image_mirror_max_attempts_required",
+                ),
                 worker_name=self.name,
                 now_ms=now_ms,
                 commit=False,
@@ -299,6 +314,12 @@ def _required_claim_source_watermark_ms(claim: dict[str, Any]) -> int:
 def _error_text(exc: BaseException) -> str:
     text = str(exc).strip()
     return f"{type(exc).__name__}: {text}" if text else type(exc).__name__
+
+
+def _required_positive_int(value: Any, *, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _empty_result(*, now_ms: int) -> dict[str, Any]:

@@ -182,3 +182,19 @@ def test_claim_edge_budget_uses_returning_rowcount_for_boolean_result() -> None:
 
     assert _run_claim_edge_budget(accepted) is True
     assert _run_claim_edge_budget(exhausted) is False
+
+
+@pytest.mark.parametrize("max_enqueues", [0, -1, True, "3"])
+def test_claim_edge_budget_rejects_malformed_max_enqueues_before_sql(max_enqueues: object) -> None:
+    conn = MissingTransactionConnection()
+
+    with pytest.raises(ValueError, match="pulse_edge_budget_max_enqueues_required"):
+        PulseAdmissionRepository(conn).claim_edge_budget(
+            candidate_id="candidate-1",
+            hour_bucket_ms=NOW_MS,
+            now_ms=NOW_MS,
+            max_enqueues=max_enqueues,  # type: ignore[arg-type]
+            commit=False,
+        )
+
+    assert conn.sql == []

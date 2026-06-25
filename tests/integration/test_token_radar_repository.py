@@ -112,6 +112,10 @@ def test_publish_and_latest_current_rows_persist_factor_snapshot_json(tmp_path):
         "identity_id": "asset-1",
         "target_type": "Asset",
         "target_id": "asset-1",
+        "chain_id": "eip155:1",
+        "address": "0xabc",
+        "asset_chain_id": "eip155:1",
+        "asset_address": "0xabc",
         "pricefeed_id": "feed-1",
         "intent_json": {"display_symbol": "BOV"},
         "factor_snapshot_json": _valid_factor_snapshot(rank_score=12),
@@ -906,7 +910,13 @@ def _insert_token_resolution(
 def _valid_factor_snapshot(*, rank_score: object = 12) -> dict[str, object]:
     return {
         "schema_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
-        "subject": {"target_type": "Asset", "target_id": "asset-1", "symbol": "BOV"},
+        "subject": {
+            "target_type": "Asset",
+            "target_id": "asset-1",
+            "chain_id": "eip155:1",
+            "address": "0xabc",
+            "symbol": "BOV",
+        },
         "market": {
             "event_anchor": {
                 "target_type": "Asset",

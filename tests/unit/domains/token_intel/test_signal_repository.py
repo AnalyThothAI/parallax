@@ -112,6 +112,30 @@ def test_signal_repository_alert_insert_rejects_invalid_cursor_rowcount(rowcount
         )
 
 
+def test_signal_repository_account_alerts_allows_zero_limit_with_explicit_sql_limit() -> None:
+    conn = FakeConn()
+
+    rows = SignalRepository(conn).account_alerts(window_ms=60_000, now_ms=1_700_000_000_000, limit=0)
+
+    assert rows == []
+    assert "LIMIT %s" in conn.sql
+    assert conn.params[-1] == 0
+
+
+@pytest.mark.parametrize("limit", [-1, True, "1"])
+def test_signal_repository_account_alerts_rejects_malformed_limit_before_sql(limit: object) -> None:
+    conn = FakeConn()
+
+    with pytest.raises(ValueError, match="signal_repository_alert_limit_required"):
+        SignalRepository(conn).account_alerts(
+            window_ms=60_000,
+            now_ms=1_700_000_000_000,
+            limit=limit,  # type: ignore[arg-type]
+        )
+
+    assert conn.sqls == []
+
+
 class FakeTransaction:
     def __init__(self, conn: FakeConn) -> None:
         self.conn = conn

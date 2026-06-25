@@ -34,10 +34,11 @@ there are no runtime `lease_seconds` / `error_retry_seconds` fallbacks, no
 service-local rank-threshold defaults, no carry-forward TTL compatibility, and
 no `wake_bus` / `wake_emitter` constructor aliases.
 Claimed dirty-target `window` and `scope` are validated against the same formal
-worker settings before admission-target or source-set reads. Malformed claim
-dimensions fail through dirty-target error/retry; the worker must not treat an
-unknown scope as all-public or restore an unknown window to a 24h source-set
-width.
+worker settings before admission-target or source-set reads, and dirty-target
+claim `UPDATE ... RETURNING` rowcount must match returned claimed rows before
+source-set evidence is loaded. Malformed claim dimensions fail through
+dirty-target error/retry; the worker must not treat an unknown scope as
+all-public or restore an unknown window to a 24h source-set width.
 Worker claim/done/error writes are caller-owned inside
 `RepositorySession.transaction`. Repository-owned dirty-target enqueue, claim,
 done, error, and reschedule mutations require a callable connection

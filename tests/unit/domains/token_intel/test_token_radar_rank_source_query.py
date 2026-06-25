@@ -350,6 +350,30 @@ def test_rank_source_query_prunes_edges_by_projection_and_cutoff() -> None:
     assert conn.commit_count == 0
 
 
+@pytest.mark.parametrize("limit", [0, -1, True, "11"])
+def test_rank_source_query_prune_edges_rejects_malformed_limit_before_sql(limit: object) -> None:
+    conn = FakeConn(rowcount=5)
+
+    with pytest.raises(ValueError, match="token_radar_rank_source_prune_limit_required"):
+        TokenRadarRankSourceQuery(conn).prune_edges(
+            projection_version="token-radar-v13-social-attention",
+            event_received_before_ms=1_777_800_000_000,
+            limit=limit,  # type: ignore[arg-type]
+        )
+
+    assert conn.sqls == []
+
+
+@pytest.mark.parametrize("chunk_size", [0, -1, True, "200"])
+def test_rank_source_query_rejects_malformed_chunk_size_before_sql(chunk_size: object) -> None:
+    conn = FakeConn()
+
+    with pytest.raises(ValueError, match="token_radar_rank_source_chunk_size_required"):
+        TokenRadarRankSourceQuery(conn, chunk_size=chunk_size)  # type: ignore[arg-type]
+
+    assert conn.sqls == []
+
+
 def test_rank_source_query_prune_edges_requires_cursor_rowcount() -> None:
     conn = FakeConn(omit_rowcount=True)
 

@@ -99,9 +99,9 @@ signals only; they are not product readiness and are not business facts.
   lookups for every replay item.
 - Push payloads include `event` messages with `entities`, `alerts`,
   `token_intents`, and `token_resolutions`; `notification` messages when
-  notifications are subscribed; `social_event_enrichment_update` messages after
-  store commit; and `live_market_update` messages for subscribed market
-  targets.
+  notifications are subscribed; and `live_market_update` messages for
+  subscribed market targets. The retired social-enrichment agent has no
+  WebSocket push payload.
 - Event payload `token_resolutions` is the same public event-token projection
   used by `/api/recent`: resolved token target identity plus event-anchored
   `price`. It is not a raw `token_intent_resolutions` row. A selected current
@@ -541,39 +541,35 @@ Macro contract:
 Watchlist handle intel contract:
 
 - `/api/watchlist/handles/overview` is authenticated and returns configured
-  handles only. Rows expose persisted handle-level recency and counts:
+  handles only. Rows expose current fact-query recency and counts:
   `last_source_event_at_ms`, `recent_source_event_count`,
-  `recent_signal_event_count`, `total_signal_event_count`, `summary_status`,
-  and `summary_is_stale`. This is the cockpit watchlist-row source; clients do
-  not derive selected-handle row facts from `/api/recent` or WebSocket replay.
+  `recent_signal_event_count`, and `total_signal_event_count`. Retired summary
+  status fields are not part of the public row contract. This is the cockpit
+  watchlist-row source; clients do not derive selected-handle row facts from
+  `/api/recent` or WebSocket replay.
 - `/api/watchlist/handle/{handle}/overview` is authenticated. `{handle}` follows
-  the same normalization and configured-handle requirement as summary/timeline.
+  the same normalization and configured-handle requirement as timeline.
   The endpoint accepts `scope=signal|all` and returns selected-handle metrics,
   `resolved_token_clusters`, `candidate_mention_clusters`,
   `narrative_clusters`, and `risk_notes`. Resolved clusters are built from the
-  public event-token projection; candidate clusters come from structured
-  extraction candidates and event cashtags that are not resolved targets.
-- `/api/watchlist/handle/{handle}/summary` is authenticated. `{handle}` must
-  match `^[A-Za-z0-9_.-]{1,64}$` after trimming `@`; unconfigured handles return
-  `404 {"error":"handle_not_found"}`. The response exposes `handle`, `status`
-  (`ready` or `not_ready`), `generated_at_ms`, `staleness_ms`, `is_stale`,
-  `pending_recompute`, total `signal_count`, `input_event_count`,
-  `signal_count_at_generation`, `model`, `summary_zh`, and `topics[]`. Topic
-  items use `title`, `description`, `event_count`, `top_event_ids`, `symbols`,
-  and `confidence`.
+  public event-token projection; candidate clusters come from persisted event
+  cashtags that are not resolved targets, and narrative clusters come from
+  persisted hashtags. The route does not call a summary agent, enrichment
+  worker, provider, or request-time model.
 - `/api/watchlist/handle/{handle}/timeline` is authenticated and accepts
-  `scope=signal|all`, `limit` (default 30, maximum 100), and cursor. `signal`
-  returns only events with a persisted `social_event_extraction.is_signal_event
-  = true`; `all` returns the source stream for that handle with social-event
-  extraction attached when it exists. Invalid limit values return FastAPI 422.
-  Invalid cursors return `400 {"error":"invalid_cursor"}`.
+  `scope=signal|all`, `limit` (default 30, maximum 100), and cursor. The scope
+  is validated and echoed for frontend route state; the hard-cut read path
+  returns a bounded source event stream for the configured handle and attaches
+  current token resolutions for the visible page. Invalid limit values return
+  FastAPI 422. Invalid cursors return `400 {"error":"invalid_cursor"}`.
 - Timeline pages are ordered by `(received_at_ms DESC, event_id DESC)` and use a
   base64url cursor encoding those two fields. Clients must treat the cursor as
-  opaque. Timeline items include the source event, optional `social_event`, and
-  current `token_resolutions` in the same shape exposed by `/api/recent`.
-- The Watchlist page renders `summary_zh` and `social_event.summary_zh` as the
-  primary text. Raw tweet text remains available as event detail; frontend code
-  must not reconstruct summaries from the original tweet body.
+  opaque. Timeline items include source event fields, `social_event = null`,
+  and current `token_resolutions` in the same shape exposed by `/api/recent`.
+- The Watchlist page renders source event text, resolved-token clusters,
+  candidate mention clusters, narrative clusters, and current token-resolution
+  facts. Frontend code must not reconstruct removed summary-agent outputs from
+  the original source body.
 - The canonical frontend Watchlist route state is
   `/watchlist?handle=<handle>&timeline_scope=signal|all`. The live radar
   `scope=matched|all` URL key is ignored by Watchlist timeline state.
@@ -686,6 +682,11 @@ collector and returns the canonical worker map plus queue depths where
 queue tables exist. `ops refresh-asset-profiles` is the one-shot
 operator path for due DEX profile source refreshes; it returns an explicit
 skipped result when no profile source is configured. `ops
+queue-resolve-bucket` is the bounded operator path for resolving unresolved
+`worker_queue_terminal_events` by exact worker, source table, and reason
+bucket. Dry-run returns only aggregate counts; execute mode still resolves each
+row through the Queue Terminal state machine and must not print terminal ids,
+target keys, or source-row payloads. `ops
 sync-binance-cex-profiles` refreshes the Binance CEX profile source cache for
 existing routed CEX tokens. Its source-cache writes validate optional single-row
 `RETURNING` rowcount evidence: no matching routed token is rowcount=0/no row,

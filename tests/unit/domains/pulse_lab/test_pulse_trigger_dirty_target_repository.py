@@ -132,6 +132,40 @@ def test_claim_due_orders_by_priority_due_and_updated_and_increments_attempts() 
     assert conn.params[-1]["lease_owner"] == "pulse-a"
 
 
+@pytest.mark.parametrize(
+    ("overrides", "error_code"),
+    [
+        pytest.param({"limit": 0}, "pulse_trigger_dirty_target_claim_limit_required", id="zero-limit"),
+        pytest.param({"limit": -1}, "pulse_trigger_dirty_target_claim_limit_required", id="negative-limit"),
+        pytest.param({"limit": True}, "pulse_trigger_dirty_target_claim_limit_required", id="bool-limit"),
+        pytest.param({"limit": "25"}, "pulse_trigger_dirty_target_claim_limit_required", id="string-limit"),
+        pytest.param({"lease_ms": 0}, "pulse_trigger_dirty_target_claim_lease_ms_required", id="zero-lease"),
+        pytest.param({"lease_ms": -1}, "pulse_trigger_dirty_target_claim_lease_ms_required", id="negative-lease"),
+        pytest.param({"lease_ms": True}, "pulse_trigger_dirty_target_claim_lease_ms_required", id="bool-lease"),
+        pytest.param({"lease_ms": "60000"}, "pulse_trigger_dirty_target_claim_lease_ms_required", id="string-lease"),
+        pytest.param({"lease_owner": ""}, "pulse_trigger_dirty_target_claim_lease_owner_required", id="empty-owner"),
+    ],
+)
+def test_claim_due_requires_formal_claim_contract_before_sql(
+    overrides: dict[str, object],
+    error_code: str,
+) -> None:
+    conn = _ScriptedConnection([])
+    kwargs: dict[str, object] = {
+        "now_ms": 1_700_000_000_000,
+        "limit": 25,
+        "lease_owner": "pulse-a",
+        "lease_ms": 60_000,
+        "commit": False,
+        **overrides,
+    }
+
+    with pytest.raises(ValueError, match=error_code):
+        PulseTriggerDirtyTargetRepository(conn).claim_due(**kwargs)  # type: ignore[arg-type]
+
+    assert conn.sql == []
+
+
 def test_payload_hash_rejects_legacy_non_string_payload_keys() -> None:
     with pytest.raises(ValueError, match="current payload hash payload has non-string keys"):
         _payload_hash({123: "legacy", "target_type": "Asset", "target_id": "asset-1"})
@@ -234,6 +268,82 @@ def test_reschedule_releases_claim_without_terminal_attempt_limit() -> None:
     assert conn.params[-1]["due_at_ms"] == 1_700_000_120_000
 
 
+def test_mark_error_terminalizes_exhausted_claims_into_queue_terminal() -> None:
+    claim = {
+        **_claimed_dirty_target(),
+        "attempt_count": 2,
+        "dirty_reason": "token_radar_changed",
+        "source_watermark_ms": 1_700_000_000_000,
+        "first_dirty_at_ms": 1_700_000_000_000,
+        "updated_at_ms": 1_700_000_005_000,
+    }
+    conn = _ScriptedConnection(
+        [
+            [claim],
+            [],
+            [{"terminal_generation": 1}],
+            [{"terminal_id": "terminal-1", "source_row_json": {}}],
+        ],
+        rowcount=1,
+    )
+
+    changed = PulseTriggerDirtyTargetRepository(conn).mark_error(
+        [claim],
+        error="boom",
+        now_ms=1_700_000_010_000,
+        retry_ms=30_000,
+        max_attempts=2,
+        worker_name="pulse_candidate",
+        commit=False,
+    )
+
+    assert changed == 1
+    assert any(
+        "DELETE FROM pulse_trigger_dirty_targets queue" in sql and "RETURNING queue.*" in sql for sql in conn.sql
+    )
+    assert any("INSERT INTO worker_queue_terminal_events" in sql for sql in conn.sql)
+    terminal_params = conn.params[-1]
+    assert terminal_params["worker_name"] == "pulse_candidate"
+    assert terminal_params["source_table"] == "pulse_trigger_dirty_targets"
+    assert terminal_params["final_status"] == "terminal"
+    assert terminal_params["final_reason"] == "pulse_trigger_dirty_retry_budget_exhausted: boom"
+    assert terminal_params["attempt_count"] == 2
+
+
+@pytest.mark.parametrize(
+    ("overrides", "error_code"),
+    [
+        pytest.param({"retry_ms": 0}, "pulse_trigger_dirty_target_retry_ms_required", id="zero-retry"),
+        pytest.param({"retry_ms": -1}, "pulse_trigger_dirty_target_retry_ms_required", id="negative-retry"),
+        pytest.param({"retry_ms": True}, "pulse_trigger_dirty_target_retry_ms_required", id="bool-retry"),
+        pytest.param({"retry_ms": "30000"}, "pulse_trigger_dirty_target_retry_ms_required", id="string-retry"),
+        pytest.param({"max_attempts": 0}, "pulse_trigger_dirty_target_max_attempts_required", id="zero-max"),
+        pytest.param({"max_attempts": -1}, "pulse_trigger_dirty_target_max_attempts_required", id="negative-max"),
+        pytest.param({"max_attempts": True}, "pulse_trigger_dirty_target_max_attempts_required", id="bool-max"),
+        pytest.param({"max_attempts": "3"}, "pulse_trigger_dirty_target_max_attempts_required", id="string-max"),
+    ],
+)
+def test_mark_error_requires_formal_retry_contract_before_sql(
+    overrides: dict[str, object],
+    error_code: str,
+) -> None:
+    conn = _ScriptedConnection([])
+    kwargs: dict[str, object] = {
+        "error": "boom",
+        "now_ms": 1_700_000_010_000,
+        "retry_ms": 30_000,
+        "max_attempts": 3,
+        "worker_name": "pulse_candidate",
+        "commit": False,
+        **overrides,
+    }
+
+    with pytest.raises(ValueError, match=error_code):
+        PulseTriggerDirtyTargetRepository(conn).mark_error([_claimed_dirty_target()], **kwargs)  # type: ignore[arg-type]
+
+    assert conn.sql == []
+
+
 def test_completion_rejects_claim_without_payload_hash() -> None:
     conn = _ScriptedConnection([])
 
@@ -273,6 +383,8 @@ def test_completion_rejects_claim_without_payload_hash() -> None:
                 error="boom",
                 now_ms=1_700_000_010_000,
                 retry_ms=30_000,
+                max_attempts=3,
+                worker_name="pulse_candidate",
                 commit=False,
             ),
             "pulse_trigger_dirty_target_rowcount_required",
@@ -318,6 +430,8 @@ def test_completion_write_counts_require_cursor_rowcount(
                 error="boom",
                 now_ms=1_700_000_010_000,
                 retry_ms=30_000,
+                max_attempts=3,
+                worker_name="pulse_candidate",
                 commit=False,
             ),
             id="error",
@@ -353,6 +467,8 @@ def test_completion_write_counts_reject_invalid_cursor_rowcount(
                 error="boom",
                 now_ms=1_700_000_010_000,
                 retry_ms=30_000,
+                max_attempts=3,
+                worker_name="pulse_candidate",
                 commit=False,
             ),
             id="error",
@@ -380,6 +496,24 @@ def test_completion_requires_claim_attempt_field_without_default(operation) -> N
         operation(PulseTriggerDirtyTargetRepository(conn), claim)
 
     assert isinstance(exc_info.value.__cause__, KeyError)
+    assert conn.sql == []
+
+
+@pytest.mark.parametrize("attempt_count", [0, True, "1"])
+def test_completion_rejects_malformed_claim_attempt_before_sql(attempt_count: object) -> None:
+    conn = _ScriptedConnection([])
+    claim = {**_claimed_dirty_target(), "attempt_count": attempt_count}
+
+    with pytest.raises(
+        ValueError,
+        match="pulse trigger dirty target completion requires attempt_count",
+    ):
+        PulseTriggerDirtyTargetRepository(conn).mark_done(
+            [claim],
+            now_ms=1_700_000_010_000,
+            commit=False,
+        )
+
     assert conn.sql == []
 
 
@@ -436,6 +570,8 @@ def test_repository_session_exposes_pulse_trigger_dirty_targets() -> None:
                 error="boom",
                 now_ms=1_700_000_010_000,
                 retry_ms=60_000,
+                max_attempts=3,
+                worker_name="pulse_candidate",
             ),
         ),
         (
@@ -494,9 +630,13 @@ class _ScriptedConnection:
 
     def fetchall(self) -> list[dict[str, Any]]:
         if not self.results:
+            if hasattr(self, "rowcount"):
+                self.rowcount = 0
             return []
         result = self.results.pop(0)
         assert isinstance(result, list)
+        if hasattr(self, "rowcount"):
+            self.rowcount = len(result)
         return result
 
     def fetchone(self) -> dict[str, Any] | None:

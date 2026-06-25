@@ -1,9 +1,24 @@
 from __future__ import annotations
 
+from parallax.domains.news_intel._constants import (
+    NEWS_STORY_BRIEF_GUARDRAIL_VERSION,
+    NEWS_STORY_BRIEF_PROMPT_VERSION,
+    NEWS_STORY_BRIEF_SCHEMA_VERSION,
+    NEWS_STORY_BRIEF_VALIDATOR_VERSION,
+    NEWS_STORY_IDENTITY_VERSION,
+)
 from parallax.domains.news_intel.repositories.news_repository import NewsRepository
 from parallax.domains.news_intel.services.source_quality_projection import build_source_quality_rows
 from parallax.domains.news_intel.types.news_extraction import NewsFactCandidate, NewsTokenMention
 from parallax.domains.news_intel.types.news_item_brief_contract import CURRENT_NEWS_ITEM_BRIEF_CONTRACT
+from parallax.domains.news_intel.types.news_market_scope import NewsMarketScope
+from parallax.domains.news_intel.types.news_story_brief import (
+    NEWS_STORY_BRIEF_AGENT_NAME,
+    NEWS_STORY_BRIEF_LANE,
+    NEWS_STORY_BRIEF_WORKFLOW_NAME,
+    story_brief_key_for,
+)
+from parallax.domains.news_intel.types.news_story_identity import NewsStoryIdentity
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 
@@ -108,6 +123,29 @@ def test_source_quality_repository_aggregates_and_replaces_rows(tmp_path) -> Non
             ],
         )
         repo.mark_item_processed(news_item_id=news_item_id, processed_at_ms=NOW_MS - 3_000)
+        story_key = "news-story:source-quality:coinbase-btc"
+        story_brief_key = story_brief_key_for(
+            story_identity_version=NEWS_STORY_IDENTITY_VERSION,
+            story_key=story_key,
+        )
+        repo.update_item_market_scope_and_story_identity(
+            news_item_id=news_item_id,
+            market_scope=NewsMarketScope(
+                scope=["crypto"],
+                primary="crypto",
+                status="eligible",
+                reason="integration_fixture",
+                basis={"source_quality": True},
+                version="test_news_market_scope_v1",
+            ),
+            story_identity=NewsStoryIdentity(
+                story_key=story_key,
+                confidence="strong",
+                basis={"source_quality": True},
+                version=NEWS_STORY_IDENTITY_VERSION,
+            ),
+            now_ms=NOW_MS - 2_500,
+        )
         repo.insert_news_item_agent_run(
             run_id="run-1",
             news_item_id=news_item_id,
@@ -155,6 +193,62 @@ def test_source_quality_repository_aggregates_and_replaces_rows(tmp_path) -> Non
             computed_at_ms=NOW_MS - 1_800,
             created_at_ms=NOW_MS - 1_800,
             updated_at_ms=NOW_MS - 1_800,
+        )
+        repo.insert_news_story_agent_run(
+            run_id="story-run-1",
+            story_brief_key=story_brief_key,
+            story_key=story_key,
+            story_identity_version=NEWS_STORY_IDENTITY_VERSION,
+            representative_news_item_id=news_item_id,
+            member_news_item_ids_json=[news_item_id],
+            provider="litellm",
+            model="gpt-test",
+            backend="litellm_sdk",
+            execution_trace_id=None,
+            workflow_name=NEWS_STORY_BRIEF_WORKFLOW_NAME,
+            agent_name=NEWS_STORY_BRIEF_AGENT_NAME,
+            lane=NEWS_STORY_BRIEF_LANE,
+            artifact_version_hash="story-artifact-1",
+            prompt_version=NEWS_STORY_BRIEF_PROMPT_VERSION,
+            schema_version=NEWS_STORY_BRIEF_SCHEMA_VERSION,
+            validator_version=NEWS_STORY_BRIEF_VALIDATOR_VERSION,
+            guardrail_version=NEWS_STORY_BRIEF_GUARDRAIL_VERSION,
+            input_hash="story-input-1",
+            output_hash="story-output-1",
+            execution_started=True,
+            status="completed",
+            outcome="ready",
+            error_class=None,
+            error=None,
+            request_json={},
+            response_json={},
+            validation_errors_json=[],
+            trace_metadata_json={},
+            usage_json={},
+            latency_ms=10,
+            started_at_ms=NOW_MS - 1_700,
+            finished_at_ms=NOW_MS - 1_600,
+            created_at_ms=NOW_MS - 1_700,
+        )
+        repo.upsert_news_story_agent_brief(
+            story_brief_key=story_brief_key,
+            story_key=story_key,
+            story_identity_version=NEWS_STORY_IDENTITY_VERSION,
+            representative_news_item_id=news_item_id,
+            member_news_item_ids_json=[news_item_id],
+            agent_run_id="story-run-1",
+            status="ready",
+            direction="neutral",
+            decision_class="context",
+            brief_json={"summary_zh": "测试 story current"},
+            input_hash="story-input-1",
+            artifact_version_hash="story-artifact-1",
+            prompt_version=NEWS_STORY_BRIEF_PROMPT_VERSION,
+            schema_version=NEWS_STORY_BRIEF_SCHEMA_VERSION,
+            validator_version=NEWS_STORY_BRIEF_VALIDATOR_VERSION,
+            computed_at_ms=NOW_MS - 1_500,
+            created_at_ms=NOW_MS - 1_500,
+            updated_at_ms=NOW_MS - 1_500,
         )
         aggregate_inputs = repo.list_source_quality_inputs_for_targets(
             source_windows=[("coindesk", "24h")],

@@ -77,6 +77,15 @@ def test_token_radar_projection_requires_valid_windows_without_window_ms_fallbac
     assert [token for token in required if token not in source] == []
 
 
+def test_asset_flow_read_limit_rejects_runtime_int_repairs() -> None:
+    source = ASSET_FLOW_SERVICE.read_text(encoding="utf-8")
+
+    assert "max(0, int(limit))" not in source
+    assert "targets[:limit]" not in source
+    assert "attention[:limit]" not in source
+    assert "asset_flow_limit_required" in source
+
+
 def _runtime_files() -> list[Path]:
     roots = (SRC / "app", SRC / "domains")
     return sorted(path for root in roots for path in root.rglob("*.py"))
@@ -291,6 +300,13 @@ def test_token_radar_private_cache_retention_is_bounded_worker_lane_not_publish_
     assert "prune_edges(" in prune_private_cache
     assert "limit=remaining" in prune_private_cache
     assert "limit=remaining_budget" in prune_private_cache
+    assert "max(1, int(limit))" not in prune_private_cache
+    assert "max(1, int(retention_ms))" not in prune_private_cache
+    assert "max(0, int(limit))" not in repository_source
+    assert "token_radar_private_cache_limit_required" in projection_source
+    assert "token_radar_private_cache_retention_ms_required" in projection_source
+    assert "token_radar_prune_target_features_limit_required" in repository_source
+    assert "token_radar_latest_current_rows_limit_required" in repository_source
     assert "LIMIT %s" in repository_source
     assert "LIMIT %s" in rank_source_query
 

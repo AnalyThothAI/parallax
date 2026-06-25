@@ -40,13 +40,14 @@ def settle_token_factor_scores(
     if horizon not in HORIZON_MS:
         raise ValueError(f"unsupported token factor evaluation horizon: {horizon}")
     horizon_ms = HORIZON_MS[horizon]
+    parsed_limit = _required_nonnegative_int(limit, "token_factor_evaluation_limit_required")
     rows = repos.token_factor_evaluations.historical_radar_rows(
         factor_version=TOKEN_FACTOR_SNAPSHOT_VERSION,
         window=window,
         scope=scope,
         horizon_ms=horizon_ms,
         generated_at_ms=int(generated_at_ms),
-        limit=max(0, int(limit)),
+        limit=parsed_limit,
     )
     settlements = [
         _settle_row(row, repos=repos, horizon_ms=horizon_ms, generated_at_ms=int(generated_at_ms)) for row in rows
@@ -347,6 +348,14 @@ def _mapping(value: Any) -> dict[str, Any]:
 
 def _clean(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value < 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _ranks(values: list[float]) -> list[float]:

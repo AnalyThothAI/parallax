@@ -21,7 +21,7 @@ class WatchlistIntelRepository:
     def timeline(self, *, handle: str, scope: str, cursor: str | None, limit: int) -> dict[str, Any]:
         normalized = normalize_watchlist_handle(handle)
         parsed_scope = _timeline_scope(scope)
-        parsed_limit = max(0, int(limit))
+        parsed_limit = _required_positive_int(limit, error_code="watchlist_timeline_limit_required")
         clauses = ["lower(e.author_handle) = %s"]
         params: list[Any] = [normalized]
         if cursor:
@@ -125,8 +125,8 @@ class WatchlistIntelRepository:
     ) -> dict[str, Any]:
         normalized = normalize_watchlist_handle(handle)
         parsed_scope = _timeline_scope(scope)
-        parsed_source_limit = max(0, int(source_limit))
-        parsed_cluster_limit = max(0, int(cluster_limit))
+        parsed_source_limit = _required_positive_int(source_limit, error_code="watchlist_source_limit_required")
+        parsed_cluster_limit = _required_positive_int(cluster_limit, error_code="watchlist_cluster_limit_required")
         clauses = ["lower(e.author_handle) = %s", "e.received_at_ms >= %s"]
         params: list[Any] = [normalized, int(since_ms)]
         metrics_row = self.conn.execute(
@@ -365,6 +365,12 @@ def _list(value: Any) -> list[Any]:
 
 def _optional_int(value: Any) -> int | None:
     return int(value) if value is not None else None
+
+
+def _required_positive_int(value: Any, *, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _timeline_scope(value: str) -> str:

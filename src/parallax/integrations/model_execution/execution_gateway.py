@@ -89,6 +89,13 @@ class _RateLimitReservationResult:
     denied_reason: AgentExecutionErrorClass | None = None
 
 
+_LLM_GATEWAY_FIELD_ERRORS = {
+    "api_key": "agent_execution_llm_gateway_api_key_required",
+    "base_url": "agent_execution_llm_gateway_base_url_required",
+    "trace_export_enabled": "agent_execution_llm_gateway_trace_export_enabled_required",
+}
+
+
 class AgentExecutionGateway:
     def __init__(
         self,
@@ -104,13 +111,16 @@ class AgentExecutionGateway:
             raise ValueError("llm_gateway is required")
         self._llm_gateway = llm_gateway
         self._base_url = _model_base(base_url)
-        self._trace_enabled = bool(trace_enabled and getattr(llm_gateway, "trace_export_enabled", False))
+        llm_api_key = _llm_gateway_text(llm_gateway, "api_key")
+        llm_base_url = _llm_gateway_text(llm_gateway, "base_url")
+        trace_export_enabled = _llm_gateway_bool(llm_gateway, "trace_export_enabled")
+        self._trace_enabled = bool(trace_enabled and trace_export_enabled)
         self._trace_include_sensitive_data = bool(trace_include_sensitive_data)
         self._policy = policy
         self._telemetry = telemetry
         self._json_object_strategy = ChatJsonObjectStrategy(
-            api_key=getattr(llm_gateway, "api_key", ""),
-            base_url=self._base_url or getattr(llm_gateway, "base_url", ""),
+            api_key=llm_api_key,
+            base_url=self._base_url or llm_base_url,
         )
         self._reservation_owner_token = object()
         self._global_semaphore = asyncio.BoundedSemaphore(policy.global_max_concurrency)
@@ -189,7 +199,7 @@ class AgentExecutionGateway:
         child_lane_keys = _unique_lanes(child_lanes)
         capacity_lanes = _unique_lanes((lane_key, *child_lane_keys))
         rate_lanes = child_lane_keys or (lane_key,)
-        rate_unit_count = max(1, int(rate_units))
+        rate_unit_count = _required_positive_int(rate_units, "agent_execution_rate_units_required")
         for capacity_lane in capacity_lanes:
             lane_state = self._lane_state(capacity_lane)
             if self._is_circuit_open(capacity_lane, lane_state):
@@ -334,7 +344,7 @@ class AgentExecutionGateway:
                 parse_mode=str(audit_extra.get("parse_mode") or "strict"),
                 safety_net={
                     "safety_net_used": bool(audit_extra.get("safety_net_used", False)),
-                    "safety_net_retries": int(audit_extra.get("safety_net_retries") or 0),
+                    "safety_net_retries": _safety_net_retries(audit_extra),
                 },
                 trace_metadata={**audit.trace_metadata, **_audit_trace_extra(audit_extra)},
                 output_hash=json_sha256(final_output),
@@ -555,7 +565,7 @@ class AgentExecutionGateway:
 
     def _reservable_rate_units(self, lanes: tuple[str, ...], *, requested_rate_units: int) -> int:
         lane_count = max(1, len(lanes))
-        requested_units = max(1, int(requested_rate_units))
+        requested_units = _required_positive_int(requested_rate_units, "agent_execution_rate_units_required")
         reservable = min(requested_units, int(self._global_limiter.capacity_remaining() // lane_count))
         for lane in lanes:
             lane_limiter = self._lane_limiters.get(lane)
@@ -596,7 +606,7 @@ class AgentExecutionGateway:
             parse_mode=audit_extra.get("parse_mode"),
             safety_net={
                 "safety_net_used": bool(audit_extra.get("safety_net_used", False)),
-                "safety_net_retries": int(audit_extra.get("safety_net_retries") or 0),
+                "safety_net_retries": _safety_net_retries(audit_extra),
             },
             trace_metadata={**audit.trace_metadata, **_audit_trace_extra(audit_extra)},
             error_class=error_class,
@@ -678,6 +688,35 @@ def _model_base(base_url: str) -> str:
     return value
 
 
+def _llm_gateway_text(llm_gateway: Any, field_name: str) -> str:
+    error_code = _llm_gateway_field_error(field_name)
+    try:
+        value = getattr(llm_gateway, field_name)
+    except AttributeError as exc:
+        raise ValueError(error_code) from exc
+    if not isinstance(value, str):
+        raise ValueError(error_code)
+    return value.strip()
+
+
+def _llm_gateway_bool(llm_gateway: Any, field_name: str) -> bool:
+    error_code = _llm_gateway_field_error(field_name)
+    try:
+        value = getattr(llm_gateway, field_name)
+    except AttributeError as exc:
+        raise ValueError(error_code) from exc
+    if not isinstance(value, bool):
+        raise ValueError(error_code)
+    return value
+
+
+def _llm_gateway_field_error(field_name: str) -> str:
+    try:
+        return _LLM_GATEWAY_FIELD_ERRORS[field_name]
+    except KeyError as exc:
+        raise ValueError("agent_execution_llm_gateway_unknown_field") from exc
+
+
 def _audit_base(audit: AgentExecutionRequestAudit) -> dict[str, Any]:
     return audit.model_dump(
         exclude={
@@ -738,6 +777,21 @@ def _monotonic_deadline_to_epoch_ms(deadline: float) -> int | None:
 
 def _latency_ms(started: float) -> float:
     return max(0.0, (time.perf_counter() - started) * 1000)
+
+
+def _required_positive_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return value
+
+
+def _safety_net_retries(audit_extra: dict[str, Any]) -> int:
+    if "safety_net_retries" not in audit_extra:
+        return 0
+    value = audit_extra["safety_net_retries"]
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError("agent_execution_safety_net_retries_required")
+    return int(value)
 
 
 def _audit_trace_extra(audit_extra: dict[str, Any]) -> dict[str, Any]:

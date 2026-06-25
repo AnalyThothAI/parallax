@@ -27,7 +27,7 @@ class WatchlistHandleReadService:
         now_ms: int | None = None,
     ) -> dict[str, Any]:
         resolved_now_ms = int(now_ms if now_ms is not None else _now_ms())
-        window_days = max(1, int(self.config.window_days))
+        window_days = _required_positive_int(self.config.window_days, error_code="watchlist_window_days_required")
         rows = self.repository.handles_overview(
             handles=tuple(normalize_watchlist_handle(handle) for handle in configured_handles),
             since_ms=_window_since_ms(now_ms=resolved_now_ms, window_days=window_days),
@@ -47,15 +47,21 @@ class WatchlistHandleReadService:
     ) -> dict[str, Any]:
         normalized = _configured_handle(handle, tuple(configured_handles))
         resolved_now_ms = int(now_ms if now_ms is not None else _now_ms())
-        window_days = max(1, int(self.config.window_days))
+        window_days = _required_positive_int(self.config.window_days, error_code="watchlist_window_days_required")
         overview = cast(
             dict[str, Any],
             self.repository.handle_overview(
                 handle=normalized,
                 scope=scope,
                 since_ms=_window_since_ms(now_ms=resolved_now_ms, window_days=window_days),
-                source_limit=max(1, int(self.config.overview_source_limit)),
-                cluster_limit=max(1, int(self.config.overview_cluster_limit)),
+                source_limit=_required_positive_int(
+                    self.config.overview_source_limit,
+                    error_code="watchlist_overview_source_limit_required",
+                ),
+                cluster_limit=_required_positive_int(
+                    self.config.overview_cluster_limit,
+                    error_code="watchlist_overview_cluster_limit_required",
+                ),
             ),
         )
         query = dict(overview.get("query") or {})
@@ -91,11 +97,18 @@ def _configured_handle(handle: str, configured_handles: tuple[str, ...]) -> str:
 
 
 def _window_since_ms(*, now_ms: int, window_days: int) -> int:
-    return now_ms - max(1, int(window_days)) * 24 * 60 * 60 * 1000
+    required_window_days = _required_positive_int(window_days, error_code="watchlist_window_days_required")
+    return now_ms - required_window_days * 24 * 60 * 60 * 1000
 
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _required_positive_int(value: Any, *, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 __all__ = [

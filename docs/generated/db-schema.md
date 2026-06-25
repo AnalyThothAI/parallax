@@ -1134,6 +1134,68 @@
 | `sync_overlap_ms` | `BIGINT` | False | `900000` |
 | `sync_diagnostics_json` | `JSONB` | False | `'{}'::jsonb` |
 
+## `news_story_agent_briefs`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `story_brief_key` | `TEXT` | False | `None` |
+| `story_key` | `TEXT` | False | `None` |
+| `story_identity_version` | `TEXT` | False | `None` |
+| `representative_news_item_id` | `TEXT` | False | `None` |
+| `member_news_item_ids_json` | `JSONB` | False | `None` |
+| `agent_run_id` | `TEXT` | False | `None` |
+| `status` | `TEXT` | False | `None` |
+| `direction` | `TEXT` | False | `None` |
+| `decision_class` | `TEXT` | False | `None` |
+| `brief_json` | `JSONB` | False | `None` |
+| `input_hash` | `TEXT` | False | `None` |
+| `artifact_version_hash` | `TEXT` | False | `None` |
+| `prompt_version` | `TEXT` | False | `None` |
+| `schema_version` | `TEXT` | False | `None` |
+| `validator_version` | `TEXT` | False | `None` |
+| `computed_at_ms` | `BIGINT` | False | `None` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+| `updated_at_ms` | `BIGINT` | False | `None` |
+
+## `news_story_agent_runs`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `run_id` | `TEXT` | False | `None` |
+| `story_brief_key` | `TEXT` | False | `None` |
+| `story_key` | `TEXT` | False | `None` |
+| `story_identity_version` | `TEXT` | False | `None` |
+| `representative_news_item_id` | `TEXT` | False | `None` |
+| `member_news_item_ids_json` | `JSONB` | False | `None` |
+| `provider` | `TEXT` | False | `None` |
+| `model` | `TEXT` | False | `None` |
+| `backend` | `TEXT` | False | `None` |
+| `execution_trace_id` | `TEXT` | True | `None` |
+| `workflow_name` | `TEXT` | False | `None` |
+| `agent_name` | `TEXT` | False | `None` |
+| `lane` | `TEXT` | False | `None` |
+| `artifact_version_hash` | `TEXT` | False | `None` |
+| `prompt_version` | `TEXT` | False | `None` |
+| `schema_version` | `TEXT` | False | `None` |
+| `validator_version` | `TEXT` | False | `None` |
+| `guardrail_version` | `TEXT` | False | `None` |
+| `input_hash` | `TEXT` | False | `None` |
+| `output_hash` | `TEXT` | True | `None` |
+| `execution_started` | `BOOLEAN` | False | `None` |
+| `status` | `TEXT` | False | `None` |
+| `outcome` | `TEXT` | False | `None` |
+| `error_class` | `TEXT` | True | `None` |
+| `error` | `TEXT` | True | `None` |
+| `request_json` | `JSONB` | False | `None` |
+| `response_json` | `JSONB` | True | `None` |
+| `validation_errors_json` | `JSONB` | False | `None` |
+| `trace_metadata_json` | `JSONB` | False | `None` |
+| `usage_json` | `JSONB` | False | `None` |
+| `latency_ms` | `INTEGER` | False | `None` |
+| `started_at_ms` | `BIGINT` | False | `None` |
+| `finished_at_ms` | `BIGINT` | False | `None` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+
 ## `news_token_mentions`
 
 | Column | Type | Nullable | Default |

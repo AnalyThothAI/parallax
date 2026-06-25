@@ -180,6 +180,7 @@ def _radar_settings(*, cold_interval_seconds: float = 0) -> SimpleNamespace:
         batch_size=10,
         lease_ms=120_000,
         retry_ms=30_000,
+        max_attempts=3,
         private_cache_retention_enabled=False,
         private_cache_retention_ms=3_600_000,
         advisory_lock_key=2026051501,

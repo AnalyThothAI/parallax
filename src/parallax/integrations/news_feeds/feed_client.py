@@ -27,9 +27,9 @@ class FeedClient:
         max_attempts: int = 2,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
-        self._max_attempts = max(1, int(max_attempts))
+        self._max_attempts = _required_positive_int(max_attempts, "feed_client_max_attempts_required")
         self._client = httpx.Client(
-            timeout=max(0.1, float(timeout_seconds)),
+            timeout=_required_positive_float(timeout_seconds, "feed_client_timeout_seconds_required"),
             headers={"User-Agent": user_agent},
             follow_redirects=True,
             transport=transport,
@@ -90,3 +90,18 @@ class FeedClient:
 
     def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
         self.close()
+
+
+def _required_positive_int(value: object, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _required_positive_float(value: object, error_code: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(error_code)
+    parsed = float(value)
+    if parsed <= 0:
+        raise ValueError(error_code)
+    return parsed

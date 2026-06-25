@@ -202,6 +202,12 @@ def test_scheduler_uses_one_run_loop_even_when_worker_has_internal_concurrency()
     asyncio.run(scenario())
 
 
+@pytest.mark.parametrize("value", [-1, True, "0.1"])
+def test_scheduler_rejects_malformed_stop_timeout_without_runtime_repair(value: object) -> None:
+    with pytest.raises(ValueError, match="worker_scheduler_stop_timeout_seconds_required"):
+        WorkerScheduler(workers={}, db=FakeDB(), stop_timeout_seconds=value)  # type: ignore[arg-type]
+
+
 def test_scheduler_rejects_repeated_start_without_losing_existing_task() -> None:
     async def scenario() -> None:
         worker = FakeWorker("collector")

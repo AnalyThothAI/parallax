@@ -99,6 +99,18 @@ def test_news_provider_contract_validation_uses_static_contract_not_provider_obj
     assert offenders == []
 
 
+def test_news_provider_wiring_requires_feed_fetch_result_contract_without_diagnostics_probe() -> None:
+    provider_wiring = _read("src/parallax/app/runtime/provider_wiring/news.py")
+
+    forbidden = (
+        'getattr(feed_result, "feed", None)',
+        "def _provider_diagnostics(feed_result: Any)",
+    )
+
+    assert "feed = feed_result.feed" in provider_wiring
+    assert [token for token in forbidden if token in provider_wiring] == []
+
+
 def test_news_provider_contract_schema_uses_db_constraint_without_enum_fallback() -> None:
     worker = _read("src/parallax/domains/news_intel/runtime/news_fetch_worker.py")
 
@@ -545,6 +557,7 @@ def test_news_projection_dirty_target_completion_keys_require_claim_attempt_cont
     forbidden = (
         'int(key.get("attempt_count") or 0)',
         'key.get("attempt_count") or 0',
+        'int(key["attempt_count"])',
         'str(key.get("projection_name") or "")',
         'str(key.get("target_kind") or "")',
         'str(key.get("target_id") or "")',
@@ -574,9 +587,11 @@ def test_news_projection_dirty_completion_counts_require_real_cursor_rowcount() 
     forbidden = (
         'getattr(cursor, "rowcount", 0)',
         'int(getattr(cursor, "rowcount", 0) or 0)',
+        "max(1, int(retry_ms))",
     )
 
     assert [token for token in forbidden if token in mark_done_source + mark_error_source] == []
+    assert "news_projection_dirty_target_retry_ms_required" in mark_error_source
     assert "def _cursor_rowcount(cursor: Any) -> int:" in repository_text
     assert "news_projection_dirty_target_rowcount_required" in repository_text
     assert "news_projection_dirty_target_rowcount_invalid" in repository_text
@@ -620,9 +635,15 @@ def test_news_projection_dirty_claim_due_returning_rows_require_cursor_rowcount_
         "claimed_count = len(rows)",
         'getattr(cursor, "rowcount", 0)',
         "cursor.rowcount or 0",
+        "max(1, int(lease_ms))",
+        "max(0, int(limit))",
     )
 
     assert [token for token in forbidden if token in claim_source] == []
+    assert "news_projection_dirty_target_claim_lease_ms_required" in claim_source
+    assert "news_projection_dirty_target_claim_limit_required" in claim_source
+    assert "def _required_positive_int(value: Any, error_code: str) -> int:" in repository_text
+    assert "def _required_nonnegative_int(value: Any, error_code: str) -> int:" in repository_text
     assert "def _returned_rowcount(cursor: Any, rows: list[Any]) -> int:" in repository_text
     assert "count = _cursor_rowcount(cursor)" in helper_source
     assert "if count != len(rows):" in helper_source
@@ -951,9 +972,13 @@ def test_news_repository_claim_due_sources_returning_counts_require_cursor_rowco
         "claimed_count = len(rows)",
         'getattr(cursor, "rowcount", 0)',
         "cursor.rowcount or 0",
+        "max(0, int(limit))",
+        "max(1, int(claim_lease_ms))",
     )
 
     assert [token for token in forbidden if token in claim_source] == []
+    assert "news_source_claim_limit_required" in claim_source
+    assert "news_source_claim_lease_ms_required" in claim_source
     assert "def _returned_rowcount(cursor: Any, rows: list[Any]) -> int:" in repository_text
     assert "count = _cursor_rowcount(cursor)" in helper_source
     assert "if count != len(rows):" in helper_source
@@ -962,6 +987,32 @@ def test_news_repository_claim_due_sources_returning_counts_require_cursor_rowco
     assert "rows = cursor.fetchall()" in claim_source
     assert "_returned_rowcount(cursor, rows)" in claim_source
     assert "return [dict(row) for row in rows]" in claim_source
+
+
+def test_news_repository_source_fetch_policy_numbers_reject_runtime_repairs() -> None:
+    path = "src/parallax/domains/news_intel/repositories/news_repository.py"
+    repository_text = _read(path)
+    upsert_source = _function_source(path, "upsert_source")
+    claim_source = _function_source(path, "claim_due_sources")
+    canonical_source = _function_source(path, "list_news_items_for_canonical_rebuild")
+    reviewed_source = upsert_source + claim_source + canonical_source
+    forbidden = (
+        "max(1, int(refresh_interval_seconds))",
+        "max(0, int(limit))",
+        "max(1, int(claim_lease_ms))",
+    )
+    required = (
+        "news_source_refresh_interval_seconds_required",
+        "news_source_claim_limit_required",
+        "news_source_claim_lease_ms_required",
+        "news_canonical_rebuild_limit_required",
+        "def _required_positive_int(value: Any, error_code: str) -> int:",
+        "def _required_nonnegative_int(value: Any, error_code: str) -> int:",
+    )
+
+    assert [token for token in forbidden if token in reviewed_source] == []
+    assert "news_source_refresh_interval_seconds_required" in upsert_source
+    assert [token for token in required if token not in repository_text] == []
 
 
 def test_news_source_upsert_returning_row_requires_cursor_rowcount_match() -> None:
@@ -1248,6 +1299,8 @@ def test_news_dedup_diagnostics_requires_summary_row_contract_without_defaults()
         '_json_dict(row["preview_or_generic_url_rows"])',
         '_json_dict(row["brief_input_risk"])',
         '_json_list(row["source_sync_diagnostics"])',
+        "max(0, int(window_ms))",
+        "GREATEST(%(window_ms)s::bigint, 0)",
     }
 
     combined = "\n".join((source, helper_sources))
@@ -1257,6 +1310,7 @@ def test_news_dedup_diagnostics_requires_summary_row_contract_without_defaults()
         == []
     )
     assert sorted(token for token in forbidden if token in source) == []
+    assert "news_dedup_diagnostics_window_ms_required" in source
 
 
 def test_news_item_aggregate_changed_requires_summary_contract_without_defaults() -> None:
@@ -1479,6 +1533,7 @@ def test_news_fetch_run_start_requires_insert_and_source_update_rowcounts() -> N
 
 def test_news_claim_unprocessed_items_returning_rows_require_cursor_rowcount_match() -> None:
     path = "src/parallax/domains/news_intel/repositories/news_repository.py"
+    repository_text = _read(path)
     claim_source = _function_source(path, "claim_unprocessed_items")
     helper_source = _function_source(path, "_returned_rowcount")
     forbidden = (
@@ -1486,9 +1541,15 @@ def test_news_claim_unprocessed_items_returning_rows_require_cursor_rowcount_mat
         "return [dict(row) for row in rows]",
         'getattr(cursor, "rowcount", 0)',
         "cursor.rowcount or 0",
+        "max(0, int(limit))",
+        "max(1, int(lease_ms))",
     )
 
     assert [token for token in forbidden if token in claim_source] == []
+    assert "news_item_claim_limit_required" in claim_source
+    assert "news_item_claim_lease_ms_required" in claim_source
+    assert "def _required_positive_int(value: Any, error_code: str) -> int:" in repository_text
+    assert "def _required_nonnegative_int(value: Any, error_code: str) -> int:" in repository_text
     assert "cursor = self.conn.execute" in claim_source
     assert "WITH picked AS" in claim_source
     assert "UPDATE news_items AS items" in claim_source
@@ -1719,6 +1780,10 @@ def test_ops_news_canonical_rebuild_reads_current_servable_story_keyset() -> Non
         "src/parallax/app/surfaces/cli/commands/ops.py",
         "_news_canonical_rebuild_targets",
     )
+    ops_rebuild_source = _function_source(
+        "src/parallax/app/surfaces/cli/commands/ops.py",
+        "_rebuild_news_canonical_items",
+    )
     forbidden = {
         "list_news_item_ids_for_canonical_rebuild",
         "_optional_news_canonical_rebuild_text",
@@ -1741,7 +1806,11 @@ def test_ops_news_canonical_rebuild_reads_current_servable_story_keyset() -> Non
         "_required_news_canonical_rebuild_watermark(row)",
     }
 
-    assert sorted(token for token in forbidden if token in repository_source + ops_source) == []
+    assert sorted(token for token in forbidden if token in repository_source + ops_source + ops_rebuild_source) == []
+    assert "max(0, int(limit))" not in repository_source
+    assert "max(0, int(limit))" not in ops_rebuild_source
+    assert "news_canonical_rebuild_limit_required" in repository_source
+    assert "ops_news_canonical_rebuild_limit_required" in ops_rebuild_source
     assert sorted(token for token in required_repository if token not in repository_source) == []
     assert sorted(token for token in required_ops if token not in ops_source) == []
 
@@ -1974,6 +2043,8 @@ def test_old_item_outputs_are_audit_only_after_story_agent_hard_cut() -> None:
     assert "news_item_agent_briefs" not in source_quality_input_source
     assert "JOIN news_story_agent_briefs AS briefs" in source_quality_input_source
     assert "briefs.member_news_item_ids_json ? items.news_item_id" in source_quality_input_source
+    assert "max(1, int(window_ms))" not in source_quality_input_source
+    assert "news_source_quality_window_ms_required" in source_quality_input_source
     assert '"method": "news_story_brief"' in page_projection_source
     assert "news.current_briefs" not in agent_read_tools_source
     assert "news.current_briefs" not in story_stage_source
@@ -2418,10 +2489,12 @@ def test_news_page_projection_wakes_from_story_current_not_item_brief_current() 
 
     manifest_wakes = require_worker_manifest("news_page_projection").wakes_on
     settings_wakes = WorkersSettings().news_page_projection.wakes_on
+    item_brief_wakes_out = require_worker_manifest("news_item_brief").wakes_out
 
     assert manifest_wakes == settings_wakes
     assert "news_story_brief_updated" in manifest_wakes
     assert "news_item_brief_updated" not in manifest_wakes
+    assert item_brief_wakes_out == ()
 
 
 def test_news_item_brief_current_write_does_not_dirty_page_projection() -> None:
@@ -2555,9 +2628,12 @@ def test_news_page_list_requires_projected_page_row_contract_without_public_defa
     forbidden = {
         'payload["agent_brief"] = _public_agent_brief_payload(payload.get("agent_brief"))',
         "payloads.append(payload)",
+        "max(0, int(limit))",
     }
     offenders = sorted(token for token in forbidden if token in source)
     assert offenders == []
+    assert "news_page_rows_limit_required" in source
+    assert "news_high_signal_notification_limit_required" in source
     assert "_projected_news_page_row_payload(" in source
     assert "news_page_row_projection_required" in helper_sources
     assert "news_page_row_projection_invalid" in helper_sources
@@ -3138,6 +3214,7 @@ def test_news_item_brief_reused_run_identity_requires_run_id_without_empty_fallb
     run_finished_at_source = _function_source(path, "_required_run_finished_at_ms")
     failed_error_class_source = _function_source(path, "_required_failed_run_error_class")
     failed_error_source = _function_source(path, "_required_failed_run_error")
+    reason_source = _function_source(path, "_reason_value")
     completed_sources = "\n".join((completed_validation_source, fresh_completed_source, invalid_completed_source))
     failed_sources = "\n".join((fresh_failed_source, failed_outcome_source))
     forbidden = {
@@ -3169,6 +3246,8 @@ def test_news_item_brief_reused_run_identity_requires_run_id_without_empty_fallb
         'context.get("item", {}).get("news_item_id") or ""',
         '_dict(candidate.get("item") or candidate)',
         '_dict(result.get("item") or result)',
+        'getattr(reason, "value", reason)',
+        "return str(value) if value else None",
     }
     completed_forbidden = {'str(run.get("outcome") or "")'}
     failed_forbidden = {
@@ -3209,6 +3288,10 @@ def test_news_item_brief_reused_run_identity_requires_run_id_without_empty_fallb
     assert "int(value)" not in run_finished_at_source
     assert "news_item_brief_run_error_class_required:failed_run" in failed_error_class_source
     assert "news_item_brief_run_error_required:failed_run" in failed_error_source
+    assert "news_item_brief_agent_reservation_contract_required" in source
+    assert "news_item_brief_agent_reservation_reason_contract_required" in source
+    assert "def _reason_value(reason: AgentExecutionErrorClass) -> str:" in reason_source
+    assert "return reason.value" in reason_source
     assert "news_item_brief_audit_latency_ms_required" in source
     assert "news_item_brief_audit_{field_name}_required" in source
     assert "news_item_brief_current_{field}_required" in current_text_source
@@ -3563,7 +3646,7 @@ def test_news_repository_has_no_retired_agent_admission_public_payload_repair() 
     assert offenders == []
 
 
-def test_news_page_row_summary_fields_require_explicit_payload_without_defaults() -> None:
+def test_news_page_row_summary_fields_use_fact_summary_or_explicit_payload_without_defaults() -> None:
     source = "\n".join(
         (
             _function_source(
@@ -3577,14 +3660,17 @@ def test_news_page_row_summary_fields_require_explicit_payload_without_defaults(
         )
     )
     required = {
+        "if summary:",
+        'payload["canonical_item_key"] = _required_page_text(summary, "canonical_item_key")',
+        'payload["duplicate_count"] = _required_page_nonnegative_int(summary, "duplicate_observation_count")',
+        'payload["source_ids_json"] = _json(_required_page_list(summary, "source_ids_json"))',
+        'payload["source_domains_json"] = _json(_required_page_list(summary, "source_domains_json"))',
+        'payload["provider_article_keys_json"] = _json(_required_page_list(summary, "provider_article_keys_json"))',
         '_required_page_text(payload, "canonical_item_key")',
         '_required_page_nonnegative_int(payload, "duplicate_count")',
         '_required_page_list(payload, "source_ids_json")',
         '_required_page_list(payload, "source_domains_json")',
         '_required_page_list(payload, "provider_article_keys_json")',
-        "if not summary:\n        return",
-        '_required_page_text(summary, "canonical_item_key")',
-        '_required_page_nonnegative_int(summary, "duplicate_observation_count")',
         "not isinstance(value, int)",
         "isinstance(value, bool)",
         "news_page_row_payload_required",
@@ -4289,6 +4375,9 @@ def test_news_story_brief_worker_restores_started_failed_runs_without_model_fall
     failed_error_source = _function_source(path, "_required_failed_run_error_class")
     failed_message_source = _function_source(path, "_required_failed_run_error")
     failed_run_errors_source = _function_source(path, "_failed_run_errors")
+    backpressure_source = _function_source(path, "_backpressure_outcome")
+    backpressure_reason_source = _function_source(path, "_backpressure_outcome_for_reason")
+    backpressure_error_source = _function_source(path, "_backpressure_outcome_for_error")
     finished_at_source = _function_source(path, "_required_run_finished_at_ms")
     outcome_source = _function_source(path, "_required_run_outcome")
     execution_started_source = _function_source(path, "_required_run_execution_started")
@@ -4336,6 +4425,11 @@ def test_news_story_brief_worker_restores_started_failed_runs_without_model_fall
         "_failed_brief(_failed_run_errors(run), terminal_reason=error_class)",
         '_required_run_execution_started(run, reason="failed_run")',
         "news_story_brief_run_execution_started_required",
+        "news_story_brief_agent_reservation_contract_required",
+        "news_story_brief_agent_reservation_reason_contract_required",
+        "news_story_brief_agent_error_class_contract_required",
+        "def _backpressure_outcome_for_reason(reason: AgentExecutionErrorClass | None) -> str:",
+        "if reason is AgentExecutionErrorClass.RATE_LIMITED:",
         "def _reason_value(reason: AgentExecutionErrorClass) -> str:",
         "return reason.value",
     }
@@ -4373,6 +4467,7 @@ def test_news_story_brief_worker_restores_started_failed_runs_without_model_fall
         'if outcome == "ready" and not _publishable_summary(payload):\n        return None',
         'getattr(reason, "value", reason)',
         "return str(value) if value else None",
+        "def _backpressure_outcome_for_reason(reason: Any) -> str:",
         'if not bool(run.get("execution_started")):',
         'run.get("execution_started")',
     }
@@ -4398,6 +4493,9 @@ def test_news_story_brief_worker_restores_started_failed_runs_without_model_fall
             failed_error_source,
             failed_message_source,
             failed_run_errors_source,
+            backpressure_source,
+            backpressure_reason_source,
+            backpressure_error_source,
             finished_at_source,
             outcome_source,
             execution_started_source,
@@ -4406,6 +4504,7 @@ def test_news_story_brief_worker_restores_started_failed_runs_without_model_fall
     )
     assert sorted(token for token in required if token not in combined) == []
     assert sorted(token for token in forbidden if token in combined) == []
+    assert "if reason == AgentExecutionErrorClass" not in backpressure_reason_source
     assert "not isinstance(value, int)" in finished_at_source
     assert "int(value)" not in finished_at_source
 
@@ -4518,14 +4617,77 @@ def test_news_runtime_product_paths_do_not_use_legacy_analysis_admission_gate() 
     assert offenders == []
 
 
+def test_news_runtime_worker_settings_require_positive_int_without_runtime_one_repair() -> None:
+    paths = [
+        "src/parallax/domains/news_intel/runtime/news_fetch_worker.py",
+        "src/parallax/domains/news_intel/runtime/news_item_process_worker.py",
+        "src/parallax/domains/news_intel/runtime/news_item_brief_worker.py",
+        "src/parallax/domains/news_intel/runtime/news_story_brief_worker.py",
+        "src/parallax/domains/news_intel/runtime/news_page_projection_worker.py",
+        "src/parallax/domains/news_intel/runtime/news_source_quality_projection_worker.py",
+    ]
+    forbidden = {
+        "max(1, int(self.settings",
+        "claim_lease_ms=max(1, int(self.settings.lease_ms))",
+        "max(1, int(queue_depth))",
+        "limit=max(1, int(limit))",
+    }
+    offenders = [f"{path} contains {token}" for path in paths for token in forbidden if token in _read(path)]
+
+    helper = _read("src/parallax/domains/news_intel/runtime/news_runtime_settings.py")
+    required = {
+        "def positive_worker_setting_int(",
+        "isinstance(value, bool)",
+        "not isinstance(value, int)",
+        "value <= 0",
+        "def required_positive_int(",
+        "def required_nonnegative_int(",
+    }
+
+    assert offenders == []
+    assert sorted(token for token in required if token not in helper) == []
+
+
+def test_news_projection_dirty_error_paths_use_worker_retry_budget_terminalization() -> None:
+    work_source = _function_source("src/parallax/domains/news_intel/runtime/news_projection_work.py", "mark_work_error")
+    worker_paths = [
+        "src/parallax/domains/news_intel/runtime/news_item_brief_worker.py",
+        "src/parallax/domains/news_intel/runtime/news_story_brief_worker.py",
+        "src/parallax/domains/news_intel/runtime/news_page_projection_worker.py",
+        "src/parallax/domains/news_intel/runtime/news_source_quality_projection_worker.py",
+    ]
+
+    required_work_tokens = {
+        "max_attempts: int",
+        "worker_name: str",
+        "repos.news_projection_dirty_targets.terminalize_targets(",
+        'final_reason_bucket="retry_budget_exhausted"',
+        "_retry_budget_exhausted_reason(error)",
+    }
+    worker_offenders = [
+        f"{path} missing retry-budget error contract"
+        for path in worker_paths
+        if "max_attempts=self._max_attempts()" not in _read(path) or "worker_name=self.name" not in _read(path)
+    ]
+
+    assert sorted(token for token in required_work_tokens if token not in work_source) == []
+    assert worker_offenders == []
+
+
 def test_news_current_brief_schema_gate_uses_column_schema_version_only() -> None:
     source = _read("src/parallax/domains/news_intel/repositories/news_repository.py")
+    list_source = _function_source(
+        "src/parallax/domains/news_intel/repositories/news_repository.py",
+        "list_current_brief_ids_outside_schema",
+    )
     forbidden = {
         "brief_json ->> 'schema_version'",
         'brief_json ->> "schema_version"',
         "brief_json->>'schema_version'",
         'brief_json->>"schema_version"',
+        "max(1, int(limit))",
     }
     offenders = sorted(token for token in forbidden if token in source)
 
     assert offenders == []
+    assert "news_current_brief_schema_limit_required" in list_source

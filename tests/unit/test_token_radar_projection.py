@@ -23,6 +23,7 @@ from parallax.domains.token_intel.services.token_radar_projection import (
     TokenRadarProjection,
     TokenRadarProjectionWindowError,
     _analysis_since_ms,
+    _claim_attempt_count,
     _compact_rank_key,
     _display_symbol,
     _market_context,
@@ -832,7 +833,6 @@ def test_projection_marks_unqueried_lookup_keys_as_not_searched():
         "reason_codes_json": ["SYMBOL_NOT_IN_REGISTRY"],
         "candidate_ids_json": [],
         "lookup_keys_json": ["symbol:UPEG"],
-        "discovery_results_json": None,
     }
 
     row = _project_group([source_row], now_ms=1_777_800_060_000, window="5m", scope="all")
@@ -894,7 +894,6 @@ def test_unresolved_projection_identity_requires_lookup_key_without_display_symb
         "reason_codes_json": ["SYMBOL_NOT_IN_REGISTRY"],
         "candidate_ids_json": [],
         "lookup_keys_json": [],
-        "discovery_results_json": None,
     }
 
     with pytest.raises(RuntimeError, match="token_radar_projection_identity_required"):
@@ -987,7 +986,6 @@ def test_projection_stale_write_does_not_advance_offset(monkeypatch):
         "reason_codes_json": ["SYMBOL_NOT_IN_REGISTRY"],
         "candidate_ids_json": [],
         "lookup_keys_json": ["symbol:UPEG"],
-        "discovery_results_json": None,
     }
     feature_row = _project_group([row], now_ms=1_777_800_060_000, window="5m", scope="all")
     token_radar = FakeRejectingTokenRadar([feature_row])
@@ -1379,6 +1377,62 @@ def test_prune_private_cache_is_explicitly_bounded_outside_publish():
     ]
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "error"),
+    (
+        pytest.param("limit", 0, "token_radar_private_cache_limit_required", id="zero-limit"),
+        pytest.param("limit", -1, "token_radar_private_cache_limit_required", id="negative-limit"),
+        pytest.param("limit", True, "token_radar_private_cache_limit_required", id="bool-limit"),
+        pytest.param("limit", "6", "token_radar_private_cache_limit_required", id="string-limit"),
+        pytest.param("retention_ms", 0, "token_radar_private_cache_retention_ms_required", id="zero-retention"),
+        pytest.param("retention_ms", -1, "token_radar_private_cache_retention_ms_required", id="negative-retention"),
+        pytest.param("retention_ms", True, "token_radar_private_cache_retention_ms_required", id="bool-retention"),
+        pytest.param(
+            "retention_ms",
+            "600000",
+            "token_radar_private_cache_retention_ms_required",
+            id="string-retention",
+        ),
+    ),
+)
+def test_prune_private_cache_rejects_malformed_bounds_before_transaction(
+    field: str,
+    value: object,
+    error: str,
+) -> None:
+    token_radar = FakeTokenRadar()
+    repos = _rank_set_repos(token_radar)
+    kwargs = {
+        "windows": ("5m",),
+        "scopes": ("all",),
+        "now_ms": 1_777_800_060_000,
+        "retention_ms": 600_000,
+        "limit": 6,
+    }
+    kwargs[field] = value
+
+    with pytest.raises(ValueError, match=error):
+        TokenRadarProjection(repos=repos).prune_private_cache(**kwargs)  # type: ignore[arg-type]
+
+    assert repos.conn.transaction_count == 0
+    assert token_radar.operation_calls == []
+
+
+def test_select_top_ranked_by_lane_allows_zero_limit() -> None:
+    rows = token_radar_projection_module._select_top_ranked_by_lane(
+        [{"lane": "resolved", "event_id": "event-1"}],
+        limit=0,
+    )
+
+    assert rows == []
+
+
+@pytest.mark.parametrize("limit", [-1, True, "1"])
+def test_select_top_ranked_by_lane_rejects_malformed_limit(limit: object) -> None:
+    with pytest.raises(ValueError, match="token_radar_rank_lane_limit_required"):
+        token_radar_projection_module._select_top_ranked_by_lane([], limit=limit)  # type: ignore[arg-type]
+
+
 def test_projection_stale_cleanup_is_throttled_per_window_scope(monkeypatch):
     recorder = FakeProjectionRecorder()
     now_ms = 1_777_800_060_000
@@ -1450,7 +1504,12 @@ def test_projection_enqueues_narrative_admission_for_realtime_rank_changes() -> 
         "rank": 1,
         "lane": "resolved",
         "decision": "high_alert",
-        "factor_snapshot_json": {"schema_version": "factor"},
+        "asset_chain_id": "solana",
+        "asset_address": "ABCdef123",
+        "factor_snapshot_json": {
+            "schema_version": "factor",
+            "subject": {"symbol": "BONK", "chain_id": "solana", "address": "ABCdef123"},
+        },
         "source_event_ids_json": ["event-1"],
         "source_max_received_at_ms": now_ms - 1_000,
         "payload_hash": "row-hash",
@@ -1505,7 +1564,12 @@ def test_downstream_rank_change_targets_require_source_watermark_without_compute
         "rank": 1,
         "lane": "resolved",
         "decision": "high_alert",
-        "factor_snapshot_json": {"schema_version": "factor"},
+        "asset_chain_id": "solana",
+        "asset_address": "ABCdef123",
+        "factor_snapshot_json": {
+            "schema_version": "factor",
+            "subject": {"symbol": "BONK", "chain_id": "solana", "address": "ABCdef123"},
+        },
         "source_event_ids_json": ["event-1"],
         "payload_hash": "row-hash",
     }
@@ -1561,7 +1625,12 @@ def test_projection_runtime_gate_suppresses_narrative_admission_dirty_targets() 
         "rank": 1,
         "lane": "resolved",
         "decision": "high_alert",
-        "factor_snapshot_json": {"schema_version": "factor"},
+        "asset_chain_id": "solana",
+        "asset_address": "ABCdef123",
+        "factor_snapshot_json": {
+            "schema_version": "factor",
+            "subject": {"symbol": "BONK", "chain_id": "solana", "address": "ABCdef123"},
+        },
         "source_event_ids_json": ["event-1"],
         "source_max_received_at_ms": now_ms - 1_000,
         "payload_hash": "row-hash",
@@ -1574,6 +1643,7 @@ def test_projection_runtime_gate_suppresses_narrative_admission_dirty_targets() 
             "narrative_admission_dirty_targets": FakeRuntimeDirtyTargets(),
             "token_profile_current_dirty_targets": FakeRuntimeDirtyTargets(),
             "token_capture_tier_dirty_targets": FakeCaptureTierDirtyTargets(),
+            "asset_profile_refresh_targets": FakeRuntimeDirtyTargets(),
         },
     )()
 
@@ -1590,6 +1660,7 @@ def test_projection_runtime_gate_suppresses_narrative_admission_dirty_targets() 
 
     assert repos.pulse_trigger_dirty_targets.enqueued
     assert repos.token_profile_current_dirty_targets.enqueued
+    assert repos.asset_profile_refresh_targets.enqueued
     assert repos.token_capture_tier_dirty_targets.enqueued
     assert repos.narrative_admission_dirty_targets.enqueued == []
 
@@ -2453,6 +2524,80 @@ def test_projection_enqueues_token_profile_current_for_realtime_rank_changes() -
     ]
 
 
+def test_projection_enqueues_asset_profile_refresh_for_dex_asset_rank_changes() -> None:
+    now_ms = 1_777_800_060_000
+    row = {
+        "target_type": "Asset",
+        "target_id": "legacy-asset-alias",
+        "target_type_key": "Asset",
+        "identity_id": "asset-1",
+        "rank": 1,
+        "lane": "resolved",
+        "decision": "high_alert",
+        "asset_chain_id": "solana",
+        "asset_address": "ABCdef123",
+        "factor_snapshot_json": {
+            "subject": {
+                "target_type": "Asset",
+                "target_id": "asset-1",
+                "symbol": "BONK",
+                "chain_id": "solana",
+                "address": "ABCdef123",
+            }
+        },
+        "source_max_received_at_ms": now_ms - 1_000,
+        "payload_hash": "row-hash",
+    }
+    repos = type(
+        "Repos",
+        (),
+        {"asset_profile_refresh_targets": FakeRuntimeDirtyTargets()},
+    )()
+
+    TokenRadarProjection(repos=repos)._enqueue_asset_profile_refresh_for_rank_changes(
+        window="5m",
+        scope="all",
+        rows=[row],
+        exited_rows=[],
+        previous_by_key={},
+        computed_at_ms=now_ms,
+    )
+
+    assert repos.asset_profile_refresh_targets.enqueued == [
+        {
+            "targets": [
+                {
+                    "provider": "gmgn_dex_profile",
+                    "target_type": "Asset",
+                    "target_id": "asset-1",
+                    "chain_id": "solana",
+                    "address": "ABCdef123",
+                    "symbol": "BONK",
+                    "source_watermark_ms": now_ms - 1_000,
+                    "payload_hash": repos.asset_profile_refresh_targets.enqueued[0]["targets"][0]["payload_hash"],
+                    "priority": 80,
+                    "due_at_ms": now_ms,
+                },
+                {
+                    "provider": "binance_web3_profile",
+                    "target_type": "Asset",
+                    "target_id": "asset-1",
+                    "chain_id": "solana",
+                    "address": "ABCdef123",
+                    "symbol": "BONK",
+                    "source_watermark_ms": now_ms - 1_000,
+                    "payload_hash": repos.asset_profile_refresh_targets.enqueued[0]["targets"][1]["payload_hash"],
+                    "priority": 80,
+                    "due_at_ms": now_ms,
+                },
+            ],
+            "reason": "token_radar_entered",
+            "now_ms": now_ms,
+            "commit": False,
+        }
+    ]
+
+
 def test_projection_skips_narrative_admission_enqueue_outside_realtime_window_scope() -> None:
     repos = type("Repos", (), {})()
 
@@ -2631,6 +2776,7 @@ def test_projection_rebuild_dirty_targets_marks_claim_done_with_payload_hash(mon
     result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
         lease_ms=120_000,
         retry_ms=30_000,
+        max_attempts=3,
         windows=("5m",),
         scopes=("all",),
         now_ms=now_ms,
@@ -2670,11 +2816,99 @@ def test_projection_rebuild_dirty_targets_marks_claim_done_with_payload_hash(mon
     assert dirty_targets.errors == []
 
 
+def test_projection_rebuild_dirty_targets_isolates_source_target_failures(monkeypatch):
+    token_radar = FakeTokenRadar()
+    source_dirty_events = FakeDirtyTargets([])
+    good_claim = {
+        "projection_version": "token_radar_v1",
+        "source_event_id": "event-1",
+        "target_type_key": "Asset",
+        "identity_id": "asset-good",
+        "payload_hash": "source-good-hash",
+        "lease_owner": "projection-worker",
+        "attempt_count": 1,
+    }
+    bad_claim = {
+        "projection_version": "token_radar_v1",
+        "source_event_id": "event-2",
+        "target_type_key": "Asset",
+        "identity_id": "asset-bad",
+        "payload_hash": "source-bad-hash",
+        "lease_owner": "projection-worker",
+        "attempt_count": 1,
+    }
+    rank_sources = FakeRankSources(
+        token_radar=token_radar,
+        rows_by_request={},
+        affected_targets=[
+            {"target_type_key": "Asset", "identity_id": "asset-good"},
+            {"target_type_key": "Asset", "identity_id": "asset-bad"},
+        ],
+    )
+    repos = type(
+        "Repos",
+        (),
+        {
+            "conn": FakeTransactionConn(),
+            "token_radar": token_radar,
+            "token_radar_dirty_targets": FakeDirtyTargets([]),
+            "token_radar_source_dirty_events": source_dirty_events,
+            "token_radar_rank_sources": rank_sources,
+        },
+    )()
+
+    def project_source_request(self, *, target, **kwargs):
+        if target["identity_id"] == "asset-bad":
+            raise RuntimeError("token_radar_projection_asset_identity_required:asset_identity_confidence")
+        return {"source_rows": 1, "status": "updated", "rank_set_changed": False}
+
+    monkeypatch.setattr(TokenRadarProjection, "_project_source_request", project_source_request)
+
+    result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
+        lease_ms=120_000,
+        retry_ms=30_000,
+        max_attempts=3,
+        windows=("5m",),
+        scopes=("all",),
+        now_ms=1_777_800_060_000,
+        limit=20,
+        rank_limit=20,
+        lease_owner="projection-worker",
+        claimed_source_events=(good_claim, bad_claim),
+    )
+
+    assert result["status"] == "failed"
+    assert source_dirty_events.done == [
+        {
+            "projection_version": "token_radar_v1",
+            "source_event_id": "event-1",
+            "target_type_key": "Asset",
+            "identity_id": "asset-good",
+            "payload_hash": "source-good-hash",
+            "lease_owner": "projection-worker",
+            "attempt_count": 1,
+        }
+    ]
+    assert source_dirty_events.errors == [
+        {
+            "projection_version": "token_radar_v1",
+            "source_event_id": "event-2",
+            "target_type_key": "Asset",
+            "identity_id": "asset-bad",
+            "payload_hash": "source-bad-hash",
+            "lease_owner": "projection-worker",
+            "attempt_count": 1,
+            "error": "token_radar_projection_asset_identity_required:asset_identity_confidence",
+        }
+    ]
+
+
 @pytest.mark.parametrize(
     "omitted_keyword",
     [
         pytest.param("rank_limit", id="rank-limit"),
         pytest.param("lease_owner", id="lease-owner"),
+        pytest.param("max_attempts", id="max-attempts"),
     ],
 )
 def test_projection_rebuild_dirty_targets_requires_explicit_worker_policy_before_claiming(
@@ -2706,6 +2940,7 @@ def test_projection_rebuild_dirty_targets_requires_explicit_worker_policy_before
     kwargs = {
         "lease_ms": 120_000,
         "retry_ms": 30_000,
+        "max_attempts": 3,
         "windows": ("5m",),
         "scopes": ("all",),
         "now_ms": 1_777_800_060_000,
@@ -2716,6 +2951,64 @@ def test_projection_rebuild_dirty_targets_requires_explicit_worker_policy_before
     kwargs.pop(omitted_keyword)
 
     with pytest.raises(TypeError, match=omitted_keyword):
+        TokenRadarProjection(repos=repos).rebuild_dirty_targets(**kwargs)
+
+    assert dirty_targets.claim_due_calls == []
+    assert source_dirty_events.claim_due_calls == []
+
+
+@pytest.mark.parametrize(
+    ("policy_field", "policy_value"),
+    [
+        pytest.param("lease_ms", 0, id="zero-lease"),
+        pytest.param("lease_ms", -1, id="negative-lease"),
+        pytest.param("retry_ms", 0, id="zero-retry"),
+        pytest.param("retry_ms", -1, id="negative-retry"),
+        pytest.param("max_attempts", 0, id="zero-max-attempts"),
+        pytest.param("max_attempts", -1, id="negative-max-attempts"),
+    ],
+)
+def test_projection_rebuild_dirty_targets_rejects_non_positive_worker_policy_before_claiming(
+    policy_field: str,
+    policy_value: int,
+):
+    dirty_targets = FakeDirtyTargets(
+        [
+            {
+                "target_type_key": "Asset",
+                "identity_id": "asset-1",
+                "payload_hash": "claim-hash",
+                "lease_owner": "projection-worker",
+                "attempt_count": 1,
+            }
+        ]
+    )
+    source_dirty_events = FakeDirtyTargets([])
+    repos = type(
+        "Repos",
+        (),
+        {
+            "conn": FakeTransactionConn(),
+            "token_radar": FakeTokenRadar(),
+            "token_radar_dirty_targets": dirty_targets,
+            "token_radar_source_dirty_events": source_dirty_events,
+            "token_radar_rank_sources": FakeRankSources(token_radar=FakeTokenRadar(), rows_by_request={}),
+        },
+    )()
+    kwargs = {
+        "lease_ms": 120_000,
+        "retry_ms": 30_000,
+        "max_attempts": 3,
+        "windows": ("5m",),
+        "scopes": ("all",),
+        "now_ms": 1_777_800_060_000,
+        "limit": 20,
+        "rank_limit": 20,
+        "lease_owner": "projection-worker",
+    }
+    kwargs[policy_field] = policy_value
+
+    with pytest.raises(ValueError, match=f"token_radar_projection_{policy_field}_invalid"):
         TokenRadarProjection(repos=repos).rebuild_dirty_targets(**kwargs)
 
     assert dirty_targets.claim_due_calls == []
@@ -2757,6 +3050,7 @@ def test_projection_rebuild_dirty_targets_requires_target_claim_attempt_contract
         TokenRadarProjection(repos=repos).rebuild_dirty_targets(
             lease_ms=120_000,
             retry_ms=30_000,
+            max_attempts=3,
             windows=("5m",),
             scopes=("all",),
             now_ms=1_777_800_060_000,
@@ -2769,6 +3063,12 @@ def test_projection_rebuild_dirty_targets_requires_target_claim_attempt_contract
     assert token_radar.source_request_batches == []
     assert dirty_targets.done == []
     assert dirty_targets.errors == []
+
+
+@pytest.mark.parametrize("attempt_count", [0, -1, True, "1"])
+def test_projection_dirty_claim_attempt_rejects_malformed_values_without_cast(attempt_count: object) -> None:
+    with pytest.raises(RuntimeError, match="token_radar_dirty_claim_attempt_contract_required"):
+        _claim_attempt_count({"attempt_count": attempt_count})
 
 
 def test_projection_rebuild_dirty_targets_requires_source_claim_attempt_contract_before_work():
@@ -2801,6 +3101,7 @@ def test_projection_rebuild_dirty_targets_requires_source_claim_attempt_contract
         TokenRadarProjection(repos=repos).rebuild_dirty_targets(
             lease_ms=120_000,
             retry_ms=30_000,
+            max_attempts=3,
             windows=("5m",),
             scopes=("all",),
             now_ms=1_777_800_060_000,
@@ -2871,6 +3172,7 @@ def test_projection_rebuild_dirty_targets_requires_target_claim_identity_contrac
         TokenRadarProjection(repos=repos).rebuild_dirty_targets(
             lease_ms=120_000,
             retry_ms=30_000,
+            max_attempts=3,
             windows=("5m",),
             scopes=("all",),
             now_ms=1_777_800_060_000,
@@ -2948,6 +3250,7 @@ def test_projection_rebuild_dirty_targets_requires_source_claim_identity_contrac
         TokenRadarProjection(repos=repos).rebuild_dirty_targets(
             lease_ms=120_000,
             retry_ms=30_000,
+            max_attempts=3,
             windows=("5m",),
             scopes=("all",),
             now_ms=1_777_800_060_000,
@@ -3058,6 +3361,7 @@ def test_projection_rebuild_dirty_targets_requires_target_claim_lease_owner_cont
         TokenRadarProjection(repos=repos).rebuild_dirty_targets(
             lease_ms=120_000,
             retry_ms=30_000,
+            max_attempts=3,
             windows=("5m",),
             scopes=("all",),
             now_ms=1_777_800_060_000,
@@ -3102,6 +3406,7 @@ def test_projection_rebuild_dirty_targets_requires_source_claim_lease_owner_cont
         TokenRadarProjection(repos=repos).rebuild_dirty_targets(
             lease_ms=120_000,
             retry_ms=30_000,
+            max_attempts=3,
             windows=("5m",),
             scopes=("all",),
             now_ms=1_777_800_060_000,
@@ -3150,6 +3455,7 @@ def test_projection_rebuild_dirty_targets_requires_target_claim_payload_hash_con
         TokenRadarProjection(repos=repos).rebuild_dirty_targets(
             lease_ms=120_000,
             retry_ms=30_000,
+            max_attempts=3,
             windows=("5m",),
             scopes=("all",),
             now_ms=1_777_800_060_000,
@@ -3194,6 +3500,7 @@ def test_projection_rebuild_dirty_targets_requires_source_claim_payload_hash_con
         TokenRadarProjection(repos=repos).rebuild_dirty_targets(
             lease_ms=120_000,
             retry_ms=30_000,
+            max_attempts=3,
             windows=("5m",),
             scopes=("all",),
             now_ms=1_777_800_060_000,
@@ -3282,6 +3589,7 @@ def test_projection_rebuild_dirty_targets_processes_claims_inside_explicit_trans
     result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
         lease_ms=120_000,
         retry_ms=30_000,
+        max_attempts=3,
         windows=("5m",),
         scopes=("all",),
         now_ms=1_777_800_060_000,
@@ -3319,6 +3627,7 @@ def test_projection_rebuild_dirty_targets_requires_transaction_before_claiming()
         TokenRadarProjection(repos=repos).rebuild_dirty_targets(
             lease_ms=120_000,
             retry_ms=30_000,
+            max_attempts=3,
             windows=("5m",),
             scopes=("all",),
             now_ms=1_777_800_060_000,
@@ -3370,6 +3679,7 @@ def test_projection_rebuild_dirty_targets_bounds_rank_source_repair_by_analysis_
     TokenRadarProjection(repos=repos).rebuild_dirty_targets(
         lease_ms=120_000,
         retry_ms=30_000,
+        max_attempts=3,
         windows=("24h",),
         scopes=("all",),
         now_ms=now_ms,
@@ -3421,6 +3731,7 @@ def test_projection_rebuild_dirty_targets_copies_source_event_ids_into_requests(
     result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
         lease_ms=120_000,
         retry_ms=30_000,
+        max_attempts=3,
         windows=("5m",),
         scopes=("all",),
         now_ms=1_777_800_060_000,
@@ -3476,6 +3787,7 @@ def test_projection_rebuild_dirty_targets_marks_source_dirty_without_event_ids_e
     result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
         lease_ms=120_000,
         retry_ms=30_000,
+        max_attempts=3,
         windows=("5m",),
         scopes=("all",),
         now_ms=1_777_800_060_000,
@@ -3543,6 +3855,7 @@ def test_projection_rebuild_dirty_targets_does_not_populate_source_edges_for_mar
     result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
         lease_ms=120_000,
         retry_ms=30_000,
+        max_attempts=3,
         windows=("5m",),
         scopes=("all",),
         now_ms=1_777_800_060_000,
@@ -3603,6 +3916,7 @@ def test_projection_rebuild_dirty_targets_unchanged_feature_claim_marks_done_wit
     result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
         lease_ms=120_000,
         retry_ms=30_000,
+        max_attempts=3,
         windows=("5m",),
         scopes=("all",),
         now_ms=now_ms,
@@ -3667,6 +3981,7 @@ def test_projection_rebuild_dirty_targets_explicit_due_work_item_publishes_even_
     result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
         lease_ms=120_000,
         retry_ms=30_000,
+        max_attempts=3,
         work_items=(("5m", "all"),),
         now_ms=now_ms,
         limit=20,
@@ -3713,6 +4028,7 @@ def test_projection_rebuild_dirty_targets_deleted_feature_claim_publishes_touche
     result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
         lease_ms=120_000,
         retry_ms=30_000,
+        max_attempts=3,
         windows=("5m",),
         scopes=("all",),
         now_ms=now_ms,
@@ -3777,6 +4093,7 @@ def test_projection_rebuild_dirty_targets_scores_only_selected_work_items(monkey
     result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
         lease_ms=120_000,
         retry_ms=30_000,
+        max_attempts=3,
         windows=("5m", "1h", "4h", "24h"),
         scopes=("all", "matched"),
         work_items=(("5m", "all"), ("1h", "matched")),
@@ -3841,6 +4158,7 @@ def test_projection_rebuild_dirty_targets_separates_score_work_from_due_publish_
     result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
         lease_ms=120_000,
         retry_ms=30_000,
+        max_attempts=3,
         work_items=(("5m", "all"),),
         score_work_items=(("5m", "all"), ("1h", "all")),
         now_ms=1_777_800_060_000,
@@ -3881,6 +4199,7 @@ def test_projection_rebuild_dirty_targets_publishes_requested_work_items_without
     result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
         lease_ms=120_000,
         retry_ms=30_000,
+        max_attempts=3,
         windows=("5m",),
         scopes=("all",),
         work_items=(("5m", "all"),),
@@ -3921,6 +4240,7 @@ def test_projection_rebuild_dirty_targets_accepts_unchanged_due_rank_result(monk
     result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
         lease_ms=120_000,
         retry_ms=30_000,
+        max_attempts=3,
         work_items=(("5m", "all"),),
         now_ms=1_777_800_060_000,
         limit=20,
@@ -3960,6 +4280,7 @@ def test_projection_rebuild_dirty_targets_does_not_runtime_scan_recent_resolved_
     result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
         lease_ms=120_000,
         retry_ms=30_000,
+        max_attempts=3,
         windows=("5m", "1h"),
         scopes=("all",),
         now_ms=1_777_800_060_000,
@@ -4011,6 +4332,7 @@ def test_projection_rebuild_dirty_targets_marks_error_with_payload_hash_on_failu
     result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
         lease_ms=120_000,
         retry_ms=30_000,
+        max_attempts=3,
         windows=("5m",),
         scopes=("all",),
         now_ms=now_ms,
@@ -4074,6 +4396,7 @@ def test_projection_keeps_claim_dirty_when_rank_refresh_fails(monkeypatch):
     result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
         lease_ms=120_000,
         retry_ms=30_000,
+        max_attempts=3,
         windows=("5m",),
         scopes=("all",),
         now_ms=now_ms,
@@ -4144,6 +4467,7 @@ def test_projection_marks_noop_claim_done_when_another_claim_publish_fails(monke
     result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
         lease_ms=120_000,
         retry_ms=30_000,
+        max_attempts=3,
         windows=("5m",),
         scopes=("all",),
         now_ms=1_777_800_060_000,
@@ -4215,6 +4539,7 @@ def test_projection_keeps_claim_dirty_when_rank_refresh_stale_skips(monkeypatch)
     result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
         lease_ms=120_000,
         retry_ms=30_000,
+        max_attempts=3,
         windows=("5m",),
         scopes=("all",),
         now_ms=now_ms,
@@ -4600,9 +4925,14 @@ class FakeRankSources:
         *,
         token_radar: FakeTokenRadar,
         rows_by_request: dict[str, list[dict[str, object]]],
+        affected_targets: list[dict[str, object]] | None = None,
     ):
         self.token_radar = token_radar
         self.rows_by_request = rows_by_request
+        self.affected_targets = affected_targets or []
+
+    def affected_targets_for_event_ids(self, requests):
+        return list(self.affected_targets)
 
     def load_rows_for_requests(self, requests):
         request_list = list(requests)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from parallax.domains.evidence.services.entity_extractor import TextSurface, extract_entities_from_surfaces
 from parallax.domains.token_intel.services.token_evidence_builder import build_token_evidence
 from parallax.domains.token_intel.services.token_intent_builder import build_token_intents
@@ -123,6 +125,40 @@ def test_token_intent_resolver_resolves_retained_symbol_candidates_without_fresh
     assert decision.target_id == "asset:solana:token:slop"
     assert decision.reason_codes == ["SINGLE_ACTIVE_CHAIN_ASSET"]
     assert decision.candidate_ids == ["asset:solana:token:slop"]
+
+
+def test_token_intent_resolver_rejects_loose_intent_object():
+    class LooseIntent:
+        intent_id = "intent-loose"
+        event_id = "event-loose"
+        display_symbol = "PEPE"
+        chain_hint = None
+        address_hint = None
+        created_at_ms = 1_778_145_100_000
+
+    with pytest.raises(TypeError, match="token_intent_resolver_input_contract_required"):
+        TokenIntentResolver(registry=FakeRegistry(), resolutions=FakeResolutions()).resolve(
+            LooseIntent(),  # type: ignore[arg-type]
+            [],
+            decision_time_ms=1_778_145_100_000,
+        )
+
+
+def test_token_intent_resolver_rejects_loose_evidence_object():
+    class LooseEvidence:
+        evidence_type = "cashtag"
+        provider = None
+        provider_ref = None
+
+    evidence = _evidence("$PEPE")
+    intent = build_token_intents(event_id="event-pepe", evidence=evidence, created_at_ms=1_778_145_100_000)[0]
+
+    with pytest.raises(TypeError, match="token_intent_resolver_evidence_contract_required"):
+        TokenIntentResolver(registry=FakeRegistry(), resolutions=FakeResolutions()).resolve(
+            intent,
+            [LooseEvidence()],  # type: ignore[list-item]
+            decision_time_ms=1_778_145_100_000,
+        )
 
 
 def _evidence(text: str):

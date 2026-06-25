@@ -8,7 +8,7 @@ from parallax.integrations.gmgn.openapi_client import (
     GmgnTokenInfo,
     GmgnTokenInfoLookup,
 )
-from parallax.integrations.gmgn.openapi_gateway import GmgnOpenApiGateway
+from parallax.integrations.gmgn.openapi_gateway import GmgnOpenApiGateway, GmgnOpenApiRoute
 
 
 def test_gmgn_openapi_gateway_caches_token_info_before_consuming_route_weight():
@@ -121,6 +121,60 @@ def test_gmgn_openapi_gateway_does_not_retry_provider_unavailable():
         gateway.lookup_token_info(chain="sol", address="blocked")
 
     assert raw_client.info_calls == [("sol", "blocked")]
+
+
+def test_gmgn_openapi_gateway_rejects_malformed_provider_cooldown_from_exception() -> None:
+    raw_client = FakeRawClient(
+        token_info_results=[
+            GmgnOpenApiProviderUnavailableError(
+                "GET /v1/token/info provider unavailable: retry later",
+                cooldown_seconds=-1.0,
+            ),
+        ]
+    )
+    gateway = GmgnOpenApiGateway(raw_client, token_info_cache_ttl_seconds=0)
+
+    with pytest.raises(ValueError, match="gmgn_openapi_provider_cooldown_seconds_required"):
+        gateway.lookup_token_info(chain="sol", address="blocked")
+
+
+@pytest.mark.parametrize("weight", [0.0, -1.0, True, "1"])
+def test_gmgn_openapi_gateway_rejects_malformed_route_weight(weight: object) -> None:
+    gateway = GmgnOpenApiGateway(FakeRawClient(token_info_results=[]), token_info_cache_ttl_seconds=0)
+
+    with pytest.raises(ValueError, match="gmgn_openapi_route_weight_required"):
+        gateway._execute(GmgnOpenApiRoute(name="bad", weight=weight), lambda: None)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "error_code"),
+    [
+        pytest.param(
+            {"token_info_cache_ttl_seconds": -1},
+            "gmgn_openapi_token_info_cache_ttl_seconds_required",
+            id="negative-cache-ttl",
+        ),
+        pytest.param(
+            {"token_info_cache_ttl_seconds": True},
+            "gmgn_openapi_token_info_cache_ttl_seconds_required",
+            id="bool-cache-ttl",
+        ),
+        pytest.param({"rate_per_second": 0.0}, "gmgn_openapi_rate_per_second_required", id="zero-rate"),
+        pytest.param({"rate_capacity": 0.0}, "gmgn_openapi_rate_capacity_required", id="zero-capacity"),
+        pytest.param({"provider_cooldown_seconds": -1.0}, "gmgn_openapi_provider_cooldown_seconds_required"),
+        pytest.param({"retry_attempts": 0}, "gmgn_openapi_retry_attempts_required", id="zero-retries"),
+        pytest.param({"retry_attempts": "2"}, "gmgn_openapi_retry_attempts_required", id="string-retries"),
+        pytest.param({"retry_initial_wait_seconds": -1.0}, "gmgn_openapi_retry_initial_wait_seconds_required"),
+        pytest.param({"retry_max_wait_seconds": -1.0}, "gmgn_openapi_retry_max_wait_seconds_required"),
+        pytest.param({"retry_jitter_seconds": -1.0}, "gmgn_openapi_retry_jitter_seconds_required"),
+    ],
+)
+def test_gmgn_openapi_gateway_rejects_malformed_runtime_boundaries(
+    overrides: dict[str, object],
+    error_code: str,
+) -> None:
+    with pytest.raises(ValueError, match=error_code):
+        GmgnOpenApiGateway(FakeRawClient(token_info_results=[]), **overrides)
 
 
 class FakeRawClient:

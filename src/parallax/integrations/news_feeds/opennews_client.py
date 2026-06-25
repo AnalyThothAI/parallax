@@ -260,7 +260,7 @@ def _rest_search_body(
 ) -> dict[str, Any]:
     body: dict[str, Any] = {
         "limit": _rest_limit(policy=policy, limit=limit),
-        "page": max(1, int(page)),
+        "page": _required_positive_int(page, "page"),
     }
     for key in ("engineTypes", "coins", "hasCoin"):
         if key in subscription:
@@ -307,10 +307,9 @@ def _cursor_int(cursor: Mapping[str, Any], key: str) -> int:
 def _required_positive_int(value: Any, field_name: str) -> int:
     if value is None:
         raise ValueError(f"OpenNews REST fetch policy missing {field_name}")
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"OpenNews REST fetch policy invalid {field_name}") from exc
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"OpenNews REST fetch policy invalid {field_name}")
+    parsed = int(value)
     if parsed <= 0:
         raise ValueError(f"OpenNews REST fetch policy invalid {field_name}")
     return parsed

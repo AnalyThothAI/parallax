@@ -13,6 +13,7 @@ from parallax.integrations.model_execution.structured_json_strategy import (
 from parallax.platform.agent_capabilities import (
     AgentCapabilityProfile,
     AgentProviderFamily,
+    AgentRequestOptions,
     resolve_agent_capability_profile,
 )
 from parallax.platform.agent_execution import AgentStageSpec
@@ -114,6 +115,31 @@ def test_json_object_strategy_reasks_within_same_strategy_after_validation_failu
         assert "failed application validation" in retry_message
         assert "schema already provided" in retry_message
         assert '"properties"' not in retry_message
+
+    asyncio.run(scenario())
+
+
+def test_json_object_strategy_rejects_malformed_client_validation_retries_before_provider_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        completions = FakeCompletions()
+        monkeypatch.setattr(
+            "parallax.integrations.model_execution.structured_json_strategy.litellm.acompletion",
+            completions.create,
+        )
+        strategy = ChatJsonObjectStrategy(api_key="sk-test", base_url="https://example.com/v1")
+
+        for retries in (-1, True, "1"):
+            profile = AgentCapabilityProfile.model_construct(
+                provider_family=AgentProviderFamily.DEEPSEEK,
+                client_validation_retries=retries,
+                request_options=AgentRequestOptions(),
+            )
+            with pytest.raises(ValueError, match="structured_json_client_validation_retries_required"):
+                await strategy.run(_context(capability_profile=profile))
+
+        assert completions.calls == []
 
     asyncio.run(scenario())
 

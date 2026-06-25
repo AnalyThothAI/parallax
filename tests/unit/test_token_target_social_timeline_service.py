@@ -187,13 +187,55 @@ def test_social_timeline_rejects_invalid_window_before_repository_call():
     assert targets.seen_cursors == []
 
 
+def test_social_timeline_allows_zero_limit_with_empty_page_and_lookahead() -> None:
+    targets = FakeTargets(
+        rows=[
+            timeline_row("event-1", target_type="CexToken", target_id="cex_token:BTC", symbol="BTC"),
+        ]
+    )
+
+    result = TokenTargetSocialTimelineService(targets=targets).timeline(
+        target_type="CexToken",
+        target_id="cex_token:BTC",
+        window="1h",
+        scope="all",
+        limit=0,
+        now_ms=1_700_000_060_000,
+    )
+
+    assert result["posts"] == []
+    assert result["returned_count"] == 0
+    assert result["has_more"] is True
+    assert targets.seen_limits == [1]
+
+
+@pytest.mark.parametrize("limit", [-1, True, "2"])
+def test_social_timeline_rejects_malformed_limit_before_repository_call(limit: object) -> None:
+    targets = FakeTargets(rows=[])
+
+    with pytest.raises(ValueError, match="token_target_social_timeline_limit_required"):
+        TokenTargetSocialTimelineService(targets=targets).timeline(
+            target_type="CexToken",
+            target_id="cex_token:BTC",
+            window="1h",
+            scope="all",
+            limit=limit,  # type: ignore[arg-type]
+            now_ms=1_700_000_060_000,
+        )
+
+    assert targets.seen_cursors == []
+    assert targets.seen_limits == []
+
+
 class FakeTargets:
     def __init__(self, *, rows):
         self.rows = rows
         self.seen_cursors = []
+        self.seen_limits = []
 
     def timeline_rows(self, *, target_type, target_id, since_ms, watched_only, limit, cursor=None):
         self.seen_cursors.append(cursor)
+        self.seen_limits.append(limit)
         rows = [
             row
             for row in self.rows

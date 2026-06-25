@@ -1,21 +1,25 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
 from typing import Any, cast
+
+from parallax.domains.token_intel.types.token_fact_inputs import TokenEvidenceInput
+
+TokenEvidenceWriteInput = TokenEvidenceInput | Mapping[str, Any]
 
 
 class TokenEvidenceRepository:
     def __init__(self, conn: Any):
         self.conn = conn
 
-    def insert_many(self, evidence: list[Any], *, commit: bool = True) -> list[dict[str, Any]]:
+    def insert_many(self, evidence: Sequence[TokenEvidenceWriteInput], *, commit: bool = True) -> list[dict[str, Any]]:
         def _write() -> list[dict[str, Any]]:
             return [self.insert(item, commit=False) for item in evidence]
 
         return _run_repository_write(self.conn, commit, _write)
 
-    def insert(self, evidence: Any, *, commit: bool = True) -> dict[str, Any]:
+    def insert(self, evidence: TokenEvidenceWriteInput, *, commit: bool = True) -> dict[str, Any]:
         def _write() -> dict[str, Any]:
             payload = _payload(evidence)
             cursor = self.conn.execute(
@@ -121,10 +125,32 @@ class TokenEvidenceRepository:
         return evidence_by_intent
 
 
-def _payload(item: Any) -> dict[str, Any]:
-    if isinstance(item, dict):
+def _payload(item: TokenEvidenceWriteInput) -> dict[str, Any]:
+    if isinstance(item, TokenEvidenceInput):
+        return {
+            "evidence_id": item.evidence_id,
+            "event_id": item.event_id,
+            "source_kind": item.source_kind,
+            "source_id": item.source_id,
+            "evidence_type": item.evidence_type,
+            "raw_value": item.raw_value,
+            "normalized_symbol": item.normalized_symbol,
+            "chain_hint": item.chain_hint,
+            "address_hint": item.address_hint,
+            "provider": item.provider,
+            "provider_ref": item.provider_ref,
+            "text_surface": item.text_surface,
+            "span_start": item.span_start,
+            "span_end": item.span_end,
+            "sentence_id": item.sentence_id,
+            "local_group_key": item.local_group_key,
+            "strength": item.strength,
+            "confidence": item.confidence,
+            "created_at_ms": item.created_at_ms,
+        }
+    if isinstance(item, Mapping):
         return dict(item)
-    return {slot: getattr(item, slot) for slot in item.__slots__}
+    raise TypeError("token_evidence_repository_input_contract_required")
 
 
 def _unique_ids(values: list[str]) -> list[str]:

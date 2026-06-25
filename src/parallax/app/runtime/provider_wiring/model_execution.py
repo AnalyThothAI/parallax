@@ -22,7 +22,10 @@ from parallax.platform.config.settings import Settings
 class LiteLLMPulseDecisionProvider:
     def __init__(self, client: LiteLLMPulseDecisionClient, *, pipeline_timeout_seconds: float) -> None:
         self._client = client
-        self._pipeline_timeout_seconds = float(pipeline_timeout_seconds)
+        self._pipeline_timeout_seconds = _positive_timeout_seconds(
+            pipeline_timeout_seconds,
+            error_code="pulse_decision_pipeline_timeout_seconds_required",
+        )
 
     @property
     def provider(self) -> str:
@@ -155,13 +158,22 @@ def build_agent_execution_gateway(
 
 def _agent_runtime_lane_timeout_seconds(settings: Settings, lane: str) -> float:
     lane_policy = settings.workers.agent_runtime.lanes[lane]
-    return float(lane_policy.timeout_seconds)
+    return _positive_timeout_seconds(
+        lane_policy.timeout_seconds,
+        error_code="agent_runtime_lane_timeout_seconds_required",
+    )
 
 
 def _require_llm_gateway(llm_gateway: object | None) -> object:
     if llm_gateway is None:
         raise RuntimeError("LLMGateway is required for configured LiteLLM providers")
     return llm_gateway
+
+
+def _positive_timeout_seconds(value: Any, *, error_code: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float) or value <= 0:
+        raise ValueError(error_code)
+    return float(value)
 
 
 __all__ = [

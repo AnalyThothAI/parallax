@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
 
 import pytest
 
 from parallax.domains.news_intel._constants import NEWS_STORY_IDENTITY_VERSION
+from parallax.domains.news_intel.runtime import news_story_brief_worker as worker_module
 from parallax.domains.news_intel.runtime.news_story_brief_worker import NewsStoryBriefWorker
 from parallax.domains.news_intel.services.news_story_brief_input import build_news_story_brief_input_packet
 from parallax.domains.news_intel.types.news_story_brief import (
@@ -119,6 +121,20 @@ def test_worker_request_audit_failure_retries_without_burning_attempt() -> None:
 
 def test_worker_execute_no_start_backpressure_retries_without_run_or_attempt() -> None:
     asyncio.run(_test_worker_execute_no_start_backpressure_retries_without_run_or_attempt())
+
+
+def test_worker_capacity_denied_requires_formal_agent_capacity_reservation() -> None:
+    asyncio.run(_test_worker_capacity_denied_requires_formal_agent_capacity_reservation())
+
+
+def test_worker_capacity_denied_requires_formal_reason_enum() -> None:
+    asyncio.run(_test_worker_capacity_denied_requires_formal_reason_enum())
+
+
+def test_worker_provider_error_class_requires_formal_enum_without_string_fallback() -> None:
+    invalid_reason: Any = "rate_limited"
+    with pytest.raises(RuntimeError, match="news_story_brief_agent_error_class_contract_required"):
+        worker_module._reason_value(invalid_reason)
 
 
 def test_worker_provider_started_failure_writes_failed_run_and_retries() -> None:
@@ -939,6 +955,32 @@ async def _test_worker_execute_no_start_backpressure_retries_without_run_or_atte
     assert result.notes["backpressure_rate_limited"] == 1
 
 
+async def _test_worker_capacity_denied_requires_formal_agent_capacity_reservation() -> None:
+    class LooseReservation:
+        acquired = False
+        reason = AgentExecutionErrorClass.CAPACITY_DENIED
+        rate_units = 1
+
+    db = FakeDB([_story_candidate()])
+    loose_reservation: Any = LooseReservation()
+    provider = FakeStoryBriefProvider(reservation=loose_reservation)
+    worker = _worker(db=db, provider=provider)
+
+    with pytest.raises(RuntimeError, match="news_story_brief_agent_reservation_contract_required"):
+        await worker.run_once()
+
+
+async def _test_worker_capacity_denied_requires_formal_reason_enum() -> None:
+    db = FakeDB([_story_candidate()])
+    reservation = AgentCapacityReservation(lane=NEWS_STORY_BRIEF_LANE, acquired=False)
+    reservation.reason = "rate_limited"  # type: ignore[assignment]
+    provider = FakeStoryBriefProvider(reservation=reservation)
+    worker = _worker(db=db, provider=provider)
+
+    with pytest.raises(RuntimeError, match="news_story_brief_agent_reservation_reason_contract_required"):
+        await worker.run_once()
+
+
 async def _test_worker_provider_started_failure_writes_failed_run_and_retries() -> None:
     db = FakeDB([_story_candidate()])
     provider = FakeStoryBriefProvider(brief_error=RuntimeError("provider broke after start"))
@@ -1112,6 +1154,41 @@ async def _test_worker_rejects_claim_missing_story_target_id_without_marking_don
     assert result.notes["load_failed"] == 1
 
 
+def test_worker_rejects_malformed_queue_depth_without_reserving_or_claiming() -> None:
+    asyncio.run(_test_worker_rejects_malformed_queue_depth_without_reserving_or_claiming())
+
+
+async def _test_worker_rejects_malformed_queue_depth_without_reserving_or_claiming() -> None:
+    db = FakeDB([_story_candidate()])
+    provider = FakeStoryBriefProvider()
+    worker = _worker(db=db, provider=provider)
+
+    def malformed_queue_depth(*, now_ms: int, projection_name: str | None = None) -> int:
+        del now_ms, projection_name
+        return -1
+
+    db.dirty.queue_depth = malformed_queue_depth  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError, match="news_story_brief_queue_depth_required"):
+        await worker.run_once()
+
+    assert provider.reserve_calls == []
+    assert db.dirty.claim_kwargs == []
+
+
+@pytest.mark.parametrize("limit", [0, True, "1"])
+def test_worker_rejects_malformed_claim_limit_before_session(limit: object) -> None:
+    db = FakeDB([_story_candidate()])
+    provider = FakeStoryBriefProvider()
+    worker = _worker(db=db, provider=provider)
+
+    with pytest.raises(RuntimeError, match="news_story_brief_claim_limit_required"):
+        worker._claim_targets(now_ms=NOW_MS, limit=limit)  # type: ignore[arg-type]
+
+    assert db.in_session is False
+    assert db.dirty.claim_kwargs == []
+
+
 def _worker(
     *,
     db: FakeDB,
@@ -1225,11 +1302,12 @@ class FakeStoryBriefProvider:
         *,
         request_error: Exception | None = None,
         brief_error: Exception | None = None,
+        reservation: Any | None = None,
         omit_result_latency: bool = False,
         omit_result_usage: bool = False,
         omit_result_trace_metadata: bool = False,
     ) -> None:
-        self.reservation = AgentCapacityReservation(lane=NEWS_STORY_BRIEF_LANE, acquired=True)
+        self.reservation = reservation or AgentCapacityReservation(lane=NEWS_STORY_BRIEF_LANE, acquired=True)
         self.reserve_calls: list[str] = []
         self.reserve_rate_units: list[int] = []
         self.request_audit_calls: list[str] = []
@@ -1431,7 +1509,7 @@ class FakeDirtyRepository:
 
 class FakeConn:
     @contextmanager
-    def transaction(self):
+    def transaction(self) -> Iterator[None]:
         yield
 
 

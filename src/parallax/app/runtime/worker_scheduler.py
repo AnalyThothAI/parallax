@@ -20,7 +20,7 @@ class WorkerScheduler:
     ) -> None:
         self.workers = dict(workers)
         self.db = db
-        self.stop_timeout_seconds = max(0.0, float(stop_timeout_seconds))
+        self.stop_timeout_seconds = _nonnegative_timeout_seconds(stop_timeout_seconds)
         self.tasks: dict[str, asyncio.Task[None]] = {}
         self._started = False
 
@@ -133,6 +133,14 @@ class WorkerScheduler:
 
 def _worker_startable(worker: Any) -> bool:
     return worker_effective_status(worker) not in {"disabled", "intentionally_not_started", "unavailable"}
+
+
+def _nonnegative_timeout_seconds(value: float) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError("worker_scheduler_stop_timeout_seconds_required")
+    if value < 0:
+        raise ValueError("worker_scheduler_stop_timeout_seconds_required")
+    return float(value)
 
 
 def worker_effective_status(worker: Any) -> str:

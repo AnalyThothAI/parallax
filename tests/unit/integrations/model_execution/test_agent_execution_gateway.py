@@ -6,7 +6,12 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
-from parallax.integrations.model_execution.execution_gateway import AgentExecutionGateway
+from parallax.integrations.model_execution.execution_gateway import (
+    AgentExecutionGateway,
+    _llm_gateway_bool,
+    _llm_gateway_text,
+    _safety_net_retries,
+)
 from parallax.integrations.model_execution.output_schema import StrictJsonOutputSchema
 from parallax.platform.agent_execution import (
     RUNTIME_VERSION,
@@ -224,6 +229,37 @@ def test_request_audit_artifact_hash_includes_stage_instructions() -> None:
     assert audit.artifact_version_hash != changed_audit.artifact_version_hash
 
 
+def test_gateway_defaults_missing_safety_net_retries_to_zero() -> None:
+    assert _safety_net_retries({}) == 0
+
+
+@pytest.mark.parametrize("safety_net_retries", [0, 2])
+def test_gateway_accepts_formal_safety_net_retries(safety_net_retries: int) -> None:
+    assert _safety_net_retries({"safety_net_retries": safety_net_retries}) == safety_net_retries
+
+
+@pytest.mark.parametrize("safety_net_retries", [-1, True, "1"])
+def test_gateway_rejects_malformed_safety_net_retries_without_cast(safety_net_retries: object) -> None:
+    with pytest.raises(ValueError, match="agent_execution_safety_net_retries_required"):
+        _safety_net_retries({"safety_net_retries": safety_net_retries})
+
+
+def test_gateway_requires_formal_llm_gateway_text_fields_without_defaults() -> None:
+    with pytest.raises(ValueError, match="agent_execution_llm_gateway_api_key_required"):
+        _llm_gateway_text(object(), "api_key")
+
+    with pytest.raises(ValueError, match="agent_execution_llm_gateway_base_url_required"):
+        _llm_gateway_text(type("BadGateway", (), {"base_url": 12})(), "base_url")
+
+
+def test_gateway_requires_formal_llm_gateway_bool_fields_without_defaults() -> None:
+    with pytest.raises(ValueError, match="agent_execution_llm_gateway_trace_export_enabled_required"):
+        _llm_gateway_bool(object(), "trace_export_enabled")
+
+    with pytest.raises(ValueError, match="agent_execution_llm_gateway_trace_export_enabled_required"):
+        _llm_gateway_bool(type("BadGateway", (), {"trace_export_enabled": "false"})(), "trace_export_enabled")
+
+
 def test_execute_returns_normalized_audit_using_json_object_client() -> None:
     async def scenario() -> None:
         llm_gateway = FakeLLMGateway()
@@ -401,6 +437,21 @@ def test_try_reserve_rate_units_consume_multiple_rpm_slots_before_claim() -> Non
         assert second.acquired is False
         assert second.reason is AgentExecutionErrorClass.RATE_LIMITED
         assert gateway.status_snapshot()["global_in_flight"] == 0
+
+    asyncio.run(scenario())
+
+
+def test_try_reserve_rejects_malformed_rate_units_before_capacity_claim() -> None:
+    async def scenario() -> None:
+        gateway = _gateway(policy=_lane_rpm_policy())
+
+        for rate_units in (0, -1, True, "2"):
+            with pytest.raises(ValueError, match="agent_execution_rate_units_required"):
+                gateway.try_reserve("test.lane", rate_units=rate_units)  # type: ignore[arg-type]
+
+        snapshot = gateway.status_snapshot()
+        assert snapshot["global_in_flight"] == 0
+        assert snapshot["lanes"]["test.lane"]["in_flight"] == 0
 
     asyncio.run(scenario())
 

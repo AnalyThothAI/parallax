@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from parallax.domains.cex_market_intel.providers import (
     CexFundingPremium,
     CexOiTicker24h,
@@ -224,6 +226,47 @@ def test_cex_oi_radar_board_worker_reads_formal_settings_for_session_universe_an
     assert db.repos.cex_oi_radar.requested_limit == 3
     assert db.repos.cex_oi_radar.published[0]["period"] == "15m"
     assert db.repos.cex_detail_snapshots.upserted[0]["level_bands"][0]["kind"] == "resistance"
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "error_code"),
+    [
+        ("period", "", "cex_oi_radar_board_period_required"),
+        ("batch_size", 0, "cex_oi_radar_board_batch_size_required"),
+        ("batch_size", True, "cex_oi_radar_board_batch_size_required"),
+        ("batch_size", "10", "cex_oi_radar_board_batch_size_required"),
+        ("universe_limit", 0, "cex_oi_radar_board_universe_limit_required"),
+        ("coinglass_enrichment_limit", -1, "cex_oi_radar_board_coinglass_enrichment_limit_required"),
+        ("coinglass_level_limit", True, "cex_oi_radar_board_coinglass_level_limit_required"),
+    ],
+)
+def test_cex_oi_radar_board_worker_requires_formal_settings_before_db(
+    field: str,
+    value: object,
+    error_code: str,
+) -> None:
+    db = _DB()
+    payload = {
+        "enabled": True,
+        "batch_size": 10,
+        "universe_limit": 10,
+        "period": "5m",
+        "statement_timeout_seconds": 30,
+        "coinglass_enrichment_limit": 1,
+        "coinglass_level_limit": 2,
+        field: value,
+    }
+
+    with pytest.raises(ValueError, match=error_code):
+        CexOiRadarBoardWorker(
+            name="cex_oi_radar_board",
+            settings=CexOiRadarBoardWorkerSettings.model_construct(**payload),
+            db=db,
+            telemetry=SimpleNamespace(),
+            oi_market=_Client(),
+        )
+
+    assert db.worker_sessions == []
 
 
 def test_cex_oi_radar_board_worker_requires_oi_market_provider_contract():

@@ -13,14 +13,23 @@ def enrich_rows_with_coinglass(
     limit: int,
     level_limit: int,
 ) -> list[dict[str, Any]]:
-    if client is None or limit <= 0:
+    enrichment_limit = _required_nonnegative_int(limit, "coinglass_detail_enrichment_limit_required")
+    parsed_level_limit = _required_nonnegative_int(level_limit, "coinglass_detail_level_limit_required")
+    if client is None or enrichment_limit <= 0:
         return [_coinglass_unavailable(row) for row in rows]
     enriched: list[dict[str, Any]] = []
     for index, row in enumerate(rows):
-        if index >= limit:
+        if index >= enrichment_limit:
             enriched.append(_coinglass_unavailable(row))
             continue
-        enriched.append(enrich_row_with_coinglass(row=row, client=client, now_ms=now_ms, level_limit=level_limit))
+        enriched.append(
+            enrich_row_with_coinglass(
+                row=row,
+                client=client,
+                now_ms=now_ms,
+                level_limit=parsed_level_limit,
+            )
+        )
     return enriched
 
 
@@ -137,6 +146,7 @@ def _latest_value(payload: dict[str, Any], key: str) -> float | None:
 
 
 def _level_bands(payload: dict[str, Any], *, limit: int) -> list[dict[str, Any]]:
+    parsed_limit = _required_nonnegative_int(limit, "coinglass_detail_level_limit_required")
     rows = payload.get("levels") or payload.get("data") or []
     if not isinstance(rows, list):
         return []
@@ -158,7 +168,7 @@ def _level_bands(payload: dict[str, Any], *, limit: int) -> list[dict[str, Any]]
             }
         )
     bands.sort(key=lambda item: float(item.get("size") or 0), reverse=True)
-    return bands[: max(0, int(limit))]
+    return bands[:parsed_limit]
 
 
 def _data_points(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -192,3 +202,11 @@ def _int_or_none(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value < 0:
+        raise ValueError(error_code)
+    return int(value)

@@ -67,7 +67,10 @@ class TokenCaptureTierRepository:
         *,
         exclude_keys: list[dict[str, str]] | None = None,
     ) -> list[dict[str, Any]]:
-        params: dict[str, Any] = {"tier": tier, "limit": limit}
+        params: dict[str, Any] = {
+            "tier": tier,
+            "limit": _required_nonnegative_int(limit, "token_capture_tier_repository_limit_required"),
+        }
         exclude_filter = ""
         if exclude_keys:
             params["exclude_keys"] = Jsonb(list(exclude_keys))
@@ -165,6 +168,7 @@ class TokenCaptureTierRepository:
         return _cursor_rowcount(cursor)
 
     def live_target_rows(self, *, limit: int) -> list[dict[str, Any]]:
+        parsed_limit = _required_nonnegative_int(limit, "token_capture_tier_repository_limit_required")
         rows = self._conn.execute(
             """
             SELECT
@@ -197,7 +201,7 @@ class TokenCaptureTierRepository:
                      token_capture_tier.target_id ASC
             LIMIT %(limit)s
             """,
-            {"limit": max(0, int(limit))},
+            {"limit": parsed_limit},
         ).fetchall()
         return [dict(row) for row in rows]
 
@@ -212,6 +216,14 @@ def _cursor_rowcount(cursor: Any) -> int:
     if rowcount < 0:
         raise TypeError("token_capture_tier_repository_rowcount_invalid")
     return rowcount
+
+
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value < 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _single_returning_changed(cursor: Any, row: Any | None) -> bool:

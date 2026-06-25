@@ -87,6 +87,78 @@ def test_event_anchor_worker_requires_provider_bundle_without_injected_capture_s
         )
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "error_code"),
+    [
+        pytest.param("batch_size", 0, "event_anchor_backfill_batch_size_required", id="batch-zero"),
+        pytest.param("batch_size", True, "event_anchor_backfill_batch_size_required", id="batch-bool"),
+        pytest.param("batch_size", "1", "event_anchor_backfill_batch_size_required", id="batch-string"),
+        pytest.param("concurrency", 0, "event_anchor_backfill_concurrency_required", id="concurrency-zero"),
+        pytest.param("concurrency", True, "event_anchor_backfill_concurrency_required", id="concurrency-bool"),
+        pytest.param("concurrency", "1", "event_anchor_backfill_concurrency_required", id="concurrency-string"),
+        pytest.param("max_attempts", 0, "event_anchor_backfill_max_attempts_required", id="attempts-zero"),
+        pytest.param("max_attempts", True, "event_anchor_backfill_max_attempts_required", id="attempts-bool"),
+        pytest.param("max_attempts", "1", "event_anchor_backfill_max_attempts_required", id="attempts-string"),
+        pytest.param("min_age_ms", -1, "event_anchor_backfill_min_age_ms_required", id="min-age-negative"),
+        pytest.param("min_age_ms", True, "event_anchor_backfill_min_age_ms_required", id="min-age-bool"),
+        pytest.param("min_age_ms", "0", "event_anchor_backfill_min_age_ms_required", id="min-age-string"),
+        pytest.param("lease_ms", 0, "event_anchor_backfill_lease_ms_required", id="lease-zero"),
+        pytest.param("lease_ms", True, "event_anchor_backfill_lease_ms_required", id="lease-bool"),
+        pytest.param("lease_ms", "1", "event_anchor_backfill_lease_ms_required", id="lease-string"),
+        pytest.param(
+            "active_window_ms",
+            0,
+            "event_anchor_backfill_active_window_ms_required",
+            id="active-window-zero",
+        ),
+        pytest.param(
+            "active_window_ms",
+            True,
+            "event_anchor_backfill_active_window_ms_required",
+            id="active-window-bool",
+        ),
+        pytest.param(
+            "active_window_ms",
+            "1",
+            "event_anchor_backfill_active_window_ms_required",
+            id="active-window-string",
+        ),
+        pytest.param(
+            "max_anchor_lag_ms",
+            0,
+            "event_anchor_backfill_max_anchor_lag_ms_required",
+            id="max-lag-zero",
+        ),
+        pytest.param(
+            "max_anchor_lag_ms",
+            True,
+            "event_anchor_backfill_max_anchor_lag_ms_required",
+            id="max-lag-bool",
+        ),
+        pytest.param(
+            "max_anchor_lag_ms",
+            "1",
+            "event_anchor_backfill_max_anchor_lag_ms_required",
+            id="max-lag-string",
+        ),
+    ],
+)
+def test_event_anchor_worker_rejects_malformed_runtime_settings(
+    field: str,
+    value: Any,
+    error_code: str,
+) -> None:
+    settings = _settings()
+    setattr(settings, field, value)
+
+    with pytest.raises(ValueError, match=error_code):
+        EventAnchorBackfillWorker(
+            pool_bundle=_FakeDB(pending_rows=[]),
+            capture_service=_StubCaptureService(),
+            settings=settings,
+        )
+
+
 def test_run_once_expires_stale_jobs_before_provider_calls() -> None:
     row = _pending_row(event_id="evt-expired", target_type="chain_token", target_id="solana:OLD")
     row["active_until_ms"] = NOW_MS - 1
@@ -621,6 +693,8 @@ def _settings(
     max_attempts: int = 3,
     min_age_ms: int = 100,
     lease_ms: int = 60_000,
+    active_window_ms: int = 300_000,
+    max_anchor_lag_ms: int = 60_000,
 ) -> Any:
     return SimpleNamespace(
         enabled=True,
@@ -631,8 +705,8 @@ def _settings(
         max_attempts=max_attempts,
         lease_ms=lease_ms,
         min_age_ms=min_age_ms,
-        active_window_ms=300_000,
-        max_anchor_lag_ms=60_000,
+        active_window_ms=active_window_ms,
+        max_anchor_lag_ms=max_anchor_lag_ms,
         statement_timeout_seconds=30.0,
     )
 

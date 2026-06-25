@@ -185,6 +185,8 @@ def test_macro_projection_dirty_target_methods_use_claim_done_error_contract() -
     assert "attempt_count" in done_source
     assert "UPDATE macro_projection_dirty_targets" in error_source
     assert "last_error" in error_source
+    assert "worker_queue_terminal_events" in error_source or "terminalize_source_row" in error_source
+    assert "max_attempts" in error_source
 
 
 def test_macro_projection_dirty_target_default_writes_require_connection_transaction_before_sql() -> None:
@@ -202,6 +204,91 @@ def test_macro_projection_dirty_target_default_writes_require_connection_transac
         )
 
     assert conn.executions == []
+
+
+@pytest.mark.parametrize(
+    ("overrides", "error_code"),
+    [
+        pytest.param({"limit": -1}, "macro_projection_dirty_target_claim_limit_required", id="limit-negative"),
+        pytest.param({"limit": True}, "macro_projection_dirty_target_claim_limit_required", id="limit-bool"),
+        pytest.param({"limit": "10"}, "macro_projection_dirty_target_claim_limit_required", id="limit-string"),
+        pytest.param({"lease_ms": 0}, "macro_projection_dirty_target_claim_lease_ms_required", id="lease-zero"),
+        pytest.param({"lease_ms": True}, "macro_projection_dirty_target_claim_lease_ms_required", id="lease-bool"),
+        pytest.param(
+            {"lease_ms": "30000"},
+            "macro_projection_dirty_target_claim_lease_ms_required",
+            id="lease-string",
+        ),
+    ],
+)
+def test_macro_projection_dirty_target_claim_rejects_malformed_parameters_before_transaction(
+    overrides: dict[str, object],
+    error_code: str,
+) -> None:
+    conn = DirtyTargetConnection()
+    repo = MacroIntelRepository(conn)
+    params = {
+        "projection_name": "macro_view",
+        "projection_version": "macro_regime_v4",
+        "limit": 10,
+        "lease_ms": 30_000,
+        "lease_owner": "worker-1",
+        "now_ms": 1_779_000_000_000,
+    }
+    params.update(overrides)
+
+    with pytest.raises(ValueError, match=error_code):
+        repo.claim_macro_projection_dirty_targets(**params)
+
+    assert conn.events == []
+    assert conn.executions == []
+    assert conn.commit_count == 0
+
+
+@pytest.mark.parametrize(
+    ("overrides", "error_code"),
+    [
+        pytest.param({"retry_ms": 0}, "macro_projection_dirty_target_retry_ms_required", id="retry-zero"),
+        pytest.param({"retry_ms": True}, "macro_projection_dirty_target_retry_ms_required", id="retry-bool"),
+        pytest.param({"retry_ms": "5000"}, "macro_projection_dirty_target_retry_ms_required", id="retry-string"),
+        pytest.param(
+            {"max_attempts": 0},
+            "macro_projection_dirty_target_max_attempts_required",
+            id="attempts-zero",
+        ),
+        pytest.param(
+            {"max_attempts": True},
+            "macro_projection_dirty_target_max_attempts_required",
+            id="attempts-bool",
+        ),
+        pytest.param(
+            {"max_attempts": "3"},
+            "macro_projection_dirty_target_max_attempts_required",
+            id="attempts-string",
+        ),
+    ],
+)
+def test_macro_projection_dirty_target_error_rejects_malformed_parameters_before_transaction(
+    overrides: dict[str, object],
+    error_code: str,
+) -> None:
+    conn = DirtyTargetConnection()
+    repo = MacroIntelRepository(conn)
+    params = {
+        "error": "projection failed",
+        "retry_ms": 5_000,
+        "max_attempts": 3,
+        "worker_name": "macro_view_projection",
+        "now_ms": 1_779_000_000_002,
+    }
+    params.update(overrides)
+
+    with pytest.raises(ValueError, match=error_code):
+        repo.mark_macro_projection_dirty_targets_error([_dirty_target_claim()], **params)
+
+    assert conn.events == []
+    assert conn.executions == []
+    assert conn.commit_count == 0
 
 
 def test_macro_projection_dirty_target_default_writes_use_connection_transaction_without_manual_commit() -> None:
@@ -222,6 +309,8 @@ def test_macro_projection_dirty_target_default_writes_use_connection_transaction
         claimed,
         error="projection failed",
         retry_ms=5_000,
+        max_attempts=3,
+        worker_name="macro_view_projection",
         now_ms=1_779_000_000_002,
     )
 
@@ -261,6 +350,8 @@ def test_macro_projection_dirty_target_caller_owned_writes_do_not_open_inner_tra
         claimed,
         error="projection failed",
         retry_ms=5_000,
+        max_attempts=3,
+        worker_name="macro_view_projection",
         now_ms=1_779_000_000_002,
         commit=False,
     )
@@ -268,6 +359,36 @@ def test_macro_projection_dirty_target_caller_owned_writes_do_not_open_inner_tra
     assert claimed == [claim]
     assert conn.events == ["execute", "execute", "execute"]
     assert conn.commit_count == 0
+
+
+def test_macro_projection_dirty_target_error_terminalizes_exhausted_claim() -> None:
+    conn = DirtyTargetTerminalizingConnection()
+    repo = MacroIntelRepository(conn)
+    claim = _dirty_target_claim()
+
+    changed = repo.mark_macro_projection_dirty_targets_error(
+        [claim],
+        error="projection failed",
+        retry_ms=5_000,
+        max_attempts=1,
+        worker_name="macro_view_projection",
+        now_ms=1_779_000_000_002,
+        commit=False,
+    )
+
+    assert changed == 1
+    assert "DELETE FROM macro_projection_dirty_targets queue" in conn.sql_log[0]
+    assert any("INSERT INTO worker_queue_terminal_events" in sql for sql in conn.sql_log)
+    assert conn.terminal_params["worker_name"] == "macro_view_projection"
+    assert conn.terminal_params["source_table"] == "macro_projection_dirty_targets"
+    assert conn.terminal_params["target_key"] == "macro_view:macro_regime_v4:current:current"
+    assert conn.terminal_params["final_status"] == "terminal"
+    assert conn.terminal_params["final_reason"] == (
+        "macro_view_projection_retry_budget_exhausted: projection failed"
+    )
+    assert conn.terminal_params["final_reason_bucket"] == "retry_budget_exhausted"
+    assert conn.terminal_params["attempt_count"] == 1
+    assert conn.terminal_params["payload_hash"] == "sha256:dirty"
 
 
 def test_enqueue_macro_projection_dirty_target_coalesces_current_target() -> None:
@@ -704,6 +825,46 @@ class DirtyTargetCursor:
         return self.rows
 
 
+class DirtyTargetTerminalizingConnection:
+    def __init__(self) -> None:
+        self.sql_log: list[str] = []
+        self.terminal_params: dict[str, object] = {}
+
+    def execute(self, query: str, params: object = ()) -> DirtyTargetTerminalizingCursor:
+        text = str(query)
+        self.sql_log.append(text)
+        if "DELETE FROM macro_projection_dirty_targets queue" in text:
+            return DirtyTargetTerminalizingCursor(rowcount=1, rows=[_dirty_target_claim()])
+        if "SELECT terminal_generation" in text:
+            return DirtyTargetTerminalizingCursor(rowcount=0, row=None)
+        if "SELECT COALESCE(MAX(terminal_generation), 0) + 1 AS terminal_generation" in text:
+            return DirtyTargetTerminalizingCursor(rowcount=1, row={"terminal_generation": 1})
+        if "INSERT INTO worker_queue_terminal_events" in text:
+            if isinstance(params, dict):
+                self.terminal_params = dict(params)
+            return DirtyTargetTerminalizingCursor(rowcount=1, row=self.terminal_params)
+        raise AssertionError(f"unexpected SQL: {text}")
+
+
+class DirtyTargetTerminalizingCursor:
+    def __init__(
+        self,
+        *,
+        rowcount: int,
+        rows: list[dict[str, object]] | None = None,
+        row: dict[str, object] | None = None,
+    ) -> None:
+        self.rowcount = rowcount
+        self.rows = rows or []
+        self.row = row
+
+    def fetchall(self) -> list[dict[str, object]]:
+        return self.rows
+
+    def fetchone(self) -> dict[str, object] | None:
+        return self.row
+
+
 def _dirty_target_claim() -> dict[str, object]:
     return {
         "projection_name": "macro_view",
@@ -860,6 +1021,8 @@ def _run_macro_rowcount_operation(repository: MacroIntelRepository, operation: s
             [_dirty_target_claim()],
             error="projection failed",
             retry_ms=30_000,
+            max_attempts=3,
+            worker_name="macro_view_projection",
             now_ms=1_779_000_000_000,
             commit=False,
         )

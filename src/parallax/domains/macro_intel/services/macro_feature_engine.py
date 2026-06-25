@@ -20,10 +20,12 @@ DELTA_HORIZONS = (5, 20, 60)
 HISTORY_POINTS = 252
 STAT_LOOKBACK = 252
 STALE_FRESHNESS_DAYS_BY_FREQUENCY = {
+    "intraday": 2,
     "daily": 7,
     "weekly": 21,
     "monthly": 65,
     "quarterly": 140,
+    "irregular": 140,
 }
 HISTORY_WINDOWS = {
     "20d": MACRO_REQUIRED_DELTA_POINTS["20d"],

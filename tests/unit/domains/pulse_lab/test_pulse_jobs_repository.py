@@ -80,7 +80,13 @@ def test_pulse_job_terminal_paths_require_connection_transaction_before_job_or_l
                 now_ms=NOW_MS,
             ),
         ),
-        ("mark_job_succeeded", lambda repo: repo.mark_job_succeeded("pulse-job-1", now_ms=NOW_MS)),
+        (
+            "mark_job_succeeded",
+            lambda repo: repo.mark_job_succeeded(
+                _job(attempt_count=1, max_attempts=3),
+                now_ms=NOW_MS,
+            ),
+        ),
         (
             "release_running_job_for_backpressure",
             lambda repo: repo.release_running_job_for_backpressure(
@@ -150,8 +156,48 @@ def test_terminalize_exhausted_stale_running_jobs_requires_explicit_limit_before
 
 
 @pytest.mark.parametrize(
+    ("field", "value", "error"),
+    [
+        ("stale_after_ms", 0, "pulse_jobs_stale_after_ms_required"),
+        ("stale_after_ms", -1, "pulse_jobs_stale_after_ms_required"),
+        ("stale_after_ms", True, "pulse_jobs_stale_after_ms_required"),
+        ("stale_after_ms", "300000", "pulse_jobs_stale_after_ms_required"),
+        ("limit", 0, "pulse_jobs_terminalize_limit_required"),
+        ("limit", -1, "pulse_jobs_terminalize_limit_required"),
+        ("limit", True, "pulse_jobs_terminalize_limit_required"),
+        ("limit", "100", "pulse_jobs_terminalize_limit_required"),
+    ],
+)
+def test_terminalize_exhausted_stale_running_jobs_rejects_malformed_limits_before_sql(
+    field: str,
+    value: object,
+    error: str,
+) -> None:
+    conn = MissingTransactionConnection(operation="terminalize_exhausted_stale_running_jobs")
+    repo = PulseJobsRepository(conn, running_timeout_ms=300_000)
+    kwargs: dict[str, object] = {
+        "now_ms": NOW_MS,
+        "stale_after_ms": 300_000,
+        "limit": 100,
+    }
+    kwargs[field] = value
+
+    with pytest.raises(RuntimeError, match=error):
+        repo.terminalize_exhausted_stale_running_jobs(**kwargs)  # type: ignore[arg-type]
+
+    assert conn.sql == []
+
+
+@pytest.mark.parametrize(
     ("operation", "invoke"),
     [
+        (
+            "mark_job_succeeded",
+            lambda repo, job: repo.mark_job_succeeded(
+                job,
+                now_ms=NOW_MS,
+            ),
+        ),
         (
             "mark_job_failed",
             lambda repo, job: repo.mark_job_failed(
@@ -215,6 +261,94 @@ def test_pulse_job_failure_requires_max_attempts_from_claim_before_sql() -> None
 
     assert conn.sql == []
     assert conn.commits == 0
+
+
+@pytest.mark.parametrize(
+    ("operation", "invoke"),
+    [
+        (
+            "mark_job_succeeded",
+            lambda repo, job: repo.mark_job_succeeded(
+                job,
+                now_ms=NOW_MS,
+            ),
+        ),
+        (
+            "mark_job_failed",
+            lambda repo, job: repo.mark_job_failed(
+                job,
+                "provider_error",
+                now_ms=NOW_MS,
+            ),
+        ),
+        (
+            "mark_job_cancelled_by_worker_timeout",
+            lambda repo, job: repo.mark_job_cancelled_by_worker_timeout(
+                job,
+                now_ms=NOW_MS,
+                execution_started=True,
+            ),
+        ),
+        (
+            "release_running_job_for_backpressure",
+            lambda repo, job: repo.release_running_job_for_backpressure(
+                job,
+                reason="agent_no_start",
+                now_ms=NOW_MS,
+                delay_ms=30_000,
+            ),
+        ),
+        (
+            "release_running_job_for_provider_cooldown",
+            lambda repo, job: repo.release_running_job_for_provider_cooldown(
+                job,
+                reason="provider_cooldown",
+                now_ms=NOW_MS,
+                cooldown_until_ms=NOW_MS + 60_000,
+            ),
+        ),
+    ],
+)
+def test_pulse_job_claim_mutations_require_updated_at_from_claim_before_sql(
+    operation: str,
+    invoke: Callable[[PulseJobsRepository, dict[str, Any]], object],
+) -> None:
+    conn = MissingTransactionConnection(operation=operation)
+    repo = PulseJobsRepository(conn, running_timeout_ms=300_000)
+    job = _job(attempt_count=1, max_attempts=3)
+    job.pop("updated_at_ms")
+
+    with pytest.raises(ValueError, match="pulse_agent_job_claim_updated_at_ms_required"):
+        invoke(repo, job)
+
+    assert conn.sql == []
+    assert conn.commits == 0
+
+
+def test_pulse_job_repository_requires_positive_running_timeout() -> None:
+    with pytest.raises(RuntimeError, match="pulse_job_running_timeout_ms_required"):
+        PulseJobsRepository(SqlForbiddenConnection(operation="init"), running_timeout_ms=0)
+
+
+def test_pulse_job_enqueue_requires_positive_max_attempts_before_sql() -> None:
+    conn = SqlForbiddenConnection(operation="enqueue_job")
+    repo = PulseJobsRepository(conn, running_timeout_ms=300_000)
+
+    with pytest.raises(RuntimeError, match="pulse_agent_job_max_attempts_required"):
+        repo.enqueue_job(
+            candidate_id="candidate-1",
+            candidate_type="asset",
+            subject_key="solana:abc",
+            window="1h",
+            scope="default",
+            trigger_signature="trigger",
+            timeline_signature="timeline",
+            priority=10,
+            max_attempts=0,
+            now_ms=NOW_MS,
+        )
+
+    assert conn.sql == []
 
 
 def test_mark_stale_agent_runs_failed_requires_cursor_rowcount() -> None:
@@ -364,7 +498,13 @@ def test_pulse_job_required_single_returning_writes_reject_rowcount_one_without_
     ("operation", "invoke"),
     [
         ("claim_due_job", lambda repo: repo.claim_due_job(now_ms=NOW_MS)),
-        ("mark_job_succeeded", lambda repo: repo.mark_job_succeeded("pulse-job-1", now_ms=NOW_MS)),
+        (
+            "mark_job_succeeded",
+            lambda repo: repo.mark_job_succeeded(
+                _job(attempt_count=1, max_attempts=3),
+                now_ms=NOW_MS,
+            ),
+        ),
         (
             "mark_job_failed",
             lambda repo: repo.mark_job_failed(

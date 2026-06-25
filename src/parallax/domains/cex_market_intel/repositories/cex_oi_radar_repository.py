@@ -24,6 +24,7 @@ class CexOiRadarRepository:
         self.conn = conn
 
     def binance_usdt_perp_universe(self, *, limit: int) -> list[dict[str, Any]]:
+        query_limit = _required_positive_int(limit, "cex_oi_radar_universe_limit_required")
         rows = self.conn.execute(
             """
             SELECT
@@ -45,7 +46,7 @@ class CexOiRadarRepository:
             ORDER BY updated_at_ms DESC, native_market_id ASC
             LIMIT %s
             """,
-            (max(1, int(limit)),),
+            (query_limit,),
         ).fetchall()
         return [dict(row) for row in rows]
 
@@ -358,6 +359,7 @@ class CexOiRadarRepository:
         )
 
     def latest_board(self, *, limit: int) -> dict[str, Any]:
+        query_limit = _required_positive_int(limit, "cex_oi_radar_latest_board_limit_required")
         state = self.conn.execute(
             """
             SELECT *
@@ -386,7 +388,7 @@ class CexOiRadarRepository:
             ORDER BY rank ASC, score DESC, native_market_id ASC
             LIMIT %s
             """,
-            (state_payload["period"], max(1, int(limit))),
+            (state_payload["period"], query_limit),
         ).fetchall()
         return {
             "state": state_payload,
@@ -417,6 +419,14 @@ def _cursor_rowcount(cursor: Any) -> int:
     if rowcount < 0:
         raise TypeError("cex_oi_radar_rowcount_invalid")
     return rowcount
+
+
+def _required_positive_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value <= 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _source_frontier_ms(rows: list[dict[str, Any]], *, default: int) -> int:

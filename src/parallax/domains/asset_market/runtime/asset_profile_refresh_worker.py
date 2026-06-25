@@ -57,6 +57,7 @@ class AssetProfileRefreshWorker(WorkerBase):
             "queue_depth": 0,
             "source_rows_scanned": 0,
             "targets_loaded": 0,
+            "targets_enqueued": 0,
             "rows_written": 0,
             "ready": 0,
             "missing": 0,
@@ -79,6 +80,7 @@ class AssetProfileRefreshWorker(WorkerBase):
                 "queue_depth",
                 "source_rows_scanned",
                 "targets_loaded",
+                "targets_enqueued",
                 "rows_written",
                 "ready",
                 "missing",
@@ -97,6 +99,7 @@ class AssetProfileRefreshWorker(WorkerBase):
             "queue_depth": 0,
             "source_rows_scanned": 0,
             "targets_loaded": 0,
+            "targets_enqueued": 0,
             "rows_written": 0,
             "ready": 0,
             "missing": 0,
@@ -110,12 +113,29 @@ class AssetProfileRefreshWorker(WorkerBase):
             self.name,
             statement_timeout_seconds=self.settings.statement_timeout_seconds,
         ) as repos:
+            backfill_result = repos.asset_profile_refresh_targets.enqueue_missing_token_radar_current_targets(
+                provider=profile_source.provider,
+                now_ms=now_ms,
+                limit=_required_positive_int(
+                    self.settings.batch_size,
+                    error_code="asset_profile_refresh_batch_size_required",
+                ),
+                commit=True,
+            )
+            source_result["targets_enqueued"] = int(backfill_result.get("targets") or 0)
+            source_result["source_rows_scanned"] = int(backfill_result.get("source_rows_scanned") or 0)
             rows = repos.asset_profile_refresh_targets.claim_due(
                 provider=profile_source.provider,
                 now_ms=now_ms,
-                limit=max(1, int(self.settings.batch_size)),
+                limit=_required_positive_int(
+                    self.settings.batch_size,
+                    error_code="asset_profile_refresh_batch_size_required",
+                ),
                 lease_owner=self.name,
-                lease_ms=max(1, int(self.settings.lease_ms)),
+                lease_ms=_required_positive_int(
+                    self.settings.lease_ms,
+                    error_code="asset_profile_refresh_lease_ms_required",
+                ),
                 commit=True,
             )
             source_result["queue_depth"] = repos.asset_profile_refresh_targets.queue_depth(
@@ -129,9 +149,18 @@ class AssetProfileRefreshWorker(WorkerBase):
             source_result["skipped"] = 1
             source_result["reason"] = "no_due_asset_profile_refresh_targets"
             return source_result
-        ready_refresh_ms = max(1, int(self.settings.ready_refresh_ms))
-        missing_refresh_ms = max(1, int(self.settings.missing_refresh_ms))
-        error_refresh_ms = max(1, int(self.settings.error_refresh_ms))
+        ready_refresh_ms = _required_positive_int(
+            self.settings.ready_refresh_ms,
+            error_code="asset_profile_refresh_ready_refresh_ms_required",
+        )
+        missing_refresh_ms = _required_positive_int(
+            self.settings.missing_refresh_ms,
+            error_code="asset_profile_refresh_missing_refresh_ms_required",
+        )
+        error_refresh_ms = _required_positive_int(
+            self.settings.error_refresh_ms,
+            error_code="asset_profile_refresh_error_refresh_ms_required",
+        )
         for row in rows:
             try:
                 profile = fetch_asset_profile(profile_source=profile_source, row=row)
@@ -238,7 +267,10 @@ class AssetProfileRefreshWorker(WorkerBase):
             )
 
     def _provider_retry_ms(self) -> int:
-        return max(1, int(self.settings.provider_retry_ms))
+        return _required_positive_int(
+            self.settings.provider_retry_ms,
+            error_code="asset_profile_refresh_provider_retry_ms_required",
+        )
 
 
 def _enqueue_profile_current(*, repos: Any, row: dict[str, Any], now_ms: int) -> None:
@@ -267,4 +299,10 @@ def _required_source_watermark_ms(row: dict[str, Any], *, error: str) -> int:
         raise RuntimeError(error)
     if value <= 0:
         raise RuntimeError(error)
+    return int(value)
+
+
+def _required_positive_int(value: Any, *, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
     return int(value)

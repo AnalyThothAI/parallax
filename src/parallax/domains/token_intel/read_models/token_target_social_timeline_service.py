@@ -35,10 +35,11 @@ class TokenTargetSocialTimelineService:
         cursor: str | None = None,
         now_ms: int | None = None,
     ) -> dict[str, Any]:
+        row_limit = _required_nonnegative_int(limit, "token_target_social_timeline_limit_required")
         resolved_now_ms = int(now_ms or time.time() * 1000)
         window_ms = _window_ms(window)
         watched_only = _watched_only(scope)
-        fetch_limit = max(0, int(limit)) + 1
+        fetch_limit = row_limit + 1
         rows = self.targets.timeline_rows(
             target_type=target_type,
             target_id=target_id,
@@ -47,7 +48,7 @@ class TokenTargetSocialTimelineService:
             limit=fetch_limit,
             cursor=decode_target_cursor(cursor),
         )
-        page_rows = rows[: max(0, int(limit))]
+        page_rows = rows[:row_limit]
         bucket_ms, bucket_label = _bucket(window)
         has_more = len(rows) > len(page_rows)
         next_cursor = encode_target_cursor(page_rows[-1]) if has_more and page_rows else None
@@ -102,6 +103,14 @@ def _watched_only(scope: str) -> bool:
     if scope == "all":
         return False
     raise TokenTargetSocialTimelineScopeError(scope)
+
+
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value < 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _summary(rows: list[dict[str, Any]]) -> dict[str, Any]:

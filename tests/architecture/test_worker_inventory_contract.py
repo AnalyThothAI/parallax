@@ -964,6 +964,58 @@ def test_documented_wake_inputs_match_default_worker_settings() -> None:
 
 
 @pytest.mark.architecture
+def test_documented_wake_outputs_match_worker_manifest() -> None:
+    inventory = _worker_inventory()
+    manifest_by_worker = {manifest.name: manifest for manifest in all_worker_manifests()}
+    mismatches: list[str] = []
+    for worker_key, manifest in sorted(manifest_by_worker.items()):
+        expected = set(manifest.wakes_out)
+        documented = _cell_code_values(inventory[worker_key]["Wake-out"])
+        missing = sorted(expected - documented)
+        extra = sorted(documented - expected)
+        if missing or extra:
+            mismatches.append(
+                f"{worker_key} Wake-out mismatch: missing={missing}, extra={extra}, "
+                f"expected={sorted(expected)}, documented={sorted(documented)}"
+            )
+
+    assert mismatches == []
+
+
+@pytest.mark.architecture
+def test_worker_manifest_db_wake_graph_has_no_orphaned_or_non_wakebus_channels() -> None:
+    produced: dict[str, list[str]] = {}
+    consumed: dict[str, list[str]] = {}
+    for manifest in all_worker_manifests():
+        for channel in manifest.wakes_out:
+            produced.setdefault(channel, []).append(manifest.name)
+        for channel in manifest.wakes_on:
+            consumed.setdefault(channel, []).append(manifest.name)
+
+    notify_channels = _wake_bus_notify_channels()
+    produced_channels = set(produced)
+    consumed_channels = set(consumed)
+    problems: list[str] = []
+    non_wakebus_outputs = sorted(produced_channels - notify_channels)
+    orphaned_outputs = sorted(produced_channels - consumed_channels)
+    orphaned_inputs = sorted(consumed_channels - produced_channels)
+    if non_wakebus_outputs:
+        problems.append(f"manifest wakes_out not exposed by WakeBus: {non_wakebus_outputs}")
+    if orphaned_outputs:
+        problems.append(
+            "manifest wakes_out without manifest consumers: "
+            f"{ {channel: sorted(produced[channel]) for channel in orphaned_outputs} }"
+        )
+    if orphaned_inputs:
+        problems.append(
+            "manifest wakes_on without manifest producers: "
+            f"{ {channel: sorted(consumed[channel]) for channel in orphaned_inputs} }"
+        )
+
+    assert problems == []
+
+
+@pytest.mark.architecture
 def test_wake_bus_notify_channels_are_documented_as_wake_outputs() -> None:
     inventory = _worker_inventory()
     documented_wake_out = {channel for row in inventory.values() for channel in _cell_code_values(row["Wake-out"])}

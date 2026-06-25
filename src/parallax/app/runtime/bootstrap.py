@@ -22,7 +22,11 @@ from parallax.domains.asset_market.services.event_market_capture import (
 )
 from parallax.domains.evidence.repositories.entity_repository import EntityRepository
 from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
-from parallax.domains.evidence.services.ingest_service import IngestService
+from parallax.domains.evidence.services.ingest_service import (
+    IngestService,
+    PreparedIngest,
+    require_event_anchor_active_window_ms,
+)
 from parallax.domains.ingestion.runtime.collector_service import CollectorService
 from parallax.domains.notifications.repositories.notification_repository import NotificationRepository
 from parallax.domains.token_intel.interfaces import SignalRepository
@@ -219,7 +223,7 @@ class _PooledIngestStore:
         now_ms: Any = None,
     ):
         self.db = db
-        self.event_anchor_active_window_ms = max(1, int(event_anchor_active_window_ms))
+        self.event_anchor_active_window_ms = require_event_anchor_active_window_ms(event_anchor_active_window_ms)
         self._capture_service = EventMarketCaptureService(
             providers=providers,
             now_ms=now_ms or _now_ms,
@@ -312,8 +316,8 @@ def _ingest_service_for_repos(
 
 
 def _prepared_value(prepared: Any, key: str) -> Any:
-    if isinstance(prepared, dict):
-        return prepared[key]
+    if not isinstance(prepared, PreparedIngest):
+        raise RuntimeError("prepared_ingest_contract_required")
     return getattr(prepared, key)
 
 

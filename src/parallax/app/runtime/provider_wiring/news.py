@@ -12,7 +12,7 @@ from parallax.domains.news_intel.types.source_provider import (
     NewsSourceSnapshot,
 )
 from parallax.integrations.news_feeds.cryptopanic_client import CryptopanicFeedClient
-from parallax.integrations.news_feeds.feed_client import FeedClient
+from parallax.integrations.news_feeds.feed_client import FeedClient, FeedFetchResult
 from parallax.integrations.news_feeds.opennews_client import OpenNewsFeedClient
 from parallax.integrations.news_feeds.provider_registry import (
     NewsFeedProviderRegistry,
@@ -97,8 +97,8 @@ def _observation_from_entry(
     )
 
 
-def _provider_diagnostics(feed_result: Any) -> dict[str, Any]:
-    feed = getattr(feed_result, "feed", None)
+def _provider_diagnostics(feed_result: FeedFetchResult) -> dict[str, Any]:
+    feed = feed_result.feed
     if isinstance(feed, Mapping) and feed:
         return {"feed": dict(feed)}
     return {}

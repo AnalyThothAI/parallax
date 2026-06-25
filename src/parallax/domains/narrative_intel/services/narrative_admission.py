@@ -28,8 +28,14 @@ class NarrativeAdmissionService:
         hot_rank_limit: int,
         min_rank_score: int,
     ) -> None:
-        self.hot_rank_limit = max(1, int(hot_rank_limit))
-        self.min_rank_score = max(0, int(min_rank_score))
+        self.hot_rank_limit = _required_positive_int(
+            hot_rank_limit,
+            error_code="narrative_admission_hot_rank_limit_required",
+        )
+        self.min_rank_score = _required_nonnegative_int(
+            min_rank_score,
+            error_code="narrative_admission_min_rank_score_required",
+        )
 
     def reconcile_from_radar_rows(
         self,
@@ -112,3 +118,19 @@ def _float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _required_positive_int(value: Any, *, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value <= 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _required_nonnegative_int(value: Any, *, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value < 0:
+        raise ValueError(error_code)
+    return int(value)

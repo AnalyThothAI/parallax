@@ -21,6 +21,24 @@ def test_cex_oi_radar_repository_reads_binance_usdt_perp_universe_only():
     assert "status = 'canonical'" in sql
 
 
+@pytest.mark.parametrize(
+    "limit",
+    [
+        pytest.param(0, id="zero"),
+        pytest.param(-1, id="negative"),
+        pytest.param(True, id="bool"),
+        pytest.param("25", id="string"),
+    ],
+)
+def test_cex_oi_radar_repository_requires_positive_universe_limit_before_sql(limit: object):
+    conn = _RecordingConn()
+
+    with pytest.raises(ValueError, match="cex_oi_radar_universe_limit_required"):
+        CexOiRadarRepository(conn).binance_usdt_perp_universe(limit=limit)  # type: ignore[arg-type]
+
+    assert conn.sql_calls == []
+
+
 def test_publish_board_upserts_current_rows_with_stable_target_identity():
     conn = _RecordingConn()
     repo = CexOiRadarRepository(conn)
@@ -545,6 +563,24 @@ def test_latest_board_reads_publication_state_and_current_rows():
     assert "FROM cex_oi_radar_rows" in all_sql
     assert "cex_oi_radar_runs" not in all_sql
     assert "finished_at_ms" not in all_sql
+
+
+@pytest.mark.parametrize(
+    "limit",
+    [
+        pytest.param(0, id="zero"),
+        pytest.param(-1, id="negative"),
+        pytest.param(True, id="bool"),
+        pytest.param("25", id="string"),
+    ],
+)
+def test_latest_board_requires_positive_limit_before_sql(limit: object):
+    conn = _RecordingConn()
+
+    with pytest.raises(ValueError, match="cex_oi_radar_latest_board_limit_required"):
+        CexOiRadarRepository(conn).latest_board(limit=limit)  # type: ignore[arg-type]
+
+    assert conn.sql_calls == []
 
 
 def test_record_attempt_failure_preserves_current_rows():

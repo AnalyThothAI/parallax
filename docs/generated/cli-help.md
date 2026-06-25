@@ -52,10 +52,10 @@ options:
 
 ```
 usage: parallax ops [-h]
-                    {backfill-account-quality,rebuild-market-tick-current,enqueue-token-radar-dirty-targets,enqueue-token-capture-tier-rank-set,projection-status,worker-status,queue-inspect,queue-resolve,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,rebuild-news-canonical-items,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,repair-token-profile-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,factor-diagnostics,settle-token-factors} ...
+                    {backfill-account-quality,rebuild-market-tick-current,enqueue-token-radar-dirty-targets,enqueue-token-capture-tier-rank-set,projection-status,worker-status,queue-inspect,queue-resolve,queue-resolve-bucket,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,rebuild-news-canonical-items,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,repair-token-profile-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,factor-diagnostics,settle-token-factors} ...
 
 positional arguments:
-  {backfill-account-quality,rebuild-market-tick-current,enqueue-token-radar-dirty-targets,enqueue-token-capture-tier-rank-set,projection-status,worker-status,queue-inspect,queue-resolve,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,rebuild-news-canonical-items,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,repair-token-profile-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,factor-diagnostics,settle-token-factors}
+  {backfill-account-quality,rebuild-market-tick-current,enqueue-token-radar-dirty-targets,enqueue-token-capture-tier-rank-set,projection-status,worker-status,queue-inspect,queue-resolve,queue-resolve-bucket,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,rebuild-news-canonical-items,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,repair-token-profile-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,factor-diagnostics,settle-token-factors}
     backfill-account-quality
                         backfill account token-call stats and quality
                         snapshots
@@ -71,6 +71,9 @@ positional arguments:
     worker-status       print canonical worker runtime status
     queue-inspect       inspect worker queue terminal evidence
     queue-resolve       resolve worker queue terminal evidence
+    queue-resolve-bucket
+                        resolve a bounded worker queue terminal evidence
+                        bucket
     reconcile-event-anchor-jobs
                         one-shot reconcile of historical ready event-anchor
                         backfill jobs

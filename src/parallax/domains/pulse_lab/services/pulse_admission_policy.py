@@ -32,6 +32,14 @@ class PulseAdmissionPolicy:
         last_processed_at_ms: int | None = None,
         now_ms: int | None = None,
     ) -> PulseAdmissionDecision:
+        failure_threshold = _required_positive_int(
+            failure_circuit_per_hour,
+            "pulse_failure_circuit_per_hour_required",
+        )
+        timeline_debounce = _required_nonnegative_int(
+            timeline_debounce_seconds,
+            "pulse_timeline_debounce_seconds_required",
+        )
         previous = _mapping(previous_state)
         events = tuple(str(event) for event in edge_events if str(event or "").strip())
         active_reason = _active_job_suppression_reason(existing_job)
@@ -39,7 +47,7 @@ class PulseAdmissionPolicy:
             return PulseAdmissionDecision("suppress", active_reason, events)
         if not events:
             return PulseAdmissionDecision("suppress", "unchanged", events)
-        if recent_failure_count >= max(1, int(failure_circuit_per_hour)) and not _is_escalation(events):
+        if recent_failure_count >= failure_threshold and not _is_escalation(events):
             return PulseAdmissionDecision("suppress", "failure_circuit_open", events)
         if events == ("score_band_crossed",):
             score_band = _clean(current_state.get("score_band"))
@@ -56,7 +64,7 @@ class PulseAdmissionPolicy:
             events,
             last_processed_at_ms=last_processed_at_ms,
             now_ms=now_ms,
-            timeline_debounce_seconds=timeline_debounce_seconds,
+            timeline_debounce_seconds=timeline_debounce,
         ):
             return PulseAdmissionDecision("suppress", "timeline_debounce", events)
         if _has_material_evidence_change(events):
@@ -107,7 +115,23 @@ def _is_debounced_timeline_only(
         return False
     if last_processed_at_ms is None or now_ms is None:
         return False
-    return int(now_ms) - int(last_processed_at_ms) < max(0, int(timeline_debounce_seconds)) * 1000
+    debounce_seconds = _required_nonnegative_int(
+        timeline_debounce_seconds,
+        "pulse_timeline_debounce_seconds_required",
+    )
+    return int(now_ms) - int(last_processed_at_ms) < debounce_seconds * 1000
+
+
+def _required_positive_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _clean(value: Any) -> str | None:

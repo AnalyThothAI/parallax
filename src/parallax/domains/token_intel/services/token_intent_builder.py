@@ -1,37 +1,18 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, field
 
-from .token_evidence_builder import TokenEvidenceInput
+from parallax.domains.token_intel.types.token_fact_inputs import (
+    TokenEvidenceInput,
+    TokenIntentEvidenceLink,
+    TokenIntentInput,
+)
 
 CONSTRUCTION_POLICY = "token_intent_builder_v1"
 MAX_LOCAL_ALIAS_DISTANCE = 180
 MAX_SINGLE_PRECEDING_ALIAS_DISTANCE = 360
 
-
-@dataclass(frozen=True, slots=True)
-class TokenIntentEvidenceLink:
-    evidence_id: str
-    role: str
-
-
-@dataclass(frozen=True, slots=True)
-class TokenIntentInput:
-    intent_id: str
-    event_id: str
-    intent_key: str
-    construction_policy: str
-    primary_evidence_id: str | None
-    display_symbol: str | None
-    display_name: str | None
-    chain_hint: str | None
-    address_hint: str | None
-    intent_status: str
-    intent_confidence: float
-    created_at_ms: int
-    updated_at_ms: int
-    evidence_links: list[TokenIntentEvidenceLink] = field(default_factory=list)
+__all__ = ["TokenIntentEvidenceLink", "TokenIntentInput", "build_token_intents"]
 
 
 def build_token_intents(

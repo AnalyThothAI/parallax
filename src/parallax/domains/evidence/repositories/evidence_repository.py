@@ -110,7 +110,8 @@ class EvidenceRepository:
         since_ms: int | None = None,
         watched_only: bool = True,
     ) -> list[dict[str, Any]]:
-        if limit <= 0:
+        parsed_limit = _required_nonnegative_int(limit, "evidence_recent_events_limit_required")
+        if parsed_limit == 0:
             return []
         clauses: list[str] = []
         params: list[Any] = []
@@ -144,7 +145,7 @@ class EvidenceRepository:
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         rows = self.conn.execute(
             f"SELECT e.* FROM events e {join} {where} ORDER BY e.received_at_ms DESC LIMIT %s",
-            (*params, max(0, int(limit))),
+            (*params, parsed_limit),
         ).fetchall()
         return [decode_event_row(row) for row in rows]
 
@@ -158,10 +159,11 @@ class EvidenceRepository:
         since_ms: int | None = None,
         watched_only: bool = True,
     ) -> list[dict[str, Any]]:
-        parsed_limit = max(0, int(limit))
-        parsed_per_filter_limit = max(0, int(per_filter_limit))
-        if parsed_limit <= 0 or parsed_per_filter_limit <= 0:
-            return []
+        parsed_limit = _required_positive_int(limit, "evidence_token_filter_limit_required")
+        parsed_per_filter_limit = _required_positive_int(
+            per_filter_limit,
+            "evidence_token_filter_per_filter_limit_required",
+        )
 
         filter_kinds, filter_chains, filter_values = _token_filter_keysets(cas=cas, symbols=symbols)
         if not filter_kinds:
@@ -386,6 +388,22 @@ def _json_loads(value: Any, default: Any) -> Any:
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _required_positive_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value <= 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value < 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _single_rowcount(cursor: Any) -> int:

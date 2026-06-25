@@ -162,6 +162,38 @@ def test_payload_hash_ignores_queue_lifecycle_fields() -> None:
 
 
 @pytest.mark.parametrize(
+    ("overrides", "error_code"),
+    [
+        ({"limit": 0}, "narrative_admission_dirty_target_claim_limit_required"),
+        ({"limit": True}, "narrative_admission_dirty_target_claim_limit_required"),
+        ({"limit": "1"}, "narrative_admission_dirty_target_claim_limit_required"),
+        ({"lease_ms": 0}, "narrative_admission_dirty_target_claim_lease_ms_required"),
+        ({"lease_ms": True}, "narrative_admission_dirty_target_claim_lease_ms_required"),
+        ({"lease_ms": "60000"}, "narrative_admission_dirty_target_claim_lease_ms_required"),
+        ({"lease_owner": ""}, "narrative_admission_dirty_target_claim_lease_owner_required"),
+    ],
+)
+def test_claim_due_requires_formal_claim_contract_before_sql(
+    overrides: dict[str, object],
+    error_code: str,
+) -> None:
+    conn = _ScriptedConnection([])
+    kwargs: dict[str, object] = {
+        "now_ms": 1_700_000_000_000,
+        "limit": 1,
+        "lease_owner": "narrative_admission",
+        "lease_ms": 60_000,
+        "commit": False,
+        **overrides,
+    }
+
+    with pytest.raises(ValueError, match=error_code):
+        NarrativeAdmissionDirtyTargetRepository(conn).claim_due(**kwargs)  # type: ignore[arg-type]
+
+    assert conn.sql == []
+
+
+@pytest.mark.parametrize(
     "operation",
     [
         pytest.param(
@@ -191,6 +223,8 @@ def test_payload_hash_ignores_queue_lifecycle_fields() -> None:
                 error="boom",
                 now_ms=1_700_000_010_000,
                 retry_ms=30_000,
+                max_attempts=3,
+                worker_name="narrative_admission",
             ),
             id="mark_error",
         ),
@@ -299,6 +333,82 @@ def test_reschedule_releases_admission_claim_without_overwriting_business_reason
     assert conn.params[-1]["due_at_ms"] == 1_700_000_120_000
 
 
+def test_mark_error_terminalizes_exhausted_claims_into_queue_terminal() -> None:
+    claim = {
+        **_claim(),
+        "attempt_count": 2,
+        "dirty_reason": "token_radar_changed",
+        "source_watermark_ms": 1_700_000_000_000,
+        "first_dirty_at_ms": 1_700_000_000_000,
+        "updated_at_ms": 1_700_000_005_000,
+    }
+    conn = _ScriptedConnection(
+        [
+            [claim],
+            [],
+            [{"terminal_generation": 1}],
+            [{"terminal_id": "terminal-1", "source_row_json": {}}],
+        ],
+        rowcount=1,
+    )
+
+    changed = NarrativeAdmissionDirtyTargetRepository(conn).mark_error(
+        [claim],
+        error="boom",
+        now_ms=1_700_000_010_000,
+        retry_ms=30_000,
+        max_attempts=2,
+        worker_name="narrative_admission",
+        commit=False,
+    )
+
+    assert changed == 1
+    assert any(
+        "DELETE FROM narrative_admission_dirty_targets queue" in sql and "RETURNING queue.*" in sql
+        for sql in conn.sql
+    )
+    assert any("INSERT INTO worker_queue_terminal_events" in sql for sql in conn.sql)
+    terminal_params = conn.params[-1]
+    assert terminal_params["worker_name"] == "narrative_admission"
+    assert terminal_params["source_table"] == "narrative_admission_dirty_targets"
+    assert terminal_params["final_status"] == "terminal"
+    assert terminal_params["final_reason"] == "narrative_admission_dirty_retry_budget_exhausted: boom"
+    assert terminal_params["attempt_count"] == 2
+
+
+@pytest.mark.parametrize(
+    ("overrides", "error_code"),
+    [
+        ({"retry_ms": 0}, "narrative_admission_dirty_target_retry_ms_required"),
+        ({"retry_ms": True}, "narrative_admission_dirty_target_retry_ms_required"),
+        ({"retry_ms": "30000"}, "narrative_admission_dirty_target_retry_ms_required"),
+        ({"max_attempts": 0}, "narrative_admission_dirty_target_max_attempts_required"),
+        ({"max_attempts": True}, "narrative_admission_dirty_target_max_attempts_required"),
+        ({"max_attempts": "3"}, "narrative_admission_dirty_target_max_attempts_required"),
+        ({"worker_name": ""}, "narrative_admission_dirty_target_worker_name_required"),
+    ],
+)
+def test_mark_error_requires_formal_retry_contract_before_sql(
+    overrides: dict[str, object],
+    error_code: str,
+) -> None:
+    conn = _ScriptedConnection([])
+    kwargs: dict[str, object] = {
+        "error": "boom",
+        "now_ms": 1_700_000_010_000,
+        "retry_ms": 30_000,
+        "max_attempts": 3,
+        "worker_name": "narrative_admission",
+        "commit": False,
+        **overrides,
+    }
+
+    with pytest.raises(ValueError, match=error_code):
+        NarrativeAdmissionDirtyTargetRepository(conn).mark_error([_claim()], **kwargs)  # type: ignore[arg-type]
+
+    assert conn.sql == []
+
+
 def test_completion_rejects_claim_without_projection_version() -> None:
     conn = _ScriptedConnection([])
 
@@ -341,6 +451,8 @@ def test_completion_rejects_claim_without_projection_version() -> None:
                 error="boom",
                 now_ms=1_700_000_010_000,
                 retry_ms=30_000,
+                max_attempts=3,
+                worker_name="narrative_admission",
                 commit=False,
             ),
             "narrative_admission_dirty_target_rowcount_required",
@@ -386,6 +498,8 @@ def test_completion_write_counts_require_cursor_rowcount(
                 error="boom",
                 now_ms=1_700_000_010_000,
                 retry_ms=30_000,
+                max_attempts=3,
+                worker_name="narrative_admission",
                 commit=False,
             ),
             id="error",
@@ -421,6 +535,8 @@ def test_completion_write_counts_reject_invalid_cursor_rowcount(
                 error="boom",
                 now_ms=1_700_000_010_000,
                 retry_ms=30_000,
+                max_attempts=3,
+                worker_name="narrative_admission",
                 commit=False,
             ),
             id="error",
@@ -448,6 +564,24 @@ def test_completion_requires_claim_attempt_field_without_default(operation) -> N
         operation(NarrativeAdmissionDirtyTargetRepository(conn), claim)
 
     assert isinstance(exc_info.value.__cause__, KeyError)
+    assert conn.sql == []
+
+
+@pytest.mark.parametrize("attempt_count", [0, True, "1"])
+def test_completion_rejects_malformed_claim_attempt_before_sql(attempt_count: object) -> None:
+    conn = _ScriptedConnection([])
+    claim = {**_claim(), "attempt_count": attempt_count}
+
+    with pytest.raises(
+        ValueError,
+        match="narrative admission dirty target completion requires attempt_count",
+    ):
+        NarrativeAdmissionDirtyTargetRepository(conn).mark_done(
+            [claim],
+            now_ms=1_700_000_010_000,
+            commit=False,
+        )
+
     assert conn.sql == []
 
 
@@ -517,9 +651,13 @@ class _ScriptedConnection:
 
     def fetchall(self) -> list[dict[str, Any]]:
         if not self.results:
+            if hasattr(self, "rowcount"):
+                self.rowcount = 0
             return []
         result = self.results.pop(0)
         assert isinstance(result, list)
+        if hasattr(self, "rowcount"):
+            self.rowcount = len(result)
         return result
 
     def fetchone(self) -> dict[str, Any] | None:

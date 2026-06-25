@@ -133,7 +133,8 @@ class GmgnOpenApiClient:
         api_chain = _api_chain(chain)
         api_address = _api_address(chain=api_chain, address=address)
         to_seconds = int((now_ms if now_ms is not None else time.time() * 1000) // 1000)
-        from_seconds = to_seconds - _resolution_seconds(resolution) * max(1, int(limit))
+        parsed_limit = _required_positive_int(limit, "gmgn_openapi_token_kline_limit_required")
+        from_seconds = to_seconds - _resolution_seconds(resolution) * parsed_limit
         data = self._request(
             "GET",
             "/v1/market/token_kline",
@@ -410,6 +411,12 @@ def _link_string(link: dict[str, Any] | None, key: str) -> str | None:
 def _api_resolution(value: str) -> str:
     text = str(value or "").strip()
     return text.lower() or "1m"
+
+
+def _required_positive_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _resolution_seconds(value: str) -> int:

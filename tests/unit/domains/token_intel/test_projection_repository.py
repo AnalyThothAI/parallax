@@ -24,6 +24,35 @@ def test_projection_repository_diagnostic_reads_require_explicit_limits_without_
         repo.list_dirty_ranges(projection_name=TOKEN_RADAR_PROJECTION_NAME)
 
 
+@pytest.mark.parametrize(
+    "operation",
+    [
+        pytest.param(lambda repo, limit: repo.list_runs(limit=limit), id="list-runs"),
+        pytest.param(
+            lambda repo, limit: repo.claim_dirty_ranges(
+                projection_name=TOKEN_RADAR_PROJECTION_NAME,
+                projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+                limit=limit,
+                commit=False,
+            ),
+            id="claim-dirty-ranges",
+        ),
+        pytest.param(lambda repo, limit: repo.list_dirty_ranges(limit=limit), id="list-dirty-ranges"),
+    ],
+)
+@pytest.mark.parametrize("limit", [-1, True, "10"])
+def test_projection_repository_limits_reject_malformed_before_sql(
+    operation: Callable[[ProjectionRepository, object], object],
+    limit: object,
+) -> None:
+    conn = FakeProjectionConnection()
+
+    with pytest.raises(ValueError, match="projection_repository_limit_required"):
+        operation(ProjectionRepository(conn), limit)
+
+    assert conn.sql == []
+
+
 def test_projection_repository_mutations_require_connection_transaction_before_sql_when_committing() -> None:
     cases = _repository_cases()
     for case in cases:

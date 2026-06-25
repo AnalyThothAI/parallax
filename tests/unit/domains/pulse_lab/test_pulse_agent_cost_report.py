@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from parallax.domains.pulse_lab.queries.pulse_agent_cost_report import (
     build_signal_pulse_agent_cost_report,
     summarize_signal_pulse_agent_cost_rows,
@@ -114,6 +116,15 @@ def test_build_signal_pulse_agent_cost_report_uses_read_only_selects() -> None:
     assert all(sql.strip().split(maxsplit=1)[0].upper() in {"SELECT", "WITH"} for sql in conn.executed_sql)
     assert any("FROM pulse_agent_runs" in sql for sql in conn.executed_sql)
     assert any("FROM pulse_agent_run_steps" in sql for sql in conn.executed_sql)
+
+
+def test_build_signal_pulse_agent_cost_report_rejects_malformed_lookback_before_sql() -> None:
+    conn = FakeConn(run_rows=[], step_rows=[])
+
+    with pytest.raises(ValueError, match="pulse_agent_cost_report_lookback_hours_required"):
+        build_signal_pulse_agent_cost_report(conn, now_ms=NOW_MS, lookback_hours=0, dry_run_policy={})
+
+    assert conn.executed_sql == []
 
 
 class FakeCursor:

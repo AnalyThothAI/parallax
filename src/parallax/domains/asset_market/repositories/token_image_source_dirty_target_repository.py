@@ -135,6 +135,11 @@ class TokenImageSourceDirtyTargetRepository:
                       THEN NULL
                     ELSE token_image_source_dirty_targets.lease_owner
                   END,
+                  attempt_count = CASE
+                    WHEN token_image_source_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                    THEN 0
+                    ELSE token_image_source_dirty_targets.attempt_count
+                  END,
                   last_error = NULL,
                   first_dirty_at_ms = token_image_source_dirty_targets.first_dirty_at_ms,
                   updated_at_ms = EXCLUDED.updated_at_ms
@@ -154,8 +159,17 @@ class TokenImageSourceDirtyTargetRepository:
         lease_ms: int,
         commit: bool = True,
     ) -> list[dict[str, Any]]:
+        parsed_limit = _required_nonnegative_int(
+            limit,
+            "token_image_source_dirty_target_claim_limit_required",
+        )
+        parsed_lease_ms = _required_positive_int(
+            lease_ms,
+            "token_image_source_dirty_target_claim_lease_ms_required",
+        )
+
         def _write() -> list[dict[str, Any]]:
-            rows = self.conn.execute(
+            cursor = self.conn.execute(
                 """
                 WITH due AS (
                   SELECT source_url_hash, target_type, target_id
@@ -185,11 +199,13 @@ class TokenImageSourceDirtyTargetRepository:
                 """,
                 {
                     "now_ms": int(now_ms),
-                    "leased_until_ms": int(now_ms) + max(1, int(lease_ms)),
+                    "leased_until_ms": int(now_ms) + parsed_lease_ms,
                     "lease_owner": str(lease_owner),
-                    "limit": max(0, int(limit)),
+                    "limit": parsed_limit,
                 },
-            ).fetchall()
+            )
+            rows = cursor.fetchall()
+            _returned_rowcount(cursor, rows)
             return [dict(row) for row in rows]
 
         return _run_repository_write(self.conn, commit, _write)
@@ -317,12 +333,16 @@ class TokenImageSourceDirtyTargetRepository:
         if not records:
             return 0
         parsed_max_attempts = _required_max_attempts(max_attempts)
+        parsed_retry_ms = _required_positive_int(
+            retry_ms,
+            "token_image_source_dirty_target_retry_ms_required",
+        )
         parsed_worker_name = _required_text(worker_name, field_name="worker_name")
         retry_records = [record for record in records if int(record["attempt_count"]) < parsed_max_attempts]
         exhausted_records = [record for record in records if int(record["attempt_count"]) >= parsed_max_attempts]
         params = {
             **_claim_params(retry_records),
-            "due_at_ms": int(now_ms) + max(1, int(retry_ms)),
+            "due_at_ms": int(now_ms) + parsed_retry_ms,
             "now_ms": int(now_ms),
             "last_error": str(error)[:2048],
         }
@@ -409,11 +429,11 @@ class TokenImageSourceDirtyTargetRepository:
             """,
             _claim_params(records),
         )
-        rows = [dict(row) for row in cursor.fetchall()]
+        rows = cursor.fetchall()
         rowcount = _cursor_rowcount(cursor)
         if rowcount != len(rows):
             raise TypeError("token_image_source_dirty_target_rowcount_invalid")
-        return rows, rowcount
+        return [dict(row) for row in rows], rowcount
 
     def queue_depth(self, *, now_ms: int) -> int:
         row = self.conn.execute(
@@ -508,8 +528,6 @@ def _claim_records(claims: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
             raise ValueError("token image source dirty target completion requires payload_hash from claim_due")
         if not lease_owner:
             raise ValueError("token image source dirty target completion requires lease_owner from claim_due")
-        if attempt_count <= 0:
-            raise ValueError("token image source dirty target completion requires attempt_count from claim_due")
         records.append(
             {
                 "source_url_hash": source_url_hash,
@@ -538,12 +556,13 @@ def _completion_source_url_hash(claim: Mapping[str, Any]) -> str:
 
 def _completion_attempt_count(claim: Mapping[str, Any]) -> int:
     try:
-        attempt_count = int(claim["attempt_count"])
-    except (KeyError, TypeError, ValueError) as exc:
+        value = claim["attempt_count"]
+    except KeyError as exc:
         raise ValueError("token image source dirty target completion requires attempt_count from claim_due") from exc
-    if attempt_count <= 0:
-        raise ValueError("token image source dirty target completion requires attempt_count from claim_due")
-    return attempt_count
+    return _required_positive_int(
+        value,
+        "token image source dirty target completion requires attempt_count from claim_due",
+    )
 
 
 def _completion_lease_owner(claim: Mapping[str, Any]) -> str:
@@ -603,13 +622,19 @@ def _source_watermark_ms(target: Mapping[str, Any]) -> int:
 
 
 def _required_max_attempts(value: Any) -> int:
-    try:
-        max_attempts = int(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("token image source dirty target max_attempts is required") from exc
-    if max_attempts <= 0:
-        raise ValueError("token image source dirty target max_attempts is required")
-    return max_attempts
+    return _required_positive_int(value, "token_image_source_dirty_target_max_attempts_required")
+
+
+def _required_positive_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _terminal_target_key(row: Mapping[str, Any]) -> str:
@@ -662,6 +687,13 @@ def _cursor_rowcount(cursor: Any) -> int:
     if rowcount < 0:
         raise TypeError("token_image_source_dirty_target_rowcount_invalid")
     return int(rowcount)
+
+
+def _returned_rowcount(cursor: Any, rows: list[Any]) -> int:
+    rowcount = _cursor_rowcount(cursor)
+    if rowcount != len(rows):
+        raise TypeError("token_image_source_dirty_target_rowcount_invalid")
+    return rowcount
 
 
 def _transaction(conn: Any) -> AbstractContextManager[Any]:

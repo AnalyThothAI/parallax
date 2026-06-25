@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from parallax.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
     TOKEN_RADAR_PROJECTION_VERSION,
@@ -270,6 +272,40 @@ def test_asset_flow_ready_market_returns_quality_ready():
     assert result["projection"]["quality_status"] == "ready"
     assert result["projection"]["degraded_reasons"] == []
     assert result["targets"][0]["quality"] == {"status": "ready", "degraded_reasons": []}
+
+
+def test_asset_flow_allows_zero_limit_with_zero_row_fetch() -> None:
+    token_radar = FakeTokenRadar(
+        rows=[radar_row(lane="resolved", symbol="BTC", target_type="CexToken", target_id="cex_token:BTC")]
+    )
+
+    result = AssetFlowService(token_radar=token_radar, profiles=FakeProfiles()).asset_flow(
+        window="1h",
+        limit=0,
+        scope="all",
+        venue="all",
+        now_ms=1_700_000_060_000,
+    )
+
+    assert result["targets"] == []
+    assert result["attention"] == []
+    assert token_radar.calls[-1]["limit"] == 0
+
+
+@pytest.mark.parametrize("limit", [-1, True, "20"])
+def test_asset_flow_rejects_malformed_limit_before_token_radar_read(limit: object) -> None:
+    token_radar = FakeTokenRadar(rows=[])
+
+    with pytest.raises(ValueError, match="asset_flow_limit_required"):
+        AssetFlowService(token_radar=token_radar, profiles=FakeProfiles()).asset_flow(
+            window="1h",
+            limit=limit,  # type: ignore[arg-type]
+            scope="all",
+            venue="all",
+            now_ms=1_700_000_060_000,
+        )
+
+    assert token_radar.calls == []
 
 
 class FakeTokenRadar:

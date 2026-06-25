@@ -746,6 +746,22 @@ def test_latest_current_rows_limits_each_lane_independently():
     assert conn.params[-2:] == (8, 16)
 
 
+@pytest.mark.parametrize("limit", [-1, True, "8"])
+def test_latest_current_rows_rejects_malformed_limit_before_sql(limit: object) -> None:
+    conn = FakeConn()
+
+    with pytest.raises(ValueError, match="token_radar_latest_current_rows_limit_required"):
+        TokenRadarRepository(conn).latest_current_rows(
+            window="5m",
+            scope="all",
+            venue=TOKEN_RADAR_DEFAULT_VENUE,
+            limit=limit,  # type: ignore[arg-type]
+            projection_version="token-radar-v13-social-attention",
+        )
+
+    assert conn.calls == 0
+
+
 def test_latest_current_rows_reads_materialized_listed_at_without_history_lateral():
     conn = FakeConn()
 
@@ -954,6 +970,23 @@ def test_prune_target_features_deletes_only_projection_window_scope_before_cutof
         1_777_800_000_000,
         25,
     )
+
+
+@pytest.mark.parametrize("limit", [0, -1, True, "25"])
+def test_prune_target_features_rejects_malformed_limit_before_sql(limit: object) -> None:
+    conn = FakeConn(rowcount=7)
+
+    with pytest.raises(ValueError, match="token_radar_prune_target_features_limit_required"):
+        TokenRadarRepository(conn).prune_target_features(
+            projection_version="token-radar-v13-social-attention",
+            window="5m",
+            scope="matched",
+            latest_event_before_ms=1_777_800_000_000,
+            limit=limit,  # type: ignore[arg-type]
+            commit=False,
+        )
+
+    assert conn.calls == 0
 
 
 def test_list_rank_inputs_for_rank_set_reads_private_projection_rows_without_version_gate():

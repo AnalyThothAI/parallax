@@ -91,13 +91,14 @@ class SignalRepository:
         handles: set[str] | None = None,
         alert_type: str | None = None,
     ) -> list[dict[str, Any]]:
+        parsed_limit = _required_nonnegative_int(limit, "signal_repository_alert_limit_required")
         now = now_ms if now_ms is not None else _now_ms()
         since = now - window_ms
         rows: list[dict[str, Any]] = []
         if alert_type in {None, "account_token", "token"}:
-            rows.extend(self._account_token_alerts(since_ms=since, limit=limit, handles=handles))
+            rows.extend(self._account_token_alerts(since_ms=since, limit=parsed_limit, handles=handles))
         rows.sort(key=lambda item: int(item.get("received_at_ms") or 0), reverse=True)
-        return rows[: max(0, int(limit))]
+        return rows[:parsed_limit]
 
     def alerts_for_event(self, event_id: str) -> list[dict[str, Any]]:
         token_rows = self.conn.execute(
@@ -128,6 +129,7 @@ class SignalRepository:
         return grouped
 
     def _account_token_alerts(self, *, since_ms: int, limit: int, handles: set[str] | None) -> list[dict[str, Any]]:
+        parsed_limit = _required_nonnegative_int(limit, "signal_repository_alert_limit_required")
         clauses = ["received_at_ms >= %s"]
         params: list[Any] = [since_ms]
         if handles:
@@ -143,7 +145,7 @@ class SignalRepository:
             ORDER BY received_at_ms DESC
             LIMIT %s
             """,
-            (*params, max(0, int(limit))),
+            (*params, parsed_limit),
         ).fetchall()
         return [dict(row) for row in rows]
 
@@ -187,3 +189,11 @@ def _single_row_write_count(cursor: Any) -> int:
     if rowcount not in (0, 1):
         raise TypeError("signal_repository_rowcount_invalid")
     return int(rowcount)
+
+
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value < 0:
+        raise ValueError(error_code)
+    return int(value)

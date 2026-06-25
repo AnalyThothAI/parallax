@@ -134,7 +134,7 @@ class OkxDexWebSocketMarketProviderAdapter:
 
     def close(self) -> None:
         # Synchronous close is only safe before the WS session connects.
-        if getattr(self._provider, "_websocket", None) is not None:
+        if self._provider.connection_state_payload().get("state") != "disconnected":
             raise RuntimeError("use aclose() for connected OKX DEX WS provider cleanup")
 
     def connection_state_payload(self) -> dict[str, Any]:

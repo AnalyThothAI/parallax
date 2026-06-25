@@ -12,6 +12,7 @@ from loguru import logger
 
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_result import WorkerResult
+from parallax.domains.notifications.runtime.notification_runtime_settings import positive_worker_setting_int
 from parallax.platform.config.settings import NotificationChannelConfig
 
 if TYPE_CHECKING:
@@ -83,7 +84,7 @@ class NotificationDeliveryWorker(WorkerBase):
         self.channels = channels
         self.adapter = adapter or AppriseNotificationAdapter()
         self.pushdeer_adapter = pushdeer_adapter or PushDeerNotificationAdapter()
-        self.batch_limit = max(1, int(settings.batch_size))
+        self.batch_limit = positive_worker_setting_int(settings, "batch_size", worker_name=name)
 
     async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
         processed = 0

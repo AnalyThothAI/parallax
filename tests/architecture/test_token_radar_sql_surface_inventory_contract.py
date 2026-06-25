@@ -11,6 +11,7 @@ TOKEN_RADAR_SQL_SURFACES = (
     "src/parallax/app/runtime/queue_health.py",
     "src/parallax/app/runtime/wake_bus.py",
     "src/parallax/app/surfaces/api/routes_radar.py",
+    "src/parallax/domains/asset_market/repositories/asset_profile_refresh_target_repository.py",
     "src/parallax/domains/asset_market/repositories/registry_repository.py",
     "src/parallax/domains/narrative_intel/repositories/narrative_repository.py",
     "src/parallax/domains/pulse_lab/queries/pulse_policy_evaluator.py",
@@ -95,12 +96,14 @@ def test_projection_validation_audit_batches_token_radar_reference_checks() -> N
         "for row in radar_rows",
         "SELECT 1 AS ok FROM token_intents WHERE intent_id = %s",
         "SELECT 1 AS ok FROM registry_assets WHERE asset_id = %s",
+        "sample_size = max(0, int(sample))",
     )
     required = (
         "WITH sampled_radar_rows AS",
         "LEFT JOIN token_intents",
         "LEFT JOIN registry_assets",
         "COUNT(*) FILTER",
+        "projection_validation_sample_required",
     )
     assert [token for token in forbidden if token in source] == []
     assert [token for token in required if token not in source] == []

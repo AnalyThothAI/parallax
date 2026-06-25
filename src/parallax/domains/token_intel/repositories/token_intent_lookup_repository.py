@@ -74,6 +74,7 @@ class TokenIntentLookupRepository:
         since_ms: int,
         limit: int,
     ) -> list[dict[str, Any]]:
+        parsed_limit = _required_positive_int(limit, "token_intent_lookup_limit_required")
         if not keys:
             return []
         placeholders = ",".join("%s" for _ in keys)
@@ -94,7 +95,7 @@ class TokenIntentLookupRepository:
             JOIN token_intents ON token_intents.intent_id = picked.intent_id
             ORDER BY token_intents.created_at_ms DESC, token_intents.intent_id
             """,
-            (*keys, int(since_ms), max(0, int(limit))),
+            (*keys, int(since_ms), parsed_limit),
         ).fetchall()
         return [dict(row) for row in rows]
 
@@ -105,6 +106,7 @@ class TokenIntentLookupRepository:
         since_ms: int,
         limit: int,
     ) -> list[dict[str, Any]]:
+        parsed_limit = _required_positive_int(limit, "token_intent_lookup_limit_required")
         if not keys:
             return []
         placeholders = ",".join("%s" for _ in keys)
@@ -132,7 +134,7 @@ class TokenIntentLookupRepository:
             JOIN token_intents ON token_intents.intent_id = picked.intent_id
             ORDER BY token_intents.created_at_ms DESC, token_intents.intent_id
             """,
-            (*keys, int(since_ms), max(0, int(limit))),
+            (*keys, int(since_ms), parsed_limit),
         ).fetchall()
         return [dict(row) for row in rows]
 
@@ -162,6 +164,14 @@ def _required_single_rowcount(cursor: Any) -> int:
     if rowcount != 1:
         raise TypeError("token_intent_lookup_repository_rowcount_invalid")
     return rowcount
+
+
+def _required_positive_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value <= 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _run_repository_write[T](conn: Any, commit: bool, write: Callable[[], T]) -> T:

@@ -24,6 +24,7 @@ from parallax.app.surfaces.api.http import create_api_router
 from parallax.app.surfaces.api.schemas import StatusData
 from parallax.domains.news_intel.services.news_provider_contract import (
     NewsProviderContractError,
+    configured_news_provider_types,
     validate_news_provider_contract,
 )
 from parallax.platform.config.news_provider_types import RUNTIME_SUPPORTED_NEWS_PROVIDER_TYPES
@@ -225,8 +226,10 @@ def _unhealthy_reasons(
     reasons = [reason for reason in runtime.scheduler.unhealthy_reasons() if ":stopped" not in str(reason)]
     if not db_status.get("ok"):
         reasons.append("database_unhealthy")
-    if news_provider_contract.get("ok") is False and str(news_provider_contract.get("reason") or "").startswith(
-        "news_provider_type_"
+    news_contract_reason = str(news_provider_contract.get("reason") or "")
+    if news_provider_contract.get("ok") is False and (
+        news_contract_reason.startswith("news_provider_type_")
+        or news_contract_reason == "news_provider_settings_contract_required"
     ):
         reasons.append("news_provider_contract_error")
     reasons.extend(_queue_health_contract_reasons(worker_status))
@@ -236,6 +239,7 @@ def _unhealthy_reasons(
 def _news_provider_contract_payload(runtime: Runtime) -> dict[str, Any]:
     configured_sources = tuple(runtime.settings.news_intel.sources or ())
     try:
+        configured_news_provider_types(configured_sources)
         with runtime.repositories() as repos:
             schema_provider_types = repos.news.news_source_provider_constraint_values()
         return validate_news_provider_contract(
@@ -246,24 +250,18 @@ def _news_provider_contract_payload(runtime: Runtime) -> dict[str, Any]:
     except NewsProviderContractError as exc:
         return exc.to_payload()
     except Exception as exc:
+        try:
+            configured_provider_types = configured_news_provider_types(configured_sources)
+        except NewsProviderContractError as contract_exc:
+            return contract_exc.to_payload()
         return {
             "ok": False,
             "reason": "news_provider_contract_unavailable",
             "error": type(exc).__name__,
-            "configured_provider_types": _configured_news_provider_types(configured_sources),
+            "configured_provider_types": list(configured_provider_types),
             "supported_provider_types": list(RUNTIME_SUPPORTED_NEWS_PROVIDER_TYPES),
             "schema_provider_types": [],
         }
-
-
-def _configured_news_provider_types(configured_sources: tuple[Any, ...]) -> list[str]:
-    values: list[str] = []
-    for source in configured_sources:
-        value = source.get("provider_type") if isinstance(source, dict) else getattr(source, "provider_type", None)
-        provider_type = str(value or "").strip()
-        if provider_type:
-            values.append(provider_type)
-    return sorted(dict.fromkeys(values))
 
 
 def _queue_health_contract_reasons(worker_status: dict[str, Any]) -> list[str]:

@@ -171,11 +171,13 @@ def test_token_factor_evaluation_requires_formal_snapshot_rank_score_without_zer
     forbidden = (
         'float(composite.get("rank_score") or 0.0)',
         "return 0.0",
+        "max(0, int(limit))",
     )
     required = (
         "require_token_factor_snapshot",
         'field_name="factor_snapshot_json"',
         'composite["rank_score"]',
+        "token_factor_evaluation_limit_required",
     )
 
     assert [token for token in forbidden if token in source] == []

@@ -1,3 +1,5 @@
+import pytest
+
 from parallax.domains.token_intel.read_models.search_inspect_service import SearchInspectService
 
 LEGACY_MARKET_FIELD = "market_overlay"
@@ -110,6 +112,25 @@ def test_search_inspect_returns_empty_result_for_empty_query():
     assert result["token_result"] is None
     assert result["topic_result"] is None
     assert result["ambiguous_result"] is None
+
+
+@pytest.mark.parametrize("limit", [0, -1, True, "50"])
+def test_search_inspect_rejects_malformed_limit_before_search(limit: object) -> None:
+    service = SearchInspectService(
+        search_query=FakeSearchQuery(),
+        token_radar=FakeTokenRadar(),
+        targets=FakeTargets(rows=[]),
+        profiles=FakeProfiles(),
+    )
+
+    with pytest.raises(ValueError, match="search_inspect_limit_required"):
+        service.inspect(
+            "$BTC",
+            window="24h",
+            scope="all",
+            limit=limit,  # type: ignore[arg-type]
+            now_ms=1_700_086_400_000,
+        )
 
 
 class FakeSearchQuery:

@@ -23,6 +23,7 @@ from parallax.domains.news_intel.runtime.news_item_process_worker import (
     _source_watermark_ms as _process_worker_source_watermark_ms,
 )
 from parallax.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
+from parallax.domains.news_intel.types import NewsSourceConfig
 from parallax.domains.news_intel.types.source_provider import (
     NewsProviderFetchResult,
     NewsProviderObservation,
@@ -131,7 +132,8 @@ def test_news_fetch_worker_fetches_outside_db_session_and_writes_items() -> None
             "limit": 10,
         }
     ]
-    assert db.repo.reconciled_sources == [source]
+    assert [row.source_id for row in db.repo.reconciled_sources] == ["example-rss"]
+    assert [row.provider_type for row in db.repo.reconciled_sources] == ["rss"]
     assert db.repo.provider_items[0]["source_item_key"] == "guid-1"
     assert db.repo.provider_items[0]["canonical_url"] == "https://example.com/news/story"
     assert db.repo.news_items[0]["title"] == "SOL ETF approved"
@@ -1926,7 +1928,7 @@ def _worker(
     db: FakeDB,
     feed_client: FakeNewsSourceProvider,
     wake_bus: FakeWakeBus,
-    sources: list[dict[str, object]],
+    sources: list[dict[str, object] | NewsSourceConfig],
     settings: NewsFetchWorkerSettings | None = None,
 ) -> NewsFetchWorker:
     return NewsFetchWorker(
@@ -1935,8 +1937,30 @@ def _worker(
         db=db,
         telemetry=object(),
         feed_client=feed_client,
-        news_settings=SimpleNamespace(sources=tuple(sources)),
+        news_settings=SimpleNamespace(sources=tuple(_settings_source(source) for source in sources)),
         wake_emitter=wake_bus,
+    )
+
+
+def _settings_source(source: dict[str, object] | NewsSourceConfig) -> NewsSourceConfig:
+    if isinstance(source, NewsSourceConfig):
+        return source
+    return NewsSourceConfig(
+        source_id=str(source["source_id"]),
+        provider_type=str(source["provider_type"]),
+        feed_url=str(source["feed_url"]),
+        source_domain=str(source["source_domain"]),
+        source_name=str(source["source_name"]),
+        source_role=str(source.get("source_role") or "observed_source"),
+        trust_tier=str(source.get("trust_tier") or "standard"),
+        managed_by_config=bool(source.get("managed_by_config", True)),
+        enabled=bool(source.get("enabled", True)),
+        refresh_interval_seconds=int(source.get("refresh_interval_seconds") or 300),
+        coverage_tags=tuple(str(value) for value in source.get("coverage_tags", ()) or ()),
+        asset_universe=tuple(str(value) for value in source.get("asset_universe", ()) or ()),
+        authority_scope=dict(source.get("authority_scope") or {}),
+        fetch_policy=dict(source.get("fetch_policy") or {}),
+        cost_policy=dict(source.get("cost_policy") or {}),
     )
 
 
@@ -2323,7 +2347,7 @@ class FakeNewsRepository:
     def __init__(self, due_sources: list[dict[str, object]]) -> None:
         self.due_sources = due_sources
         self.claim_due_calls: list[dict[str, object]] = []
-        self.reconciled_sources: list[dict[str, object]] = []
+        self.reconciled_sources: list[NewsSourceConfig] = []
         self.fetch_runs: list[dict[str, object]] = []
         self.provider_items: list[dict[str, object]] = []
         self.provider_results: list[dict[str, object]] = []

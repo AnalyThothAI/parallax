@@ -95,7 +95,6 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         writes_facts=("events", "token_intents"),
         uses_provider_io=True,
         idempotency_evidence=("events provider event identity",),
-        wakes_out=("event_written",),
     ),
     WorkerManifest(
         name="market_tick_stream",
@@ -169,6 +168,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         idempotency_evidence=("event_anchor_backfill_jobs job state", "enriched_events event/intent identity"),
         queue_depth_table="event_anchor_backfill_jobs",
         queue_health_tables=("event_anchor_backfill_jobs",),
+        wakes_out=("market_tick_written",),
     ),
     WorkerManifest(
         name="token_capture_tier",
@@ -307,6 +307,9 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
             "projection_runs",
             "pulse_trigger_dirty_targets",
             "narrative_admission_dirty_targets",
+            "token_profile_current_dirty_targets",
+            "token_capture_tier_dirty_targets",
+            "asset_profile_refresh_targets",
         ),
         current_read_model_identities=(
             (
@@ -376,6 +379,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         uses_provider_io=True,
         idempotency_evidence=("news item source/external identity",),
         advisory_lock_key="2026051905",
+        wakes_out=("news_item_written", "news_page_dirty"),
     ),
     WorkerManifest(
         name="news_item_process",
@@ -421,7 +425,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         dirty_target_tables=("news_projection_dirty_targets",),
         advisory_lock_key="2026052001",
         wakes_on=(),
-        wakes_out=("news_item_brief_updated",),
+        wakes_out=(),
     ),
     WorkerManifest(
         name="news_story_brief",
@@ -489,6 +493,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         dirty_target_tables=("news_projection_dirty_targets",),
         advisory_lock_key="2026052201",
         wakes_on=("news_item_written",),
+        wakes_out=("news_page_dirty",),
     ),
     WorkerManifest(
         name="cex_oi_radar_board",
@@ -644,7 +649,6 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         writes_facts=("notifications",),
         writes_control_plane=("notification_deliveries",),
         idempotency_evidence=("notifications rule/entity dedupe key", "notification_deliveries(delivery_id)"),
-        wakes_out=("notification_delivery_due",),
     ),
     WorkerManifest(
         name="notification_delivery",

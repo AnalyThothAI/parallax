@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -46,18 +47,42 @@ class GmgnOpenApiGateway:
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self._client = client
-        self._token_info_cache_ttl_seconds = max(0, int(token_info_cache_ttl_seconds))
+        self._token_info_cache_ttl_seconds = _required_nonnegative_int(
+            token_info_cache_ttl_seconds,
+            error_code="gmgn_openapi_token_info_cache_ttl_seconds_required",
+        )
         self._bucket = _WeightedLeakyBucket(
-            rate_per_second=max(0.001, float(rate_per_second)),
-            capacity=max(0.001, float(rate_capacity)),
+            rate_per_second=_required_positive_float(
+                rate_per_second,
+                error_code="gmgn_openapi_rate_per_second_required",
+            ),
+            capacity=_required_positive_float(
+                rate_capacity,
+                error_code="gmgn_openapi_rate_capacity_required",
+            ),
             clock=clock,
             sleep=sleep,
         )
-        self._provider_cooldown_seconds = max(0.0, float(provider_cooldown_seconds))
-        self._retry_attempts = max(1, int(retry_attempts))
-        self._retry_initial_wait_seconds = max(0.0, float(retry_initial_wait_seconds))
-        self._retry_max_wait_seconds = max(0.0, float(retry_max_wait_seconds))
-        self._retry_jitter_seconds = max(0.0, float(retry_jitter_seconds))
+        self._provider_cooldown_seconds = _required_nonnegative_float(
+            provider_cooldown_seconds,
+            error_code="gmgn_openapi_provider_cooldown_seconds_required",
+        )
+        self._retry_attempts = _required_positive_int(
+            retry_attempts,
+            error_code="gmgn_openapi_retry_attempts_required",
+        )
+        self._retry_initial_wait_seconds = _required_nonnegative_float(
+            retry_initial_wait_seconds,
+            error_code="gmgn_openapi_retry_initial_wait_seconds_required",
+        )
+        self._retry_max_wait_seconds = _required_nonnegative_float(
+            retry_max_wait_seconds,
+            error_code="gmgn_openapi_retry_max_wait_seconds_required",
+        )
+        self._retry_jitter_seconds = _required_nonnegative_float(
+            retry_jitter_seconds,
+            error_code="gmgn_openapi_retry_jitter_seconds_required",
+        )
         self._clock = clock
         self._sleep = sleep
         self._circuit_open_until = 0.0
@@ -135,7 +160,14 @@ class GmgnOpenApiGateway:
         cooldown = exc.cooldown_seconds
         if cooldown is None:
             cooldown = self._provider_cooldown_seconds
-        self._circuit_open_until = max(self._circuit_open_until, self._clock() + max(0.0, float(cooldown)))
+        self._circuit_open_until = max(
+            self._circuit_open_until,
+            self._clock()
+            + _required_nonnegative_float(
+                cooldown,
+                error_code="gmgn_openapi_provider_cooldown_seconds_required",
+            ),
+        )
 
 
 class _WeightedLeakyBucket:
@@ -155,9 +187,7 @@ class _WeightedLeakyBucket:
         self._updated_at = clock()
 
     def acquire(self, weight: float) -> None:
-        requested = max(0.0, float(weight))
-        if requested <= 0:
-            return
+        requested = _required_positive_float(weight, error_code="gmgn_openapi_route_weight_required")
         self._refill()
         if self._tokens < requested:
             wait_seconds = (requested - self._tokens) / self._rate_per_second
@@ -170,6 +200,36 @@ class _WeightedLeakyBucket:
         elapsed = max(0.0, now - self._updated_at)
         self._tokens = min(self._capacity, self._tokens + elapsed * self._rate_per_second)
         self._updated_at = now
+
+
+def _required_positive_int(value: object, *, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _required_nonnegative_int(value: object, *, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _required_positive_float(value: object, *, error_code: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(error_code)
+    parsed = float(value)
+    if not math.isfinite(parsed) or parsed <= 0:
+        raise ValueError(error_code)
+    return parsed
+
+
+def _required_nonnegative_float(value: object, *, error_code: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(error_code)
+    parsed = float(value)
+    if not math.isfinite(parsed) or parsed < 0:
+        raise ValueError(error_code)
+    return parsed
 
 
 __all__ = ["GmgnOpenApiGateway", "GmgnOpenApiRoute"]

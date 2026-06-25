@@ -27,8 +27,9 @@ from .repositories.market_tick_repository import MarketTickRepository
 from .repositories.registry_repository import RegistryRepository
 from .repositories.token_capture_tier_repository import TokenCaptureTierRepository
 from .repositories.token_profile_current_repository import TokenProfileCurrentRepository
+from .services.event_market_capture import CaptureResult
 from .services.market_tick_persistence import MarketTickPersistenceService
-from .types import EnrichedEventCapture
+from .types import EnrichedEventCapture, MarketTick
 
 __all__ = [
     "CONFIDENCE_MANUAL",
@@ -44,12 +45,14 @@ __all__ = [
     "EVIDENCE_OKX_DEX_SYMBOL_CANDIDATE",
     "EVIDENCE_TWEET_CONTRACT_MENTION",
     "AssetProfileRepository",
+    "CaptureResult",
     "CexTokenProfileRepository",
     "DiscoveryRepository",
     "EnrichedEventCapture",
     "EnrichedEventRepository",
     "EventAnchorBackfillJobRepository",
     "IdentityEvidenceRepository",
+    "MarketTick",
     "MarketTickCurrentDirtyTargetRepository",
     "MarketTickPersistenceService",
     "MarketTickRepository",

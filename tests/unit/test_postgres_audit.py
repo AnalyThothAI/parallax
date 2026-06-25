@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from parallax.platform.db.postgres_audit import ProjectionValidationAudit
 
 
@@ -45,6 +47,21 @@ def test_projection_validation_audit_batches_token_radar_reference_checks() -> N
     assert "LEFT JOIN registry_assets" in reference_sql[0]
     assert all("SELECT 1 AS ok FROM token_intents WHERE intent_id = %s" not in sql for sql in conn.executed_sql)
     assert all("SELECT 1 AS ok FROM registry_assets WHERE asset_id = %s" not in sql for sql in conn.executed_sql)
+
+
+@pytest.mark.parametrize("sample", [-1, True, "50"])
+def test_projection_validation_audit_rejects_malformed_sample_before_sql(sample: object) -> None:
+    conn = RecordingProjectionValidationConn(
+        radar_rows=[],
+        intent_ids=set(),
+        asset_ids=set(),
+        latest_computed_at_ms=None,
+    )
+
+    with pytest.raises(ValueError, match="projection_validation_sample_required"):
+        ProjectionValidationAudit(conn).run(sample=sample)  # type: ignore[arg-type]
+
+    assert conn.executed_sql == []
 
 
 class RecordingProjectionValidationConn:

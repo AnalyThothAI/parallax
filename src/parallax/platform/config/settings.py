@@ -427,7 +427,7 @@ class NotificationRuleConfig(BaseModel):
 
     enabled: bool = True
     channels: tuple[str, ...] = ("in_app",)
-    cooldown_seconds: int = 0
+    cooldown_seconds: int = Field(default=0, ge=0)
     window: str | None = None
     scopes: tuple[str, ...] | None = None
     statuses: tuple[str, ...] | None = None
@@ -1073,6 +1073,7 @@ class MacroViewProjectionWorkerSettings(PerWorkerSettings):
     statement_timeout_seconds: float = Field(default=30.0, ge=0)
     lease_ms: int = Field(default=300_000, ge=1)
     retry_ms: int = Field(default=300_000, ge=1)
+    max_attempts: int = Field(default=3, ge=1)
     advisory_lock_key: int = 2026052109
     lookback_days: int = Field(default=1095, ge=1095)
     limit_per_series: int = Field(default=800, ge=800)
@@ -1227,6 +1228,7 @@ class NarrativeAdmissionWorkerSettings(PerWorkerSettings):
     source_limit: int = Field(default=2000, ge=1)
     lease_ms: int = Field(default=60_000, ge=1)
     retry_ms: int = Field(default=60_000, ge=1)
+    max_attempts: int = Field(default=3, ge=1)
     statement_timeout_seconds: float = Field(default=30.0, ge=0)
     min_rank_score: int = Field(default=30, ge=0)
     hot_rank_limit: int = Field(default=50, ge=1)
@@ -2045,6 +2047,7 @@ macro_view_projection:
   statement_timeout_seconds: 30.0
   lease_ms: 300000
   retry_ms: 300000
+  max_attempts: 3
   advisory_lock_key: 2026052109
   lookback_days: 1095
   limit_per_series: 800
@@ -2068,6 +2071,7 @@ narrative_admission:
   source_limit: 2000
   lease_ms: 60000
   retry_ms: 60000
+  max_attempts: 3
   statement_timeout_seconds: 30.0
   min_rank_score: 30
   hot_rank_limit: 50

@@ -17,6 +17,11 @@ from parallax.domains.news_intel.runtime.news_projection_work import (
     queue_story_brief_depth,
     story_brief_story_keys,
 )
+from parallax.domains.news_intel.runtime.news_runtime_settings import (
+    positive_worker_setting_int,
+    required_nonnegative_int,
+    required_positive_int,
+)
 from parallax.domains.news_intel.services.news_item_brief_validation import validate_news_item_brief_output
 from parallax.domains.news_intel.services.news_story_brief_input import build_news_story_brief_input_packet
 from parallax.domains.news_intel.types.news_story_brief import (
@@ -74,11 +79,14 @@ class NewsStoryBriefWorker(WorkerBase):
             model=str(provider.story_model),
             artifact_version_hash=str(provider.story_artifact_version_hash),
         )
-        queue_depth = await asyncio.to_thread(self._queue_depth, now_ms=now)
+        queue_depth = required_nonnegative_int(
+            await asyncio.to_thread(self._queue_depth, now_ms=now),
+            error_code="news_story_brief_queue_depth_required",
+        )
         if queue_depth <= 0:
             return WorkerResult(skipped=1, notes={"reason": "no_due_story_brief_targets"})
 
-        rate_units = min(self._batch_size(), max(1, int(queue_depth)))
+        rate_units = min(self._batch_size(), queue_depth)
         try:
             reservation = provider.try_reserve_execution(NEWS_STORY_BRIEF_LANE, rate_units=rate_units)
         except Exception as exc:
@@ -337,10 +345,11 @@ class NewsStoryBriefWorker(WorkerBase):
         )
 
     def _claim_targets(self, *, now_ms: int, limit: int) -> list[dict[str, Any]]:
+        claim_limit = required_positive_int(limit, error_code="news_story_brief_claim_limit_required")
         with self._repository_session() as repos:
             return claim_story_brief_work(
                 repos,
-                limit=max(1, int(limit)),
+                limit=claim_limit,
                 lease_ms=self._lease_ms(),
                 now_ms=now_ms,
                 lease_owner=_claim_owner(self.name),
@@ -517,6 +526,8 @@ class NewsStoryBriefWorker(WorkerBase):
                 error=str(error),
                 retry_ms=retry_ms,
                 now_ms=now_ms,
+                max_attempts=self._max_attempts(),
+                worker_name=self.name,
                 count_attempt=count_attempt,
             )
 
@@ -527,16 +538,19 @@ class NewsStoryBriefWorker(WorkerBase):
         )
 
     def _batch_size(self) -> int:
-        return max(1, int(self.settings.batch_size))
+        return positive_worker_setting_int(self.settings, "batch_size", worker_name=self.name)
 
     def _lease_ms(self) -> int:
-        return max(1, int(self.settings.lease_ms))
+        return positive_worker_setting_int(self.settings, "lease_ms", worker_name=self.name)
 
     def _retry_ms(self) -> int:
-        return max(1, int(self.settings.retry_ms))
+        return positive_worker_setting_int(self.settings, "retry_ms", worker_name=self.name)
+
+    def _max_attempts(self) -> int:
+        return positive_worker_setting_int(self.settings, "max_attempts", worker_name=self.name)
 
     def _backpressure_cooldown_ms(self) -> int:
-        return max(1, int(self.settings.backpressure_cooldown_ms))
+        return positive_worker_setting_int(self.settings, "backpressure_cooldown_ms", worker_name=self.name)
 
 
 class _NoStartBackpressure(Exception):
@@ -902,23 +916,29 @@ def _positive_watermark(value: Any) -> int:
 
 
 def _backpressure_outcome(reservation: AgentCapacityReservation) -> str:
+    if not isinstance(reservation, AgentCapacityReservation):
+        raise RuntimeError("news_story_brief_agent_reservation_contract_required")
     return _backpressure_outcome_for_reason(reservation.reason)
 
 
-def _backpressure_outcome_for_reason(reason: Any) -> str:
-    if reason == AgentExecutionErrorClass.CIRCUIT_OPEN:
+def _backpressure_outcome_for_reason(reason: AgentExecutionErrorClass | None) -> str:
+    if reason is None:
+        reason = AgentExecutionErrorClass.CAPACITY_DENIED
+    elif not isinstance(reason, AgentExecutionErrorClass):
+        raise RuntimeError("news_story_brief_agent_reservation_reason_contract_required")
+    if reason is AgentExecutionErrorClass.CIRCUIT_OPEN:
         return "backpressure_circuit_open"
-    if reason == AgentExecutionErrorClass.RATE_LIMITED:
+    if reason is AgentExecutionErrorClass.RATE_LIMITED:
         return "backpressure_rate_limited"
-    if reason == AgentExecutionErrorClass.QUOTA_EXHAUSTED:
+    if reason is AgentExecutionErrorClass.QUOTA_EXHAUSTED:
         return "backpressure_quota_exhausted"
     return "backpressure_capacity_denied"
 
 
 def _backpressure_outcome_for_error(error: Exception) -> str:
     if not isinstance(error, AgentExecutionError):
-        return "backpressure_capacity_denied"
-    return _backpressure_outcome_for_reason(error.error_class)
+        raise RuntimeError("news_story_brief_agent_backpressure_error_contract_required")
+    return _backpressure_outcome_for_reason(_required_agent_error_class(error.error_class))
 
 
 async def _release_reservation(reservation: AgentCapacityReservation) -> None:
@@ -992,7 +1012,8 @@ def _provider_execution_started(error: Exception) -> bool:
 def _is_no_start_backpressure_error(error: Exception) -> bool:
     if not isinstance(error, AgentExecutionError) or error.execution_started:
         return False
-    return error.error_class in {
+    error_class = _required_agent_error_class(error.error_class)
+    return error_class in {
         AgentExecutionErrorClass.CAPACITY_DENIED,
         AgentExecutionErrorClass.CIRCUIT_OPEN,
         AgentExecutionErrorClass.RATE_LIMITED,
@@ -1001,7 +1022,14 @@ def _is_no_start_backpressure_error(error: Exception) -> bool:
 
 
 def _reason_value(reason: AgentExecutionErrorClass) -> str:
+    reason = _required_agent_error_class(reason)
     return reason.value
+
+
+def _required_agent_error_class(reason: Any) -> AgentExecutionErrorClass:
+    if not isinstance(reason, AgentExecutionErrorClass):
+        raise RuntimeError("news_story_brief_agent_error_class_contract_required")
+    return reason
 
 
 def _required_audit_text(audit: Mapping[str, Any], field_name: str) -> str:

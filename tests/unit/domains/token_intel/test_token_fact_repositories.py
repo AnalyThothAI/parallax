@@ -10,7 +10,11 @@ from parallax.domains.token_intel.repositories.intent_resolution_repository impo
 from parallax.domains.token_intel.repositories.token_evidence_repository import TokenEvidenceRepository
 from parallax.domains.token_intel.repositories.token_intent_lookup_repository import TokenIntentLookupRepository
 from parallax.domains.token_intel.repositories.token_intent_repository import TokenIntentRepository
+from parallax.domains.token_intel.services.deterministic_token_resolver import DeterministicResolution
+from parallax.domains.token_intel.services.token_evidence_builder import TokenEvidenceInput
+from parallax.domains.token_intel.services.token_intent_builder import TokenIntentEvidenceLink, TokenIntentInput
 
+NOW_MS = 1_779_000_000_000
 MISSING_ROWCOUNT = object()
 
 
@@ -220,12 +224,55 @@ def test_token_fact_single_row_writes_require_one_affected_row(
         operation(conn)
 
 
+def test_token_evidence_insert_accepts_formal_input_contract() -> None:
+    conn = FakeTokenFactConnection(rowcounts=[1])
+
+    row = TokenEvidenceRepository(conn).insert(_formal_evidence(), commit=False)
+
+    assert row["evidence_id"] == "evidence-1"
+
+
+def test_token_evidence_insert_rejects_loose_slots_object_before_sql() -> None:
+    conn = FakeTokenFactConnection(rowcounts=[1])
+
+    with pytest.raises(TypeError, match="token_evidence_repository_input_contract_required"):
+        TokenEvidenceRepository(conn).insert(_loose_evidence(), commit=False)
+
+    assert conn.sql == []
+
+
+def test_intent_resolution_insert_accepts_formal_decision_contract() -> None:
+    conn = FakeTokenFactConnection(rowcounts=[1])
+
+    row = IntentResolutionRepository(conn).insert_resolution(_formal_resolution(), commit=False)
+
+    assert row["resolution_id"] == "resolution-1"
+
+
+def test_intent_resolution_insert_rejects_loose_slots_object_before_sql() -> None:
+    conn = FakeTokenFactConnection(rowcounts=[1])
+
+    with pytest.raises(TypeError, match="intent_resolution_repository_input_contract_required"):
+        IntentResolutionRepository(conn).insert_resolution(_loose_resolution(), commit=False)
+
+    assert conn.sql == []
+
+
 def test_token_intent_evidence_links_allow_do_nothing_zero_rowcount() -> None:
     conn = FakeTokenFactConnection(rowcounts=[1, 0])
 
-    row = TokenIntentRepository(conn).insert(_intent_with_evidence_links(), commit=False)
+    row = TokenIntentRepository(conn).insert(_formal_intent_with_evidence_links(), commit=False)
 
     assert row["intent_id"] == "intent-1"
+
+
+def test_token_intent_insert_rejects_loose_slots_object_before_sql() -> None:
+    conn = FakeTokenFactConnection(rowcounts=[1, 0])
+
+    with pytest.raises(TypeError, match="token_intent_repository_input_contract_required"):
+        TokenIntentRepository(conn).insert(_intent_with_evidence_links(), commit=False)
+
+    assert conn.sql == []
 
 
 def test_token_evidence_for_intents_batches_keyset_and_groups_evidence() -> None:
@@ -277,7 +324,7 @@ def test_token_intent_evidence_links_require_optional_single_rowcount(
     conn = FakeTokenFactConnection(rowcounts=[1, bad_rowcount])
 
     with pytest.raises(TypeError, match=error_code):
-        TokenIntentRepository(conn).insert(_intent_with_evidence_links(), commit=False)
+        TokenIntentRepository(conn).insert(_formal_intent_with_evidence_links(), commit=False)
 
 
 @pytest.mark.parametrize(
@@ -299,6 +346,59 @@ def test_intent_resolution_supersede_requires_single_row_update_count(
 
     with pytest.raises(TypeError, match=error_code):
         IntentResolutionRepository(conn).insert_resolution(_resolution_payload(), commit=False)
+
+
+def test_token_intent_recent_unresolved_zero_limit_returns_empty_without_sql() -> None:
+    conn = FakeTokenFactConnection()
+
+    rows = TokenIntentRepository(conn).recent_unresolved(since_ms=NOW_MS - 1_000, limit=0)
+
+    assert rows == []
+    assert conn.sql == []
+
+
+@pytest.mark.parametrize("limit", [-1, True, "10"])
+def test_token_intent_recent_unresolved_rejects_malformed_limit_before_sql(limit: object) -> None:
+    conn = FakeTokenFactConnection()
+
+    with pytest.raises(ValueError, match="token_intent_recent_unresolved_limit_required"):
+        TokenIntentRepository(conn).recent_unresolved(since_ms=NOW_MS - 1_000, limit=limit)  # type: ignore[arg-type]
+
+    assert conn.sql == []
+
+
+@pytest.mark.parametrize(
+    "operation",
+    [
+        pytest.param(
+            lambda repo, limit: repo.recent_intents_for_lookup_keys(
+                ["symbol:BTC"],
+                since_ms=NOW_MS - 1_000,
+                limit=limit,
+            ),
+            id="all",
+        ),
+        pytest.param(
+            lambda repo, limit: repo.recent_unresolved_intents_for_lookup_keys(
+                ["symbol:BTC"],
+                since_ms=NOW_MS - 1_000,
+                limit=limit,
+            ),
+            id="unresolved",
+        ),
+    ],
+)
+@pytest.mark.parametrize("limit", [0, -1, True, "10"])
+def test_token_intent_lookup_reads_reject_malformed_limit_before_sql(
+    operation: Callable[[TokenIntentLookupRepository, object], object],
+    limit: object,
+) -> None:
+    conn = FakeTokenFactConnection()
+
+    with pytest.raises(ValueError, match="token_intent_lookup_limit_required"):
+        operation(TokenIntentLookupRepository(conn), limit)
+
+    assert conn.sql == []
 
 
 class RepositoryCase:
@@ -442,6 +542,43 @@ def _evidence_payload() -> dict[str, Any]:
     }
 
 
+class LooseEvidence:
+    __slots__ = tuple(_evidence_payload().keys())
+
+    def __init__(self) -> None:
+        for key, value in _evidence_payload().items():
+            setattr(self, key, value)
+
+
+def _loose_evidence() -> LooseEvidence:
+    return LooseEvidence()
+
+
+def _formal_evidence() -> TokenEvidenceInput:
+    payload = _evidence_payload()
+    return TokenEvidenceInput(
+        evidence_id=str(payload["evidence_id"]),
+        event_id=str(payload["event_id"]),
+        source_kind=str(payload["source_kind"]),
+        source_id=str(payload["source_id"]),
+        evidence_type=str(payload["evidence_type"]),
+        raw_value=str(payload["raw_value"]),
+        normalized_symbol=str(payload["normalized_symbol"]) if payload["normalized_symbol"] is not None else None,
+        chain_hint=str(payload["chain_hint"]) if payload["chain_hint"] is not None else None,
+        address_hint=str(payload["address_hint"]) if payload["address_hint"] is not None else None,
+        provider=str(payload["provider"]) if payload["provider"] is not None else None,
+        provider_ref=str(payload["provider_ref"]) if payload["provider_ref"] is not None else None,
+        text_surface=str(payload["text_surface"]),
+        span_start=int(payload["span_start"]),
+        span_end=int(payload["span_end"]),
+        sentence_id=int(payload["sentence_id"]) if payload["sentence_id"] is not None else 0,
+        local_group_key=str(payload["local_group_key"]) if payload["local_group_key"] is not None else "",
+        strength=str(payload["strength"]),
+        confidence=float(payload["confidence"]),
+        created_at_ms=int(payload["created_at_ms"]),
+    )
+
+
 def _intent_payload() -> dict[str, Any]:
     return {
         "intent_id": "intent-1",
@@ -488,6 +625,26 @@ def _intent_with_evidence_links() -> IntentWithEvidenceLinks:
     return IntentWithEvidenceLinks()
 
 
+def _formal_intent_with_evidence_links() -> TokenIntentInput:
+    payload = _intent_payload()
+    return TokenIntentInput(
+        intent_id=str(payload["intent_id"]),
+        event_id=str(payload["event_id"]),
+        intent_key=str(payload["intent_key"]),
+        construction_policy=str(payload["construction_policy"]),
+        primary_evidence_id=str(payload["primary_evidence_id"]) if payload["primary_evidence_id"] is not None else None,
+        display_symbol=str(payload["display_symbol"]) if payload["display_symbol"] is not None else None,
+        display_name=str(payload["display_name"]) if payload["display_name"] is not None else None,
+        chain_hint=str(payload["chain_hint"]) if payload["chain_hint"] is not None else None,
+        address_hint=str(payload["address_hint"]) if payload["address_hint"] is not None else None,
+        intent_status=str(payload["intent_status"]),
+        intent_confidence=float(payload["intent_confidence"]),
+        created_at_ms=int(payload["created_at_ms"]),
+        updated_at_ms=int(payload["updated_at_ms"]),
+        evidence_links=[TokenIntentEvidenceLink(evidence_id="evidence-1", role="primary_identity")],
+    )
+
+
 def _resolution_payload() -> dict[str, Any]:
     return {
         "intent_id": "intent-1",
@@ -503,3 +660,33 @@ def _resolution_payload() -> dict[str, Any]:
         "decision_time_ms": 1_778_162_002_774,
         "created_at_ms": 1_778_162_002_774,
     }
+
+
+class LooseResolution:
+    __slots__ = tuple(_resolution_payload().keys())
+
+    def __init__(self) -> None:
+        for key, value in _resolution_payload().items():
+            setattr(self, key, value)
+
+
+def _loose_resolution() -> LooseResolution:
+    return LooseResolution()
+
+
+def _formal_resolution() -> DeterministicResolution:
+    payload = _resolution_payload()
+    return DeterministicResolution(
+        intent_id=str(payload["intent_id"]),
+        event_id=str(payload["event_id"]),
+        resolution_status=str(payload["resolution_status"]),
+        target_type=str(payload["target_type"]) if payload["target_type"] is not None else None,
+        target_id=str(payload["target_id"]) if payload["target_id"] is not None else None,
+        pricefeed_id=str(payload["pricefeed_id"]) if payload["pricefeed_id"] is not None else None,
+        resolver_policy_version=str(payload["resolver_policy_version"]),
+        reason_codes=[str(item) for item in payload["reason_codes"]],
+        candidate_ids=[str(item) for item in payload["candidate_ids"]],
+        lookup_keys=[str(item) for item in payload["lookup_keys"]],
+        decision_time_ms=int(payload["decision_time_ms"]),
+        created_at_ms=int(payload["created_at_ms"]),
+    )

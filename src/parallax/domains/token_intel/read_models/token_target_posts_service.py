@@ -46,6 +46,7 @@ class TokenTargetPostsService:
         cursor: str | None = None,
         now_ms: int | None = None,
     ) -> dict[str, Any]:
+        row_limit = _required_nonnegative_int(limit, "token_target_posts_limit_required")
         if post_range not in {"current_window", "since_ignition", "all_history"}:
             raise TokenTargetPostsRangeError(post_range)
         if sort not in {"recent", "catalyst"}:
@@ -63,10 +64,10 @@ class TokenTargetPostsService:
             target_id=target_id,
             since_ms=since_ms,
             watched_only=watched_only,
-            limit=max(0, int(limit)) + 1,
+            limit=row_limit + 1,
             cursor=timeline_cursor,
         )
-        page_rows = rows[: max(0, int(limit))]
+        page_rows = rows[:row_limit]
         has_more = len(rows) > len(page_rows)
         next_cursor = encode_target_cursor(page_rows[-1]) if has_more and page_rows else None
         stage_build = build_token_target_stages(page_rows)
@@ -107,3 +108,11 @@ def _watched_only(scope: str) -> bool:
     if scope == "all":
         return False
     raise TokenTargetPostsScopeError(scope)
+
+
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value < 0:
+        raise ValueError(error_code)
+    return int(value)

@@ -47,10 +47,19 @@ class TokenProfileCurrentWorker(WorkerBase):
             return rebuild_token_profile_current_once(
                 repos=repos,
                 now_ms=now_ms,
-                limit=max(1, int(self.settings.batch_size)),
+                limit=_required_positive_int(
+                    self.settings.batch_size,
+                    error_code="token_profile_current_batch_size_required",
+                ),
                 lease_owner=self.name,
-                lease_ms=max(1, int(self.settings.lease_ms)),
-                retry_ms=max(1, int(self.settings.retry_ms)),
+                lease_ms=_required_positive_int(
+                    self.settings.lease_ms,
+                    error_code="token_profile_current_lease_ms_required",
+                ),
+                retry_ms=_required_positive_int(
+                    self.settings.retry_ms,
+                    error_code="token_profile_current_retry_ms_required",
+                ),
             )
 
 
@@ -225,6 +234,12 @@ def _empty_result(*, now_ms: int) -> dict[str, Any]:
         "started_at_ms": int(now_ms),
         "finished_at_ms": int(now_ms),
     }
+
+
+def _required_positive_int(value: Any, *, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _error_text(exc: BaseException) -> str:

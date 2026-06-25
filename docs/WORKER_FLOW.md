@@ -71,7 +71,7 @@ The hot path from one public-stream frame to product output is:
    - shared append-only market tick inserts classify created vs duplicate facts
      from PostgreSQL cursor rowcount matching `RETURNING tick_id` row presence,
      not from returned-row presence alone
-   - market_tick_current_projection claims `market_tick_current_dirty_targets`, writes `market_tick_current` only when the latest visible tick changes, and enqueues Token Radar market dirty work; repository-owned dirty target enqueue/claim/done/error mutations require connection transaction before queue SQL, done/error completion keys require positive claimed-row `attempt_count` without zero-attempt fallback, enqueue plus done/error changed-row counts require PostgreSQL `cursor.rowcount` evidence instead of default zero-target or candidate-count accounting, and current-row `RETURNING true AS changed` booleans require rowcount evidence matching returned-row presence before downstream dirty enqueue or wake decisions are reported
+   - market_tick_current_projection claims `market_tick_current_dirty_targets`, writes `market_tick_current` only when the latest visible tick changes, and enqueues Token Radar market dirty work; repository-owned dirty target enqueue/claim/done/error mutations require connection transaction before queue SQL, done/error completion keys require positive claimed-row `attempt_count` without zero-attempt fallback, retry cadence and retry budget come from formal worker settings, exhausted claims are deleted with `RETURNING queue.*` and terminalized in `worker_queue_terminal_events`, enqueue plus done/error changed-row counts require PostgreSQL `cursor.rowcount` evidence instead of default zero-target or candidate-count accounting, and current-row `RETURNING true AS changed` booleans require rowcount evidence matching returned-row presence before downstream dirty enqueue or wake decisions are reported
    - event_anchor_backfill finishes short-lived pending event anchors; temporary retry and terminal/done guards require positive claimed-row `attempt_count` without zero-attempt fallback, `event_anchor_backfill_jobs` `UPDATE ... RETURNING` paths require cursor rowcount evidence matching returned rows before claim results, terminal ledger writes, retry rows, reconcile counts, or booleans are reported, and `enriched_events` attach/terminal lifecycle writes require PostgreSQL single-row `cursor.rowcount` evidence instead of default no-op accounting
    - resolution_refresh discovers and reprocesses NIL / AMBIGUOUS lookups; affected-intent reprocess writes token resolution/lookup/discovery/source-dirty rows inside `RepositorySession.transaction` and only enqueues source-dirty edges from formal `TokenIntentResolutionDecision` results, so loose resolver decision objects fail before dirty enqueue; lookup claim lease, running timeout, hot not-found retry, claim batch, retry budget, and reprocess limit come from `settings.workers.resolution_refresh`; due work is consumed through `claim_due_lookup_keys(...)`, not a read-only due-list repository helper; repository-owned registry asset writes require connection transaction before SQL and `RETURNING` rowcount=1 plus a returned row before facts are returned; DiscoveryRepository repository-owned lookup queue/result enqueue/claim/done/reschedule/start/finish/fail mutations require connection transaction before SQL and receive due/claim/start timing explicitly rather than through repository-local policy constants; lookup queue enqueue/done/reschedule changed-row counts require PostgreSQL `cursor.rowcount` evidence instead of default zero-work accounting; lookup claim done/reschedule/terminal completion keys require positive claimed-row `attempt_count` without zero-attempt fallback plus non-empty `lease_owner` and claimed `payload_hash`, and worker retry-budget decisions read the same claimed attempt contract; lookup running/finish/fail/claim completion writes also share `RepositorySession.transaction`, while terminal lookup-claim delete and terminal-ledger writes share a connection transaction and require the deleted source row `payload_hash` without empty-string fallback
    - TokenIntentResolver is deterministic resolver logic only; it has no commit flag and writes resolution rows only through caller-owned repository-session transactions
@@ -84,24 +84,26 @@ The hot path from one public-stream frame to product output is:
 4. Token Intel projection
    - token_radar_projection claims token_radar_dirty_targets and uses bounded interval catch-up
   - it also claims token_radar_source_dirty_events; missing queue repository contracts fail closed rather than being treated as no source work
-  - dirty target/source claim width, rank publish width, lease identity, claim lease, and error retry intervals are formal `settings.workers.token_radar_projection` worker policy; the worker passes `limit`, `rank_limit`, `lease_owner`, `lease_ms`, and `retry_ms` explicitly to projection processing, and `TokenRadarProjection` does not keep service-local dirty queue or rank-publication policy constants
+  - dirty target/source claim width, rank publish width, lease identity, claim lease, error retry interval, and retry budget are formal `settings.workers.token_radar_projection` worker policy; the worker passes `limit`, `rank_limit`, `lease_owner`, `lease_ms`, `retry_ms`, and `max_attempts` explicitly to projection processing, and `TokenRadarProjection` does not keep service-local dirty queue or rank-publication policy constants
   - projection-private cache retention for token_radar_target_features and token_radar_rank_source_events is a bounded `TokenRadarProjectionWorker` maintenance lane controlled by formal `private_cache_retention_enabled` / `private_cache_retention_ms` settings; `refresh_rank_set` does not run retention prune work
   - generic target/source dirty enqueue keys are formal queue commands: generic target dirty enqueue requires `target_type_key` / `identity_id`, and source dirty enqueue requires `source_event_id` / `target_type_key` / `identity_id`; repositories fail alias-only or blank rows before payload hash or queue SQL instead of silently skipping them
   - target/source dirty claim completion keys require formal claimed-row identity before rank-source or projection work: target dirty claims use `target_type_key` / `identity_id`, and source dirty claims use `projection_version` / `source_event_id` / `target_type_key` / `identity_id`
   - target/source dirty claim completion keys also require positive `attempt_count`, non-empty `lease_owner`, and present `payload_hash` from the claimed row before rank-source or projection work; missing claim state fails as malformed instead of producing alias-derived identity, `attempt_count=0`, empty-owner, or empty-payload done/error keys
-  - target/source dirty repository done/error completion helpers require the same formal identity, positive claimed-row `attempt_count`, non-empty claimed-row `lease_owner`, and claimed `payload_hash`; they do not restore missing identity, attempts, owners, or payload hashes through `key.get(...)` aliases or empty defaults
+   - target/source dirty repository done/error completion helpers require the same formal identity, positive claimed-row `attempt_count`, non-empty claimed-row `lease_owner`, and claimed `payload_hash`; they do not restore missing identity, attempts, owners, or payload hashes through `key.get(...)` aliases or empty defaults
+   - target/source dirty error completion receives formal `max_attempts` and `worker_name`; claims that reach the retry budget are deleted with `RETURNING queue.*` and written to `worker_queue_terminal_events` in the same projection transaction rather than being rescheduled indefinitely
+   - dirty queue enqueue conflict paths reset `attempt_count` only when the effective `payload_hash` / work payload changes; a new work payload must not inherit an old failed retry budget, while same-payload retry scheduling preserves existing attempt accounting
    - downstream dirty fan-out skip decisions for Pulse, Narrative Admission, and Token Profile Current require previous/current Token Radar row `payload_hash`; missing hashes fail instead of comparing as empty signatures
    - source dirty event repository-owned enqueue/claim/done/error mutations require a connection transaction before queue SQL
    - target dirty repository-owned enqueue/market-enqueue/claim/catch-up-enqueue/done/error mutations require a connection transaction before queue SQL
    - target/source dirty queue mutation counts for enqueue, done, error, retry, market-current, and catch-up paths require PostgreSQL `cursor.rowcount` evidence; missing or invalid rowcount fails before the repository reports changed-row counts, and generic dirty enqueue paths must not report input `len(records)` as write evidence
-   - downstream dirty-target enqueue for Pulse, Narrative Admission, Token Profile Current, and Token Capture Tier uses formal repository-session attributes directly; missing downstream repos fail the projection transaction instead of silently skipping wake/dirty enqueue
+   - downstream dirty-target enqueue for Pulse, Narrative Admission, Token Profile Current, Asset Profile Refresh, and Token Capture Tier uses formal repository-session attributes directly; missing downstream repos fail the projection transaction instead of silently skipping wake/dirty enqueue
    - after due source-event or target dirty claims are acquired, source-edge writes, target-feature writes/deletes, rank-set publication attempts, and dirty queue done/error terminalization share one explicit connection transaction; `commit=False` is not a delayed commit boundary unless that transaction is active
    - source/market/repair dirty kinds decide whether source edges must rebuild or whether existing source edges can be reused
    - it builds compact source edges and projection-private token_radar_target_features from material facts
    - target-feature and current-row identity is formal `target_type_key` plus `identity_id`; projection-private target-feature rows missing formal identity, row-id dimensions (`projection_version`, `window`, `scope`, `lane`), latest event time, `last_scored_at_ms`, or mapping-shaped `factor_snapshot_json` fail before current-row construction instead of becoming empty serving keys, empty row-id segments, `attention` defaults, zero source frontiers, runtime-clock timestamps, or empty factor payloads; rank-set selection also requires formal `latest_event_received_at_ms`, known `lane`, compact `raw_composite_score`, compact `gates_max_decision`, ranked `rank_score`, and ranked `recommended_decision` before filtering/picking rows, so malformed rank inputs cannot disappear as expired or lane-less work and cannot become `0.0`/`discard` rank facts; unresolved attention rows use stable `LookupKey/symbol:...` identity from formal resolution `lookup_keys_json`, never event/intent-scoped or display-symbol fallback
    - ranked current-row patching requires formal ranked metadata (`normalization_status`, `cohort_status`, `cohort_size`, `cohort_in_cohort`, `cohort_metadata`, complete per-family `factor_ranks`, `alpha_rank`, `rank`, `rank_score`, `recommended_decision`, and `latest_event_received_at_ms`) before mutating current rows or `factor_snapshot_json`; malformed rank publication output fails instead of becoming `no_signal`, `not_ranked`, false cohort membership, empty/incomplete rank maps, alpha rank `None`, rank `0`, or source watermark `0`, and family rank values must be `None` or bounded `0..1` ranks
    - target-feature cache writes require formal projection payload fields (`lane`, `source_max_received_at_ms`, `source_event_ids_json`, `created_at_ms`, and `factor_snapshot_json`) before payload hash or SQL; repository code does not repair malformed rows with `attention`, `computed_at_ms`, empty provenance arrays, or empty factor snapshots, and it also requires `factor_snapshot_json.composite.rank_score`, `factor_snapshot_json.composite.recommended_decision`, and `factor_snapshot_json.gates.max_decision` instead of repairing missing score/decision output to `0.0` or `discard`
-   - downstream Pulse Trigger, Narrative Admission, Token Profile Current, and Token Capture Tier dirty targets derive `source_watermark_ms` only from positive current-row `source_max_received_at_ms`; malformed source watermarks fail closed instead of using `computed_at_ms`, `0`, or projection runtime time. Pulse Trigger and Narrative Admission dirty repositories also require positive producer-supplied watermarks before queue SQL and keep no zero-watermark enqueue compatibility branch
+   - downstream Pulse Trigger, Narrative Admission, Token Profile Current, Asset Profile Refresh, and Token Capture Tier dirty targets derive `source_watermark_ms` only from positive current-row `source_max_received_at_ms`; malformed source watermarks fail closed instead of using `computed_at_ms`, `0`, or projection runtime time. Pulse Trigger and Narrative Admission dirty repositories also require positive producer-supplied watermarks before queue SQL and keep no zero-watermark enqueue compatibility branch
    - Token Radar current-row `resolution_json` preserves the selected resolution row's non-empty status plus list-shaped reason/candidate/lookup arrays; malformed resolution fields fail before publication instead of becoming `NIL` or empty arrays
    - `token_radar_target_first_seen` is the compact first-seen read model for `listed_at_ms`; its upsert changed-row accounting requires PostgreSQL `cursor.rowcount` evidence instead of projection candidate `len(records)`
    - high-confidence `EXACT` / `UNIQUE_BY_CONTEXT` resolution rows must carry formal `Asset` or `CexToken` target identity before resolved-lane publication; malformed target identity fails instead of being downgraded into attention
@@ -571,10 +573,10 @@ mistakes, not from PostgreSQL or asyncio being mysterious:
   is malformed runtime wiring, not a `missing_connection` table-health result.
   Real context-enter/query failures may still surface as unavailable queue
   health because the DB contract exists but the read failed.
-- Runtime readiness keeps an unused helper that catches notification repository
+- Runtime readiness keeps no unused helper that catches notification repository
   failures and returns `{}`. Dead helpers are compatibility surfaces waiting to
-  be reused; notification status should live only on the route/worker contracts
-  that own notification reads.
+  be reused; notification status lives only on the route/worker contracts that
+  own notification reads.
 - An agent worker claims business work before reserving execution capacity.
   No-start backpressure must not claim a target, burn an attempt, or write a
   business run ledger. Once provider execution starts, failures are audited
@@ -795,7 +797,12 @@ connection transaction fallback.
 series rows, writes snapshots, and marks done/error inside
 `RepositorySession.transaction`; repository-owned dirty-target claim/done/error
 defaults require connection transaction support before queue SQL and never fall
-back to manual `self.conn.commit()`. Existing `macro_observation_series_rows`
+back to manual `self.conn.commit()`. Dirty-target retry cadence and retry
+budget come from formal `settings.workers.macro_view_projection.retry_ms` and
+`max_attempts`; exhausted claims are deleted with the claimed payload hash and
+written to `worker_queue_terminal_events`, where `ops queue-resolve-bucket` can
+retry them through the Macro projection dirty-target enqueue path. Existing
+`macro_observation_series_rows`
 must expose non-empty `payload_hash` values before changed/unchanged comparison;
 missing current-row signatures fail before delete/insert instead of being treated
 as empty signatures.
@@ -806,10 +813,17 @@ back to manual repository commit.
 Claimed job rows must carry a positive `attempt_count` before temporary retry,
 done, or terminal guards run; missing attempt state is malformed job state, not
 the first attempt.
+Queue Terminal retry of an event-anchor terminal snapshot must restore a
+fresh pending job with an active window derived from the persisted source
+snapshot, not a one-instant `active_until_ms = now` requeue that immediately
+expires again.
 `resolution_refresh` terminalizes exhausted `token_discovery_dirty_lookup_keys`
 claims by deleting the claimed queue rows and writing `worker_queue_terminal_events`
 evidence inside the connection transaction; missing transaction support fails
 before delete/ledger SQL, not through `nullcontext` or manual commit.
+Provider-unavailable batch handling uses the same retry budget: claimed rows
+below budget are rescheduled together, while exhausted claimed rows are deleted
+and terminalized instead of cycling in the active lookup queue indefinitely.
 Deleted lookup source rows must carry a non-empty `payload_hash` before terminal
 ledger evidence is written; missing source payload hashes are malformed queue
 snapshots, not empty terminal signatures. Discovery terminal delete paths also
@@ -850,11 +864,20 @@ before the discovery scan or queue writes. Dry-run remains read-only, but
 execute mode must not fall back to `nullcontext`.
 `ops queue-resolve --action retry --execute` runs inside the Queue Terminal
 operator transaction and requeues target work only through formal retry
-repositories (`discovery`, `event_anchor_jobs`, or `pulse_jobs`). Missing
-repository support rolls back the terminal action instead of being treated as an
-optional queue capability. Queue Terminal source-row ledger writes use the
+repositories (`discovery`, `event_anchor_jobs`, `pulse_jobs`, Token Radar dirty
+target/source dirty queues, or image-source dirty queues). Missing repository
+support rolls back the terminal action instead of being treated as an optional
+queue capability. Queue Terminal source-row ledger writes use the
 connection transaction too when `terminalize_source_row(..., commit=True)` owns
 the commit; naked `conn.commit()` is not a platform terminalization fallback.
+Event-anchor retry uses the terminal source row's persisted active-window span
+to set the next `active_until_ms`, so operator retry remains a meaningful
+bounded retry instead of an immediate stale-expiry transition.
+`ops queue-resolve-bucket` is only a bounded operator-control helper over
+unresolved terminal ledger rows selected by worker, source table, and reason
+bucket. Dry-run is read-only and execute mode still resolves one terminal event
+at a time through the same Queue Terminal state machine; command output reports
+counts and error buckets, not terminal ids, target keys, or source snapshots.
 Terminal source-row evidence requires a formal attempt/generation contract:
 callers may pass explicit `attempt_count`, otherwise the source row must expose a
 non-negative `attempt_count`, and any existing terminal generation row must expose

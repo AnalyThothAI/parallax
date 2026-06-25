@@ -9,7 +9,7 @@ from parallax.app.surfaces.api import schemas as api_schemas
 from parallax.app.surfaces.api.dependencies import _authenticated_runtime, _now_ms
 from parallax.app.surfaces.api.exceptions import ApiBadRequest
 from parallax.app.surfaces.api.responses import _json
-from parallax.app.surfaces.api.validators import _limit, _post_range, _scope, _target_type, _window
+from parallax.app.surfaces.api.validators import _limit, _positive_limit, _post_range, _scope, _target_type, _window
 from parallax.domains.asset_market.read_models.market_candles_service import MarketCandlesService
 from parallax.domains.asset_market.read_models.token_profile_read_model import TokenProfileReadModel
 from parallax.domains.narrative_intel.read_models.narrative_read_model import NarrativeReadModel
@@ -149,7 +149,7 @@ def token_case(
                 target_id=target_id,
                 window=parsed_window,
                 scope=scope,
-                posts_limit=max(1, _limit(posts_limit, maximum=50)),
+                posts_limit=_positive_limit(posts_limit, maximum=50, field="posts_limit"),
                 now_ms=_now_ms(),
             )
             data.pop("agent_brief", None)

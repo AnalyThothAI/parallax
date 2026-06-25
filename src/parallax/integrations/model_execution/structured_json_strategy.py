@@ -45,7 +45,11 @@ class ChatJsonObjectStrategy:
             input_payload=context.stage.input_payload,
             schema=schema,
         )
-        attempts = max(1, int(context.capability_profile.client_validation_retries) + 1)
+        client_validation_retries = _required_nonnegative_int(
+            context.capability_profile.client_validation_retries,
+            "structured_json_client_validation_retries_required",
+        )
+        attempts = client_validation_retries + 1
         last_error: Exception | None = None
         raw_response: Any | None = None
         request_options = _chat_completion_request_options(context.capability_profile.request_options)
@@ -114,6 +118,12 @@ def _response_get(value: Any, key: str) -> Any:
     if isinstance(value, dict):
         return value.get(key)
     return getattr(value, key, None)
+
+
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(error_code)
+    return value
 
 
 def _append_validation_reask(

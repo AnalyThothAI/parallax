@@ -109,7 +109,10 @@ are wrong too.
    `macro_projection_dirty_targets`, and notification delivery rows record
    importer/sync, projection scheduling, delivery retry, or external-delivery
    reactivation control state; macro product state still rebuilds from
-   `macro_observations`. Every derived read model can be rebuilt from the
+   `macro_observations`. Dirty-target and job claim mutations that use
+   `UPDATE ... RETURNING` must validate PostgreSQL cursor rowcount against the
+   returned claimed rows before any worker treats work as claimed. Every derived
+   read model can be rebuilt from the
    durable facts. Token fact writes for `token_evidence`, `token_intents`,
    `token_intent_lookup_keys`, and `token_intent_resolutions` require
    PostgreSQL mutation evidence before facts are returned or rewrite accounting
@@ -144,6 +147,9 @@ are wrong too.
    corresponding enriched event rows; when an event anchor is missing, ingest
    enqueues a short-lived `event_anchor_backfill_jobs` control-plane row whose
    active lifetime comes from `settings.workers.event_anchor_backfill.active_window_ms`.
+   Ingest capture inputs are formal DTOs only: `CaptureResult` or
+   `EnrichedEventCapture`. Loose objects with `tick` / `capture` attributes are
+   malformed fact-boundary inputs and must fail before persistence.
    Event-anchor job `UPDATE ... RETURNING` state transitions require
    PostgreSQL rowcount evidence matching returned rows before claims, terminal
    ledgers, retry rows, reconcile counts, or done/reschedule booleans are
@@ -207,14 +213,14 @@ are wrong too.
    `composite.recommended_decision`, and `gates.max_decision` are required
    formal fields, and the cache writer does not coerce missing values into
    `0.0` or `discard`.
-   Pulse, Narrative Admission, Token Profile Current, and Token Capture Tier
-   downstream dirty targets derive `source_watermark_ms` only from current-row
-   positive `source_max_received_at_ms`; missing or invalid source watermarks
-   fail closed instead of falling back to `computed_at_ms`, `0`, or projection
-   runtime time. Pulse Trigger and Narrative Admission dirty repositories also
-   reject missing, zero, negative, boolean, or string producer watermarks before
-   queue SQL, and their enqueue SQL no longer carries a zero-watermark
-   compatibility branch.
+   Pulse, Narrative Admission, Token Profile Current, Asset Profile Refresh,
+   and Token Capture Tier downstream dirty targets derive
+   `source_watermark_ms` only from current-row positive
+   `source_max_received_at_ms`; missing or invalid source watermarks fail closed
+   instead of falling back to `computed_at_ms`, `0`, or projection runtime time.
+   Pulse Trigger and Narrative Admission dirty repositories also reject missing,
+   zero, negative, boolean, or string producer watermarks before queue SQL, and
+   their enqueue SQL no longer carries a zero-watermark compatibility branch.
    Token Radar current-row delete/upsert, target-feature write/delete, and
    target-feature retention write accounting requires real PostgreSQL
    `cursor.rowcount` evidence. Missing, boolean, negative, or otherwise invalid
@@ -299,10 +305,11 @@ are wrong too.
    `target_type`, `target_id`, `intent_id`, or `event_id` aliases and do not
    silently skip malformed queue commands.
    Token Radar target/source dirty queue mutation counts for enqueue,
-   completion, retry, market-current, and repair/catch-up paths require real
-   PostgreSQL `cursor.rowcount` evidence. Missing, boolean, negative, or otherwise
-   invalid rowcount is malformed repository/driver state, not a default no-op
-   queue write count.
+   claim `UPDATE ... RETURNING`, completion, retry, market-current, and
+   repair/catch-up paths require real PostgreSQL `cursor.rowcount` evidence.
+   Returned claim-row counts must match cursor rowcount. Missing, boolean,
+   negative, mismatched, or otherwise invalid rowcount is malformed
+   repository/driver state, not a default no-op queue write count.
    Rank-source repair target payloads, latest-market-context input/output
    rows, affected-target output rows, and source-projection target request
    lists follow the same formal target contract: `target_type_key` and
@@ -318,10 +325,14 @@ are wrong too.
    target dirty claims require `target_type_key` / `identity_id`, and source
    dirty claims require `projection_version` / `source_event_id` /
    `target_type_key` / `identity_id`; alias mapping may happen before enqueue,
-   never after claim when building done/error keys. Dirty-queue lease and retry
-   intervals are formal `settings.workers.token_radar_projection` policy, read
-   by `TokenRadarProjectionWorker` and passed explicitly into projection
-   processing rather than hidden in service-local constants.
+   never after claim when building done/error keys. Dirty-queue lease interval,
+   retry interval, and retry budget are formal
+   `settings.workers.token_radar_projection` policy, read by
+   `TokenRadarProjectionWorker` and passed explicitly into projection
+   processing rather than hidden in service-local constants. Exhausted
+   Token Radar target/source dirty error claims are deleted with
+   `RETURNING queue.*` and written to `worker_queue_terminal_events` in the same
+   projection transaction instead of being rescheduled indefinitely.
    `token_capture_tier` is written only by
    `TokenCaptureTierWorker`; `pulse_agent_jobs`, `pulse_candidate_edge_state`,
    `pulse_candidate_run_budget`, `pulse_target_run_budget`,
@@ -422,7 +433,7 @@ are wrong too.
    formal `settings.workers.news_item_process` contract directly;
    `news_item_agent_runs` and `news_item_agent_briefs` are written only by
    `NewsItemBriefWorker`, whose claim/session/retry/backpressure budgets and
-   brief-updated wake emission read the formal
+   agent capacity reservation contract read the formal
    `settings.workers.news_item_brief` contract directly. `news_item_agent_runs`
    inserts and `news_item_agent_briefs` current upserts require rowcount=1 with
    a returned row before audit current state can be reported. `NewsItemProcessWorker`
@@ -640,9 +651,13 @@ are wrong too.
    classify sync-window state.
    `macro_observation_series_rows` and `macro_view_snapshots` are written only
    by `MacroViewProjectionWorker`. That worker reads statement timeout,
-   claim batch, lease, retry, lookback, and per-series bounds from the formal
-   `macro_view_projection` worker settings; the worker must not keep runtime
-   fallback constants for those execution budgets. Event/document rows in
+   claim batch, lease, retry, retry budget, lookback, and per-series bounds
+   from the formal `macro_view_projection` worker settings; the worker must
+   not keep runtime fallback constants for those execution budgets.
+   Exhausted `macro_projection_dirty_targets` claims are deleted with
+   `RETURNING queue.*` and written to `worker_queue_terminal_events` in the
+   same worker transaction instead of being re-admitted indefinitely.
+   Event/document rows in
    `macro_observation_series_rows` may have `value_numeric=NULL`; the writer
    must preserve those rows for decision-console catalysts instead of forcing
    numeric sentinels or dropping them with numeric-series filters.
@@ -873,7 +888,7 @@ Cross-cutting primitives that implement these invariants:
   compatibility parameters.
 - `MarketTickCurrentProjectionWorker` follows the formal market-current
   projection settings contract. It reads `statement_timeout_seconds`,
-  `batch_size`, `lease_ms`, and `retry_ms` directly from
+  `batch_size`, `lease_ms`, `retry_ms`, and `max_attempts` directly from
   `settings.workers.market_tick_current_projection`; retry and lease behavior
   must not be supplied by runtime default constants or settings
   `getattr(..., default)` fallbacks.
@@ -993,7 +1008,6 @@ own maps next to the code they describe, and this file links to them.
 | News intelligence | [`src/parallax/domains/news_intel/ARCHITECTURE.md`](../src/parallax/domains/news_intel/ARCHITECTURE.md) | Configured source ingestion, raw news item facts, token mention observations, fact candidates, item briefs, and the News page read model. |
 | Macro intelligence | [`src/parallax/domains/macro_intel/ARCHITECTURE.md`](../src/parallax/domains/macro_intel/ARCHITECTURE.md) | `macro_sync` fact ingest, macro observation facts, deterministic `macro_regime_v4` feature/regime/scenario scoring, module v3 views, and Macro projection ownership. |
 | Account quality | [`src/parallax/domains/account_quality/ARCHITECTURE.md`](../src/parallax/domains/account_quality/ARCHITECTURE.md) | Account profile/stat/snapshot read-model ownership, ops-only backfill, and public account-quality read services. |
-| Watchlist intelligence | [`src/parallax/domains/watchlist_intel/ARCHITECTURE.md`](../src/parallax/domains/watchlist_intel/ARCHITECTURE.md) | Watchlist repository and public watchlist read surfaces. |
 
 When a subsystem needs more than a short row here, add
 `src/parallax/domains/<domain>/ARCHITECTURE.md` and link it from this
@@ -1271,7 +1285,10 @@ Consequences for code review:
   records only event-anchor fact lifecycle: pending, ready, or terminal
   unavailable. Event-anchor job `UPDATE ... RETURNING` claim, cleanup, retry,
   reconcile, done, terminal, and reschedule paths require cursor rowcount to
-  match returned rows before worker state is reported.
+  match returned rows before worker state is reported. Queue Terminal retry of
+  a terminal event-anchor job must reopen the job with an active window derived
+  from the persisted terminal source snapshot, not a `now` boundary that
+  immediately expires.
 - `worker_queue_terminal_events` is platform control-plane evidence, not a
   best-effort audit append. Terminal ledger `INSERT ... ON CONFLICT ...
   RETURNING *` writes and operator-action `UPDATE ... RETURNING *` writes
@@ -1334,10 +1351,11 @@ feature/scenario/chain/data-gap payloads.
 
 Token Radar projection work width follows the worker-policy version of the
 same rule. `TokenRadarProjectionWorker` is the single runtime owner of dirty
-claim batch width, rank publication width, lease timing, retry timing, and
-lease identity; `TokenRadarProjection` receives `limit`, `rank_limit`,
-`lease_ms`, `retry_ms`, and `lease_owner` explicitly and does not define
-service-local `100` or synthetic-owner defaults. Projection repository
+claim batch width, rank publication width, lease timing, retry timing, retry
+budget, and lease identity; `TokenRadarProjection` receives `limit`,
+`rank_limit`, `lease_ms`, `retry_ms`, `max_attempts`, and `lease_owner`
+explicitly and does not define service-local `100` or synthetic-owner defaults.
+Projection repository
 diagnostic reads over `projection_runs` and `projection_dirty_ranges` likewise
 require explicit caller limits; the repository does not own `20`/`50` row
 defaults for control-plane status inspection. Ordinary projection offset,

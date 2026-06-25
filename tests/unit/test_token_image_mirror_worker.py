@@ -10,18 +10,24 @@ from parallax.domains.asset_market.runtime import token_image_mirror_worker as w
 from parallax.domains.asset_market.runtime.token_image_mirror_worker import TokenImageMirrorWorker
 
 
+def _settings(**overrides):
+    values = {
+        "enabled": True,
+        "interval_seconds": 60,
+        "source_limit": 2,
+        "batch_size": 3,
+        "max_attempts": 3,
+        "lease_ms": 600_000,
+        "retry_ms": 300_000,
+        "statement_timeout_seconds": 120,
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
 def test_token_image_mirror_worker_mirrors_claimed_rows_outside_db_sessions(monkeypatch, tmp_path) -> None:
     db = FakeDB()
-    settings = SimpleNamespace(
-        enabled=True,
-        interval_seconds=60,
-        source_limit=2,
-        batch_size=3,
-        max_attempts=3,
-        lease_ms=600_000,
-        retry_ms=300_000,
-        statement_timeout_seconds=120,
-    )
+    settings = _settings()
 
     monkeypatch.setattr(worker_module, "TokenImageMirrorService", lambda **kwargs: FakeMirrorService(db=db, **kwargs))
 
@@ -109,6 +115,70 @@ def test_token_image_mirror_worker_requires_formal_statement_timeout_settings_co
         asyncio.run(worker.run_once(now_ms=1_700_000_000_000))
 
     assert db.statement_timeouts == []
+
+
+@pytest.mark.parametrize(
+    ("overrides", "error_code"),
+    [
+        pytest.param({"batch_size": 0}, "token_image_mirror_batch_size_required", id="batch-zero"),
+        pytest.param({"batch_size": True}, "token_image_mirror_batch_size_required", id="batch-bool"),
+        pytest.param({"batch_size": "3"}, "token_image_mirror_batch_size_required", id="batch-string"),
+        pytest.param({"lease_ms": 0}, "token_image_mirror_lease_ms_required", id="lease-zero"),
+        pytest.param({"lease_ms": True}, "token_image_mirror_lease_ms_required", id="lease-bool"),
+        pytest.param({"lease_ms": "600000"}, "token_image_mirror_lease_ms_required", id="lease-string"),
+    ],
+)
+def test_token_image_mirror_worker_rejects_malformed_claim_settings_before_claim(
+    overrides,
+    error_code,
+    tmp_path,
+) -> None:
+    db = FakeDB()
+    worker = TokenImageMirrorWorker(
+        name="token_image_mirror",
+        settings=_settings(**overrides),
+        db=db,
+        telemetry=object(),
+        app_home=tmp_path,
+    )
+
+    with pytest.raises(ValueError, match=error_code):
+        asyncio.run(worker.run_once(now_ms=1_700_000_000_000))
+
+    assert db.dirty.claimed is None
+
+
+@pytest.mark.parametrize(
+    ("overrides", "error_code"),
+    [
+        pytest.param({"retry_ms": 0}, "token_image_mirror_retry_ms_required", id="retry-zero"),
+        pytest.param({"retry_ms": True}, "token_image_mirror_retry_ms_required", id="retry-bool"),
+        pytest.param({"retry_ms": "300000"}, "token_image_mirror_retry_ms_required", id="retry-string"),
+        pytest.param({"max_attempts": 0}, "token_image_mirror_max_attempts_required", id="attempts-zero"),
+        pytest.param({"max_attempts": True}, "token_image_mirror_max_attempts_required", id="attempts-bool"),
+        pytest.param({"max_attempts": "3"}, "token_image_mirror_max_attempts_required", id="attempts-string"),
+    ],
+)
+def test_token_image_mirror_worker_rejects_malformed_retry_settings_without_mark_error(
+    monkeypatch,
+    overrides,
+    error_code,
+    tmp_path,
+) -> None:
+    db = FakeDB()
+    monkeypatch.setattr(worker_module, "TokenImageMirrorService", lambda **kwargs: FakeMirrorService(db=db, **kwargs))
+    worker = TokenImageMirrorWorker(
+        name="token_image_mirror",
+        settings=_settings(**overrides),
+        db=db,
+        telemetry=object(),
+        app_home=tmp_path,
+    )
+
+    with pytest.raises(ValueError, match=error_code):
+        asyncio.run(worker.run_once(now_ms=1_700_000_000_000))
+
+    assert db.dirty.errors == []
 
 
 def test_token_image_asset_session_repository_uses_session_transaction_with_caller_owned_writes() -> None:

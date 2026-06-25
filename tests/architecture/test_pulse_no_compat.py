@@ -321,6 +321,23 @@ def test_pulse_candidate_job_service_backpressure_requires_formal_agent_executio
     assert [token for token in required if token not in backpressure_source] == []
 
 
+def test_pulse_candidate_worker_backpressure_requires_formal_reservation_without_reflection() -> None:
+    backpressure_source = _function_source(PULSE_CANDIDATE_WORKER, "_record_agent_backpressure")
+    forbidden_reflection = (
+        'getattr(reservation, "reason"',
+        'getattr(reason, "value"',
+        'reservation: Any',
+    )
+    required = (
+        "isinstance(reservation, AgentCapacityReservation)",
+        "isinstance(reason, AgentExecutionErrorClass)",
+        "reason.value",
+    )
+
+    assert [token for token in forbidden_reflection if token in backpressure_source] == []
+    assert [token for token in required if token not in backpressure_source] == []
+
+
 def test_pulse_candidate_job_service_timeout_cleanup_uses_formal_agent_cancellation_without_audit_reflection() -> None:
     source = _function_source(PULSE_CANDIDATE_JOB_SERVICE, "_cancelled_execution_started")
     forbidden = (
@@ -387,16 +404,50 @@ def test_pulse_stale_running_terminalization_batch_size_is_formal_worker_policy(
     forbidden_worker_tokens = (
         "limit=100",
         "limit = 100",
-        '"stale_running_terminalization_batch_size"',
+        'getattr(settings, "stale_running_terminalization_batch_size"',
     )
 
-    assert "self.stale_running_terminalization_batch_size = max(" in worker_source
-    assert "int(settings.stale_running_terminalization_batch_size)" in worker_source
+    assert "_positive_worker_setting_int(" in worker_source
+    assert '"stale_running_terminalization_batch_size"' in worker_source
     assert "limit=self.stale_running_terminalization_batch_size" in worker_source
-    assert "limit=max(1, int(limit))" in worker_source
+    assert "pulse_candidate_stale_running_terminalization_limit_required" in worker_source
     assert "limit: int," in repository_source
     assert "limit: int =" not in repository_source
+    assert "pulse_jobs_stale_after_ms_required" in repository_source
+    assert "pulse_jobs_terminalize_limit_required" in repository_source
+    assert "stale_before_ms = now - max(0, int(stale_after_ms))" not in repository_source
+    assert "bounded_limit = max(1, min(500, int(limit)))" not in repository_source
     assert [token for token in forbidden_worker_tokens if token in worker_source] == []
+
+
+def test_pulse_job_completion_paths_are_claim_scoped() -> None:
+    repository_text = PULSE_JOBS_REPOSITORY.read_text(encoding="utf-8")
+    claim_predicates = (
+        "AND status = 'running'",
+        "AND attempt_count = %s",
+        "AND updated_at_ms = %s",
+    )
+    scoped_sources = {
+        name: _function_source(PULSE_JOBS_REPOSITORY, name)
+        for name in (
+            "mark_job_succeeded",
+            "mark_job_failed",
+            "mark_job_cancelled_by_worker_timeout",
+            "release_running_job_for_backpressure",
+            "release_running_job_for_provider_cooldown",
+        )
+    }
+
+    assert "_pulse_job_claim_identity(job)" in repository_text
+    assert "_pulse_job_claim_updated_at_ms(job)" in repository_text
+    for source in scoped_sources.values():
+        for token in claim_predicates:
+            assert token in source
+    assert "job: dict[str, Any]" in scoped_sources["mark_job_succeeded"]
+    assert "job_id: str" not in scoped_sources["mark_job_succeeded"]
+    job_service_source = PULSE_CANDIDATE_JOB_SERVICE.read_text(encoding="utf-8")
+    assert "mark_job_succeeded(job," in job_service_source
+    assert "mark_job_succeeded(job_identity.job_id" not in job_service_source
 
 
 def test_pulse_jobs_repository_mutations_use_connection_transaction_without_manual_commit_fallback() -> None:
@@ -634,6 +685,8 @@ def test_pulse_admission_returning_writes_require_cursor_rowcount_match() -> Non
     assert "pulse_admission_repository_rowcount_invalid" in repository_text
     assert "def _single_returning_rowcount(" in repository_text
     assert [token for token in forbidden if token in claim_source] == []
+    assert "pulse_edge_budget_max_enqueues_required" in claim_source
+    assert "max(1, int(max_enqueues))" not in claim_source
     assert "_single_returning_rowcount(cursor, row) == 1" in claim_source
     for source in required_returning_sources:
         assert "_required_returning_row(cursor, row)" in source
@@ -684,6 +737,8 @@ def test_pulse_candidates_repository_returning_writes_require_cursor_rowcount_ma
     assert "def _cursor_rowcount(cursor: Any) -> int:" in repository_text
     assert "pulse_candidates_repository_rowcount_required" in repository_text
     assert "pulse_candidates_repository_rowcount_invalid" in repository_text
+    assert "pulse_candidate_decision_stage_count_required" in repository_text
+    assert "max(0, int(decision_stage_count))" not in repository_text
     assert "def _optional_returning_row(" in repository_text
     for source in returning_sources:
         assert [token for token in forbidden if token in source] == []
@@ -703,11 +758,20 @@ def test_pulse_runs_repository_returning_writes_require_cursor_rowcount_match() 
         'getattr(cursor, "rowcount", 0)',
         'int(getattr(cursor, "rowcount", 0) or 0)',
         "cursor.rowcount or 0",
+        "max(0, int(latency_ms))",
+        "max(0, int(decision_stage_count))",
+        "max(0, int(attempt_index))",
+        "max(0, int(safety_net_retries))",
     )
 
     assert "def _cursor_rowcount(cursor: Any) -> int:" in repository_text
     assert "pulse_runs_repository_rowcount_required" in repository_text
     assert "pulse_runs_repository_rowcount_invalid" in repository_text
+    assert "pulse_run_latency_ms_required" in repository_text
+    assert "pulse_run_decision_stage_count_required" in repository_text
+    assert "pulse_run_step_attempt_index_required" in repository_text
+    assert "pulse_run_step_latency_ms_required" in repository_text
+    assert "pulse_run_step_safety_net_retries_required" in repository_text
     assert "def _required_returning_row(" in repository_text
     assert "def _optional_returning_row(" in repository_text
     for source in required_sources:
@@ -715,6 +779,13 @@ def test_pulse_runs_repository_returning_writes_require_cursor_rowcount_match() 
         assert "_required_returning_row(cursor, row)" in source
     assert [token for token in forbidden if token in finish_source] == []
     assert "_optional_returning_row(cursor, row)" in finish_source
+
+
+def test_pulse_decision_mapping_rejects_malformed_stage_count_without_repair() -> None:
+    source = (SRC / "domains/pulse_lab/services/decision_mapping.py").read_text(encoding="utf-8")
+
+    assert "pulse_decision_stage_count_required" in source
+    assert "max(0, int(stage_count))" not in source
 
 
 def test_pulse_agent_eval_repository_returning_writes_require_cursor_rowcount_match() -> None:
@@ -789,10 +860,37 @@ def test_pulse_trigger_dirty_completion_keys_require_claim_attempt_contract() ->
     forbidden = (
         'int(claim.get("attempt_count") or 0)',
         'claim.get("attempt_count") or 0',
+        'int(claim["attempt_count"])',
     )
 
     assert all(token not in repository_text for token in forbidden)
     assert 'claim["attempt_count"]' in repository_text
+
+
+def test_pulse_trigger_dirty_claim_and_retry_contracts_reject_runtime_repairs() -> None:
+    repository_text = PULSE_TRIGGER_DIRTY_TARGET_REPOSITORY.read_text(encoding="utf-8")
+    claim_source = _function_source(PULSE_TRIGGER_DIRTY_TARGET_REPOSITORY, "claim_due")
+    error_source = _function_source(PULSE_TRIGGER_DIRTY_TARGET_REPOSITORY, "mark_error")
+    forbidden = (
+        "max(1, int(lease_ms))",
+        "max(0, int(limit))",
+        "max(1, int(retry_ms))",
+        "int(value)",
+    )
+    required = (
+        "_required_positive_int(\n            limit,",
+        "_required_positive_int(\n            lease_ms,",
+        "_required_positive_int(\n            retry_ms,",
+        "_required_positive_int(\n        value,",
+        "pulse_trigger_dirty_target_claim_limit_required",
+        "pulse_trigger_dirty_target_claim_lease_ms_required",
+        "pulse_trigger_dirty_target_retry_ms_required",
+        "pulse_trigger_dirty_target_max_attempts_required",
+        "isinstance(value, bool) or not isinstance(value, int)",
+    )
+
+    assert [token for token in forbidden if token in claim_source or token in error_source] == []
+    assert [token for token in required if token not in repository_text] == []
 
 
 def test_pulse_trigger_dirty_completion_counts_require_real_cursor_rowcount() -> None:
@@ -810,6 +908,33 @@ def test_pulse_trigger_dirty_completion_counts_require_real_cursor_rowcount() ->
 
     assert [token for token in forbidden if token in repository_text] == []
     assert [token for token in required if token not in repository_text] == []
+
+
+def test_pulse_trigger_dirty_error_completion_uses_formal_retry_budget_and_terminal_ledger() -> None:
+    repository_source = _function_source(PULSE_TRIGGER_DIRTY_TARGET_REPOSITORY, "mark_error")
+    worker_source = _function_source(PULSE_CANDIDATE_WORKER, "scan_triggers_once")
+    forbidden = (
+        "max_attempts: int =",
+        "worker_name: str =",
+        "\n".join(
+            (
+                "mark_error(",
+                "                            [claim],",
+                "                            error=str(exc),",
+                "                            now_ms=resolved_now_ms,",
+                "                            retry_ms=self.trigger_error_retry_ms,",
+                "                            commit=False",
+            )
+        ),
+    )
+
+    assert "max_attempts: int," in repository_source
+    assert "worker_name: str," in repository_source
+    assert "terminalize_source_row(" in repository_source
+    assert 'source_table="pulse_trigger_dirty_targets"' in repository_source
+    assert "max_attempts=self.max_attempts" in worker_source
+    assert "worker_name=self.name" in worker_source
+    assert [token for token in forbidden if token in repository_source or token in worker_source] == []
 
 
 def test_pulse_candidate_job_service_run_identity_requires_formal_claimed_job_fields_without_empty_segments() -> None:
@@ -907,6 +1032,49 @@ def test_pulse_evidence_builder_requires_formal_candidate_context_without_shape_
     assert [token for token in forbidden_source_repository if token in source_repository_text] == []
     assert [token for token in required_builder if token not in builder_text] == []
     assert [token for token in required_source_repository if token not in source_repository_text] == []
+
+
+def test_pulse_candidate_worker_job_context_lists_are_not_repaired_to_empty() -> None:
+    text = PULSE_CANDIDATE_WORKER.read_text(encoding="utf-8")
+    forbidden = (
+        '_clean(context.get("candidate_id"))',
+        '_clean(context.get("candidate_type"))',
+        '_clean(context.get("subject_key"))',
+        '_clean(context.get("target_type"))',
+        '_clean(context.get("target_id"))',
+        '_clean(context.get("window"))',
+        '_clean(context.get("scope"))',
+        '_clean(context.get("trigger_signature"))',
+        '_clean(context.get("timeline_signature"))',
+        '_mapping(context.get("gate_result")) or None',
+        '_mapping(context.get("edge_state")) or None',
+        "selected_posts = []",
+        "post_clusters = []",
+        '_stable_strings(context.get("edge_events"))',
+        '_stable_strings(context.get("source_event_ids"))',
+        '_stable_strings(context.get("evidence_event_ids"))',
+    )
+    required = (
+        "pulse_candidate_context_candidate_id_required",
+        "pulse_candidate_context_candidate_type_required",
+        "pulse_candidate_context_subject_key_required",
+        "pulse_candidate_context_target_type_required",
+        "pulse_candidate_context_target_id_required",
+        "pulse_candidate_context_window_required",
+        "pulse_candidate_context_scope_required",
+        "pulse_candidate_context_trigger_signature_required",
+        "pulse_candidate_context_timeline_signature_required",
+        "pulse_candidate_context_gate_result_required",
+        "pulse_candidate_context_edge_state_required",
+        "pulse_candidate_context_selected_posts_required",
+        "pulse_candidate_context_post_clusters_required",
+        "pulse_candidate_context_edge_events_required",
+        "pulse_candidate_context_source_event_ids_required",
+        "pulse_candidate_context_evidence_event_ids_required",
+    )
+
+    assert [token for token in forbidden if token in text] == []
+    assert [token for token in required if token not in text] == []
 
 
 def test_pulse_evidence_completeness_gate_requires_formal_packet_without_reflection() -> None:
@@ -1102,9 +1270,27 @@ def test_pulse_freshness_health_requires_explicit_since_hours_without_defaults()
     for source in (service_source, repository_source):
         assert "since_hours: int =" not in source
         assert "since_hours: int" in source
+        assert '"since_hours": max(1, int(since_hours))' not in source
 
+    types_source = (SRC / "domains/pulse_lab/types/pulse_freshness_health.py").read_text(encoding="utf-8")
+    assert "pulse_freshness_since_hours" in service_source
+    assert "pulse_freshness_since_hours" in repository_source
+    assert "pulse_freshness_since_hours_required" in types_source
+    assert "max(1, int(since_hours))" not in types_source
     assert "since_hours=4" in signal_service_source
     assert "since_hours=int(args.since_hours)" in cli_source
+
+
+def test_pulse_operator_lookback_queries_reject_instead_of_repairing() -> None:
+    cost_report_source = (SRC / "domains/pulse_lab/queries/pulse_agent_cost_report.py").read_text(encoding="utf-8")
+    policy_evaluator_source = (SRC / "domains/pulse_lab/queries/pulse_policy_evaluator.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "pulse_agent_cost_report_lookback_hours_required" in cost_report_source
+    assert "pulse_policy_lookback_hours_required" in policy_evaluator_source
+    assert "max(1, int(lookback_hours))" not in cost_report_source
+    assert "max(1, int(lookback_hours))" not in policy_evaluator_source
 
 
 def test_pulse_public_list_candidates_requires_explicit_limit_without_repository_default() -> None:

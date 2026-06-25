@@ -18,6 +18,7 @@ from parallax.integrations.okx.dex_ws_client import (
     _okx_timestamp,
     _price_info_update_from_row,
     _rows_from_message,
+    _subscription_args,
 )
 
 
@@ -127,6 +128,43 @@ def test_okx_dex_ws_exposes_connection_state_payload():
     assert changed["acked_subscription_count"] == 0
     assert changed["data_frame_count"] == 0
     assert changed["tick_count"] == 0
+
+
+@pytest.mark.parametrize(
+    "subscription_limit",
+    [
+        pytest.param(0, id="zero"),
+        pytest.param(-1, id="negative"),
+        pytest.param(True, id="bool"),
+        pytest.param("10", id="string"),
+    ],
+)
+def test_okx_dex_ws_provider_rejects_malformed_subscription_limit(subscription_limit: object) -> None:
+    with pytest.raises(ValueError, match="okx_dex_ws_subscription_limit_required"):
+        OkxDexWebSocketMarketProvider(
+            url="wss://example.test/ws",
+            api_key="key",
+            secret_key="secret",
+            passphrase="pass",
+            subscription_limit=subscription_limit,  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.parametrize(
+    "limit",
+    [
+        pytest.param(0, id="zero"),
+        pytest.param(-1, id="negative"),
+        pytest.param(True, id="bool"),
+        pytest.param("2", id="string"),
+    ],
+)
+def test_okx_dex_ws_subscription_args_rejects_malformed_limit(limit: object) -> None:
+    with pytest.raises(ValueError, match="okx_dex_ws_subscription_limit_required"):
+        _subscription_args(
+            [{"chainIndex": "1", "tokenContractAddress": "0xabc"}],
+            limit=limit,  # type: ignore[arg-type]
+        )
 
 
 def test_okx_dex_ws_provider_subscribes_and_unsubscribes_without_reconnecting(monkeypatch):

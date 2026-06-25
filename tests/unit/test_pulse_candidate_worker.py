@@ -1248,6 +1248,43 @@ def test_hard_blocked_evidence_gate_does_not_call_agent() -> None:
     assert not any(row["stage"] == "pulse_decision" for row in repos.pulse_runs.agent_run_steps)
 
 
+def test_job_service_rejects_malformed_evidence_market_freshness_before_agent_call() -> None:
+    repos = FakeRepos()
+    context = _pulse_context(factor_snapshot=_factor_snapshot(rank_score=82))
+    repos.pulse_jobs.enqueue_job(
+        candidate_id=context.candidate_id,
+        candidate_type=context.candidate_type,
+        subject_key=context.subject_key,
+        window=context.window,
+        scope=context.scope,
+        trigger_signature=context.trigger_signature,
+        timeline_signature=context.timeline_signature,
+        priority=context.priority,
+        target_type=context.target_type,
+        target_id=context.target_id,
+        context_json=context.agent_context(),
+        max_attempts=3,
+        next_run_at_ms=NOW_MS,
+        now_ms=NOW_MS,
+    )
+    client = FakeClient()
+    worker = _worker(
+        repos,
+        client=client,
+        settings=_settings(evidence_market_freshness_ms=0),
+    )
+
+    result = worker.process_due_jobs_once(now_ms=NOW_MS)
+
+    assert result["claimed"] == 1
+    assert result["processed"] == 0
+    assert result["failed"] == 1
+    assert client.run_calls == 0
+    assert repos.pulse_runs.agent_runs == []
+    assert repos.pulse_evidence.packets == []
+    assert repos.pulse_jobs.failures[0]["error"] == "pulse_candidate_evidence_market_freshness_ms_required"
+
+
 def test_hard_blocked_run_marks_edge_state_processed(monkeypatch) -> None:
     repos = FakeRepos()
     repos.pulse_evidence_sources.market_facts = []
@@ -1542,6 +1579,133 @@ def test_process_due_jobs_uses_agent_execution_budget_separate_from_scan_batch()
     assert result["processed"] == 2
     assert repos.pulse_jobs.claim_due_job_calls == 2
     assert sum(1 for job in repos.pulse_jobs.jobs if job["status"] == "pending") == 1
+
+
+@pytest.mark.parametrize(
+    "field",
+    ("selected_posts", "post_clusters", "edge_events", "source_event_ids", "evidence_event_ids"),
+)
+def test_malformed_job_context_list_fields_fail_before_evidence_building(field: str) -> None:
+    repos = FakeRepos()
+    context = _pulse_context(factor_snapshot=_factor_snapshot(rank_score=82)).agent_context()
+    context[field] = {"event_id": "event-1"}
+    repos.pulse_jobs.jobs.append(
+        {
+            "job_id": f"job-malformed-context-{field}",
+            "candidate_id": context["candidate_id"],
+            "candidate_type": context["candidate_type"],
+            "subject_key": context["subject_key"],
+            "target_type": context["target_type"],
+            "target_id": context["target_id"],
+            "window": context["window"],
+            "scope": context["scope"],
+            "trigger_signature": context["trigger_signature"],
+            "timeline_signature": context["timeline_signature"],
+            "priority": 80,
+            "status": "pending",
+            "attempt_count": 0,
+            "max_attempts": 3,
+            "context_json": context,
+        }
+    )
+    worker = _worker(repos)
+
+    result = asyncio.run(worker.process_due_jobs_once_async(now_ms=NOW_MS))
+
+    assert result["claimed"] == 1
+    assert result["processed"] == 0
+    assert result["missing_context"] == 1
+    assert result["failed"] == 1
+    assert repos.pulse_jobs.failures[0]["error"] == "pulse_candidate_context_missing"
+    assert repos.pulse_evidence.packets == []
+    assert repos.pulse_candidates.candidate_upserts == []
+
+
+@pytest.mark.parametrize(
+    "field",
+    (
+        "candidate_id",
+        "candidate_type",
+        "subject_key",
+        "target_type",
+        "target_id",
+        "window",
+        "scope",
+        "trigger_signature",
+        "timeline_signature",
+    ),
+)
+def test_malformed_job_context_text_fields_fail_before_evidence_building(field: str) -> None:
+    repos = FakeRepos()
+    context = _pulse_context(factor_snapshot=_factor_snapshot(rank_score=82)).agent_context()
+    context[field] = 123
+    repos.pulse_jobs.jobs.append(
+        {
+            "job_id": f"job-malformed-context-{field}",
+            "candidate_id": "candidate-1",
+            "candidate_type": "token_target",
+            "subject_key": "TEST",
+            "target_type": "Asset",
+            "target_id": "asset-1",
+            "window": "1h",
+            "scope": "all",
+            "trigger_signature": "trigger-1",
+            "timeline_signature": "timeline-1",
+            "priority": 80,
+            "status": "pending",
+            "attempt_count": 0,
+            "max_attempts": 3,
+            "context_json": context,
+        }
+    )
+    worker = _worker(repos)
+
+    result = asyncio.run(worker.process_due_jobs_once_async(now_ms=NOW_MS))
+
+    assert result["claimed"] == 1
+    assert result["processed"] == 0
+    assert result["missing_context"] == 1
+    assert result["failed"] == 1
+    assert repos.pulse_jobs.failures[0]["error"] == "pulse_candidate_context_missing"
+    assert repos.pulse_evidence.packets == []
+    assert repos.pulse_candidates.candidate_upserts == []
+
+
+@pytest.mark.parametrize("field", ("gate_result", "edge_state"))
+def test_malformed_job_context_mapping_fields_fail_before_evidence_building(field: str) -> None:
+    repos = FakeRepos()
+    context = _pulse_context(factor_snapshot=_factor_snapshot(rank_score=82)).agent_context()
+    context[field] = ["not-a-mapping"]
+    repos.pulse_jobs.jobs.append(
+        {
+            "job_id": f"job-malformed-context-{field}",
+            "candidate_id": "candidate-1",
+            "candidate_type": "token_target",
+            "subject_key": "TEST",
+            "target_type": "Asset",
+            "target_id": "asset-1",
+            "window": "1h",
+            "scope": "all",
+            "trigger_signature": "trigger-1",
+            "timeline_signature": "timeline-1",
+            "priority": 80,
+            "status": "pending",
+            "attempt_count": 0,
+            "max_attempts": 3,
+            "context_json": context,
+        }
+    )
+    worker = _worker(repos)
+
+    result = asyncio.run(worker.process_due_jobs_once_async(now_ms=NOW_MS))
+
+    assert result["claimed"] == 1
+    assert result["processed"] == 0
+    assert result["missing_context"] == 1
+    assert result["failed"] == 1
+    assert repos.pulse_jobs.failures[0]["error"] == "pulse_candidate_context_missing"
+    assert repos.pulse_evidence.packets == []
+    assert repos.pulse_candidates.candidate_upserts == []
 
 
 def test_pulse_pipeline_parent_reservation_is_passed_to_stage_execution() -> None:
@@ -2335,15 +2499,32 @@ class FakePulseStore:
     ) -> dict[str, Any] | None:
         return self.discussion_digest
 
-    def mark_job_succeeded(self, job_id: str, **_: Any) -> dict[str, Any]:
-        for job in self.jobs:
-            if job["job_id"] == job_id:
-                job["status"] = "done"
-        self.successes.append(job_id)
-        return {"job_id": job_id, "status": "done"}
+    def mark_job_succeeded(self, job: dict[str, Any], **_: Any) -> dict[str, Any] | None:
+        self.successes.append(job["job_id"])
+        for stored in self.jobs:
+            if stored["job_id"] != job["job_id"] or stored.get("status") != "running":
+                continue
+            if int(stored.get("attempt_count") or 0) != int(job.get("attempt_count") or 0):
+                continue
+            if int(stored.get("updated_at_ms") or 0) != int(job.get("updated_at_ms") or 0):
+                continue
+            stored["status"] = "done"
+            return dict(stored)
+        return None
 
     def mark_job_failed(self, job: dict[str, Any], error: str, **kwargs: Any) -> dict[str, Any]:
         self.failures.append({"job": job, "error": error, "failure_reason": kwargs.get("failure_reason")})
+        for stored in self.jobs:
+            if stored["job_id"] != job["job_id"] or stored.get("status") != "running":
+                continue
+            if int(stored.get("attempt_count") or 0) != int(job.get("attempt_count") or 0):
+                continue
+            if int(stored.get("updated_at_ms") or 0) != int(job.get("updated_at_ms") or 0):
+                continue
+            stored["status"] = "failed"
+            stored["last_error"] = error
+            stored["updated_at_ms"] = kwargs.get("now_ms")
+            return dict(stored)
         return {"job_id": job["job_id"], "status": "failed"}
 
     def mark_job_cancelled_by_worker_timeout(
@@ -2397,13 +2578,18 @@ class FakePulseStore:
             }
         )
         for stored in self.jobs:
-            if stored["job_id"] == job["job_id"] and stored.get("status") == "running":
-                stored["status"] = "pending"
-                stored["attempt_count"] = max(0, int(stored.get("attempt_count") or 0) - 1)
-                stored["next_run_at_ms"] = int(now_ms) + int(delay_ms)
-                stored["last_error"] = reason
-                stored["updated_at_ms"] = now_ms
-                return dict(stored)
+            if stored["job_id"] != job["job_id"] or stored.get("status") != "running":
+                continue
+            if int(stored.get("attempt_count") or 0) != int(job.get("attempt_count") or 0):
+                continue
+            if int(stored.get("updated_at_ms") or 0) != int(job.get("updated_at_ms") or 0):
+                continue
+            stored["status"] = "pending"
+            stored["attempt_count"] = max(0, int(stored.get("attempt_count") or 0) - 1)
+            stored["next_run_at_ms"] = int(now_ms) + int(delay_ms)
+            stored["last_error"] = reason
+            stored["updated_at_ms"] = now_ms
+            return dict(stored)
         return {"job_id": job["job_id"], "status": "pending"}
 
     def release_running_job_for_provider_cooldown(
@@ -2426,14 +2612,19 @@ class FakePulseStore:
             }
         )
         for stored in self.jobs:
-            if stored["job_id"] == job["job_id"] and stored.get("status") == "running":
-                stored["status"] = "pending"
-                if decrement_attempt:
-                    stored["attempt_count"] = max(0, int(stored.get("attempt_count") or 0) - 1)
-                stored["next_run_at_ms"] = int(cooldown_until_ms)
-                stored["last_error"] = reason
-                stored["updated_at_ms"] = now_ms
-                return dict(stored)
+            if stored["job_id"] != job["job_id"] or stored.get("status") != "running":
+                continue
+            if int(stored.get("attempt_count") or 0) != int(job.get("attempt_count") or 0):
+                continue
+            if int(stored.get("updated_at_ms") or 0) != int(job.get("updated_at_ms") or 0):
+                continue
+            stored["status"] = "pending"
+            if decrement_attempt:
+                stored["attempt_count"] = max(0, int(stored.get("attempt_count") or 0) - 1)
+            stored["next_run_at_ms"] = int(cooldown_until_ms)
+            stored["last_error"] = reason
+            stored["updated_at_ms"] = now_ms
+            return dict(stored)
         return {"job_id": job["job_id"], "status": "pending"}
 
 

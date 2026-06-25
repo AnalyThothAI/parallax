@@ -385,3 +385,34 @@ def test_gmgn_openapi_client_fetches_token_kline():
     assert candles[0].close == 0.00028970968
     assert candles[0].volume_usd == 877.2247609
     assert candles[0].volume == 3028776.073141976
+
+
+@pytest.mark.parametrize(
+    "limit",
+    [
+        pytest.param(0, id="zero"),
+        pytest.param(-1, id="negative"),
+        pytest.param(True, id="bool"),
+        pytest.param("24", id="string"),
+    ],
+)
+def test_gmgn_openapi_client_token_kline_rejects_malformed_limit_before_request(limit: object) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        raise AssertionError("GMGN token_kline request must not run before limit validation")
+
+    client = GmgnOpenApiClient(
+        api_key="gmgn-test",
+        base_url="https://openapi.example.test",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        with pytest.raises(ValueError, match="gmgn_openapi_token_kline_limit_required"):
+            client.token_kline(
+                chain="eip155:1",
+                address="0xF280B16ef293D8e534e370794Ef26bf312694126",
+                resolution="1H",
+                limit=limit,  # type: ignore[arg-type]
+                now_ms=1_778_588_400_000,
+            )
+    finally:
+        client.close()

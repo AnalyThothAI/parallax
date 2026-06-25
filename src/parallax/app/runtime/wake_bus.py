@@ -39,9 +39,6 @@ class WakeBus:
     def notify_news_item_processed(self, *, count: int) -> None:
         self._notify("news_item_processed", {"count": int(count)})
 
-    def notify_news_item_brief_updated(self, *, count: int) -> None:
-        self._notify("news_item_brief_updated", {"count": int(count)})
-
     def notify_news_story_brief_updated(self, *, count: int) -> None:
         self._notify("news_story_brief_updated", {"count": int(count)})
 

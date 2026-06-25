@@ -8,6 +8,7 @@ import pytest
 
 from parallax.integrations.news_feeds.opennews_client import (
     OpenNewsFeedClient,
+    _rest_search_body,
     _run_rest_fetch,
     _source_fetch_policy,
 )
@@ -192,6 +193,45 @@ def test_opennews_client_requires_formal_rest_fetch_policy_without_defaults(
 
     with pytest.raises(ValueError, match=f"OpenNews REST fetch policy missing {missing_key}"):
         client.fetch("opennews://subscribe", source={"fetch_policy_json": policy})
+
+
+@pytest.mark.parametrize(
+    ("field_name", "value"),
+    [
+        pytest.param("rest_limit", True, id="bool-limit"),
+        pytest.param("rest_limit", "100", id="string-limit"),
+        pytest.param("max_rest_pages", True, id="bool-pages"),
+        pytest.param("max_rest_pages", "1", id="string-pages"),
+        pytest.param("rest_overlap_ms", True, id="bool-overlap"),
+        pytest.param("rest_overlap_ms", "900000", id="string-overlap"),
+    ],
+)
+def test_opennews_client_rejects_malformed_rest_fetch_policy_scalars(
+    field_name: str,
+    value: object,
+) -> None:
+    policy: dict[str, object] = {
+        "engineTypes": {"news": ["6551News"]},
+        "rest_limit": 100,
+        "max_rest_pages": 1,
+        "rest_overlap_ms": 900_000,
+    }
+    policy[field_name] = value
+    client = OpenNewsFeedClient(token="test-token", post_json=_empty_post_json)
+
+    with pytest.raises(ValueError, match=f"OpenNews REST fetch policy invalid {field_name}"):
+        client.fetch("opennews://subscribe", source={"fetch_policy_json": policy})
+
+
+@pytest.mark.parametrize("page", [0, -1, True, "1"])
+def test_opennews_rest_search_body_rejects_malformed_page(page: object) -> None:
+    with pytest.raises(ValueError, match="OpenNews REST fetch policy invalid page"):
+        _rest_search_body(
+            subscription={},
+            policy={"rest_limit": 100},
+            limit=None,
+            page=page,  # type: ignore[arg-type]
+        )
 
 
 def test_opennews_client_rest_scan_uses_cursor_overlap_and_returns_next_cursor() -> None:

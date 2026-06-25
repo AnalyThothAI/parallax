@@ -191,6 +191,8 @@ def test_worker_marks_error_on_processing_failure() -> None:
             "claims": [claim],
             "error": "RuntimeError: boom",
             "retry_ms": 30_000,
+            "max_attempts": 3,
+            "worker_name": "market_tick_current_projection",
             "now_ms": 1_700_000_010_000,
             "commit": False,
         }
@@ -208,6 +210,7 @@ def test_worker_reads_formal_settings_fields_directly_for_claim_sessions_and_ret
                 "batch_size": 7,
                 "lease_ms": 9_000,
                 "retry_ms": 11_000,
+                "max_attempts": 5,
                 "statement_timeout_seconds": 42.0,
             },
         ).run_once(now_ms=1_700_000_010_000)
@@ -229,6 +232,7 @@ def test_worker_reads_formal_settings_fields_directly_for_claim_sessions_and_ret
         }
     ]
     assert db.transactions[1].repos.market_tick_current_dirty_targets.errors[0]["retry_ms"] == 11_000
+    assert db.transactions[1].repos.market_tick_current_dirty_targets.errors[0]["max_attempts"] == 5
 
 
 def test_worker_requires_formal_statement_timeout_settings_contract() -> None:
@@ -242,6 +246,44 @@ def test_worker_requires_formal_statement_timeout_settings_contract() -> None:
 
     assert db.worker_sessions == []
     assert db.worker_transactions == []
+
+
+@pytest.mark.parametrize(
+    ("overrides", "error_code", "expect_error_path"),
+    [
+        pytest.param({"batch_size": 0}, "market_tick_current_batch_size_required", False, id="batch-zero"),
+        pytest.param({"batch_size": True}, "market_tick_current_batch_size_required", False, id="batch-bool"),
+        pytest.param({"batch_size": "7"}, "market_tick_current_batch_size_required", False, id="batch-string"),
+        pytest.param({"lease_ms": 0}, "market_tick_current_lease_ms_required", False, id="lease-zero"),
+        pytest.param({"lease_ms": True}, "market_tick_current_lease_ms_required", False, id="lease-bool"),
+        pytest.param({"lease_ms": "9000"}, "market_tick_current_lease_ms_required", False, id="lease-string"),
+        pytest.param({"retry_ms": 0}, "market_tick_current_retry_ms_required", True, id="retry-zero"),
+        pytest.param({"retry_ms": True}, "market_tick_current_retry_ms_required", True, id="retry-bool"),
+        pytest.param({"retry_ms": "11000"}, "market_tick_current_retry_ms_required", True, id="retry-string"),
+        pytest.param({"max_attempts": 0}, "market_tick_current_max_attempts_required", True, id="attempts-zero"),
+        pytest.param({"max_attempts": True}, "market_tick_current_max_attempts_required", True, id="attempts-bool"),
+        pytest.param({"max_attempts": "5"}, "market_tick_current_max_attempts_required", True, id="attempts-string"),
+    ],
+)
+def test_worker_rejects_malformed_runtime_settings_without_runtime_repair(
+    overrides: dict[str, Any],
+    error_code: str,
+    expect_error_path: bool,
+) -> None:
+    db = _FakeDB(
+        claims=[_claim("chain_token", "solana:abc")],
+        latest_by_target={},
+        latest_error=RuntimeError("boom") if expect_error_path else None,
+    )
+
+    with pytest.raises(ValueError, match=error_code):
+        asyncio.run(_worker(db=db, settings_overrides=overrides).run_once(now_ms=1_700_000_010_000))
+
+    if expect_error_path:
+        assert db.claim_calls
+        assert db.transactions[-1].repos.market_tick_current_dirty_targets.errors == []
+    else:
+        assert db.claim_calls == []
 
 
 def test_worker_passes_wake_waiter_and_statement_timeout_from_settings() -> None:
@@ -288,6 +330,7 @@ def _worker_settings(**overrides: Any) -> SimpleNamespace:
         "batch_size": 100,
         "lease_ms": 120_000,
         "retry_ms": 30_000,
+        "max_attempts": 3,
         "statement_timeout_seconds": 30.0,
         "soft_timeout_seconds": 120.0,
         "hard_timeout_seconds": 180.0,
@@ -389,6 +432,8 @@ class _FakeDirtyTargets:
         *,
         error: str,
         retry_ms: int,
+        max_attempts: int,
+        worker_name: str,
         now_ms: int,
         commit: bool = True,
     ) -> int:
@@ -397,6 +442,8 @@ class _FakeDirtyTargets:
                 "claims": claims,
                 "error": error,
                 "retry_ms": retry_ms,
+                "max_attempts": max_attempts,
+                "worker_name": worker_name,
                 "now_ms": now_ms,
                 "commit": commit,
             }

@@ -125,6 +125,7 @@ class EntityRepository:
         limit: int,
         watched_only: bool,
     ) -> list[dict[str, Any]]:
+        parsed_limit = _required_nonnegative_int(limit, "entity_repository_find_limit_required")
         clauses = ["entity_type = %s", "normalized_value = %s"]
         params: list[Any] = [entity_type, normalized_value]
         if chain is None:
@@ -145,7 +146,7 @@ class EntityRepository:
             ORDER BY received_at_ms DESC
             LIMIT %s
             """,
-            (*params, max(0, int(limit))),
+            (*params, parsed_limit),
         ).fetchall()
         return [dict(row) for row in rows]
 
@@ -171,6 +172,14 @@ def _now_ms() -> int:
 
 def _event_ids(event_ids: tuple[str, ...]) -> list[str]:
     return [event_id for event_id in dict.fromkeys(str(item).strip() for item in event_ids) if event_id]
+
+
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value < 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _single_rowcount(cursor: Any) -> int:

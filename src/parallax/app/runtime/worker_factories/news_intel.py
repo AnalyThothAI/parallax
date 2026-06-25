@@ -22,6 +22,13 @@ from parallax.domains.token_intel.services.deterministic_token_resolver import (
 )
 
 WORKER_KEYS = manifest_names_for_factory("news_intel.py")
+NEWS_ITEM_BRIEF_WAKE_CHANNELS: tuple[str, ...] = ()
+NEWS_PAGE_PROJECTION_WAKE_CHANNELS: tuple[str, ...] = (
+    "news_item_written",
+    "news_item_processed",
+    "news_story_brief_updated",
+    "news_page_dirty",
+)
 
 
 def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerBase]:
@@ -84,8 +91,7 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
                 db=ctx.db,
                 telemetry=ctx.telemetry,
                 provider=brief_provider,
-                wake_emitter=ctx.wake_bus,
-                wake_waiter=ctx.db.wake_listener(worker_name, workers.news_item_brief.wakes_on),
+                wake_waiter=ctx.db.wake_listener(worker_name, NEWS_ITEM_BRIEF_WAKE_CHANNELS),
             )
         else:
             constructed[worker_name] = unavailable_worker(ctx, worker_name, "missing_news_item_brief_provider")
@@ -114,7 +120,7 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
             settings=workers.news_page_projection,
             db=ctx.db,
             telemetry=ctx.telemetry,
-            wake_waiter=ctx.db.wake_listener(worker_name, workers.news_page_projection.wakes_on),
+            wake_waiter=ctx.db.wake_listener(worker_name, NEWS_PAGE_PROJECTION_WAKE_CHANNELS),
         )
 
     if workers.news_source_quality_projection.enabled:

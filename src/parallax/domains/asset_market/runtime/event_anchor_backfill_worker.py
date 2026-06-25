@@ -103,13 +103,34 @@ class EventAnchorBackfillWorker(WorkerBase):
             )
         self._capture_service = capture_service
         self.wake_emitter = wake_emitter
-        self.batch_size = max(1, int(settings.batch_size))
-        self.concurrency = max(1, int(settings.concurrency))
-        self.max_attempts = max(1, int(settings.max_attempts))
-        self.min_age_ms = max(0, int(settings.min_age_ms))
-        self.lease_ms = max(1, int(settings.lease_ms))
-        self.active_window_ms = max(1, int(settings.active_window_ms))
-        self.max_anchor_lag_ms = max(1, int(settings.max_anchor_lag_ms))
+        self.batch_size = _required_positive_int(
+            settings.batch_size,
+            error_code="event_anchor_backfill_batch_size_required",
+        )
+        self.concurrency = _required_positive_int(
+            settings.concurrency,
+            error_code="event_anchor_backfill_concurrency_required",
+        )
+        self.max_attempts = _required_positive_int(
+            settings.max_attempts,
+            error_code="event_anchor_backfill_max_attempts_required",
+        )
+        self.min_age_ms = _required_nonnegative_int(
+            settings.min_age_ms,
+            error_code="event_anchor_backfill_min_age_ms_required",
+        )
+        self.lease_ms = _required_positive_int(
+            settings.lease_ms,
+            error_code="event_anchor_backfill_lease_ms_required",
+        )
+        self.active_window_ms = _required_positive_int(
+            settings.active_window_ms,
+            error_code="event_anchor_backfill_active_window_ms_required",
+        )
+        self.max_anchor_lag_ms = _required_positive_int(
+            settings.max_anchor_lag_ms,
+            error_code="event_anchor_backfill_max_anchor_lag_ms_required",
+        )
 
     async def run_once(self) -> WorkerResult:
         now_ms = int(self.clock())
@@ -497,6 +518,18 @@ def _decimal_or_none(value: Any) -> Decimal | None:
 def _int_or_none(value: Any) -> int | None:
     if value is None:
         return None
+    return int(value)
+
+
+def _required_positive_int(value: Any, *, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _required_nonnegative_int(value: Any, *, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(error_code)
     return int(value)
 
 

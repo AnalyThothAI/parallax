@@ -132,6 +132,28 @@ def test_policy_failure_circuit_suppresses_material_evidence_changes() -> None:
     assert decision.reason == "failure_circuit_open"
 
 
+@pytest.mark.parametrize("failure_circuit_per_hour", [0, -1, True, "3"])
+def test_policy_rejects_malformed_failure_circuit_threshold(failure_circuit_per_hour: object) -> None:
+    with pytest.raises(ValueError, match="pulse_failure_circuit_per_hour_required"):
+        _classify(
+            edge_events=["timeline_evidence_changed"],
+            failure_circuit_per_hour=failure_circuit_per_hour,
+        )
+
+
+@pytest.mark.parametrize("timeline_debounce_seconds", [-1, True, "600"])
+def test_policy_rejects_malformed_timeline_debounce(timeline_debounce_seconds: object) -> None:
+    with pytest.raises(ValueError, match="pulse_timeline_debounce_seconds_required"):
+        _classify(
+            previous_state={"timeline_signature": "old"},
+            current_state={"timeline_signature": "new"},
+            edge_events=["timeline_evidence_changed"],
+            last_processed_at_ms=1_000,
+            now_ms=1_100,
+            timeline_debounce_seconds=timeline_debounce_seconds,
+        )
+
+
 def test_policy_suppresses_first_score_band_observation() -> None:
     decision = _classify(
         previous_state={"score_band": "60-69", "pulse_status": "token_watch"},

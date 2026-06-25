@@ -2133,12 +2133,49 @@ def test_macro_projection_dirty_target_writes_require_connection_transaction_wit
         'hasattr(conn, "transaction")',
         "conn.transaction()",
         "self.conn.commit()",
+        "max(1, int(lease_ms))",
+        "max(0, int(limit))",
+        "max(1, int(retry_ms))",
+        "int(value)",
     )
 
     assert "_macro_projection_dirty_target_transaction_context" in source
     assert "macro_projection_dirty_target_transaction_required" in source
     assert "with _macro_projection_dirty_target_transaction_context(self.conn):" in dirty_target_source
+    assert "macro_projection_dirty_target_claim_lease_ms_required" in dirty_target_source
+    assert "macro_projection_dirty_target_claim_limit_required" in dirty_target_source
+    assert "macro_projection_dirty_target_retry_ms_required" in dirty_target_source
+    assert "macro_projection_dirty_target_max_attempts_required" in source
+    assert "def _required_positive_int(value: Any, error_code: str) -> int:" in source
+    assert "def _required_nonnegative_int(value: Any, error_code: str) -> int:" in source
+    assert "isinstance(value, bool)" in source
     assert [token for token in forbidden_tokens if token in dirty_target_source] == []
+
+
+def test_macro_repository_history_parameters_are_formal_without_runtime_repairs() -> None:
+    source = (SRC / "domains/macro_intel/repositories/macro_intel_repository.py").read_text()
+    history_source = "\n".join(
+        source.split(f"def {method_name}", 1)[1].split("\n    def ", 1)[0]
+        for method_name in (
+            "latest_observations",
+            "refresh_observation_series_rows_for_concepts",
+            "observations_for_concepts",
+            "concept_history_counts",
+        )
+    )
+    forbidden_tokens = (
+        "bounded_limit = max(1, int(limit))",
+        "bounded_lookback_days = max(1, int(lookback_days))",
+        "bounded_limit_per_series = max(1, int(limit_per_series))",
+    )
+
+    assert [token for token in forbidden_tokens if token in history_source] == []
+    assert "macro_latest_observations_limit_required" in history_source
+    assert "macro_observation_series_refresh_lookback_days_required" in history_source
+    assert "macro_observation_series_refresh_limit_per_series_required" in history_source
+    assert "macro_observations_for_concepts_lookback_days_required" in history_source
+    assert "macro_observations_for_concepts_limit_per_series_required" in history_source
+    assert "macro_concept_history_counts_lookback_days_required" in history_source
 
 
 def test_macro_repository_write_counts_require_real_cursor_rowcount_without_defaults() -> None:

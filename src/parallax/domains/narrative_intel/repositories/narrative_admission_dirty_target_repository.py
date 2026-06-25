@@ -5,6 +5,7 @@ from contextlib import AbstractContextManager
 from typing import Any, cast
 
 from parallax.platform.current_read_model_payload_hash import stable_dirty_target_payload_hash
+from parallax.platform.db.queue_terminal import terminalize_source_row
 
 
 class _NarrativeDirtyTargetRepository:
@@ -169,6 +170,12 @@ class _NarrativeDirtyTargetRepository:
                   THEN NULL
                 ELSE {table}.lease_owner
               END,
+              attempt_count = CASE
+                WHEN EXCLUDED.source_watermark_ms >= {table}.source_watermark_ms
+                  AND {table}.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                  THEN 0
+                ELSE {table}.attempt_count
+              END,
               last_error = NULL,
               first_dirty_at_ms = {table}.first_dirty_at_ms,
               updated_at_ms = EXCLUDED.updated_at_ms
@@ -194,6 +201,10 @@ class _NarrativeDirtyTargetRepository:
         schema_version: str | None = None,
         commit: bool = True,
     ) -> list[dict[str, Any]]:
+        parsed_now_ms = int(now_ms)
+        parsed_limit = _required_positive_int(limit, "narrative_admission_dirty_target_claim_limit_required")
+        parsed_lease_ms = _required_positive_int(lease_ms, "narrative_admission_dirty_target_claim_lease_ms_required")
+        parsed_lease_owner = _required_text(lease_owner, "claim_lease_owner")
         if commit:
             with _transaction(self.conn):
                 return self.claim_due(
@@ -208,7 +219,7 @@ class _NarrativeDirtyTargetRepository:
                     commit=False,
                 )
         table = self.table_name
-        rows = self.conn.execute(
+        cursor = self.conn.execute(
             f"""
             WITH due AS (
               SELECT target_type, target_id, "window", scope
@@ -245,16 +256,18 @@ class _NarrativeDirtyTargetRepository:
             RETURNING {table}.*
             """,
             {
-                "now_ms": int(now_ms),
-                "leased_until_ms": int(now_ms) + max(1, int(lease_ms)),
-                "lease_owner": str(lease_owner),
-                "limit": max(0, int(limit)),
+                "now_ms": parsed_now_ms,
+                "leased_until_ms": parsed_now_ms + parsed_lease_ms,
+                "lease_owner": parsed_lease_owner,
+                "limit": parsed_limit,
                 "windows": list(windows) if windows else None,
                 "scopes": list(scopes) if scopes else None,
                 "projection_version": projection_version,
                 "schema_version": schema_version,
             },
-        ).fetchall()
+        )
+        rows = cursor.fetchall()
+        _returned_rowcount(cursor, rows)
         return [dict(row) for row in rows]
 
     def mark_done(
@@ -321,12 +334,22 @@ class _NarrativeDirtyTargetRepository:
         error: str,
         now_ms: int,
         retry_ms: int,
+        max_attempts: int,
+        worker_name: str,
         commit: bool = True,
     ) -> int:
         claim_list = list(claims)
         records = _claim_records(claim_list, label=self.error_label)
         if not records:
             return 0
+        parsed_retry_ms = _required_positive_int(retry_ms, "narrative_admission_dirty_target_retry_ms_required")
+        parsed_max_attempts = _required_positive_int(
+            max_attempts,
+            "narrative_admission_dirty_target_max_attempts_required",
+        )
+        parsed_worker_name = _required_text(worker_name, "worker_name")
+        retry_records = [record for record in records if int(record["attempt_count"]) < parsed_max_attempts]
+        exhausted_records = [record for record in records if int(record["attempt_count"]) >= parsed_max_attempts]
         if commit:
             with _transaction(self.conn):
                 return self.mark_error(
@@ -334,18 +357,91 @@ class _NarrativeDirtyTargetRepository:
                     error=error,
                     now_ms=now_ms,
                     retry_ms=retry_ms,
+                    max_attempts=max_attempts,
+                    worker_name=worker_name,
                     commit=False,
                 )
         params: dict[str, Any] = {
-            **_claim_params(records),
-            "due_at_ms": int(now_ms) + max(1, int(retry_ms)),
+            **_claim_params(retry_records),
+            "due_at_ms": int(now_ms) + parsed_retry_ms,
             "now_ms": int(now_ms),
             "last_error": str(error)[:2048],
         }
         table = self.table_name
+        changed = 0
+        if retry_records:
+            cursor = self.conn.execute(
+                f"""
+                WITH failed AS (
+                  SELECT *
+                  FROM unnest(
+                    %(target_types)s::text[],
+                    %(target_ids)s::text[],
+                    %(windows)s::text[],
+                    %(scopes)s::text[],
+                    %(projection_versions)s::text[],
+                    %(schema_versions)s::text[],
+                    %(payload_hashes)s::text[],
+                    %(lease_owners)s::text[],
+                    %(attempt_counts)s::bigint[]
+                  ) AS failed(
+                    target_type,
+                    target_id,
+                    "window",
+                    scope,
+                    projection_version,
+                    schema_version,
+                    payload_hash,
+                    lease_owner,
+                    attempt_count
+                  )
+                )
+                UPDATE {table} queue
+                SET due_at_ms = %(due_at_ms)s,
+                    leased_until_ms = NULL,
+                    lease_owner = NULL,
+                    last_error = %(last_error)s,
+                    updated_at_ms = %(now_ms)s
+                FROM failed
+                WHERE queue.target_type = failed.target_type
+                  AND queue.target_id = failed.target_id
+                  AND queue."window" = failed."window"
+                  AND queue.scope = failed.scope
+                  AND queue.projection_version = failed.projection_version
+                  AND queue.schema_version = failed.schema_version
+                  AND queue.payload_hash = failed.payload_hash
+                  AND queue.lease_owner = failed.lease_owner
+                  AND queue.attempt_count = failed.attempt_count
+                """,
+                params,
+            )
+            changed += _cursor_rowcount(cursor)
+        if exhausted_records:
+            deleted_rows, deleted_count = self._delete_claims_returning(exhausted_records)
+            changed += deleted_count
+            for row in deleted_rows:
+                terminalize_source_row(
+                    self.conn,
+                    worker_name=parsed_worker_name,
+                    source_table=table,
+                    target_key=_terminal_target_key(row),
+                    source_row=row,
+                    final_status="terminal",
+                    final_reason=_retry_budget_exhausted_reason(error),
+                    now_ms=int(now_ms),
+                    attempt_count=int(row["attempt_count"]),
+                    payload_hash=_completion_payload_hash(row, label=self.error_label),
+                    first_seen_at_ms=_optional_int(row.get("first_dirty_at_ms")),
+                    last_attempted_at_ms=int(now_ms),
+                    commit=False,
+                )
+        return changed
+
+    def _delete_claims_returning(self, records: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+        table = self.table_name
         cursor = self.conn.execute(
             f"""
-            WITH failed AS (
+            WITH done AS (
               SELECT *
               FROM unnest(
                 %(target_types)s::text[],
@@ -357,7 +453,7 @@ class _NarrativeDirtyTargetRepository:
                 %(payload_hashes)s::text[],
                 %(lease_owners)s::text[],
                 %(attempt_counts)s::bigint[]
-              ) AS failed(
+              ) AS done(
                 target_type,
                 target_id,
                 "window",
@@ -369,26 +465,24 @@ class _NarrativeDirtyTargetRepository:
                 attempt_count
               )
             )
-            UPDATE {table} queue
-            SET due_at_ms = %(due_at_ms)s,
-                leased_until_ms = NULL,
-                lease_owner = NULL,
-                last_error = %(last_error)s,
-                updated_at_ms = %(now_ms)s
-            FROM failed
-            WHERE queue.target_type = failed.target_type
-              AND queue.target_id = failed.target_id
-              AND queue."window" = failed."window"
-              AND queue.scope = failed.scope
-              AND queue.projection_version = failed.projection_version
-              AND queue.schema_version = failed.schema_version
-              AND queue.payload_hash = failed.payload_hash
-              AND queue.lease_owner = failed.lease_owner
-              AND queue.attempt_count = failed.attempt_count
+            DELETE FROM {table} queue
+            USING done
+            WHERE queue.target_type = done.target_type
+              AND queue.target_id = done.target_id
+              AND queue."window" = done."window"
+              AND queue.scope = done.scope
+              AND queue.projection_version = done.projection_version
+              AND queue.schema_version = done.schema_version
+              AND queue.payload_hash = done.payload_hash
+              AND queue.lease_owner = done.lease_owner
+              AND queue.attempt_count = done.attempt_count
+            RETURNING queue.*
             """,
-            params,
+            _claim_params(records),
         )
-        return _cursor_rowcount(cursor)
+        rows = cursor.fetchall()
+        deleted_count = _returned_rowcount(cursor, rows)
+        return [dict(row) for row in rows], deleted_count
 
     def reschedule(
         self,
@@ -616,8 +710,6 @@ def _claim_records(claims: Iterable[Mapping[str, Any]], *, label: str) -> list[d
             raise ValueError(f"{label} completion requires payload_hash from claim_due")
         if not lease_owner:
             raise ValueError(f"{label} completion requires lease_owner from claim_due")
-        if attempt_count <= 0:
-            raise ValueError(f"{label} completion requires attempt_count from claim_due")
         records.append(
             {
                 "target_type": target_type,
@@ -636,12 +728,10 @@ def _claim_records(claims: Iterable[Mapping[str, Any]], *, label: str) -> list[d
 
 def _completion_attempt_count(claim: Mapping[str, Any], *, label: str) -> int:
     try:
-        attempt_count = int(claim["attempt_count"])
-    except (KeyError, TypeError, ValueError) as exc:
+        value = claim["attempt_count"]
+    except KeyError as exc:
         raise ValueError(f"{label} completion requires attempt_count from claim_due") from exc
-    if attempt_count <= 0:
-        raise ValueError(f"{label} completion requires attempt_count from claim_due")
-    return attempt_count
+    return _required_positive_int(value, f"{label} completion requires attempt_count from claim_due")
 
 
 def _completion_lease_owner(claim: Mapping[str, Any], *, label: str) -> str:
@@ -694,6 +784,52 @@ def _cursor_rowcount(cursor: Any) -> int:
     if rowcount < 0:
         raise TypeError("narrative_admission_dirty_target_rowcount_invalid")
     return rowcount
+
+
+def _returned_rowcount(cursor: Any, rows: list[Any]) -> int:
+    rowcount = _cursor_rowcount(cursor)
+    if rowcount != len(rows):
+        raise TypeError("narrative_admission_dirty_target_rowcount_invalid")
+    return rowcount
+
+
+def _required_positive_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value <= 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _required_text(value: Any, field_name: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError(f"narrative_admission_dirty_target_{field_name}_required")
+    return text
+
+
+def _terminal_target_key(row: Mapping[str, Any]) -> str:
+    return ":".join(
+        (
+            _required_text(row.get("target_type"), "target_type"),
+            _required_text(row.get("target_id"), "target_id"),
+            _required_text(row.get("window"), "window"),
+            _required_text(row.get("scope"), "scope"),
+            _required_text(row.get("projection_version"), "projection_version"),
+            _required_text(row.get("schema_version"), "schema_version"),
+        )
+    )
+
+
+def _retry_budget_exhausted_reason(error: str) -> str:
+    message = str(error or "").strip()
+    return f"narrative_admission_dirty_retry_budget_exhausted: {message}"[:2048]
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    return int(value)
 
 
 def _priority_value(row: Mapping[str, Any]) -> int:

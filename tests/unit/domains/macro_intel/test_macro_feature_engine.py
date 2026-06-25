@@ -130,7 +130,7 @@ def test_feature_engine_requires_latest_unit_without_none_fallback() -> None:
     (
         (None, "macro_feature_frequency_required:rates:dgs10"),
         (" ", "macro_feature_frequency_required:rates:dgs10"),
-        ("intraday", "macro_feature_frequency_unknown:rates:dgs10:intraday"),
+        ("minutely", "macro_feature_frequency_unknown:rates:dgs10:minutely"),
     ),
 )
 def test_feature_engine_requires_supported_frequency_without_daily_fallback(
@@ -150,6 +150,43 @@ def test_feature_engine_requires_supported_frequency_without_daily_fallback(
 
     with pytest.raises(ValueError, match=message):
         build_macro_features(observations, computed_at_ms=COMPUTED_AT_MS)
+
+
+def test_feature_engine_supports_intraday_crypto_derivatives_frequency_without_daily_fallback() -> None:
+    observations = _daily_observations(
+        "crypto_derivatives:deribit_btc_basis",
+        start=date(2026, 4, 21),
+        values=[0.01 + i * 0.001 for i in range(30)],
+        frequency="intraday",
+        series_key="deribit:BTC-PERPETUAL:basis_pct",
+        source_name="deribit",
+    )
+
+    features = build_macro_features(observations, computed_at_ms=COMPUTED_AT_MS)
+
+    basis = features["crypto_derivatives:deribit_btc_basis"]
+    assert basis["freshness_days"] == 1
+    assert basis["stale_after_days"] == 2
+    assert basis["latest"] == {"value": pytest.approx(0.039), "observed_at": "2026-05-20", "unit": "percent"}
+    assert basis["source"] == {"name": "deribit", "series_key": "deribit:BTC-PERPETUAL:basis_pct"}
+    assert not any(gap["code"].startswith("stale_latest") for gap in basis["data_gaps"])
+
+
+def test_feature_engine_supports_irregular_core_frequency_without_daily_fallback() -> None:
+    observations = _daily_observations(
+        "rates:dgs10",
+        start=date(2026, 4, 1),
+        values=[4.41 + i * 0.01 for i in range(30)],
+        frequency="irregular",
+    )
+
+    features = build_macro_features(observations, computed_at_ms=COMPUTED_AT_MS)
+
+    dgs10 = features["rates:dgs10"]
+    assert dgs10["freshness_days"] == 21
+    assert dgs10["stale_after_days"] == 140
+    assert dgs10["latest"] == {"value": pytest.approx(4.70), "observed_at": "2026-04-30", "unit": "percent"}
+    assert not any(gap["code"].startswith("stale_latest") for gap in dgs10["data_gaps"])
 
 
 @pytest.mark.parametrize(
@@ -352,13 +389,78 @@ def test_repository_observations_for_concepts_reads_projected_bounded_history() 
     assert params == ("macro_regime_v4", ["rates:dgs10", "liquidity:sofr"], 365, 252)
 
 
-def test_repository_observations_for_concepts_bounds_positive_integer_inputs() -> None:
+@pytest.mark.parametrize("limit", [0, True, "250"])
+def test_repository_latest_observations_rejects_malformed_limit_before_sql(limit: object) -> None:
     conn = FakeConnection([])
     repo = MacroIntelRepository(conn)
 
-    assert repo.observations_for_concepts(concept_keys=("rates:dgs10",), lookback_days=0, limit_per_series=0) == []
+    with pytest.raises(ValueError, match="macro_latest_observations_limit_required"):
+        repo.latest_observations(limit=limit)
 
-    assert conn.executions[0][1] == ("macro_regime_v4", ["rates:dgs10"], 1, 1)
+    assert conn.executions == []
+
+
+@pytest.mark.parametrize(
+    ("overrides", "error_code"),
+    [
+        pytest.param(
+            {"lookback_days": 0},
+            "macro_observations_for_concepts_lookback_days_required",
+            id="lookback-zero",
+        ),
+        pytest.param(
+            {"lookback_days": True},
+            "macro_observations_for_concepts_lookback_days_required",
+            id="lookback-bool",
+        ),
+        pytest.param(
+            {"lookback_days": "60"},
+            "macro_observations_for_concepts_lookback_days_required",
+            id="lookback-string",
+        ),
+        pytest.param(
+            {"limit_per_series": 0},
+            "macro_observations_for_concepts_limit_per_series_required",
+            id="limit-zero",
+        ),
+        pytest.param(
+            {"limit_per_series": True},
+            "macro_observations_for_concepts_limit_per_series_required",
+            id="limit-bool",
+        ),
+        pytest.param(
+            {"limit_per_series": "20"},
+            "macro_observations_for_concepts_limit_per_series_required",
+            id="limit-string",
+        ),
+    ],
+)
+def test_repository_observations_for_concepts_rejects_malformed_history_inputs_before_sql(
+    overrides: dict[str, object],
+    error_code: str,
+) -> None:
+    conn = FakeConnection([])
+    repo = MacroIntelRepository(conn)
+    params = {"concept_keys": ("rates:dgs10",), "lookback_days": 60, "limit_per_series": 20}
+    params.update(overrides)
+
+    with pytest.raises(ValueError, match=error_code):
+        repo.observations_for_concepts(**params)
+
+    assert conn.executions == []
+
+
+@pytest.mark.parametrize("lookback_days", [0, True, "60"])
+def test_repository_concept_history_counts_rejects_malformed_lookback_before_sql(
+    lookback_days: object,
+) -> None:
+    conn = FakeConnection([])
+    repo = MacroIntelRepository(conn)
+
+    with pytest.raises(ValueError, match="macro_concept_history_counts_lookback_days_required"):
+        repo.concept_history_counts(concept_keys=("rates:dgs10",), lookback_days=lookback_days)
+
+    assert conn.executions == []
 
 
 def test_repository_latest_snapshot_filters_current_projection_version_by_default() -> None:
@@ -392,14 +494,25 @@ def test_repository_latest_snapshot_rejects_unbounded_projection_version() -> No
 
 
 def _daily_observations(
-    series_key: str,
+    concept_key: str,
     *,
     start: date,
     values: list[float],
     data_quality: str = "ok",
+    frequency: str = "daily",
+    series_key: str = "fred:DGS10",
+    source_name: str = "fred",
 ) -> list[dict[str, object]]:
     return [
-        _obs(series_key, (start + timedelta(days=index)).isoformat(), value_numeric=value, data_quality=data_quality)
+        _obs(
+            concept_key,
+            (start + timedelta(days=index)).isoformat(),
+            value_numeric=value,
+            data_quality=data_quality,
+            frequency=frequency,
+            series_key=series_key,
+            source_name=source_name,
+        )
         for index, value in enumerate(values)
     ]
 
@@ -413,10 +526,11 @@ def _obs(
     unit: str = "percent",
     frequency: str = "daily",
     series_key: str = "fred:DGS10",
+    source_name: str = "fred",
     data_quality: str = "ok",
 ) -> dict[str, object]:
     observation: dict[str, object] = {
-        "source_name": "fred",
+        "source_name": source_name,
         "concept_key": concept_key,
         "series_key": series_key,
         "source_priority": 100,

@@ -1,32 +1,11 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
 
 from parallax.domains.evidence.interfaces import ExtractedEntity, TokenSnapshot
+from parallax.domains.token_intel.types.token_fact_inputs import TokenEvidenceInput
 
-
-@dataclass(frozen=True, slots=True)
-class TokenEvidenceInput:
-    evidence_id: str
-    event_id: str
-    source_kind: str
-    source_id: str
-    evidence_type: str
-    raw_value: str
-    normalized_symbol: str | None
-    chain_hint: str | None
-    address_hint: str | None
-    provider: str | None
-    provider_ref: str | None
-    text_surface: str
-    span_start: int
-    span_end: int
-    sentence_id: int
-    local_group_key: str
-    strength: str
-    confidence: float
-    created_at_ms: int
+__all__ = ["TokenEvidenceInput", "build_token_evidence"]
 
 
 def build_token_evidence(

@@ -18,6 +18,11 @@ from parallax.domains.news_intel.runtime.news_projection_work import (
     mark_work_error,
     queue_item_brief_depth,
 )
+from parallax.domains.news_intel.runtime.news_runtime_settings import (
+    positive_worker_setting_int,
+    required_nonnegative_int,
+    required_positive_int,
+)
 from parallax.domains.news_intel.services.news_item_agent_admission import (
     decide_news_item_agent_admission,
 )
@@ -57,7 +62,6 @@ class NewsItemBriefWorker(WorkerBase):
         telemetry: Any,
         provider: Any,
         wake_waiter: Any | None = None,
-        wake_emitter: Any | None = None,
         clock_ms: Callable[[], int] | None = None,
         run_id_factory: Callable[[], str] | None = None,
         name: str = "news_item_brief",
@@ -76,7 +80,6 @@ class NewsItemBriefWorker(WorkerBase):
             wake_waiter=wake_waiter,
         )
         self.provider = provider
-        self.wake_emitter = wake_emitter
         self.clock_ms = clock_ms or _now_ms
         self.run_id_factory = run_id_factory or _default_run_id
 
@@ -87,11 +90,14 @@ class NewsItemBriefWorker(WorkerBase):
             model=str(provider.model),
             artifact_version_hash=str(provider.artifact_version_hash),
         )
-        queue_depth = await asyncio.to_thread(self._queue_depth, now_ms=now)
+        queue_depth = required_nonnegative_int(
+            await asyncio.to_thread(self._queue_depth, now_ms=now),
+            error_code="news_item_brief_queue_depth_required",
+        )
         if queue_depth <= 0:
             return WorkerResult(skipped=1, notes={"reason": "no_due_brief_targets"})
 
-        rate_units = min(self._batch_size(), max(1, int(queue_depth)))
+        rate_units = min(self._batch_size(), queue_depth)
         try:
             reservation = provider.try_reserve_execution(NEWS_ITEM_BRIEF_LANE, rate_units=rate_units)
         except Exception as exc:
@@ -144,7 +150,6 @@ class NewsItemBriefWorker(WorkerBase):
                 "policy_skipped": 0,
             }
             skipped = 0
-            current_updates = 0
 
             for target in claimed:
                 try:
@@ -200,7 +205,6 @@ class NewsItemBriefWorker(WorkerBase):
                         status = str(completed_run["outcome"])
                         outcome = _CandidateOutcome(
                             notes={status: 1, "restored_from_completed_run": 1},
-                            current_updates=1,
                         )
                     else:
                         invalid_completed_run = _invalid_completed_run(
@@ -240,7 +244,6 @@ class NewsItemBriefWorker(WorkerBase):
                     continue
                 for key, value in outcome.notes.items():
                     notes[key] = int(notes.get(key, 0)) + int(value)
-                current_updates += outcome.current_updates
                 await asyncio.to_thread(
                     self._complete_claimed_target,
                     target,
@@ -250,8 +253,6 @@ class NewsItemBriefWorker(WorkerBase):
                     now_ms=now,
                 )
 
-            if current_updates > 0 and self.wake_emitter is not None:
-                self.wake_emitter.notify_news_item_brief_updated(count=current_updates)
             failed = max(0, int(notes["failed"]) - int(notes["validation_failed"]))
             processed = int(notes["ready"]) + int(notes["insufficient"])
             skipped += int(notes["backpressure"])
@@ -325,7 +326,6 @@ class NewsItemBriefWorker(WorkerBase):
             )
             return _CandidateOutcome(
                 notes={"failed": 1, "validation_failed": 1},
-                current_updates=0,
                 retry_reason="domain_validation_failed",
                 failed_current_run_id=run_id,
                 failed_current_errors=validation.errors,
@@ -359,7 +359,7 @@ class NewsItemBriefWorker(WorkerBase):
             computed_at_ms=finished_at_ms,
         )
         status = str(validation.status)
-        return _CandidateOutcome(notes={status: 1}, current_updates=1)
+        return _CandidateOutcome(notes={status: 1})
 
     async def _record_invalid_completed_run(
         self,
@@ -405,7 +405,6 @@ class NewsItemBriefWorker(WorkerBase):
         )
         return _CandidateOutcome(
             notes={"failed": 1, "validation_failed": 1, "invalid_completed_run": 1},
-            current_updates=0,
             retry_reason="domain_validation_failed",
             retry_counts_attempt=False,
             failed_current_run_id=run_id,
@@ -453,7 +452,6 @@ class NewsItemBriefWorker(WorkerBase):
         error_class = _provider_error_class(error)
         return _CandidateOutcome(
             notes={"failed": 1},
-            current_updates=0,
             retry_reason=error_class,
             failed_current_run_id=run_id,
             failed_current_errors=[{"code": error_class, "message": str(error)[:500]}],
@@ -473,7 +471,6 @@ class NewsItemBriefWorker(WorkerBase):
         outcome = _backpressure_outcome_for_error(error)
         return _CandidateOutcome(
             notes={"backpressure": 1, outcome: 1},
-            current_updates=0,
             retry_ms=self._backpressure_cooldown_ms(),
             retry_reason=outcome,
             retry_counts_attempt=False,
@@ -483,17 +480,17 @@ class NewsItemBriefWorker(WorkerBase):
         del error
         return _CandidateOutcome(
             notes={"backpressure": 1, "request_audit_failed": 1},
-            current_updates=0,
             retry_ms=self._backpressure_cooldown_ms(),
             retry_reason="request_audit_failed",
             retry_counts_attempt=False,
         )
 
     def _claim_targets(self, *, now_ms: int, limit: int) -> list[dict[str, Any]]:
+        claim_limit = required_positive_int(limit, error_code="news_item_brief_claim_limit_required")
         with self._repository_session() as repos:
             return claim_item_brief_work(
                 repos,
-                limit=max(1, int(limit)),
+                limit=claim_limit,
                 lease_ms=self._lease_ms(),
                 now_ms=now_ms,
                 lease_owner=_claim_owner(self.name),
@@ -615,6 +612,8 @@ class NewsItemBriefWorker(WorkerBase):
                 error=str(error),
                 retry_ms=retry_ms,
                 now_ms=now_ms,
+                max_attempts=self._max_attempts(),
+                worker_name=self.name,
                 count_attempt=count_attempt,
             )
 
@@ -745,16 +744,19 @@ class NewsItemBriefWorker(WorkerBase):
         )
 
     def _batch_size(self) -> int:
-        return max(1, int(self.settings.batch_size))
+        return positive_worker_setting_int(self.settings, "batch_size", worker_name=self.name)
 
     def _lease_ms(self) -> int:
-        return max(1, int(self.settings.lease_ms))
+        return positive_worker_setting_int(self.settings, "lease_ms", worker_name=self.name)
 
     def _retry_ms(self) -> int:
-        return max(1, int(self.settings.retry_ms))
+        return positive_worker_setting_int(self.settings, "retry_ms", worker_name=self.name)
+
+    def _max_attempts(self) -> int:
+        return positive_worker_setting_int(self.settings, "max_attempts", worker_name=self.name)
 
     def _backpressure_cooldown_ms(self) -> int:
-        return max(1, int(self.settings.backpressure_cooldown_ms))
+        return positive_worker_setting_int(self.settings, "backpressure_cooldown_ms", worker_name=self.name)
 
 
 class _CandidateOutcome:
@@ -762,7 +764,6 @@ class _CandidateOutcome:
         self,
         *,
         notes: Mapping[str, int],
-        current_updates: int,
         retry_ms: int | None = None,
         retry_reason: str = "",
         retry_counts_attempt: bool = True,
@@ -770,7 +771,6 @@ class _CandidateOutcome:
         failed_current_errors: list[dict[str, str]] | None = None,
     ) -> None:
         self.notes = dict(notes)
-        self.current_updates = int(current_updates)
         self.retry_ms = int(retry_ms) if retry_ms is not None else None
         self.retry_reason = retry_reason or "agent_brief_retry"
         self.retry_counts_attempt = bool(retry_counts_attempt)
@@ -888,7 +888,6 @@ def _failed_run_outcome(run: Mapping[str, Any]) -> _CandidateOutcome:
     error = _required_failed_run_error(run)
     return _CandidateOutcome(
         notes={"restored_from_failed_run": 1},
-        current_updates=0,
         retry_reason=error_class,
         failed_current_run_id=_required_run_id(run, reason="failed_run"),
         failed_current_errors=[{"code": error_class, "message": error[:500]}],
@@ -1202,15 +1201,21 @@ def _require_claim_empty_window(target: Mapping[str, Any]) -> None:
 
 
 def _backpressure_outcome(reservation: AgentCapacityReservation) -> str:
+    if not isinstance(reservation, AgentCapacityReservation):
+        raise RuntimeError("news_item_brief_agent_reservation_contract_required")
     return _backpressure_outcome_for_reason(reservation.reason)
 
 
-def _backpressure_outcome_for_reason(reason: Any) -> str:
-    if reason == AgentExecutionErrorClass.CIRCUIT_OPEN:
+def _backpressure_outcome_for_reason(reason: AgentExecutionErrorClass | None) -> str:
+    if reason is None:
+        reason = AgentExecutionErrorClass.CAPACITY_DENIED
+    elif not isinstance(reason, AgentExecutionErrorClass):
+        raise RuntimeError("news_item_brief_agent_reservation_reason_contract_required")
+    if reason is AgentExecutionErrorClass.CIRCUIT_OPEN:
         return "backpressure_circuit_open"
-    if reason == AgentExecutionErrorClass.RATE_LIMITED:
+    if reason is AgentExecutionErrorClass.RATE_LIMITED:
         return "backpressure_rate_limited"
-    if reason == AgentExecutionErrorClass.QUOTA_EXHAUSTED:
+    if reason is AgentExecutionErrorClass.QUOTA_EXHAUSTED:
         return "backpressure_quota_exhausted"
     return "backpressure_capacity_denied"
 
@@ -1218,7 +1223,7 @@ def _backpressure_outcome_for_reason(reason: Any) -> str:
 def _backpressure_outcome_for_error(error: Exception) -> str:
     if not isinstance(error, AgentExecutionError):
         raise RuntimeError("news_item_brief_agent_backpressure_error_contract_required")
-    return _backpressure_outcome_for_reason(error.error_class)
+    return _backpressure_outcome_for_reason(_required_agent_error_class(error.error_class))
 
 
 def _request_json(*, packet: NewsItemBriefInputPacket, audit: Mapping[str, Any]) -> dict[str, Any]:
@@ -1309,7 +1314,7 @@ def _provider_error_audit(error: Exception) -> dict[str, Any] | None:
 
 def _provider_error_class(error: Exception) -> str:
     if isinstance(error, AgentExecutionError):
-        return _reason_value(error.error_class) or "provider_error"
+        return _reason_value(error.error_class)
     return type(error).__name__
 
 
@@ -1322,7 +1327,8 @@ def _provider_execution_started(error: Exception) -> bool:
 def _is_no_start_backpressure_error(error: Exception) -> bool:
     if not isinstance(error, AgentExecutionError) or error.execution_started:
         return False
-    return error.error_class in {
+    error_class = _required_agent_error_class(error.error_class)
+    return error_class in {
         AgentExecutionErrorClass.CAPACITY_DENIED,
         AgentExecutionErrorClass.CIRCUIT_OPEN,
         AgentExecutionErrorClass.RATE_LIMITED,
@@ -1330,9 +1336,15 @@ def _is_no_start_backpressure_error(error: Exception) -> bool:
     }
 
 
-def _reason_value(reason: Any) -> str | None:
-    value = getattr(reason, "value", reason)
-    return str(value) if value else None
+def _reason_value(reason: AgentExecutionErrorClass) -> str:
+    reason = _required_agent_error_class(reason)
+    return reason.value
+
+
+def _required_agent_error_class(reason: Any) -> AgentExecutionErrorClass:
+    if not isinstance(reason, AgentExecutionErrorClass):
+        raise RuntimeError("news_item_brief_agent_error_class_contract_required")
+    return reason
 
 
 def _output_hash(payload: Any) -> str | None:

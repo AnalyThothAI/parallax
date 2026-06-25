@@ -189,6 +189,38 @@ def test_create_pool_passes_application_timeouts_and_keepalives(monkeypatch):
     assert kwargs["keepalives_count"] == 3
 
 
+@pytest.mark.parametrize(
+    ("timeout_field", "timeout_value"),
+    [
+        ("statement_timeout_seconds", -1),
+        ("statement_timeout_seconds", True),
+        ("statement_timeout_seconds", "30"),
+        ("idle_in_transaction_session_timeout_seconds", -1),
+        ("idle_in_transaction_session_timeout_seconds", True),
+        ("idle_in_transaction_session_timeout_seconds", "15"),
+    ],
+)
+def test_create_pool_rejects_malformed_runtime_timeouts_without_zero_ms_repair(
+    timeout_field: str,
+    timeout_value: object,
+    monkeypatch,
+) -> None:
+    class FakePool:
+        def __init__(self, **_kwargs):
+            raise AssertionError("pool must not be created with malformed timeout")
+
+    monkeypatch.setattr(postgres_client, "ConnectionPool", FakePool)
+
+    with pytest.raises(ValueError, match="postgres_runtime_timeout_seconds_required"):
+        create_pool(
+            "postgresql://parallax_app@postgres:5432/parallax",
+            min_size=1,
+            max_size=2,
+            connect_timeout_seconds=5,
+            **{timeout_field: timeout_value},
+        )
+
+
 def test_postgres_health_check_reports_liveness_and_migration_version():
     conn = FakeConn()
     payload = postgres_health_check(conn)

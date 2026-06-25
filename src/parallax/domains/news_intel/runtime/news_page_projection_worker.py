@@ -14,6 +14,7 @@ from parallax.domains.news_intel.runtime.news_projection_work import (
     mark_work_done,
     mark_work_error,
 )
+from parallax.domains.news_intel.runtime.news_runtime_settings import positive_worker_setting_int
 from parallax.domains.news_intel.services.news_page_projection import build_news_page_row
 
 
@@ -54,12 +55,16 @@ class NewsPageProjectionWorker(WorkerBase):
         story_groups_projected = 0
         story_member_items = 0
         claimed_ids: list[str] = []
+        batch_size = self._batch_size()
+        lease_ms = self._lease_ms()
+        retry_ms = self._retry_ms()
+        self._max_attempts()
 
         with self._repository_session() as repos, repos.transaction():
             claimed = claim_page_projection_work(
                 repos,
-                limit=self._batch_size(),
-                lease_ms=self._lease_ms(),
+                limit=batch_size,
+                lease_ms=lease_ms,
                 now_ms=now,
                 lease_owner=self.name,
                 commit=False,
@@ -107,8 +112,10 @@ class NewsPageProjectionWorker(WorkerBase):
                     repos,
                     claimed,
                     error=str(exc),
-                    retry_ms=self._retry_ms(),
+                    retry_ms=retry_ms,
                     now_ms=now,
+                    max_attempts=self._max_attempts(),
+                    worker_name=self.name,
                     commit=False,
                 )
                 return WorkerResult(
@@ -154,8 +161,10 @@ class NewsPageProjectionWorker(WorkerBase):
                     repos,
                     claimed,
                     error=str(exc),
-                    retry_ms=self._retry_ms(),
+                    retry_ms=retry_ms,
                     now_ms=now,
+                    max_attempts=self._max_attempts(),
+                    worker_name=self.name,
                     commit=False,
                 )
                 return WorkerResult(
@@ -193,13 +202,16 @@ class NewsPageProjectionWorker(WorkerBase):
         )
 
     def _batch_size(self) -> int:
-        return max(1, int(self.settings.batch_size))
+        return positive_worker_setting_int(self.settings, "batch_size", worker_name=self.name)
 
     def _lease_ms(self) -> int:
-        return max(1, int(self.settings.lease_ms))
+        return positive_worker_setting_int(self.settings, "lease_ms", worker_name=self.name)
 
     def _retry_ms(self) -> int:
-        return max(1, int(self.settings.retry_ms))
+        return positive_worker_setting_int(self.settings, "retry_ms", worker_name=self.name)
+
+    def _max_attempts(self) -> int:
+        return positive_worker_setting_int(self.settings, "max_attempts", worker_name=self.name)
 
 
 def _projection_parts(

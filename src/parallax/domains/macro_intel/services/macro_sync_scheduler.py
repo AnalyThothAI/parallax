@@ -21,6 +21,24 @@ def ensure_due_macro_sync_windows(
     max_bootstrap_windows_per_cycle: int,
     max_attempts: int,
 ) -> dict[str, Any]:
+    parsed_bootstrap_lookback_days = _required_positive_int(
+        bootstrap_lookback_days,
+        "macro_sync_bootstrap_lookback_days_required",
+    )
+    parsed_max_window_days = _required_positive_int(max_window_days, "macro_sync_max_window_days_required")
+    parsed_steady_overlap_days = _required_positive_int(
+        steady_overlap_days,
+        "macro_sync_steady_overlap_days_required",
+    )
+    parsed_max_bootstrap_windows_per_cycle = _required_positive_int(
+        max_bootstrap_windows_per_cycle,
+        "macro_sync_max_bootstrap_windows_per_cycle_required",
+    )
+    parsed_max_attempts = _required_positive_int(max_attempts, "macro_sync_max_attempts_required")
+    parsed_steady_interval_seconds = _required_nonnegative_float(
+        steady_interval_seconds,
+        "macro_sync_steady_interval_seconds_required",
+    )
     max_observed_at = repos.macro_intel.macro_sync_state_max_observed_at(
         source_name=source_name,
         bundle_name=bundle_name,
@@ -30,16 +48,16 @@ def ensure_due_macro_sync_windows(
     enqueued_steady = 0
     steady_trigger_reason = _steady_trigger_reason(
         now_ms=now_ms,
-        interval_seconds=steady_interval_seconds,
+        interval_seconds=parsed_steady_interval_seconds,
     )
 
     if max_observed_at is None:
-        bootstrap_start = now - timedelta(days=max(1, int(bootstrap_lookback_days)))
+        bootstrap_start = now - timedelta(days=parsed_bootstrap_lookback_days)
         for window_start, window_end in _split_windows(
             bootstrap_start,
             now,
-            max_window_days=max_window_days,
-        )[: max(1, int(max_bootstrap_windows_per_cycle))]:
+            max_window_days=parsed_max_window_days,
+        )[:parsed_max_bootstrap_windows_per_cycle]:
             repos.macro_intel.enqueue_macro_sync_window(
                 source_name=source_name,
                 bundle_name=bundle_name,
@@ -48,7 +66,7 @@ def ensure_due_macro_sync_windows(
                 trigger_reason="bootstrap",
                 priority=10,
                 due_at_ms=now_ms,
-                max_attempts=max_attempts,
+                max_attempts=parsed_max_attempts,
                 now_ms=now_ms,
             )
             enqueued_bootstrap += 1
@@ -56,7 +74,7 @@ def ensure_due_macro_sync_windows(
         for window_start, window_end in _split_windows(
             max_observed_at + timedelta(days=1),
             now,
-            max_window_days=max_window_days,
+            max_window_days=parsed_max_window_days,
         ):
             repos.macro_intel.enqueue_macro_sync_window(
                 source_name=source_name,
@@ -66,12 +84,12 @@ def ensure_due_macro_sync_windows(
                 trigger_reason="gap",
                 priority=20,
                 due_at_ms=now_ms,
-                max_attempts=max_attempts,
+                max_attempts=parsed_max_attempts,
                 now_ms=now_ms,
             )
             enqueued_gap += 1
 
-    steady_start = now - timedelta(days=max(1, int(steady_overlap_days)))
+    steady_start = now - timedelta(days=parsed_steady_overlap_days)
     repos.macro_intel.enqueue_macro_sync_window(
         source_name=source_name,
         bundle_name=bundle_name,
@@ -80,7 +98,7 @@ def ensure_due_macro_sync_windows(
         trigger_reason=steady_trigger_reason,
         priority=100,
         due_at_ms=now_ms,
-        max_attempts=max_attempts,
+        max_attempts=parsed_max_attempts,
         now_ms=now_ms,
     )
     enqueued_steady += 1
@@ -97,7 +115,7 @@ def ensure_due_macro_sync_windows(
 def _split_windows(start: date, end: date, *, max_window_days: int) -> list[tuple[date, date]]:
     if start > end:
         return []
-    bounded_days = max(1, int(max_window_days))
+    bounded_days = _required_positive_int(max_window_days, "macro_sync_max_window_days_required")
     windows: list[tuple[date, date]] = []
     cursor = start
     while cursor <= end:
@@ -110,6 +128,21 @@ def _split_windows(start: date, end: date, *, max_window_days: int) -> list[tupl
 def _steady_trigger_reason(*, now_ms: int, interval_seconds: float) -> str:
     _ = (now_ms, interval_seconds)
     return "steady_overlap"
+
+
+def _required_positive_int(value: object, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _required_nonnegative_float(value: object, error_code: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(error_code)
+    parsed = float(value)
+    if parsed < 0:
+        raise ValueError(error_code)
+    return parsed
 
 
 __all__ = ["ensure_due_macro_sync_windows"]

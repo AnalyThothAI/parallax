@@ -214,6 +214,7 @@ class ProjectionRepository:
         return dict(row) if row else None
 
     def list_runs(self, *, limit: int, projection_name: str | None = None) -> list[dict[str, Any]]:
+        parsed_limit = _required_nonnegative_int(limit, "projection_repository_limit_required")
         params: list[Any] = []
         where = ""
         if projection_name:
@@ -227,7 +228,7 @@ class ProjectionRepository:
             ORDER BY started_at_ms DESC, run_id DESC
             LIMIT %s
             """,
-            (*params, max(0, int(limit))),
+            (*params, parsed_limit),
         ).fetchall()
         return [dict(row) for row in rows]
 
@@ -301,6 +302,8 @@ class ProjectionRepository:
         limit: int,
         commit: bool = True,
     ) -> list[dict[str, Any]]:
+        parsed_limit = _required_nonnegative_int(limit, "projection_repository_limit_required")
+
         def _write() -> list[dict[str, Any]]:
             cursor = self.conn.execute(
                 """
@@ -321,7 +324,7 @@ class ProjectionRepository:
                 WHERE ranges.dirty_id = picked.dirty_id
                 RETURNING ranges.*
                 """,
-                (projection_name, projection_version, max(0, int(limit)), _now_ms()),
+                (projection_name, projection_version, parsed_limit, _now_ms()),
             )
             rows = cursor.fetchall()
             _returned_rowcount(cursor, rows)
@@ -330,6 +333,7 @@ class ProjectionRepository:
         return _run_repository_write(self.conn, commit, _write)
 
     def list_dirty_ranges(self, *, limit: int, projection_name: str | None = None) -> list[dict[str, Any]]:
+        parsed_limit = _required_nonnegative_int(limit, "projection_repository_limit_required")
         params: list[Any] = []
         where = ""
         if projection_name:
@@ -343,7 +347,7 @@ class ProjectionRepository:
             ORDER BY created_at_ms DESC, dirty_id DESC
             LIMIT %s
             """,
-            (*params, max(0, int(limit))),
+            (*params, parsed_limit),
         ).fetchall()
         return [dict(row) for row in rows]
 
@@ -429,6 +433,14 @@ def _required_single_rowcount(cursor: Any) -> int:
     if rowcount != 1:
         raise TypeError("projection_repository_rowcount_invalid")
     return rowcount
+
+
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value < 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _required_returning_row(cursor: Any, row: Any) -> dict[str, Any]:

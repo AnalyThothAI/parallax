@@ -73,14 +73,24 @@ class MacroViewProjectionWorker(WorkerBase):
                     },
                 )
             else:
+                lookback_days = self._lookback_days()
+                limit_per_series = self._limit_per_series()
                 try:
                     with repos.transaction():
-                        result, wake_payload = self._run_claimed_once(repos, claimed=claimed, now=now)
+                        result, wake_payload = self._run_claimed_once(
+                            repos,
+                            claimed=claimed,
+                            now=now,
+                            lookback_days=lookback_days,
+                            limit_per_series=limit_per_series,
+                        )
                 except Exception as exc:
                     repos.macro_intel.mark_macro_projection_dirty_targets_error(
                         claimed,
                         error=str(exc),
                         retry_ms=self._retry_ms(),
+                        max_attempts=self._max_attempts(),
+                        worker_name=self.name,
                         now_ms=now,
                         commit=False,
                     )
@@ -101,15 +111,21 @@ class MacroViewProjectionWorker(WorkerBase):
         return result
 
     def _run_claimed_once(
-        self, repos: RepositorySession, *, claimed: list[dict[str, Any]], now: int
+        self,
+        repos: RepositorySession,
+        *,
+        claimed: list[dict[str, Any]],
+        now: int,
+        lookback_days: int,
+        limit_per_series: int,
     ) -> tuple[WorkerResult, dict[str, str] | None]:
         repos.require_transaction(operation="macro_view_projection")
         concept_keys = _claimed_concept_keys(claimed)
         refresh_result = repos.macro_intel.refresh_observation_series_rows_for_concepts(
             projection_version=MACRO_VIEW_PROJECTION_VERSION,
             now_ms=now,
-            lookback_days=self._lookback_days(),
-            limit_per_series=self._limit_per_series(),
+            lookback_days=lookback_days,
+            limit_per_series=limit_per_series,
             claimed_targets=claimed,
             concept_keys=concept_keys,
         )
@@ -139,8 +155,8 @@ class MacroViewProjectionWorker(WorkerBase):
 
         observations = repos.macro_intel.observations_for_concepts(
             concept_keys=MACRO_CORE_CONCEPTS,
-            lookback_days=self._lookback_days(),
-            limit_per_series=self._limit_per_series(),
+            lookback_days=lookback_days,
+            limit_per_series=limit_per_series,
         )
         snapshot = build_macro_view_snapshot(observations, computed_at_ms=now)
         snapshot_changed = repos.macro_intel.insert_snapshot(snapshot)
@@ -190,23 +206,58 @@ class MacroViewProjectionWorker(WorkerBase):
         )
 
     def _batch_size(self) -> int:
-        return max(1, int(self.settings.batch_size))
+        return _required_positive_int(
+            self.settings.batch_size,
+            error_code="macro_view_projection_batch_size_required",
+        )
 
     def _lookback_days(self) -> int:
-        return max(1, int(self.settings.lookback_days))
+        return _required_min_int(
+            self.settings.lookback_days,
+            minimum=1095,
+            error_code="macro_view_projection_lookback_days_required",
+        )
 
     def _limit_per_series(self) -> int:
-        return max(1, int(self.settings.limit_per_series))
+        return _required_min_int(
+            self.settings.limit_per_series,
+            minimum=800,
+            error_code="macro_view_projection_limit_per_series_required",
+        )
 
     def _lease_ms(self) -> int:
-        return max(1, int(self.settings.lease_ms))
+        return _required_positive_int(
+            self.settings.lease_ms,
+            error_code="macro_view_projection_lease_ms_required",
+        )
 
     def _retry_ms(self) -> int:
-        return max(1, int(self.settings.retry_ms))
+        return _required_positive_int(
+            self.settings.retry_ms,
+            error_code="macro_view_projection_retry_ms_required",
+        )
+
+    def _max_attempts(self) -> int:
+        return _required_positive_int(
+            self.settings.max_attempts,
+            error_code="macro_view_projection_max_attempts_required",
+        )
 
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _required_positive_int(value: Any, *, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _required_min_int(value: Any, *, minimum: int, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _claimed_concept_keys(claimed: list[dict[str, Any]]) -> tuple[str, ...]:

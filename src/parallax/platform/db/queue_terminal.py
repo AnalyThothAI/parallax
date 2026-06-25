@@ -215,6 +215,36 @@ def inspect_terminal_events(
     }
 
 
+def list_terminal_event_ids(
+    conn: Any,
+    *,
+    worker_name: str,
+    source_table: str,
+    reason_bucket: str,
+    limit: int = 100,
+) -> list[str]:
+    parsed_limit = max(1, min(500, int(limit)))
+    rows = conn.execute(
+        """
+        SELECT terminal_id
+        FROM worker_queue_terminal_events
+        WHERE operator_action IS NULL
+          AND worker_name = %(worker_name)s
+          AND source_table = %(source_table)s
+          AND final_reason_bucket = %(reason_bucket)s
+        ORDER BY terminalized_at_ms ASC, terminal_id ASC
+        LIMIT %(limit)s
+        """,
+        {
+            "worker_name": _required_text(worker_name, "worker_name"),
+            "source_table": _required_text(source_table, "source_table"),
+            "reason_bucket": _required_text(reason_bucket, "reason_bucket"),
+            "limit": parsed_limit,
+        },
+    ).fetchall()
+    return [str(row["terminal_id"]) for row in rows]
+
+
 def terminal_reason_bucket(final_reason: str | None, final_status: str | None) -> str:
     reason = str(final_reason or "").lower()
     if "522" in reason:

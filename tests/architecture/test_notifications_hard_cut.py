@@ -118,6 +118,7 @@ def test_notification_workers_read_formal_settings_without_runtime_defaults() ->
         '"batch_size", 50',
         '"batch_size", 1',
         '"statement_timeout_seconds", None',
+        "max(1, int(settings.batch_size))",
     )
     violations = [f"rule:{token}" for token in banned if token in rule_text] + [
         f"delivery:{token}" for token in banned if token in delivery_text
@@ -127,19 +128,37 @@ def test_notification_workers_read_formal_settings_without_runtime_defaults() ->
     assert "notification_rule_settings_required" in rule_text
     assert "notification_rule_db_required" in rule_text
     assert "delivery_max_attempts: int," in rule_text
-    assert "self.batch_limit = max(1, int(settings.batch_size))" in rule_text
+    assert 'positive_worker_setting_int(settings, "batch_size", worker_name=name)' in rule_text
+    assert "notification_rule_delivery_max_attempts_required" in rule_text
     assert "statement_timeout_seconds=self.settings.statement_timeout_seconds" in rule_text
     assert "delivery_max_attempts=workers.notification_delivery.max_attempts" in (
         SRC / "app/runtime/worker_factories/notifications.py"
     ).read_text(encoding="utf-8")
     assert "notification_delivery_settings_required" in delivery_text
     assert "notification_delivery_db_required" in delivery_text
-    assert "self.batch_limit = max(1, int(settings.batch_size))" in delivery_text
+    assert 'positive_worker_setting_int(settings, "batch_size", worker_name=name)' in delivery_text
     assert "statement_timeout_seconds=self.settings.statement_timeout_seconds" in delivery_text
     assert "statement_timeout_seconds: float = Field(default=30.0, ge=0)" in rule_settings
     assert "statement_timeout_seconds: float = Field(default=30.0, ge=0)" in delivery_settings
     assert "running_timeout_ms: int = Field(default=300_000, ge=1)" in delivery_settings
     assert "stale_running_terminalization_batch_size: int = Field(default=100, ge=1)" in delivery_settings
+
+
+def test_notification_factory_uses_formal_worker_settings_without_dynamic_probe() -> None:
+    factory_text = (SRC / "app/runtime/worker_factories/notifications.py").read_text(encoding="utf-8")
+
+    assert "getattr(workers, name)" not in factory_text
+    assert "if workers.notification_rule.enabled:" in factory_text
+    assert "if workers.notification_delivery.enabled" in factory_text
+
+
+def test_notification_cooldown_uses_formal_nonnegative_contract_without_runtime_repair() -> None:
+    rules_text = NOTIFICATION_RULES.read_text(encoding="utf-8")
+    settings_text = (SRC / "platform/config/settings.py").read_text(encoding="utf-8")
+
+    assert "cooldown_seconds: int = Field(default=0, ge=0)" in settings_text
+    assert "notification_cooldown_seconds_required" in rules_text
+    assert "max(1, int(cooldown_seconds))" not in rules_text
 
 
 def test_signal_pulse_notification_rule_uses_formal_config_without_service_defaults() -> None:
@@ -271,6 +290,28 @@ def test_notification_delivery_stale_running_policy_uses_formal_settings_without
     )
     assert "notification_delivery_stale_running_terminalization_batch_size=int(" in db_pool_bundle_text
     assert "settings.workers.notification_delivery.stale_running_terminalization_batch_size" in db_pool_bundle_text
+
+
+def test_notification_runtime_requires_positive_int_policies_without_runtime_one_repair() -> None:
+    runtime_files = (
+        SRC / "domains/notifications/runtime/notification_worker.py",
+        SRC / "domains/notifications/runtime/notification_delivery.py",
+        SRC / "domains/notifications/repositories/notification_repository.py",
+    )
+    violations: list[str] = []
+    for path in runtime_files:
+        text = path.read_text(encoding="utf-8")
+        violations.extend(
+            f"{path.relative_to(ROOT)} contains runtime one repair {token!r}"
+            for token in ("max(1, int(settings.", "max(1, int(delivery_max_attempts", "max(1, int(max_attempts")
+            if token in text
+        )
+
+    repository_text = NOTIFICATION_REPOSITORY.read_text(encoding="utf-8")
+    assert violations == []
+    assert "notification_delivery_max_attempts_required" in repository_text
+    assert "notification_delivery_running_timeout_ms_required" in repository_text
+    assert "notification_delivery_stale_running_terminalization_batch_size_required" in repository_text
 
 
 def test_notification_delivery_worker_requires_session_transaction_without_manual_commit_fallback() -> None:
@@ -473,6 +514,35 @@ def test_notification_delivery_returning_mutations_require_cursor_rowcount_match
     assert "_optional_returning_row(" in claim_source
 
 
+def test_notification_delivery_terminal_mutations_are_claim_scoped_and_rowcount_checked() -> None:
+    text = NOTIFICATION_REPOSITORY.read_text(encoding="utf-8")
+    complete_source = text.split("    def complete_delivery", maxsplit=1)[1].split(
+        "\n    def fail_delivery",
+        maxsplit=1,
+    )[0]
+    fail_source = text.split("    def fail_delivery", maxsplit=1)[1].split(
+        "\n    def list_deliveries",
+        maxsplit=1,
+    )[0]
+    claim_predicates = (
+        "AND status = 'running'",
+        "AND attempt_count = %s",
+        "AND updated_at_ms = %s",
+    )
+
+    for token in claim_predicates:
+        assert token in complete_source
+        assert token in fail_source
+    assert "_delivery_claim_contract(delivery)" in complete_source
+    assert "_delivery_claim_contract(delivery)" in fail_source
+    assert "notification_delivery_complete_rowcount_required" in complete_source
+    assert "notification_delivery_complete_rowcount_invalid" in complete_source
+    assert "notification_delivery_fail_rowcount_required" in fail_source
+    assert "notification_delivery_fail_rowcount_invalid" in fail_source
+    assert "_single_row_write_count(" in complete_source
+    assert "_single_row_write_count(" in fail_source
+
+
 def test_notification_read_marker_counts_require_real_cursor_rowcount_without_len_rows_fallback() -> None:
     text = NOTIFICATION_REPOSITORY.read_text(encoding="utf-8")
     mark_read_source = text.split("    def mark_read", maxsplit=1)[1].split(
@@ -505,6 +575,26 @@ def test_notification_read_marker_counts_require_real_cursor_rowcount_without_le
     assert "_single_row_write_count(" in mark_read_source
     assert "_returned_write_count(" in mark_all_source
     assert "_returned_write_count(" in mark_author_source
+
+
+def test_notification_repository_read_lists_reject_runtime_limit_repairs() -> None:
+    text = NOTIFICATION_REPOSITORY.read_text(encoding="utf-8")
+    list_deliveries_source = text.split("    def list_deliveries", maxsplit=1)[1].split(
+        "\n    def _select_notifications",
+        maxsplit=1,
+    )[0]
+    select_notifications_source = text.split("    def _select_notifications", maxsplit=1)[1].split(
+        "\n\ndef _json",
+        maxsplit=1,
+    )[0]
+    combined = list_deliveries_source + select_notifications_source
+
+    banned = ("max(0, int(limit))",)
+
+    assert [token for token in banned if token in combined] == []
+    assert "notification_delivery_list_limit_required" in list_deliveries_source
+    assert "notification_list_limit_required" in select_notifications_source
+    assert "def _required_nonnegative_int(value: Any, *, error_code: str) -> int:" in text
 
 
 def test_notification_runtime_uses_semantic_signature_not_legacy_in_app_signature() -> None:

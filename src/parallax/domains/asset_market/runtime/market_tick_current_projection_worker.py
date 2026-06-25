@@ -79,9 +79,15 @@ class MarketTickCurrentProjectionWorker(WorkerBase):
             return cast(
                 list[dict[str, Any]],
                 repos.market_tick_current_dirty_targets.claim_due(
-                    limit=max(1, int(self.settings.batch_size)),
+                    limit=_required_positive_int(
+                        self.settings.batch_size,
+                        error_code="market_tick_current_batch_size_required",
+                    ),
                     now_ms=int(now_ms),
-                    lease_ms=max(1, int(self.settings.lease_ms)),
+                    lease_ms=_required_positive_int(
+                        self.settings.lease_ms,
+                        error_code="market_tick_current_lease_ms_required",
+                    ),
                     lease_owner=self.name,
                     commit=True,
                 ),
@@ -128,7 +134,15 @@ class MarketTickCurrentProjectionWorker(WorkerBase):
             repos.market_tick_current_dirty_targets.mark_error(
                 [claim],
                 error=error,
-                retry_ms=max(1, int(self.settings.retry_ms)),
+                retry_ms=_required_positive_int(
+                    self.settings.retry_ms,
+                    error_code="market_tick_current_retry_ms_required",
+                ),
+                max_attempts=_required_positive_int(
+                    self.settings.max_attempts,
+                    error_code="market_tick_current_max_attempts_required",
+                ),
+                worker_name=self.name,
                 now_ms=now_ms,
                 commit=False,
             )
@@ -151,6 +165,12 @@ class _ClaimResult:
 def _error_text(exc: BaseException) -> str:
     text = str(exc).strip()
     return f"{type(exc).__name__}: {text}" if text else type(exc).__name__
+
+
+def _required_positive_int(value: Any, *, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 __all__ = ["MarketTickCurrentProjectionWorker"]

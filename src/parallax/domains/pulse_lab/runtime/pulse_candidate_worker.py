@@ -4,7 +4,7 @@ import asyncio
 import hashlib
 import json
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from decimal import Decimal
@@ -46,6 +46,7 @@ from parallax.domains.token_intel.interfaces import (
     require_token_factor_snapshot,
     safe_int,
 )
+from parallax.platform.agent_execution import AgentCapacityReservation, AgentExecutionErrorClass
 
 PULSE_TRIGGER_METRICS_KEY = "pulse_trigger_metrics"
 ADVISORY_LOCK_KEY = 2026051502
@@ -87,24 +88,61 @@ class PulseCandidateWorker(WorkerBase):
         self.gate_func = gate_func
         self.windows = tuple(str(window).strip().lower() for window in settings.windows)
         self.scopes = tuple(str(scope).strip().lower() for scope in settings.scopes)
-        self.batch_size = max(1, int(settings.batch_size))
-        self.max_agent_jobs_per_cycle = max(1, int(settings.max_agent_jobs_per_cycle))
-        self.max_attempts = max(1, int(settings.max_attempts))
-        self.max_enqueues_per_cycle = max(1, int(settings.max_enqueues_per_cycle))
-        self.max_pending_jobs_global = max(1, int(settings.max_pending_jobs_global))
-        self.max_pending_jobs_per_window_scope = max(1, int(settings.max_pending_jobs_per_window_scope))
-        self.job_running_timeout_ms = max(1, int(settings.job_running_timeout_ms))
-        self.stale_running_terminalization_batch_size = max(
-            1,
-            int(settings.stale_running_terminalization_batch_size),
+        self.batch_size = _positive_worker_setting_int(settings, "batch_size", worker_name=name)
+        self.max_agent_jobs_per_cycle = _positive_worker_setting_int(
+            settings,
+            "max_agent_jobs_per_cycle",
+            worker_name=name,
         )
-        self.trigger_lease_ms = max(1, int(settings.trigger_lease_ms))
-        self.trigger_capacity_retry_ms = max(1, int(settings.trigger_capacity_retry_ms))
-        self.trigger_error_retry_ms = max(1, int(settings.trigger_error_retry_ms))
-        self.target_edge_budget_per_hour = max(1, int(settings.target_edge_budget_per_hour))
-        self.candidate_edge_budget_per_hour = max(1, int(settings.candidate_edge_budget_per_hour))
-        self.failure_circuit_per_hour = max(1, int(settings.failure_circuit_per_hour))
-        self.timeline_debounce_seconds = max(0, int(settings.timeline_debounce_seconds))
+        self.max_attempts = _positive_worker_setting_int(settings, "max_attempts", worker_name=name)
+        self.max_enqueues_per_cycle = _positive_worker_setting_int(
+            settings,
+            "max_enqueues_per_cycle",
+            worker_name=name,
+        )
+        self.max_pending_jobs_global = _positive_worker_setting_int(
+            settings,
+            "max_pending_jobs_global",
+            worker_name=name,
+        )
+        self.max_pending_jobs_per_window_scope = _positive_worker_setting_int(
+            settings,
+            "max_pending_jobs_per_window_scope",
+            worker_name=name,
+        )
+        self.job_running_timeout_ms = _positive_worker_setting_int(settings, "job_running_timeout_ms", worker_name=name)
+        self.stale_running_terminalization_batch_size = _positive_worker_setting_int(
+            settings,
+            "stale_running_terminalization_batch_size",
+            worker_name=name,
+        )
+        self.trigger_lease_ms = _positive_worker_setting_int(settings, "trigger_lease_ms", worker_name=name)
+        self.trigger_capacity_retry_ms = _positive_worker_setting_int(
+            settings,
+            "trigger_capacity_retry_ms",
+            worker_name=name,
+        )
+        self.trigger_error_retry_ms = _positive_worker_setting_int(settings, "trigger_error_retry_ms", worker_name=name)
+        self.target_edge_budget_per_hour = _positive_worker_setting_int(
+            settings,
+            "target_edge_budget_per_hour",
+            worker_name=name,
+        )
+        self.candidate_edge_budget_per_hour = _positive_worker_setting_int(
+            settings,
+            "candidate_edge_budget_per_hour",
+            worker_name=name,
+        )
+        self.failure_circuit_per_hour = _positive_worker_setting_int(
+            settings,
+            "failure_circuit_per_hour",
+            worker_name=name,
+        )
+        self.timeline_debounce_seconds = _nonnegative_worker_setting_int(
+            settings,
+            "timeline_debounce_seconds",
+            worker_name=name,
+        )
         self.failure_circuit_reasons = _required_string_tuple(
             settings.failure_circuit_reasons,
             error="pulse_candidate_failure_circuit_reasons_required",
@@ -302,6 +340,8 @@ class PulseCandidateWorker(WorkerBase):
                             error=str(exc),
                             now_ms=resolved_now_ms,
                             retry_ms=self.trigger_error_retry_ms,
+                            max_attempts=self.max_attempts,
+                            worker_name=self.name,
                             commit=False,
                         )
         return result
@@ -603,17 +643,57 @@ def _context_from_job(job: dict[str, Any]) -> PulseCandidateContext | None:
     context = _mapping(job.get("context_json"))
     if not context:
         return None
-    candidate_id = _clean(context.get("candidate_id"))
-    candidate_type = _clean(context.get("candidate_type"))
-    subject_key = _clean(context.get("subject_key"))
-    window = _clean(context.get("window"))
-    scope = _clean(context.get("scope"))
-    trigger_signature = _clean(context.get("trigger_signature"))
-    timeline_signature = _clean(context.get("timeline_signature"))
+    candidate_id = _required_context_text(
+        context,
+        field="candidate_id",
+        error="pulse_candidate_context_candidate_id_required",
+    )
+    candidate_type = _required_context_text(
+        context,
+        field="candidate_type",
+        error="pulse_candidate_context_candidate_type_required",
+    )
+    subject_key = _required_context_text(
+        context,
+        field="subject_key",
+        error="pulse_candidate_context_subject_key_required",
+    )
+    target_type = _required_context_text(
+        context,
+        field="target_type",
+        error="pulse_candidate_context_target_type_required",
+    )
+    target_id = _required_context_text(
+        context,
+        field="target_id",
+        error="pulse_candidate_context_target_id_required",
+    )
+    window = _required_context_text(
+        context,
+        field="window",
+        error="pulse_candidate_context_window_required",
+    )
+    scope = _required_context_text(
+        context,
+        field="scope",
+        error="pulse_candidate_context_scope_required",
+    )
+    trigger_signature = _required_context_text(
+        context,
+        field="trigger_signature",
+        error="pulse_candidate_context_trigger_signature_required",
+    )
+    timeline_signature = _required_context_text(
+        context,
+        field="timeline_signature",
+        error="pulse_candidate_context_timeline_signature_required",
+    )
     if (
         candidate_id is None
         or candidate_type is None
         or subject_key is None
+        or target_type is None
+        or target_id is None
         or window is None
         or scope is None
         or trigger_signature is None
@@ -623,12 +703,55 @@ def _context_from_job(job: dict[str, Any]) -> PulseCandidateContext | None:
     factor_snapshot = _mapping(context.get("factor_snapshot"))
     if not factor_snapshot:
         return None
-    selected_posts = context.get("selected_posts")
-    if not isinstance(selected_posts, list):
-        selected_posts = []
-    post_clusters = context.get("post_clusters")
-    if not isinstance(post_clusters, list):
-        post_clusters = []
+    gate_result = _required_context_mapping(
+        context,
+        field="gate_result",
+        error="pulse_candidate_context_gate_result_required",
+    )
+    if gate_result is None:
+        return None
+    edge_state = _required_context_mapping(
+        context,
+        field="edge_state",
+        error="pulse_candidate_context_edge_state_required",
+    )
+    if edge_state is None:
+        return None
+    selected_posts = _required_context_object_list(
+        context,
+        field="selected_posts",
+        error="pulse_candidate_context_selected_posts_required",
+    )
+    if selected_posts is None:
+        return None
+    post_clusters = _required_context_object_list(
+        context,
+        field="post_clusters",
+        error="pulse_candidate_context_post_clusters_required",
+    )
+    if post_clusters is None:
+        return None
+    edge_events = _required_context_string_list(
+        context,
+        field="edge_events",
+        error="pulse_candidate_context_edge_events_required",
+    )
+    if edge_events is None:
+        return None
+    source_event_ids = _required_context_string_list(
+        context,
+        field="source_event_ids",
+        error="pulse_candidate_context_source_event_ids_required",
+    )
+    if source_event_ids is None:
+        return None
+    evidence_event_ids = _required_context_string_list(
+        context,
+        field="evidence_event_ids",
+        error="pulse_candidate_context_evidence_event_ids_required",
+    )
+    if evidence_event_ids is None:
+        return None
     return PulseCandidateContext(
         candidate_id=candidate_id,
         candidate_type=candidate_type,
@@ -638,18 +761,73 @@ def _context_from_job(job: dict[str, Any]) -> PulseCandidateContext | None:
         trigger_signature=trigger_signature,
         timeline_signature=timeline_signature,
         priority=safe_int(job.get("priority")),
-        target_type=_clean(context.get("target_type")),
-        target_id=_clean(context.get("target_id")),
+        target_type=target_type,
+        target_id=target_id,
         symbol=_clean(context.get("symbol")),
         factor_snapshot=factor_snapshot,
-        selected_posts=[post for post in selected_posts if isinstance(post, dict)],
-        post_clusters=[cluster for cluster in post_clusters if isinstance(cluster, dict)],
-        gate_result=_mapping(context.get("gate_result")) or None,
-        edge_state=_mapping(context.get("edge_state")) or None,
-        edge_events=tuple(_stable_strings(context.get("edge_events"))),
-        source_event_ids=_stable_strings(context.get("source_event_ids")),
-        evidence_event_ids=_stable_strings(context.get("evidence_event_ids")),
+        selected_posts=selected_posts,
+        post_clusters=post_clusters,
+        gate_result=gate_result,
+        edge_state=edge_state,
+        edge_events=tuple(edge_events),
+        source_event_ids=source_event_ids,
+        evidence_event_ids=evidence_event_ids,
     )
+
+
+def _required_context_text(context: dict[str, Any], *, field: str, error: str) -> str | None:
+    value = context.get(field)
+    if not isinstance(value, str):
+        logger.debug("malformed pulse candidate job context: {}", error)
+        return None
+    text = value.strip()
+    if not text:
+        logger.debug("malformed pulse candidate job context: {}", error)
+        return None
+    return text
+
+
+def _required_context_mapping(context: dict[str, Any], *, field: str, error: str) -> dict[str, Any] | None:
+    value = context.get(field)
+    if not isinstance(value, Mapping):
+        logger.debug("malformed pulse candidate job context: {}", error)
+        return None
+    return dict(value)
+
+
+def _required_context_object_list(context: dict[str, Any], *, field: str, error: str) -> list[dict[str, Any]] | None:
+    value = context.get(field)
+    if not isinstance(value, list):
+        logger.debug("malformed pulse candidate job context: {}", error)
+        return None
+    records: list[dict[str, Any]] = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            logger.debug("malformed pulse candidate job context: {}", error)
+            return None
+        records.append(dict(item))
+    return records
+
+
+def _required_context_string_list(context: dict[str, Any], *, field: str, error: str) -> list[str] | None:
+    value = context.get(field)
+    if not isinstance(value, list):
+        logger.debug("malformed pulse candidate job context: {}", error)
+        return None
+    seen: set[str] = set()
+    result: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            logger.debug("malformed pulse candidate job context: {}", error)
+            return None
+        text = item.strip()
+        if not text:
+            logger.debug("malformed pulse candidate job context: {}", error)
+            return None
+        if text not in seen:
+            seen.add(text)
+            result.append(text)
+    return result
 
 
 def _asset_candidate_id(
@@ -997,7 +1175,7 @@ def _terminalize_exhausted_stale_running_jobs(
         pulse_jobs.terminalize_exhausted_stale_running_jobs(
             now_ms=int(now_ms),
             stale_after_ms=int(running_timeout_ms),
-            limit=max(1, int(limit)),
+            limit=_positive_int(limit, error_code="pulse_candidate_stale_running_terminalization_limit_required"),
         )
         or 0
     )
@@ -1072,9 +1250,16 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
-def _record_agent_backpressure(result: dict[str, Any], reservation: Any) -> None:
-    reason = getattr(reservation, "reason", None)
-    resolved_reason = str(getattr(reason, "value", reason) or "capacity_denied")
+def _record_agent_backpressure(result: dict[str, Any], reservation: AgentCapacityReservation) -> None:
+    if not isinstance(reservation, AgentCapacityReservation):
+        raise RuntimeError("pulse_candidate_agent_reservation_contract_required")
+    reason = reservation.reason
+    if reason is None:
+        resolved_reason = AgentExecutionErrorClass.CAPACITY_DENIED.value
+    elif isinstance(reason, AgentExecutionErrorClass):
+        resolved_reason = reason.value
+    else:
+        raise RuntimeError("pulse_candidate_agent_reservation_reason_contract_required")
     result["agent_backpressure"] = resolved_reason
     _increment_agent_backpressure_reason(result, resolved_reason)
 
@@ -1083,3 +1268,31 @@ def _increment_agent_backpressure_reason(result: dict[str, Any], reason: str) ->
     resolved_reason = str(reason or "capacity_denied")
     key = f"agent_backpressure_{resolved_reason}"
     result[key] = int(result.get(key) or 0) + 1
+
+
+def _positive_worker_setting_int(settings: Any, field_name: str, *, worker_name: str) -> int:
+    try:
+        value = getattr(settings, field_name)
+    except AttributeError as exc:
+        raise RuntimeError(f"{worker_name}_{field_name}_required") from exc
+    return _positive_int(value, error_code=f"{worker_name}_{field_name}_required")
+
+
+def _nonnegative_worker_setting_int(settings: Any, field_name: str, *, worker_name: str) -> int:
+    try:
+        value = getattr(settings, field_name)
+    except AttributeError as exc:
+        raise RuntimeError(f"{worker_name}_{field_name}_required") from exc
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError(f"{worker_name}_{field_name}_required")
+    if value < 0:
+        raise RuntimeError(f"{worker_name}_{field_name}_required")
+    return int(value)
+
+
+def _positive_int(value: Any, *, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError(error_code)
+    if value <= 0:
+        raise RuntimeError(error_code)
+    return int(value)

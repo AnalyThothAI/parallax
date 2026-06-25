@@ -79,6 +79,34 @@ def test_market_tick_poll_worker_reads_formal_settings_fields_directly() -> None
         )
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "error_code"),
+    [
+        pytest.param("batch_size", 0, "market_tick_poll_batch_size_required", id="batch-zero"),
+        pytest.param("batch_size", True, "market_tick_poll_batch_size_required", id="batch-bool"),
+        pytest.param("batch_size", "100", "market_tick_poll_batch_size_required", id="batch-string"),
+        pytest.param("concurrency", 0, "market_tick_poll_concurrency_required", id="concurrency-zero"),
+        pytest.param("concurrency", True, "market_tick_poll_concurrency_required", id="concurrency-bool"),
+        pytest.param("concurrency", "4", "market_tick_poll_concurrency_required", id="concurrency-string"),
+    ],
+)
+def test_market_tick_poll_worker_rejects_malformed_runtime_settings(
+    field: str,
+    value: Any,
+    error_code: str,
+) -> None:
+    state = FakeSessionState()
+    settings = _settings()
+    setattr(settings, field, value)
+
+    with pytest.raises(ValueError, match=error_code):
+        MarketTickPollWorker(
+            pool_bundle=FakeDB(state, FakeRepos(state, [])),
+            providers=FakeProviders(dex_quote_market=None, cex_market=None),
+            settings=settings,
+        )
+
+
 def test_market_tick_poll_worker_is_append_only_without_single_writer_lock() -> None:
     state = FakeSessionState()
     worker = MarketTickPollWorker(

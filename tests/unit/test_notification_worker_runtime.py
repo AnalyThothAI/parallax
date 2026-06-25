@@ -781,6 +781,51 @@ def test_notification_repository_read_state_rejects_invalid_cursor_rowcount(oper
         operation(repository)
 
 
+@pytest.mark.parametrize(
+    ("operation", "error_code"),
+    [
+        pytest.param(
+            lambda repository: repository.list_notifications(limit=-1),
+            "notification_list_limit_required",
+            id="notification-negative",
+        ),
+        pytest.param(
+            lambda repository: repository.list_notifications(limit=True),
+            "notification_list_limit_required",
+            id="notification-bool",
+        ),
+        pytest.param(
+            lambda repository: repository.list_notifications(limit="10"),
+            "notification_list_limit_required",
+            id="notification-string",
+        ),
+        pytest.param(
+            lambda repository: repository.list_deliveries(limit=-1),
+            "notification_delivery_list_limit_required",
+            id="delivery-negative",
+        ),
+        pytest.param(
+            lambda repository: repository.list_deliveries(limit=True),
+            "notification_delivery_list_limit_required",
+            id="delivery-bool",
+        ),
+        pytest.param(
+            lambda repository: repository.list_deliveries(limit="10"),
+            "notification_delivery_list_limit_required",
+            id="delivery-string",
+        ),
+    ],
+)
+def test_notification_repository_read_lists_reject_malformed_limits_before_sql(operation, error_code):
+    conn = NotificationRepositoryConn()
+    repository = _notification_repository(conn)
+
+    with pytest.raises(RuntimeError, match=error_code):
+        operation(repository)
+
+    assert conn.sqls == []
+
+
 def test_notification_repository_caller_owned_writes_do_not_open_inner_transaction():
     conn = NotificationRepositoryConn()
     repository = _notification_repository(conn)
@@ -819,6 +864,151 @@ def test_notification_repository_fail_delivery_requires_attempt_contract_before_
             },
             error="boom",
             now_ms=NOW_MS,
+            commit=False,
+        )
+
+    assert conn.sqls == []
+
+
+def test_notification_repository_complete_delivery_requires_claim_contract_before_sql():
+    conn = NotificationRepositoryConn()
+    repository = _notification_repository(conn)
+
+    with pytest.raises(RuntimeError, match="notification_delivery_claim_contract_required"):
+        repository.complete_delivery(
+            {
+                "delivery_id": "delivery-1",
+                "attempt_count": 1,
+            },
+            delivered_at_ms=NOW_MS,
+            commit=False,
+        )
+
+    assert conn.sqls == []
+
+
+@pytest.mark.parametrize(
+    ("operation", "error_code"),
+    [
+        pytest.param(
+            lambda repository: repository.complete_delivery(
+                _delivery_claim(),
+                delivered_at_ms=NOW_MS,
+                commit=False,
+            ),
+            "notification_delivery_complete_rowcount_required",
+            id="complete-delivery",
+        ),
+        pytest.param(
+            lambda repository: repository.fail_delivery(
+                _delivery_claim(),
+                error="boom",
+                now_ms=NOW_MS,
+                commit=False,
+            ),
+            "notification_delivery_fail_rowcount_required",
+            id="fail-delivery",
+        ),
+        pytest.param(
+            lambda repository: repository.claim_next_delivery(now_ms=NOW_MS),
+            "notification_delivery_stale_terminalize_rowcount_required",
+            id="stale-terminalize",
+        ),
+    ],
+)
+def test_notification_repository_delivery_terminal_state_requires_cursor_rowcount(operation, error_code):
+    conn = NotificationRepositoryConn(
+        omit_rowcount=True,
+        omit_stale_terminalization_rowcount=error_code == "notification_delivery_stale_terminalize_rowcount_required",
+    )
+    repository = _notification_repository(conn)
+
+    with pytest.raises(TypeError, match=error_code):
+        operation(repository)
+
+
+@pytest.mark.parametrize(
+    ("operation", "error_code"),
+    [
+        pytest.param(
+            lambda repository: repository.complete_delivery(
+                _delivery_claim(),
+                delivered_at_ms=NOW_MS,
+                commit=False,
+            ),
+            "notification_delivery_complete_rowcount_invalid",
+            id="complete-delivery",
+        ),
+        pytest.param(
+            lambda repository: repository.fail_delivery(
+                _delivery_claim(),
+                error="boom",
+                now_ms=NOW_MS,
+                commit=False,
+            ),
+            "notification_delivery_fail_rowcount_invalid",
+            id="fail-delivery",
+        ),
+        pytest.param(
+            lambda repository: repository.claim_next_delivery(now_ms=NOW_MS),
+            "notification_delivery_stale_terminalize_rowcount_invalid",
+            id="stale-terminalize",
+        ),
+    ],
+)
+@pytest.mark.parametrize("rowcount", ["bad", True, -1, 2])
+def test_notification_repository_delivery_terminal_state_rejects_invalid_cursor_rowcount(
+    operation,
+    error_code,
+    rowcount,
+):
+    stale_rowcount = (
+        101
+        if error_code == "notification_delivery_stale_terminalize_rowcount_invalid" and rowcount == 2
+        else rowcount
+    )
+    conn = NotificationRepositoryConn(
+        rowcount=rowcount,
+        stale_terminalization_rowcount=stale_rowcount
+        if error_code == "notification_delivery_stale_terminalize_rowcount_invalid"
+        else 0,
+    )
+    repository = _notification_repository(conn)
+
+    with pytest.raises(TypeError, match=error_code):
+        operation(repository)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "error_code"),
+    [
+        (
+            {"running_timeout_ms": 0},
+            "notification_delivery_running_timeout_ms_required",
+        ),
+        (
+            {"stale_running_terminalization_batch_size": 0},
+            "notification_delivery_stale_running_terminalization_batch_size_required",
+        ),
+    ],
+)
+def test_notification_repository_requires_positive_running_policy_ints(kwargs, error_code):
+    conn = NotificationRepositoryConn()
+
+    with pytest.raises(RuntimeError, match=error_code):
+        _notification_repository(conn, **kwargs)
+
+
+def test_notification_repository_enqueue_delivery_requires_positive_max_attempts_before_sql():
+    conn = NotificationRepositoryConn()
+    repository = _notification_repository(conn)
+
+    with pytest.raises(RuntimeError, match="notification_delivery_max_attempts_required"):
+        repository.enqueue_delivery(
+            notification_id="notification-1",
+            channel_id="pushdeer",
+            provider="pushdeer",
+            max_attempts=0,
             commit=False,
         )
 
@@ -1091,6 +1281,8 @@ class NotificationRepositoryConn:
         rowcount: object = 1,
         omit_rowcount: bool = False,
         return_delivery_row: bool = True,
+        stale_terminalization_rowcount: object = 0,
+        omit_stale_terminalization_rowcount: bool = False,
     ) -> None:
         self.sqls: list[str] = []
         self.params: list[Any] = []
@@ -1101,6 +1293,8 @@ class NotificationRepositoryConn:
         self.sql_transaction_depths: list[int] = []
         self.rowcount = rowcount
         self.omit_rowcount = omit_rowcount
+        self.stale_terminalization_rowcount = stale_terminalization_rowcount
+        self.omit_stale_terminalization_rowcount = omit_stale_terminalization_rowcount
         self.notification_row = {
             "notification_id": "notification-1",
             "dedup_key": "dedup-1",
@@ -1134,6 +1328,7 @@ class NotificationRepositoryConn:
                 "status": "pending",
                 "attempt_count": 0,
                 "max_attempts": 3,
+                "updated_at_ms": NOW_MS,
             }
             if return_delivery_row
             else None
@@ -1177,7 +1372,10 @@ class NotificationRepositoryCursor:
     def __init__(self, conn: NotificationRepositoryConn, sql: str) -> None:
         self.conn = conn
         self.sql = sql
-        if not conn.omit_rowcount:
+        if "WITH expired AS" in sql:
+            if not conn.omit_stale_terminalization_rowcount:
+                self.rowcount = conn.stale_terminalization_rowcount
+        elif not conn.omit_rowcount:
             self.rowcount = conn.rowcount
 
     def fetchone(self):
@@ -1285,6 +1483,21 @@ def _aggregate_notification_insert_kwargs(**overrides):
     )
     kwargs.update(overrides)
     return kwargs
+
+
+def _delivery_claim(**overrides):
+    claim = {
+        "delivery_id": "delivery-1",
+        "notification_id": "notification-1",
+        "channel_id": "pushdeer",
+        "provider": "pushdeer",
+        "status": "running",
+        "attempt_count": 1,
+        "max_attempts": 3,
+        "updated_at_ms": NOW_MS,
+    }
+    claim.update(overrides)
+    return claim
 
 
 @contextmanager

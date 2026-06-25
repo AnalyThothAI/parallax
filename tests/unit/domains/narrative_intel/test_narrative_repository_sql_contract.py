@@ -140,6 +140,21 @@ def test_narrative_admission_write_counts_reject_invalid_cursor_rowcount(operati
         operation(NarrativeRepository(conn))
 
 
+@pytest.mark.parametrize("limit", [0, -1, True, "1"])
+def test_narrative_upsert_admissions_rejects_malformed_limit_before_transaction(limit: object) -> None:
+    conn = _ScriptedConnection()
+
+    with pytest.raises(ValueError, match="narrative_admission_upsert_limit_required"):
+        NarrativeRepository(conn).upsert_admissions(
+            [_admission_row()],
+            now_ms=2_000,
+            limit=limit,  # type: ignore[arg-type]
+        )
+
+    assert conn.sql == []
+    assert conn.transaction_commits == 0
+
+
 def test_admission_payload_hash_rejects_legacy_payload_keys() -> None:
     with pytest.raises(ValueError, match="current payload hash payload has non-string keys"):
         admission_payload_hash(

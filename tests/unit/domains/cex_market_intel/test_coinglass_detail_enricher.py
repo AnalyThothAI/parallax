@@ -49,6 +49,47 @@ def test_enrich_rows_with_coinglass_marks_all_rows_unavailable_without_client() 
     assert [row["coinglass_status"] for row in enriched] == ["unavailable", "unavailable"]
 
 
+def test_enrich_rows_with_coinglass_allows_zero_limits_as_explicit_disable() -> None:
+    enriched = enrich_rows_with_coinglass(
+        [{"base_symbol": "BTC", "native_market_id": "BTCUSDT"}],
+        client=_CallRecordingClient(),
+        now_ms=1_800_000_000_000,
+        limit=0,
+        level_limit=0,
+    )
+
+    assert enriched == [{"base_symbol": "BTC", "native_market_id": "BTCUSDT", "coinglass_status": "unavailable"}]
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "error_code"),
+    [
+        ({"limit": -1}, "coinglass_detail_enrichment_limit_required"),
+        ({"limit": True}, "coinglass_detail_enrichment_limit_required"),
+        ({"limit": "1"}, "coinglass_detail_enrichment_limit_required"),
+        ({"level_limit": -1}, "coinglass_detail_level_limit_required"),
+        ({"level_limit": True}, "coinglass_detail_level_limit_required"),
+        ({"level_limit": "6"}, "coinglass_detail_level_limit_required"),
+    ],
+)
+def test_enrich_rows_with_coinglass_requires_formal_limits_before_provider_io(
+    kwargs: dict[str, object],
+    error_code: str,
+) -> None:
+    client = _CallRecordingClient()
+    params = {"limit": 1, "level_limit": 6, **kwargs}
+
+    with pytest.raises(ValueError, match=error_code):
+        enrich_rows_with_coinglass(
+            [{"base_symbol": "BTC", "native_market_id": "BTCUSDT"}],
+            client=client,
+            now_ms=1_800_000_000_000,
+            **params,  # type: ignore[arg-type]
+        )
+
+    assert client.calls == []
+
+
 def test_enrich_rows_with_coinglass_requires_base_symbol_before_provider_io() -> None:
     client = _CallRecordingClient()
 

@@ -20,7 +20,7 @@ def build_binance_oi_radar_rows(
     period: str,
     limit: int,
 ) -> dict[str, Any]:
-    selected = universe[: max(1, int(limit))]
+    selected = universe[: _required_positive_int(limit, "cex_oi_radar_limit_required")]
     route_markets = [
         (route, _required_symbol(route, "native_market_id"), _required_symbol(route, "base_symbol"))
         for route in selected
@@ -104,6 +104,14 @@ def _premiums_by_symbol(rows: Sequence[CexFundingPremium]) -> dict[str, CexFundi
 
 def _symbol(value: Any) -> str:
     return str(value or "").strip().upper()
+
+
+def _required_positive_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value <= 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _required_symbol(route: dict[str, Any], field: str) -> str:

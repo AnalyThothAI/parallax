@@ -42,6 +42,31 @@ class NarrativeAdmissionWorker(WorkerBase):
         super().__init__(name=name, settings=settings, db=db, telemetry=telemetry, wake_waiter=wake_waiter)
         self.windows = tuple(str(window).strip().lower() for window in settings.windows)
         self.scopes = tuple(str(scope).strip().lower() for scope in settings.scopes)
+        self.admission_limit = _positive_worker_setting_int(
+            settings,
+            "admission_limit",
+            error_code="narrative_admission_admission_limit_required",
+        )
+        self.source_limit = _positive_worker_setting_int(
+            settings,
+            "source_limit",
+            error_code="narrative_admission_source_limit_required",
+        )
+        self.lease_ms = _positive_worker_setting_int(
+            settings,
+            "lease_ms",
+            error_code="narrative_admission_lease_ms_required",
+        )
+        self.retry_ms = _positive_worker_setting_int(
+            settings,
+            "retry_ms",
+            error_code="narrative_admission_retry_ms_required",
+        )
+        self.max_attempts = _positive_worker_setting_int(
+            settings,
+            "max_attempts",
+            error_code="narrative_admission_max_attempts_required",
+        )
         self.admission = NarrativeAdmissionService(
             hot_rank_limit=int(settings.hot_rank_limit),
             min_rank_score=int(settings.min_rank_score),
@@ -65,10 +90,6 @@ class NarrativeAdmissionWorker(WorkerBase):
         return WorkerResult(processed=processed, notes=stats)
 
     def _process_dirty_targets_sync(self, *, now_ms: int) -> dict[str, int]:
-        admission_limit = max(1, int(self.settings.admission_limit))
-        source_limit = max(1, int(self.settings.source_limit))
-        lease_ms = max(1, int(self.settings.lease_ms))
-        retry_ms = max(1, int(self.settings.retry_ms))
         stats = {
             "claimed": 0,
             "queue_depth": 0,
@@ -82,9 +103,9 @@ class NarrativeAdmissionWorker(WorkerBase):
         with self._repository_session() as repos, repos.transaction():
             claims = repos.narrative_admission_dirty_targets.claim_due(
                 now_ms=now_ms,
-                limit=admission_limit,
+                limit=self.admission_limit,
                 lease_owner=self.name,
-                lease_ms=lease_ms,
+                lease_ms=self.lease_ms,
                 commit=False,
             )
             stats["claimed"] = len(claims)
@@ -101,7 +122,7 @@ class NarrativeAdmissionWorker(WorkerBase):
                             repos,
                             claim,
                             now_ms=now_ms,
-                            source_limit=source_limit,
+                            source_limit=self.source_limit,
                         )
                     _merge_stats(stats, claim_stats)
                     done_claims.append(dict(claim))
@@ -115,7 +136,9 @@ class NarrativeAdmissionWorker(WorkerBase):
                     [failed_claim],
                     error=error,
                     now_ms=now_ms,
-                    retry_ms=retry_ms,
+                    retry_ms=self.retry_ms,
+                    max_attempts=self.max_attempts,
+                    worker_name=self.name,
                     commit=False,
                 )
         return stats
@@ -258,6 +281,15 @@ def _watched_only_for_scope(scope: str) -> bool:
         return NARRATIVE_SCOPE_WATCHED_ONLY[scope]
     except KeyError as exc:
         raise ValueError(f"narrative_admission_dirty_target_invalid_scope:{scope}") from exc
+
+
+def _positive_worker_setting_int(settings: Any, field_name: str, *, error_code: str) -> int:
+    value = getattr(settings, field_name)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value <= 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _radar_row_for_admission(row: dict[str, Any]) -> dict[str, Any]:

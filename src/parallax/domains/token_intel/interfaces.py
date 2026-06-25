@@ -35,7 +35,7 @@ from parallax.domains.token_intel.scoring.factor_snapshot_contract import (
 )
 from parallax.domains.token_intel.scoring.scoring_common import clamp_score, safe_float, safe_int
 from parallax.domains.token_intel.services.token_evidence_builder import build_token_evidence
-from parallax.domains.token_intel.services.token_intent_builder import build_token_intents
+from parallax.domains.token_intel.services.token_intent_builder import TokenIntentInput, build_token_intents
 from parallax.domains.token_intel.services.token_intent_resolver import (
     TokenIntentResolutionDecision,
     TokenIntentResolver,
@@ -83,6 +83,7 @@ __all__ = [
     "TokenEvidenceRepository",
     "TokenIdentityLookup",
     "TokenIdentityLookupResult",
+    "TokenIntentInput",
     "TokenIntentLookupRepository",
     "TokenIntentRepository",
     "TokenIntentResolutionDecision",

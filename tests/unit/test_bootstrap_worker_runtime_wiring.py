@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 
 import pytest
@@ -384,6 +385,24 @@ def test_worker_factory_wires_notification_workers_with_shared_local_wake_waiter
     assert workers["notification_delivery"].settings.statement_timeout_seconds == 30
 
 
+@pytest.mark.parametrize("timeout", [-1, True, "0.01"])
+def test_notification_local_wake_waiter_rejects_malformed_timeout_without_runtime_repair(timeout: object) -> None:
+    db = FakeDB()
+    workers = construct_workers(
+        settings=_settings(notifications_enabled=True),
+        db=db,
+        telemetry=object(),
+        providers=FakeProviders(),
+        hub=SimpleNamespace(publish=lambda payload: None),
+        collector=FakeCollector(name="collector", settings=SimpleNamespace(enabled=False), db=db, telemetry=object()),
+        collector_enabled=False,
+        wake_bus=db.wake,
+    )
+
+    with pytest.raises(ValueError, match="wake_waiter_timeout_seconds_required"):
+        asyncio.run(workers["notification_delivery"].wake_waiter.async_wait(timeout))
+
+
 def test_notification_delivery_without_enabled_channel_is_disabled_not_unavailable() -> None:
     db = FakeDB()
 
@@ -687,7 +706,7 @@ def test_worker_factory_wires_news_item_brief_when_configured() -> None:
 
     assert isinstance(workers["news_item_brief"], NewsItemBriefWorker)
     assert workers["news_item_brief"].provider is providers.news_intel.brief_provider
-    assert workers["news_item_brief"].wake_emitter is db.wake
+    assert not hasattr(workers["news_item_brief"], "wake_emitter")
     assert not hasattr(workers["news_item_brief"], "wake_bus")
     assert workers["news_item_brief"].wake_waiter.channels == ()
     assert workers["news_item_brief"].settings.advisory_lock_key == 2026052001
@@ -696,6 +715,59 @@ def test_worker_factory_wires_news_item_brief_when_configured() -> None:
     assert workers["news_item_brief"].settings.retry_ms == 60_000
     assert workers["news_item_brief"].settings.statement_timeout_seconds == 30
     assert workers["news_item_brief"].settings.backpressure_cooldown_ms == 60_000
+
+
+def test_worker_factory_keeps_news_item_brief_interval_only_when_config_overrides_wakes() -> None:
+    db = FakeDB()
+    providers = FakeProviders(brief_provider=object())
+
+    workers = construct_workers(
+        settings=_settings(
+            news_item_brief_configured=True,
+            news_item_brief_wakes_on=("news_item_processed",),
+        ),
+        db=db,
+        telemetry=object(),
+        providers=providers,
+        hub=SimpleNamespace(publish=lambda payload: None),
+        collector=FakeCollector(name="collector", settings=SimpleNamespace(enabled=False), db=db, telemetry=object()),
+        collector_enabled=False,
+        wake_bus=db.wake,
+    )
+
+    assert isinstance(workers["news_item_brief"], NewsItemBriefWorker)
+    assert workers["news_item_brief"].wake_waiter.channels == ()
+
+
+def test_worker_factory_hard_cuts_news_page_projection_retired_item_brief_wake_override() -> None:
+    db = FakeDB()
+    providers = FakeProviders()
+
+    workers = construct_workers(
+        settings=_settings(
+            news_page_projection_wakes_on=(
+                "news_item_written",
+                "news_item_processed",
+                "news_item_brief_updated",
+                "news_page_dirty",
+            ),
+        ),
+        db=db,
+        telemetry=object(),
+        providers=providers,
+        hub=SimpleNamespace(publish=lambda payload: None),
+        collector=FakeCollector(name="collector", settings=SimpleNamespace(enabled=False), db=db, telemetry=object()),
+        collector_enabled=False,
+        wake_bus=db.wake,
+    )
+
+    assert isinstance(workers["news_page_projection"], NewsPageProjectionWorker)
+    assert workers["news_page_projection"].wake_waiter.channels == (
+        "news_item_written",
+        "news_item_processed",
+        "news_story_brief_updated",
+        "news_page_dirty",
+    )
 
 
 def test_worker_factory_wires_news_story_brief_when_configured() -> None:
@@ -895,7 +967,9 @@ def _settings(
     notifications_enabled: bool = False,
     notification_log_channel_enabled: bool = True,
     news_item_brief_configured: bool = False,
+    news_item_brief_wakes_on: tuple[str, ...] = (),
     news_story_brief_configured: bool = False,
+    news_page_projection_wakes_on: tuple[str, ...] | None = None,
     macro_view_projection_enabled: bool = True,
     macrodata_enabled: bool = True,
     token_radar_projection_enabled: bool = False,
@@ -952,7 +1026,12 @@ def _settings(
             "pulse_candidate": {"enabled": False},
             "notification_rule": {"enabled": notifications_enabled},
             "notification_delivery": {"enabled": notifications_enabled},
-            "news_item_brief": {"enabled": news_item_brief_configured},
+            "news_item_brief": {"enabled": news_item_brief_configured, "wakes_on": list(news_item_brief_wakes_on)},
+            **(
+                {"news_page_projection": {"wakes_on": list(news_page_projection_wakes_on)}}
+                if news_page_projection_wakes_on is not None
+                else {}
+            ),
         },
     )
 

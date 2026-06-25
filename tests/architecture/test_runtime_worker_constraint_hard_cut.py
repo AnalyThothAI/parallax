@@ -198,6 +198,69 @@ def test_every_registered_worker_has_runtime_constraint_classification() -> None
 
 
 @pytest.mark.architecture
+def test_postgres_client_runtime_options_reject_malformed_timeouts_without_zero_ms_repair() -> None:
+    source = POSTGRES_CLIENT_PATH.read_text(encoding="utf-8")
+    helper_source = source.split("def _seconds_to_ms", 1)[1].split(
+        "\n\n\ndef _running_in_container",
+        1,
+    )[0]
+    forbidden_tokens = (
+        "max(0, int(float(seconds) * 1000))",
+        "int(float(seconds) * 1000)",
+    )
+
+    assert [token for token in forbidden_tokens if token in helper_source] == []
+    assert "_nonnegative_timeout_seconds(seconds)" in helper_source
+    assert "postgres_runtime_timeout_seconds_required" in helper_source
+
+
+@pytest.mark.architecture
+def test_event_anchor_backfill_runtime_parameters_are_strict_without_runtime_repairs() -> None:
+    worker_source = EVENT_ANCHOR_WORKER_PATH.read_text(encoding="utf-8")
+    repository_source = EVENT_ANCHOR_JOB_REPOSITORY_PATH.read_text(encoding="utf-8")
+    forbidden_worker_tokens = (
+        "max(1, int(settings.batch_size))",
+        "max(1, int(settings.concurrency))",
+        "max(1, int(settings.max_attempts))",
+        "max(0, int(settings.min_age_ms))",
+        "max(1, int(settings.lease_ms))",
+        "max(1, int(settings.active_window_ms))",
+        "max(1, int(settings.max_anchor_lag_ms))",
+    )
+    forbidden_repository_tokens = (
+        "max(1, int(active_window_ms))",
+        "max(0, int(min_age_ms))",
+        "max(1, int(lease_ms))",
+        "max(1, int(limit))",
+        "max(1, int(max_attempts))",
+        "max(1, int(retry_backoff_ms))",
+        "max(1, active_until_ms - created_at_ms)",
+    )
+    required_error_codes = (
+        "event_anchor_backfill_batch_size_required",
+        "event_anchor_backfill_concurrency_required",
+        "event_anchor_backfill_max_attempts_required",
+        "event_anchor_backfill_min_age_ms_required",
+        "event_anchor_backfill_lease_ms_required",
+        "event_anchor_backfill_active_window_ms_required",
+        "event_anchor_backfill_max_anchor_lag_ms_required",
+        "event_anchor_active_window_ms_required",
+        "event_anchor_min_age_ms_required",
+        "event_anchor_lease_ms_required",
+        "event_anchor_limit_required",
+        "event_anchor_max_attempts_required",
+        "event_anchor_retry_backoff_ms_required",
+        "event_anchor_terminal_active_window_required",
+    )
+
+    assert [token for token in forbidden_worker_tokens if token in worker_source] == []
+    assert [token for token in forbidden_repository_tokens if token in repository_source] == []
+    assert all(error_code in worker_source or error_code in repository_source for error_code in required_error_codes)
+    assert "isinstance(value, bool)" in worker_source
+    assert "isinstance(value, bool)" in repository_source
+
+
+@pytest.mark.architecture
 def test_queue_health_adapter_registry_covers_manifest_queue_tables_exactly_once() -> None:
     manifest_table_users: dict[str, set[str]] = {}
     for worker_name, tables in worker_queue_health_tables().items():
@@ -237,6 +300,31 @@ def test_queue_health_uses_formal_api_pool_connection_contract_without_missing_c
     assert "connection_context = runtime.db.api_pool.connection()" in fill_source
     assert "with connection_context as conn:" in fill_source
     assert '"missing_connection":' not in app_status_source
+
+
+@pytest.mark.architecture
+def test_queue_health_row_conversion_does_not_swallow_malformed_adapter_rows() -> None:
+    queue_health_source = (SRC / "app/runtime/queue_health.py").read_text(encoding="utf-8")
+    row_dict_source = queue_health_source.split("def _row_dict", 1)[1].split("\n\ndef _row_get", 1)[0]
+    row_get_source = queue_health_source.split("def _row_get", 1)[1].split("\n\ndef _int_metric", 1)[0]
+    dirty_source = queue_health_source.split("def _dirty_target_queue_health", 1)[1].split(
+        "\n\ndef _terminal_projection_queue_health",
+        1,
+    )[0]
+    forbidden_tokens = (
+        "except Exception:\n        return {}",
+        "return row[index]",
+        "return row.get(key)",
+    )
+
+    assert [token for token in forbidden_tokens if token in row_dict_source or token in row_get_source] == []
+    assert "queue_health_row_required" in row_dict_source
+    assert "queue_health_row_mapping_required" in row_dict_source
+    assert "queue_health_row_field_required" in row_get_source
+    assert "metrics = _row_dict(row)" in dirty_source
+    assert dirty_source.index("metrics = _row_dict(row)") < dirty_source.index(
+        "terminal_metrics = _terminal_projection_metrics"
+    )
 
 
 @pytest.mark.architecture
@@ -380,6 +468,26 @@ def test_live_price_gateway_publish_uses_async_hub_contract_without_isawaitable_
 
     assert [token for token in forbidden_tokens if token in source] == []
     assert "await self.on_live_market_update(payload)" in publish_source
+
+
+@pytest.mark.architecture
+def test_live_price_gateway_target_rows_use_formal_market_target_types_without_legacy_repair() -> None:
+    source = (SRC / "domains/asset_market/runtime/live_price_gateway.py").read_text(encoding="utf-8")
+    target_source = source.split("def _market_target_from_row", maxsplit=1)[1].split(
+        "\n\ndef _float",
+        maxsplit=1,
+    )[0]
+    forbidden_tokens = (
+        'target_type == "Asset"',
+        'target_type == "CexToken"',
+        "target_type == 'Asset'",
+        "target_type == 'CexToken'",
+        'target_id": f"{chain_id}:{address}"',
+        'target_id": f"{provider}:{native_market_id}"',
+    )
+
+    assert [token for token in forbidden_tokens if token in target_source] == []
+    assert 'target_type in {"chain_token", "cex_symbol"}' in target_source
 
 
 @pytest.mark.architecture
@@ -533,12 +641,15 @@ def test_queue_ops_retry_transitions_require_repository_contracts_without_option
         'getattr(repos, "event_anchor_jobs", None)',
         'getattr(repo, "retry_terminal_job_from_snapshot", None)',
         'getattr(repos, "pulse_jobs", None)',
+        'getattr(repo, "enqueue_macro_projection_dirty_target", None)',
+        'getattr(repo, "enqueue_macro_projection_dirty_targets_for_changes", None)',
     )
 
     assert "signals_connection_required" in queue_ops_text
     assert "discovery_repository_required" in queue_ops_text
     assert "event_anchor_job_repository_required" in queue_ops_text
     assert "pulse_jobs_repository_required" in queue_ops_text
+    assert "macro_intel_repository_required" in queue_ops_text
     assert all(token not in queue_ops_text for token in forbidden)
 
 
@@ -602,6 +713,19 @@ def test_token_capture_tier_projection_requires_session_transaction_without_manu
     assert "with repos.transaction():" in worker_project_source
     assert worker_project_source.index("with repos.transaction():") < worker_project_source.index("claim_due(")
     assert all(token not in worker_text for token in forbidden)
+
+
+@pytest.mark.architecture
+def test_token_capture_tier_changed_counts_reject_invalid_repository_results_without_zero_fallback() -> None:
+    changed_count_source = _function_source_by_name(TOKEN_CAPTURE_TIER_WORKER_PATH, "_changed_count")
+    forbidden = (
+        "int(value or 0)",
+        "max(0, int(",
+        "except (TypeError, ValueError)",
+    )
+
+    assert [token for token in forbidden if token in changed_count_source] == []
+    assert "token_capture_tier_changed_count_invalid" in changed_count_source
 
 
 @pytest.mark.architecture
@@ -734,6 +858,74 @@ def test_token_fact_repositories_use_connection_transaction_without_manual_commi
         assert error_marker in repository_text
         assert repository_text.count("_run_repository_write(self.conn, commit,") == helper_calls
         assert all(token not in repository_text for token in forbidden)
+
+
+@pytest.mark.architecture
+def test_token_intent_repository_requires_formal_input_without_slots_reflection() -> None:
+    repository_text = TOKEN_INTENT_REPOSITORY_PATH.read_text(encoding="utf-8")
+
+    forbidden = (
+        "item.__slots__",
+        "getattr(item, slot)",
+        'getattr(intent, "evidence_links"',
+        "hasattr(item",
+    )
+
+    assert [token for token in forbidden if token in repository_text] == []
+    assert "TokenIntentInput" in repository_text
+    assert "Mapping[str, Any]" in repository_text
+    assert "token_intent_repository_input_contract_required" in repository_text
+
+
+@pytest.mark.architecture
+def test_token_evidence_repository_requires_formal_input_without_slots_reflection() -> None:
+    repository_text = TOKEN_EVIDENCE_REPOSITORY_PATH.read_text(encoding="utf-8")
+
+    forbidden = (
+        "item.__slots__",
+        "getattr(item, slot)",
+        "hasattr(item",
+    )
+
+    assert [token for token in forbidden if token in repository_text] == []
+    assert "TokenEvidenceInput" in repository_text
+    assert "Mapping[str, Any]" in repository_text
+    assert "token_evidence_repository_input_contract_required" in repository_text
+
+
+@pytest.mark.architecture
+def test_intent_resolution_repository_requires_formal_input_without_slots_reflection() -> None:
+    repository_text = INTENT_RESOLUTION_REPOSITORY_PATH.read_text(encoding="utf-8")
+
+    forbidden = (
+        "item.__slots__",
+        "getattr(item, slot)",
+        "hasattr(item",
+    )
+
+    assert [token for token in forbidden if token in repository_text] == []
+    assert "DeterministicResolution" in repository_text
+    assert "Mapping[str, Any]" in repository_text
+    assert "intent_resolution_repository_input_contract_required" in repository_text
+
+
+@pytest.mark.architecture
+def test_token_intent_resolver_requires_formal_inputs_without_object_reflection() -> None:
+    service_text = TOKEN_INTENT_RESOLVER_SERVICE_PATH.read_text(encoding="utf-8")
+
+    forbidden = (
+        "getattr(intent,",
+        "getattr(evidence,",
+        "hasattr(intent",
+        "hasattr(evidence",
+    )
+
+    assert [token for token in forbidden if token in service_text] == []
+    assert "TokenIntentInput" in service_text
+    assert "TokenEvidenceInput" in service_text
+    assert "Mapping[str, Any]" in service_text
+    assert "token_intent_resolver_input_contract_required" in service_text
+    assert "token_intent_resolver_evidence_contract_required" in service_text
 
 
 @pytest.mark.architecture
@@ -902,6 +1094,9 @@ def test_projection_repository_diagnostic_reads_require_explicit_limits_without_
     assert "def list_dirty_ranges(self, *, limit: int," in repository_text
     assert "limit: int = 20" not in repository_text
     assert "limit: int = 50" not in repository_text
+    assert "max(0, int(limit))" not in repository_text
+    assert "projection_repository_limit_required" in repository_text
+    assert "def _required_nonnegative_int(value: Any, error_code: str) -> int:" in repository_text
 
 
 @pytest.mark.architecture
@@ -1101,6 +1296,10 @@ def test_asset_market_sync_services_require_connection_transaction_without_manua
 
     route_sync_source = (SRC / "domains/asset_market/services/asset_market_sync.py").read_text()
     assert "registry.binance_usdt_perp_sync_plan_counts(" in route_sync_source
+    assert "BinanceUsdtPerpRoute" in route_sync_source
+    assert "asset_market_sync_binance_route_contract_required" in route_sync_source
+    assert "getattr(route," not in route_sync_source
+    assert "client.usdt_perpetual_routes()" not in route_sync_source
 
 
 @pytest.mark.architecture
@@ -1154,6 +1353,21 @@ def test_registry_us_equity_deactivate_returning_counts_require_cursor_rowcount_
     assert "cursor = self.conn.execute" in deactivate_source
     assert "rows = cursor.fetchall()" in deactivate_source
     assert "return _returned_rowcount(cursor, rows)" in deactivate_source
+
+
+@pytest.mark.architecture
+def test_registry_ranked_live_market_targets_limit_rejects_runtime_repairs() -> None:
+    repository_text = REGISTRY_REPOSITORY_PATH.read_text(encoding="utf-8")
+    repository_tree = _parse(REGISTRY_REPOSITORY_PATH)
+    ranked_source = "\n".join(
+        _function_source(REGISTRY_REPOSITORY_PATH, node)
+        for node in ast.walk(repository_tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "ranked_live_market_targets"
+    )
+
+    assert "max(0, int(limit))" not in ranked_source
+    assert "registry_ranked_live_market_targets_limit_required" in ranked_source
+    assert "def _required_nonnegative_int(value: Any, error_code: str) -> int:" in repository_text
 
 
 @pytest.mark.architecture
@@ -1226,6 +1440,28 @@ def test_ops_capture_tier_rank_set_requires_valid_window_without_24h_fallback() 
     assert "_ops_window_ms(parsed_window)" in function_source
     assert "return WINDOW_MS[window]" in helper_source
     assert "raise ValueError" in helper_source
+
+
+def test_ops_repair_backfill_limits_reject_runtime_int_repairs() -> None:
+    source = (SRC / "app/surfaces/cli/commands/ops.py").read_text()
+    parser_source = (SRC / "app/surfaces/cli/parser.py").read_text()
+    forbidden = (
+        "parsed_limit = max(0, int(limit))",
+        "bounded_limit = max(1, int(limit))",
+        "parsed_since_ms = max(0, int(since_ms))",
+    )
+    required = (
+        "ops_token_radar_dirty_targets_since_ms_required",
+        "ops_token_radar_dirty_targets_limit_required",
+        "ops_capture_tier_rank_set_limit_required",
+        "ops_token_profile_image_repair_limit_required",
+    )
+
+    assert [token for token in forbidden if token in source] == []
+    assert [token for token in required if token not in source] == []
+    assert 'type=_nonnegative_int, default=0' in parser_source
+    assert 'type=_positive_int, default=5000' in parser_source
+    assert 'type=_positive_int, default=500' in parser_source
 
 
 def test_ops_one_shot_worker_lifecycle_uses_formal_db_and_lock_contracts() -> None:
@@ -1369,6 +1605,38 @@ def test_token_capture_tier_dirty_repository_uses_connection_transaction_without
 
 
 @pytest.mark.architecture
+def test_token_capture_tier_dirty_completion_keys_require_claim_attempt_contract() -> None:
+    repository_text = TOKEN_CAPTURE_TIER_DIRTY_TARGET_REPOSITORY_PATH.read_text(encoding="utf-8")
+    forbidden = (
+        'int(claim.get("attempt_count") or 0)',
+        'claim.get("attempt_count") or 0',
+        'int(claim["attempt_count"])',
+    )
+
+    assert all(token not in repository_text for token in forbidden)
+    assert 'claim["attempt_count"]' in repository_text
+
+
+@pytest.mark.architecture
+def test_token_capture_tier_dirty_repository_queue_policy_rejects_runtime_int_repair() -> None:
+    repository_text = TOKEN_CAPTURE_TIER_DIRTY_TARGET_REPOSITORY_PATH.read_text(encoding="utf-8")
+    forbidden = (
+        "max(1, int(lease_ms))",
+        "max(0, int(limit))",
+    )
+    required = (
+        "token_capture_tier_dirty_target_claim_limit_required",
+        "token_capture_tier_dirty_target_claim_lease_ms_required",
+        "def _required_positive_int(value: Any, error_code: str) -> int:",
+        "def _required_nonnegative_int(value: Any, error_code: str) -> int:",
+        "isinstance(value, bool) or not isinstance(value, int)",
+    )
+
+    assert [token for token in forbidden if token in repository_text] == []
+    assert [token for token in required if token not in repository_text] == []
+
+
+@pytest.mark.architecture
 def test_token_capture_tier_dirty_write_counts_require_real_cursor_rowcount() -> None:
     repository_text = TOKEN_CAPTURE_TIER_DIRTY_TARGET_REPOSITORY_PATH.read_text(encoding="utf-8")
     tree = _parse(TOKEN_CAPTURE_TIER_DIRTY_TARGET_REPOSITORY_PATH)
@@ -1490,6 +1758,22 @@ def test_token_capture_tier_upsert_changed_requires_cursor_rowcount_match() -> N
 
 
 @pytest.mark.architecture
+def test_token_capture_tier_repository_read_limits_reject_runtime_repairs() -> None:
+    repository_text = TOKEN_CAPTURE_TIER_REPOSITORY_PATH.read_text(encoding="utf-8")
+    tree = _parse(TOKEN_CAPTURE_TIER_REPOSITORY_PATH)
+    functions = {
+        node.name: _function_source(TOKEN_CAPTURE_TIER_REPOSITORY_PATH, node)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name in {"list_by_tier", "live_target_rows"}
+    }
+    combined = functions["list_by_tier"] + functions["live_target_rows"]
+
+    assert "max(0, int(limit))" not in combined
+    assert "token_capture_tier_repository_limit_required" in combined
+    assert "def _required_nonnegative_int(value: Any, error_code: str) -> int:" in repository_text
+
+
+@pytest.mark.architecture
 def test_market_tick_current_dirty_repository_uses_connection_transaction_without_manual_commit_fallback() -> None:
     repository_text = MARKET_TICK_CURRENT_DIRTY_TARGET_REPOSITORY_PATH.read_text(encoding="utf-8")
 
@@ -1511,10 +1795,33 @@ def test_market_tick_current_dirty_completion_keys_require_claim_attempt_contrac
     forbidden = (
         'int(claim.get("attempt_count") or 0)',
         'claim.get("attempt_count") or 0',
+        'int(claim["attempt_count"])',
     )
 
     assert all(token not in repository_text for token in forbidden)
     assert 'claim["attempt_count"]' in repository_text
+
+
+@pytest.mark.architecture
+def test_market_tick_current_dirty_repository_queue_policy_rejects_runtime_int_repair() -> None:
+    repository_text = MARKET_TICK_CURRENT_DIRTY_TARGET_REPOSITORY_PATH.read_text(encoding="utf-8")
+    forbidden = (
+        "max(1, int(lease_ms))",
+        "max(0, int(limit))",
+        "max(1, int(retry_ms))",
+    )
+    required = (
+        "market_tick_current_dirty_target_claim_limit_required",
+        "market_tick_current_dirty_target_claim_lease_ms_required",
+        "market_tick_current_dirty_target_retry_ms_required",
+        "market_tick_current_dirty_target_max_attempts_required",
+        "def _required_positive_int(value: Any, error_code: str) -> int:",
+        "def _required_nonnegative_int(value: Any, error_code: str) -> int:",
+        "isinstance(value, bool) or not isinstance(value, int)",
+    )
+
+    assert [token for token in forbidden if token in repository_text] == []
+    assert [token for token in required if token not in repository_text] == []
 
 
 @pytest.mark.architecture
@@ -1535,7 +1842,10 @@ def test_market_tick_current_dirty_completion_counts_require_real_cursor_rowcoun
     assert "def _cursor_rowcount(cursor: Any) -> int:" in repository_text
     assert "market_tick_current_dirty_target_rowcount_required" in repository_text
     assert "market_tick_current_dirty_target_rowcount_invalid" in repository_text
-    assert completion_sources.count("return _cursor_rowcount(cursor)") == 2
+    assert "return _cursor_rowcount(cursor)" in completion_sources
+    assert "def _returned_rowcount(cursor: Any, rows: list[Any]) -> int:" in repository_text
+    assert "if rowcount != len(rows):" in repository_text
+    assert "deleted_count = _returned_rowcount(cursor, rows)" in repository_text
 
 
 @pytest.mark.architecture
@@ -1637,6 +1947,7 @@ def test_asset_profile_image_refresh_dirty_completion_keys_require_claim_attempt
     forbidden = (
         'int(claim.get("attempt_count") or 0)',
         'claim.get("attempt_count") or 0',
+        'int(claim["attempt_count"])',
     )
 
     violations = {
@@ -1663,6 +1974,40 @@ def test_token_profile_current_dirty_repository_uses_connection_transaction_with
     assert "token_profile_current_dirty_target_transaction_required" in repository_text
     assert repository_text.count("_run_repository_write(self.conn, commit,") == 4
     assert all(token not in repository_text for token in forbidden)
+
+
+@pytest.mark.architecture
+def test_token_profile_current_dirty_completion_keys_require_claim_attempt_contract() -> None:
+    repository_text = TOKEN_PROFILE_CURRENT_DIRTY_TARGET_REPOSITORY_PATH.read_text(encoding="utf-8")
+    forbidden = (
+        'int(claim.get("attempt_count") or 0)',
+        'claim.get("attempt_count") or 0',
+        'int(claim["attempt_count"])',
+    )
+
+    assert all(token not in repository_text for token in forbidden)
+    assert 'claim["attempt_count"]' in repository_text
+
+
+@pytest.mark.architecture
+def test_token_profile_current_dirty_repository_queue_policy_rejects_runtime_int_repair() -> None:
+    repository_text = TOKEN_PROFILE_CURRENT_DIRTY_TARGET_REPOSITORY_PATH.read_text(encoding="utf-8")
+    forbidden = (
+        "max(1, int(lease_ms))",
+        "max(0, int(limit))",
+        "max(1, int(retry_ms))",
+    )
+    required = (
+        "token_profile_current_dirty_target_claim_limit_required",
+        "token_profile_current_dirty_target_claim_lease_ms_required",
+        "token_profile_current_dirty_target_retry_ms_required",
+        "def _required_positive_int(value: Any, error_code: str) -> int:",
+        "def _required_nonnegative_int(value: Any, error_code: str) -> int:",
+        "isinstance(value, bool) or not isinstance(value, int)",
+    )
+
+    assert [token for token in forbidden if token in repository_text] == []
+    assert [token for token in required if token not in repository_text] == []
 
 
 @pytest.mark.architecture
@@ -1765,6 +2110,42 @@ def test_token_image_source_dirty_repository_uses_connection_transaction_without
     assert "token_image_source_dirty_target_transaction_required" in repository_text
     assert repository_text.count("_run_repository_write(self.conn, commit,") == 4
     assert all(token not in repository_text for token in forbidden)
+
+
+@pytest.mark.architecture
+def test_token_image_source_dirty_completion_keys_require_claim_attempt_contract() -> None:
+    repository_text = TOKEN_IMAGE_SOURCE_DIRTY_TARGET_REPOSITORY_PATH.read_text(encoding="utf-8")
+    forbidden = (
+        'int(claim.get("attempt_count") or 0)',
+        'claim.get("attempt_count") or 0',
+        'int(claim["attempt_count"])',
+    )
+
+    assert all(token not in repository_text for token in forbidden)
+    assert 'claim["attempt_count"]' in repository_text
+
+
+@pytest.mark.architecture
+def test_token_image_source_dirty_repository_queue_policy_rejects_runtime_int_repair() -> None:
+    repository_text = TOKEN_IMAGE_SOURCE_DIRTY_TARGET_REPOSITORY_PATH.read_text(encoding="utf-8")
+    forbidden = (
+        "max(1, int(lease_ms))",
+        "max(0, int(limit))",
+        "max(1, int(retry_ms))",
+        "max_attempts = int(value)",
+    )
+    required = (
+        "token_image_source_dirty_target_claim_limit_required",
+        "token_image_source_dirty_target_claim_lease_ms_required",
+        "token_image_source_dirty_target_retry_ms_required",
+        "token_image_source_dirty_target_max_attempts_required",
+        "def _required_positive_int(value: Any, error_code: str) -> int:",
+        "def _required_nonnegative_int(value: Any, error_code: str) -> int:",
+        "isinstance(value, bool) or not isinstance(value, int)",
+    )
+
+    assert [token for token in forbidden if token in repository_text] == []
+    assert [token for token in required if token not in repository_text] == []
 
 
 @pytest.mark.architecture
@@ -1951,8 +2332,33 @@ def test_asset_profile_refresh_target_repository_uses_connection_transaction_wit
 
     assert "def _run_repository_write" in repository_text
     assert "asset_profile_refresh_target_transaction_required" in repository_text
-    assert repository_text.count("_run_repository_write(self.conn, commit,") == 4
+    assert repository_text.count("_run_repository_write(self.conn, commit,") == 5
+    assert "enqueue_missing_token_radar_current_targets" in repository_text
     assert all(token not in repository_text for token in forbidden)
+
+
+@pytest.mark.architecture
+def test_asset_profile_refresh_target_repository_queue_policy_rejects_runtime_int_repair() -> None:
+    repository_text = ASSET_PROFILE_REFRESH_TARGET_REPOSITORY_PATH.read_text(encoding="utf-8")
+    forbidden = (
+        "bounded_limit = max(0, int(limit))",
+        "max(1, int(lease_ms))",
+        "max(0, int(limit))",
+        "max(1, int(retry_ms))",
+        'int(claim["attempt_count"])',
+    )
+    required = (
+        "asset_profile_refresh_target_limit_required",
+        "asset_profile_refresh_target_claim_limit_required",
+        "asset_profile_refresh_target_claim_lease_ms_required",
+        "asset_profile_refresh_target_retry_ms_required",
+        "def _required_positive_int(value: Any, error_code: str) -> int:",
+        "def _required_nonnegative_int(value: Any, error_code: str) -> int:",
+        "isinstance(value, bool) or not isinstance(value, int)",
+    )
+
+    assert [token for token in forbidden if token in repository_text] == []
+    assert [token for token in required if token not in repository_text] == []
 
 
 @pytest.mark.architecture
@@ -2113,6 +2519,46 @@ def test_discovery_and_narrative_dirty_completion_keys_require_claim_attempt_con
 
 
 @pytest.mark.architecture
+def test_discovery_repository_completion_keys_require_claim_attempt_contract() -> None:
+    repository_text = DISCOVERY_REPOSITORY_PATH.read_text(encoding="utf-8")
+    forbidden = (
+        'int(claim.get("attempt_count") or 0)',
+        'claim.get("attempt_count") or 0',
+        'int(claim["attempt_count"])',
+    )
+
+    assert [token for token in forbidden if token in repository_text] == []
+    assert 'claim["attempt_count"]' in repository_text
+
+
+@pytest.mark.architecture
+def test_discovery_repository_queue_policy_rejects_runtime_int_repair() -> None:
+    repository_text = DISCOVERY_REPOSITORY_PATH.read_text(encoding="utf-8")
+    forbidden = (
+        "max(1, int(lease_ms))",
+        "max(0, int(limit))",
+        "max(1, int(running_timeout_ms))",
+        "max(1, int(intent_count))",
+        "int(hot_since_ms) if hot_since_ms is not None else None",
+        "int(hot_not_found_retry_ms) if hot_not_found_retry_ms is not None else None",
+    )
+    required = (
+        "discovery_lookup_claim_limit_required",
+        "discovery_lookup_claim_lease_ms_required",
+        "discovery_lookup_running_timeout_ms_required",
+        "discovery_lookup_hot_since_ms_required",
+        "discovery_lookup_hot_not_found_retry_ms_required",
+        "discovery_lookup_intent_count_required",
+        "def _required_positive_int(value: Any, error_code: str) -> int:",
+        "def _required_nonnegative_int(value: Any, error_code: str) -> int:",
+        "isinstance(value, bool) or not isinstance(value, int)",
+    )
+
+    assert [token for token in forbidden if token in repository_text] == []
+    assert [token for token in required if token not in repository_text] == []
+
+
+@pytest.mark.architecture
 def test_narrative_admission_dirty_completion_counts_require_real_cursor_rowcount() -> None:
     repository_text = NARRATIVE_ADMISSION_DIRTY_TARGET_REPOSITORY_PATH.read_text(encoding="utf-8")
     forbidden = (
@@ -2128,6 +2574,65 @@ def test_narrative_admission_dirty_completion_counts_require_real_cursor_rowcoun
 
     assert [token for token in forbidden if token in repository_text] == []
     assert [token for token in required if token not in repository_text] == []
+
+
+@pytest.mark.architecture
+def test_narrative_admission_dirty_claim_and_retry_contracts_reject_runtime_repairs() -> None:
+    repository_text = NARRATIVE_ADMISSION_DIRTY_TARGET_REPOSITORY_PATH.read_text(encoding="utf-8")
+    claim_source = _function_source_by_name(NARRATIVE_ADMISSION_DIRTY_TARGET_REPOSITORY_PATH, "claim_due")
+    error_source = _function_source_by_name(NARRATIVE_ADMISSION_DIRTY_TARGET_REPOSITORY_PATH, "mark_error")
+    forbidden = (
+        "max(1, int(lease_ms))",
+        "max(0, int(limit))",
+        "max(1, int(retry_ms))",
+    )
+    required = (
+        '_required_positive_int(limit, "narrative_admission_dirty_target_claim_limit_required")',
+        '_required_positive_int(lease_ms, "narrative_admission_dirty_target_claim_lease_ms_required")',
+        '_required_positive_int(retry_ms, "narrative_admission_dirty_target_retry_ms_required")',
+        "narrative_admission_dirty_target_max_attempts_required",
+        '_required_text(lease_owner, "claim_lease_owner")',
+        "isinstance(value, bool) or not isinstance(value, int)",
+    )
+
+    assert "FROM {table}\n              FROM {table}" not in claim_source
+    assert [token for token in forbidden if token in claim_source or token in error_source] == []
+    assert [token for token in required if token not in repository_text] == []
+
+
+@pytest.mark.architecture
+def test_narrative_admission_dirty_error_completion_uses_formal_retry_budget_and_terminal_ledger() -> None:
+    repository_source = _function_source_by_name(NARRATIVE_ADMISSION_DIRTY_TARGET_REPOSITORY_PATH, "mark_error")
+    worker_source = _function_source_by_name(
+        SRC / "domains/narrative_intel/runtime/narrative_admission_worker.py",
+        "_process_dirty_targets_sync",
+    )
+    forbidden = (
+        "max_attempts: int =",
+        "worker_name: str =",
+        "\n".join(
+            (
+                "mark_error(",
+                "                    [failed_claim],",
+                "                    error=error,",
+                "                    now_ms=now_ms,",
+                "                    retry_ms=self.retry_ms,",
+                "                    commit=False,",
+            )
+        ),
+    )
+
+    assert "max_attempts: int," in repository_source
+    assert "worker_name: str," in repository_source
+    assert "terminalize_source_row(" in repository_source
+    assert "source_table=table" in repository_source
+    assert "_retry_budget_exhausted_reason(error)" in repository_source
+    assert "narrative_admission_dirty_retry_budget_exhausted" in (
+        NARRATIVE_ADMISSION_DIRTY_TARGET_REPOSITORY_PATH.read_text(encoding="utf-8")
+    )
+    assert "max_attempts=self.max_attempts" in worker_source
+    assert "worker_name=self.name" in worker_source
+    assert [token for token in forbidden if token in repository_source or token in worker_source] == []
 
 
 @pytest.mark.architecture
@@ -2361,12 +2866,14 @@ def test_narrative_repository_admission_writes_require_connection_transaction_wi
         'int(getattr(cursor, "rowcount", 0) or 0)',
         'getattr(admissions, "rowcount", 0)',
         'int(getattr(admissions, "rowcount", 0) or 0)',
+        "max(1, int(limit))",
         "return nullcontext()",
     )
     required = (
         "def _cursor_rowcount(cursor: Any) -> int:",
         "narrative_repository_rowcount_required",
         "narrative_repository_rowcount_invalid",
+        "narrative_admission_upsert_limit_required",
         "upserted += _cursor_rowcount(cursor)",
         '"staled_admissions": _cursor_rowcount(admissions)',
     )
@@ -2545,6 +3052,28 @@ def test_ingest_service_requires_formal_repository_session_contracts_without_con
     assert "token_radar_source_dirty_events=repos.token_radar_source_dirty_events" in bootstrap_text
     assert all(token not in bootstrap_text for token in forbidden_bootstrap_tokens)
     assert all(token not in ingest_text for token in forbidden_ingest_tokens)
+
+
+@pytest.mark.architecture
+def test_ingest_service_requires_formal_intent_and_capture_contracts_without_reflection() -> None:
+    ingest_text = INGEST_SERVICE_PATH.read_text(encoding="utf-8")
+
+    forbidden_tokens = (
+        "captures: list[Any]",
+        'getattr(item, "tick", None)',
+        'getattr(item, "capture", item)',
+        'getattr(intent, "primary_evidence_id", None)',
+        'getattr(intent, "chain_hint", None)',
+        'getattr(intent, "address_hint", None)',
+        'getattr(intent, "display_symbol", None)',
+        'getattr(intent, "intent_id", None)',
+    )
+
+    assert [token for token in forbidden_tokens if token in ingest_text] == []
+    assert "TokenIntentInput" in ingest_text
+    assert "CaptureResult" in ingest_text
+    assert "ingest_token_intent_contract_required" in ingest_text
+    assert "ingest_capture_result_contract_required" in ingest_text
 
 
 @pytest.mark.architecture
@@ -2814,6 +3343,30 @@ def test_discovery_repository_claim_due_requires_returning_rowcount_match() -> N
     assert claim_source.index("_returned_rowcount(cursor, rows)") < claim_source.index(
         "return [dict(row) for row in rows]"
     )
+
+
+@pytest.mark.architecture
+def test_dirty_target_claim_due_returning_rows_require_cursor_rowcount_match() -> None:
+    claim_functions = {
+        "asset_profile_refresh": (ASSET_PROFILE_REFRESH_TARGET_REPOSITORY_PATH, "claim_due"),
+        "market_tick_current": (MARKET_TICK_CURRENT_DIRTY_TARGET_REPOSITORY_PATH, "claim_due"),
+        "token_capture_tier": (TOKEN_CAPTURE_TIER_DIRTY_TARGET_REPOSITORY_PATH, "claim_due"),
+        "token_image_source": (TOKEN_IMAGE_SOURCE_DIRTY_TARGET_REPOSITORY_PATH, "claim_due"),
+        "token_profile_current": (TOKEN_PROFILE_CURRENT_DIRTY_TARGET_REPOSITORY_PATH, "claim_due"),
+        "macro_projection": (MACRO_REPOSITORY_PATH, "claim_macro_projection_dirty_targets"),
+        "narrative_admission": (NARRATIVE_ADMISSION_DIRTY_TARGET_REPOSITORY_PATH, "claim_due"),
+        "pulse_trigger": (PULSE_TRIGGER_DIRTY_TARGET_REPOSITORY_PATH, "claim_due"),
+    }
+
+    for name, (path, function_name) in claim_functions.items():
+        claim_source = _function_source_by_name(path, function_name)
+        assert ").fetchall()" not in claim_source, name
+        assert "cursor = self.conn.execute" in claim_source, name
+        assert "rows = cursor.fetchall()" in claim_source, name
+        assert "_returned_rowcount(cursor, rows)" in claim_source, name
+        assert claim_source.index("_returned_rowcount(cursor, rows)") < claim_source.index(
+            "return [dict(row) for row in rows]"
+        ), name
 
 
 @pytest.mark.architecture

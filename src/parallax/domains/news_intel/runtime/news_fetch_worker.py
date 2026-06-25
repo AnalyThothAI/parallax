@@ -14,6 +14,7 @@ from parallax.domains.news_intel.runtime.news_projection_work import (
     enqueue_page_reprojection,
     enqueue_source_quality_refresh,
 )
+from parallax.domains.news_intel.runtime.news_runtime_settings import positive_worker_setting_int
 from parallax.domains.news_intel.services.news_provider_contract import (
     NewsProviderContractError,
     validate_news_provider_contract,
@@ -117,7 +118,7 @@ class NewsFetchWorker(WorkerBase):
             due_sources = repos.news.claim_due_sources(
                 now_ms=now,
                 limit=self._batch_size(),
-                claim_lease_ms=max(1, int(self.settings.lease_ms)),
+                claim_lease_ms=self._lease_ms(),
                 commit=False,
             )
         _notify_news_page_dirty(
@@ -376,7 +377,10 @@ class NewsFetchWorker(WorkerBase):
         )
 
     def _batch_size(self) -> int:
-        return max(1, int(self.settings.batch_size))
+        return positive_worker_setting_int(self.settings, "batch_size", worker_name=self.name)
+
+    def _lease_ms(self) -> int:
+        return positive_worker_setting_int(self.settings, "lease_ms", worker_name=self.name)
 
 
 def _payload_hash(payload: Mapping[str, Any]) -> str:

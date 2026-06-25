@@ -26,11 +26,12 @@ def construct_notification_workers(ctx: WorkerFactoryContext) -> dict[str, Worke
     )
 
     if not notifications_enabled:
-        return {
-            name: disabled_worker(ctx, name)
-            for name in ("notification_rule", "notification_delivery")
-            if getattr(workers, name).enabled
-        }
+        disabled: dict[str, WorkerBase] = {}
+        if workers.notification_rule.enabled:
+            disabled["notification_rule"] = disabled_worker(ctx, "notification_rule")
+        if workers.notification_delivery.enabled:
+            disabled["notification_delivery"] = disabled_worker(ctx, "notification_delivery")
+        return disabled
 
     if workers.notification_rule.enabled:
         constructed["notification_rule"] = NotificationWorker(
@@ -77,8 +78,9 @@ class _LocalWakeWaiter:
         self._event.set()
 
     async def async_wait(self, timeout: float) -> bool:  # noqa: ASYNC109 - mirrors WakeWaiter.async_wait(timeout).
+        timeout_seconds = _nonnegative_timeout_seconds(timeout)
         try:
-            await asyncio.wait_for(self._event.wait(), timeout=max(0.0, float(timeout)))
+            await asyncio.wait_for(self._event.wait(), timeout=timeout_seconds)
         except TimeoutError:
             return False
         self._event.clear()
@@ -86,3 +88,9 @@ class _LocalWakeWaiter:
 
     def close(self) -> None:
         self._event.set()
+
+
+def _nonnegative_timeout_seconds(value: Any) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float) or value < 0:
+        raise ValueError("wake_waiter_timeout_seconds_required")
+    return float(value)

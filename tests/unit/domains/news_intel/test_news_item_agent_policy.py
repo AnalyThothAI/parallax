@@ -162,6 +162,17 @@ def test_news_item_agent_brief_priority_uses_runtime_admission_basis() -> None:
     assert priority <= 18
 
 
+def test_news_item_agent_brief_priority_rejects_loose_runtime_admission_object() -> None:
+    class LooseAdmission:
+        def __init__(self) -> None:
+            self.status = "eligible"
+            self.reason = "eligible"
+            self.basis = {"market_scope": ["crypto", "macro_rates", "us_equity"]}
+
+    with pytest.raises(TypeError, match="news_item_agent_policy_admission_contract_required"):
+        news_item_agent_brief_priority(item=_item(), admission=LooseAdmission())
+
+
 def test_news_item_agent_brief_priority_prefers_authoritative_multi_scope_items() -> None:
     ordinary = news_item_agent_brief_priority(
         item=_item(

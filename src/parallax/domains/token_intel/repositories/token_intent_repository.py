@@ -1,21 +1,25 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
 from typing import Any, cast
+
+from parallax.domains.token_intel.types.token_fact_inputs import TokenIntentEvidenceLink, TokenIntentInput
+
+TokenIntentWriteInput = TokenIntentInput | Mapping[str, Any]
 
 
 class TokenIntentRepository:
     def __init__(self, conn: Any):
         self.conn = conn
 
-    def insert_many(self, intents: list[Any], *, commit: bool = True) -> list[dict[str, Any]]:
+    def insert_many(self, intents: Sequence[TokenIntentWriteInput], *, commit: bool = True) -> list[dict[str, Any]]:
         def _write() -> list[dict[str, Any]]:
             return [self.insert(intent, commit=False) for intent in intents]
 
         return _run_repository_write(self.conn, commit, _write)
 
-    def insert(self, intent: Any, *, commit: bool = True) -> dict[str, Any]:
+    def insert(self, intent: TokenIntentWriteInput, *, commit: bool = True) -> dict[str, Any]:
         def _write() -> dict[str, Any]:
             payload = _payload(intent)
             cursor = self.conn.execute(
@@ -44,7 +48,7 @@ class TokenIntentRepository:
             )
             row = cursor.fetchone()
             intent_row = _required_returning_row(cursor, row)
-            for link in getattr(intent, "evidence_links", []):
+            for link in _evidence_links(intent):
                 cursor = self.conn.execute(
                     """
                     INSERT INTO token_intent_evidence(intent_id, evidence_id, role)
@@ -110,6 +114,9 @@ class TokenIntentRepository:
         _cursor_rowcount(cursor)
 
     def recent_unresolved(self, *, since_ms: int, limit: int) -> list[dict[str, Any]]:
+        parsed_limit = _required_nonnegative_int(limit, "token_intent_recent_unresolved_limit_required")
+        if parsed_limit == 0:
+            return []
         rows = self.conn.execute(
             """
             SELECT token_intents.*
@@ -126,18 +133,42 @@ class TokenIntentRepository:
             ORDER BY events.received_at_ms DESC, token_intents.intent_id
             LIMIT %s
             """,
-            (int(since_ms), max(0, int(limit))),
+            (int(since_ms), parsed_limit),
         ).fetchall()
         return [dict(row) for row in rows]
 
 
-def _payload(item: Any) -> dict[str, Any]:
-    if isinstance(item, dict):
+def _payload(item: TokenIntentWriteInput) -> dict[str, Any]:
+    if isinstance(item, TokenIntentInput):
+        payload = {
+            "intent_id": item.intent_id,
+            "event_id": item.event_id,
+            "intent_key": item.intent_key,
+            "construction_policy": item.construction_policy,
+            "primary_evidence_id": item.primary_evidence_id,
+            "display_symbol": item.display_symbol,
+            "display_name": item.display_name,
+            "chain_hint": item.chain_hint,
+            "address_hint": item.address_hint,
+            "intent_status": item.intent_status,
+            "intent_confidence": item.intent_confidence,
+            "created_at_ms": item.created_at_ms,
+            "updated_at_ms": item.updated_at_ms,
+        }
+    elif isinstance(item, Mapping):
         payload = dict(item)
     else:
-        payload = {slot: getattr(item, slot) for slot in item.__slots__ if slot != "evidence_links"}
+        raise TypeError("token_intent_repository_input_contract_required")
     payload.pop("evidence_links", None)
     return payload
+
+
+def _evidence_links(item: TokenIntentWriteInput) -> list[TokenIntentEvidenceLink]:
+    if isinstance(item, TokenIntentInput):
+        return list(item.evidence_links)
+    if isinstance(item, Mapping):
+        return []
+    raise TypeError("token_intent_repository_input_contract_required")
 
 
 def _event_ids(event_ids: tuple[str, ...]) -> list[str]:
@@ -176,6 +207,14 @@ def _optional_single_rowcount(cursor: Any) -> int:
     if rowcount not in (0, 1):
         raise TypeError("token_intent_repository_rowcount_invalid")
     return rowcount
+
+
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value < 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _required_returning_row(cursor: Any, row: Any | None) -> dict[str, Any]:

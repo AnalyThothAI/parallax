@@ -68,7 +68,7 @@ class SearchService:
         cursor: str | None = None,
         now_ms: int | None = None,
     ) -> SearchPage:
-        requested_limit = max(0, int(limit))
+        requested_limit = _required_nonnegative_int(limit, "search_limit_required")
         watched_only = _watched_only(scope)
         since_ms = _since_ms(window=window, now_ms=now_ms)
         intent = parse_search_query(query, scope=scope)
@@ -284,7 +284,7 @@ def _sort_tuple(item: dict[str, Any]) -> tuple[float, int, str]:
 def _target_page_payload(items: list[dict[str, Any]], limit: int, *, has_more: bool) -> dict[str, Any]:
     next_cursor = _encode_target_cursor(items[-1]) if has_more and items else None
     return {
-        "returned_count": min(len(items), max(0, int(limit))),
+        "returned_count": min(len(items), limit),
         "has_more": has_more,
         "next_cursor": next_cursor,
     }
@@ -293,10 +293,18 @@ def _target_page_payload(items: list[dict[str, Any]], limit: int, *, has_more: b
 def _fused_page(items: list[dict[str, Any]], limit: int, *, has_more: bool) -> dict[str, Any]:
     next_cursor = _encode_fused_cursor(items[-1]) if has_more and items else None
     return {
-        "returned_count": min(len(items), max(0, int(limit))),
+        "returned_count": min(len(items), limit),
         "has_more": has_more,
         "next_cursor": next_cursor,
     }
+
+
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value < 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _public_item(item: dict[str, Any]) -> dict[str, Any]:

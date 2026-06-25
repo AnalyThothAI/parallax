@@ -266,6 +266,49 @@ def test_worker_reads_formal_settings_fields_directly() -> None:
     assert lease_repos.token_capture_tier_dirty_targets.done_count == 0
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "error_code"),
+    [
+        pytest.param("batch_size", 0, "token_capture_tier_batch_size_required", id="batch-zero"),
+        pytest.param("batch_size", True, "token_capture_tier_batch_size_required", id="batch-bool"),
+        pytest.param("batch_size", "5", "token_capture_tier_batch_size_required", id="batch-string"),
+        pytest.param("ws_limit", -1, "token_capture_tier_ws_limit_required", id="ws-negative"),
+        pytest.param("ws_limit", True, "token_capture_tier_ws_limit_required", id="ws-bool"),
+        pytest.param("ws_limit", "1", "token_capture_tier_ws_limit_required", id="ws-string"),
+        pytest.param("poll_limit", -1, "token_capture_tier_poll_limit_required", id="poll-negative"),
+        pytest.param("poll_limit", True, "token_capture_tier_poll_limit_required", id="poll-bool"),
+        pytest.param("poll_limit", "1", "token_capture_tier_poll_limit_required", id="poll-string"),
+    ],
+)
+def test_worker_rejects_malformed_runtime_settings(
+    field: str,
+    value: Any,
+    error_code: str,
+) -> None:
+    settings = _worker_settings()
+    setattr(settings, field, value)
+
+    with pytest.raises(ValueError, match=error_code):
+        TokenCaptureTierWorker(pool_bundle=FakeDB(FakeRepos([])), settings=settings)
+
+
+@pytest.mark.parametrize("lease_ms", [0, True, "60000"])
+def test_worker_rejects_malformed_lease_before_claiming_dirty_target(lease_ms: Any) -> None:
+    repos = FakeRepos([asset_target("asset-hot", chain_id="sol", address="hot", score=3)])
+    worker = TokenCaptureTierWorker(
+        pool_bundle=FakeDB(repos),
+        telemetry=object(),
+        settings=_worker_settings(batch_size=5, ws_limit=1, poll_limit=1, lease_ms=lease_ms),
+    )
+
+    with pytest.raises(ValueError, match="token_capture_tier_lease_ms_required"):
+        asyncio.run(worker.run_once(now_ms=1_800_000_000_000))
+
+    assert repos.token_capture_tier_dirty_targets.claim_calls == []
+    assert repos.token_capture_tiers.upserts == []
+    assert repos.token_capture_tier_dirty_targets.done_count == 0
+
+
 def test_worker_run_once_returns_worker_result_processed_count() -> None:
     db = FakeDB(
         FakeRepos(
@@ -314,6 +357,47 @@ def test_worker_run_once_reports_zero_rows_written_when_projection_unchanged() -
     assert result.notes["claimed"] == 1
     assert result.notes["rows_written"] == 0
     assert db.repos.token_capture_tier_dirty_targets.done_count == 1
+
+
+def test_project_once_rejects_invalid_changed_count_without_zero_fallback() -> None:
+    repos = FakeRepos([asset_target("asset-hot", chain_id="sol", address="hot", score=3)])
+    repos.token_capture_tiers = InvalidChangedCountTokenCaptureTiers()
+
+    with pytest.raises(TypeError, match="token_capture_tier_changed_count_invalid"), repos.transaction():
+        project_once(repos, now_ms=1_800_000_000_000, batch_size=5, ws_limit=1, poll_limit=1)
+
+    assert repos.transaction_events == ["rollback"]
+    assert repos.token_capture_tier_dirty_targets.done_count == 0
+
+
+@pytest.mark.parametrize(
+    ("override", "error_code"),
+    [
+        pytest.param({"batch_size": 0}, "token_capture_tier_project_batch_size_required", id="batch-zero"),
+        pytest.param({"batch_size": True}, "token_capture_tier_project_batch_size_required", id="batch-bool"),
+        pytest.param({"batch_size": "5"}, "token_capture_tier_project_batch_size_required", id="batch-string"),
+        pytest.param({"ws_limit": -1}, "token_capture_tier_project_ws_limit_required", id="ws-negative"),
+        pytest.param({"ws_limit": True}, "token_capture_tier_project_ws_limit_required", id="ws-bool"),
+        pytest.param({"ws_limit": "1"}, "token_capture_tier_project_ws_limit_required", id="ws-string"),
+        pytest.param({"poll_limit": -1}, "token_capture_tier_project_poll_limit_required", id="poll-negative"),
+        pytest.param({"poll_limit": True}, "token_capture_tier_project_poll_limit_required", id="poll-bool"),
+        pytest.param({"poll_limit": "1"}, "token_capture_tier_project_poll_limit_required", id="poll-string"),
+    ],
+)
+def test_project_once_rejects_malformed_projection_limits_without_runtime_repair(
+    override: dict[str, Any],
+    error_code: str,
+) -> None:
+    repos = FakeRepos([asset_target("asset-hot", chain_id="sol", address="hot", score=3)])
+    kwargs: dict[str, Any] = {"batch_size": 5, "ws_limit": 1, "poll_limit": 1}
+    kwargs.update(override)
+
+    with pytest.raises(ValueError, match=error_code), repos.transaction():
+        project_once(repos, now_ms=1_800_000_000_000, **kwargs)
+
+    assert repos.registry.calls == []
+    assert repos.token_capture_tiers.upserts == []
+    assert repos.token_capture_tiers.demotion_calls == []
 
 
 def test_project_once_requires_external_session_transaction() -> None:
@@ -407,6 +491,21 @@ def test_registry_ranked_live_market_targets_projects_rank_score_from_factor_sna
         TOKEN_RADAR_PROJECTION_VERSION,
         25,
     )
+
+
+@pytest.mark.parametrize("limit", [-1, True, "25"])
+def test_registry_ranked_live_market_targets_rejects_malformed_limit_before_sql(limit: object) -> None:
+    conn = CapturingConn()
+
+    with pytest.raises(ValueError, match="registry_ranked_live_market_targets_limit_required"):
+        RegistryRepository(conn).ranked_live_market_targets(
+            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+            since_ms=1_800_000_000_000 - WINDOW_MS["24h"],
+            limit=limit,  # type: ignore[arg-type]
+        )
+
+    assert conn.sql == ""
+    assert conn.params == ()
 
 
 def tier(
@@ -564,6 +663,11 @@ class FakeTokenCaptureTiers:
                 demoted_now.append(key)
         self.demoted.extend(demoted_now)
         return len(demoted_now)
+
+
+class InvalidChangedCountTokenCaptureTiers(FakeTokenCaptureTiers):
+    def upsert_tier(self, **kwargs):
+        self.upserts.append(kwargs)
 
 
 class FakeCaptureDirtyTargets:

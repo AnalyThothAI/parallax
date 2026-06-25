@@ -143,6 +143,7 @@ class TokenTargetRepository:
         limit: int,
         cursor: tuple[int, str] | None = None,
     ) -> list[dict[str, Any]]:
+        row_limit = _required_nonnegative_int(limit, "token_target_repository_limit_required")
         clauses = [
             "tir.target_type = %s",
             "tir.target_id = %s",
@@ -157,7 +158,7 @@ class TokenTargetRepository:
             params.extend([int(cursor_ms), str(cursor_event_id)])
         if watched_only:
             clauses.append("events.is_watched = true")
-        params.append(max(0, int(limit)))
+        params.append(row_limit)
         rows = self.conn.execute(
             f"""
             WITH matched AS (
@@ -291,8 +292,8 @@ class TokenTargetRepository:
         watched_only: bool,
         limit: int,
     ) -> list[dict[str, Any]]:
+        row_limit = _required_nonnegative_int(limit, "token_target_repository_limit_required")
         source_event_ids = [str(event_id).strip() for event_id in event_ids if str(event_id or "").strip()]
-        row_limit = max(0, int(limit))
         if not source_event_ids or row_limit <= 0:
             return []
         clauses = [
@@ -470,3 +471,11 @@ def _target_identity_payload(*, target_type: str, row: Any) -> dict[str, Any] | 
         "quote_symbol": row_dict.get("quote_symbol"),
         "feed_type": row_dict.get("feed_type"),
     }
+
+
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value < 0:
+        raise ValueError(error_code)
+    return int(value)

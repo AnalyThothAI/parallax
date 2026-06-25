@@ -395,6 +395,7 @@ class TokenRadarRepository:
         limit: int,
         projection_version: str,
     ) -> list[dict[str, Any]]:
+        row_limit = _required_nonnegative_int(limit, "token_radar_latest_current_rows_limit_required")
         rows = self.conn.execute(
             """
             WITH ranked AS (
@@ -427,8 +428,8 @@ class TokenRadarRepository:
                 window,
                 scope,
                 venue,
-                max(0, int(limit)),
-                max(0, int(limit)) * 2,
+                row_limit,
+                row_limit * 2,
             ),
         ).fetchall()
         return [dict(row) for row in rows]
@@ -626,6 +627,7 @@ class TokenRadarRepository:
                     limit=limit,
                     commit=False,
                 )
+        row_limit = _required_positive_int(limit, "token_radar_prune_target_features_limit_required")
         cursor = self.conn.execute(
             """
             DELETE FROM token_radar_target_features
@@ -640,7 +642,7 @@ class TokenRadarRepository:
               LIMIT %s
             )
             """,
-            (projection_version, window, scope, int(latest_event_before_ms), max(1, int(limit))),
+            (projection_version, window, scope, int(latest_event_before_ms), row_limit),
         )
         return _cursor_rowcount(cursor)
 
@@ -1436,3 +1438,19 @@ def _json_ready(value: Any) -> Any:
     if isinstance(value, tuple):
         return [_json_ready(item) for item in value]
     return value
+
+
+def _required_positive_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value <= 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value < 0:
+        raise ValueError(error_code)
+    return int(value)

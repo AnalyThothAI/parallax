@@ -83,6 +83,34 @@ def test_narrative_admission_worker_requires_formal_settings_and_db_contract():
         raise AssertionError("expected db contract failure")
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "error_code"),
+    [
+        ("admission_limit", 0, "narrative_admission_admission_limit_required"),
+        ("admission_limit", True, "narrative_admission_admission_limit_required"),
+        ("admission_limit", "10", "narrative_admission_admission_limit_required"),
+        ("source_limit", 0, "narrative_admission_source_limit_required"),
+        ("lease_ms", 0, "narrative_admission_lease_ms_required"),
+        ("retry_ms", 0, "narrative_admission_retry_ms_required"),
+        ("max_attempts", 0, "narrative_admission_max_attempts_required"),
+    ],
+)
+def test_narrative_admission_worker_rejects_malformed_runtime_settings_before_db(
+    field,
+    value,
+    error_code,
+):
+    repo = FakeNarrativeRepository()
+
+    with pytest.raises(ValueError, match=error_code):
+        NarrativeAdmissionWorker(
+            name="narrative_admission",
+            settings=fake_admission_settings(**{field: value}),
+            db=FakeDB(repo),
+            telemetry=SimpleNamespace(),
+        )
+
+
 def test_narrative_admission_worker_claims_target_and_recomputes_exact_source_set():
     async def scenario():
         repo = FakeNarrativeRepository(
@@ -290,6 +318,8 @@ def test_narrative_admission_worker_marks_claim_error_with_completion_token():
             "error": "RuntimeError: forced exact load failure",
             "now_ms": 10_000,
             "retry_ms": 7_000,
+            "max_attempts": 3,
+            "worker_name": "narrative_admission",
             "commit": False,
         }
     ]
@@ -355,6 +385,7 @@ def fake_admission_settings(**overrides):
         source_limit=100,
         lease_ms=60_000,
         retry_ms=60_000,
+        max_attempts=3,
         hot_rank_limit=50,
         min_rank_score=30,
     )
@@ -425,12 +456,14 @@ class FakeDirtyTargetRepository:
         self.mark_done_calls.append(payload)
         return len(payload["claims"])
 
-    def mark_error(self, claims, *, error, now_ms, retry_ms, commit=True):
+    def mark_error(self, claims, *, error, now_ms, retry_ms, max_attempts, worker_name, commit=True):
         payload = {
             "claims": list(claims),
             "error": error,
             "now_ms": now_ms,
             "retry_ms": retry_ms,
+            "max_attempts": max_attempts,
+            "worker_name": worker_name,
             "commit": commit,
         }
         self.mark_error_calls.append(payload)

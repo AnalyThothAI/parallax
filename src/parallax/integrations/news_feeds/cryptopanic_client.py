@@ -122,7 +122,7 @@ def _parse_options(
         or environ.get("HTTP_PROXY")
         or None,
         "evidence_dir": Path(evidence_dir_raw) if evidence_dir_raw else None,
-        "max_items": max(1, int(_first(params, "max_items") or 50)),
+        "max_items": _required_positive_query_int(_first(params, "max_items"), field_name="max_items", default=50),
         "query": query,
     }
 
@@ -203,6 +203,17 @@ def _csv_values(values: list[str] | None, *, transform: Any) -> list[str]:
 def _optional_str(value: Any) -> str | None:
     text = str(value or "").strip()
     return text or None
+
+
+def _required_positive_query_int(value: str | None, *, field_name: str, default: int) -> int:
+    raw = str(value if value is not None else default).strip()
+    try:
+        parsed = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"CryptoPanic feed URL invalid {field_name}") from exc
+    if parsed <= 0:
+        raise ValueError(f"CryptoPanic feed URL invalid {field_name}")
+    return parsed
 
 
 def _truthy(value: str | None) -> bool:

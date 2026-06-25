@@ -78,8 +78,14 @@ class LivePriceGateway(WorkerBase):
             raise RuntimeError("live_price_gateway_db_required")
         super().__init__(name=name, settings=settings, db=pool_bundle, telemetry=telemetry or object())
         self.projection_version = projection_version
-        self.target_limit = max(0, int(settings.target_limit))
-        self.target_ttl_seconds = max(0.0, float(settings.target_ttl_seconds))
+        self.target_limit = _required_nonnegative_int(
+            settings.target_limit,
+            error_code="live_price_gateway_target_limit_required",
+        )
+        self.target_ttl_seconds = _required_nonnegative_float(
+            settings.target_ttl_seconds,
+            error_code="live_price_gateway_target_ttl_seconds_required",
+        )
         self.live_stale_after_ms = int(self.target_ttl_seconds * 1000)
         self.on_live_market_update = on_live_market_update
         self.clock = clock or _now_ms
@@ -262,36 +268,6 @@ def _market_target_from_row(row: Mapping[str, Any]) -> dict[str, Any] | None:
             "quote_symbol": row.get("quote_symbol"),
             "pricefeed_id": row.get("pricefeed_id"),
         }
-    if target_type == "Asset":
-        chain_id = str(row.get("chain_id") or "").strip()
-        address = str(row.get("address") or "").strip()
-        if not chain_id or not address:
-            return None
-        return {
-            "target_type": "chain_token",
-            "target_id": f"{chain_id}:{address}",
-            "chain_id": chain_id,
-            "address": address,
-            "provider": row.get("provider"),
-            "native_market_id": None,
-            "quote_symbol": None,
-            "pricefeed_id": row.get("pricefeed_id"),
-        }
-    if target_type == "CexToken":
-        provider = str(row.get("provider") or "").strip().lower()
-        native_market_id = str(row.get("native_market_id") or "").strip().upper()
-        if not provider or not native_market_id:
-            return None
-        return {
-            "target_type": "cex_symbol",
-            "target_id": f"{provider}:{native_market_id}",
-            "chain_id": None,
-            "address": None,
-            "provider": provider,
-            "native_market_id": native_market_id,
-            "quote_symbol": row.get("quote_symbol"),
-            "pricefeed_id": row.get("pricefeed_id"),
-        }
     return None
 
 
@@ -316,6 +292,18 @@ def _int(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _required_nonnegative_int(value: Any, *, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _required_nonnegative_float(value: Any, *, error_code: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or float(value) < 0:
+        raise ValueError(error_code)
+    return float(value)
 
 
 def _now_ms() -> int:

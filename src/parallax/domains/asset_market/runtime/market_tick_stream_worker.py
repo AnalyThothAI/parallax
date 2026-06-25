@@ -58,8 +58,15 @@ class MarketTickStreamWorker(WorkerBase):
         )
         self.stream_dex_market = stream_dex_market
         self.wake_emitter = wake_emitter
-        self.subscription_limit = max(0, int(settings.subscription_limit))
-        self.stream_cycle_seconds = max(0.001, float(settings.stream_cycle_seconds))
+        self.subscription_limit = _required_positive_int(
+            settings.subscription_limit,
+            error_code="market_tick_stream_subscription_limit_required",
+        )
+        self.stream_cycle_seconds = _required_min_float(
+            settings.stream_cycle_seconds,
+            minimum=0.001,
+            error_code="market_tick_stream_cycle_seconds_required",
+        )
         self.clock = clock or _now_ms
 
     async def run_once(self) -> WorkerResult:
@@ -242,9 +249,13 @@ def _provider_failure_category(provider_state: Mapping[str, Any], exc: BaseExcep
 
 
 def _stream_targets(rows: Sequence[Mapping[str, Any]], *, limit: int) -> tuple[list[DexMarketStreamTarget], int]:
+    parsed_limit = _required_positive_int(
+        limit,
+        error_code="market_tick_stream_subscription_limit_required",
+    )
     targets: list[DexMarketStreamTarget] = []
     skipped = 0
-    for row in rows[: max(0, int(limit))]:
+    for row in rows[:parsed_limit]:
         target_type = str(row.get("target_type") or "").strip()
         if target_type != "chain_token":
             skipped += 1
@@ -356,6 +367,21 @@ def _emit_wake(wake_emitter: Any, *, target_type: str, target_id: str) -> None:
     if wake_emitter is None:
         return
     wake_emitter.notify_market_tick_written(target_type=target_type, target_id=target_id)
+
+
+def _required_positive_int(value: Any, *, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _required_min_float(value: Any, *, minimum: float, error_code: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(error_code)
+    parsed = float(value)
+    if parsed < minimum:
+        raise ValueError(error_code)
+    return parsed
 
 
 def _now_ms() -> int:

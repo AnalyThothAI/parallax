@@ -54,6 +54,25 @@ def test_recent_events_pushes_since_window_to_postgres() -> None:
     assert params == (NOW_MS - 3_600_000, 12)
 
 
+def test_recent_events_zero_limit_returns_empty_without_sql() -> None:
+    conn = ReadEvidenceConnection()
+
+    rows = EvidenceRepository(conn).recent_events(limit=0)
+
+    assert rows == []
+    assert conn.executions == []
+
+
+@pytest.mark.parametrize("limit", [-1, True, "12"])
+def test_recent_events_rejects_malformed_limit_before_sql(limit: object) -> None:
+    conn = ReadEvidenceConnection()
+
+    with pytest.raises(ValueError, match="evidence_recent_events_limit_required"):
+        EvidenceRepository(conn).recent_events(limit=limit)  # type: ignore[arg-type]
+
+    assert conn.executions == []
+
+
 def test_recent_events_for_token_filters_uses_single_keyset_sql_with_bucket_budget() -> None:
     conn = ReadEvidenceConnection()
 
@@ -80,6 +99,51 @@ def test_recent_events_for_token_filters_uses_single_keyset_sql_with_bucket_budg
     assert "ee.chain = ANY(%s::text[])" in sql
     assert "e.received_at_ms >= %s" in sql
     assert params[-4:] == (sorted(EVM_QUERY_CHAINS), NOW_MS - 3_600_000, 3, 10)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "error"),
+    [
+        pytest.param({"limit": 0}, "evidence_token_filter_limit_required", id="zero-limit"),
+        pytest.param({"limit": -1}, "evidence_token_filter_limit_required", id="negative-limit"),
+        pytest.param({"limit": True}, "evidence_token_filter_limit_required", id="bool-limit"),
+        pytest.param({"limit": "10"}, "evidence_token_filter_limit_required", id="string-limit"),
+        pytest.param({"per_filter_limit": 0}, "evidence_token_filter_per_filter_limit_required", id="zero-bucket"),
+        pytest.param({"per_filter_limit": -1}, "evidence_token_filter_per_filter_limit_required", id="negative-bucket"),
+        pytest.param({"per_filter_limit": True}, "evidence_token_filter_per_filter_limit_required", id="bool-bucket"),
+        pytest.param(
+            {"per_filter_limit": "3"},
+            "evidence_token_filter_per_filter_limit_required",
+            id="string-bucket",
+        ),
+    ],
+)
+def test_recent_events_for_token_filters_rejects_malformed_limits_before_sql(
+    kwargs: dict[str, object],
+    error: str,
+) -> None:
+    conn = ReadEvidenceConnection()
+    params: dict[str, object] = {
+        "limit": 10,
+        "per_filter_limit": 3,
+        "symbols": {"BTC"},
+    }
+    params.update(kwargs)
+
+    with pytest.raises(ValueError, match=error):
+        EvidenceRepository(conn).recent_events_for_token_filters(**params)
+
+    assert conn.executions == []
+
+
+@pytest.mark.parametrize("limit", [-1, True, "10"])
+def test_entity_find_rejects_malformed_limit_before_sql(limit: object) -> None:
+    conn = ReadEvidenceConnection()
+
+    with pytest.raises(ValueError, match="entity_repository_find_limit_required"):
+        EntityRepository(conn).find_by_symbol("BTC", limit=limit)  # type: ignore[arg-type]
+
+    assert conn.executions == []
 
 
 def _repository_cases() -> list[RepositoryCase]:

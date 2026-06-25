@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from parallax.domains.pulse_lab.repositories import pulse_read_repository as module
 from parallax.domains.pulse_lab.repositories.pulse_read_repository import PulseReadRepository
 
@@ -69,6 +71,37 @@ def test_signal_pulse_notification_candidates_use_single_keyset_window_query() -
     )
 
 
+def test_signal_pulse_notification_candidates_allow_zero_limit_without_sql() -> None:
+    conn = CapturingPulseReadConnection()
+
+    rows = PulseReadRepository(conn).list_signal_pulse_notification_candidates(
+        window="1h",
+        scopes=("all",),
+        statuses=("token_watch",),
+        per_scope_status_limit=0,
+    )
+
+    assert rows == []
+    assert conn.executions == []
+
+
+@pytest.mark.parametrize("per_scope_status_limit", [-1, True, "25"])
+def test_signal_pulse_notification_candidates_reject_malformed_limit_before_sql(
+    per_scope_status_limit: object,
+) -> None:
+    conn = CapturingPulseReadConnection()
+
+    with pytest.raises(ValueError, match="pulse_notification_candidate_limit_required"):
+        PulseReadRepository(conn).list_signal_pulse_notification_candidates(
+            window="1h",
+            scopes=("all",),
+            statuses=("token_watch",),
+            per_scope_status_limit=per_scope_status_limit,  # type: ignore[arg-type]
+        )
+
+    assert conn.executions == []
+
+
 def test_pulse_read_repository_freshness_health_requires_explicit_since_hours_without_default() -> None:
     try:
         PulseReadRepository(object()).freshness_health(window="1h", scope="matched", now_ms=10_000)
@@ -76,6 +109,17 @@ def test_pulse_read_repository_freshness_health_requires_explicit_since_hours_wi
         assert "since_hours" in str(exc)
     else:  # pragma: no cover - RED guard expectation
         raise AssertionError("Pulse freshness health must require an explicit since_hours window")
+
+
+@pytest.mark.parametrize("since_hours", [0, -1, True, "4"])
+def test_pulse_read_repository_freshness_health_rejects_malformed_since_hours(since_hours: object) -> None:
+    with pytest.raises(ValueError, match="pulse_freshness_since_hours_required"):
+        PulseReadRepository(object()).freshness_health(
+            window="1h",
+            scope="matched",
+            now_ms=10_000,
+            since_hours=since_hours,  # type: ignore[arg-type]
+        )
 
 
 def test_pulse_read_repository_freshness_health_owns_public_health_contract(monkeypatch) -> None:

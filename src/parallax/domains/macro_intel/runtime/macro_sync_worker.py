@@ -94,7 +94,10 @@ class MacroSyncWorker(WorkerBase):
         )
 
     def _batch_size(self) -> int:
-        configured = max(1, int(self.settings.batch_size))
+        configured = _required_positive_int(
+            self.settings.batch_size,
+            error_code="macro_sync_batch_size_required",
+        )
         return min(configured, _MAX_WINDOWS_PER_CYCLE)
 
     def _service(self) -> MacroSyncService:
@@ -111,6 +114,12 @@ class MacroSyncWorker(WorkerBase):
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _required_positive_int(value: Any, *, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 __all__ = ["MacroSyncWorker"]

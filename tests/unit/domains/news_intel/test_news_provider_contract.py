@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from parallax.app.runtime.app import _news_provider_contract_payload
+from parallax.app.runtime.app import _news_provider_contract_payload, _unhealthy_reasons
 from parallax.domains.news_intel.repositories.news_repository import NewsRepository
 from parallax.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
 from parallax.domains.news_intel.services.news_provider_contract import (
@@ -13,7 +13,7 @@ from parallax.domains.news_intel.services.news_provider_contract import (
     validate_news_provider_contract,
 )
 from parallax.platform.config.news_provider_types import RUNTIME_SUPPORTED_NEWS_PROVIDER_TYPES
-from parallax.platform.config.settings import NewsFetchWorkerSettings
+from parallax.platform.config.settings import NewsFetchWorkerSettings, NewsSourceSettings
 
 NOW_MS = 1_779_000_000_000
 
@@ -58,6 +58,27 @@ def test_registry_missing_configured_provider_fails() -> None:
     error = exc_info.value
     assert error.reason == "news_provider_type_missing_from_registry"
     assert error.provider_types == ("opennews",)
+
+
+def test_provider_contract_rejects_mapping_sources_at_runtime_settings_boundary() -> None:
+    with pytest.raises(NewsProviderContractError) as exc_info:
+        validate_news_provider_contract(
+            configured_sources=[
+                {
+                    "source_id": "opennews-source",
+                    "provider_type": "opennews",
+                    "feed_url": "opennews://feed",
+                    "source_domain": "example.test",
+                    "source_name": "Example",
+                }
+            ],
+            supported_provider_types=("rss", "opennews"),
+            schema_provider_types=("rss", "opennews"),
+        )
+
+    error = exc_info.value
+    assert error.reason == "news_provider_settings_contract_required"
+    assert error.to_payload()["configured_provider_types"] == []
 
 
 def test_repository_constraint_parser_reads_0105_provider_values_from_news_sources_constraint() -> None:
@@ -138,6 +159,44 @@ def test_runtime_status_news_provider_contract_requires_news_intel_settings_cont
         _news_provider_contract_payload(runtime)
 
 
+def test_runtime_status_news_provider_contract_rejects_mapping_sources_from_settings() -> None:
+    runtime = SimpleNamespace(
+        settings=SimpleNamespace(
+            news_intel=SimpleNamespace(
+                sources=(
+                    {
+                        "source_id": "opennews-source",
+                        "provider_type": "opennews",
+                        "feed_url": "opennews://feed",
+                        "source_domain": "example.test",
+                        "source_name": "Example",
+                    },
+                )
+            )
+        ),
+        repositories=lambda: FakeRuntimeRepositoryContext(FakeNewsRepository(schema_provider_types=PROVIDER_SCHEMA)),
+    )
+
+    payload = _news_provider_contract_payload(runtime)
+
+    assert payload["ok"] is False
+    assert payload["reason"] == "news_provider_settings_contract_required"
+    assert payload["configured_provider_types"] == []
+
+
+def test_readiness_marks_news_provider_settings_contract_error_unhealthy() -> None:
+    runtime = SimpleNamespace(scheduler=SimpleNamespace(unhealthy_reasons=lambda: []))
+
+    reasons = _unhealthy_reasons(
+        runtime,
+        db_status={"ok": True},
+        worker_status={"workers": {}},
+        news_provider_contract={"ok": False, "reason": "news_provider_settings_contract_required"},
+    )
+
+    assert reasons == ["news_provider_contract_error"]
+
+
 def test_news_fetch_worker_fails_fast_when_schema_introspection_missing() -> None:
     source = _source(provider_type="opennews")
     repo = FakeNewsRepositoryWithoutSchemaIntrospection()
@@ -159,14 +218,14 @@ def test_news_fetch_worker_fails_fast_when_schema_introspection_missing() -> Non
     assert repo.claim_due_calls == 0
 
 
-def _source(*, provider_type: str) -> dict[str, object]:
-    return {
-        "source_id": f"{provider_type}-source",
-        "provider_type": provider_type,
-        "feed_url": f"{provider_type}://feed",
-        "source_domain": "example.test",
-        "source_name": "Example",
-    }
+def _source(*, provider_type: str) -> NewsSourceSettings:
+    return NewsSourceSettings(
+        source_id=f"{provider_type}-source",
+        provider_type=provider_type,
+        feed_url=f"{provider_type}://feed",
+        source_domain="example.test",
+        source_name="Example",
+    )
 
 
 PROVIDER_SCHEMA = (

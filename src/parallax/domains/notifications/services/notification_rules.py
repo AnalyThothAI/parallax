@@ -390,7 +390,15 @@ def _score_version(block: Any) -> str | None:
 
 
 def _cooldown_bucket(occurrence_at_ms: int, cooldown_seconds: int) -> int:
-    return occurrence_at_ms // (max(1, int(cooldown_seconds)) * 1000)
+    seconds = _required_nonnegative_int(cooldown_seconds, "notification_cooldown_seconds_required")
+    bucket_seconds = seconds if seconds > 0 else 1
+    return occurrence_at_ms // (bucket_seconds * 1000)
+
+
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _activity_dedup_key(

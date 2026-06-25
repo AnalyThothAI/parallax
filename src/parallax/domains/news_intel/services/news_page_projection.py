@@ -136,8 +136,21 @@ def build_news_page_row(
         ),
         "projection_version": NEWS_PAGE_PROJECTION_VERSION,
     }
-    row["search_text"] = build_news_page_search_text(row)
+    row["search_text"] = build_news_page_search_text(_search_document_payload(row))
     return row
+
+
+def _search_document_payload(row: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "headline": row["headline"],
+        "summary": row["summary"],
+        "source_domain": row["source_domain"],
+        "source_json": row["source"],
+        "source_ids_json": row["source_ids_json"],
+        "source_domains_json": row["source_domains_json"],
+        "token_lanes_json": row["token_lanes"],
+        "fact_lanes_json": row["fact_lanes"],
+    }
 
 
 def _provider_rating_payload(item: Mapping[str, Any], *, news_item_id: str) -> dict[str, Any]:

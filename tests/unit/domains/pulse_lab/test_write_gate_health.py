@@ -70,6 +70,17 @@ def test_pulse_freshness_health_service_requires_explicit_since_hours_without_de
         PulseFreshnessHealthService(conn=object()).health(window="1h", scope="matched", now_ms=10_000)
 
 
+@pytest.mark.parametrize("since_hours", [0, -1, True, "4"])
+def test_pulse_freshness_health_service_rejects_malformed_since_hours(since_hours: object) -> None:
+    with pytest.raises(ValueError, match="pulse_freshness_since_hours_required"):
+        PulseFreshnessHealthService(conn=object()).health(
+            window="1h",
+            scope="matched",
+            now_ms=10_000,
+            since_hours=since_hours,  # type: ignore[arg-type]
+        )
+
+
 def test_freshness_health_degrades_instead_of_hold_when_some_recent_runs_succeeded() -> None:
     status, reasons = PulseFreshnessHealthService(conn=object())._classify(
         clocks={

@@ -1,23 +1,24 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Iterable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from typing import Any, cast
 
 
 @dataclass(frozen=True, slots=True)
-class _BinanceRoute:
+class BinanceUsdtPerpRoute:
     native_market_id: str
     base_symbol: str
     quote_symbol: str
-    multiplier: Any
+    multiplier: float | None
 
 
 def sync_binance_usdt_perp_routes(
     *,
     registry: Any,
-    client: Any,
+    routes: Iterable[BinanceUsdtPerpRoute],
     observed_at_ms: int,
     dry_run: bool,
     execute: bool,
@@ -26,7 +27,7 @@ def sync_binance_usdt_perp_routes(
         raise ValueError("exactly one of dry_run or execute must be true")
 
     started = time.monotonic()
-    routes = _normalized_routes(client.usdt_perpetual_routes())
+    routes = _normalized_routes(routes)
     base_symbols = [route.base_symbol for route in routes]
     native_market_ids = [route.native_market_id for route in routes]
     plan = dict(
@@ -84,19 +85,21 @@ def sync_binance_usdt_perp_routes(
     }
 
 
-def _normalized_routes(routes: Any) -> list[_BinanceRoute]:
-    by_market_id: dict[str, _BinanceRoute] = {}
+def _normalized_routes(routes: Iterable[BinanceUsdtPerpRoute]) -> list[BinanceUsdtPerpRoute]:
+    by_market_id: dict[str, BinanceUsdtPerpRoute] = {}
     for route in routes:
-        native_market_id = _symbol(getattr(route, "native_market_id", ""))
-        base_symbol = _symbol(getattr(route, "base_symbol", ""))
-        quote_symbol = _symbol(getattr(route, "quote_symbol", ""))
+        if not isinstance(route, BinanceUsdtPerpRoute):
+            raise RuntimeError("asset_market_sync_binance_route_contract_required")
+        native_market_id = _symbol(route.native_market_id)
+        base_symbol = _symbol(route.base_symbol)
+        quote_symbol = _symbol(route.quote_symbol)
         if not native_market_id or not base_symbol or quote_symbol != "USDT":
             continue
-        by_market_id[native_market_id] = _BinanceRoute(
+        by_market_id[native_market_id] = BinanceUsdtPerpRoute(
             native_market_id=native_market_id,
             base_symbol=base_symbol,
             quote_symbol=quote_symbol,
-            multiplier=getattr(route, "multiplier", None),
+            multiplier=route.multiplier,
         )
     return [by_market_id[key] for key in sorted(by_market_id)]
 

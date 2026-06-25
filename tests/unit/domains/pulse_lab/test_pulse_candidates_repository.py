@@ -78,6 +78,46 @@ def _run_hide_public_candidate(repo: PulseCandidatesRepository) -> dict[str, Any
     )
 
 
+@pytest.mark.parametrize("decision_stage_count", [-1, True, "1"])
+def test_upsert_candidate_rejects_malformed_decision_stage_count_before_sql(
+    decision_stage_count: object,
+) -> None:
+    conn = PulseCandidateReturningConnection(rows=[_candidate_row()], rowcount=1)
+
+    with pytest.raises(ValueError, match="pulse_candidate_decision_stage_count_required"):
+        PulseCandidatesRepository(conn).upsert_candidate(
+            candidate_id="candidate-1",
+            candidate_type="token_target",
+            subject_key="asset:sol",
+            target_type="asset",
+            target_id="asset:sol",
+            symbol="SOL",
+            window="1h",
+            scope="global",
+            pulse_status="token_watch",
+            verdict="token_watch",
+            social_phase="ignition",
+            candidate_score=82.0,
+            score_band="watch",
+            trigger_signature="trigger",
+            timeline_signature="timeline",
+            factor_snapshot_json={"composite": {"rank_score": 82}},
+            gate_json={"pulse_status": "token_watch"},
+            decision_route="meme",
+            decision_recommendation="watchlist",
+            decision_confidence=0.82,
+            decision_stage_count=decision_stage_count,  # type: ignore[arg-type]
+            decision_json={"recommendation": "watchlist"},
+            pulse_version="pulse-v1",
+            gate_version="gate-v1",
+            prompt_version="prompt-v1",
+            schema_version="schema-v1",
+            commit=False,
+        )
+
+    assert conn.sql == []
+
+
 def _candidate_row() -> dict[str, Any]:
     return {
         "candidate_id": "candidate-1",

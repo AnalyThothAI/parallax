@@ -73,12 +73,12 @@ class MacroSyncService:
                     bundle_name=bundle_name,
                     now=_date_from_ms(now),
                     now_ms=now,
-                    bootstrap_lookback_days=int(self.sync_settings.bootstrap_lookback_days),
-                    max_window_days=int(self.sync_settings.max_window_days),
-                    steady_overlap_days=int(self.sync_settings.steady_overlap_days),
-                    steady_interval_seconds=float(self.sync_settings.interval_seconds),
-                    max_bootstrap_windows_per_cycle=int(self.sync_settings.max_bootstrap_windows_per_cycle),
-                    max_attempts=int(self.sync_settings.max_attempts),
+                    bootstrap_lookback_days=self.sync_settings.bootstrap_lookback_days,
+                    max_window_days=self.sync_settings.max_window_days,
+                    steady_overlap_days=self.sync_settings.steady_overlap_days,
+                    steady_interval_seconds=self.sync_settings.interval_seconds,
+                    max_bootstrap_windows_per_cycle=self.sync_settings.max_bootstrap_windows_per_cycle,
+                    max_attempts=self.sync_settings.max_attempts,
                 )
                 bundle_summaries.append({"bundle_name": bundle_name, **bundle_summary})
             queue_summary = repos.macro_intel.macro_sync_queue_summary(now_ms=now)
@@ -117,7 +117,7 @@ class MacroSyncService:
                 trigger_reason=_explicit_trigger_reason(trigger_reason, now_ms=now),
                 priority=0,
                 due_at_ms=now,
-                max_attempts=int(self.sync_settings.max_attempts),
+                max_attempts=self.sync_settings.max_attempts,
                 now_ms=now,
             )
             window = repos.macro_intel.claim_macro_sync_window_by_id(

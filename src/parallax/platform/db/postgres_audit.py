@@ -281,7 +281,7 @@ class ProjectionValidationAudit:
         self.conn = conn
 
     def run(self, *, sample: int) -> dict[str, Any]:
-        sample_size = max(0, int(sample))
+        sample_size = _required_nonnegative_int(sample, "projection_validation_sample_required")
         row = self.conn.execute(
             """
             WITH sampled_radar_rows AS (
@@ -339,6 +339,12 @@ class ProjectionValidationAudit:
                 "token_radar_current_rows_missing_refs": missing_refs,
             },
         }
+
+
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _plan_line(row: Any) -> str:

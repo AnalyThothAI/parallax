@@ -134,6 +134,34 @@ def test_opennews_rest_fetch_policy_has_no_integration_local_defaults() -> None:
     assert '_fetch_policy_int(source, "overlap_ms")' not in worker
 
 
+def test_provider_integration_numeric_boundaries_reject_runtime_repairs() -> None:
+    gmgn_gateway = _read("src/parallax/integrations/gmgn/openapi_gateway.py")
+    gmgn_client = _read("src/parallax/integrations/gmgn/openapi_client.py")
+    feed_client = _read("src/parallax/integrations/news_feeds/feed_client.py")
+    opennews_client = _read("src/parallax/integrations/news_feeds/opennews_client.py")
+    cryptopanic_client = _read("src/parallax/integrations/news_feeds/cryptopanic_client.py")
+    combined = "\n".join((gmgn_gateway, gmgn_client, feed_client, opennews_client, cryptopanic_client))
+    forbidden_tokens = (
+        "max(0, int(token_info_cache_ttl_seconds))",
+        "max(1, int(retry_attempts))",
+        "max(1, int(limit))",
+        "max(1, int(max_attempts))",
+        "max(1, int(page))",
+        'max(1, int(_first(params, "max_items") or 50))',
+    )
+
+    assert [token for token in forbidden_tokens if token in combined] == []
+    assert "gmgn_openapi_retry_attempts_required" in gmgn_gateway
+    assert "gmgn_openapi_token_kline_limit_required" in gmgn_client
+    assert "feed_client_max_attempts_required" in feed_client
+    assert '"page": _required_positive_int(page, "page")' in opennews_client
+    assert 'raise ValueError(f"OpenNews REST fetch policy invalid {field_name}")' in opennews_client
+    assert '_required_positive_query_int(_first(params, "max_items"), field_name="max_items", default=50)' in (
+        cryptopanic_client
+    )
+    assert 'raise ValueError(f"CryptoPanic feed URL invalid {field_name}")' in cryptopanic_client
+
+
 def test_opennews_provider_signal_does_not_enter_fetch_brief_hot_path() -> None:
     fetch_worker = _read("src/parallax/domains/news_intel/runtime/news_fetch_worker.py")
 

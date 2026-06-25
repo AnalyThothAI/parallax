@@ -154,6 +154,15 @@ def test_build_pulse_policy_evaluation_uses_only_read_queries_and_returns_sectio
     assert all(_is_read_only_select(sql) for sql in conn.executed_sql)
 
 
+def test_build_pulse_policy_evaluation_rejects_malformed_lookback_before_sql() -> None:
+    conn = FakeConn(radar_rows=[], candidate_rows=[], run_rows=[])
+
+    with pytest.raises(ValueError, match="pulse_policy_lookback_hours_required"):
+        build_pulse_policy_evaluation(conn, now_ms=1_700_000_000_000, lookback_hours=0)
+
+    assert conn.executed_sql == []
+
+
 def test_fetch_radar_rows_uses_publication_state_for_ready_current_generation() -> None:
     conn = FakeConn(
         radar_rows=[

@@ -118,6 +118,15 @@ def test_wait_returns_false_on_timeout_for_catch_up() -> None:
     assert waiter.wait(timeout=0.01) is False
 
 
+@pytest.mark.parametrize("timeout", [-1, True, "0.01"])
+def test_wait_rejects_malformed_timeout_without_runtime_repair(timeout: Any) -> None:
+    conn = FakeConn(notifications=[])
+    waiter = WakeWaiter(FakePool(conn), channels=("token_radar_updated",))
+
+    with pytest.raises(ValueError, match="wake_waiter_timeout_seconds_required"):
+        waiter.wait(timeout=timeout)
+
+
 def test_wait_reconnects_after_listen_failure_and_still_times_out() -> None:
     first = FakeConn(fail_listen=True)
     second = FakeConn(notifications=[])
@@ -160,6 +169,14 @@ def test_async_wait_wraps_blocking_wait() -> None:
     waiter = WakeWaiter(FakePool(conn), channels=("token_radar_updated",))
 
     assert asyncio.run(waiter.async_wait(timeout=1)) is True
+
+
+def test_async_wait_rejects_malformed_timeout_without_runtime_repair() -> None:
+    conn = FakeConn(notifications=[])
+    waiter = WakeWaiter(FakePool(conn), channels=("token_radar_updated",))
+
+    with pytest.raises(ValueError, match="wake_waiter_timeout_seconds_required"):
+        asyncio.run(waiter.async_wait(timeout=True))
 
 
 def test_async_wait_uses_dedicated_executor_not_default_threadpool(monkeypatch) -> None:

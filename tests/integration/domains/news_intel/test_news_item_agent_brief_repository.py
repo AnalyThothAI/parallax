@@ -15,6 +15,7 @@ from parallax.domains.news_intel.services.news_item_brief_input import (
     build_news_item_brief_input_packet,
 )
 from parallax.domains.news_intel.types.news_extraction import NewsFactCandidate, NewsTokenMention
+from parallax.domains.news_intel.types.news_item_agent_admission import NewsItemAgentAdmission
 from parallax.domains.news_intel.types.news_item_brief import (
     NEWS_ITEM_BRIEF_AGENT_NAME,
     NEWS_ITEM_BRIEF_LANE,
@@ -22,6 +23,8 @@ from parallax.domains.news_intel.types.news_item_brief import (
     NewsItemBriefPayload,
     default_news_item_brief_agent_config,
 )
+from parallax.domains.news_intel.types.news_market_scope import NewsMarketScope
+from parallax.domains.news_intel.types.news_story_identity import NEWS_STORY_IDENTITY_VERSION, NewsStoryIdentity
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 
@@ -362,6 +365,10 @@ def test_material_duplicate_observation_reuses_current_brief_target(tmp_path) ->
             news_item_ids=affected_ids,
             reason="canonical_news_item_merge",
             now_ms=NOW_MS + 2,
+            source_watermark_ms_by_news_item_id={
+                str(fallback_news["news_item_id"]): int(fallback_news["published_at_ms"]),
+                str(public_news["news_item_id"]): int(public_news["published_at_ms"]),
+            },
             commit=True,
         )
         targets = conn.execute(
@@ -447,6 +454,7 @@ def test_agent_run_and_current_brief_round_trip_gateway_audit_metadata(tmp_path)
             news_item_id=news_item_id,
             provider="litellm",
             model="gpt-5-mini",
+            backend="litellm_sdk",
             execution_trace_id="trace-news-brief-1",
             workflow_name=NEWS_ITEM_BRIEF_WORKFLOW_NAME,
             agent_name=NEWS_ITEM_BRIEF_AGENT_NAME,
@@ -685,6 +693,7 @@ def _insert_run(
         news_item_id=news_item_id,
         provider="litellm",
         model="gpt-5-mini",
+        backend="litellm_sdk",
         execution_trace_id=f"trace-{run_id}",
         workflow_name=NEWS_ITEM_BRIEF_WORKFLOW_NAME,
         agent_name=NEWS_ITEM_BRIEF_AGENT_NAME,
@@ -759,7 +768,7 @@ def _insert_source_provider_and_item(
         now_ms=now_ms,
     )
     if processed:
-        repo.mark_item_processed(news_item_id=str(news["news_item_id"]), processed_at_ms=now_ms)
+        _mark_item_processed_with_agent_state(repo, news_item_id=str(news["news_item_id"]), now_ms=now_ms)
     return str(news["news_item_id"])
 
 
@@ -809,5 +818,33 @@ def _upsert_opennews_observation(
         provider_token_impacts=[{"symbol": "BTC", "signal": "short", "score": 85}],
     )
     if processed:
-        repo.mark_item_processed(news_item_id=str(news["news_item_id"]), processed_at_ms=now_ms)
+        _mark_item_processed_with_agent_state(repo, news_item_id=str(news["news_item_id"]), now_ms=now_ms)
     return news
+
+
+def _mark_item_processed_with_agent_state(repo: NewsRepository, *, news_item_id: str, now_ms: int) -> None:
+    repo.mark_item_processed(news_item_id=news_item_id, processed_at_ms=now_ms)
+    repo.update_item_market_scope_and_agent_admission(
+        news_item_id=news_item_id,
+        market_scope=NewsMarketScope(
+            scope=("crypto",),
+            primary="crypto",
+            status="classified",
+            reason="fixture_crypto_market_scope",
+            basis={"source": "integration_fixture"},
+        ),
+        story_identity=NewsStoryIdentity(
+            story_key=f"story:{news_item_id}",
+            confidence="high",
+            basis={"source": "integration_fixture"},
+            version=NEWS_STORY_IDENTITY_VERSION,
+        ),
+        admission=NewsItemAgentAdmission(
+            eligible=True,
+            status="eligible",
+            reason="fixture_agent_ready",
+            representative_news_item_id=news_item_id,
+            basis={"source": "integration_fixture"},
+        ),
+        now_ms=now_ms,
+    )

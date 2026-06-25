@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -51,13 +52,35 @@ class TokenRadarProjectionWorker(WorkerBase):
         self.venues = tuple(str(venue).strip().lower() for venue in settings.venues)
         hot_windows = tuple(str(window).strip().lower() for window in settings.hot_windows)
         self.hot_windows = tuple(window for window in hot_windows if window in self.windows)
-        self.limit = max(1, int(settings.batch_size))
-        self.lease_ms = max(1, int(settings.lease_ms))
-        self.retry_ms = max(1, int(settings.retry_ms))
-        self.private_cache_retention_enabled = bool(settings.private_cache_retention_enabled)
-        self.private_cache_retention_ms = max(1, int(settings.private_cache_retention_ms))
+        self.limit = _required_positive_int(
+            settings.batch_size,
+            error_code="token_radar_projection_batch_size_required",
+        )
+        self.lease_ms = _required_positive_int(
+            settings.lease_ms,
+            error_code="token_radar_projection_lease_ms_required",
+        )
+        self.retry_ms = _required_positive_int(
+            settings.retry_ms,
+            error_code="token_radar_projection_retry_ms_required",
+        )
+        self.max_attempts = _required_positive_int(
+            settings.max_attempts,
+            error_code="token_radar_projection_max_attempts_required",
+        )
+        self.private_cache_retention_enabled = _required_bool(
+            settings.private_cache_retention_enabled,
+            error_code="token_radar_projection_private_cache_retention_enabled_required",
+        )
+        self.private_cache_retention_ms = _required_positive_int(
+            settings.private_cache_retention_ms,
+            error_code="token_radar_projection_private_cache_retention_ms_required",
+        )
         self.hot_interval_ms = int(self.interval_seconds * 1000)
-        self.cold_interval_ms = int(float(settings.cold_interval_seconds) * 1000)
+        self.cold_interval_ms = _required_nonnegative_seconds_ms(
+            settings.cold_interval_seconds,
+            error_code="token_radar_projection_cold_interval_seconds_required",
+        )
         self.wake_emitter = wake_emitter
         self.enqueue_narrative_admission = bool(enqueue_narrative_admission)
         self._cursor = 0
@@ -107,7 +130,10 @@ class TokenRadarProjectionWorker(WorkerBase):
         if scopes is not None:
             self.scopes = tuple(scopes)
         if limit is not None:
-            self.limit = max(1, int(limit))
+            self.limit = _required_positive_int(
+                limit,
+                error_code="token_radar_projection_limit_required",
+            )
         try:
             return self._rebuild_once(computed_at_ms=computed_at_ms)
         finally:
@@ -166,6 +192,7 @@ class TokenRadarProjectionWorker(WorkerBase):
                         "rank_limit": self.limit,
                         "lease_ms": self.lease_ms,
                         "retry_ms": self.retry_ms,
+                        "max_attempts": self.max_attempts,
                         "lease_owner": self.name,
                         "claimed_targets": tuple(dict(claim) for claim in target_claims),
                         "claimed_source_events": tuple(dict(claim) for claim in source_claims),
@@ -449,7 +476,10 @@ def _publication_due(
 def _elapsed_due(*, computed_at_ms: int, since_ms: int | None, interval_ms: int) -> bool:
     if since_ms is None:
         return True
-    return computed_at_ms - int(since_ms) >= max(0, int(interval_ms))
+    return computed_at_ms - int(since_ms) >= _required_nonnegative_int(
+        interval_ms,
+        error_code="token_radar_projection_interval_ms_required",
+    )
 
 
 def _state_ms(state: dict[str, Any], *keys: str) -> int | None:
@@ -458,6 +488,33 @@ def _state_ms(state: dict[str, Any], *keys: str) -> int | None:
         if value is not None:
             return int(value)
     return None
+
+
+def _required_positive_int(value: Any, *, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _required_nonnegative_int(value: Any, *, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _required_bool(value: Any, *, error_code: str) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError(error_code)
+    return value
+
+
+def _required_nonnegative_seconds_ms(value: Any, *, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(error_code)
+    seconds = float(value)
+    if not math.isfinite(seconds) or seconds < 0:
+        raise ValueError(error_code)
+    return int(seconds * 1000)
 
 
 def _dedupe_work_items(items: list[tuple[str, str, str]]) -> list[tuple[str, str, str]]:

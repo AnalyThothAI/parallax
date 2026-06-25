@@ -39,3 +39,25 @@ def test_ingest_no_longer_enqueues_social_enrichment_jobs() -> None:
 
     assert "watched_social_event_priority" not in ingest_service
     assert "enqueue_watched_event" not in ingest_service
+
+
+def test_watchlist_public_contract_does_not_restore_retired_summary_agent_surface() -> None:
+    project_root = SRC.parents[1]
+    contracts = (project_root / "docs" / "CONTRACTS.md").read_text(encoding="utf-8")
+    workers = (project_root / "docs" / "WORKERS.md").read_text(encoding="utf-8")
+    watchlist_contract = contracts.split("Watchlist handle intel contract:", 1)[1].split(
+        "Search V2 contract:",
+        1,
+    )[0]
+    forbidden_contract_tokens = (
+        "/api/watchlist/handle/{handle}/summary",
+        "social_event_extraction",
+        "social_event.summary_zh",
+    )
+    forbidden_worker_tokens = (
+        "watchlist_handle_signal_stats",
+        "watchlist summaries",
+    )
+
+    assert [token for token in forbidden_contract_tokens if token in watchlist_contract] == []
+    assert [token for token in forbidden_worker_tokens if token in workers] == []

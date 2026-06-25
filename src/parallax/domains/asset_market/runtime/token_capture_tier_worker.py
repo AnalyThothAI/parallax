@@ -38,9 +38,18 @@ class TokenCaptureTierWorker(WorkerBase):
             db=pool_bundle,
             telemetry=telemetry or object(),
         )
-        self.batch_size = max(1, int(settings.batch_size))
-        self.ws_limit = max(0, int(settings.ws_limit))
-        self.poll_limit = max(0, int(settings.poll_limit))
+        self.batch_size = _required_positive_int(
+            settings.batch_size,
+            error_code="token_capture_tier_batch_size_required",
+        )
+        self.ws_limit = _required_nonnegative_int(
+            settings.ws_limit,
+            error_code="token_capture_tier_ws_limit_required",
+        )
+        self.poll_limit = _required_nonnegative_int(
+            settings.poll_limit,
+            error_code="token_capture_tier_poll_limit_required",
+        )
         self.clock = clock or _now_ms
 
     async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
@@ -75,7 +84,10 @@ class TokenCaptureTierWorker(WorkerBase):
                     now_ms=now_ms,
                     limit=1,
                     lease_owner=self.name,
-                    lease_ms=max(1, int(self.settings.lease_ms)),
+                    lease_ms=_required_positive_int(
+                        self.settings.lease_ms,
+                        error_code="token_capture_tier_lease_ms_required",
+                    ),
                     commit=False,
                 )
                 result["claimed"] = len(claims)
@@ -104,9 +116,18 @@ def project_once(
     poll_limit: int,
 ) -> int:
     repos.require_transaction(operation="token_capture_tier_projection")
-    resolved_batch_size = max(1, int(batch_size))
-    resolved_ws_limit = max(0, int(ws_limit))
-    resolved_poll_limit = max(0, int(poll_limit))
+    resolved_batch_size = _required_positive_int(
+        batch_size,
+        error_code="token_capture_tier_project_batch_size_required",
+    )
+    resolved_ws_limit = _required_nonnegative_int(
+        ws_limit,
+        error_code="token_capture_tier_project_ws_limit_required",
+    )
+    resolved_poll_limit = _required_nonnegative_int(
+        poll_limit,
+        error_code="token_capture_tier_project_poll_limit_required",
+    )
     rows = repos.registry.ranked_live_market_targets(
         projection_version=TOKEN_RADAR_PROJECTION_VERSION,
         since_ms=int(now_ms) - WINDOW_MS["24h"],
@@ -245,10 +266,21 @@ def _decimal(value: Any) -> Decimal:
 def _changed_count(value: Any) -> int:
     if isinstance(value, bool):
         return 1 if value else 0
-    try:
-        return max(0, int(value or 0))
-    except (TypeError, ValueError):
-        return 0
+    if isinstance(value, int) and value >= 0:
+        return value
+    raise TypeError("token_capture_tier_changed_count_invalid")
+
+
+def _required_positive_int(value: Any, *, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _required_nonnegative_int(value: Any, *, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _now_ms() -> int:

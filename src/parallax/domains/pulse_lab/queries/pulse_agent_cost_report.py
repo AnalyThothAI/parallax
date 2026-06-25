@@ -347,7 +347,10 @@ def _ratio(numerator: int, denominator: int) -> float:
 
 
 def _since_ms(*, now_ms: int, lookback_hours: int) -> int:
-    return int(now_ms) - max(1, int(lookback_hours)) * 60 * 60 * 1000
+    return int(now_ms) - _required_positive_int(
+        lookback_hours,
+        "pulse_agent_cost_report_lookback_hours_required",
+    ) * 60 * 60 * 1000
 
 
 def _int(value: Any) -> int:
@@ -355,6 +358,12 @@ def _int(value: Any) -> int:
         return int(value or 0)
     except (TypeError, ValueError):
         return 0
+
+
+def _required_positive_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def report_generated_date(now: datetime | None = None) -> str:

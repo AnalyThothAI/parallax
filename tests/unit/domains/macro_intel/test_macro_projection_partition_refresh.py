@@ -63,6 +63,63 @@ def test_partition_refresh_upserts_only_claimed_concepts() -> None:
     assert unbounded_delete not in queries
 
 
+@pytest.mark.parametrize(
+    ("overrides", "error_code"),
+    [
+        pytest.param(
+            {"lookback_days": 0},
+            "macro_observation_series_refresh_lookback_days_required",
+            id="lookback-zero",
+        ),
+        pytest.param(
+            {"lookback_days": True},
+            "macro_observation_series_refresh_lookback_days_required",
+            id="lookback-bool",
+        ),
+        pytest.param(
+            {"lookback_days": "730"},
+            "macro_observation_series_refresh_lookback_days_required",
+            id="lookback-string",
+        ),
+        pytest.param(
+            {"limit_per_series": 0},
+            "macro_observation_series_refresh_limit_per_series_required",
+            id="limit-zero",
+        ),
+        pytest.param(
+            {"limit_per_series": True},
+            "macro_observation_series_refresh_limit_per_series_required",
+            id="limit-bool",
+        ),
+        pytest.param(
+            {"limit_per_series": "252"},
+            "macro_observation_series_refresh_limit_per_series_required",
+            id="limit-string",
+        ),
+    ],
+)
+def test_partition_refresh_rejects_malformed_history_inputs_before_sql(
+    overrides: dict[str, object],
+    error_code: str,
+) -> None:
+    conn = PartitionRefreshConnection(selected_rows=[], existing_rows=[])
+    repo = MacroIntelRepository(conn)
+    params = {
+        "projection_version": "macro_regime_v4",
+        "now_ms": 1_779_000_000_000,
+        "lookback_days": 730,
+        "limit_per_series": 252,
+        "claimed_targets": [_dirty_target("rates:dgs10")],
+        "concept_keys": ("rates:dgs10",),
+    }
+    params.update(overrides)
+
+    with pytest.raises(ValueError, match=error_code):
+        repo.refresh_observation_series_rows_for_concepts(**params)
+
+    assert conn.executions == []
+
+
 def test_partition_refresh_allows_text_event_rows_without_numeric_values() -> None:
     selected_row = _series_row(concept_key="event:fed_speech") | {
         "value_numeric": None,

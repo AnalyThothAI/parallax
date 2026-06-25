@@ -19,7 +19,7 @@ class NewsPageQuery:
         macro_event_flow: bool = False,
         q: str | None = None,
     ) -> dict[str, Any]:
-        requested_limit = max(1, int(limit))
+        requested_limit = _required_positive_int(limit, "news_page_query_limit_required")
         options: dict[str, Any] = {}
         if macro_event_flow:
             options["macro_event_flow"] = True
@@ -47,3 +47,11 @@ class NewsPageQuery:
 
 def _public_news_row(row: dict[str, Any]) -> dict[str, Any]:
     return dict(row)
+
+
+def _required_positive_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value <= 0:
+        raise ValueError(error_code)
+    return int(value)

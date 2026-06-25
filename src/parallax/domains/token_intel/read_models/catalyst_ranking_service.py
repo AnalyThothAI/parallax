@@ -19,6 +19,7 @@ class CatalystRankingService:
         pool: list[dict[str, Any]],
         limit: int,
     ) -> list[dict[str, Any]]:
+        row_limit = _required_nonnegative_int(limit, "catalyst_ranking_limit_required")
         scored = [self._score_candidate(candidate=dict(candidate), pool=pool) for candidate in candidates]
         scored.sort(
             key=lambda item: (
@@ -28,7 +29,7 @@ class CatalystRankingService:
             ),
             reverse=True,
         )
-        return scored[: max(0, int(limit))]
+        return scored[:row_limit]
 
     def _score_candidate(self, *, candidate: dict[str, Any], pool: list[dict[str, Any]]) -> dict[str, Any]:
         candidate_ms = _int_or_zero(candidate.get("received_at_ms"))
@@ -177,4 +178,12 @@ def _handle(row: dict[str, Any]) -> str:
 def _int_or_zero(value: Any) -> int:
     if value is None:
         return 0
+    return int(value)
+
+
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value < 0:
+        raise ValueError(error_code)
     return int(value)

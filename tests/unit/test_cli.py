@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from parallax.app.surfaces.cli.commands.ops import _rebuild_news_canonical_items
 from parallax.app.surfaces.cli.parser import build_parser
 
 
@@ -119,6 +120,14 @@ def test_ops_enqueue_token_radar_dirty_targets_parser_accepts_source_since_limit
     with pytest.raises(SystemExit):
         parser.parse_args(["ops", "enqueue-token-radar-dirty-targets", "--source", "events"])
 
+    for args in (
+        ["ops", "enqueue-token-radar-dirty-targets", "--source", "events", "--since-ms", "-1", "--dry-run"],
+        ["ops", "enqueue-token-radar-dirty-targets", "--source", "events", "--limit", "0", "--dry-run"],
+        ["ops", "enqueue-token-radar-dirty-targets", "--source", "events", "--limit", "-1", "--dry-run"],
+    ):
+        with pytest.raises(SystemExit):
+            parser.parse_args(args)
+
 
 def test_ops_enqueue_token_capture_tier_rank_set_parser_requires_mode() -> None:
     parser = build_parser()
@@ -147,6 +156,10 @@ def test_ops_enqueue_token_capture_tier_rank_set_parser_requires_mode() -> None:
     with pytest.raises(SystemExit):
         parser.parse_args(["ops", "enqueue-token-capture-tier-rank-set"])
 
+    for limit in ("0", "-1"):
+        with pytest.raises(SystemExit):
+            parser.parse_args(["ops", "enqueue-token-capture-tier-rank-set", "--limit", limit, "--dry-run"])
+
 
 def test_ops_news_dedup_commands_are_registered_without_compatibility_flags() -> None:
     parser = build_parser()
@@ -160,12 +173,20 @@ def test_ops_news_dedup_commands_are_registered_without_compatibility_flags() ->
     assert diagnostics.window_hours == 8.0
     assert diagnostics_custom.window_hours == 4.0
     with pytest.raises(SystemExit):
+        parser.parse_args(["ops", "news-dedup-diagnostics", "--window-hours", "0"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["ops", "news-dedup-diagnostics", "--window-hours", "-1"])
+    with pytest.raises(SystemExit):
         parser.parse_args(["ops", "news-dedup-diagnostics", "--score-threshold", "90"])
     assert rebuild_dry_run.ops_command == "rebuild-news-canonical-items"
     assert rebuild_dry_run.limit == 25
     assert rebuild_dry_run.dry_run is True
     assert rebuild_dry_run.execute is False
     assert rebuild_execute.execute is True
+    with pytest.raises(SystemExit):
+        parser.parse_args(["ops", "rebuild-news-canonical-items", "--limit", "0", "--dry-run"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["ops", "rebuild-news-canonical-items", "--limit", "-1", "--dry-run"])
     assert not hasattr(diagnostics, "include_legacy")
     assert not hasattr(rebuild_execute, "legacy_id")
     assert not hasattr(rebuild_execute, "raw_item_id")
@@ -188,6 +209,22 @@ def test_ops_news_dedup_commands_are_registered_without_compatibility_flags() ->
         parser.parse_args(["ops", "cleanup-news-brief-input"])
     with pytest.raises(SystemExit):
         parser.parse_args(["ops", "cleanup-news-brief-input", "--dry-run"])
+
+
+@pytest.mark.parametrize("limit", [0, -1, True, "25"])
+def test_rebuild_news_canonical_items_rejects_malformed_limit_before_repo(limit: object) -> None:
+    class Repos:
+        conn = object()
+        news = None
+
+    with pytest.raises(ValueError, match="ops_news_canonical_rebuild_limit_required"):
+        _rebuild_news_canonical_items(
+            Repos(),
+            limit=limit,  # type: ignore[arg-type]
+            dry_run=True,
+            execute=False,
+            now_ms=1_000,
+        )
 
 
 def test_removed_cleanup_news_item_brief_schema_hard_cut_command_is_not_registered() -> None:

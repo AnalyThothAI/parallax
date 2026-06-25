@@ -182,6 +182,109 @@ def test_pulse_run_returning_writes_accept_valid_single_rowcount() -> None:
     assert _run_insert_agent_run_step(PulseRunsRepository(step_conn))["step_id"] == "step-1"
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "error"),
+    [
+        ("latency_ms", -1, "pulse_run_latency_ms_required"),
+        ("latency_ms", True, "pulse_run_latency_ms_required"),
+        ("latency_ms", "1", "pulse_run_latency_ms_required"),
+        ("decision_stage_count", -1, "pulse_run_decision_stage_count_required"),
+        ("decision_stage_count", True, "pulse_run_decision_stage_count_required"),
+        ("decision_stage_count", "1", "pulse_run_decision_stage_count_required"),
+    ],
+)
+def test_insert_agent_run_rejects_malformed_audit_counts_before_sql(
+    field: str,
+    value: object,
+    error: str,
+) -> None:
+    conn = PulseRunReturningConnection(rows=[_run_row()], rowcount=1)
+    kwargs = {field: value}
+
+    with pytest.raises(ValueError, match=error):
+        PulseRunsRepository(conn).insert_agent_run(
+            run_id="run-1",
+            job_id="job-1",
+            candidate_id="candidate-1",
+            provider="test",
+            model="model",
+            workflow_name="workflow",
+            agent_name="agent",
+            artifact_version_hash="sha256:artifact",
+            prompt_version="prompt-v1",
+            schema_version="schema-v1",
+            runtime_version="runtime-v1",
+            runtime_hash="sha256:runtime",
+            input_hash="sha256:input",
+            outcome="running",
+            commit=False,
+            **kwargs,  # type: ignore[arg-type]
+        )
+
+    assert conn.sql == []
+
+
+@pytest.mark.parametrize("decision_stage_count", [-1, True, "1"])
+def test_finish_agent_run_rejects_malformed_decision_stage_count_before_sql(
+    decision_stage_count: object,
+) -> None:
+    conn = PulseRunReturningConnection(rows=[_run_row()], rowcount=1)
+
+    with pytest.raises(ValueError, match="pulse_run_decision_stage_count_required"):
+        PulseRunsRepository(conn).finish_agent_run(
+            "run-1",
+            "done",
+            outcome="completed",
+            decision_stage_count=decision_stage_count,  # type: ignore[arg-type]
+            commit=False,
+        )
+
+    assert conn.sql == []
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "error"),
+    [
+        ("attempt_index", -1, "pulse_run_step_attempt_index_required"),
+        ("attempt_index", True, "pulse_run_step_attempt_index_required"),
+        ("attempt_index", "1", "pulse_run_step_attempt_index_required"),
+        ("latency_ms", -1, "pulse_run_step_latency_ms_required"),
+        ("latency_ms", True, "pulse_run_step_latency_ms_required"),
+        ("latency_ms", "1", "pulse_run_step_latency_ms_required"),
+        ("safety_net_retries", -1, "pulse_run_step_safety_net_retries_required"),
+        ("safety_net_retries", True, "pulse_run_step_safety_net_retries_required"),
+        ("safety_net_retries", "1", "pulse_run_step_safety_net_retries_required"),
+    ],
+)
+def test_insert_agent_run_step_rejects_malformed_audit_counts_before_sql(
+    field: str,
+    value: object,
+    error: str,
+) -> None:
+    conn = PulseRunReturningConnection(rows=[_step_row()], rowcount=1)
+    kwargs = {
+        "step_id": "step-1",
+        "run_id": "run-1",
+        "stage": "pulse_decision",
+        "route": "meme",
+        "attempt_index": 0,
+        "provider": "test",
+        "model": "model",
+        "prompt_version": "prompt-v1",
+        "schema_version": "schema-v1",
+        "input_json": {},
+        "prompt_text": "prompt",
+        "response_json": {},
+        "commit": False,
+    }
+    kwargs[field] = value
+
+    with pytest.raises(ValueError, match=error):
+        PulseRunsRepository(conn).insert_agent_run_step(**kwargs)  # type: ignore[arg-type]
+
+    assert conn.sql == []
+
+
 def test_finish_agent_run_no_existing_run_returns_none_without_update_rowcount() -> None:
     conn = PulseRunReturningConnection(rows=[], existing_run=_NO_EXISTING_RUN)
 

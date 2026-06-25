@@ -242,6 +242,26 @@ def test_okx_dex_ws_market_uses_worker_subscription_limit(monkeypatch) -> None:
     assert created[0].subscription_limit == 37
 
 
+def test_okx_dex_ws_adapter_sync_close_rejects_connected_public_state() -> None:
+    provider = FakeOkxDexWebSocketMarketProvider(subscription_limit=10)
+    provider.connection_state = "streaming"
+
+    adapter = okx_wiring.OkxDexWebSocketMarketProviderAdapter(provider)
+
+    with pytest.raises(RuntimeError, match="use aclose"):
+        adapter.close()
+
+
+def test_okx_dex_ws_adapter_sync_close_uses_public_state_not_private_websocket() -> None:
+    provider = FakeOkxDexWebSocketMarketProvider(subscription_limit=10)
+    provider.connection_state = "disconnected"
+    provider._websocket = object()
+
+    adapter = okx_wiring.OkxDexWebSocketMarketProviderAdapter(provider)
+
+    adapter.close()
+
+
 def test_discovery_provider_close_is_idempotent(monkeypatch) -> None:
     created: list[CloseCountingDexDiscoveryProvider] = []
 
@@ -790,6 +810,7 @@ class FakeDexStreamProvider:
 class FakeOkxDexWebSocketMarketProvider:
     def __init__(self, **kwargs) -> None:
         self.subscription_limit = kwargs["subscription_limit"]
+        self.connection_state = "disconnected"
 
     async def replace_subscriptions(self, targets) -> None:
         return None
@@ -800,6 +821,9 @@ class FakeOkxDexWebSocketMarketProvider:
 
     async def aclose(self) -> None:
         return None
+
+    def connection_state_payload(self) -> dict[str, object]:
+        return {"state": self.connection_state}
 
 
 class CloseCountingDexDiscoveryProvider(FakeDexDiscoveryProvider):

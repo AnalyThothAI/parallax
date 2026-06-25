@@ -43,6 +43,12 @@ def _optional_returning_row(cursor: Any, row: Any) -> dict[str, Any] | None:
     return _row(row) if row is not None else None
 
 
+def _required_positive_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
 class PulseAdmissionRepository:
     def __init__(self, conn: Any):
         self.conn = conn
@@ -100,6 +106,8 @@ class PulseAdmissionRepository:
         max_enqueues: int = 3,
         commit: bool = True,
     ) -> bool:
+        enqueue_limit = _required_positive_int(max_enqueues, "pulse_edge_budget_max_enqueues_required")
+
         def _claim_edge_budget() -> bool:
             now = int(now_ms)
             cursor = self.conn.execute(
@@ -114,7 +122,7 @@ class PulseAdmissionRepository:
                 WHERE pulse_candidate_run_budget.enqueue_count < %s
                 RETURNING enqueue_count
                 """,
-                (candidate_id, int(hour_bucket_ms), now, now, max(1, int(max_enqueues))),
+                (candidate_id, int(hour_bucket_ms), now, now, enqueue_limit),
             )
             row = cursor.fetchone()
             return _single_returning_rowcount(cursor, row) == 1

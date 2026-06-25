@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import replace
 
 import pytest
@@ -38,11 +39,19 @@ def test_token_radar_publish_enqueues_narrative_admission_in_same_transaction(tm
             notification_delivery_running_timeout_ms=300_000,
             notification_delivery_stale_running_terminalization_batch_size=100,
         )
+        target_feature_row = _valid_factor_row()
+        target_feature_snapshot = deepcopy(target_feature_row["factor_snapshot_json"])
+        target_feature_snapshot["subject"] = {
+            **target_feature_snapshot["subject"],
+            "chain_id": "solana",
+            "address": "asset-unit-address",
+        }
+        target_feature_row["factor_snapshot_json"] = target_feature_snapshot
         repos.token_radar.upsert_target_feature(
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
             window="1h",
             scope="all",
-            row=_valid_factor_row(),
+            row=target_feature_row,
             computed_at_ms=1_777_999_990_000,
             commit=False,
         )

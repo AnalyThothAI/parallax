@@ -6,7 +6,8 @@ from typing import Any
 
 import pytest
 
-from parallax.domains.pulse_lab.runtime.pulse_candidate_worker import PulseCandidateWorker
+from parallax.domains.pulse_lab.runtime.pulse_candidate_worker import PulseCandidateWorker, _record_agent_backpressure
+from parallax.platform.agent_execution import AgentCapacityReservation, AgentExecutionErrorClass
 from tests.unit.test_pulse_candidate_worker import _factor_snapshot, _radar_row, _timeline_row
 
 NOW_MS = 1_800_000
@@ -25,6 +26,42 @@ def test_empty_dirty_queue_does_not_scan_token_radar_rows() -> None:
     assert result["queue_depth"] == 0
     assert repos.token_radar.latest_calls == 0
     assert repos.pulse_trigger_dirty_targets.claim_calls == 1
+
+
+def test_record_agent_backpressure_requires_formal_agent_capacity_reservation() -> None:
+    result: dict[str, Any] = {}
+
+    with pytest.raises(RuntimeError, match="pulse_candidate_agent_reservation_contract_required"):
+        _record_agent_backpressure(
+            result,
+            SimpleNamespace(acquired=False, reason=AgentExecutionErrorClass.RATE_LIMITED),
+        )
+
+
+def test_record_agent_backpressure_requires_formal_reason_enum() -> None:
+    result: dict[str, Any] = {}
+    loose_reservation = AgentCapacityReservation(
+        lane="pulse.decision",
+        acquired=False,
+        reason="rate_limited",  # type: ignore[arg-type]
+    )
+
+    with pytest.raises(RuntimeError, match="pulse_candidate_agent_reservation_reason_contract_required"):
+        _record_agent_backpressure(result, loose_reservation)
+
+
+def test_record_agent_backpressure_uses_formal_reason_value() -> None:
+    result: dict[str, Any] = {}
+    reservation = AgentCapacityReservation(
+        lane="pulse.decision",
+        acquired=False,
+        reason=AgentExecutionErrorClass.RATE_LIMITED,
+    )
+
+    _record_agent_backpressure(result, reservation)
+
+    assert result["agent_backpressure"] == "rate_limited"
+    assert result["agent_backpressure_rate_limited"] == 1
 
 
 def test_worker_requires_repository_session_transaction_before_claiming_dirty_targets() -> None:
@@ -225,6 +262,33 @@ def test_missing_pulse_job_state_contract_fails_dirty_trigger_instead_of_marking
     assert repos.pulse_trigger_dirty_targets.done == []
     assert repos.pulse_trigger_dirty_targets.errors[0]["claims"] == [claim]
     assert "job_for_candidate" in repos.pulse_trigger_dirty_targets.errors[0]["error"]
+
+
+def test_dirty_trigger_error_uses_formal_worker_retry_budget() -> None:
+    claim = {
+        "target_type": "Asset",
+        "target_id": "asset-1",
+        "window": "1h",
+        "scope": "all",
+        "payload_hash": "pulse-trigger-1",
+        "lease_owner": "pulse-candidate",
+        "attempt_count": 3,
+        "dirty_reason": "token_radar_changed",
+        "source_watermark_ms": NOW_MS - 1_000,
+    }
+    row = _radar_row(factor_snapshot_json=_factor_snapshot(rank_score=80))
+    repos = _FakeRepos(claims=[claim], exact_rows={("Asset", "asset-1", "1h", "all"): row})
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+    worker = _worker(repos, settings=_settings(max_attempts=3, trigger_error_retry_ms=7_000))
+
+    result = worker.scan_triggers_once(now_ms=NOW_MS)
+
+    assert result["dirty_triggers_failed"] == 1
+    error = repos.pulse_trigger_dirty_targets.errors[0]
+    assert error["claims"] == [claim]
+    assert error["max_attempts"] == 3
+    assert error["worker_name"] == "pulse_candidate"
+    assert error["retry_ms"] == 7_000
 
 
 class _RecordingWorker(PulseCandidateWorker):

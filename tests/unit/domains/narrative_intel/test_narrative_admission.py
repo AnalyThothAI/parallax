@@ -1,3 +1,5 @@
+import pytest
+
 from parallax.domains.narrative_intel.services.narrative_admission import (
     NarrativeAdmissionService,
 )
@@ -52,6 +54,22 @@ def test_raw_rows_without_targets_do_not_create_admissions():
     )
 
     assert decisions == []
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "error_code"),
+    [
+        ({"hot_rank_limit": 0, "min_rank_score": 30}, "narrative_admission_hot_rank_limit_required"),
+        ({"hot_rank_limit": True, "min_rank_score": 30}, "narrative_admission_hot_rank_limit_required"),
+        ({"hot_rank_limit": "10", "min_rank_score": 30}, "narrative_admission_hot_rank_limit_required"),
+        ({"hot_rank_limit": 10, "min_rank_score": -1}, "narrative_admission_min_rank_score_required"),
+        ({"hot_rank_limit": 10, "min_rank_score": True}, "narrative_admission_min_rank_score_required"),
+        ({"hot_rank_limit": 10, "min_rank_score": "30"}, "narrative_admission_min_rank_score_required"),
+    ],
+)
+def test_admission_service_requires_formal_thresholds_without_runtime_repairs(kwargs, error_code):
+    with pytest.raises(ValueError, match=error_code):
+        NarrativeAdmissionService(**kwargs)
 
 
 def test_admission_preserves_zero_source_watermark():

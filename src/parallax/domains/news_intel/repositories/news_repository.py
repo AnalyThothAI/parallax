@@ -265,7 +265,10 @@ class NewsRepository:
             "trust_tier": str(trust_tier),
             "managed_by_config": bool(managed_by_config),
             "enabled": bool(enabled),
-            "refresh_interval_seconds": max(1, int(refresh_interval_seconds)),
+            "refresh_interval_seconds": _required_positive_int(
+                refresh_interval_seconds,
+                "news_source_refresh_interval_seconds_required",
+            ),
             "coverage_tags_json": list(normalize_string_tuple(coverage_tags)),
             "asset_universe_json": list(normalize_string_tuple(asset_universe)),
             "authority_scope_json": _optional_news_source_policy_mapping(authority_scope, "authority_scope"),
@@ -497,6 +500,7 @@ class NewsRepository:
         return [str(row["source_id"]) for row in rows]
 
     def list_news_items_for_canonical_rebuild(self, *, limit: int) -> list[dict[str, Any]]:
+        parsed_limit = _required_nonnegative_int(limit, "news_canonical_rebuild_limit_required")
         rows = self.conn.execute(
             """
             WITH candidates AS (
@@ -527,7 +531,7 @@ class NewsRepository:
              ORDER BY updated_at_ms DESC, news_item_id ASC
              LIMIT %s
             """,
-            (NEWS_STORY_IDENTITY_VERSION, max(0, int(limit))),
+            (NEWS_STORY_IDENTITY_VERSION, parsed_limit),
         ).fetchall()
         return [
             {
@@ -547,6 +551,11 @@ class NewsRepository:
         claim_lease_ms: int,
         commit: bool = True,
     ) -> list[dict[str, Any]]:
+        parsed_limit = _required_nonnegative_int(limit, "news_source_claim_limit_required")
+        parsed_claim_lease_ms = _required_positive_int(
+            claim_lease_ms,
+            "news_source_claim_lease_ms_required",
+        )
         cursor = self.conn.execute(
             """
             WITH due AS (
@@ -567,8 +576,8 @@ class NewsRepository:
             """,
             (
                 int(now_ms),
-                max(0, int(limit)),
-                int(now_ms) + max(1, int(claim_lease_ms)),
+                parsed_limit,
+                int(now_ms) + parsed_claim_lease_ms,
                 int(now_ms),
             ),
         )
@@ -2322,6 +2331,7 @@ class NewsRepository:
         required_schema_version: str = NEWS_ITEM_BRIEF_SCHEMA_VERSION,
         limit: int = 5000,
     ) -> list[str]:
+        parsed_limit = _required_positive_int(limit, "news_current_brief_schema_limit_required")
         rows = self.conn.execute(
             """
             SELECT news_item_id
@@ -2330,7 +2340,7 @@ class NewsRepository:
              ORDER BY updated_at_ms ASC, news_item_id ASC
              LIMIT %s
             """,
-            (str(required_schema_version), max(1, int(limit))),
+            (str(required_schema_version), parsed_limit),
         ).fetchall()
         return [str(row["news_item_id"]) for row in rows]
 
@@ -2392,6 +2402,7 @@ class NewsRepository:
         *,
         limit: int,
     ) -> list[dict[str, Any]]:
+        parsed_limit = _required_nonnegative_int(limit, "news_high_signal_notification_limit_required")
         rows = self.conn.execute(
             """
             SELECT
@@ -2451,7 +2462,7 @@ class NewsRepository:
               row_id DESC
             LIMIT %s
             """,
-            (NEWS_PAGE_PROJECTION_VERSION, max(0, int(limit))),
+            (NEWS_PAGE_PROJECTION_VERSION, parsed_limit),
         ).fetchall()
         return [_projected_news_page_row_payload(row, require_full_sections=False) for row in rows]
 
@@ -2465,6 +2476,7 @@ class NewsRepository:
         macro_event_flow: bool = False,
         q: str | None = None,
     ) -> list[dict[str, Any]]:
+        parsed_limit = _required_nonnegative_int(limit, "news_page_rows_limit_required")
         cursor_time, cursor_id = _decode_page_cursor(cursor)
         filter_sql, filter_params = _news_page_row_filter_sql(
             status=status,
@@ -2541,7 +2553,7 @@ class NewsRepository:
                 cursor_time,
                 cursor_id,
                 *filter_params,
-                max(0, int(limit)),
+                parsed_limit,
             ),
         ).fetchall()
         return [
@@ -2563,7 +2575,8 @@ class NewsRepository:
         now_ms: int,
         commit: bool = True,
     ) -> list[dict[str, Any]]:
-        lease_deadline = int(now_ms) + max(1, int(lease_ms))
+        parsed_limit = _required_nonnegative_int(limit, "news_item_claim_limit_required")
+        lease_deadline = int(now_ms) + _required_positive_int(lease_ms, "news_item_claim_lease_ms_required")
         cursor = self.conn.execute(
             """
             WITH picked AS (
@@ -2645,7 +2658,7 @@ class NewsRepository:
             """,
             (
                 int(now_ms),
-                max(0, int(limit)),
+                parsed_limit,
                 str(lease_owner),
                 lease_deadline,
                 int(now_ms),
@@ -3920,7 +3933,8 @@ class NewsRepository:
                   'duplicate_count', COALESCE(edge_summary.duplicate_count, 1),
                   'source_ids_json', COALESCE(edge_summary.source_ids_json, '[]'::jsonb),
                   'source_domains_json', COALESCE(edge_summary.source_domains_json, '[]'::jsonb),
-                  'provider_article_keys_json', COALESCE(edge_summary.provider_article_keys_json, '[]'::jsonb)
+                  'provider_article_keys_json', COALESCE(edge_summary.provider_article_keys_json, '[]'::jsonb),
+                  'market_scope_json', items.market_scope_json -> 'scope'
                 ) AS item,
               CASE
                 WHEN current_brief.news_item_id IS NULL THEN NULL
@@ -4413,7 +4427,7 @@ class NewsRepository:
         window_ms: int,
         now_ms: int,
     ) -> list[dict[str, Any]]:
-        window_start_ms = int(now_ms) - max(1, int(window_ms))
+        window_start_ms = int(now_ms) - _required_positive_int(window_ms, "news_source_quality_window_ms_required")
         source_filter = list(dict.fromkeys(str(source_id) for source_id in (source_ids or []) if str(source_id)))
         source_filter_param = source_filter or None
         rows = self.conn.execute(
@@ -4738,6 +4752,7 @@ class NewsRepository:
         window_ms: int = 8 * 3_600_000,
         now_ms: int | None = None,
     ) -> dict[str, Any]:
+        parsed_window_ms = _required_positive_int(window_ms, "news_dedup_diagnostics_window_ms_required")
         resolved_now_ms = int(now_ms) if now_ms is not None else 0
         row = self.conn.execute(
             """
@@ -4747,7 +4762,7 @@ class NewsRepository:
                   WHEN %(now_ms)s::bigint > 0 THEN %(now_ms)s::bigint
                   ELSE (extract(epoch FROM clock_timestamp()) * 1000)::bigint
                 END AS now_ms,
-                GREATEST(%(window_ms)s::bigint, 0) AS window_ms
+                %(window_ms)s::bigint AS window_ms
             ),
             visible_rows AS (
               SELECT rows.row_id,
@@ -4952,7 +4967,7 @@ class NewsRepository:
             """,
             {
                 "now_ms": resolved_now_ms,
-                "window_ms": max(0, int(window_ms)),
+                "window_ms": parsed_window_ms,
                 "projection_version": NEWS_PAGE_PROJECTION_VERSION,
             },
         ).fetchone()
@@ -5007,12 +5022,13 @@ class NewsRepository:
                 "source_sync_diagnostics": _required_news_dedup_diagnostics_list(row, "source_sync_diagnostics"),
             }
         current_policy = self._news_dedup_current_policy_diagnostics(
-            window_ms=max(0, int(window_ms)),
+            window_ms=parsed_window_ms,
             now_ms=resolved_now_ms,
         )
         return {**payload, **current_policy}
 
     def _news_dedup_current_policy_diagnostics(self, *, window_ms: int, now_ms: int) -> dict[str, Any]:
+        parsed_window_ms = _required_positive_int(window_ms, "news_dedup_diagnostics_window_ms_required")
         visible_rows = self.conn.execute(
             """
             SELECT rows.row_id,
@@ -5048,7 +5064,7 @@ class NewsRepository:
                   WHEN %(now_ms)s::bigint > 0 THEN %(now_ms)s::bigint
                   ELSE (extract(epoch FROM clock_timestamp()) * 1000)::bigint
                 END AS now_ms,
-                GREATEST(%(window_ms)s::bigint, 0) AS window_ms
+                %(window_ms)s::bigint AS window_ms
             )
             SELECT items.news_item_id,
                    items.source_id,
@@ -5066,7 +5082,7 @@ class NewsRepository:
                    >= params.now_ms - params.window_ms
              ORDER BY items.source_id ASC, items.published_at_ms ASC, items.news_item_id ASC
             """,
-            {"now_ms": int(now_ms), "window_ms": max(0, int(window_ms))},
+            {"now_ms": int(now_ms), "window_ms": parsed_window_ms},
         ).fetchall()
         stale_brief_row = self.conn.execute(
             """
@@ -5462,6 +5478,18 @@ def _returned_rowcount(cursor: Any, rows: list[Any]) -> int:
     if count != len(rows):
         raise TypeError("news_repository_rowcount_invalid")
     return count
+
+
+def _required_positive_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _optional_returning_row(cursor: Any, row: Any | None) -> dict[str, Any] | None:
@@ -6058,18 +6086,18 @@ def _required_agent_admission_item_text(item: Mapping[str, Any], field_name: str
 
 
 def _apply_page_row_summary(payload: dict[str, Any], summary: Mapping[str, Any]) -> None:
+    if summary:
+        payload["canonical_item_key"] = _required_page_text(summary, "canonical_item_key")
+        payload["duplicate_count"] = _required_page_nonnegative_int(summary, "duplicate_observation_count")
+        payload["source_ids_json"] = _json(_required_page_list(summary, "source_ids_json"))
+        payload["source_domains_json"] = _json(_required_page_list(summary, "source_domains_json"))
+        payload["provider_article_keys_json"] = _json(_required_page_list(summary, "provider_article_keys_json"))
+        return
     payload["canonical_item_key"] = _required_page_text(payload, "canonical_item_key")
     payload["duplicate_count"] = _required_page_nonnegative_int(payload, "duplicate_count")
     payload["source_ids_json"] = _json(_required_page_list(payload, "source_ids_json"))
     payload["source_domains_json"] = _json(_required_page_list(payload, "source_domains_json"))
     payload["provider_article_keys_json"] = _json(_required_page_list(payload, "provider_article_keys_json"))
-    if not summary:
-        return
-    payload["canonical_item_key"] = _required_page_text(summary, "canonical_item_key")
-    payload["duplicate_count"] = _required_page_nonnegative_int(summary, "duplicate_observation_count")
-    payload["source_ids_json"] = _json(_required_page_list(summary, "source_ids_json"))
-    payload["source_domains_json"] = _json(_required_page_list(summary, "source_domains_json"))
-    payload["provider_article_keys_json"] = _json(_required_page_list(summary, "provider_article_keys_json"))
 
 
 def _agent_publishable_summary(agent_brief: Mapping[str, Any], *, brief_json: Mapping[str, Any]) -> bool:
@@ -7220,7 +7248,7 @@ def _public_agent_brief_payload(value: Any) -> dict[str, Any]:
         "bear_strength",
     ):
         if field_name in public_payload:
-            text_value = _optional_public_agent_brief_text_field(public_payload, field_name)
+            text_value = _validate_public_agent_brief_text_field(public_payload, field_name)
             if text_value is None:
                 public_payload.pop(field_name, None)
             else:
@@ -7250,7 +7278,7 @@ def _public_agent_brief_payload(value: Any) -> dict[str, Any]:
     return public_payload
 
 
-def _optional_public_agent_brief_text_field(payload: Mapping[str, Any], field_name: str) -> str | None:
+def _validate_public_agent_brief_text_field(payload: Mapping[str, Any], field_name: str) -> str | None:
     value = payload.get(field_name)
     if value is None:
         return None

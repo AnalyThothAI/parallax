@@ -195,6 +195,66 @@ def test_worker_base_requires_formal_settings_fields_without_runtime_defaults() 
         worker._backoff_seconds()
 
 
+@pytest.mark.parametrize(
+    ("field", "attribute", "value", "error"),
+    [
+        ("interval_seconds", "interval_seconds", -0.1, "worker_interval_seconds_required"),
+        ("interval_seconds", "interval_seconds", True, "worker_interval_seconds_required"),
+        ("interval_seconds", "interval_seconds", "0.01", "worker_interval_seconds_required"),
+        ("soft_timeout_seconds", "soft_timeout_seconds", -0.1, "worker_soft_timeout_seconds_required"),
+        ("soft_timeout_seconds", "soft_timeout_seconds", True, "worker_soft_timeout_seconds_required"),
+        ("soft_timeout_seconds", "soft_timeout_seconds", "1.0", "worker_soft_timeout_seconds_required"),
+        ("hard_timeout_seconds", "hard_timeout_seconds", -0.1, "worker_hard_timeout_seconds_required"),
+        ("hard_timeout_seconds", "hard_timeout_seconds", True, "worker_hard_timeout_seconds_required"),
+        ("hard_timeout_seconds", "hard_timeout_seconds", "0.0", "worker_hard_timeout_seconds_required"),
+    ],
+)
+def test_worker_base_rejects_malformed_timing_settings_without_runtime_repair(
+    field: str,
+    attribute: str,
+    value: Any,
+    error: str,
+) -> None:
+    worker = CountingWorker(
+        name="timing_contract",
+        settings=worker_settings(**{field: value}),
+        db=FakeDB(),
+        telemetry=FakeTelemetry(),
+    )
+
+    with pytest.raises(ValueError, match=error):
+        getattr(worker, attribute)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "error"),
+    [
+        ("base_ms", -1, "worker_backoff_base_ms_required"),
+        ("base_ms", True, "worker_backoff_base_ms_required"),
+        ("base_ms", "1", "worker_backoff_base_ms_required"),
+        ("max_ms", -1, "worker_backoff_max_ms_required"),
+        ("max_ms", True, "worker_backoff_max_ms_required"),
+        ("max_ms", "5", "worker_backoff_max_ms_required"),
+    ],
+)
+def test_worker_base_rejects_malformed_backoff_settings_without_runtime_repair(
+    field: str,
+    value: Any,
+    error: str,
+) -> None:
+    backoff_values = {"base_ms": 1, "max_ms": 5}
+    backoff_values[field] = value
+    worker = CountingWorker(
+        name="backoff_contract",
+        settings=worker_settings(backoff=SimpleNamespace(**backoff_values)),
+        db=FakeDB(),
+        telemetry=FakeTelemetry(),
+    )
+
+    with pytest.raises(ValueError, match=error):
+        worker._backoff_seconds()
+
+
 def test_worker_base_run_calls_hooks_updates_status_and_metrics() -> None:
     async def scenario() -> None:
         telemetry = FakeTelemetry()

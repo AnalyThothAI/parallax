@@ -20,7 +20,11 @@ from parallax.domains.pulse_lab.services.pulse_decision_runtime import PulseDeci
 from parallax.domains.pulse_lab.types.agent_decision import FinalDecision, PulseStageFailure
 from parallax.domains.pulse_lab.types.evidence_packet import PulseEvidencePacket
 from parallax.integrations.model_execution.output_schema import StrictJsonOutputSchema
-from parallax.integrations.model_execution.pulse_decision_agent_client import LiteLLMPulseDecisionClient
+from parallax.integrations.model_execution.pulse_decision_agent_client import (
+    LiteLLMPulseDecisionClient,
+    _latency_ms,
+    _safety_net_retries,
+)
 from parallax.platform.agent_execution import (
     RUNTIME_VERSION,
     AgentExecutionError,
@@ -156,6 +160,41 @@ class _NoStartBackpressureGateway(_FakeAgentGateway):
         )
 
 
+class _MalformedAgentErrorClassGateway(_FakeAgentGateway):
+    def __init__(self, *, execution_started: bool, error_class_text: str) -> None:
+        super().__init__()
+        self.execution_started = execution_started
+        self.error_class_text = error_class_text
+
+    async def execute(self, stage, **kwargs):
+        self.execute_calls.append({"stage": stage, "kwargs": kwargs})
+        request_audit = self.request_audit(stage)
+        formal_error_class = (
+            AgentExecutionErrorClass.TIMEOUT
+            if self.error_class_text == "timeout"
+            else AgentExecutionErrorClass.CAPACITY_DENIED
+        )
+        audit = AgentExecutionResultAudit(
+            **_request_audit_base(request_audit),
+            status=AgentExecutionStatus.FAILED,
+            execution_started=self.execution_started,
+            latency_ms=0.0,
+            usage={},
+            parse_mode="strict",
+            safety_net={},
+            error_class=formal_error_class,
+            error_message="malformed agent error class",
+        )
+        exc = AgentExecutionError(
+            formal_error_class,
+            "malformed agent error class",
+            audit=audit,
+            execution_started=self.execution_started,
+        )
+        exc.error_class = self.error_class_text  # type: ignore[assignment]
+        raise exc
+
+
 class _LooseErrorAuditGateway(_FakeAgentGateway):
     async def execute(self, stage, **kwargs):
         self.execute_calls.append({"stage": stage, "kwargs": kwargs})
@@ -237,6 +276,34 @@ def test_pulse_client_requires_decision_runtime_only() -> None:
             agent_gateway=_FakeAgentGateway(),
             decision_runtime=None,  # type: ignore[arg-type]
         )
+
+
+@pytest.mark.parametrize("latency_ms", [0, 17.0, 23])
+def test_pulse_client_accepts_formal_nonnegative_stage_latency(latency_ms: int | float) -> None:
+    assert _latency_ms(latency_ms) == int(latency_ms)
+
+
+@pytest.mark.parametrize("latency_ms", [-1, True, "17", None])
+def test_pulse_client_rejects_malformed_stage_latency_without_zero_repair(latency_ms: object) -> None:
+    with pytest.raises(ValueError, match="pulse_decision_agent_latency_ms_required"):
+        _latency_ms(latency_ms)
+
+
+def test_pulse_client_defaults_missing_safety_net_retries_to_zero() -> None:
+    assert _safety_net_retries({}) == 0
+
+
+@pytest.mark.parametrize("safety_net_retries", [0, 2])
+def test_pulse_client_accepts_formal_safety_net_retries(safety_net_retries: int) -> None:
+    assert _safety_net_retries({"safety_net_retries": safety_net_retries}) == safety_net_retries
+
+
+@pytest.mark.parametrize("safety_net_retries", [-1, True, "1"])
+def test_pulse_client_rejects_malformed_safety_net_retries_without_cast(
+    safety_net_retries: object,
+) -> None:
+    with pytest.raises(ValueError, match="pulse_decision_agent_safety_net_retries_required"):
+        _safety_net_retries({"safety_net_retries": safety_net_retries})
 
 
 @pytest.mark.parametrize("workflow_name", ["", " ", None])
@@ -885,6 +952,26 @@ def test_gateway_execution_error_requires_formal_audit_contract() -> None:
         )
 
 
+def test_gateway_execution_error_requires_formal_error_class_contract() -> None:
+    gateway = _MalformedAgentErrorClassGateway(execution_started=True, error_class_text="timeout")
+    client = LiteLLMPulseDecisionClient(
+        agent_gateway=gateway,
+        decision_runtime=PulseDecisionRuntimeService(),
+    )
+
+    with pytest.raises(RuntimeError, match="pulse_decision_agent_error_class_contract_required"):
+        asyncio.run(
+            client.run_decision_pipeline(
+                context=_pipeline_context(),
+                run_id="run-1",
+                job={"job_id": "job-1", "attempt_count": 1},
+                route="meme",
+                completeness=_pipeline_completeness(),
+                runtime_manifest=_client_runtime_manifest(client),
+            )
+        )
+
+
 def test_no_start_agent_execution_error_is_not_collapsed_into_stage_failure() -> None:
     gateway = _NoStartBackpressureGateway()
     client = LiteLLMPulseDecisionClient(
@@ -906,6 +993,26 @@ def test_no_start_agent_execution_error_is_not_collapsed_into_stage_failure() ->
 
     assert exc.value.error_class is AgentExecutionErrorClass.CAPACITY_DENIED
     assert exc.value.execution_started is False
+
+
+def test_no_start_agent_execution_error_requires_formal_error_class_contract() -> None:
+    gateway = _MalformedAgentErrorClassGateway(execution_started=False, error_class_text="capacity_denied")
+    client = LiteLLMPulseDecisionClient(
+        agent_gateway=gateway,
+        decision_runtime=PulseDecisionRuntimeService(),
+    )
+
+    with pytest.raises(RuntimeError, match="pulse_decision_agent_error_class_contract_required"):
+        asyncio.run(
+            client.run_decision_pipeline(
+                context=_pipeline_context(),
+                run_id="run-1",
+                job={"job_id": "job-1", "attempt_count": 1},
+                route="meme",
+                completeness=_pipeline_completeness(),
+                runtime_manifest=_client_runtime_manifest(client),
+            )
+        )
 
 
 def _pipeline_context(*, cost_guard: dict | None = None) -> dict:

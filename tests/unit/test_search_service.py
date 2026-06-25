@@ -19,6 +19,35 @@ def test_search_requires_explicit_query_boundaries_before_repository_call():
     assert query.target_limits == []
 
 
+def test_search_allows_zero_limit_with_empty_page_and_target_lookahead() -> None:
+    query = FakeSearchQuery(target_hits=[hit("event-1", route="target", route_rank=1, received_at_ms=3000)])
+
+    result = SearchService(search_query=query).search("btc", limit=0, scope="all", window="24h")
+
+    assert result.ok is True
+    assert result.items == []
+    assert result.page["returned_count"] == 0
+    assert result.page["has_more"] is True
+    assert query.target_limits == [1]
+
+
+@pytest.mark.parametrize("limit", [-1, True, "20"])
+def test_search_rejects_malformed_limit_before_repository_call(limit: object) -> None:
+    query = FakeSearchQuery(route_hits=[])
+
+    with pytest.raises(ValueError, match="search_limit_required"):
+        SearchService(search_query=query).search(
+            "btc",
+            limit=limit,  # type: ignore[arg-type]
+            scope="all",
+            window="24h",
+        )
+
+    assert query.resolved_symbols == []
+    assert query.route_limits == []
+    assert query.target_limits == []
+
+
 def test_search_merges_target_and_lexical_hits_by_event_id():
     query = FakeSearchQuery(
         route_hits=[

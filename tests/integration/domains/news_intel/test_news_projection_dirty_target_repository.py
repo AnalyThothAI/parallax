@@ -75,6 +75,7 @@ def test_news_source_quality_uniqueness_includes_window() -> None:
                 "target_id": "source-1",
                 "window": "24h",
                 "payload_hash": "hash-24h",
+                "source_watermark_ms": 1_700_000_000_000,
             },
             {
                 "projection_name": "source_quality",
@@ -82,6 +83,7 @@ def test_news_source_quality_uniqueness_includes_window() -> None:
                 "target_id": "source-1",
                 "window": "7d",
                 "payload_hash": "hash-7d",
+                "source_watermark_ms": 1_700_000_000_000,
             },
         ],
         reason="source_quality_window_due",
@@ -156,6 +158,7 @@ def test_reenqueue_duplicate_while_leased_preserves_claim_token_when_payload_is_
                 "target_kind": "news_item",
                 "target_id": "item-1",
                 "payload_hash": "old-claim-hash",
+                "source_watermark_ms": 1_700_000_010_000,
             }
         ],
         reason="brief_updated",
@@ -209,6 +212,7 @@ def test_reenqueue_material_change_while_leased_protects_old_done_and_error_toke
                 "target_kind": "news_item",
                 "target_id": "item-1",
                 "payload_hash": "new-hash",
+                "source_watermark_ms": 1_700_000_020_000,
             }
         ],
         reason="brief_updated",
@@ -649,6 +653,7 @@ def test_postgres_news_source_quality_window_uniqueness(postgres_conn) -> None:
                 "target_id": "source-1",
                 "window": "24h",
                 "payload_hash": "hash-24h",
+                "source_watermark_ms": 1_700_000_000_000,
             },
             {
                 "projection_name": "source_quality",
@@ -656,6 +661,7 @@ def test_postgres_news_source_quality_window_uniqueness(postgres_conn) -> None:
                 "target_id": "source-1",
                 "window": "7d",
                 "payload_hash": "hash-7d",
+                "source_watermark_ms": 1_700_000_000_000,
             },
         ],
         reason="source_quality_window_due",
@@ -683,7 +689,14 @@ def test_terminalize_targets_deletes_hot_row_and_records_terminal_event(tmp_path
         repo = NewsProjectionDirtyTargetRepository(conn)
         now = 1_779_000_000_000
         repo.enqueue_targets(
-            [{"projection_name": "brief_input", "target_kind": "news_item", "target_id": "item-terminal"}],
+            [
+                {
+                    "projection_name": "brief_input",
+                    "target_kind": "news_item",
+                    "target_id": "item-terminal",
+                    "source_watermark_ms": now,
+                }
+            ],
             reason="unit",
             now_ms=now,
         )
@@ -730,6 +743,7 @@ def test_terminalize_targets_skips_event_when_claim_token_is_stale(tmp_path) -> 
                     "target_kind": "news_item",
                     "target_id": "item-stale-terminal",
                     "payload_hash": "claim-hash",
+                    "source_watermark_ms": now,
                 }
             ],
             reason="unit",

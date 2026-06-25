@@ -1,5 +1,7 @@
 from inspect import signature
 
+import pytest
+
 from parallax.domains.token_intel.read_models.stocks_radar_service import StocksRadarService
 
 
@@ -45,7 +47,9 @@ def test_stocks_radar_returns_unavailable_quote_read_model_state_without_provide
         for index in range(6)
     ]
 
-    data = StocksRadarService(conn=FakeConn([]), stock_rows_query=StaticStockRows(rows)).stocks_radar(
+    stock_rows = StaticStockRows(rows)
+
+    data = StocksRadarService(conn=FakeConn([]), stock_rows_query=stock_rows).stocks_radar(
         window="1h",
         limit=6,
         scope="all",
@@ -62,11 +66,44 @@ def test_stocks_radar_returns_unavailable_quote_read_model_state_without_provide
     assert {row["quote"]["error"] for row in data["rows"]} == {"quote_read_model_unavailable"}
     assert {row["quote"]["provider"] for row in data["rows"]} == {None}
     assert {row["row_health"][0] for row in data["rows"]} == {"quote_unavailable"}
+    assert stock_rows.calls[-1]["limit"] == 6
+
+
+def test_stocks_radar_allows_zero_limit_as_empty_result() -> None:
+    stock_rows = StaticStockRows([{"target_id": "market_instrument:us_equity:BTC", "symbol": "BTC"}])
+
+    data = StocksRadarService(conn=FakeConn([]), stock_rows_query=stock_rows).stocks_radar(
+        window="1h",
+        limit=0,
+        scope="all",
+        now_ms=1_778_600_100_000,
+    )
+
+    assert data["rows"] == []
+    assert data["health"]["returned_count"] == 0
+    assert stock_rows.calls[-1]["limit"] == 0
+
+
+@pytest.mark.parametrize("limit", [-1, True, "6"])
+def test_stocks_radar_rejects_malformed_limit_before_query(limit: object) -> None:
+    stock_rows = StaticStockRows([])
+
+    with pytest.raises(ValueError, match="stocks_radar_limit_required"):
+        StocksRadarService(conn=FakeConn([]), stock_rows_query=stock_rows).stocks_radar(
+            window="1h",
+            limit=limit,  # type: ignore[arg-type]
+            scope="all",
+            now_ms=1_778_600_100_000,
+        )
+
+    assert stock_rows.calls == []
 
 
 class StaticStockRows:
     def __init__(self, rows):
         self.rows = rows
+        self.calls = []
 
-    def stock_rows(self, **_kwargs):
-        return self.rows
+    def stock_rows(self, **kwargs):
+        self.calls.append(dict(kwargs))
+        return self.rows[: kwargs["limit"]]

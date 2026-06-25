@@ -137,6 +137,7 @@ def _rebuild_resolved_current_rows(repos, *, now_ms: int) -> None:
     TokenRadarProjection(repos=repos).rebuild_dirty_targets(
         lease_ms=120_000,
         retry_ms=30_000,
+        max_attempts=3,
         windows=("5m",),
         scopes=("all",),
         now_ms=now_ms,

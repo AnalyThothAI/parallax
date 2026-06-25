@@ -109,6 +109,11 @@ class DiscoveryRepository:
                   ),
                   leased_until_ms = NULL,
                   lease_owner = NULL,
+                  attempt_count = CASE
+                    WHEN token_discovery_dirty_lookup_keys.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                    THEN 0
+                    ELSE token_discovery_dirty_lookup_keys.attempt_count
+                  END,
                   last_error = NULL,
                   first_dirty_at_ms = token_discovery_dirty_lookup_keys.first_dirty_at_ms,
                   updated_at_ms = EXCLUDED.updated_at_ms
@@ -139,6 +144,7 @@ class DiscoveryRepository:
         hot_not_found_retry_ms: int | None = None,
         commit: bool = True,
     ) -> list[dict[str, Any]]:
+        parsed_lease_ms = _required_positive_int(lease_ms, "discovery_lookup_claim_lease_ms_required")
         params = _due_params(
             now_ms=now_ms,
             limit=limit,
@@ -149,7 +155,7 @@ class DiscoveryRepository:
         params.update(
             {
                 "lease_owner": str(lease_owner),
-                "leased_until_ms": int(now_ms) + max(1, int(lease_ms)),
+                "leased_until_ms": int(now_ms) + parsed_lease_ms,
             }
         )
 
@@ -395,6 +401,11 @@ class DiscoveryRepository:
         running_timeout_ms: int,
         commit: bool = True,
     ) -> dict[str, Any]:
+        parsed_running_timeout_ms = _required_positive_int(
+            running_timeout_ms,
+            "discovery_lookup_running_timeout_ms_required",
+        )
+
         def _write() -> dict[str, Any]:
             cursor = self.conn.execute(
                 """
@@ -416,7 +427,7 @@ class DiscoveryRepository:
                     lookup_key,
                     lookup_type,
                     int(now_ms),
-                    int(now_ms) + max(1, int(running_timeout_ms)),
+                    int(now_ms) + parsed_running_timeout_ms,
                     int(now_ms),
                     int(now_ms),
                 ),
@@ -564,6 +575,7 @@ def _lookup_key_records(
     latest_seen_ms: int | None,
     intent_count: int,
 ) -> list[dict[str, Any]]:
+    parsed_intent_count = _required_positive_int(intent_count, "discovery_lookup_intent_count_required")
     records: list[dict[str, Any]] = []
     for raw_key in sorted({str(key).strip() for key in lookup_keys if str(key).strip()}):
         lookup_type = _lookup_type(raw_key)
@@ -578,7 +590,7 @@ def _lookup_key_records(
             "payload_hash": _payload_hash(raw_key, reason=str(reason), latest_seen_ms=latest),
             "due_at_ms": int(due_at_ms if due_at_ms is not None else now_ms),
             "latest_seen_ms": latest,
-            "intent_count": max(1, int(intent_count)),
+            "intent_count": parsed_intent_count,
             "refresh_priority": 0 if raw_key.startswith("symbol:") else 1,
         }
         records.append(record)
@@ -621,23 +633,31 @@ def _due_params(
     hot_since_ms: int | None,
     hot_not_found_retry_ms: int | None,
 ) -> dict[str, Any]:
+    parsed_limit = _required_nonnegative_int(limit, "discovery_lookup_claim_limit_required")
+    parsed_running_timeout_ms = _required_positive_int(
+        running_timeout_ms,
+        "discovery_lookup_running_timeout_ms_required",
+    )
+    parsed_hot_since_ms = _optional_nonnegative_int(hot_since_ms, "discovery_lookup_hot_since_ms_required")
+    parsed_hot_not_found_retry_ms = _optional_positive_int(
+        hot_not_found_retry_ms,
+        "discovery_lookup_hot_not_found_retry_ms_required",
+    )
     return {
         "provider": DISCOVERY_PROVIDER,
         "now_ms": int(now_ms),
-        "running_expired_ms": int(now_ms) - max(1, int(running_timeout_ms)),
-        "hot_since_ms": int(hot_since_ms) if hot_since_ms is not None else None,
-        "hot_not_found_retry_ms": int(hot_not_found_retry_ms) if hot_not_found_retry_ms is not None else None,
-        "limit": max(0, int(limit)),
+        "running_expired_ms": int(now_ms) - parsed_running_timeout_ms,
+        "hot_since_ms": parsed_hot_since_ms,
+        "hot_not_found_retry_ms": parsed_hot_not_found_retry_ms,
+        "limit": parsed_limit,
     }
 
 
 def _claim_records(claims: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for claim in claims:
-        provider = str(claim.get("provider") or "").strip()
-        lookup_key = str(claim.get("lookup_key") or "").strip()
-        if not provider or not lookup_key:
-            raise ValueError("token discovery lookup claim completion requires full lookup key from claim_due")
+        provider = _completion_provider(claim)
+        lookup_key = _completion_lookup_key(claim)
         payload_hash = _completion_payload_hash(claim)
         lease_owner = _completion_lease_owner(claim)
         attempt_count = _completion_attempt_count(claim)
@@ -659,12 +679,35 @@ def _claim_records(claims: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
 
 def _completion_attempt_count(claim: Mapping[str, Any]) -> int:
     try:
-        attempt_count = int(claim["attempt_count"])
-    except (KeyError, TypeError, ValueError) as exc:
+        value = claim["attempt_count"]
+    except KeyError as exc:
         raise ValueError("token discovery lookup claim completion requires attempt_count from claim_due") from exc
-    if attempt_count <= 0:
-        raise ValueError("token discovery lookup claim completion requires attempt_count from claim_due")
-    return attempt_count
+    return _required_positive_int(
+        value,
+        "token discovery lookup claim completion requires attempt_count from claim_due",
+    )
+
+
+def _completion_provider(claim: Mapping[str, Any]) -> str:
+    try:
+        value = claim["provider"]
+    except KeyError as exc:
+        raise ValueError("token discovery lookup claim completion requires full lookup key from claim_due") from exc
+    provider = str(value or "").strip()
+    if not provider:
+        raise ValueError("token discovery lookup claim completion requires full lookup key from claim_due")
+    return provider
+
+
+def _completion_lookup_key(claim: Mapping[str, Any]) -> str:
+    try:
+        value = claim["lookup_key"]
+    except KeyError as exc:
+        raise ValueError("token discovery lookup claim completion requires full lookup key from claim_due") from exc
+    lookup_key = str(value or "").strip()
+    if not lookup_key:
+        raise ValueError("token discovery lookup claim completion requires full lookup key from claim_due")
+    return lookup_key
 
 
 def _completion_lease_owner(claim: Mapping[str, Any]) -> str:
@@ -720,6 +763,30 @@ def _optional_int(value: Any) -> int | None:
     if value is None or value == "":
         return None
     return int(value)
+
+
+def _required_positive_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(error_code)
+    return int(value)
+
+
+def _optional_positive_int(value: Any, error_code: str) -> int | None:
+    if value is None:
+        return None
+    return _required_positive_int(value, error_code)
+
+
+def _optional_nonnegative_int(value: Any, error_code: str) -> int | None:
+    if value is None:
+        return None
+    return _required_nonnegative_int(value, error_code)
 
 
 def _cursor_rowcount(cursor: Any) -> int:

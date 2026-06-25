@@ -385,6 +385,26 @@ def test_worker_scheduler_closes_db_pool_bundle_contract_without_pool_fallback()
 
 
 @pytest.mark.architecture
+def test_worker_scheduler_stop_timeout_is_formal_nonnegative_contract_without_runtime_repair() -> None:
+    source = WORKER_SCHEDULER.read_text(encoding="utf-8")
+    init_source = source.split("def __init__", 1)[1].split("\n    async def start", 1)[0]
+    helper_source = source.split("def _nonnegative_timeout_seconds", 1)[1].split(
+        "\n\ndef worker_effective_status",
+        1,
+    )[0]
+    forbidden_tokens = (
+        "max(0.0, float(stop_timeout_seconds))",
+        "float(stop_timeout_seconds)",
+    )
+
+    assert [token for token in forbidden_tokens if token in init_source] == []
+    assert "self.stop_timeout_seconds = _nonnegative_timeout_seconds(stop_timeout_seconds)" in init_source
+    assert "worker_scheduler_stop_timeout_seconds_required" in helper_source
+    assert "isinstance(value, bool) or not isinstance(value, int | float)" in helper_source
+    assert "value < 0" in helper_source
+
+
+@pytest.mark.architecture
 def test_bootstrap_failure_closes_db_pool_bundle_contract_without_pool_fallback() -> None:
     source = APP_RUNTIME_BOOTSTRAP.read_text(encoding="utf-8")
     bootstrap_source = source.split("def bootstrap", 1)[1].split("\ndef _assemble_runtime", 1)[0]
@@ -805,6 +825,8 @@ def test_market_tick_stream_worker_constructor_uses_formal_runtime_contract_with
         "telemetry or object()",
         'getattr(settings, "',
         'getattr(resolved_settings, "',
+        "max(0, int(settings.subscription_limit))",
+        "max(0.001, float(settings.stream_cycle_seconds))",
     )
     forbidden_factory_tokens = (
         "subscription_limit=workers.market_tick_stream.subscription_limit",
@@ -821,13 +843,42 @@ def test_market_tick_stream_worker_constructor_uses_formal_runtime_contract_with
     assert "market_tick_stream_settings_required" in init_source
     assert "market_tick_stream_db_required" in init_source
     assert "market_tick_stream_provider_required" in init_source
-    assert "self.subscription_limit = max(0, int(settings.subscription_limit))" in init_source
-    assert "self.stream_cycle_seconds = max(0.001, float(settings.stream_cycle_seconds))" in init_source
+    assert "market_tick_stream_subscription_limit_required" in init_source
+    assert "market_tick_stream_cycle_seconds_required" in init_source
+    assert "def _required_positive_int(value: Any, *, error_code: str) -> int:" in source
+    assert "def _required_min_float(value: Any, *, minimum: float, error_code: str) -> float:" in source
+    assert "isinstance(value, bool)" in source
     assert "settings=workers.market_tick_stream" in stream_factory_source
     assert "pool_bundle=ctx.db" in stream_factory_source
     assert "stream_dex_market=stream_dex_market" in stream_factory_source
     assert "wake_emitter=ctx.wake_bus" in stream_factory_source
     assert "stream_cycle_seconds: float = Field(default=30.0, ge=0.001)" in settings_class
+    assert "rows[: max(0, int(limit))]" not in source
+
+
+@pytest.mark.architecture
+def test_okx_dex_ws_provider_uses_formal_subscription_and_circuit_limits() -> None:
+    source = (SRC / "integrations/okx/dex_ws_client.py").read_text(encoding="utf-8")
+    provider_init = source.split("class OkxDexWebSocketMarketProvider", 1)[1].split(
+        "\n    def connection_state_payload",
+        1,
+    )[0]
+    subscription_args_source = source.split("def _subscription_args", 1)[1].split(
+        "\n\ndef _arg_key",
+        1,
+    )[0]
+    forbidden = (
+        "self.subscription_limit = max(1, int(subscription_limit))",
+        "max(1, int(OKX_DEX_WS_CIRCUIT_FAILURES))",
+        "len(args) >= max(1, int(limit))",
+    )
+
+    assert [token for token in forbidden if token in source] == []
+    assert "okx_dex_ws_subscription_limit_required" in provider_init
+    assert "okx_dex_ws_subscription_limit_required" in subscription_args_source
+    assert "_circuit_failure_limit()" in source
+    assert "okx_dex_ws_circuit_failures_required" in source
+    assert "def _required_positive_int(value: Any, *, error_code: str) -> int:" in source
 
 
 @pytest.mark.architecture
@@ -866,6 +917,8 @@ def test_market_tick_poll_worker_constructor_uses_formal_runtime_contract_withou
         'getattr(settings, "__dict__", {})',
         "interval_seconds:",
         "batch_size:",
+        "max(1, int(settings.batch_size))",
+        "max(1, int(settings.concurrency))",
     )
     forbidden_provider_tokens = (
         'getattr(self.providers, "dex_quote_market", None)',
@@ -892,8 +945,10 @@ def test_market_tick_poll_worker_constructor_uses_formal_runtime_contract_withou
     assert "market_tick_poll_providers_required" in init_source
     assert "if pool_bundle is None:" in init_source
     assert "market_tick_poll_db_required" in init_source
-    assert "self.batch_size = max(1, int(settings.batch_size))" in init_source
-    assert "self.concurrency = max(1, int(settings.concurrency))" in init_source
+    assert "market_tick_poll_batch_size_required" in init_source
+    assert "market_tick_poll_concurrency_required" in init_source
+    assert "def _required_positive_int(value: Any, *, error_code: str) -> int:" in source
+    assert "isinstance(value, bool)" in source
     assert "self.dex_quote_market = providers.dex_quote_market" in init_source
     assert "self.cex_market = providers.cex_market" in init_source
     assert "settings=workers.market_tick_poll" in poll_factory_source
@@ -931,6 +986,8 @@ def test_live_price_gateway_constructor_uses_formal_settings_contract_without_sy
         "interval_seconds:",
         "settings: Any | None",
         'getattr(settings, "',
+        "max(0, int(settings.target_limit))",
+        "max(0.0, float(settings.target_ttl_seconds))",
     )
     forbidden_factory_tokens = (
         "providers=asset_market",
@@ -945,8 +1002,11 @@ def test_live_price_gateway_constructor_uses_formal_settings_contract_without_sy
     assert violations == []
     assert "live_price_gateway_settings_required" in init_source
     assert "live_price_gateway_db_required" in init_source
-    assert "self.target_limit = max(0, int(settings.target_limit))" in init_source
-    assert "self.target_ttl_seconds = max(0.0, float(settings.target_ttl_seconds))" in init_source
+    assert "live_price_gateway_target_limit_required" in init_source
+    assert "live_price_gateway_target_ttl_seconds_required" in init_source
+    assert "def _required_nonnegative_int(value: Any, *, error_code: str) -> int:" in source
+    assert "def _required_nonnegative_float(value: Any, *, error_code: str) -> float:" in source
+    assert "isinstance(value, bool)" in source
     assert "settings=workers.live_price_gateway" in live_factory_source
     assert "pool_bundle=ctx.db" in live_factory_source
     assert "target_limit: int = Field(default=100, ge=0)" in settings_class
@@ -1015,8 +1075,9 @@ def test_news_fetch_worker_uses_formal_settings_news_settings_and_wake_contract(
     assert "self.wake_emitter = wake_emitter" in init_source
     assert "configured_sources = tuple(self.news_settings.sources or ())" in source
     assert "statement_timeout_seconds=self.settings.statement_timeout_seconds" in source
-    assert "claim_lease_ms=max(1, int(self.settings.lease_ms))" in claim_source
-    assert "return max(1, int(self.settings.batch_size))" in source
+    assert "claim_lease_ms=self._lease_ms()" in claim_source
+    assert 'positive_worker_setting_int(self.settings, "batch_size", worker_name=self.name)' in source
+    assert 'positive_worker_setting_int(self.settings, "lease_ms", worker_name=self.name)' in source
     assert "self.wake_emitter.notify_news_item_written" in source
     assert "_notify_news_page_dirty(\n            self.wake_emitter," in source
     assert "wake_emitter=ctx.wake_bus" in fetch_factory_source
@@ -1068,9 +1129,10 @@ def test_news_page_projection_worker_uses_formal_settings_contract_without_runti
     assert "news_page_projection_settings_required" in init_source
     assert "news_page_projection_db_required" in init_source
     assert "statement_timeout_seconds=self.settings.statement_timeout_seconds" in source
-    assert "return max(1, int(self.settings.batch_size))" in source
-    assert "return max(1, int(self.settings.lease_ms))" in source
-    assert "return max(1, int(self.settings.retry_ms))" in source
+    assert 'positive_worker_setting_int(self.settings, "batch_size", worker_name=self.name)' in source
+    assert 'positive_worker_setting_int(self.settings, "lease_ms", worker_name=self.name)' in source
+    assert 'positive_worker_setting_int(self.settings, "retry_ms", worker_name=self.name)' in source
+    assert 'positive_worker_setting_int(self.settings, "max_attempts", worker_name=self.name)' in source
     assert "wake_bus=ctx.wake_bus" not in page_factory_source
     assert "batch_size: int = Field(default=100, ge=1)" in settings_class
     assert "lease_ms: int = Field(default=120_000, ge=1)" in settings_class
@@ -1125,10 +1187,10 @@ def test_news_item_process_worker_uses_formal_settings_and_wake_contract_without
     assert "self.wake_emitter = wake_emitter" in init_source
     assert "self.wake_emitter.notify_news_item_processed" in source
     assert "statement_timeout_seconds=self.settings.statement_timeout_seconds" in source
-    assert "return max(1, int(self.settings.batch_size))" in source
-    assert "return max(1, int(self.settings.lease_ms))" in source
-    assert "return max(1, int(self.settings.max_attempts))" in source
-    assert "return max(1, int(self.settings.retry_delay_ms))" in source
+    assert 'positive_worker_setting_int(self.settings, "batch_size", worker_name=self.name)' in source
+    assert 'positive_worker_setting_int(self.settings, "lease_ms", worker_name=self.name)' in source
+    assert 'positive_worker_setting_int(self.settings, "max_attempts", worker_name=self.name)' in source
+    assert 'positive_worker_setting_int(self.settings, "retry_delay_ms", worker_name=self.name)' in source
     assert "wake_emitter=ctx.wake_bus" in item_process_factory_source
     assert "batch_size: int = Field(default=10, ge=1)" in settings_class
     assert "lease_ms: int = Field(default=120_000, ge=1)" in settings_class
@@ -1164,16 +1226,21 @@ def test_news_item_brief_worker_uses_formal_settings_and_wake_contract_without_r
         '"lease_ms", 120_000',
         '"retry_ms", self._backpressure_cooldown_ms()',
         '"backpressure_cooldown_ms", 60_000',
+        "max(1, int(queue_depth))",
+        "limit=max(1, int(limit))",
         "missing_provider",
+        "notify_news_item_brief_updated",
+        "news_item_brief_updated",
     )
     forbidden_init_tokens = (
         "**kwargs",
         "wake_bus",
+        "wake_emitter",
         "super().__init__(**kwargs)",
         "settings: Any | None",
         "provider: Any | None",
     )
-    forbidden_factory_tokens = ("wake_bus=ctx.wake_bus",)
+    forbidden_factory_tokens = ("wake_bus=ctx.wake_bus", "wake_emitter=ctx.wake_bus")
     violations = (
         [f"worker-source:{token}" for token in forbidden_source_tokens if token in source]
         + [f"worker-init:{token}" for token in forbidden_init_tokens if token in init_source]
@@ -1184,14 +1251,18 @@ def test_news_item_brief_worker_uses_formal_settings_and_wake_contract_without_r
     assert "news_item_brief_settings_required" in init_source
     assert "news_item_brief_db_required" in init_source
     assert "news_item_brief_provider_required" in init_source
-    assert "self.wake_emitter = wake_emitter" in init_source
-    assert "self.wake_emitter.notify_news_item_brief_updated" in source
+    assert "self.wake_emitter = wake_emitter" not in init_source
+    assert "notify_news_item_brief_updated" not in source
     assert "statement_timeout_seconds=self.settings.statement_timeout_seconds" in source
-    assert "return max(1, int(self.settings.batch_size))" in source
-    assert "return max(1, int(self.settings.lease_ms))" in source
-    assert "return max(1, int(self.settings.retry_ms))" in source
-    assert "return max(1, int(self.settings.backpressure_cooldown_ms))" in source
-    assert "wake_emitter=ctx.wake_bus" in item_brief_factory_source
+    assert 'positive_worker_setting_int(self.settings, "batch_size", worker_name=self.name)' in source
+    assert 'positive_worker_setting_int(self.settings, "lease_ms", worker_name=self.name)' in source
+    assert 'positive_worker_setting_int(self.settings, "retry_ms", worker_name=self.name)' in source
+    assert 'positive_worker_setting_int(self.settings, "max_attempts", worker_name=self.name)' in source
+    assert 'positive_worker_setting_int(self.settings, "backpressure_cooldown_ms", worker_name=self.name)' in source
+    assert "required_nonnegative_int(" in source
+    assert "required_positive_int(limit, error_code=\"news_item_brief_claim_limit_required\")" in source
+    assert "news_item_brief_queue_depth_required" in source
+    assert "wake_emitter=ctx.wake_bus" not in item_brief_factory_source
     assert "batch_size: int = Field(default=5, ge=1)" in settings_class
     assert "lease_ms: int = Field(default=120_000, ge=1)" in settings_class
     assert "retry_ms: int = Field(default=60_000, ge=1)" in settings_class
@@ -1246,9 +1317,10 @@ def test_news_source_quality_projection_worker_uses_formal_settings_and_wake_con
     assert "self.wake_emitter = wake_emitter" in init_source
     assert "statement_timeout_seconds=self.settings.statement_timeout_seconds" in source
     assert "return tuple(str(window).strip().lower() for window in self.settings.windows)" in source
-    assert "return max(1, int(self.settings.batch_size))" in source
-    assert "return max(1, int(self.settings.lease_ms))" in source
-    assert "return max(1, int(self.settings.retry_ms))" in source
+    assert 'positive_worker_setting_int(self.settings, "batch_size", worker_name=self.name)' in source
+    assert 'positive_worker_setting_int(self.settings, "lease_ms", worker_name=self.name)' in source
+    assert 'positive_worker_setting_int(self.settings, "retry_ms", worker_name=self.name)' in source
+    assert 'positive_worker_setting_int(self.settings, "max_attempts", worker_name=self.name)' in source
     assert "_notify_news_page_dirty(\n            self.wake_emitter," in source
     assert "wake_emitter=ctx.wake_bus" in source_quality_factory_source
     assert "batch_size: int = Field(default=100, ge=1)" in settings_class
@@ -1300,6 +1372,15 @@ def test_token_radar_projection_worker_uses_formal_settings_and_wake_contract_wi
         '"batch_size", 100',
         '"cold_interval_seconds", 60.0',
         '"statement_timeout_seconds", None',
+        "self.limit = max(1, int(settings.batch_size))",
+        "self.lease_ms = max(1, int(settings.lease_ms))",
+        "self.retry_ms = max(1, int(settings.retry_ms))",
+        "self.max_attempts = max(1, int(settings.max_attempts))",
+        "self.private_cache_retention_enabled = bool(settings.private_cache_retention_enabled)",
+        "self.private_cache_retention_ms = max(1, int(settings.private_cache_retention_ms))",
+        "self.cold_interval_ms = int(float(settings.cold_interval_seconds) * 1000)",
+        "self.limit = max(1, int(limit))",
+        "return computed_at_ms - int(since_ms) >= max(0, int(interval_ms))",
         "self.wake_bus",
         "wake_bus:",
         "wake_bus=",
@@ -1330,12 +1411,20 @@ def test_token_radar_projection_worker_uses_formal_settings_and_wake_contract_wi
     assert "self.scopes = tuple(str(scope).strip().lower() for scope in settings.scopes)" in source
     assert "self.venues = tuple(str(venue).strip().lower() for venue in settings.venues)" in source
     assert "hot_windows = tuple(str(window).strip().lower() for window in settings.hot_windows)" in source
-    assert "self.limit = max(1, int(settings.batch_size))" in source
-    assert "self.lease_ms = max(1, int(settings.lease_ms))" in source
-    assert "self.retry_ms = max(1, int(settings.retry_ms))" in source
-    assert "self.private_cache_retention_enabled = bool(settings.private_cache_retention_enabled)" in source
-    assert "self.private_cache_retention_ms = max(1, int(settings.private_cache_retention_ms))" in source
-    assert "self.cold_interval_ms = int(float(settings.cold_interval_seconds) * 1000)" in source
+    assert "token_radar_projection_batch_size_required" in source
+    assert "token_radar_projection_lease_ms_required" in source
+    assert "token_radar_projection_retry_ms_required" in source
+    assert "token_radar_projection_max_attempts_required" in source
+    assert "token_radar_projection_private_cache_retention_enabled_required" in source
+    assert "token_radar_projection_private_cache_retention_ms_required" in source
+    assert "token_radar_projection_cold_interval_seconds_required" in source
+    assert "token_radar_projection_limit_required" in source
+    assert "token_radar_projection_interval_ms_required" in source
+    assert "def _required_positive_int(value: Any, *, error_code: str) -> int:" in source
+    assert "def _required_nonnegative_int(value: Any, *, error_code: str) -> int:" in source
+    assert "def _required_bool(value: Any, *, error_code: str) -> bool:" in source
+    assert "def _required_nonnegative_seconds_ms(value: Any, *, error_code: str) -> int:" in source
+    assert "isinstance(value, bool)" in source
     assert "lease_ms=self.lease_ms" in source
     assert '"retry_ms": self.retry_ms' in source
     assert "projection.prune_private_cache(" in source
@@ -1439,6 +1528,7 @@ def test_pulse_candidate_worker_and_job_service_use_formal_settings_without_runt
         "max_age_ms: int =",
         "now_ms: int | None =",
         "_now_ms() if now_ms is None",
+        "max(0, int(now_ms) - max(0, int(max_age_ms)))",
     )
     violations = (
         [f"worker:{token}" for token in forbidden_worker_tokens if token in worker_source]
@@ -1460,6 +1550,8 @@ def test_pulse_candidate_worker_and_job_service_use_formal_settings_without_runt
                 "recent_failure_count: int =",
                 "failure_circuit_per_hour: int =",
                 "timeline_debounce_seconds: int =",
+                "recent_failure_count >= max(1, int(failure_circuit_per_hour))",
+                "max(0, int(timeline_debounce_seconds))",
                 '_int(job.get("max_attempts")) or 3',
                 'job.get("max_attempts")) or 3',
             )
@@ -1473,23 +1565,27 @@ def test_pulse_candidate_worker_and_job_service_use_formal_settings_without_runt
     assert "pulse_candidate_decision_client_required" in init_source
     assert "self.windows = tuple(str(window).strip().lower() for window in settings.windows)" in worker_source
     assert "self.scopes = tuple(str(scope).strip().lower() for scope in settings.scopes)" in worker_source
-    assert "self.batch_size = max(1, int(settings.batch_size))" in worker_source
-    assert "self.max_agent_jobs_per_cycle = max(1, int(settings.max_agent_jobs_per_cycle))" in worker_source
-    assert "self.max_attempts = max(1, int(settings.max_attempts))" in worker_source
-    assert "self.max_enqueues_per_cycle = max(1, int(settings.max_enqueues_per_cycle))" in worker_source
-    assert "self.max_pending_jobs_global = max(1, int(settings.max_pending_jobs_global))" in worker_source
+    assert 'self.batch_size = _positive_worker_setting_int(settings, "batch_size", worker_name=name)' in worker_source
+    assert 'self.max_agent_jobs_per_cycle = _positive_worker_setting_int(' in worker_source
     assert (
-        "self.max_pending_jobs_per_window_scope = max(1, int(settings.max_pending_jobs_per_window_scope))"
+        'self.max_attempts = _positive_worker_setting_int(settings, "max_attempts", worker_name=name)' in worker_source
+    )
+    assert 'self.max_enqueues_per_cycle = _positive_worker_setting_int(' in worker_source
+    assert 'self.max_pending_jobs_global = _positive_worker_setting_int(' in worker_source
+    assert (
+        "self.max_pending_jobs_per_window_scope = _positive_worker_setting_int("
         in worker_source
     )
-    assert "self.job_running_timeout_ms = max(1, int(settings.job_running_timeout_ms))" in worker_source
-    assert "self.trigger_lease_ms = max(1, int(settings.trigger_lease_ms))" in worker_source
-    assert "self.trigger_capacity_retry_ms = max(1, int(settings.trigger_capacity_retry_ms))" in worker_source
-    assert "self.trigger_error_retry_ms = max(1, int(settings.trigger_error_retry_ms))" in worker_source
-    assert "self.target_edge_budget_per_hour = max(1, int(settings.target_edge_budget_per_hour))" in worker_source
-    assert "self.candidate_edge_budget_per_hour = max(1, int(settings.candidate_edge_budget_per_hour))" in worker_source
-    assert "self.failure_circuit_per_hour = max(1, int(settings.failure_circuit_per_hour))" in worker_source
-    assert "self.timeline_debounce_seconds = max(0, int(settings.timeline_debounce_seconds))" in worker_source
+    assert 'self.job_running_timeout_ms = _positive_worker_setting_int(' in worker_source
+    assert 'self.trigger_lease_ms = _positive_worker_setting_int(settings, "trigger_lease_ms", worker_name=name)' in (
+        worker_source
+    )
+    assert 'self.trigger_capacity_retry_ms = _positive_worker_setting_int(' in worker_source
+    assert 'self.trigger_error_retry_ms = _positive_worker_setting_int(' in worker_source
+    assert 'self.target_edge_budget_per_hour = _positive_worker_setting_int(' in worker_source
+    assert 'self.candidate_edge_budget_per_hour = _positive_worker_setting_int(' in worker_source
+    assert 'self.failure_circuit_per_hour = _positive_worker_setting_int(' in worker_source
+    assert 'self.timeline_debounce_seconds = _nonnegative_worker_setting_int(' in worker_source
     assert "settings.failure_circuit_reasons" in worker_source
     assert "running_timeout_ms=self.job_running_timeout_ms" in worker_source
     assert "stale_after_ms=int(running_timeout_ms)" in worker_source
@@ -1510,7 +1606,9 @@ def test_pulse_candidate_worker_and_job_service_use_formal_settings_without_runt
     assert "reasons=failure_circuit_reasons" in worker_source
     assert "failure_circuit_per_hour: int," in admission_policy_source
     assert "timeline_debounce_seconds: int," in admission_policy_source
-    assert "recent_failure_count >= max(1, int(failure_circuit_per_hour))" in admission_policy_source
+    assert "pulse_failure_circuit_per_hour_required" in admission_policy_source
+    assert "pulse_timeline_debounce_seconds_required" in admission_policy_source
+    assert "recent_failure_count >= failure_threshold" in admission_policy_source
     assert 'attempt_count = int(job["attempt_count"])' in admission_policy_source
     assert 'max_attempts = int(job["max_attempts"])' in admission_policy_source
     assert "pulse_existing_failed_job_attempt_contract_required" in admission_policy_source
@@ -1519,10 +1617,12 @@ def test_pulse_candidate_worker_and_job_service_use_formal_settings_without_runt
     assert "pulse_candidate_job_db_required" in job_init_source
     assert "pulse_candidate_job_decision_client_required" in job_init_source
     assert "statement_timeout_seconds=self.settings.statement_timeout_seconds" in job_service_source
-    assert "market_freshness_ms=max(1, int(self.settings.evidence_market_freshness_ms))" in job_service_source
+    assert "pulse_candidate_evidence_market_freshness_ms_required" in job_service_source
+    assert "max(1, int(self.settings.evidence_market_freshness_ms))" not in job_service_source
     assert "market_freshness_ms: int," in evidence_builder_source
     assert "max_age_ms: int," in evidence_source_repository_source
     assert "now_ms: int," in evidence_source_repository_source
+    assert "pulse_evidence_max_age_ms_required" in evidence_source_repository_source
     assert "settings=workers.pulse_candidate" in factory_block
     assert "wake_waiter=ctx.db.wake_listener(worker_name, workers.pulse_candidate.wakes_on)" in factory_block
     assert "batch_size: int = Field(default=10, ge=1)" in settings_class
@@ -1574,14 +1674,20 @@ def test_narrative_admission_worker_uses_formal_settings_contract_without_runtim
         'getattr(settings, "min_rank_score"',
         'getattr(self.settings, "admission_limit"',
         'getattr(self.settings, "source_limit"',
+        'getattr(self.settings, "max_attempts"',
         'getattr(self.settings, "lease_seconds"',
         'getattr(self.settings, "error_retry_seconds"',
         'getattr(self.settings, "statement_timeout_seconds"',
         '"admission_limit", 200',
         '"source_limit", 2000',
+        '"max_attempts", 3',
         '"lease_seconds", 60',
         '"error_retry_seconds", 60',
         '"statement_timeout_seconds", None',
+        "admission_limit = max(1, int(self.settings.admission_limit))",
+        "source_limit = max(1, int(self.settings.source_limit))",
+        "lease_ms = max(1, int(self.settings.lease_ms))",
+        "retry_ms = max(1, int(self.settings.retry_ms))",
         "wake_bus",
         "wake_emitter",
     )
@@ -1597,6 +1703,8 @@ def test_narrative_admission_worker_uses_formal_settings_contract_without_runtim
     forbidden_service_tokens = (
         "hot_rank_limit: int =",
         "min_rank_score: int =",
+        "self.hot_rank_limit = max(1, int(hot_rank_limit))",
+        "self.min_rank_score = max(0, int(min_rank_score))",
         "carry_ttl_ms",
     )
     violations = (
@@ -1613,14 +1721,30 @@ def test_narrative_admission_worker_uses_formal_settings_contract_without_runtim
     assert "min_rank_score=int(settings.min_rank_score)" in source
     assert "hot_rank_limit: int," in service_source
     assert "min_rank_score: int," in service_source
-    assert "admission_limit = max(1, int(self.settings.admission_limit))" in source
-    assert "source_limit = max(1, int(self.settings.source_limit))" in source
-    assert "lease_ms = max(1, int(self.settings.lease_ms))" in source
-    assert "retry_ms = max(1, int(self.settings.retry_ms))" in source
+    assert "self.admission_limit = _positive_worker_setting_int(" in source
+    assert 'settings,\n            "admission_limit",' in source
+    assert 'error_code="narrative_admission_admission_limit_required"' in source
+    assert "self.source_limit = _positive_worker_setting_int(" in source
+    assert 'settings,\n            "source_limit",' in source
+    assert 'error_code="narrative_admission_source_limit_required"' in source
+    assert "self.lease_ms = _positive_worker_setting_int(" in source
+    assert 'settings,\n            "lease_ms",' in source
+    assert 'error_code="narrative_admission_lease_ms_required"' in source
+    assert "self.retry_ms = _positive_worker_setting_int(" in source
+    assert 'settings,\n            "retry_ms",' in source
+    assert 'error_code="narrative_admission_retry_ms_required"' in source
+    assert "self.max_attempts = _positive_worker_setting_int(" in source
+    assert 'settings,\n            "max_attempts",' in source
+    assert 'error_code="narrative_admission_max_attempts_required"' in source
+    assert "max_attempts=self.max_attempts" in source
+    assert "worker_name=self.name" in source
+    assert "narrative_admission_hot_rank_limit_required" in service_source
+    assert "narrative_admission_min_rank_score_required" in service_source
     assert "statement_timeout_seconds=self.settings.statement_timeout_seconds" in source
     assert "wake_waiter=ctx.db.wake_listener" in factory_block
     assert "lease_ms: int = Field(default=60_000, ge=1)" in settings_class
     assert "retry_ms: int = Field(default=60_000, ge=1)" in settings_class
+    assert "max_attempts: int = Field(default=3, ge=1)" in settings_class
     assert "statement_timeout_seconds: float = Field(default=30.0, ge=0)" in settings_class
     assert "admission_limit: int = Field(default=200, ge=1)" in settings_class
     assert "source_limit: int = Field(default=2000, ge=1)" in settings_class
@@ -1650,6 +1774,7 @@ def test_macro_sync_worker_and_service_use_formal_settings_wake_contract_without
         "wake_bus",
         'getattr(self.settings, "batch_size"',
         '"batch_size", 1',
+        "configured = max(1, int(self.settings.batch_size))",
     )
     forbidden_service_tokens = (
         "def _sync_settings",
@@ -1669,6 +1794,12 @@ def test_macro_sync_worker_and_service_use_formal_settings_wake_contract_without
         '"lease_ms", 300_000',
         '"retry_delay_ms", 900_000',
         '"statement_timeout_seconds", None',
+        "bootstrap_lookback_days=int(self.sync_settings.bootstrap_lookback_days)",
+        "max_window_days=int(self.sync_settings.max_window_days)",
+        "steady_overlap_days=int(self.sync_settings.steady_overlap_days)",
+        "steady_interval_seconds=float(self.sync_settings.interval_seconds)",
+        "max_bootstrap_windows_per_cycle=int(self.sync_settings.max_bootstrap_windows_per_cycle)",
+        "max_attempts=int(self.sync_settings.max_attempts)",
     )
     forbidden_factory_tokens = ("wake_bus=ctx.wake_bus",)
     violations = (
@@ -1682,12 +1813,22 @@ def test_macro_sync_worker_and_service_use_formal_settings_wake_contract_without
     assert "macro_sync_db_required" in init_source
     assert "macro_sync_settings_root_required" in init_source
     assert "self.wake_emitter = wake_emitter" in init_source
-    assert "configured = max(1, int(self.settings.batch_size))" in worker_source
+    assert "macro_sync_batch_size_required" in worker_source
+    assert "def _required_positive_int(value: Any, *, error_code: str) -> int:" in worker_source
+    assert "isinstance(value, bool)" in worker_source
     assert "self.sync_settings = _require_macro_sync_worker_settings(settings)" in service_source
     assert "source_name=str(self.sync_settings.source_name)" in service_source
     assert "for bundle_name in _macro_sync_bundle_names(self.sync_settings):" in service_source
-    assert "bootstrap_lookback_days=int(self.sync_settings.bootstrap_lookback_days)" in service_source
-    assert "steady_interval_seconds=float(self.sync_settings.interval_seconds)" in service_source
+    assert "bootstrap_lookback_days=self.sync_settings.bootstrap_lookback_days" in service_source
+    assert "steady_interval_seconds=self.sync_settings.interval_seconds" in service_source
+    scheduler_source = (SRC / "domains/macro_intel/services/macro_sync_scheduler.py").read_text(encoding="utf-8")
+    assert "max(1, int(bootstrap_lookback_days))" not in scheduler_source
+    assert "max(1, int(max_bootstrap_windows_per_cycle))" not in scheduler_source
+    assert "max(1, int(steady_overlap_days))" not in scheduler_source
+    assert "max(1, int(max_window_days))" not in scheduler_source
+    assert "macro_sync_bootstrap_lookback_days_required" in scheduler_source
+    assert "macro_sync_max_window_days_required" in scheduler_source
+    assert "macro_sync_max_bootstrap_windows_per_cycle_required" in scheduler_source
     assert "lease_ms=int(self.sync_settings.lease_ms)" in service_source
     assert "retry_delay_ms=int(self.sync_settings.retry_delay_ms)" in service_source
     assert "statement_timeout_seconds=self.sync_settings.statement_timeout_seconds" in service_source
@@ -1728,6 +1869,11 @@ def test_macro_view_projection_worker_uses_formal_settings_and_wake_contract_wit
         '"lease_ms", 300_000',
         '"retry_ms", 300_000',
         "limit=1,",
+        "return max(1, int(self.settings.batch_size))",
+        "return max(1, int(self.settings.lookback_days))",
+        "return max(1, int(self.settings.limit_per_series))",
+        "return max(1, int(self.settings.lease_ms))",
+        "return max(1, int(self.settings.retry_ms))",
     )
     forbidden_init_tokens = (
         "**kwargs",
@@ -1749,15 +1895,20 @@ def test_macro_view_projection_worker_uses_formal_settings_and_wake_contract_wit
     assert "limit=self._batch_size()" in source
     assert "self.wake_emitter.notify_macro_view_snapshot_updated" in source
     assert "statement_timeout_seconds=self.settings.statement_timeout_seconds" in source
-    assert "return max(1, int(self.settings.batch_size))" in source
-    assert "return max(1, int(self.settings.lookback_days))" in source
-    assert "return max(1, int(self.settings.limit_per_series))" in source
-    assert "return max(1, int(self.settings.lease_ms))" in source
-    assert "return max(1, int(self.settings.retry_ms))" in source
+    assert "macro_view_projection_batch_size_required" in source
+    assert "macro_view_projection_lookback_days_required" in source
+    assert "macro_view_projection_limit_per_series_required" in source
+    assert "macro_view_projection_lease_ms_required" in source
+    assert "macro_view_projection_retry_ms_required" in source
+    assert "macro_view_projection_max_attempts_required" in source
+    assert "def _required_positive_int(value: Any, *, error_code: str) -> int:" in source
+    assert "def _required_min_int(value: Any, *, minimum: int, error_code: str) -> int:" in source
+    assert "isinstance(value, bool)" in source
     assert "wake_emitter=ctx.wake_bus" in macro_factory_source
     assert "batch_size: int = Field(default=250, ge=1)" in settings_class
     assert "lease_ms: int = Field(default=300_000, ge=1)" in settings_class
     assert "retry_ms: int = Field(default=300_000, ge=1)" in settings_class
+    assert "max_attempts: int = Field(default=3, ge=1)" in settings_class
     assert "lookback_days: int = Field(default=1095, ge=1095)" in settings_class
     assert "limit_per_series: int = Field(default=800, ge=800)" in settings_class
     assert "statement_timeout_seconds: float = Field(default=30.0, ge=0)" in settings_class
@@ -1806,14 +1957,21 @@ def test_market_tick_current_projection_worker_uses_formal_settings_contract_wit
         'getattr(self.settings, "retry_ms"',
         '"lease_ms", 120_000',
         '"batch_size", 100',
+        "limit=max(1, int(self.settings.batch_size))",
+        "lease_ms=max(1, int(self.settings.lease_ms))",
+        "retry_ms=max(1, int(self.settings.retry_ms))",
+        "max_attempts=max(1, int(self.settings.max_attempts))",
     )
     violations = [token for token in forbidden_tokens if token in source]
 
     assert violations == []
     assert source.count("statement_timeout_seconds=self.settings.statement_timeout_seconds") == 3
-    assert "limit=max(1, int(self.settings.batch_size))" in source
-    assert "lease_ms=max(1, int(self.settings.lease_ms))" in source
-    assert "retry_ms=max(1, int(self.settings.retry_ms))" in source
+    assert "market_tick_current_batch_size_required" in source
+    assert "market_tick_current_lease_ms_required" in source
+    assert "market_tick_current_retry_ms_required" in source
+    assert "market_tick_current_max_attempts_required" in source
+    assert "def _required_positive_int(value: Any, *, error_code: str) -> int:" in source
+    assert "isinstance(value, bool)" in source
 
 
 @pytest.mark.architecture
@@ -1853,6 +2011,9 @@ def test_token_capture_tier_worker_constructor_uses_formal_settings_contract_wit
         'getattr(settings, "',
         'getattr(resolved_settings, "',
         'getattr(self.settings, "lease_ms"',
+        "max(1, int(settings.batch_size))",
+        "max(0, int(settings.ws_limit))",
+        "max(0, int(settings.poll_limit))",
     )
     forbidden_factory_tokens = (
         "batch_size=workers.token_capture_tier.batch_size",
@@ -1871,10 +2032,16 @@ def test_token_capture_tier_worker_constructor_uses_formal_settings_contract_wit
     assert "token_capture_tier_settings_required" in init_source
     assert "if pool_bundle is None:" in init_source
     assert "token_capture_tier_db_required" in init_source
-    assert "self.batch_size = max(1, int(settings.batch_size))" in init_source
-    assert "self.ws_limit = max(0, int(settings.ws_limit))" in init_source
-    assert "self.poll_limit = max(0, int(settings.poll_limit))" in init_source
-    assert "lease_ms=max(1, int(self.settings.lease_ms))" in source
+    assert "token_capture_tier_batch_size_required" in init_source
+    assert "token_capture_tier_ws_limit_required" in init_source
+    assert "token_capture_tier_poll_limit_required" in init_source
+    assert "token_capture_tier_lease_ms_required" in source
+    assert "token_capture_tier_project_batch_size_required" in project_source
+    assert "token_capture_tier_project_ws_limit_required" in project_source
+    assert "token_capture_tier_project_poll_limit_required" in project_source
+    assert "def _required_positive_int(value: Any, *, error_code: str) -> int:" in source
+    assert "def _required_nonnegative_int(value: Any, *, error_code: str) -> int:" in source
+    assert "isinstance(value, bool)" in source
     assert "batch_size: int," in project_source
     assert "ws_limit: int," in project_source
     assert "poll_limit: int," in project_source
@@ -1930,6 +2097,8 @@ def test_event_anchor_backfill_worker_constructor_uses_formal_runtime_contract_w
         "max_anchor_lag_ms:",
         'getattr(settings, "',
         'getattr(resolved_settings, "',
+        "max(1, int(settings.",
+        "max(0, int(settings.",
     )
     forbidden_factory_tokens = (
         "batch_size=workers.event_anchor_backfill.batch_size",
@@ -1955,9 +2124,16 @@ def test_event_anchor_backfill_worker_constructor_uses_formal_runtime_contract_w
     assert "event_anchor_backfill_db_required" in init_source
     assert "if providers is None:" in init_source
     assert "event_anchor_backfill_providers_required" in init_source
-    assert "self.batch_size = max(1, int(settings.batch_size))" in init_source
-    assert "self.concurrency = max(1, int(settings.concurrency))" in init_source
-    assert "self.lease_ms = max(1, int(settings.lease_ms))" in init_source
+    assert "event_anchor_backfill_batch_size_required" in init_source
+    assert "event_anchor_backfill_concurrency_required" in init_source
+    assert "event_anchor_backfill_max_attempts_required" in init_source
+    assert "event_anchor_backfill_min_age_ms_required" in init_source
+    assert "event_anchor_backfill_lease_ms_required" in init_source
+    assert "event_anchor_backfill_active_window_ms_required" in init_source
+    assert "event_anchor_backfill_max_anchor_lag_ms_required" in init_source
+    assert "def _required_positive_int(value: Any, *, error_code: str) -> int:" in source
+    assert "def _required_nonnegative_int(value: Any, *, error_code: str) -> int:" in source
+    assert "isinstance(value, bool)" in source
     assert "statement_timeout_seconds=self.settings.statement_timeout_seconds" in session_source
     assert "settings=workers.event_anchor_backfill" in backfill_factory_source
     assert "pool_bundle=ctx.db" in backfill_factory_source
@@ -1977,6 +2153,10 @@ def test_ingest_event_anchor_window_uses_formal_settings_without_service_default
         "\n\n\ndef _prepared_value",
         1,
     )[0]
+    prepared_value_source = bootstrap_source.split("def _prepared_value", 1)[1].split(
+        "\n\n\ndef _now_ms",
+        1,
+    )[0]
     assemble_source = bootstrap_source.split("def _assemble_runtime", 1)[1].split(
         "\n\nclass _PooledIngestStore",
         1,
@@ -1984,10 +2164,12 @@ def test_ingest_event_anchor_window_uses_formal_settings_without_service_default
     forbidden_ingest_tokens = (
         "DEFAULT_EVENT_ANCHOR_ACTIVE_WINDOW_MS",
         "event_anchor_active_window_ms: int =",
+        "max(1, int(event_anchor_active_window_ms))",
     )
     forbidden_bootstrap_tokens = (
         "event_anchor_active_window_ms: int = 300_000",
         "event_anchor_active_window_ms: int =",
+        "max(1, int(event_anchor_active_window_ms))",
     )
     violations = [f"ingest:{token}" for token in forbidden_ingest_tokens if token in ingest_source] + [
         f"bootstrap:{token}"
@@ -2000,6 +2182,12 @@ def test_ingest_event_anchor_window_uses_formal_settings_without_service_default
     assert "event_anchor_active_window_ms: int," in pooled_init_source
     assert "event_anchor_active_window_ms: int," in ingest_helper_source
     assert "event_anchor_active_window_ms=workers.event_anchor_backfill.active_window_ms" in assemble_source
+    assert "require_event_anchor_active_window_ms(event_anchor_active_window_ms)" in ingest_source
+    assert "require_event_anchor_active_window_ms(event_anchor_active_window_ms)" in pooled_init_source
+    assert "event_anchor_active_window_ms_required" in ingest_source
+    assert "if isinstance(prepared, dict)" not in prepared_value_source
+    assert "PreparedIngest" in prepared_value_source
+    assert "prepared_ingest_contract_required" in prepared_value_source
 
 
 @pytest.mark.architecture
@@ -2023,14 +2211,19 @@ def test_token_profile_current_worker_uses_formal_settings_contract_without_runt
         "lease_owner: str =",
         "lease_ms: int =",
         "retry_ms: int =",
+        "limit=max(1, int(self.settings.batch_size))",
+        "lease_ms=max(1, int(self.settings.lease_ms))",
+        "retry_ms=max(1, int(self.settings.retry_ms))",
     )
     violations = [token for token in forbidden_tokens if token in source]
 
     assert violations == []
     assert "statement_timeout_seconds=self.settings.statement_timeout_seconds" in rebuild_source
-    assert "limit=max(1, int(self.settings.batch_size))" in rebuild_source
-    assert "lease_ms=max(1, int(self.settings.lease_ms))" in rebuild_source
-    assert "retry_ms=max(1, int(self.settings.retry_ms))" in rebuild_source
+    assert "token_profile_current_batch_size_required" in rebuild_source
+    assert "token_profile_current_lease_ms_required" in rebuild_source
+    assert "token_profile_current_retry_ms_required" in rebuild_source
+    assert "def _required_positive_int(value: Any, *, error_code: str) -> int:" in source
+    assert "isinstance(value, bool)" in source
     assert "limit: int," in helper_signature
     assert "lease_owner: str," in helper_signature
     assert "lease_ms: int," in helper_signature
@@ -2059,15 +2252,26 @@ def test_token_image_mirror_worker_uses_formal_settings_contract_without_runtime
         '"statement_timeout_seconds", 120.0',
         '"batch_size", 100',
         '"max_attempts", 3',
+        "limit=max(1, int(self.settings.batch_size))",
+        "lease_ms=max(1, int(self.settings.lease_ms))",
+        "retry_ms=max(1, int(self.settings.retry_ms))",
+        "max_attempts=int(self.settings.max_attempts)",
     )
     violations = [token for token in forbidden_tokens if token in source]
 
     assert violations == []
     assert source.count("statement_timeout_seconds=float(self.settings.statement_timeout_seconds)") == 6
-    assert "limit=max(1, int(self.settings.batch_size))" in source
-    assert "lease_ms=max(1, int(self.settings.lease_ms))" in source
-    assert "retry_ms=max(1, int(self.settings.retry_ms))" in source
-    assert "max_attempts=int(self.settings.max_attempts)" in source
+    assert "token_image_mirror_batch_size_required" in source
+    assert "token_image_mirror_lease_ms_required" in source
+    assert "token_image_mirror_retry_ms_required" in source
+    assert "token_image_mirror_max_attempts_required" in source
+    assert "def _required_positive_int(value: Any, *, error_code: str) -> int:" in source
+    assert "isinstance(value, bool)" in source
+    repository_source = (SRC / "domains/asset_market/repositories/token_image_asset_repository.py").read_text(
+        encoding="utf-8"
+    )
+    assert "token_image_asset_retry_ms_required" in repository_source
+    assert "max(0, int(retry_ms))" not in repository_source
     service_forbidden_tokens = (
         "TOKEN_IMAGE_MIRROR_RETRY_MS",
         "retry_ms: int =",
@@ -2098,6 +2302,12 @@ def test_asset_profile_refresh_worker_uses_formal_settings_contract_without_runt
         'getattr(self.settings, "lease_ms"',
         'getattr(self.settings, "provider_retry_ms"',
         '"batch_size", 50',
+        "limit=max(1, int(self.settings.batch_size))",
+        "lease_ms=max(1, int(self.settings.lease_ms))",
+        "return max(1, int(self.settings.provider_retry_ms))",
+        "ready_refresh_ms = max(1, int(self.settings.ready_refresh_ms))",
+        "missing_refresh_ms = max(1, int(self.settings.missing_refresh_ms))",
+        "error_refresh_ms = max(1, int(self.settings.error_refresh_ms))",
     )
     violations = [token for token in forbidden_tokens if token in source]
     policy_forbidden_tokens = (
@@ -2118,12 +2328,14 @@ def test_asset_profile_refresh_worker_uses_formal_settings_contract_without_runt
     assert violations == []
     assert policy_violations == []
     assert source.count("statement_timeout_seconds=self.settings.statement_timeout_seconds") == 4
-    assert "limit=max(1, int(self.settings.batch_size))" in source
-    assert "lease_ms=max(1, int(self.settings.lease_ms))" in source
-    assert "return max(1, int(self.settings.provider_retry_ms))" in source
-    assert "ready_refresh_ms = max(1, int(self.settings.ready_refresh_ms))" in source
-    assert "missing_refresh_ms = max(1, int(self.settings.missing_refresh_ms))" in source
-    assert "error_refresh_ms = max(1, int(self.settings.error_refresh_ms))" in source
+    assert "asset_profile_refresh_batch_size_required" in source
+    assert "asset_profile_refresh_lease_ms_required" in source
+    assert "asset_profile_refresh_provider_retry_ms_required" in source
+    assert "asset_profile_refresh_ready_refresh_ms_required" in source
+    assert "asset_profile_refresh_missing_refresh_ms_required" in source
+    assert "asset_profile_refresh_error_refresh_ms_required" in source
+    assert "def _required_positive_int(value: Any, *, error_code: str) -> int:" in source
+    assert "isinstance(value, bool)" in source
     assert "provider_retry_ms: int = Field(default=300_000, ge=1)" in settings_class
     assert "ready_refresh_ms: int = Field(default=21_600_000, ge=1)" in settings_class
     assert "missing_refresh_ms: int = Field(default=900_000, ge=1)" in settings_class
@@ -2156,6 +2368,14 @@ def test_resolution_refresh_worker_uses_formal_settings_and_wake_contract_withou
         'getattr(settings, "max_attempts"',
         'getattr(settings, "lease_ms"',
         'getattr(settings, "hot_not_found_retry_ms"',
+        "getattr(candidate,",
+        "limit=max(1, int(self.settings.batch_size))",
+        "limit=max(1, int(self.settings.reprocess_limit))",
+        "max(1, int(hot_not_found_retry_ms))",
+        "max(1, int(max_attempts))",
+        "ranked[: max(0, int(per_chain_limit))]",
+        "max(0, int(error_count))",
+        'int(lookup.get("error_count") or 0)',
     )
     forbidden_init_tokens = (
         "dex_quote_market",
@@ -2164,6 +2384,9 @@ def test_resolution_refresh_worker_uses_formal_settings_and_wake_contract_withou
         "self.dex_quote_market",
         "configured_chain_ids",
         'getattr(settings, "',
+        "max(1, int(settings.max_attempts))",
+        "max(1, int(settings.lease_ms))",
+        "max(1, int(settings.hot_not_found_retry_ms))",
     )
     forbidden_factory_tokens = (
         "dex_quote_market=dex_quote_market",
@@ -2179,17 +2402,25 @@ def test_resolution_refresh_worker_uses_formal_settings_and_wake_contract_withou
     assert violations == []
     assert "resolution_refresh_settings_required" in init_source
     assert "resolution_refresh_provider_required" in init_source
+    assert "isinstance(candidate, DexTokenCandidate)" in source
+    assert "dex_token_candidate_contract_required" in source
     assert "settings.chain_ids" in init_source
-    assert "self.max_attempts = max(1, int(settings.max_attempts))" in init_source
-    assert "self.lease_ms = max(1, int(settings.lease_ms))" in init_source
-    assert "self.hot_not_found_retry_ms = max(1, int(settings.hot_not_found_retry_ms))" in init_source
+    assert "resolution_refresh_max_attempts_required" in init_source
+    assert "resolution_refresh_lease_ms_required" in init_source
+    assert "resolution_refresh_hot_not_found_retry_ms_required" in init_source
     assert "self.wake_emitter = wake_emitter" in init_source
     assert "self.wake_emitter.notify_resolution_updated" in source
-    assert "limit=max(1, int(self.settings.batch_size))" in run_source
+    assert "resolution_refresh_batch_size_required" in run_source
     assert "lease_ms=self.lease_ms" in run_source
     assert "running_timeout_ms=self.lease_ms" in run_source
     assert "hot_not_found_retry_ms=self.hot_not_found_retry_ms" in run_source
-    assert "limit=max(1, int(self.settings.reprocess_limit))" in run_source
+    assert "resolution_refresh_reprocess_limit_required" in run_source
+    assert "resolution_refresh_symbol_candidate_per_chain_limit_required" in source
+    assert "resolution_refresh_claim_attempt_count_required" in source
+    assert "resolution_refresh_claim_error_count_required" in source
+    assert "def _required_positive_int(value: Any, *, error_code: str) -> int:" in source
+    assert "def _required_nonnegative_int(value: Any, *, error_code: str) -> int:" in source
+    assert "isinstance(value, bool)" in source
     assert "dex_discovery_market=dex_discovery_market" in resolution_factory_source
     assert "wake_emitter=ctx.wake_bus" in resolution_factory_source
 
@@ -2365,7 +2596,19 @@ def test_provider_wiring_cleanup_uses_formal_close_contracts_without_optional_pr
         1,
     )[0]
     okx_partial_cleanup = okx_source.split("def _close_partial_providers", 1)[1].split("\n\n\n__all__", 1)[0]
-    combined = "\n".join((fallback_close_source, asset_partial_cleanup, serialized_close_source, okx_partial_cleanup))
+    okx_ws_adapter_close = okx_source.split("class OkxDexWebSocketMarketProviderAdapter", 1)[1].split(
+        "def connection_state_payload",
+        1,
+    )[0]
+    combined = "\n".join(
+        (
+            fallback_close_source,
+            asset_partial_cleanup,
+            serialized_close_source,
+            okx_ws_adapter_close,
+            okx_partial_cleanup,
+        )
+    )
 
     forbidden_tokens = (
         'getattr(provider, "close", None)',
@@ -2373,12 +2616,14 @@ def test_provider_wiring_cleanup_uses_formal_close_contracts_without_optional_pr
         "if close is None",
         "if close:",
         "if not close",
+        "_websocket",
     )
     violations = [token for token in forbidden_tokens if token in combined]
 
     assert violations == []
     assert "provider.close()" in fallback_close_source
     assert "self._provider.close()" in serialized_close_source
+    assert "self._provider.connection_state_payload()" in okx_ws_adapter_close
     assert "cast(_SyncCloseProvider, provider).close()" in asset_partial_cleanup
     assert "cast(_SyncCloseProvider, provider).close()" in okx_partial_cleanup
 
@@ -2800,6 +3045,8 @@ def test_db_pool_bundle_wake_listener_sizing_uses_manifest_worker_settings_contr
         'getattr(worker_settings, "enabled"',
         'getattr(worker_settings, "wakes_on"',
         'getattr(worker_settings, "concurrency"',
+        "worker_settings.concurrency or 1",
+        "max(1, int(worker_settings.concurrency",
     )
     violations = [token for token in forbidden_tokens if token in helper_source]
 
@@ -2811,6 +3058,27 @@ def test_db_pool_bundle_wake_listener_sizing_uses_manifest_worker_settings_contr
     assert "worker_settings.enabled" in helper_source
     assert "worker_settings.wakes_on" in helper_source
     assert "worker_settings.concurrency" in helper_source
+    assert "_worker_wake_concurrency(" in helper_source
+    assert "worker_wake_listener_concurrency_required" in helper_source
+    assert "isinstance(value, bool) or not isinstance(value, int)" in helper_source
+
+
+@pytest.mark.architecture
+def test_db_pool_bundle_statement_timeout_uses_formal_nonnegative_contract_without_runtime_repair() -> None:
+    source = APP_RUNTIME_DB_POOL_BUNDLE.read_text(encoding="utf-8")
+    helper_source = source.split("def _statement_timeout_value", 1)[1].split(
+        "\n\ndef wake_pool_max_size",
+        1,
+    )[0]
+    forbidden_tokens = (
+        "max(0, int(float(seconds) * 1000))",
+        "int(float(seconds) * 1000)",
+    )
+
+    assert [token for token in forbidden_tokens if token in helper_source] == []
+    assert "_nonnegative_timeout_seconds(seconds)" in helper_source
+    assert "db_statement_timeout_seconds_required" in helper_source
+    assert "isinstance(value, bool) or not isinstance(value, int | float)" in helper_source
 
 
 @pytest.mark.architecture
@@ -2928,6 +3196,8 @@ def test_cex_oi_radar_board_worker_uses_formal_settings_and_provider_contract_wi
         '"coinglass_enrichment_limit", 0',
         '"coinglass_level_limit", 6',
         '"batch_size", 100',
+        "max(1, min(int(self.settings.universe_limit), batch_size))",
+        "return max(1, int(self.settings.batch_size))",
     )
     forbidden_enricher_tokens = (
         "level_limit: int =",
@@ -2949,12 +3219,21 @@ def test_cex_oi_radar_board_worker_uses_formal_settings_and_provider_contract_wi
     assert "cex_oi_radar_board_settings_required" in init_source
     assert "cex_oi_radar_board_db_required" in init_source
     assert "cex_oi_radar_board_oi_market_required" in init_source
-    assert "period = str(self.settings.period)" in source
-    assert "limit = max(1, min(int(self.settings.universe_limit), batch_size))" in source
-    assert "limit=int(self.settings.coinglass_enrichment_limit)" in source
-    assert "level_limit=int(self.settings.coinglass_level_limit)" in source
+    assert "self.period = _required_worker_text(" in source
+    assert "error_code=\"cex_oi_radar_board_period_required\"" in source
+    assert 'self.batch_size = _positive_worker_setting_int(' in source
+    assert "error_code=\"cex_oi_radar_board_batch_size_required\"" in source
+    assert 'self.universe_limit = _positive_worker_setting_int(' in source
+    assert "error_code=\"cex_oi_radar_board_universe_limit_required\"" in source
+    assert 'self.coinglass_enrichment_limit = _nonnegative_worker_setting_int(' in source
+    assert 'self.coinglass_level_limit = _nonnegative_worker_setting_int(' in source
+    assert "limit = min(self.universe_limit, batch_size)" in source
+    assert "limit=self.coinglass_enrichment_limit" in source
+    assert "level_limit=self.coinglass_level_limit" in source
     assert "statement_timeout_seconds=self.settings.statement_timeout_seconds" in source
-    assert "return max(1, int(self.settings.batch_size))" in source
+    assert "return self.batch_size" in source
+    assert "cex_oi_radar_board_batch_size_required" in source
+    assert "cex_oi_radar_board_universe_limit_required" in source
     assert "oi_market=oi_market" in factory_worker_source
     assert "coinglass_derivatives=coinglass_derivatives" in factory_worker_source
     assert "batch_size: int = Field(default=500, ge=1)" in settings_class
@@ -3330,12 +3609,33 @@ def test_wake_bus_is_emit_only() -> None:
 
     assert not hasattr(wake_bus, "WakeListener")
     assert not hasattr(wake_bus.WakeBus, f"notify_{legacy_channel}")
+    assert not hasattr(wake_bus.WakeBus, "notify_news_item_brief_updated")
     assert legacy_channel not in text
+    assert "news_item_brief_updated" not in text
     assert "notify_market_tick_written" in text
     assert "LISTEN" not in text
     assert 'getattr(conn, "commit", None)' not in text
     assert 'getattr(conn, "commit", None)' not in waiter_text
     assert "if not notifies:" not in waiter_text
+
+
+@pytest.mark.architecture
+def test_wake_waiter_timeout_is_formal_nonnegative_contract_without_runtime_repair() -> None:
+    text = (SRC / "app/runtime/wake_waiter.py").read_text(encoding="utf-8")
+    notification_factory = (WORKER_FACTORIES / "notifications.py").read_text(encoding="utf-8")
+    wait_source = text.split("def wait", 1)[1].split("\n    def _wait_once", 1)[0]
+    local_wait_source = notification_factory.split("class _LocalWakeWaiter", 1)[1]
+    forbidden_tokens = (
+        "max(0.0, float(timeout))",
+        "max(0.0, timeout)",
+    )
+
+    assert [token for token in forbidden_tokens if token in wait_source] == []
+    assert [token for token in forbidden_tokens if token in local_wait_source] == []
+    assert "_nonnegative_timeout_seconds(timeout)" in wait_source
+    assert "_nonnegative_timeout_seconds(timeout)" in local_wait_source
+    assert "wake_waiter_timeout_seconds_required" in text
+    assert "wake_waiter_timeout_seconds_required" in notification_factory
 
 
 @pytest.mark.architecture
@@ -3412,6 +3712,10 @@ def test_worker_base_core_settings_use_formal_worker_settings_without_runtime_de
         "\n    @property\n    def soft_timeout_seconds",
         1,
     )[0]
+    timeout_source = text.split("def soft_timeout_seconds", 1)[1].split(
+        "\n    async def _run_once_with_timeout",
+        1,
+    )[0]
     backoff_source = text.split("def _backoff_seconds", 1)[1].split("\n    def _queue_depth", 1)[0]
     forbidden = (
         "_DEFAULT_INTERVAL_SECONDS",
@@ -3422,15 +3726,25 @@ def test_worker_base_core_settings_use_formal_worker_settings_without_runtime_de
         'getattr(self.settings, "backoff"',
         'getattr(backoff, "base_ms"',
         'getattr(backoff, "max_ms"',
+        "max(0.0, float(self.settings.interval_seconds))",
+        "max(0.0, float(self.settings.soft_timeout_seconds))",
+        "max(0.0, float(self.settings.hard_timeout_seconds))",
+        "min(max(0, max_ms), max(0, base_ms)",
     )
     violations = [f"worker_base keeps core settings fallback token `{token}`" for token in forbidden if token in text]
 
     assert violations == []
     assert "return bool(self.settings.enabled)" in enabled_source
-    assert "return max(0.0, float(self.settings.interval_seconds))" in interval_source
+    assert "worker_interval_seconds_required" in text
+    assert "worker_soft_timeout_seconds_required" in text
+    assert "worker_hard_timeout_seconds_required" in text
+    assert "_nonnegative_setting_seconds(" in interval_source
+    assert "_nonnegative_setting_seconds(" in timeout_source
     assert "backoff = self.settings.backoff" in backoff_source
-    assert "base_ms = int(backoff.base_ms)" in backoff_source
-    assert "max_ms = int(backoff.max_ms)" in backoff_source
+    assert "worker_backoff_base_ms_required" in text
+    assert "worker_backoff_max_ms_required" in text
+    assert "_nonnegative_setting_int(backoff.base_ms" in backoff_source
+    assert "_nonnegative_setting_int(backoff.max_ms" in backoff_source
 
 
 @pytest.mark.architecture

@@ -203,7 +203,10 @@ class PulseCandidateJobService:
             with self._repository_session() as repos, repos.transaction():
                 evidence_packet = PulseEvidenceBuilder(
                     repos.pulse_evidence_sources,
-                    market_freshness_ms=max(1, int(self.settings.evidence_market_freshness_ms)),
+                    market_freshness_ms=_required_positive_int(
+                        self.settings.evidence_market_freshness_ms,
+                        "pulse_candidate_evidence_market_freshness_ms_required",
+                    ),
                 ).build(
                     context,
                     run_id=run_id,
@@ -578,7 +581,7 @@ class PulseCandidateJobService:
                     finished_at_ms=finished_at_ms,
                     commit=False,
                 )
-                repos.pulse_jobs.mark_job_succeeded(job_identity.job_id, now_ms=finished_at_ms, commit=False)
+                repos.pulse_jobs.mark_job_succeeded(job, now_ms=finished_at_ms, commit=False)
         except asyncio.CancelledError as exc:
             if not is_worker_hard_timeout_cancelled(exc):
                 raise
@@ -1219,6 +1222,12 @@ def _artifact_hash(client: Any) -> str:
 
 def _mapping(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
+
+
+def _required_positive_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _jsonable(value: Any) -> Any:

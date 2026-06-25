@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -413,7 +414,7 @@ def _stage_audit_from_execution(
         status=status,
         error=error,
         safety_net_used=bool(safety.get("safety_net_used", False)),
-        safety_net_retries=int(safety.get("safety_net_retries") or 0),
+        safety_net_retries=_safety_net_retries(safety),
         parse_mode=str(audit.parse_mode or "strict"),
         input_hash=input_hash,
         output_hash=output_hash,
@@ -428,7 +429,8 @@ def _stage_audit_from_execution_error(
     exc: AgentExecutionError,
 ) -> StageRunAudit:
     audit = _require_execution_audit(exc.audit)
-    status: StageStatus = "timeout" if exc.error_class == AgentExecutionErrorClass.TIMEOUT else "failed"
+    error_class = _require_agent_error_class(exc.error_class)
+    status: StageStatus = "timeout" if error_class is AgentExecutionErrorClass.TIMEOUT else "failed"
     error = str(audit.error_message or exc)[:1000]
     return _stage_audit_from_execution(
         stage_spec=stage_spec,
@@ -451,7 +453,8 @@ def _stage_trace_metadata(audit: AgentExecutionRequestAudit | AgentExecutionResu
 
 
 def _is_no_start_agent_backpressure(exc: AgentExecutionError) -> bool:
-    return exc.execution_started is False and exc.error_class in {
+    error_class = _require_agent_error_class(exc.error_class)
+    return exc.execution_started is False and error_class in {
         AgentExecutionErrorClass.CAPACITY_DENIED,
         AgentExecutionErrorClass.CIRCUIT_OPEN,
         AgentExecutionErrorClass.RATE_LIMITED,
@@ -470,6 +473,12 @@ def _require_execution_audit(
 ) -> AgentExecutionRequestAudit | AgentExecutionResultAudit:
     if not isinstance(value, AgentExecutionRequestAudit):
         raise TypeError("pulse_decision_execution_audit_contract_required")
+    return value
+
+
+def _require_agent_error_class(value: Any) -> AgentExecutionErrorClass:
+    if not isinstance(value, AgentExecutionErrorClass):
+        raise RuntimeError("pulse_decision_agent_error_class_contract_required")
     return value
 
 
@@ -723,10 +732,21 @@ def _truncate(value: Any, *, limit: int = 4000) -> str:
 
 
 def _latency_ms(value: Any) -> int:
-    try:
-        return max(0, int(float(value or 0)))
-    except (TypeError, ValueError):
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError("pulse_decision_agent_latency_ms_required")
+    numeric = float(value)
+    if not math.isfinite(numeric) or numeric < 0:
+        raise ValueError("pulse_decision_agent_latency_ms_required")
+    return int(numeric)
+
+
+def _safety_net_retries(safety: Mapping[str, Any]) -> int:
+    if "safety_net_retries" not in safety:
         return 0
+    value = safety["safety_net_retries"]
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError("pulse_decision_agent_safety_net_retries_required")
+    return int(value)
 
 
 __all__ = [

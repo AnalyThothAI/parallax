@@ -15,6 +15,7 @@ from parallax.domains.news_intel.runtime.news_projection_work import (
     mark_work_error,
     source_quality_claim_windows,
 )
+from parallax.domains.news_intel.runtime.news_runtime_settings import positive_worker_setting_int
 from parallax.domains.news_intel.services.source_quality_projection import build_source_quality_rows
 from parallax.domains.news_intel.types.source_quality_policy import window_ms_for_label
 
@@ -56,11 +57,15 @@ class NewsSourceQualityProjectionWorker(WorkerBase):
         dirty_page_count = 0
         rescheduled = 0
         windows = self._windows()
+        batch_size = self._batch_size()
+        lease_ms = self._lease_ms()
+        retry_ms = self._retry_ms()
+        self._max_attempts()
         with self._repository_session() as repos, repos.transaction():
             claimed = claim_source_quality_work(
                 repos,
-                limit=self._batch_size(),
-                lease_ms=self._lease_ms(),
+                limit=batch_size,
+                lease_ms=lease_ms,
                 now_ms=now,
                 lease_owner=self.name,
                 commit=False,
@@ -142,8 +147,10 @@ class NewsSourceQualityProjectionWorker(WorkerBase):
                     repos,
                     claimed,
                     error=str(exc),
-                    retry_ms=self._retry_ms(),
+                    retry_ms=retry_ms,
                     now_ms=now,
+                    max_attempts=self._max_attempts(),
+                    worker_name=self.name,
                     commit=False,
                 )
                 return WorkerResult(
@@ -184,13 +191,16 @@ class NewsSourceQualityProjectionWorker(WorkerBase):
         return tuple(str(window).strip().lower() for window in self.settings.windows)
 
     def _batch_size(self) -> int:
-        return max(1, int(self.settings.batch_size))
+        return positive_worker_setting_int(self.settings, "batch_size", worker_name=self.name)
 
     def _lease_ms(self) -> int:
-        return max(1, int(self.settings.lease_ms))
+        return positive_worker_setting_int(self.settings, "lease_ms", worker_name=self.name)
 
     def _retry_ms(self) -> int:
-        return max(1, int(self.settings.retry_ms))
+        return positive_worker_setting_int(self.settings, "retry_ms", worker_name=self.name)
+
+    def _max_attempts(self) -> int:
+        return positive_worker_setting_int(self.settings, "max_attempts", worker_name=self.name)
 
 
 def _notes(

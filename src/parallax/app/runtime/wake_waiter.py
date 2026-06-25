@@ -46,7 +46,8 @@ class WakeWaiter:
             executor.shutdown(wait=False, cancel_futures=True)
 
     def wait(self, timeout: float) -> bool:
-        deadline = time.monotonic() + max(0.0, float(timeout))
+        timeout_seconds = _nonnegative_timeout_seconds(timeout)
+        deadline = time.monotonic() + timeout_seconds
         retry_after_failure = False
         while True:
             if self._local_wake.is_set():
@@ -62,12 +63,12 @@ class WakeWaiter:
                 raise
             except Exception as exc:
                 logger.warning("wake waiter reconnecting after LISTEN failure: {}", exc)
-                if max(0.0, float(timeout)) <= 0:
+                if timeout_seconds <= 0:
                     return False
                 retry_after_failure = True
 
     def _wait_once(self, *, timeout: float) -> bool:
-        deadline = time.monotonic() + max(0.0, timeout)
+        deadline = time.monotonic() + _remaining_wait_seconds(timeout)
         with self._wake_pool.connection() as conn:
             for channel in self._channels:
                 conn.execute(f"LISTEN {channel}")
@@ -97,6 +98,16 @@ def _normalize_channel(channel: str) -> str:
     if not _CHANNEL_RE.fullmatch(normalized):
         raise ValueError(f"invalid_wake_channel:{normalized}")
     return normalized
+
+
+def _nonnegative_timeout_seconds(value: Any) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float) or value < 0:
+        raise ValueError("wake_waiter_timeout_seconds_required")
+    return float(value)
+
+
+def _remaining_wait_seconds(value: float) -> float:
+    return value if value > 0 else 0.0
 
 
 def _commit_listen(conn: Any) -> None:

@@ -99,6 +99,7 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.narrative_admission.source_limit == 2000
     assert settings.narrative_admission.lease_ms == 60_000
     assert settings.narrative_admission.retry_ms == 60_000
+    assert settings.narrative_admission.max_attempts == 3
     assert settings.narrative_admission.statement_timeout_seconds == 30
     assert settings.narrative_admission.hot_rank_limit == 50
     assert settings.narrative_admission.min_rank_score == 30

@@ -9,6 +9,8 @@ v2 field so ``SignalPulseService._decision`` can project them later.
 
 from __future__ import annotations
 
+import pytest
+
 from parallax.domains.pulse_lab.services.decision_mapping import (
     candidate_fields_from_decision,
 )
@@ -117,3 +119,12 @@ def test_candidate_fields_v1_columns_still_present() -> None:
     assert fields["decision_abstain_reason"] is None
     assert fields["decision_stage_count"] == 2
     assert fields["score_band"] == "high_conviction"
+
+
+@pytest.mark.parametrize("stage_count", [-1, True, "2"])
+def test_candidate_fields_rejects_malformed_stage_count(stage_count: object) -> None:
+    with pytest.raises(ValueError, match="pulse_decision_stage_count_required"):
+        candidate_fields_from_decision(
+            _full_v2_decision(),
+            stage_count=stage_count,  # type: ignore[arg-type]
+        )

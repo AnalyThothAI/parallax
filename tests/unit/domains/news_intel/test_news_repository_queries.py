@@ -80,6 +80,7 @@ def test_brief_target_loader_includes_provider_duplicate_aggregation() -> None:
     assert "'source_ids_json', COALESCE(edge_summary.source_ids_json, '[]'::jsonb)" in conn.sql
     assert "'source_domains_json', COALESCE(edge_summary.source_domains_json, '[]'::jsonb)" in conn.sql
     assert "'provider_article_keys_json', COALESCE(edge_summary.provider_article_keys_json, '[]'::jsonb)" in conn.sql
+    assert "'market_scope_json', items.market_scope_json -> 'scope'" in conn.sql
     assert "edge_sources.enabled = true" in conn.sql
     assert "story_member_rows" not in conn.sql
     assert "news_story_groups AS stories" not in conn.sql
@@ -212,6 +213,17 @@ def test_canonical_rebuild_list_reads_only_current_servable_news_items() -> None
     assert "edge_sources.enabled = true" in conn.sql
     assert "source_watermark_ms > 0" in conn.sql
     assert conn.params == (NEWS_STORY_IDENTITY_VERSION, 25)
+
+
+@pytest.mark.parametrize("limit", [-1, True, "25"])
+def test_canonical_rebuild_list_rejects_malformed_limit_before_sql(limit: object) -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+
+    with pytest.raises(ValueError, match="news_canonical_rebuild_limit_required"):
+        repo.list_news_items_for_canonical_rebuild(limit=limit)  # type: ignore[arg-type]
+
+    assert conn.statements == []
 
 
 @pytest.mark.parametrize(
@@ -808,6 +820,17 @@ def test_list_news_page_rows_requires_formal_projected_sections_without_public_d
         repo.list_news_page_rows(limit=1)
 
 
+@pytest.mark.parametrize("limit", [-1, True, "1"])
+def test_list_news_page_rows_rejects_malformed_limit_before_sql(limit: object) -> None:
+    conn = NewsPageRowsConnection(rows=[])
+    repo = NewsRepository(conn)
+
+    with pytest.raises(ValueError, match="news_page_rows_limit_required"):
+        repo.list_news_page_rows(limit=limit)  # type: ignore[arg-type]
+
+    assert conn.statements == []
+
+
 def test_list_news_page_rows_omits_blank_optional_text_from_failed_agent_brief() -> None:
     page_row = _valid_news_page_read_row()
     page_row["agent_status"] = "failed"
@@ -886,6 +909,17 @@ def test_high_signal_notification_candidates_require_projected_agent_brief_witho
 
     with pytest.raises(ValueError, match=r"news_page_row_projection.*agent_brief"):
         repo.list_news_high_signal_notification_candidates(limit=1)
+
+
+@pytest.mark.parametrize("limit", [-1, True, "1"])
+def test_high_signal_notification_candidates_reject_malformed_limit_before_sql(limit: object) -> None:
+    conn = NewsPageRowsConnection(rows=[])
+    repo = NewsRepository(conn)
+
+    with pytest.raises(ValueError, match="news_high_signal_notification_limit_required"):
+        repo.list_news_high_signal_notification_candidates(limit=limit)  # type: ignore[arg-type]
+
+    assert conn.statements == []
 
 
 def test_unprocessed_item_loader_selects_provider_article_keys_for_story_identity() -> None:
@@ -980,6 +1014,38 @@ def test_claim_unprocessed_items_returning_rows_accept_matching_claim_rows() -> 
 
     assert rows == [{"news_item_id": "news-1", "processing_attempts": 1}]
     assert conn.params == (1_000, 1, "worker", 121_000, 1_000)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "error"),
+    [
+        pytest.param({"limit": -1}, "news_item_claim_limit_required", id="negative-limit"),
+        pytest.param({"limit": True}, "news_item_claim_limit_required", id="bool-limit"),
+        pytest.param({"limit": "1"}, "news_item_claim_limit_required", id="string-limit"),
+        pytest.param({"lease_ms": 0}, "news_item_claim_lease_ms_required", id="zero-lease"),
+        pytest.param({"lease_ms": True}, "news_item_claim_lease_ms_required", id="bool-lease"),
+        pytest.param({"lease_ms": "60000"}, "news_item_claim_lease_ms_required", id="string-lease"),
+    ],
+)
+def test_claim_unprocessed_items_rejects_malformed_parameters_before_sql(
+    overrides: dict[str, object],
+    error: str,
+) -> None:
+    conn = ClaimUnprocessedItemsConnection(rows=[], rowcount=0)
+    repo = NewsRepository(conn)
+    params: dict[str, object] = {
+        "limit": 1,
+        "lease_owner": "worker",
+        "lease_ms": 120_000,
+        "now_ms": 1_000,
+        "commit": False,
+    }
+    params.update(overrides)
+
+    with pytest.raises(ValueError, match=error):
+        repo.claim_unprocessed_items(**params)
+
+    assert conn.statements == []
 
 
 def test_update_item_market_scope_and_story_identity_rejects_unsupported_payload_shape() -> None:
@@ -1630,6 +1696,33 @@ def test_news_dedup_diagnostics_rejects_malformed_summary_row(
         repo.news_dedup_diagnostics(window_ms=1_000, now_ms=1_779_000_000_000)
 
 
+def test_news_dedup_diagnostics_uses_explicit_positive_window() -> None:
+    conn = DedupDiagnosticsConnection(summary_row=_valid_news_dedup_diagnostics_row())
+    repo = NewsRepository(conn)
+
+    result = repo.news_dedup_diagnostics(window_ms=1_000, now_ms=1_779_000_000_000)
+
+    assert result["raw_observation_count"] == 1
+    first_params = conn.statements[0][1]
+    current_policy_params = conn.statements[2][1]
+    assert isinstance(first_params, dict)
+    assert first_params["now_ms"] == 1_779_000_000_000
+    assert first_params["window_ms"] == 1_000
+    assert isinstance(current_policy_params, dict)
+    assert current_policy_params == {"now_ms": 1_779_000_000_000, "window_ms": 1_000}
+
+
+@pytest.mark.parametrize("window_ms", [0, -1, True, "1000"])
+def test_news_dedup_diagnostics_rejects_malformed_window_before_sql(window_ms: object) -> None:
+    conn = DedupDiagnosticsConnection(summary_row=_valid_news_dedup_diagnostics_row())
+    repo = NewsRepository(conn)
+
+    with pytest.raises(ValueError, match="news_dedup_diagnostics_window_ms_required"):
+        repo.news_dedup_diagnostics(window_ms=window_ms, now_ms=1_779_000_000_000)  # type: ignore[arg-type]
+
+    assert conn.statements == []
+
+
 def test_current_policy_material_duplicate_groups_reports_valid_opennews_duplicates() -> None:
     groups = _current_policy_material_duplicate_groups(
         [
@@ -1804,6 +1897,37 @@ def test_claim_due_sources_returning_counts_accept_matching_claim_rows() -> None
 
     assert rows == [{"source_id": "source-1"}]
     assert conn.params == (1_000, 1, 61_000, 1_000)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "error"),
+    [
+        pytest.param({"limit": -1}, "news_source_claim_limit_required", id="negative-limit"),
+        pytest.param({"limit": True}, "news_source_claim_limit_required", id="bool-limit"),
+        pytest.param({"limit": "1"}, "news_source_claim_limit_required", id="string-limit"),
+        pytest.param({"claim_lease_ms": 0}, "news_source_claim_lease_ms_required", id="zero-lease"),
+        pytest.param({"claim_lease_ms": True}, "news_source_claim_lease_ms_required", id="bool-lease"),
+        pytest.param({"claim_lease_ms": "60000"}, "news_source_claim_lease_ms_required", id="string-lease"),
+    ],
+)
+def test_claim_due_sources_rejects_malformed_parameters_before_sql(
+    overrides: dict[str, object],
+    error: str,
+) -> None:
+    conn = ClaimDueSourcesConnection(rows=[], rowcount=0)
+    repo = NewsRepository(conn)
+    params: dict[str, object] = {
+        "now_ms": 1_000,
+        "limit": 1,
+        "claim_lease_ms": 60_000,
+        "commit": False,
+    }
+    params.update(overrides)
+
+    with pytest.raises(ValueError, match=error):
+        repo.claim_due_sources(**params)
+
+    assert conn.statements == []
 
 
 def test_start_fetch_run_requires_fetch_run_insert_rowcount_before_source_update() -> None:
@@ -2561,6 +2685,43 @@ def test_upsert_news_story_agent_brief_ready_payload_requires_summary_without_ma
         repo.upsert_news_story_agent_brief(**payload)
 
     assert conn.write_sql == ""
+
+
+def test_list_current_brief_ids_outside_schema_uses_explicit_limit() -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+
+    rows = repo.list_current_brief_ids_outside_schema(required_schema_version="v2", limit=25)
+
+    assert rows == []
+    assert "FROM news_item_agent_briefs" in conn.sql
+    assert conn.params == ("v2", 25)
+
+
+@pytest.mark.parametrize("limit", [0, -1, True, "25"])
+def test_list_current_brief_ids_outside_schema_rejects_malformed_limit_before_sql(limit: object) -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+
+    with pytest.raises(ValueError, match="news_current_brief_schema_limit_required"):
+        repo.list_current_brief_ids_outside_schema(limit=limit)  # type: ignore[arg-type]
+
+    assert conn.statements == []
+
+
+@pytest.mark.parametrize("window_ms", [0, -1, True, "60000"])
+def test_source_quality_inputs_rejects_malformed_window_before_sql(window_ms: object) -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+
+    with pytest.raises(ValueError, match="news_source_quality_window_ms_required"):
+        repo._list_source_quality_inputs_for_source_ids(
+            source_ids=["source-1"],
+            window_ms=window_ms,  # type: ignore[arg-type]
+            now_ms=1_000,
+        )
+
+    assert conn.statements == []
 
 
 def test_clear_current_briefs_outside_schema_returning_rows_require_cursor_rowcount() -> None:

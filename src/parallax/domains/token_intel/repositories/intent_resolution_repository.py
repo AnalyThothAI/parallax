@@ -1,18 +1,22 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager
 from typing import Any, cast
 
 from psycopg.types.json import Jsonb
+
+from parallax.domains.token_intel.types.token_fact_inputs import DeterministicResolution
+
+IntentResolutionWriteInput = DeterministicResolution | Mapping[str, Any]
 
 
 class IntentResolutionRepository:
     def __init__(self, conn: Any):
         self.conn = conn
 
-    def insert_resolution(self, decision: Any, *, commit: bool = True) -> dict[str, Any]:
+    def insert_resolution(self, decision: IntentResolutionWriteInput, *, commit: bool = True) -> dict[str, Any]:
         def _write() -> dict[str, Any]:
             payload = _payload(decision)
             resolution_id = token_intent_resolution_id(payload)
@@ -165,13 +169,28 @@ class IntentResolutionRepository:
         return bool(global_row), author_seen
 
 
-def _payload(item: Any) -> dict[str, Any]:
-    if isinstance(item, dict):
+def _payload(item: IntentResolutionWriteInput) -> dict[str, Any]:
+    if isinstance(item, DeterministicResolution):
+        return {
+            "intent_id": item.intent_id,
+            "event_id": item.event_id,
+            "resolution_status": item.resolution_status,
+            "target_type": item.target_type,
+            "target_id": item.target_id,
+            "pricefeed_id": item.pricefeed_id,
+            "resolver_policy_version": item.resolver_policy_version,
+            "reason_codes": item.reason_codes,
+            "candidate_ids": item.candidate_ids,
+            "lookup_keys": item.lookup_keys,
+            "decision_time_ms": item.decision_time_ms,
+            "created_at_ms": item.created_at_ms,
+        }
+    if isinstance(item, Mapping):
         return dict(item)
-    return {slot: getattr(item, slot) for slot in item.__slots__}
+    raise TypeError("intent_resolution_repository_input_contract_required")
 
 
-def token_intent_resolution_id(item: Any) -> str:
+def token_intent_resolution_id(item: IntentResolutionWriteInput) -> str:
     payload = _payload(item)
     return _stable_id(
         "token-intent-resolution",

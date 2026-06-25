@@ -80,7 +80,10 @@ class OkxDexWebSocketMarketProvider:
         self.api_key = api_key
         self.secret_key = secret_key
         self.passphrase = passphrase
-        self.subscription_limit = max(1, int(subscription_limit))
+        self.subscription_limit = _required_positive_int(
+            subscription_limit,
+            error_code="okx_dex_ws_subscription_limit_required",
+        )
         self.connection_state = "disconnected"
         self.last_state_change_at_ms = _now_ms()
         self.last_message_at_ms: int | None = None
@@ -329,7 +332,7 @@ class OkxDexWebSocketMarketProvider:
     async def _reconnect_after_recoverable_error(self, category: str, *, code: str | None = None) -> None:
         self._record_error(category=category, code=code)
         self._recoverable_failure_count += 1
-        if self._recoverable_failure_count >= max(1, int(OKX_DEX_WS_CIRCUIT_FAILURES)):
+        if self._recoverable_failure_count >= _circuit_failure_limit():
             self._circuit_opened_at_ms = _now_ms()
             await self._drop_connection(state="circuit_open")
             raise OkxDexWsClientError("OKX DEX WS circuit open")
@@ -345,7 +348,7 @@ class OkxDexWebSocketMarketProvider:
     def _record_recoverable_error(self, *, category: str) -> None:
         self._record_error(category=category, code=None)
         self._recoverable_failure_count += 1
-        if self._recoverable_failure_count >= max(1, int(OKX_DEX_WS_CIRCUIT_FAILURES)):
+        if self._recoverable_failure_count >= _circuit_failure_limit():
             self._circuit_opened_at_ms = _now_ms()
             self._set_connection_state("circuit_open")
 
@@ -384,6 +387,10 @@ class OkxDexWebSocketMarketProvider:
 
 
 def _subscription_args(targets: list[dict[str, str]], *, limit: int) -> list[dict[str, str]]:
+    parsed_limit = _required_positive_int(
+        limit,
+        error_code="okx_dex_ws_subscription_limit_required",
+    )
     args: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()
     for target in targets:
@@ -402,9 +409,22 @@ def _subscription_args(targets: list[dict[str, str]], *, limit: int) -> list[dic
                 "tokenContractAddress": address,
             }
         )
-        if len(args) >= max(1, int(limit)):
+        if len(args) >= parsed_limit:
             break
     return args
+
+
+def _circuit_failure_limit() -> int:
+    return _required_positive_int(
+        OKX_DEX_WS_CIRCUIT_FAILURES,
+        error_code="okx_dex_ws_circuit_failures_required",
+    )
+
+
+def _required_positive_int(value: Any, *, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _arg_key(arg: dict[str, str]) -> tuple[str, str]:

@@ -12,6 +12,7 @@ from parallax.domains.pulse_lab.types.pulse_freshness_health import (
     PulseFreshnessThresholds,
     PulsePublishStatus,
     classify_pulse_freshness_health,
+    pulse_freshness_since_hours,
     pulse_freshness_since_ms,
 )
 
@@ -29,6 +30,7 @@ class PulseFreshnessHealthService:
         now_ms: int,
         since_hours: int,
     ) -> dict[str, Any]:
+        since_hour_count = pulse_freshness_since_hours(since_hours)
         since_ms = pulse_freshness_since_ms(now_ms=now_ms, since_hours=since_hours)
         clocks = fetch_pulse_health_clocks(self.conn, window=window, scope=scope)
         jobs = fetch_pulse_health_jobs(self.conn, window=window, scope=scope, now_ms=now_ms, since_ms=since_ms)
@@ -38,7 +40,7 @@ class PulseFreshnessHealthService:
         return {
             "window": window,
             "scope": scope,
-            "since_hours": max(1, int(since_hours)),
+            "since_hours": since_hour_count,
             "publish_status": status,
             "reasons": reasons,
             **clocks,

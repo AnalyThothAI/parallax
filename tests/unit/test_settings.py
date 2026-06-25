@@ -895,6 +895,29 @@ def test_load_settings_accepts_notification_defaults_and_rule_overrides(tmp_path
     assert settings.notifications.channels["pushdeer"].url == "pushdeer://pushKey"
 
 
+def test_notification_rule_cooldown_rejects_negative(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(
+        tmp_path,
+        {
+            "ws_token": "secret",
+            "handles": ["toly"],
+            "notifications": {
+                "rules": {
+                    "watched_account_activity": {
+                        "enabled": True,
+                        "channels": ["in_app"],
+                        "cooldown_seconds": -1,
+                    },
+                },
+            },
+        },
+    )
+
+    with pytest.raises(ValidationError, match="cooldown_seconds"):
+        load_settings()
+
+
 def test_notification_candidate_limit_rejects_zero(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     write_config(

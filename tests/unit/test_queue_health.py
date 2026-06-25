@@ -301,6 +301,21 @@ def test_terminal_evidence_query_failure_is_adapter_error() -> None:
     assert health["adapter_error_kind"] == "RuntimeError"
 
 
+def test_malformed_queue_metric_row_reports_adapter_error_instead_of_idle_queue() -> None:
+    class Conn:
+        def execute(self, sql: str, params: object = ()) -> _Rows:
+            if "FROM token_radar_dirty_targets" in sql:
+                return _Rows([object()])  # type: ignore[list-item]
+            raise AssertionError("terminal query must not run after malformed metric row")
+
+    health = fetch_queue_table_health(Conn(), "token_radar_dirty_targets", now_ms=1_000)
+
+    assert health["available"] is False
+    assert health["status"] == "unavailable"
+    assert health["error_code"] == "adapter_query_failure"
+    assert health["adapter_error_kind"] == "TypeError"
+
+
 def test_fill_worker_queue_healths_requires_api_pool_connection_contract() -> None:
     runtime = SimpleNamespace(db=SimpleNamespace(api_pool=SimpleNamespace()))
     workers = manifest_worker_statuses({manifest.name: {} for manifest in all_worker_manifests()})

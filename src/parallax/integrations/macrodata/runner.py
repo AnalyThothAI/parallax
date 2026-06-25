@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -306,7 +307,12 @@ def _macrodata_timeout_seconds(settings: object) -> float:
         value = settings.workers.macro_sync.macrodata_timeout_seconds
     except AttributeError as exc:
         raise RuntimeError("macrodata_timeout_settings_required") from exc
-    return max(1.0, float(value))
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("macrodata_timeout_seconds_required")
+    parsed = float(value)
+    if not math.isfinite(parsed) or parsed < 1.0:
+        raise ValueError("macrodata_timeout_seconds_required")
+    return parsed
 
 
 __all__ = [

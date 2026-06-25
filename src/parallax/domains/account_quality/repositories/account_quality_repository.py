@@ -385,6 +385,7 @@ class AccountQualityRepository:
         return {str(row["handle"]): dict(row) for row in rows}
 
     def account_token_rows(self, *, resolver_policy_version: str, limit: int) -> list[dict[str, Any]]:
+        row_limit = _required_nonnegative_int(limit, "account_quality_token_rows_limit_required")
         rows = self.conn.execute(
             """
             WITH filtered AS (
@@ -471,7 +472,7 @@ class AccountQualityRepository:
             ORDER BY first_mention_ms DESC, f.handle, f.target_type, f.target_id
             LIMIT %s
             """,
-            (resolver_policy_version, max(0, int(limit))),
+            (resolver_policy_version, row_limit),
         ).fetchall()
         return [dict(row) for row in rows]
 
@@ -562,3 +563,11 @@ def _run_repository_write[T](conn: Any, commit: bool, write: Callable[[], T]) ->
         with _transaction(conn):
             return write()
     return write()
+
+
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(error_code)
+    if value < 0:
+        raise ValueError(error_code)
+    return int(value)

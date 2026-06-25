@@ -13,6 +13,8 @@ from parallax.platform.config.settings import Settings
 
 
 class FakeLLMGateway:
+    api_key = "sk-test"
+    base_url = "https://example.com/v1"
     trace_export_enabled = False
 
 
@@ -192,6 +194,26 @@ def test_pulse_provider_timeout_requires_configured_pulse_decision_lane() -> Non
 
     with pytest.raises(KeyError, match=r"pulse\.decision"):
         model_execution._agent_runtime_lane_timeout_seconds(malformed_settings, "pulse.decision")
+
+
+@pytest.mark.parametrize("timeout_seconds", [0, -1, True, "305"])
+def test_pulse_provider_timeout_rejects_malformed_lane_timeout_without_runtime_repair(timeout_seconds: object) -> None:
+    malformed_settings = SimpleNamespace(
+        workers=SimpleNamespace(
+            agent_runtime=SimpleNamespace(
+                lanes={"pulse.decision": SimpleNamespace(timeout_seconds=timeout_seconds)},
+            ),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="agent_runtime_lane_timeout_seconds_required"):
+        model_execution._agent_runtime_lane_timeout_seconds(malformed_settings, "pulse.decision")
+
+
+@pytest.mark.parametrize("timeout_seconds", [0, -1, True, "305"])
+def test_pulse_provider_rejects_malformed_pipeline_timeout_without_runtime_repair(timeout_seconds: object) -> None:
+    with pytest.raises(ValueError, match="pulse_decision_pipeline_timeout_seconds_required"):
+        model_execution.LiteLLMPulseDecisionProvider(FakePulseClient(), pipeline_timeout_seconds=timeout_seconds)
 
 
 def test_pulse_provider_maps_agent_run_audit_from_litellm_client() -> None:

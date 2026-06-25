@@ -18,6 +18,7 @@ from parallax.domains.pulse_lab.repositories._pulse_repository_shared import (
 )
 from parallax.domains.pulse_lab.types.pulse_freshness_health import (
     classify_pulse_freshness_health,
+    pulse_freshness_since_hours,
     pulse_freshness_since_ms,
 )
 
@@ -104,7 +105,10 @@ class PulseReadRepository:
     ) -> list[dict[str, Any]]:
         normalized_scopes = _ordered_non_empty(scopes)
         normalized_statuses = _ordered_non_empty(statuses)
-        bounded_limit = max(0, int(per_scope_status_limit))
+        bounded_limit = _required_nonnegative_int(
+            per_scope_status_limit,
+            "pulse_notification_candidate_limit_required",
+        )
         if not normalized_scopes or not normalized_statuses or bounded_limit == 0:
             return []
         display_statuses = [_public_display_status(status) for status in normalized_statuses]
@@ -364,6 +368,7 @@ class PulseReadRepository:
         }
 
     def freshness_health(self, *, window: str, scope: str, now_ms: int, since_hours: int) -> dict[str, Any]:
+        since_hour_count = pulse_freshness_since_hours(since_hours)
         since_ms = pulse_freshness_since_ms(now_ms=now_ms, since_hours=since_hours)
         clocks = fetch_pulse_health_clocks(self.conn, window=window, scope=scope)
         jobs = fetch_pulse_health_jobs(self.conn, window=window, scope=scope, now_ms=now_ms, since_ms=since_ms)
@@ -378,7 +383,7 @@ class PulseReadRepository:
         return {
             "window": window,
             "scope": scope,
-            "since_hours": max(1, int(since_hours)),
+            "since_hours": since_hour_count,
             "publish_status": status,
             "reasons": reasons,
             **clocks,
@@ -404,6 +409,12 @@ def _normalize_public_search_q(q: str | None) -> str:
     if q is None:
         return ""
     return str(q).strip()
+
+
+def _required_nonnegative_int(value: Any, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(error_code)
+    return int(value)
 
 
 def _ordered_non_empty(values: Sequence[str]) -> list[str]:

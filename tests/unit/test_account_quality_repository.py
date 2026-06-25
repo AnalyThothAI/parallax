@@ -114,6 +114,29 @@ def test_market_ticks_for_token_reads_tick_history_with_named_params():
     }
 
 
+def test_account_token_rows_allows_zero_limit_with_explicit_sql_limit() -> None:
+    conn = FakeConn(rows=[])
+
+    rows = AccountQualityRepository(conn).account_token_rows(resolver_policy_version="resolver-v1", limit=0)
+
+    assert rows == []
+    assert "LIMIT %s" in conn.sql
+    assert conn.params == ("resolver-v1", 0)
+
+
+@pytest.mark.parametrize("limit", [-1, True, "25"])
+def test_account_token_rows_rejects_malformed_limit_before_sql(limit: object) -> None:
+    conn = FakeConn(rows=[])
+
+    with pytest.raises(ValueError, match="account_quality_token_rows_limit_required"):
+        AccountQualityRepository(conn).account_token_rows(
+            resolver_policy_version="resolver-v1",
+            limit=limit,  # type: ignore[arg-type]
+        )
+
+    assert conn.sqls == []
+
+
 def test_accounts_quality_batches_profiles_stats_and_snapshots_by_handle_keyset():
     conn = BatchReadConn(
         result_sets=[

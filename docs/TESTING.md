@@ -43,9 +43,11 @@ Current architecture test inventory:
 | `tests/architecture/test_api_read_paths_provider_free.py` | Permanent invariant | API reads do not call providers. |
 | `tests/architecture/test_cex_oi_kappa_contract.py` | Permanent invariant | CEX OI Kappa/CQRS ownership. |
 | `tests/architecture/test_completion_gates.py` | Permanent invariant | Completion evidence requirements. |
+| `tests/architecture/test_dirty_queue_attempt_budget_contract.py` | Permanent invariant | Dirty queue retry budgets reset only for changed work payloads. |
 | `tests/architecture/test_earnings_hard_delete_contracts.py` | Migration tripwire | Retired earnings runtime surfaces. |
 | `tests/architecture/test_equity_runtime_hard_delete_contract.py` | Migration tripwire | Retired equity runtime compatibility. |
 | `tests/architecture/test_event_anchor_capture_redesign_contracts.py` | Migration tripwire | Event-anchor redesign hard cut. |
+| `tests/architecture/test_evidence_repository_contracts.py` | Permanent invariant | Evidence repository input, transaction, and rowcount contracts. |
 | `tests/architecture/test_harness_structure.py` | Permanent invariant | Documentation harness and SDD lane structure. |
 | `tests/architecture/test_macro_kappa_contract.py` | Permanent invariant | Macro Kappa/CQRS boundaries. |
 | `tests/architecture/test_macro_no_compatibility_contract.py` | Migration tripwire | Macro compatibility surfaces stay deleted. |
@@ -65,6 +67,7 @@ Current architecture test inventory:
 | `tests/architecture/test_sdd_artifact_validator.py` | Generated hygiene | Executable SDD artifact truth. |
 | `tests/architecture/test_src_domain_architecture.py` | Permanent invariant | Source/domain architecture boundaries. |
 | `tests/architecture/test_test_lane_contracts.py` | Permanent invariant | Test lane and taxonomy contract. |
+| `tests/architecture/test_token_intent_repository_contracts.py` | Permanent invariant | Token intent repository input, evidence-link, and rowcount contracts. |
 | `tests/architecture/test_token_profile_current_hard_cut.py` | Migration tripwire | Token profile current-row hard cut. |
 | `tests/architecture/test_token_pulse_equity_cpu_hard_cut_contract.py` | Migration tripwire | Token pulse CPU hard cut. |
 | `tests/architecture/test_token_radar_publication_state_hard_cut.py` | Migration tripwire | Token Radar publication state hard cut. |

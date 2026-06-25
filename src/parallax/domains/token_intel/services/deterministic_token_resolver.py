@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from parallax.domains.token_intel._constants import TOKEN_RADAR_RESOLVER_POLICY_VERSION
+from parallax.domains.token_intel.types.token_fact_inputs import DeterministicResolution, MentionKeys
 
 RESOLVER_POLICY_VERSION = TOKEN_RADAR_RESOLVER_POLICY_VERSION
 MIN_DOMINANT_MARKET_CAP_USD = Decimal("250000")
@@ -23,31 +23,12 @@ ADDRESS_CHAIN_PRIORITY = (
 )
 ADDRESS_CHAIN_PRIORITY_INDEX = {chain_id: index for index, chain_id in enumerate(ADDRESS_CHAIN_PRIORITY)}
 
-
-@dataclass(frozen=True, slots=True)
-class MentionKeys:
-    symbol: str | None = None
-    chain_id: str | None = None
-    address: str | None = None
-    cex_pricefeed_id: str | None = None
-    exchange: str | None = None
-    dex_token_provider: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class DeterministicResolution:
-    intent_id: str
-    event_id: str
-    resolution_status: str
-    target_type: str | None
-    target_id: str | None
-    pricefeed_id: str | None
-    resolver_policy_version: str
-    reason_codes: list[str]
-    candidate_ids: list[str]
-    lookup_keys: list[str]
-    decision_time_ms: int
-    created_at_ms: int
+__all__ = [
+    "RESOLVER_POLICY_VERSION",
+    "DeterministicResolution",
+    "DeterministicTokenResolver",
+    "MentionKeys",
+]
 
 
 class DeterministicTokenResolver:

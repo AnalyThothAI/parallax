@@ -133,6 +133,7 @@ def seed_postgres(db_path: Path) -> None:
         TokenRadarProjection(repos=repos).rebuild_dirty_targets(
             lease_ms=120_000,
             retry_ms=30_000,
+            max_attempts=3,
             windows=("5m",),
             scopes=("all",),
             now_ms=now_ms,
@@ -1027,6 +1028,7 @@ def test_cli_ops_refresh_asset_profiles_emits_skipped_without_profile_provider(m
             "queue_depth": 0,
             "source_rows_scanned": 0,
             "targets_loaded": 0,
+            "targets_enqueued": 0,
             "rows_written": 0,
             "ready": 0,
             "missing": 0,

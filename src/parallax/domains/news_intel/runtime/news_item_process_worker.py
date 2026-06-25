@@ -12,6 +12,7 @@ from parallax.domains.news_intel.runtime.news_projection_work import (
     enqueue_page_reprojection,
     enqueue_story_brief_work,
 )
+from parallax.domains.news_intel.runtime.news_runtime_settings import positive_worker_setting_int
 from parallax.domains.news_intel.services.news_content_classification import classify_news_item_content
 from parallax.domains.news_intel.services.news_entity_extraction import extract_news_entities
 from parallax.domains.news_intel.services.news_fact_candidates import build_fact_candidates
@@ -294,16 +295,16 @@ class NewsItemProcessWorker(WorkerBase):
         )
 
     def _batch_size(self) -> int:
-        return max(1, int(self.settings.batch_size))
+        return positive_worker_setting_int(self.settings, "batch_size", worker_name=self.name)
 
     def _lease_ms(self) -> int:
-        return max(1, int(self.settings.lease_ms))
+        return positive_worker_setting_int(self.settings, "lease_ms", worker_name=self.name)
 
     def _max_attempts(self) -> int:
-        return max(1, int(self.settings.max_attempts))
+        return positive_worker_setting_int(self.settings, "max_attempts", worker_name=self.name)
 
     def _retry_delay_ms(self) -> int:
-        return max(1, int(self.settings.retry_delay_ms))
+        return positive_worker_setting_int(self.settings, "retry_delay_ms", worker_name=self.name)
 
 
 def _required_text(item: Mapping[str, Any], key: str) -> str:

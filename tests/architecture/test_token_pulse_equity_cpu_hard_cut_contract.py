@@ -64,3 +64,28 @@ def test_token_target_repository_exposes_event_id_timeline_loader() -> None:
     assert "def timeline_rows_for_event_ids" in text
     assert "WITH ORDINALITY" in text
     assert "events.event_id = requested_events.event_id" in text
+
+
+def test_token_target_and_signal_read_limits_reject_runtime_int_repairs() -> None:
+    token_target_source = _read("src/parallax/domains/token_intel/repositories/token_target_repository.py")
+    signal_source = _read("src/parallax/domains/token_intel/repositories/signal_repository.py")
+    combined = token_target_source + signal_source
+
+    assert "max(0, int(limit))" not in combined
+    assert "token_target_repository_limit_required" in token_target_source
+    assert "signal_repository_alert_limit_required" in signal_source
+
+
+def test_token_rebuild_rank_source_and_account_quality_limits_reject_runtime_int_repairs() -> None:
+    account_quality_source = _read("src/parallax/domains/account_quality/repositories/account_quality_repository.py")
+    event_rebuild_source = _read("src/parallax/domains/token_intel/queries/event_rebuild_query.py")
+    rank_source = _read("src/parallax/domains/token_intel/queries/token_radar_rank_source_query.py")
+    combined = account_quality_source + event_rebuild_source + rank_source
+
+    assert "max(0, int(limit))" not in combined
+    assert "max(1, int(limit))" not in combined
+    assert "max(1, int(chunk_size))" not in rank_source
+    assert "account_quality_token_rows_limit_required" in account_quality_source
+    assert "event_rebuild_recent_events_limit_required" in event_rebuild_source
+    assert "token_radar_rank_source_prune_limit_required" in rank_source
+    assert "token_radar_rank_source_chunk_size_required" in rank_source

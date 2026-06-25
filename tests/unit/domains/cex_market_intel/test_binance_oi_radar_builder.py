@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from parallax.domains.cex_market_intel.providers import (
     CexFundingPremium,
     CexOiTicker24h,
@@ -183,6 +185,36 @@ def test_build_binance_oi_radar_rows_requires_base_symbol_before_provider_io():
         assert str(exc) == "cex_oi_radar_identity_required:base_symbol"
     else:
         raise AssertionError("missing Binance base symbol must fail before provider calls")
+
+    assert client.calls == []
+
+
+@pytest.mark.parametrize(
+    "limit",
+    [
+        pytest.param(0, id="zero"),
+        pytest.param(-1, id="negative"),
+        pytest.param(True, id="bool"),
+        pytest.param("10", id="string"),
+    ],
+)
+def test_build_binance_oi_radar_rows_requires_positive_limit_before_provider_io(limit: object):
+    client = _CallRecordingClient()
+
+    with pytest.raises(ValueError, match="cex_oi_radar_limit_required"):
+        build_binance_oi_radar_rows(
+            universe=[
+                {
+                    "pricefeed_id": "pricefeed:cex:binance:swap:BTCUSDT",
+                    "native_market_id": "BTCUSDT",
+                    "base_symbol": "BTC",
+                }
+            ],
+            client=client,
+            now_ms=1_778_000_000_000,
+            period="5m",
+            limit=limit,  # type: ignore[arg-type]
+        )
 
     assert client.calls == []
 
